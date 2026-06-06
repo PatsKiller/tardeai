@@ -128,3 +128,29 @@ no production graft.
 ---
 ## Summary recovery added (2026-06-06)
 Residual drain rejects were MISSING-summary (gemma3 using alt keys / drifting shape). Added bounded, quality-gated summary recovery (`hermes_output_recovery.py`) — strict path unchanged; recovery only on missing-summary; generic/evasive/too-short stay rejected; trade_instance_id still required. Validation 10/10. See `HERMES_SUMMARY_RECOVERY_20260606.md`.
+
+---
+## FINAL — full drain complete (2026-06-06, driver brpwf0zys, 60-iter cap)
+
+Operator "complete all max drain left" — drained the canonical closed-trade reflection backlog via
+`--drain-closed-trades` (driver `scripts/drain_all_closed_trades.sh`, 60-iteration safety cap).
+
+- **Backlog: 145 → 2** (driver END snapshot logged 9 at the cap; the scheduled cron continued draining via
+  the canonical closed_trade_needing_reflection tier to 2 shortly after).
+- **Hermes trade-linked reflections: 45 → 188 (+143).** By source_system: alpaca_paper 36, schwab_import 151.
+- **Residual: 2** — both `GSIT` (schwab_import). Reason: genuinely-sparse local-LLM output (fails the
+  summary + evidence_json substance gates); recovery (b8ab67a) correctly rejected, never fabricated. These
+  re-attempt automatically on future scheduled cron runs.
+- 0 legacy-only links throughout (all canonical trade_instance_id).
+- outcome_fed_back unchanged at 25/169 — the drained reflections are Schwab imports, which are not in
+  proposal_outcome_chain (paper-proposal chains only); expected, not a gap.
+
+### Fixes that made the full drain possible (all this session)
+- 6304065: stamp hermes_agent_name/research_type from code (eliminated the dominant reject class).
+- 3707347: stamp deterministic topic from code.
+- 206f950 + b8ab67a: bounded, quality-gated summary recovery (alt-key/raw-paragraph), correctly rejecting
+  genuinely-sparse output — no fabrication, no quality-bar lowering.
+
+### Safety
+Research-only (hermes_research_intelligence writes via validated path; local Ollama). No broker/order/stop/
+proposal/GO-WAIT/strategy/live/Phase-205 changes; no production learning graft.
