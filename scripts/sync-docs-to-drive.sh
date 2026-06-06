@@ -27,6 +27,23 @@ touch "$MANIFEST" "$FOLDER_CACHE"
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
 log "=== sync start ==="
 
+# ── Runtime-dump exclusion ──
+# Hermes drain/runtime payloads and snapshot JSON dumps under docs/hermes/** are NOT project
+# documentation — they should not mirror into the curated Trade_AI_Docs_v2 Drive folder.
+# Curated Hermes markdown (architecture docs, *_report.md) is intentionally NOT matched here.
+# (bash `case` globs match across '/', so `*` spans path segments.)
+is_runtime_dump_excluded() {
+  local rel="$1"
+  case "$rel" in
+    docs/hermes/phase3b_dryrun/*)                              return 0 ;;  # drain payload dumps
+    docs/hermes/backlog_health/*.json)                         return 0 ;;  # snapshot JSON (keep .md)
+    docs/hermes/*hermes_auto_ticker_challenger_*_payload.json) return 0 ;;  # nested drain payloads
+    docs/hermes/*_payload.json)                                return 0 ;;  # any hermes payload json
+    docs/hermes/*latest_*_summary.json)                        return 0 ;;  # latest_* snapshot summaries
+  esac
+  return 1
+}
+
 # ── Folder resolution: get or create a Drive folder for a path ──
 # Uses file-based cache: each line is "path|drive_id"
 resolve_folder() {
@@ -120,8 +137,16 @@ UPLOADED=0
 SKIPPED=0
 
 while IFS= read -r filepath; do
-  hash=$(sha256sum "$filepath" | cut -d' ' -f1)
   relpath="${filepath#$SRC/}"
+
+  # Skip runtime payload/snapshot dumps (not project docs) — checked before hashing
+  if is_runtime_dump_excluded "$relpath"; then
+    log "SKIPPED runtime dump: $relpath"
+    SKIPPED=$((SKIPPED + 1))
+    continue
+  fi
+
+  hash=$(sha256sum "$filepath" | cut -d' ' -f1)
 
   # Skip if unchanged
   if grep -qF "$relpath|$hash" "$MANIFEST" 2>/dev/null; then
@@ -180,19 +205,26 @@ if [ -s "$MANIFEST" ]; then
   while IFS='|' read -r relpath hash; do
     [ -z "$relpath" ] && continue
     local_file="$SRC/$relpath"
+    # Remove from Drive if the local source was deleted OR it is now an excluded runtime dump
+    # (excluded dumps may still exist locally — they just must not mirror to Drive).
     if [ ! -f "$local_file" ]; then
       log "CLEANUP: $relpath no longer exists locally"
-      # Find the file on Drive by searching the target folder
-      dir_path=$(dirname "$relpath")
-      filename=$(basename "$relpath")
-      target_parent="$DRIVE_FOLDER_ID"
-      if [ "$dir_path" != "." ]; then
-        cached_parent=$(grep "^${dir_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2)
-        [ -n "$cached_parent" ] && target_parent="$cached_parent"
-      fi
-      # Search for file in target folder
-      drive_file_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --json --no-input 2>/dev/null \
-        | python3 -c "
+    elif is_runtime_dump_excluded "$relpath"; then
+      log "CLEANUP excluded runtime dump: $relpath"
+    else
+      continue
+    fi
+    # Find the file on Drive by searching the target folder
+    dir_path=$(dirname "$relpath")
+    filename=$(basename "$relpath")
+    target_parent="$DRIVE_FOLDER_ID"
+    if [ "$dir_path" != "." ]; then
+      cached_parent=$(grep "^${dir_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2)
+      [ -n "$cached_parent" ] && target_parent="$cached_parent"
+    fi
+    # Search for file in target folder
+    drive_file_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --json --no-input 2>/dev/null \
+      | python3 -c "
 import sys,json
 try:
     files=json.load(sys.stdin).get('files',[])
@@ -200,18 +232,17 @@ try:
     print(matches[0] if matches else '')
 except: print('')
 " 2>/dev/null || echo "")
-      if [ -n "$drive_file_id" ]; then
-        if gog drive rm "$drive_file_id" --account "$GOG_ACCOUNT" --force --no-input 2>>"$LOG"; then
-          log "DELETED from Drive: $relpath ($drive_file_id)"
-          DELETED=$((DELETED + 1))
-        else
-          log "WARN: could not delete $relpath from Drive"
-        fi
+    if [ -n "$drive_file_id" ]; then
+      if gog drive rm "$drive_file_id" --account "$GOG_ACCOUNT" --force --no-input 2>>"$LOG"; then
+        log "DELETED from Drive: $relpath ($drive_file_id)"
+        DELETED=$((DELETED + 1))
+      else
+        log "WARN: could not delete $relpath from Drive"
       fi
-      # Remove from manifest
-      grep -v "^${relpath}|" "$MANIFEST" > "${MANIFEST}.new" 2>/dev/null || touch "${MANIFEST}.new"
-      mv "${MANIFEST}.new" "$MANIFEST"
     fi
+    # Remove from manifest
+    grep -v "^${relpath}|" "$MANIFEST" > "${MANIFEST}.new" 2>/dev/null || touch "${MANIFEST}.new"
+    mv "${MANIFEST}.new" "$MANIFEST"
   done < "$CLEANUP_MANIFEST"
   rm -f "$CLEANUP_MANIFEST"
 fi

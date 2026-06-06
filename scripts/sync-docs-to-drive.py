@@ -22,7 +22,8 @@ EXCLUDE = [r'/state/', r'/\.git/', r'__pycache__', r'\.pyc$', r'\.log$', r'\.sql
            r'\.key$', r'\.pem$', r'\.token$', r'credentials', r'secret', r'password',
            r'holdings.*\.json$', r'portfolio.*\.json$',
            r'morning_brief', r'/_trash/', r'CLAUDE_CODE_',
-           r'/hermes/phase3b_dryrun/', r'hermes_auto_.*_payload\.json$']
+           r'/hermes/phase3b_dryrun/', r'hermes_auto_.*_payload\.json$',
+           r'/hermes/backlog_health/.*\.json$', r'/hermes/.*latest_.*_summary\.json$']
 SENSITIVE = [rb'sk-[a-zA-Z0-9]{20,}', rb'AKIA[A-Z0-9]{16}', rb'ghp_[a-zA-Z0-9]{36}',
              rb'[0-9]{8,10}:[a-zA-Z0-9_-]{30,}']
 
