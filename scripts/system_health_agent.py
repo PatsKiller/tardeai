@@ -55,7 +55,7 @@ MONITORED_COMPONENTS = [
      "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
      "downstream": "scanner input data"},
     {"component": "news_ingestion", "display": "News Ingestion",
-     "schedule": "0 6,12,18 * * *", "log_file": "news_ingestion.log",
+     "schedule": ["30 6,12 * * 1-5", "30 18 * * *"], "log_file": "news_ingestion.log",
      "max_age_min": 480, "max_runtime_sec": 600, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
      "downstream": "catalyst detection, news alerts"},
@@ -128,17 +128,14 @@ MONITORED_COMPONENTS = [
 
     # ── LLM Backtesting (v3.8) ──
     {"component": "trade_close_llm_analyzer", "display": "LLM Close-of-Trade Analysis",
-     "schedule": "event-driven", "log_file": "llm_backtesting/close_analyzer.log",
+     # script runs weekday 21:00 (structured_eval.log); Sunday 23:00 run is monitored
+     # separately by llm_backtest_reviewer. Was pointed at a log path that never existed.
+     "schedule": "0 21 * * 1-5", "log_file": "structured_eval.log",
      "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
      "downstream": "trade_llm_reviews close_analysis, journal learning quality"},
-    {"component": "delayed_trade_llm_reviewer", "display": "LLM Delayed Post-Close Review",
-     "schedule": "0 10 * * 1-5", "log_file": "llm_backtesting/delayed_reviewer.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "downstream": "trade_llm_reviews delayed_review, weekly learning"},
-    {"component": "monthly_grok_meta_review", "display": "Monthly Grok Meta-Review",
-     "schedule": "0 10 1 * *", "log_file": "llm_backtesting/monthly_meta.log",
-     "max_age_min": 45000, "max_runtime_sec": 900, "critical": False,
-     "downstream": "monthly_llm_meta_reviews, strategy learning"},
+    # NOTE: delayed_trade_llm_reviewer + monthly_grok_meta_review removed 2026-06-06 —
+    # no backing script and no cron entry exists (never implemented / aspirational).
+    # They produced permanent MISSING false positives. Re-add when the jobs actually exist.
 
     # ── ATM Position Reconciler ──
     {"component": "atm_position_reconciler", "display": "ATM Position Reconciler",
@@ -185,11 +182,15 @@ MONITORED_COMPONENTS = [
      "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
      "retry_cmd": ".venv/bin/python scripts/data_gap_resolver.py",
      "downstream": "data completeness, enrichment gaps"},
-    {"component": "overnight_batch", "display": "Overnight Batch",
-     "schedule": "0 20 * * *", "log_file": "overnight_batch.log",
-     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/overnight_batch.py",
-     "downstream": "metrics, stale refresh, agent performance"},
+    # NOTE: overnight_batch removed 2026-06-06 — the job was intentionally retired
+    # (cron tagged PHASE102-RETIRED; last clean run 2026-05-29). Monitoring a retired
+    # job produced a permanent STALE false positive. Its agent_performance scorer was
+    # rehomed to update_agent_performance.py (below), re-scheduled weekday 20:00.
+    {"component": "update_agent_performance", "display": "Agent Performance Scorer",
+     "schedule": "0 20 * * 1-5", "log_file": "update_agent_performance.log",
+     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/update_agent_performance.py",
+     "downstream": "agent_performance_history, weekly portfolio review"},
     {"component": "auto_enrichment", "display": "Auto Enrichment Runner",
      "schedule": "*/10 4-19 * * 1-5", "log_file": "auto_enrichment.log",
      "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
@@ -379,8 +380,98 @@ def _send_alert(message, urgent=False):
         log.error(f"Alert send failed: {e}")
 
 
-def _check_log_freshness(log_file, max_age_min):
-    """Check if log file has recent output."""
+def _cron_field_matches(field, value, min_val, max_val):
+    """Match a single cron field against `value`. Supports '*', lists, ranges and '/steps'."""
+    field = field.strip()
+    if field in ("*", "?"):
+        return True
+    for part in field.split(","):
+        base, step = part, 1
+        if "/" in part:
+            base, step_s = part.split("/", 1)
+            try:
+                step = int(step_s)
+            except ValueError:
+                step = 1
+        if base in ("*", ""):
+            lo, hi = min_val, max_val
+        elif "-" in base:
+            lo_s, hi_s = base.split("-", 1)
+            try:
+                lo, hi = int(lo_s), int(hi_s)
+            except ValueError:
+                continue
+        else:
+            try:
+                if int(base) == value:
+                    return True
+            except ValueError:
+                pass
+            continue
+        if lo <= value <= hi and (value - lo) % step == 0:
+            return True
+    return False
+
+
+def _cron_fires_at(schedule, dt):
+    """True if 5-field cron `schedule` fires at the minute-resolution datetime `dt`."""
+    parts = schedule.split()
+    if len(parts) != 5:
+        return False
+    minute_f, hour_f, dom_f, month_f, dow_f = parts
+    if not _cron_field_matches(minute_f, dt.minute, 0, 59):
+        return False
+    if not _cron_field_matches(hour_f, dt.hour, 0, 23):
+        return False
+    if not _cron_field_matches(month_f, dt.month, 1, 12):
+        return False
+    # Python weekday(): Mon=0..Sun=6  ->  cron: Sun=0..Sat=6 (with 7 also = Sun)
+    cron_dow = (dt.weekday() + 1) % 7
+    dow_ok = (_cron_field_matches(dow_f, cron_dow, 0, 6)
+              or (cron_dow == 0 and _cron_field_matches(dow_f, 7, 0, 7)))
+    dom_ok = _cron_field_matches(dom_f, dt.day, 1, 31)
+    # Standard cron rule: when both day-of-month and day-of-week are restricted, either matches.
+    if dom_f.strip() != "*" and dow_f.strip() != "*":
+        return dom_ok or dow_ok
+    return dom_ok and dow_ok
+
+
+def _prev_scheduled_fire(schedule, now_dt, lookback_days=14):
+    """Most recent datetime <= now_dt at which `schedule` would have fired.
+
+    `schedule` may be a single cron string or a list of cron strings (the latest
+    fire across all is returned). Returns None if unparseable / no fire in window.
+    """
+    schedules = schedule if isinstance(schedule, (list, tuple)) else [schedule]
+    schedules = [s for s in schedules if s and len(s.split()) == 5]
+    if not schedules:
+        return None
+    dt = now_dt.replace(second=0, microsecond=0)
+    horizon = dt - timedelta(days=lookback_days)
+    while dt >= horizon:
+        if any(_cron_fires_at(s, dt) for s in schedules):
+            return dt
+        dt -= timedelta(minutes=1)
+    return None
+
+
+def _fmt_schedule(schedule):
+    """Human-readable form of a schedule that may be a string or list of cron strings."""
+    if isinstance(schedule, (list, tuple)):
+        return " | ".join(schedule)
+    return schedule
+
+
+def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_min=15):
+    """Check if log file has recent output.
+
+    When `prev_fire` (the most recent scheduled run time) is supplied, staleness is
+    judged against the schedule rather than a blind elapsed-time threshold: the job is
+    STALE only if its last output predates the most recent scheduled run (after a grace
+    period for that run to complete). This eliminates false positives on days/hours the
+    job is not scheduled to run (e.g. weekday-only jobs flagged STALE on weekends).
+    Falls back to the fixed `max_age_min` threshold when no schedule context is given.
+    """
     log_path = PROJECT_ROOT / "logs" / log_file
     if not log_path.exists():
         return {"status": "MISSING", "age_min": None, "last_line": None}
@@ -393,6 +484,18 @@ def _check_log_freshness(log_file, max_age_min):
             size = f.tell()
             f.seek(max(0, size - 500))
             last_line = f.read().decode('utf-8', errors='replace').strip().split('\n')[-1][:200]
+
+        if prev_fire is not None and now is not None:
+            # The most recent scheduled run hasn't had time to complete yet.
+            if now < prev_fire + timedelta(minutes=grace_min):
+                return {"status": "OK", "age_min": round(age_min, 1),
+                        "last_line": last_line, "note": "within_run_grace"}
+            # Stale only if last output is older than the most recent scheduled run.
+            if mtime < prev_fire - timedelta(minutes=grace_min):
+                return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
+            return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
+
+        # Fallback: fixed-age threshold (event-driven / unparseable schedules).
         if age_min > max_age_min:
             return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
         return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
@@ -526,7 +629,7 @@ def _escalate(comp, check_result, conn):
         f"{'🚨' if severity == 'CRITICAL' else '⚠️'} SYSTEM HEALTH: {comp['display']} — {check_result['status']}",
         "",
         f"Component: {component}",
-        f"Expected: {comp.get('schedule', 'unknown')}",
+        f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
         f"Last output: {check_result.get('age_min', '?')} min ago",
         f"Status: {check_result['status']}",
     ]
@@ -575,31 +678,21 @@ def run_health_check(dry_run=True, verbose=False):
         component = comp["component"]
         log_file = comp.get("log_file", "")
 
-        # Skip staleness check for market-hours-only components outside market hours
+        # Schedule-aware staleness: judge freshness against the component's actual cron
+        # schedule (day-of-week + hours), not a blind elapsed-time threshold. This is what
+        # prevents weekday-only jobs (1-5) from being flagged STALE on weekends, and jobs
+        # from being flagged before their first scheduled run of the day.
         _sched = comp.get("schedule", "")
-        _market_only = False
-        if any(h in _sched for h in ["9-16", "9-15", "9-20", "7-15", "7-17"]):
-            _market_only = True
-            # Extract hour range from schedule
-            import re as _re_sched
-            _hr_match = _re_sched.search(r'(\d+)-(\d+)', _sched.split("*")[1] if len(_sched.split("*")) > 1 else "")
-            if _hr_match:
-                _sched_start = int(_hr_match.group(1))
-                _sched_end = int(_hr_match.group(2))
-                # If current ET hour is outside the schedule window, skip
-                if not (_sched_start <= _current_hour <= _sched_end) or not _is_weekday:
-                    report["checks"].append({
-                        "component": component, "display": comp.get("display"),
-                        "status": "OK", "age_min": None, "lock": "N/A",
-                        "note": "outside_scheduled_hours",
-                    })
-                    report["summary"]["ok"] += 1
-                    if verbose:
-                        log.info(f"  ⏭️  {comp['display']:30s} skipped (outside scheduled hours {_sched_start}-{_sched_end}, now={_current_hour})")
-                    continue
+        _prev_fire = None
+        if _sched and _sched != "event-driven":
+            _prev_fire = _prev_scheduled_fire(_sched, _now_et)
+        _grace_min = max(comp.get("max_runtime_sec", 600) / 60.0, 5) + 10
 
-        # 1. Check log freshness
-        freshness = _check_log_freshness(log_file, comp.get("max_age_min", 60))
+        # 1. Check log freshness (schedule-aware when a scheduled fire time is known)
+        freshness = _check_log_freshness(
+            log_file, comp.get("max_age_min", 60),
+            prev_fire=_prev_fire, now=_now_et, grace_min=_grace_min,
+        )
 
         # 2. Check lock contention
         lock_info = _check_lock_contention(comp.get("lock_file"))
@@ -679,7 +772,7 @@ def run_health_check(dry_run=True, verbose=False):
                  last_failure_at, last_run_duration_sec, expected_max_duration_sec,
                  failure_count, retry_count, last_error, last_action, downstream_impact, severity)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                ["cron_health", component, check["status"], comp.get("schedule"),
+                ["cron_health", component, check["status"], _fmt_schedule(comp.get("schedule")),
                  now if check["status"] == "OK" else None,
                  now if check["status"] not in ("OK", "RECOVERED") else None,
                  None, comp.get("max_runtime_sec"),
