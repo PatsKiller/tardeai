@@ -160,3 +160,32 @@ Commit audited: **01d3c66**. SELECT-only; no new news links created (read-only v
 
 ### Safety
 ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
+
+---
+## Re-audit snapshot v5 (2026-06-06, post backtesting-integrity fixes)
+
+Commit audited: **d8c5581**. SELECT-only. Denominator = trade_instances.
+
+### Closed-loop coverage (continuing to fill)
+- trade_instances 353 (alpaca_paper 51 + schwab_import 302).
+- execution lineage signal/broker/candidate 27% / 84% / 84% · trade_key 100%.
+- Hermes: related_trade_id 13 · trade_instance_id-linked **41** · backlog 149 (drains via manual batches).
+- backtest→trade_instance 92 · edge_comparison **101** (schwab 58 + paper 43) · news links 35.
+- shadow scores 57 · outcome_fed_back 15% · graft INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT.
+- closed_paper_trade in canonical Hermes path: 0 (all-trades targeting intact).
+
+### Backtesting-page integrity — ALL 9 actionable items RESOLVED this session
+1 last-run badge (per-pipeline last_runs + last_run_overall) · 2 cadences confirmed · 4 missed-opps dedup
+(proposal_id, 1461→168) · 5 missed-opps verdict (sim_outcome_verdict incl MIXED) · 6 optimization
+(DISTINCT ON strategy_family, 267→5) · 7 LLM review Ollama health gate (SKIPPED_LLM_UNHEALTHY, no flood;
+1671 infra retryable vs 60 parser classified; llm_review_runs 3) · 8 stale-basis pollution (10 invalidated)
+· 9 per-row provenance (paper/imported_backtest/simulation + trade_instance_id lineage). 3 endpoint
+freshness + 10 learning-shadow-only confirmed.
+
+### Verdicts
+- STRUCTURE = PASS · DATA DENSITY = PARTIAL (improving; Hermes backlog 149 + import lineage upstream)
+- PAGE INTEGRITY = PASS (all 9 audit items resolved; page now operator-grade with honest labels)
+- AUTONOMOUS LEARNING = SHADOW_ONLY / DO_NOT_GRAFT (GO/WAIT + strategy untouched).
+
+### Safety
+SELECT-only audit. ALPACA_MODE=paper, live disabled. No broker/order/GO-WAIT/strategy/live/Phase-205.
