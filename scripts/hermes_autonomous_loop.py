@@ -282,7 +282,7 @@ def run_ticker_challenger(args):
         ok, errors = validate_payload(output, "hermes_research_intelligence")
         # BOUNDED summary recovery: ONLY when the strict failure is missing summary, try to recover a
         # specific, substantive summary from alternate output shapes (no fabrication; quality-gated).
-        if not ok and errors == ["MISSING required column: summary"] and not output.get("summary"):
+        if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
             try:
                 from hermes_output_recovery import recover_summary_from_output
                 rec = recover_summary_from_output(output if isinstance(output, dict) else content,
