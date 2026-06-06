@@ -1,3 +1,8 @@
+## v3 Journal Backtesting Integrity Audit (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_JOURNAL_BACKTESTING_INTEGRITY_AUDIT_20260606.md` | Read-only audit: stale badge, missed-proposal dedup, 85% LLM infra errors, stale-basis pollution FIXED (10 invalidated); page = diagnostic-only until fixes land |
+
 ## Hermes All-Trades Reflection Drain (2026-06-06)
 | Document | Purpose |
 |----------|---------|
