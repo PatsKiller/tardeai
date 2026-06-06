@@ -38,3 +38,32 @@ production learning graft.
   with a longer timeout. Consider deprioritizing held_position during dedicated drain runs so closed-trade
   backlog (Schwab 133 + paper 28) drains faster — held positions currently consume the first slots.
 - No code fix required; throughput is purely LLM wall-clock + runner timeout.
+
+---
+## Read-only status re-check (2026-06-06, no batch run)
+
+SELECT-only; git unchanged at a428eae. No hermes --apply, no broker/order/proposal/GO-WAIT/strategy/
+Phase-205 actions.
+
+### Findings
+- Linked reflections: **28 → 28 (unchanged since batch-1)**; backlog **161 → 161** (paper 28, schwab 133).
+- Most recent trade-linked reflection: 08:53:03 (batch-1 cutoff) — nothing new since.
+- by source_system: alpaca_paper 8, schwab_import 20. legacy-only links: 0. unlinked non-trade: 1403.
+- outcome_fed_back: 25/169 (unchanged). Stack healthy (receiver/gov/mon-wd active; Hermes writing 7.6m).
+- Phase 205 backup timer: already auto-fired Sat 02:30:42 (CLEAN); next Sun 02:30 — left alone.
+
+### Held-position STARVATION confirmed
+A Hermes loop is active and writing, but the trade-linked backlog has NOT advanced. **51 held-position
+tickers were researched in the last 24h**, consuming the priority-0 slots. Held-position research on open
+Schwab positions isn't even trade_instance-linked (no closed trade → no trade_instance_id), so it
+advances neither the linked count nor the closed backlog. The 161 closed-trade backlog (pri-1) sits
+behind held (pri-0). **Held priority is starving closed-trade reflection.**
+
+### Decision (per operator rule)
+- Backlog is STUCK, not falling → cron alone is not draining it.
+- A plain manual `--max-rows 6` batch would be starved the same way (held pri-0 first) → NOT recommended.
+- Recommended design change (gated on operator approval, NOT implemented): add a **drain mode** to
+  `get_ticker_targets` (flag/env) that temporarily promotes `closed_trade_needing_reflection` above
+  `held_position` for dedicated drain runs only, leaving normal 24/7 production priority (held-first)
+  untouched. ~10-line reversible targeting change. Then `--drain --max-rows 6` would actually pull down
+  the closed backlog (133 schwab + 28 paper).
