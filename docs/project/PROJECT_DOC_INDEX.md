@@ -1,3 +1,8 @@
+## Closed-Loop ALL-TRADES Certification Re-Audit (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_ALL_TRADES_20260606.md` | Cert @db1aae3: STRUCTURE PASS, DATA DENSITY PARTIAL, LEARNING SHADOW_ONLY/BLOCKED |
+
 ## Closed-Loop All-Trades Abstraction (2026-06-06) — CANONICAL
 | Document | Purpose |
 |----------|---------|
