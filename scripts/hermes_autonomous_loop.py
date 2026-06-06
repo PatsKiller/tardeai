@@ -104,7 +104,27 @@ def get_ticker_targets(conn, max_rows=3):
         )
         SELECT symbol, src FROM deduped ORDER BY pri, symbol LIMIT %s
     """, (max_rows,))
-    return [{"symbol": row[0], "src": row[1], "trade_count": 0} for row in cur.fetchall()]
+    rows = cur.fetchall()
+    # Resolve related_trade_id / related_proposal_id so trade-reflection research is lineage-linked
+    # (paper loop: paper_trades.id / paper_trade_proposals.id; live Schwab held positions have no
+    # paper trade so related_trade_id stays NULL — never fabricated).
+    targets = []
+    for symbol, src in rows:
+        rtid = rpid = None
+        cur.execute("SELECT id FROM paper_trades WHERE symbol=%s AND lower(coalesce(status,''))='open' ORDER BY id DESC LIMIT 1", (symbol,))
+        r = cur.fetchone()
+        if not r and src == 'closed_trade':
+            cur.execute("SELECT id FROM paper_trades WHERE symbol=%s ORDER BY id DESC LIMIT 1", (symbol,))
+            r = cur.fetchone()
+        rtid = r[0] if r else None
+        cur.execute("""SELECT id FROM paper_trade_proposals WHERE symbol=%s
+                       AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
+                       ORDER BY id DESC LIMIT 1""", (symbol,))
+        r = cur.fetchone()
+        rpid = r[0] if r else None
+        targets.append({"symbol": symbol, "src": src, "trade_count": 0,
+                        "related_trade_id": rtid, "related_proposal_id": rpid})
+    return targets
 
 
 def get_ticker_context(conn, symbol):
@@ -197,6 +217,12 @@ def run_ticker_challenger(args):
         output.setdefault("confidence_score", 0.5)
         output.setdefault("freshness_date", date.today().isoformat())
         output.setdefault("model_used", LOOP_MODEL)
+        # ── Step 2 lineage: link trade-reflection research to its trade / proposal (paper loop) ──
+        output["symbol"] = sym
+        if target.get("related_trade_id") is not None:
+            output["related_trade_id"] = target["related_trade_id"]
+        if target.get("related_proposal_id") is not None:
+            output["related_proposal_id"] = target["related_proposal_id"]
         ej = output.get("evidence_json", {})
         if not isinstance(ej, dict):
             ej = {}
