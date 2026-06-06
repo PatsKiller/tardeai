@@ -149,6 +149,13 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     output = shadow_score()
+    # Step 5: persist shadow scores to DB (candidate_shadow_scores), keyed to the candidate. Best-effort.
+    try:
+        from persist_shadow_scores import persist as _persist_shadow
+        _n = _persist_shadow(output)
+        print(f"  Persisted {_n} shadow scores to candidate_shadow_scores")
+    except Exception as _e:
+        print(f"  (shadow DB persist skipped: {_e})")
     print(f"Shadow Scoring Results")
     print(f"  Candidates: {output['candidates_scored']}")
     print(f"  Boosted: {output['boosted']}")
