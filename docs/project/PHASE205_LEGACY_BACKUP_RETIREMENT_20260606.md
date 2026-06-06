@@ -38,3 +38,25 @@ weekly data via retained legacy cron).
 
 ## Safety
 No broker/order/GO-WAIT/strategy/live changes. Backup scheduling only; reversible; state backed up first.
+
+---
+## UPDATE — weekly-data leg folded into cadence (operator chose option a, 2026-06-06)
+Operator selected: fold secrets_backup_data into the daily backup cadence with a weekly staleness gate.
+- `run_portfolio_maintenance_pipeline.sh run_backup()` now runs secrets_backup_data when the stamp
+  `data/runtime/last_secrets_data_backup.stamp` is ≥6 days old (or missing); else GATED_SKIP_FRESH.
+  Stamp touched only on success. `run_weekly()` no longer runs secrets-data (single owner).
+- Seeded a fresh data backup via the new path (data_backup_20260606_083953.tar.gz.gpg, 48M → Drive) and
+  anchored the stamp before retiring the cron — no coverage gap.
+- **Legacy data-weekly cron RETIRED** (commented). All 3 legacy backup paths now retired; the
+  `tradeai-portfolio-backup-cadence.timer` (daily 02:30) is the SOLE owner of pg + secrets-env (daily) +
+  secrets-data (weekly-gated).
+
+### Final state
+- portfolio-backup.timer: disabled/inactive · env-daily cron: commented · data-weekly cron: commented
+- cadence timer: enabled, next Sun 02:30 · data stamp: fresh (2026-06-06)
+- Restore: `crontab data/runtime/legacy_backup_retirement_20260606/crontab.before.bak` +
+  `systemctl --user enable --now portfolio-backup.timer`. Before/after crontabs both snapshotted.
+
+### Safety
+Backup scheduling only; reversible; fresh backup taken before retirement; no broker/order/GO-WAIT/
+strategy/live changes.
