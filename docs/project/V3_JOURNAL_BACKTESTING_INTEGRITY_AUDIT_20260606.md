@@ -75,7 +75,7 @@ evaluate_shadow_efficacy → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (n<20); GO/WAIT 
 | 6 | optimization repeated blocks | **FIXED** 2026-06-06 (DISTINCT ON strategy_family; 267->5 latest-per-family) |
 | 7 | LLM review 85% errors | **FIXED** 2026-06-06 (Ollama health gate: skip+classify, no flood) |
 | 8 | stale-basis pollution | **FIXED** (10 invalidated, reversible) |
-| 9 | per-row provenance | FINDING (fix recommended) |
+| 9 | per-row provenance | **FIXED** 2026-06-06 (provenance kind + trade_instance_id lineage per row) |
 | 10 | learning shadow-only | CONFIRMED |
 
 ## Safety proof

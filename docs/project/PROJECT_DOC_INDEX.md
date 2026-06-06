@@ -1,3 +1,8 @@
+## v3 LLM-Review Per-Row Provenance (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_LLM_REVIEW_PROVENANCE_20260606.md` | provenance kind (paper/imported_backtest/simulation) + trade_instance_id lineage per review row; audit #9 RESOLVED — all 9 items done |
+
 ## v3 Backtest Last-Run Badge Fix (2026-06-06)
 | Document | Purpose |
 |----------|---------|

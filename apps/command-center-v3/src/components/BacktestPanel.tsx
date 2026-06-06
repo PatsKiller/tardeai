@@ -1245,10 +1245,15 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
           )}
           <div style={card}>
             <div style={secTitle}>Latest LLM Reviews</div>
+            {llmReviewData?.provenance && (
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, marginTop: -8 }}>
+                Provenance: {Object.entries(llmReviewData.provenance).map(([k, v]: any) => `${k} ${v.rows} (${v.trade_instance_linked} linked)`).join(' · ')}. Simulation rows are backtest sims (no real trade); paper/imported link to canonical trade_instance_id where an exact key exists.
+              </div>
+            )}
             {(llmReviewData?.latest_reviews || []).length === 0 ? <Empty label="No LLM reviews yet. Reviews run weekly on Sunday at 11 PM." /> : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Symbol', 'Stage', 'Status', 'Model', 'Source', 'Date'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                  {['Symbol', 'Stage', 'Status', 'Model', 'Provenance', 'Lineage', 'Date'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
                 </tr></thead>
                 <tbody>{(llmReviewData?.latest_reviews || []).map((r: any) => {
                   const sc = r.status === 'complete' ? G : r.status === 'error' ? R : r.status === 'partial' ? A : 'var(--text3)'
@@ -1259,7 +1264,8 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
                       <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text2)' }}>{safeStr(r.review_stage)}</td>
                       <td style={{ padding: '8px 10px' }}><span style={{ fontSize: 12, color: sc, fontWeight: 600 }}>{si} {r.status}</span></td>
                       <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text3)' }}>{r.model_name || '—'}</td>
-                      <td style={{ padding: '8px 10px', fontSize: 10, color: 'var(--text3)' }}>{r.source_table === 'strategy_backtest_trades' ? 'backtest' : 'paper'}</td>
+                      <td style={{ padding: '8px 10px' }}>{(() => { const pk = r.provenance || (r.source_table === 'strategy_backtest_trades' ? 'simulation' : 'paper'); const col = pk === 'paper' ? G : pk === 'imported_backtest' ? B : pk === 'simulation' ? P : 'var(--text3)'; return <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,.05)', color: col, fontWeight: 600 }}>{pk}</span> })()}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 10 }}>{r.linked ? <span style={{ color: G }}>ti#{r.trade_instance_id}</span> : <span style={{ color: 'var(--text3)' }}>{r.provenance === 'simulation' ? 'sim (no trade)' : 'unlinked'}</span>}</td>
                       <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text3)' }}>{r.generated_at ? String(r.generated_at).slice(0, 10) : '—'}</td>
                     </tr>
                   )
