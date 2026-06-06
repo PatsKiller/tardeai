@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Phase 206 — Backtest candidate profit-protection rules on closed measurable trades.
+"""Phase 206 / 206b — Backtest candidate profit-protection rules on closed trades.
 
-EVIDENCE ONLY. No rule is ever applied to live trading, no order/stop/strategy mutation.
-Evaluates stop/TP/trailing candidate rules against closed trades that have bar-based MFE/MAE
-(trade_mfe_analysis) joined to the canonical trade_profit_capture_analysis.
+EVIDENCE ONLY. No rule is ever applied to live trading; no order/stop/strategy/GO-WAIT mutation.
+
+Phase 206b hardening (after the rule-quality review found the raw signal NOT decision-grade):
+  * Data-quality gate: drop trades with too-few MFE bars, outlier mfe_r, or no planned stop.
+  * Winners-only give-back scope: separate genuine winner give-back from loser/breakeven risk-control.
+  * Multi-tier sample reporting: raw / quality-eligible / triggered / winner / reliable.
+  * Confidence is derived from RELIABLE sample size, never raw n.
+  * Honest premature-exit cost: under single-peak MFE it CANNOT be priced — flagged unknown and the
+    recovery estimate is labelled an upper bound.
 
 Path limitation (stated honestly): we have summary MFE/MAE (peak/trough R + peak price), not the
-full intrabar path. We therefore use a SINGLE-PEAK approximation: a lock/trailing rule that has
-triggered installs a profit floor; simulated capture = the floor when it exceeds the realized
-exit, else the realized exit. data_quality is stamped 'approx_single_peak' and confidence is
-de-rated accordingly. This is decision-support evidence, not a tick-accurate fill simulator.
+full intrabar path. A lock/trailing floor is therefore modelled as binding only AFTER the favorable
+peak (single-peak approximation). This systematically UNDER-states premature-exit cost, so simulated
+recovery is an UPPER BOUND, not a fill-accurate result.
 
 Writes `profit_protection_rule_backtests` only with --apply.
-
-Candidate rules:
-  breakeven_after_1R, lock25_after_1_5R, lock50_after_2R, trail5_after_2R, trail8_after_3R,
-  partial_tp_1_5R, partial_tp_2R, and strategy-family variants (scalp/swing/income/position).
 """
 import os, sys, json, argparse
 from datetime import datetime, timezone
@@ -23,7 +24,11 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-MIN_SAMPLE = 20   # below this -> low confidence (mirrors shadow-threshold gate)
+# Reliable-evidence floor (mirrors shadow-threshold gate).
+RELIABLE_FLOOR = 20
+# Quality-gate defaults
+DEFAULT_MIN_BARS = 10
+DEFAULT_MAX_MFE_R = 20.0
 
 
 def load_env():
@@ -58,96 +63,136 @@ def family_of(strategy_id):
 
 
 # ---- candidate rules -------------------------------------------------------
-# Each rule maps a trade's (mfe_r, realized_pnl, max_profit_usd, initial_risk_usd) to a
-# simulated captured profit under the single-peak approximation.
-
 def rule_lock_fraction(trigger_r, fraction):
-    """Lock `fraction` of the favorable peak once mfe_r >= trigger_r."""
     def sim(t):
         if t["mfe_r"] is None or t["mfe_r"] < trigger_r:
-            return t["realized_pnl"]          # never triggered -> unchanged
-        floor = fraction * (t["max_profit_usd"] or 0)
-        return max(t["realized_pnl"], floor)
+            return t["realized_pnl"]
+        return max(t["realized_pnl"], fraction * (t["max_profit_usd"] or 0))
     return sim
 
 
 def rule_breakeven(trigger_r):
-    """Move stop to breakeven after +trigger_r. Protects losers that first reached +R."""
     def sim(t):
         if t["mfe_r"] is None or t["mfe_r"] < trigger_r:
             return t["realized_pnl"]
-        # breakeven floor = 0; winners already > 0 so unchanged, losers that peaked >=R -> ~0
         return max(t["realized_pnl"], 0.0)
     return sim
 
 
 def rule_trail_pct(trigger_r, pct):
-    """Trail `pct` below the favorable peak price once mfe_r >= trigger_r."""
     def sim(t):
         if t["mfe_r"] is None or t["mfe_r"] < trigger_r or not t["mfe_price"] or not t["entry_price"]:
             return t["realized_pnl"]
-        floor_price = t["mfe_price"] * (1 - pct)
-        floor_usd = (floor_price - t["entry_price"]) * (t["shares"] or 0)
+        floor_usd = (t["mfe_price"] * (1 - pct) - t["entry_price"]) * (t["shares"] or 0)
         floor_usd = min(floor_usd, t["max_profit_usd"] or floor_usd)
         return max(t["realized_pnl"], floor_usd)
     return sim
 
 
 def rule_partial_tp(trigger_r):
-    """Take 50% off at +trigger_r; remaining half rides to the realized exit."""
     def sim(t):
         if t["mfe_r"] is None or t["mfe_r"] < trigger_r or t["initial_risk_usd"] is None:
             return t["realized_pnl"]
-        locked_half = 0.5 * (trigger_r * t["initial_risk_usd"])
-        return locked_half + 0.5 * t["realized_pnl"]
+        return 0.5 * (trigger_r * t["initial_risk_usd"]) + 0.5 * t["realized_pnl"]
     return sim
 
 
-RULES = {
-    "breakeven_after_1R": (rule_breakeven(1.0), None),
-    "lock25_after_1_5R": (rule_lock_fraction(1.5, 0.25), None),
-    "lock50_after_2R": (rule_lock_fraction(2.0, 0.50), None),
-    "trail5_after_2R": (rule_trail_pct(2.0, 0.05), None),
-    "trail8_after_3R": (rule_trail_pct(3.0, 0.08), None),
-    "partial_tp_1_5R": (rule_partial_tp(1.5), None),
-    "partial_tp_2R": (rule_partial_tp(2.0), None),
-    # strategy-family variants
-    "scalp_fast_trail3_after_1_5R": (rule_trail_pct(1.5, 0.03), "momentum"),
-    "scalp_partial_tp_1R": (rule_partial_tp(1.0), "momentum"),
-    "swing_lock50_after_2R": (rule_lock_fraction(2.0, 0.50), "swing"),
-    "income_wide_trail8_after_3R": (rule_trail_pct(3.0, 0.08), "income"),
-    "position_lock50_after_3R": (rule_lock_fraction(3.0, 0.50), "position"),
-}
+def triggers(trigger_r):
+    return lambda t: t["mfe_r"] is not None and t["mfe_r"] >= trigger_r
 
 
-def evaluate(rule_fn, trades):
-    base_ml = sum(t["money_left_usd"] or 0 for t in trades)
-    sim_ml = avoided = premature = 0.0
+# (rule_name, sim_fn, family_filter, trigger_fn, scope)
+#   scope 'giveback'   -> winner give-back capture (the canonical protection problem)
+#   scope 'risk_control' -> breakeven/loss-prevention (reported separately, includes losers)
+RULES = [
+    ("breakeven_after_1R",   rule_breakeven(1.0),        None, triggers(1.0), "risk_control"),
+    ("lock25_after_1_5R",    rule_lock_fraction(1.5, 0.25), None, triggers(1.5), "giveback"),
+    ("lock50_after_2R",      rule_lock_fraction(2.0, 0.50), None, triggers(2.0), "giveback"),
+    ("trail5_after_2R",      rule_trail_pct(2.0, 0.05),  None, triggers(2.0), "giveback"),
+    ("trail8_after_3R",      rule_trail_pct(3.0, 0.08),  None, triggers(3.0), "giveback"),
+    ("partial_tp_1_5R",      rule_partial_tp(1.5),       None, triggers(1.5), "giveback"),
+    ("partial_tp_2R",        rule_partial_tp(2.0),       None, triggers(2.0), "giveback"),
+    ("scalp_fast_trail3_after_1_5R", rule_trail_pct(1.5, 0.03), "momentum", triggers(1.5), "giveback"),
+    ("scalp_partial_tp_1R",  rule_partial_tp(1.0),       "momentum", triggers(1.0), "giveback"),
+    ("swing_lock50_after_2R", rule_lock_fraction(2.0, 0.50), "swing", triggers(2.0), "giveback"),
+    ("income_wide_trail8_after_3R", rule_trail_pct(3.0, 0.08), "income", triggers(3.0), "giveback"),
+    ("position_lock50_after_3R", rule_lock_fraction(3.0, 0.50), "position", triggers(3.0), "giveback"),
+]
+
+
+def annotate_eligibility(t, min_bars, max_mfe_r, require_stop):
+    """Row-level eligibility flags + excluded_reason for give-back rules."""
+    bars = t["bars_analyzed"]
+    t["has_bar_path"] = bars is not None and bars > 0
+    t["has_planned_stop"] = t["initial_risk_usd"] is not None
+    t["has_valid_mfe"] = t["mfe_r"] is not None and t["max_profit_usd"] is not None
+    t["mfe_outlier"] = bool(t["mfe_r"] is not None and t["mfe_r"] > max_mfe_r)
+    t["is_winner"] = bool(t["realized_pnl"] is not None and t["realized_pnl"] > 0)
+
+    reasons = []
+    if not t["has_valid_mfe"]:
+        reasons.append("no_valid_mfe")
+    if not t["has_bar_path"] or (bars is not None and bars < min_bars):
+        reasons.append(f"bars_lt_{min_bars}")
+    if t["mfe_outlier"]:
+        reasons.append(f"mfe_r_gt_{max_mfe_r:g}")
+    if require_stop and not t["has_planned_stop"]:
+        reasons.append("no_planned_stop")
+    if not (t["max_profit_usd"] and t["max_profit_usd"] > 0):
+        reasons.append("max_profit_le_0")
+
+    # give-back rules additionally require a winner
+    gb_reasons = list(reasons)
+    if not t["is_winner"]:
+        gb_reasons.append("not_winner")
+
+    t["eligible_for_breakeven_rule"] = (len(reasons) == 0)        # winners + losers (risk-control)
+    t["eligible_for_giveback_rule"] = (len(gb_reasons) == 0)      # winners only
+    t["excluded_reason"] = (",".join(gb_reasons) or None)
+    # 'reliable' = passes quality gate AND has a real multi-bar path
+    t["reliable"] = bool(t["eligible_for_giveback_rule"] and bars is not None and bars >= min_bars)
+    return t
+
+
+def confidence_from_reliable(n):
+    if n < 10:
+        return "insufficient"
+    if n < 20:
+        return "weak"
+    if n < 50:
+        return "moderate"
+    return "stronger"
+
+
+def evaluate(rule_fn, trigger_fn, trades):
+    base_ml = sim_ml = avoided = premature = 0.0
     base_wins = sim_wins = 0
-    base_gross_win = base_gross_loss = sim_gross_win = sim_gross_loss = 0.0
+    base_gw = base_gl = sim_gw = sim_gl = 0.0
+    triggered = 0
     for t in trades:
         realized = t["realized_pnl"]
+        if trigger_fn(t):
+            triggered += 1
         sim = rule_fn(t)
         delta = sim - realized
         if delta > 0:
             avoided += delta
         elif delta < 0:
             premature += -delta
-        # remaining money left after the rule = max(peak - sim, 0)
+        base_ml += t["money_left_usd"] or 0
         sim_ml += max((t["max_profit_usd"] or 0) - sim, 0.0)
         if realized > 0:
-            base_wins += 1; base_gross_win += realized
+            base_wins += 1; base_gw += realized
         elif realized < 0:
-            base_gross_loss += -realized
+            base_gl += -realized
         if sim > 0:
-            sim_wins += 1; sim_gross_win += sim
+            sim_wins += 1; sim_gw += sim
         elif sim < 0:
-            sim_gross_loss += -sim
+            sim_gl += -sim
     n = len(trades)
-    base_pf = (base_gross_win / base_gross_loss) if base_gross_loss > 0 else None
-    sim_pf = (sim_gross_win / sim_gross_loss) if sim_gross_loss > 0 else None
+    base_pf = (base_gw / base_gl) if base_gl > 0 else None
+    sim_pf = (sim_gw / sim_gl) if sim_gl > 0 else None
     return {
-        "sample_size": n,
         "baseline_money_left": round(base_ml, 2),
         "simulated_money_left": round(sim_ml, 2),
         "avoided_giveback": round(avoided, 2),
@@ -155,18 +200,18 @@ def evaluate(rule_fn, trades):
         "net_improvement": round(avoided - premature, 2),
         "win_rate_delta": round((sim_wins - base_wins) / n, 4) if n else 0.0,
         "profit_factor_delta": (round(sim_pf - base_pf, 4) if (base_pf is not None and sim_pf is not None) else None),
+        "triggered_sample_size": triggered,
     }
 
 
-def run(apply, json_path, md_path, run_id):
+def run(args, run_id):
     load_env()
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT c.trade_instance_id, c.symbol, c.source_system, c.strategy_id,
                c.entry_price, c.shares, c.realized_pnl, c.max_profit_usd, c.money_left_usd,
-               c.mfe_price, c.mfe_r, m.mae_r,
-               pt.planned_stop
+               c.mfe_price, c.mfe_r, m.mae_r, m.bars_analyzed, pt.planned_stop
         FROM trade_profit_capture_analysis c
         LEFT JOIN paper_trades pt ON c.source_table='paper_trades' AND c.source_trade_id ~ '^[0-9]+$'
                                  AND pt.id = c.source_trade_id::int
@@ -179,7 +224,7 @@ def run(apply, json_path, md_path, run_id):
         d = dict(r)
         entry = f(d["entry_price"]); ps = f(d["planned_stop"]); shares = f(d["shares"])
         initial_risk = ((entry - ps) * shares) if (entry and ps and shares and entry > ps) else None
-        trades.append({
+        t = {
             "trade_instance_id": d["trade_instance_id"], "source_system": d["source_system"],
             "strategy_id": d["strategy_id"], "family": family_of(d["strategy_id"]),
             "entry_price": entry, "shares": shares,
@@ -187,62 +232,155 @@ def run(apply, json_path, md_path, run_id):
             "max_profit_usd": f(d["max_profit_usd"]) or 0.0,
             "money_left_usd": f(d["money_left_usd"]) or 0.0,
             "mfe_price": f(d["mfe_price"]), "mfe_r": f(d["mfe_r"]),
-            "initial_risk_usd": initial_risk,
-        })
+            "bars_analyzed": d["bars_analyzed"], "initial_risk_usd": initial_risk,
+        }
+        annotate_eligibility(t, args.min_bars_analyzed, args.max_mfe_r, args.require_planned_stop)
+        trades.append(t)
+    conn.close()
+
+    raw_n = len(trades)
+    quality_gated = args.quality_gated or args.winners_only
 
     results = []
-    for rule_name, (fn, family_filter) in RULES.items():
-        # overall (or family-scoped) population
-        for scope_name, pop in [("ALL", trades)]:
-            target = [t for t in pop if (family_filter is None or t["family"] == family_filter)]
-            if not target:
-                continue
-            ev = evaluate(fn, target)
-            n = ev["sample_size"]
-            recommended = bool(ev["net_improvement"] > 0 and ev["avoided_giveback"] > ev["premature_exit_cost"])
-            conf = "high" if n >= MIN_SAMPLE and ev["net_improvement"] > 0 else (
-                   "medium" if n >= max(5, MIN_SAMPLE // 2) else "low")
-            results.append({
-                "run_id": run_id, "rule_name": rule_name,
-                "strategy_family": family_filter or "ALL",
-                "source_system": "ALL", **ev,
-                "recommended": recommended,
-                "recommendation_confidence": conf,
-                "data_quality": "approx_single_peak",
-            })
+    for rule_name, fn, family_filter, trigger_fn, scope in RULES:
+        pop = [t for t in trades if (family_filter is None or t["family"] == family_filter)]
+
+        # Choose eligibility per scope + flags
+        if quality_gated:
+            if scope == "giveback" or args.winners_only:
+                eligible = [t for t in pop if t["eligible_for_giveback_rule"]]
+            else:  # risk_control breakeven — winners+losers but quality-gated
+                eligible = [t for t in pop if t["eligible_for_breakeven_rule"]]
+                if args.winners_only:
+                    eligible = [t for t in eligible if t["is_winner"]]
+            result_scope = ("winners_only_quality_gated" if scope == "giveback"
+                            else "risk_control_quality_gated")
+        else:
+            eligible = pop  # legacy: no gate
+            result_scope = "legacy_ungated"
+
+        # Optionally drop losers entirely from the reported scope
+        if args.separate_losers and scope == "giveback":
+            eligible = [t for t in eligible if t["is_winner"]]
+
+        if not pop:
+            continue
+
+        ev = evaluate(fn, trigger_fn, eligible)
+
+        # sample tiers
+        quality_eligible_n = len(eligible)
+        winner_n = sum(1 for t in eligible if t["is_winner"])
+        reliable_n = sum(1 for t in eligible if t["reliable"])
+        excluded = [t for t in pop if not (t["eligible_for_giveback_rule"] if scope == "giveback"
+                                           else t["eligible_for_breakeven_rule"])]
+        excluded_count = len(excluded)
+        excl_reasons = {}
+        for t in excluded:
+            for rsn in (t["excluded_reason"] or "unknown").split(","):
+                excl_reasons[rsn] = excl_reasons.get(rsn, 0) + 1
+
+        confidence = confidence_from_reliable(reliable_n)
+
+        # premature-exit honesty: single-peak MFE cannot order stop-trigger vs later profit
+        premature_known = False
+        premature_method = "single_peak_mfe_floor_after_peak"
+        premature_warning = "single_peak_mfe_cannot_order_stop_trigger_vs_later_profit"
+        estimate_quality = "upper_bound_single_peak" if not premature_known else "measured"
+
+        # recommendation requires positive net AND a met reliable floor AND known premature cost
+        recommended = bool(ev["net_improvement"] > 0
+                           and reliable_n >= RELIABLE_FLOOR
+                           and premature_known)
+        if reliable_n < RELIABLE_FLOOR:
+            graft_verdict = "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE"
+        elif ev["net_improvement"] <= 0:
+            graft_verdict = "REJECTED_NEGATIVE_EDGE"
+        elif not premature_known:
+            graft_verdict = "DO_NOT_GRAFT_PREMATURE_COST_UNKNOWN"
+        else:
+            graft_verdict = "ELIGIBLE_FOR_OPERATOR_REVIEW"
+
+        results.append({
+            "run_id": run_id, "rule_name": rule_name,
+            "strategy_family": family_filter or "ALL", "source_system": "ALL",
+            "scope": scope, "result_scope": result_scope,
+            # legacy compat
+            "sample_size": quality_eligible_n,
+            "baseline_money_left": ev["baseline_money_left"],
+            "simulated_money_left": ev["simulated_money_left"],
+            "avoided_giveback": ev["avoided_giveback"],
+            "premature_exit_cost": ev["premature_exit_cost"],
+            "net_improvement": ev["net_improvement"],
+            "win_rate_delta": ev["win_rate_delta"], "profit_factor_delta": ev["profit_factor_delta"],
+            "recommended": recommended, "recommendation_confidence": confidence,
+            "data_quality": ("quality_gated" if quality_gated else "approx_single_peak"),
+            # hardened fields
+            "raw_sample_size": len(pop),
+            "quality_eligible_sample_size": quality_eligible_n,
+            "triggered_sample_size": ev["triggered_sample_size"],
+            "winner_sample_size": winner_n,
+            "reliable_sample_size": reliable_n,
+            "excluded_count": excluded_count,
+            "excluded_reasons": excl_reasons,
+            "premature_exit_cost_known": premature_known,
+            "premature_exit_cost_method": premature_method,
+            "premature_exit_cost_warning": premature_warning,
+            "estimate_quality": estimate_quality,
+            "graft_verdict": graft_verdict,
+        })
 
     written = 0
-    if apply:
-        wc = conn.cursor()
+    if args.apply:
+        conn = db(); wc = conn.cursor()
         cols = ["run_id", "rule_name", "strategy_family", "source_system", "sample_size",
                 "baseline_money_left", "simulated_money_left", "avoided_giveback",
                 "premature_exit_cost", "net_improvement", "win_rate_delta", "profit_factor_delta",
-                "recommended", "recommendation_confidence", "data_quality"]
+                "recommended", "recommendation_confidence", "data_quality",
+                "raw_sample_size", "quality_eligible_sample_size", "triggered_sample_size",
+                "winner_sample_size", "reliable_sample_size", "excluded_count", "excluded_reasons",
+                "premature_exit_cost_known", "premature_exit_cost_method", "premature_exit_cost_warning",
+                "estimate_quality", "result_scope", "graft_verdict"]
         for r in results:
+            vals = dict(r); vals["excluded_reasons"] = json.dumps(r["excluded_reasons"])
             wc.execute(f"""INSERT INTO profit_protection_rule_backtests ({','.join(cols)})
-                VALUES ({','.join('%('+c+')s' for c in cols)})""", {c: r.get(c) for c in cols})
+                VALUES ({','.join('%('+c+')s' for c in cols)})""", {c: vals.get(c) for c in cols})
             written += 1
-        conn.commit()
-    conn.close()
+        conn.commit(); conn.close()
 
-    report = {"run_at": datetime.now(timezone.utc).isoformat(), "run_id": run_id, "applied": apply,
-              "written": written, "measurable_trades": len(trades), "results": results}
-    if json_path:
-        json.dump(report, open(json_path, "w"), indent=2, default=str)
-    if md_path:
-        L = ["# Profit-Protection Rule Backtests (evidence only)", "",
-             f"run_id: {run_id}  |  measurable trades: {len(trades)}", "",
-             "**No rule is applied to live trading. Single-peak approximation — see header.**", "",
-             "| rule | family | n | baseline$ | avoided$ | premature$ | net$ | wr Δ | rec | conf |",
-             "|------|--------|---|-----------|----------|------------|------|------|-----|------|"]
+    report = {"run_at": datetime.now(timezone.utc).isoformat(), "run_id": run_id,
+              "applied": args.apply, "written": written, "raw_measurable_trades": raw_n,
+              "gate": {"quality_gated": quality_gated, "winners_only": args.winners_only,
+                       "min_bars_analyzed": args.min_bars_analyzed, "max_mfe_r": args.max_mfe_r,
+                       "require_planned_stop": args.require_planned_stop,
+                       "reliable_floor": RELIABLE_FLOOR},
+              "results": results}
+    if args.json:
+        json.dump(report, open(args.json, "w"), indent=2, default=str)
+    if args.markdown:
+        L = ["# Profit-Protection Rule Backtests — quality-gated (evidence only)", "",
+             f"run_id: {run_id}  |  raw measurable: {raw_n}  |  gate: {report['gate']}", "",
+             "**No rule applied to live trading. Recovery is an UPPER BOUND (single-peak MFE; "
+             "premature-exit cost unknown). Confidence uses reliable n, not raw n.**", "",
+             "| rule | scope | raw | qual | trig | winner | reliable | avoided$(UB) | net$(UB) | conf | graft |",
+             "|------|-------|-----|------|------|--------|----------|--------------|----------|------|-------|"]
         for r in sorted(results, key=lambda x: -x["net_improvement"]):
-            L.append(f"| {r['rule_name']} | {r['strategy_family']} | {r['sample_size']} | "
-                     f"{r['baseline_money_left']} | {r['avoided_giveback']} | {r['premature_exit_cost']} | "
-                     f"{r['net_improvement']} | {r['win_rate_delta']} | {r['recommended']} | "
-                     f"{r['recommendation_confidence']} |")
-        open(md_path, "w").write("\n".join(L) + "\n")
-    print(json.dumps({"run_id": run_id, "measurable_trades": len(trades), "rules": len(results),
-                      "best": sorted(results, key=lambda x: -x["net_improvement"])[:3]}, indent=2, default=str))
+            L.append(f"| {r['rule_name']} | {r['scope']} | {r['raw_sample_size']} | "
+                     f"{r['quality_eligible_sample_size']} | {r['triggered_sample_size']} | "
+                     f"{r['winner_sample_size']} | {r['reliable_sample_size']} | "
+                     f"{r['avoided_giveback']} | {r['net_improvement']} | "
+                     f"{r['recommendation_confidence']} | {r['graft_verdict']} |")
+        open(args.markdown, "w").write("\n".join(L) + "\n")
+
+    best = max(results, key=lambda x: x["net_improvement"]) if results else None
+    print(json.dumps({"run_id": run_id, "raw_measurable": raw_n, "rules": len(results),
+                      "gate": report["gate"],
+                      "best_by_net": ({"rule": best["rule_name"], "reliable_n": best["reliable_sample_size"],
+                                       "avoided_upper_bound": best["avoided_giveback"],
+                                       "confidence": best["recommendation_confidence"],
+                                       "graft": best["graft_verdict"]} if best else None),
+                      "all_do_not_graft": all(r["graft_verdict"].startswith(("DO_NOT_GRAFT", "REJECTED"))
+                                              for r in results)}, indent=2))
     return report
 
 
@@ -250,8 +388,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--quality-gated", action="store_true", help="apply data-quality gate")
+    ap.add_argument("--winners-only", action="store_true", help="give-back scope = winners only")
+    ap.add_argument("--separate-losers", action="store_true", help="drop losers from give-back scope")
+    ap.add_argument("--min-bars-analyzed", type=int, default=DEFAULT_MIN_BARS)
+    ap.add_argument("--max-mfe-r", type=float, default=DEFAULT_MAX_MFE_R)
+    ap.add_argument("--require-planned-stop", action="store_true")
     ap.add_argument("--json", default=None)
     ap.add_argument("--markdown", default=None)
     a = ap.parse_args()
     rid = a.run_id or "ppbt_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run(a.apply, a.json, a.markdown, rid)
+    run(a, rid)

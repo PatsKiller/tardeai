@@ -1,3 +1,9 @@
+## Profit-Capture Rule Backtest Quality + Hardening (Phase 206b, 2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PROFIT_CAPTURE_BACKTEST_QUALITY_REVIEW_20260606.md` | adversarial review: raw trail5_after_2R signal NOT decision-grade (loser-dominated, 62% ≤3-bar MFE, mfe_r outliers to 48R, reliable n≈2); DO_NOT_GRAFT upheld |
+| `docs/project/PROFIT_CAPTURE_RULE_BACKTEST_HARDENING_20260606.md` | data-quality gate + winners-only + reliable/effective sample reporting + reliable-n confidence + honest premature-exit (upper bound); recovery $2,728→$447 UB @ reliable n=2; all DO_NOT_GRAFT; validation 13/13 |
+
 ## Drive Sync Runtime-Dump Excludes (2026-06-06)
 | Document | Purpose |
 |----------|---------|
