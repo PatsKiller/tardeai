@@ -67,3 +67,41 @@ behind held (pri-0). **Held priority is starving closed-trade reflection.**
   `held_position` for dedicated drain runs only, leaving normal 24/7 production priority (held-first)
   untouched. ~10-line reversible targeting change. Then `--drain --max-rows 6` would actually pull down
   the closed backlog (133 schwab + 28 paper).
+
+---
+## Drain mode implemented + Batch 2 (2026-06-06)
+
+### Why
+Read-only re-check confirmed held-position priority-0 starving closed-trade reflection (backlog flat at
+161 while 51 held tickers consumed slots/24h). Fix: explicit, off-by-default drain mode.
+
+### Implementation (scripts/hermes_autonomous_loop.py)
+- New CLI flag `--drain-closed-trades` (off by default). `get_ticker_targets(conn, max_rows,
+  drain_closed_trades=False)`: when True, `closed_trade_needing_reflection` is the SOLE priority-0 tier
+  and held/proposals are skipped FOR THAT RUN ONLY. Normal production cron priority (held-first) unchanged.
+- Targets carry canonical `trade_instance_id` (not legacy paper ids). Preview line logged when draining.
+- Verified preview — NORMAL: held 2 + schwab 3 + paper 1 (5/6 ti). DRAIN: schwab 4 + paper 2, 6/6 ti,
+  zero held_position.
+
+### Batch 2 run
+- Command: `--loop ticker_challenger --apply --max-rows 6 --drain-closed-trades`
+- EXIT 124 (hit 520s timeout) — 4 of 6 completed; remaining stay in backlog (no blind retry).
+- Succeeded: AXTI#98, AUUD#88 (schwab), ASPN#6 (PAPER), APAM#80 (schwab) — 3 schwab + 1 paper, all
+  trade_instance_id-linked. Held-position starvation eliminated (drain skipped held).
+
+### Before → after
+- linked by trade_instance_id: **28 → 32** (alpaca_paper 8→9, schwab_import 20→23)
+- backlog closed_trade_needing_reflection: **161 → 157** (paper 28→27, schwab 133→130)
+- legacy-only links: 0 · unlinked non-trade research: 1410
+- outcome_fed_back: 25 → 25 (drained trades not in paper proposal_outcome_chain — expected)
+
+### Safety
+ALPACA_MODE=paper, live disabled. Research writes only; no broker/order/stop/proposal/GO-WAIT/strategy/
+live/Phase-205; no production graft. Normal cron priority untouched (drain is explicit + off by default).
+
+### Recommendation
+- Throughput is LLM-bound (~4 reflections per ~8.7-min runner window). Next: `--max-rows 4
+  --drain-closed-trades` per run to finish inside the window, OR a longer timeout for bigger batches.
+- **Do NOT** wire drain mode into the production cron — it must stay manual/explicit so 24/7 held-position
+  monitoring is preserved. Operator-run drain batches (or a separate low-frequency drain timer) only.
+- ~157 closed trades remain; each batch is controlled + auditable. No further batch without approval.
