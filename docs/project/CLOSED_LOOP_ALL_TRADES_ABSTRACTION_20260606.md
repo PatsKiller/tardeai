@@ -44,3 +44,6 @@ threshold, no live enablement, no Schwab/Fidelity API, no Phase-205. Learning gr
 ## Imported edge comparison (2026-06-06)
 > Imported trades generally lack proposal-time expected edge. Their canonical edge comparison uses per-trade backtest evidence, not fabricated proposal snapshots.
 Canonical `trade_edge_comparison` now 101 rows: alpaca_paper 43 (proposal-edge) + schwab_import 58 (per-trade-backtest). See `CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md`.
+
+## Structured news linkage (2026-06-06)
+News → trade_instance is now a structured FK (`trade_instance_news`, classified by lifecycle window) + summary counts on trade_instances — closing the cert audit news gap (was symbol/date-only). See `CLOSED_LOOP_NEWS_LINKAGE_20260606.md`.
