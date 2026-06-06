@@ -65,3 +65,33 @@ Commit audited: **db1aae3**. SELECT-only audit (no trading/GO-WAIT/strategy/orde
 ## Safety proof
 ALPACA_MODE=paper · LLM_DISABLE_LIVE_EXECUTION=true. SELECT-only audit; no broker writes, no order/stop,
 no GO/WAIT, no strategy, no live enablement, no Phase-205. No production learning graft.
+
+---
+## Post-f188ebe imported edge-comparison certification (2026-06-06)
+
+Commit audited: **f188ebe**. SELECT-only. Denominator = trade_instances (not paper_trades).
+
+### Edge comparison — RESOLVED (was PARTIAL)
+- total **101**, all linked by trade_instance_id, 0 legacy-only, 0 duplicates.
+- by source_system: alpaca_paper 43, schwab_import 58.
+- expected_edge_source: proposal_backtest_snapshot 43 (paper), per_trade_backtest 58 (imported).
+- fabricated expected edge for imports: **0** (expected_avg_r/win_rate NULL for all per_trade_backtest rows).
+- realized_r null 67 / realized_pnl_pct null 9 (imports lack r_multiple — left NULL, honest).
+- NOTE (minor lineage): proposal_snapshot_id is NULL on all 101 (paper rows carry expected_edge_source
+  label but not the snapshot FK from the legacy table) — cosmetic provenance gap, not a fabrication.
+
+### Other stages (unchanged since prior re-audit)
+- trade_instances 353 (alpaca_paper 51 + schwab_import 302; fidelity 0). Imports lack strategy/signal/
+  proposal lineage (302/339/310 missing) — upstream ledger limitation; trade_key missing 149 (opens).
+- Hermes: 1277 total, 7 by trade_instance_id, 0 legacy-only; backlog closed_trade_needing_reflection 181
+  (schwab 152 + paper 29) — all-trades targeting; drain NOT run (cert only).
+- Journal 19 (15 ti); backtest 95 (92 ti: schwab 58 + paper 34).
+- Shadow: scores 57, efficacy 3, outcome_fed_back 25/169; graft INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT.
+- News: no structured FK to trade_instance (symbol/date only).
+
+### Verdicts
+- STRUCTURE = PASS · DATA DENSITY = PARTIAL (edge RESOLVED; Hermes/news/import-lineage still accumulating)
+- AUTONOMOUS LEARNING = SHADOW_ONLY / DO_NOT_GRAFT (GO/WAIT + strategy untouched).
+
+### Safety
+ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
