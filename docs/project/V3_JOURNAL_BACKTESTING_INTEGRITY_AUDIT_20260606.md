@@ -69,8 +69,8 @@ evaluate_shadow_efficacy → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (n<20); GO/WAIT 
 | 1 | last-run badge stale source | FINDING (fix recommended) |
 | 2 | backtest cadences | CONFIRMED running |
 | 3 | endpoint freshness/source | documented |
-| 4 | missed-proposal dedup | FINDING (fix recommended) |
-| 5 | missed-proposal verdict field | FINDING (fix recommended) |
+| 4 | missed-proposal dedup | **FIXED** 2026-06-06 (1461->168; proposal_id key) |
+| 5 | missed-proposal verdict field | **FIXED** 2026-06-06 (sim_outcome_verdict incl MIXED) |
 | 6 | optimization repeated blocks | FINDING (fix recommended) |
 | 7 | LLM review 85% errors | TRIAGED (infra, not logic) |
 | 8 | stale-basis pollution | **FIXED** (10 invalidated, reversible) |

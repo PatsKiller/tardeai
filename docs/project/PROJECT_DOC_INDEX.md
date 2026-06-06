@@ -1,3 +1,8 @@
+## v3 Missed-Opportunities Dedupe + Verdict Fix (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_MISSED_OPPORTUNITIES_DEDUP_VERDICT_FIX_20260606.md` | proposal_id dedupe (1461->168) + sim_outcome_verdict (incl MIXED 99); audit #4/#5 RESOLVED |
+
 ## v3 Journal Backtesting Integrity Audit (2026-06-06)
 | Document | Purpose |
 |----------|---------|

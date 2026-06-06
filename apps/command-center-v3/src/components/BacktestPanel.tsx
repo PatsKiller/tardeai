@@ -41,11 +41,21 @@ interface BtTrade {
   pnl_pct?: number; r_multiple: number; exit_reason: string; run_type?: string
 }
 interface MissedOpp {
-  proposal_id: number; symbol: string; strategy_id: string; proposal_status: string
-  proposed_date: string; proposed_entry: number; proposed_target: number; proposed_stop: number
-  simulated_pnl: number | null; simulated_r: number | null; simulated_exit_reason?: string
+  missed_opportunity_key: string; proposal_id: number; signal_id?: string | null; candidate_id?: string | null
+  symbol: string; strategy: string; status: string; proposal_time: string
+  entry: number | null; target: number | null; stop: number | null
+  sim_pnl: number | null; sim_r: number | null; sim_exit_reason?: string | null
+  sim_outcome_verdict: 'WIN' | 'LOSS' | 'BREAKEVEN' | 'MIXED' | 'NO_DATA'
+  sim_verdict_source: string; duplicate_count: number
+  win_count: number; loss_count: number; breakeven_count: number; dedupe_confidence: string
+}
+interface MissedSummary {
+  raw_rows: number; deduped_rows: number; duplicates_removed: number
+  would_win: number; would_lose: number; breakeven: number; mixed: number; no_data: number; pnl_left_on_table: number
 }
 interface MissedData {
+  summary?: MissedSummary; rows?: MissedOpp[]
+  // legacy (deduped-based) compat
   total_missed: number; would_win: number; would_lose: number
   pnl_left_on_table: number; opportunities: MissedOpp[]
 }
@@ -71,10 +81,14 @@ function fmt$(n: number | null | undefined) { const v = Number(n ?? 0); return (
 function fmtR(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R' }
 function safeStr(s: string | null | undefined, fallback = 'unknown') { return (s ?? fallback).replace(/_/g, ' ') }
 function num(n: number | null | undefined) { return Number(n ?? 0) }
-// Per-row Win/Loss derived from simulated_pnl — endpoint has no `verdict` field.
-function verdictOf(o: MissedOpp): 'WOULD_WIN' | 'WOULD_LOSE' | null {
-  if (o.simulated_pnl == null) return null
-  return num(o.simulated_pnl) > 0 ? 'WOULD_WIN' : 'WOULD_LOSE'
+// Outcome supplied by backend `sim_outcome_verdict` (deduped by canonical proposal_id) — NOT derived
+// from P&L sign in the UI. MIXED = the proposal's sim runs disagree (shown, not hidden).
+function missedVerdictColor(v?: string) {
+  if (v === 'WIN') return G
+  if (v === 'LOSS') return R
+  if (v === 'MIXED') return P
+  if (v === 'BREAKEVEN') return A
+  return 'var(--text3)'
 }
 
 function buildQS(params: Record<string, string>) {
@@ -852,43 +866,53 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
 
       {/* ===== MISSED ===== */}
       {tab === 'missed' && (
-        !missed ? <Empty label="No missed-opportunity data available." card /> : (
+        !missed ? <Empty label="No missed-opportunity data available." card /> : (() => {
+          const sm = missed.summary
+          const rows = missed.rows ?? missed.opportunities ?? []
+          return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
               {[
-                { label: 'Would have won', value: missed.would_win, color: G, bg: 'rgba(34,197,94,.1)', bd: 'rgba(34,197,94,.25)' },
-                { label: 'Would have lost', value: missed.would_lose, color: R, bg: 'rgba(239,68,68,.1)', bd: 'rgba(239,68,68,.25)' },
-                { label: 'P&L left on table', value: `$${num(missed.pnl_left_on_table).toFixed(2)}`, color: A, bg: 'rgba(245,158,11,.1)', bd: 'rgba(245,158,11,.25)' },
+                { label: 'Would win', value: sm?.would_win ?? missed.would_win, color: G, bg: 'rgba(34,197,94,.1)', bd: 'rgba(34,197,94,.25)' },
+                { label: 'Would lose', value: sm?.would_lose ?? missed.would_lose, color: R, bg: 'rgba(239,68,68,.1)', bd: 'rgba(239,68,68,.25)' },
+                { label: 'Mixed / review', value: sm?.mixed ?? 0, color: P, bg: 'rgba(168,85,247,.1)', bd: 'rgba(168,85,247,.25)' },
+                { label: 'No sim data', value: sm?.no_data ?? 0, color: 'var(--text3)', bg: 'rgba(120,120,120,.08)', bd: 'var(--border)' },
+                { label: 'P&L left on table', value: `$${num(sm?.pnl_left_on_table ?? missed.pnl_left_on_table).toFixed(2)}`, color: A, bg: 'rgba(245,158,11,.1)', bd: 'rgba(245,158,11,.25)' },
               ].map(k => (
-                <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.bd}`, borderRadius: 12, padding: 20, textAlign: 'center' }}>
-                  <div style={{ fontSize: 30, fontWeight: 700, color: k.color }}>{k.value}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{k.label}</div>
+                <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.bd}`, borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{k.label}</div>
                 </div>
               ))}
             </div>
             <div style={card}>
-              <div style={secTitle}>All {(missed.opportunities ?? []).length} missed proposals</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, marginTop: -8 }}>Outcome derived from simulated P&L sign (endpoint exposes no verdict field)</div>
+              <div style={secTitle}>{rows.length} distinct missed opportunities</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, marginTop: -8 }}>
+                {sm ? `Showing ${sm.deduped_rows} distinct missed opportunities from ${sm.raw_rows} raw simulations; ${sm.duplicates_removed} duplicates collapsed (dedupe key: proposal_id). ` : ''}
+                Outcome supplied by backend sim_outcome_verdict; source shown per row. MIXED = sim runs disagree.
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['Date', 'Symbol', 'Strategy', 'Status', 'Entry', 'Target', 'Stop', 'Sim P&L', 'Sim R', 'Outcome'].map(h => <th key={h} style={{ textAlign: ['Date', 'Symbol', 'Strategy', 'Status', 'Outcome'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                    {['Date', 'Symbol', 'Strategy', 'Status', 'Entry', 'Target', 'Stop', 'Sim P&L', 'Sim R', 'Verdict', 'Source', 'Dupes'].map(h => <th key={h} style={{ textAlign: ['Date', 'Symbol', 'Strategy', 'Status', 'Verdict', 'Source'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
                   </tr></thead>
-                  <tbody>{(missed.opportunities ?? []).map(o => {
-                    const v = verdictOf(o)
+                  <tbody>{rows.map(o => {
+                    const v = o.sim_outcome_verdict
                     return (
-                      <tr key={o.proposal_id} onClick={() => onDrill({ title: `${o.symbol} — missed`, subtitle: `${safeStr(o.strategy_id)} · ${o.proposal_status}`, endpoint: '/api/v2/backtesting/missed-opportunities', rows: [{ ...o, derived_verdict: v }] })}
-                        style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: v === 'WOULD_WIN' ? 'rgba(34,197,94,.03)' : 'transparent' }}>
-                        <td style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text3)' }}>{o.proposed_date ?? '—'}</td>
+                      <tr key={o.missed_opportunity_key ?? o.proposal_id} onClick={() => onDrill({ title: `${o.symbol} — missed`, subtitle: `${safeStr(o.strategy)} · ${o.status} · ${v}`, endpoint: '/api/v2/backtesting/missed-opportunities', rows: [o as any] })}
+                        style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: v === 'WIN' ? 'rgba(34,197,94,.03)' : v === 'MIXED' ? 'rgba(168,85,247,.03)' : 'transparent' }}>
+                        <td style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text3)' }}>{o.proposal_time ? String(o.proposal_time).slice(0, 10) : '—'}</td>
                         <td style={{ padding: '7px 10px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>{o.symbol ?? '—'}</td>
-                        <td style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text3)' }}>{safeStr(o.strategy_id)}</td>
-                        <td style={{ padding: '7px 10px' }}><span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: (o.proposal_status ?? '').toLowerCase().includes('exp') ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)', color: (o.proposal_status ?? '').toLowerCase().includes('exp') ? A : R }}>{o.proposal_status ?? '—'}</span></td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>${num(o.proposed_entry).toFixed(2)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>${num(o.proposed_target).toFixed(2)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>${num(o.proposed_stop).toFixed(2)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: o.simulated_pnl == null ? 'var(--text3)' : num(o.simulated_pnl) >= 0 ? G : R }}>{o.simulated_pnl == null ? '—' : fmt$(o.simulated_pnl)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', color: o.simulated_r == null ? 'var(--text3)' : num(o.simulated_r) >= 0 ? '#86efac' : '#fca5a5' }}>{o.simulated_r == null ? '—' : fmtR(o.simulated_r)}</td>
-                        <td style={{ padding: '7px 10px' }}>{v === 'WOULD_WIN' ? <span style={{ color: G, fontWeight: 600, fontSize: 11 }}>Win</span> : v === 'WOULD_LOSE' ? <span style={{ color: R, fontSize: 11 }}>Loss</span> : <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}</td>
+                        <td style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text3)' }}>{safeStr(o.strategy)}</td>
+                        <td style={{ padding: '7px 10px' }}><span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: (o.status ?? '').toLowerCase().includes('exp') ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)', color: (o.status ?? '').toLowerCase().includes('exp') ? A : R }}>{o.status ?? '—'}</span></td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>{o.entry == null ? '—' : `$${num(o.entry).toFixed(2)}`}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>{o.target == null ? '—' : `$${num(o.target).toFixed(2)}`}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>{o.stop == null ? '—' : `$${num(o.stop).toFixed(2)}`}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: o.sim_pnl == null ? 'var(--text3)' : num(o.sim_pnl) >= 0 ? G : R }}>{o.sim_pnl == null ? '—' : fmt$(o.sim_pnl)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', color: o.sim_r == null ? 'var(--text3)' : num(o.sim_r) >= 0 ? '#86efac' : '#fca5a5' }}>{o.sim_r == null ? '—' : fmtR(o.sim_r)}</td>
+                        <td style={{ padding: '7px 10px' }}><span style={{ color: missedVerdictColor(v), fontWeight: 600, fontSize: 11 }}>{v === 'MIXED' ? `MIXED (${o.win_count}W/${o.loss_count}L)` : v}</span></td>
+                        <td style={{ padding: '7px 10px', fontSize: 9, color: 'var(--text3)' }}>{o.sim_verdict_source ?? '—'}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>{o.duplicate_count > 1 ? <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(96,165,250,.15)', color: B, fontWeight: 600 }}>deduped ×{o.duplicate_count}</span> : <span style={{ fontSize: 11, color: 'var(--text3)' }}>{o.duplicate_count}</span>}</td>
                       </tr>
                     )
                   })}</tbody>
@@ -896,7 +920,8 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
               </div>
             </div>
           </div>
-        )
+          )
+        })()
       )}
 
       {/* ===== RESULTS ===== */}

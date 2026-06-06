@@ -22563,30 +22563,83 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _mw.append("ptp.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE COALESCE(target_account,account)=%s)")
                 _mp.append(_q["account"])
             _mwhere = " AND ".join(_mw)
-            rows = _db_query(f"""SELECT ptp.id as proposal_id, ptp.symbol, ptp.strategy_id,
-                ptp.status as proposal_status, ptp.expiry_reason,
-                ptp.created_at::date as proposed_date,
-                ptp.proposed_entry, ptp.proposed_target1 as proposed_target,
-                ptp.proposed_stop as proposed_stop,
-                sbt.pnl as simulated_pnl, sbt.r_multiple as simulated_r,
+            # Raw fan-out: one proposal LEFT JOINs many sim rows (multiple backtest runs in 72h window).
+            # Fetch raw, then DEDUPE by canonical proposal_id below — never count fan-out rows as distinct
+            # missed opportunities. Analytics-only; no trading/proposal mutation.
+            raw = _db_query(f"""SELECT ptp.id as proposal_id, ptp.source_signal_id as signal_id,
+                ptp.source_record_id as candidate_id, ptp.symbol, ptp.strategy_id,
+                ptp.status as proposal_status, ptp.expiry_reason, ptp.created_at as proposal_time,
+                ptp.proposed_entry, ptp.proposed_target1 as proposed_target, ptp.proposed_stop,
+                sbt.id as sim_row_id, sbt.pnl as simulated_pnl, sbt.r_multiple as simulated_r,
                 sbt.exit_reason as simulated_exit_reason
                 FROM paper_trade_proposals ptp
                 LEFT JOIN strategy_backtest_trades sbt
                     ON sbt.symbol = ptp.symbol AND sbt.strategy_id LIKE '%%' || ptp.strategy_id || '%%'
                     AND ABS(EXTRACT(EPOCH FROM (sbt.signal_time::timestamptz - ptp.created_at))/3600) < 72
                 WHERE {_mwhere}
-                ORDER BY ABS(COALESCE(sbt.pnl,0)) DESC LIMIT 50""", _mp) or []
-            matched = [r for r in rows if r.get("simulated_pnl") is not None]
-            would_win = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) > 0)
-            would_lose = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) < 0)
-            left_on_table = sum(float(r["simulated_pnl"]) for r in matched if float(r.get("simulated_pnl") or 0) > 0)
+                ORDER BY ptp.id, ABS(COALESCE(sbt.pnl,0)) DESC""", _mp) or []
+
+            def _verdict(sim):
+                er = (sim.get("simulated_exit_reason") or "").lower()
+                if "target" in er or "take_profit" in er or er == "tp":
+                    return "WIN", "exit_reason"
+                if "stop" in er or er == "sl":
+                    return "LOSS", "exit_reason"
+                rr = sim.get("simulated_r"); pp = sim.get("simulated_pnl")
+                if rr is not None:
+                    return ("WIN" if float(rr) > 0 else "LOSS" if float(rr) < 0 else "BREAKEVEN"), "sim_r"
+                if pp is not None:
+                    return ("WIN" if float(pp) > 0 else "LOSS" if float(pp) < 0 else "BREAKEVEN"), "sim_pnl"
+                return "NO_DATA", "none"
+
+            groups = {}
+            for r in raw:
+                groups.setdefault(r["proposal_id"], []).append(r)
+            deduped = []
+            for pid, sims in groups.items():
+                real = [s for s in sims if s.get("sim_row_id") is not None]
+                base = sims[0]
+                per = [_verdict(s)[0] for s in real]
+                vset = {v for v in per if v != "NO_DATA"}
+                wins = per.count("WIN"); losses = per.count("LOSS"); bes = per.count("BREAKEVEN")
+                if not real:
+                    verdict, vsrc, rep = "NO_DATA", "none", None
+                elif len(vset) > 1:
+                    verdict, vsrc = "MIXED", "aggregate"
+                    rep = max(real, key=lambda s: abs(float(s.get("simulated_pnl") or 0)))
+                else:
+                    rep = max(real, key=lambda s: abs(float(s.get("simulated_pnl") or 0)))
+                    verdict, vsrc = _verdict(rep)
+                deduped.append({
+                    "missed_opportunity_key": f"proposal:{pid}", "proposal_id": pid,
+                    "signal_id": base.get("signal_id"), "candidate_id": base.get("candidate_id"),
+                    "symbol": base["symbol"], "strategy": base["strategy_id"],
+                    "status": base["proposal_status"], "proposal_time": base["proposal_time"],
+                    "expiry_reason": base.get("expiry_reason"), "entry": base.get("proposed_entry"),
+                    "target": base.get("proposed_target"), "stop": base.get("proposed_stop"),
+                    "sim_pnl": (rep or {}).get("simulated_pnl"), "sim_r": (rep or {}).get("simulated_r"),
+                    "sim_exit_reason": (rep or {}).get("simulated_exit_reason"),
+                    "sim_outcome_verdict": verdict, "sim_verdict_source": vsrc,
+                    "win_count": wins, "loss_count": losses, "breakeven_count": bes,
+                    "duplicate_count": len(real), "raw_sim_row_ids": [s["sim_row_id"] for s in real],
+                    "dedupe_confidence": "exact", "dedupe_notes": "grouped by canonical proposal_id",
+                })
+            deduped.sort(key=lambda d: abs(float(d.get("sim_pnl") or 0)), reverse=True)
+            _n = lambda v: sum(1 for d in deduped if d["sim_outcome_verdict"] == v)
+            left = sum(float(d["sim_pnl"]) for d in deduped
+                       if d["sim_outcome_verdict"] == "WIN" and d.get("sim_pnl") is not None)
+            summary = {"raw_rows": len(raw), "deduped_rows": len(deduped),
+                       "duplicates_removed": len(raw) - len(deduped),
+                       "would_win": _n("WIN"), "would_lose": _n("LOSS"), "breakeven": _n("BREAKEVEN"),
+                       "mixed": _n("MIXED"), "no_data": _n("NO_DATA"), "pnl_left_on_table": round(left, 2)}
+            rows_clean = [{k: _json_clean(v) for k, v in d.items()} for d in deduped]
             return 200, {"ok": True, "data": {
-                "total_missed": len(rows),
-                "matched_to_backtest": len(matched),
-                "would_win": would_win,
-                "would_lose": would_lose,
-                "pnl_left_on_table": round(left_on_table, 2),
-                "opportunities": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "summary": summary, "rows": rows_clean,
+                "diagnostics": {"raw_rows": len(raw), "deduped_rows": len(deduped), "dedupe_key": "proposal_id"},
+                "total_missed": len(deduped),
+                "matched_to_backtest": sum(1 for d in deduped if d["duplicate_count"] > 0),
+                "would_win": summary["would_win"], "would_lose": summary["would_lose"],
+                "pnl_left_on_table": summary["pnl_left_on_table"], "opportunities": rows_clean,
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
