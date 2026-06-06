@@ -40,3 +40,7 @@ removed from canonical path; no order/GO-WAIT writes; paper mode/live disabled.
 ## Safety
 Additive schema only; paper loop unchanged; no broker writes, no order/stop, no GO/WAIT, no strategy
 threshold, no live enablement, no Schwab/Fidelity API, no Phase-205. Learning graft still gated (Step 6).
+
+## Imported edge comparison (2026-06-06)
+> Imported trades generally lack proposal-time expected edge. Their canonical edge comparison uses per-trade backtest evidence, not fabricated proposal snapshots.
+Canonical `trade_edge_comparison` now 101 rows: alpaca_paper 43 (proposal-edge) + schwab_import 58 (per-trade-backtest). See `CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md`.
