@@ -22869,11 +22869,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/backtesting/trailing-optimization" and method == "GET":
         try:
+            # trailing_optimization_results accumulates one row per strategy_family PER RUN. Returning all
+            # history repeated each family ~65x in the UI (the "repeated breakeven-threshold blocks" bug).
+            # Return the LATEST optimization per strategy_family only.
             _opt = _db_query("""
-                SELECT * FROM trailing_optimization_results ORDER BY created_at DESC
+                SELECT DISTINCT ON (strategy_family) *
+                FROM trailing_optimization_results
+                ORDER BY strategy_family, created_at DESC
             """) or []
+            _opt.sort(key=lambda r: float(r.get("improvement_pct") or 0), reverse=True)
+            _raw_total = _db_query("SELECT COUNT(*) c FROM trailing_optimization_results", fetch="one")
             return 200, {"ok": True, "data": {
                 "results": [{k: _json_clean(v) for k, v in r.items()} for r in _opt],
+                "diagnostics": {"distinct_families": len(_opt),
+                                "raw_history_rows": (_raw_total or {}).get("c", 0),
+                                "note": "latest optimization per strategy_family (history collapsed)"},
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
