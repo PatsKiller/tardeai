@@ -59,3 +59,21 @@ place and flowing; remaining low percentages are data accumulation, learning→p
 currently researching live Schwab holdings (no paper_trade to link). It rises automatically when the
 challenger researches paper-loop symbols. Everything else is structurally closed; the loop now produces
 real per-trade learning signal (e.g. 27 of 32 graded paper trades show a better entry existed / early exit).
+
+## Re-audit snapshot v3 (2026-06-05, after Step 7 Hermes targeting fix)
+Verdict unchanged: **STRUCTURE = PASS · DATA DENSITY = PARTIAL (improving on its own)**.
+
+| Stage | v2 | v3 |
+|---|---|---|
+| 1 signal_id / broker / candidate | 27% / 84% / 84% | 27% / 84% / 84% |
+| 3 trade_key | 100% | 100% |
+| 2/7 hermes related_trade_id | 2 (targets were live Schwab) | **6 and climbing** (closed_paper_trade tier draining 38 remaining) |
+| 3 backtest → paper_trade | 34 | 34 |
+| 4 edge comparison | 43 · 2 · 32 | 43 · 2 · 32 |
+| 5 candidate_shadow_scores | 57 | 57 |
+| 5 outcome_fed_back | 11% (19/169) | **15% (25/169)** — new Hermes links fed the loop-closure flag |
+| 6 shadow efficacy / graft | 3, GATED | 3, GATED |
+
+Step 7 closed the last structural gap (Hermes targeting). Hermes linkage now self-drains via the
+challenger cron (2→4→6 across runs), and each new trade-linked reflection lifts outcome_fed_back through
+the Step 5 backfill — the two compound automatically. All learning→production influence remains gated.
