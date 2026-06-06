@@ -6879,6 +6879,11 @@ def journal_review_write(body: dict):
         fields["account"] = body.get("account", "")
         if body.get("closed_date"):
             fields["closed_date"] = body["closed_date"]
+        # Step 3 keyspace unification: link this review to a paper_trade when trade_key maps 1:1
+        # (covers the paper loop; Schwab-import reviews simply find no paper_trade and stay unlinked).
+        _pt = _db_query("SELECT array_agg(id) AS ids FROM paper_trades WHERE trade_key = %s", (trade_key,), fetch="one")
+        if _pt and _pt.get("ids") and len(_pt["ids"]) == 1:
+            fields["paper_trade_id"] = _pt["ids"][0]
 
         cols = list(fields.keys())
         placeholders = ["%s"] * len(cols)
