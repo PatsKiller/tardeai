@@ -3,7 +3,7 @@
 Read-only audit + safe fixes only. No trading/GO-WAIT/strategy/broker/proposal/order/stop/live changes.
 Verdict: **treat the Backtesting page as DIAGNOSTIC/ADVISORY only** until the code fixes below land.
 
-## 1. "Last run 2026-05-21" badge — STALE SOURCE (needs fix, not applied)
+## 1. "Last run" badge — FIXED 2026-06-06 (was STALE SOURCE)
 - Backtest data IS fresh: `trade_backtest_results` max computed_at = 2026-06-05 22:52; LLM reviews dated
   2026-06-05; drain/edge work 2026-06-06. So the engine is running; the **badge reads a stale/wrong source**.
 - `/api/v2/backtesting/status` aggregates counts from `backtest_datasets` / `strategy_backtest_runs`
@@ -67,7 +67,7 @@ evaluate_shadow_efficacy → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (n<20); GO/WAIT 
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| 1 | last-run badge stale source | FINDING (fix recommended) |
+| 1 | last-run badge stale source | **FIXED** 2026-06-06 (per-pipeline last_runs + last_run_overall; badge shows freshest) |
 | 2 | backtest cadences | CONFIRMED running |
 | 3 | endpoint freshness/source | documented |
 | 4 | missed-proposal dedup | **FIXED** 2026-06-06 (1461->168; proposal_id key) |

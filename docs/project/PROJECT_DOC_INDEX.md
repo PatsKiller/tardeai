@@ -1,3 +1,8 @@
+## v3 Backtest Last-Run Badge Fix (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| (in `V3_JOURNAL_BACKTESTING_INTEGRITY_AUDIT_20260606.md` #1) | /backtesting/status adds last_runs per pipeline + last_run_overall; badge shows freshest (not one ambiguous stale date) |
+
 ## v3 LLM-Review Ollama Health Gate (2026-06-06)
 | Document | Purpose |
 |----------|---------|
