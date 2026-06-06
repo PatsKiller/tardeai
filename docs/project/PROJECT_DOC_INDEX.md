@@ -1,3 +1,10 @@
+## V3 Protection Give-Back + Canonical Profit-Capture (Phase 206, 2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_PROTECTION_GIVEBACK_ROOT_CAUSE_20260606.md` | root cause: advisory engine is paper-only + open-trade-only + started 2026-06-02; 7/9 give-back winners closed before engine, 2 ignored, 117 Schwab winners excluded; canonical $1,239.29 left |
+| `docs/project/V3_PROTECTION_PROFIT_CAPTURE_ENHANCEMENT_20260606.md` | canonical `trade_profit_capture_analysis` (keyed trade_instance_id) + advisory gap diagnostic + evidence-only rule backtest (best trail5_after_2R) + shadow recs (none grafted) + enriched advisory + rebuilt v3 Protection tab; validation 10/10; no trading change |
+| `docs/project/V3_JOURNAL_FIELD_COMPLETENESS_BACKFILL_20260606.md` | exact-only journal backfill: close_reason 47→100%, broker 100%, post_analyzed 12→21% (review-gated), catalyst left NULL (no exact source) |
+
 ## Hermes Summary Recovery (2026-06-06)
 | Document | Purpose |
 |----------|---------|
