@@ -105,3 +105,22 @@ live/Phase-205; no production graft. Normal cron priority untouched (drain is ex
 - **Do NOT** wire drain mode into the production cron — it must stay manual/explicit so 24/7 held-position
   monitoring is preserved. Operator-run drain batches (or a separate low-frequency drain timer) only.
 - ~157 closed trades remain; each batch is controlled + auditable. No further batch without approval.
+
+---
+## Batch 3 (2026-06-06) — clean completion at max-rows 4
+
+Command: `--loop ticker_challenger --apply --max-rows 4 --drain-closed-trades` (operator-authorized single batch).
+- **EXIT 0 (clean, no timeout)** — max-rows 4 fits the runner window (the lesson from batch 2's EXIT 124).
+- 3 reflections committed: BLMN#39 (paper), BLBD#48 (paper), AXTI#94 (schwab) — all trade_instance_id-linked.
+- before→after: linked **33 → 36** (alpaca_paper 10→12, schwab_import 23→24);
+  backlog **157 → 154** (paper 27→25, schwab 130→129). legacy-only: 0. outcome_fed_back 25→25.
+- Both sources drained (paper + schwab); held-position starvation eliminated; no third batch run.
+
+### Cumulative this session
+linked 28 → 36 (+8), backlog 165 → 154 (−11) via drain batches 2–3 + cron. Throughput LLM-bound;
+**max-rows 4 is the safe per-batch size** (clean exit). ~154 closed trades remain; operator-approved
+batches only — drain mode stays manual (never wired into the production cron).
+
+### Safety
+ALPACA_MODE=paper, live disabled. Research writes only; no broker/order/GO-WAIT/strategy/live/Phase-205;
+no production graft.
