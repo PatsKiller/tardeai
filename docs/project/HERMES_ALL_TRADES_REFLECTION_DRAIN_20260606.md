@@ -124,3 +124,7 @@ batches only — drain mode stays manual (never wired into the production cron).
 ### Safety
 ALPACA_MODE=paper, live disabled. Research writes only; no broker/order/GO-WAIT/strategy/live/Phase-205;
 no production graft.
+
+---
+## Summary recovery added (2026-06-06)
+Residual drain rejects were MISSING-summary (gemma3 using alt keys / drifting shape). Added bounded, quality-gated summary recovery (`hermes_output_recovery.py`) — strict path unchanged; recovery only on missing-summary; generic/evasive/too-short stay rejected; trade_instance_id still required. Validation 10/10. See `HERMES_SUMMARY_RECOVERY_20260606.md`.

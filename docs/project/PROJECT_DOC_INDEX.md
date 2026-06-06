@@ -1,3 +1,8 @@
+## Hermes Summary Recovery (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/HERMES_SUMMARY_RECOVERY_20260606.md` | bounded lenient summary recovery for drain residuals (alt keys/raw para; quality-gated, no fabrication); validation 10/10 |
+
 ## v3 LLM-Review Provenance Backfill + Base Data Quality (2026-06-06)
 | Document | Purpose |
 |----------|---------|

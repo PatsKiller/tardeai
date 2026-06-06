@@ -280,6 +280,26 @@ def run_ticker_challenger(args):
 
         # Validate
         ok, errors = validate_payload(output, "hermes_research_intelligence")
+        # BOUNDED summary recovery: ONLY when the strict failure is missing summary, try to recover a
+        # specific, substantive summary from alternate output shapes (no fabrication; quality-gated).
+        if not ok and errors == ["MISSING required column: summary"] and not output.get("summary"):
+            try:
+                from hermes_output_recovery import recover_summary_from_output
+                rec = recover_summary_from_output(output if isinstance(output, dict) else content,
+                                                  symbol=sym)
+            except Exception as _re:
+                rec = {"recovered": False, "rejection_reason": f"recover error: {_re}"}
+            if rec.get("recovered"):
+                output["summary"] = rec["summary"]
+                ej.setdefault("summary_recovery", {
+                    "summary_recovered": True, "summary_recovery_method": rec.get("recovery_method"),
+                    "summary_source_key": rec.get("source_key"), "summary_recovery_confidence": rec.get("confidence"),
+                    "validator_version": rec.get("validator_version"), "raw_validation_error": "MISSING summary"})
+                output["evidence_json"] = ej
+                ok, errors = validate_payload(output, "hermes_research_intelligence")
+                print(f"    SUMMARY RECOVERED ({rec.get('recovery_method')}/{rec.get('source_key')}, conf={rec.get('confidence')})")
+            else:
+                print(f"    summary recovery rejected: {rec.get('rejection_reason')}")
         if not ok:
             print(f"    VALIDATION FAILED: {errors[:2]}")
             results.append({"symbol": sym, "status": "rejected", "errors": errors})
