@@ -23396,7 +23396,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _lr_monthly = len(_db_query("SELECT 1 FROM monthly_llm_meta_reviews") or [])
             _lr_pending = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status IN ('draft','dry_run')") or [])
             _lr_errors = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status='error'") or [])
-            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, model_name, source_table, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            # Separate INFRASTRUCTURE failures (Ollama down/timeout) from true parser/analytics failures.
+            _ec = _db_query("SELECT COALESCE(error_class,'unclassified') ec, COUNT(*) n FROM trade_llm_reviews WHERE status='error' GROUP BY 1") or []
+            _ecmap = {r["ec"]: r["n"] for r in _ec}
+            _infra_classes = ("ollama_timeout", "ollama_connection_refused", "ollama_connection_closed", "ollama_http_500", "model_missing")
+            _lr_infra = sum(n for c, n in _ecmap.items() if c in _infra_classes)
+            _lr_parser = sum(n for c, n in _ecmap.items() if c in ("parse_error", "invalid_schema"))
+            _lr_empty = sum(n for c, n in _ecmap.items() if c in ("empty_review",))
+            _lr_retryable = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE retryable IS TRUE") or [])
+            _lr_invalidated = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status='superseded_stale_cost_basis'") or [])
+            # run-level skip/complete history
+            _lr_runs = _db_query("SELECT status, model, health_status, completed_at FROM llm_review_runs ORDER BY id DESC LIMIT 5") or []
+            _lr_last_skip = _db_query("SELECT completed_at, health_status->>'failure_class' fc FROM llm_review_runs WHERE status='SKIPPED_LLM_UNHEALTHY' ORDER BY id DESC LIMIT 1") or []
+            _lr_last_ok = _db_query("SELECT completed_at FROM llm_review_runs WHERE status IN ('COMPLETED','PARTIAL') ORDER BY id DESC LIMIT 1") or []
+            # live ollama health
+            try:
+                import sys as _sys_lr
+                if "scripts" not in _sys_lr.path:
+                    _sys_lr.path.insert(0, "scripts")
+                from llm_health_gate import check_ollama_health as _coh
+                _lr_health = _coh(generate_probe=False)
+            except Exception as _he:
+                _lr_health = {"healthy": None, "message": f"health check unavailable: {_he}"}
+            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, error_class, model_name, source_table, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
             # v4.0 backtest coverage
             _lr_paper = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='paper_trades' OR source_table IS NULL") or [])
             _lr_backtest = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='strategy_backtest_trades'") or [])
@@ -23409,6 +23431,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "total_reviews": _lr_total, "close_analysis_count": _lr_close,
                 "delayed_review_count": _lr_delayed, "monthly_meta_count": _lr_monthly,
                 "pending_count": _lr_pending, "error_count": _lr_errors,
+                "error_breakdown": {
+                    "infrastructure_errors": _lr_infra, "parser_errors": _lr_parser,
+                    "empty_null_reviews": _lr_empty, "retryable": _lr_retryable,
+                    "invalidated_stale_basis": _lr_invalidated, "by_class": _ecmap,
+                },
+                "ollama_health": _lr_health,
+                "runs": {
+                    "recent": [{k: _json_clean(v) for k, v in r.items()} for r in _lr_runs],
+                    "last_skipped_at": _json_clean(_lr_last_skip[0]["completed_at"]) if _lr_last_skip else None,
+                    "last_skipped_reason": _lr_last_skip[0]["fc"] if _lr_last_skip else None,
+                    "last_successful_at": _json_clean(_lr_last_ok[0]["completed_at"]) if _lr_last_ok else None,
+                },
+                "note": "Infrastructure errors are model/service availability failures, not failed trades or strategy logic.",
                 "coverage": {
                     "paper_trades": {"reviewed": _lr_paper, "closed_total": _lr_pt_closed, "unreviewed": max(0, _lr_pt_unreviewed)},
                     "backtest_trades": {"reviewed": _lr_backtest, "total": _lr_bt_total, "unreviewed": max(0, _lr_bt_unreviewed)},

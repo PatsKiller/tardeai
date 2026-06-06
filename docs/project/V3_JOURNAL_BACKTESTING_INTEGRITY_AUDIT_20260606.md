@@ -72,7 +72,7 @@ evaluate_shadow_efficacy → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (n<20); GO/WAIT 
 | 4 | missed-proposal dedup | **FIXED** 2026-06-06 (1461->168; proposal_id key) |
 | 5 | missed-proposal verdict field | **FIXED** 2026-06-06 (sim_outcome_verdict incl MIXED) |
 | 6 | optimization repeated blocks | FINDING (fix recommended) |
-| 7 | LLM review 85% errors | TRIAGED (infra, not logic) |
+| 7 | LLM review 85% errors | **FIXED** 2026-06-06 (Ollama health gate: skip+classify, no flood) |
 | 8 | stale-basis pollution | **FIXED** (10 invalidated, reversible) |
 | 9 | per-row provenance | FINDING (fix recommended) |
 | 10 | learning shadow-only | CONFIRMED |

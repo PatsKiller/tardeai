@@ -1,3 +1,8 @@
+## v3 LLM-Review Ollama Health Gate (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_LLM_REVIEW_OLLAMA_HEALTH_GATE_20260606.md` | Health-gated review cron (SKIPPED_LLM_UNHEALTHY, no flood) + error classification (1671 infra/60 parser) + UI categories; audit #7 RESOLVED |
+
 ## v3 Missed-Opportunities Dedupe + Verdict Fix (2026-06-06)
 | Document | Purpose |
 |----------|---------|
