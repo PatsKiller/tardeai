@@ -7049,9 +7049,19 @@ def _journal_reminder():
     return {"unannotated": unannotated, "total": total}
 
 
-def _journal_backtest_summary():
-    """GET /api/v2/journal/backtest-summary"""
-    rows = _db_query("""
+def _journal_backtest_summary(query=None):
+    """GET /api/v2/journal/backtest-summary — optional ?strategy=&account= (via trade_instance join)."""
+    _q = query or {}
+    _f, _fp = "", []
+    if _q.get("strategy") or _q.get("account"):
+        _sub, _sp = ["1=1"], []
+        if _q.get("strategy"):
+            _sub.append("strategy_id LIKE '%%' || %s || '%%'"); _sp.append(_q["strategy"])
+        if _q.get("account"):
+            _sub.append("execution_account=%s"); _sp.append(_q["account"])
+        _f = " AND trade_instance_id IN (SELECT id FROM trade_instances WHERE " + " AND ".join(_sub) + ")"
+        _fp = _sp
+    rows = _db_query(f"""
         SELECT COUNT(*) as total,
                COUNT(CASE WHEN data_quality='full' THEN 1 END) as full_count,
                COUNT(CASE WHEN data_quality='partial' THEN 1 END) as partial_count,
@@ -7060,24 +7070,24 @@ def _journal_backtest_summary():
                AVG(left_on_table_20d) as avg_left_on_table,
                AVG(entry_rsi) as avg_entry_rsi,
                COUNT(CASE WHEN exit_was_early THEN 1 END) as early_exits
-        FROM trade_backtest_results WHERE data_quality IN ('full','partial')
-    """, fetch="one") or {}
-    by_entry = _db_query("""
+        FROM trade_backtest_results WHERE data_quality IN ('full','partial'){_f}
+    """, _fp, fetch="one") or {}
+    by_entry = _db_query(f"""
         SELECT entry_grade, COUNT(*) as count, AVG(actual_pnl) as avg_pnl,
                SUM(CASE WHEN actual_pnl>0 THEN 1 ELSE 0 END) as wins
-        FROM trade_backtest_results WHERE entry_grade IS NOT NULL AND data_quality IN ('full','partial')
+        FROM trade_backtest_results WHERE entry_grade IS NOT NULL AND data_quality IN ('full','partial'){_f}
         GROUP BY entry_grade ORDER BY entry_grade
-    """) or []
-    by_exit = _db_query("""
+    """, _fp) or []
+    by_exit = _db_query(f"""
         SELECT exit_grade, COUNT(*) as count, SUM(left_on_table_20d) as total_left
-        FROM trade_backtest_results WHERE exit_grade IS NOT NULL AND data_quality IN ('full','partial')
+        FROM trade_backtest_results WHERE exit_grade IS NOT NULL AND data_quality IN ('full','partial'){_f}
         GROUP BY exit_grade ORDER BY exit_grade
-    """) or []
-    worst_exits = _db_query("""
+    """, _fp) or []
+    worst_exits = _db_query(f"""
         SELECT symbol, trade_key, actual_exit_price, max_price_20d_after, left_on_table_20d, actual_pnl_pct
-        FROM trade_backtest_results WHERE left_on_table_20d IS NOT NULL AND data_quality IN ('full','partial')
+        FROM trade_backtest_results WHERE left_on_table_20d IS NOT NULL AND data_quality IN ('full','partial'){_f}
         ORDER BY left_on_table_20d DESC LIMIT 5
-    """) or []
+    """, _fp) or []
 
     def ser(v):
         if hasattr(v, 'isoformat'): return str(v)
@@ -7091,31 +7101,42 @@ def _journal_backtest_summary():
     }
 
 
-def _journal_backtest_analytics():
-    """GET /api/v2/journal/backtest-analytics — aggregated backtest insights for coaching."""
-    by_type = _db_query("""
+def _journal_backtest_analytics(query=None):
+    """GET /api/v2/journal/backtest-analytics — aggregated backtest insights for coaching.
+    Optional ?strategy=&account= filter via b.trade_instance_id -> trade_instances."""
+    _q = query or {}
+    _bf, _bfp = "", []
+    if _q.get("strategy") or _q.get("account"):
+        _sub, _sp = ["1=1"], []
+        if _q.get("strategy"):
+            _sub.append("strategy_id LIKE '%%' || %s || '%%'"); _sp.append(_q["strategy"])
+        if _q.get("account"):
+            _sub.append("execution_account=%s"); _sp.append(_q["account"])
+        _bf = " AND b.trade_instance_id IN (SELECT id FROM trade_instances WHERE " + " AND ".join(_sub) + ")"
+        _bfp = _sp
+    by_type = _db_query(f"""
         SELECT t.trade_type, COUNT(*) as count,
                AVG(CASE b.entry_grade WHEN 'A' THEN 4 WHEN 'B' THEN 3 WHEN 'C' THEN 2 WHEN 'D' THEN 1 END) as avg_entry_score,
                AVG(b.entry_rsi) as avg_entry_rsi, AVG(b.entry_volume_ratio) as avg_volume_ratio,
                SUM(CASE WHEN t.pnl > 0 THEN 1 ELSE 0 END) as wins, AVG(t.pnl) as avg_pnl
         FROM trade_backtest_results b JOIN trade_closed t ON t.symbol||':'||t.account||':'||t.close_date::text = b.trade_key
-        WHERE b.data_quality IN ('full','partial') GROUP BY t.trade_type ORDER BY count DESC
-    """) or []
-    rsi_hist = _db_query("""
-        SELECT CASE WHEN entry_rsi<30 THEN 'Oversold (<30)' WHEN entry_rsi<40 THEN 'Low (30-40)'
-                    WHEN entry_rsi<55 THEN 'Neutral (40-55)' WHEN entry_rsi<70 THEN 'Elevated (55-70)'
+        WHERE b.data_quality IN ('full','partial'){_bf} GROUP BY t.trade_type ORDER BY count DESC
+    """, _bfp) or []
+    rsi_hist = _db_query(f"""
+        SELECT CASE WHEN b.entry_rsi<30 THEN 'Oversold (<30)' WHEN b.entry_rsi<40 THEN 'Low (30-40)'
+                    WHEN b.entry_rsi<55 THEN 'Neutral (40-55)' WHEN b.entry_rsi<70 THEN 'Elevated (55-70)'
                     ELSE 'Overbought (70+)' END as bucket,
-               COUNT(*) as count, AVG(actual_pnl) as avg_pnl,
-               SUM(CASE WHEN actual_pnl>0 THEN 1 ELSE 0 END) as wins
-        FROM trade_backtest_results WHERE entry_rsi IS NOT NULL AND data_quality IN ('full','partial')
-        GROUP BY 1 ORDER BY MIN(entry_rsi)
-    """) or []
-    left_by_type = _db_query("""
+               COUNT(*) as count, AVG(b.actual_pnl) as avg_pnl,
+               SUM(CASE WHEN b.actual_pnl>0 THEN 1 ELSE 0 END) as wins
+        FROM trade_backtest_results b WHERE b.entry_rsi IS NOT NULL AND b.data_quality IN ('full','partial'){_bf}
+        GROUP BY 1 ORDER BY MIN(b.entry_rsi)
+    """, _bfp) or []
+    left_by_type = _db_query(f"""
         SELECT t.trade_type, SUM(b.left_on_table_20d) as total_left, AVG(b.left_on_table_20d) as avg_left, COUNT(*) as count
         FROM trade_backtest_results b JOIN trade_closed t ON t.symbol||':'||t.account||':'||t.close_date::text = b.trade_key
-        WHERE b.left_on_table_20d IS NOT NULL AND b.data_quality IN ('full','partial')
+        WHERE b.left_on_table_20d IS NOT NULL AND b.data_quality IN ('full','partial'){_bf}
         GROUP BY t.trade_type ORDER BY total_left DESC NULLS LAST
-    """) or []
+    """, _bfp) or []
 
     # Coaching bullets
     coaching = []
@@ -16666,7 +16687,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     handler = ROUTES.get(base_path)
     if handler:
         try:
-            return 200, {"ok": True, "data": handler()}
+            import inspect as _insp
+            _np = len(_insp.signature(handler).parameters)
+            return 200, {"ok": True, "data": (handler(query) if _np >= 1 else handler())}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
@@ -22467,6 +22490,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _w.append("eval_verdict=%s"); _p.append(_q["verdict"])
             if _q.get("symbol"):
                 _w.append("symbol=%s"); _p.append(_q["symbol"])
+            if _q.get("strategy"):
+                _w.append("strategy_id LIKE '%%' || %s || '%%'"); _p.append(_q["strategy"])
+            if _q.get("account"):
+                _w.append("account=%s"); _p.append(_q["account"])
             _where = " WHERE " + " AND ".join(_w)
             _lim = min(int(_q.get("limit", 200)), 500)
             rows = _db_query(
@@ -22474,11 +22501,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 f"prompt_version, status, eval_overall_score, eval_verdict, summary, strengths, weaknesses, "
                 f"lessons AS improvements, confidence, output_payload, generated_at "
                 f"FROM trade_llm_reviews{_where} ORDER BY generated_at DESC LIMIT {_lim}", _p) or []
-            # Aggregate verdict distribution + avg score for the header
+            # Aggregate verdict distribution + avg score for the header (same filters)
             agg = _db_query(
-                "SELECT eval_verdict, COUNT(*) n, ROUND(AVG(eval_overall_score),0) avg_score "
-                "FROM trade_llm_reviews WHERE review_stage='structured_backtest_eval' AND eval_verdict IS NOT NULL "
-                "GROUP BY eval_verdict ORDER BY n DESC") or []
+                f"SELECT eval_verdict, COUNT(*) n, ROUND(AVG(eval_overall_score),0) avg_score "
+                f"FROM trade_llm_reviews{_where} AND eval_verdict IS NOT NULL "
+                f"GROUP BY eval_verdict ORDER BY n DESC", _p) or []
             return 200, {"ok": True, "data": {
                 "evaluations": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
                 "verdict_distribution": [{k: _json_clean(v) for k, v in r.items()} for r in agg],

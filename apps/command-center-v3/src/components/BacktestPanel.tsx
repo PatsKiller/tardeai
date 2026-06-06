@@ -194,12 +194,12 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
       const [mfe, opt, llm, eqs, eqa, live, hist, tev, adv] = await Promise.allSettled([
         fetch('/api/v2/backtesting/mfe-analysis' + qs).then(r => r.json()),
         fetch('/api/v2/backtesting/trailing-optimization' + qs).then(r => r.json()),
-        fetch('/api/v2/lifecycle/llm-review-status').then(r => r.json()),
-        fetch('/api/v2/journal/backtest-summary').then(r => r.json()),
-        fetch('/api/v2/journal/backtest-analytics').then(r => r.json()),
+        fetch('/api/v2/lifecycle/llm-review-status' + qs).then(r => r.json()),
+        fetch('/api/v2/journal/backtest-summary' + qs).then(r => r.json()),
+        fetch('/api/v2/journal/backtest-analytics' + qs).then(r => r.json()),
         fetch('/api/v2/paper-trade-readiness').then(r => r.json()),
         fetch('/api/v2/backtesting/result-history' + (f.runType ? `?run_type=${encodeURIComponent(f.runType)}` : '')).then(r => r.json()).catch(() => ({ ok: false })),
-        fetch('/api/v2/backtesting/trade-evaluations').then(r => r.json()).catch(() => ({ ok: false })),
+        fetch('/api/v2/backtesting/trade-evaluations' + qs).then(r => r.json()).catch(() => ({ ok: false })),
         fetch('/api/v2/atm/setup-advisory').then(r => r.json()).catch(() => ({ ok: false })),
       ])
       if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
