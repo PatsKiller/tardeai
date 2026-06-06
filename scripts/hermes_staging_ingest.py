@@ -68,7 +68,7 @@ REQUIRED_COLUMNS = {
 
 # Columns that may appear in payloads (superset across all tables)
 KNOWN_COLUMNS = {
-    "hermes_agent_name", "research_type", "symbol", "related_trade_id",
+    "hermes_agent_name", "research_type", "symbol", "related_trade_id", "trade_instance_id",
     "related_proposal_id", "topic", "summary", "thesis", "thesis_type",
     "evidence_json", "confidence_score", "freshness_date", "source_urls_json",
     "model_used", "prompt_hash", "context_type_used", "status", "quality_score",

@@ -1,3 +1,10 @@
+## Closed-Loop All-Trades Abstraction (2026-06-06) — CANONICAL
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Broker/account-neutral trade_instances; paper is one source; trade_instance_id canonical |
+| `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Evidence: paper-specific surface + ledger sources |
+| `scripts/migrate_trade_instances.py` · `backfill_trade_instances.py` · `validate_all_trades_closed_loop.py` | create+backfill (353) + 14/14 validation |
+
 # Trade AI v12 — Documentation Index
 
 **Updated:** 2026-06-04

@@ -1,3 +1,5 @@
+> **Canonical model note:** Paper trades are the first executable source and first backfilled source. The canonical learning loop is all-trades, broker/account neutral (`trade_instances`). `paper_trade_id` is a compatibility key; `trade_instance_id` is the canonical key going forward. See `CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md`.
+
 # Closed-Loop Step 7 — Hermes Paper-Loop Targeting (2026-06-05)
 
 ## Gap (from re-audit v2)
