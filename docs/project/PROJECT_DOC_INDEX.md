@@ -1,3 +1,8 @@
+## Hermes All-Trades Reflection Drain (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/HERMES_ALL_TRADES_REFLECTION_DRAIN_20260606.md` | Batch 1 against closed_trade_needing_reflection: +4 schwab reflections, linked 24->28, backlog 165->161 |
+
 ## Phase 205 Legacy Backup Retirement (2026-06-06)
 | Document | Purpose |
 |----------|---------|
