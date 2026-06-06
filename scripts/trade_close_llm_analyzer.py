@@ -443,14 +443,26 @@ def _write_structured_eval(conn, snap, ihash, parsed, raw, classification, score
     xa = (parsed or {}).get("exit_assessment") or {}
     strengths = (ea.get("strengths") or []) + (xa.get("strengths") or [])
     weaknesses = (ea.get("weaknesses") or []) + (xa.get("weaknesses") or [])
+    # Stamp exact provenance at write so the row is filterable/lineage-linked from creation (no fuzzy).
+    try:
+        from llm_review_provenance import resolve_review_provenance
+        _prov = resolve_review_provenance(conn, symbol=snap.get("symbol"),
+                                          open_date=snap.get("open_date"), close_date=snap.get("close_date"))
+    except Exception as _pe:
+        _prov = {"provenance_kind": "imported_backtest", "provenance_confidence": "unlinked_imported_or_simulation",
+                 "provenance_notes": f"resolver error: {_pe}"}
     cur.execute("""
         INSERT INTO trade_llm_reviews
           (symbol, trade_close_date, review_stage, model_provider, model_name, prompt_version,
            input_snapshot_hash, generated_at, status, summary, strengths, weaknesses,
            lessons, confidence, input_snapshot, output_payload, source_table,
-           eval_overall_score, eval_verdict, created_at, updated_at)
+           eval_overall_score, eval_verdict,
+           trade_instance_id, strategy_id, account, source_system, source_trade_id,
+           provenance_kind, provenance_confidence, provenance_notes, provenance_backfilled_at,
+           created_at, updated_at)
         VALUES (%s,%s,'structured_backtest_eval','local',%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,%s,
-                'trade_backtest_results',%s,%s,NOW(),NOW())
+                'trade_backtest_results',%s,%s,
+                %s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW(),NOW())
     """, [
         snap["symbol"], snap["close_date"], model, STRUCTURED_PROMPT_VERSION, ihash,
         classification, (parsed or {}).get("summary"),
@@ -459,6 +471,9 @@ def _write_structured_eval(conn, snap, ihash, parsed, raw, classification, score
         (float(score) / 100.0 if isinstance(score, (int, float)) else None),
         json.dumps(snap), json.dumps(parsed or {"raw": raw[:500] if raw else None}),
         (float(score) if isinstance(score, (int, float)) else None), verdict,
+        _prov.get("trade_instance_id"), _prov.get("strategy_id"), _prov.get("account"),
+        _prov.get("source_system"), _prov.get("source_trade_id"),
+        _prov.get("provenance_kind"), _prov.get("provenance_confidence"), _prov.get("provenance_notes"),
     ])
 
 
