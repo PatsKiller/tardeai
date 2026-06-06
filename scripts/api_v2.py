@@ -23444,7 +23444,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _lr_health = _coh(generate_probe=False)
             except Exception as _he:
                 _lr_health = {"healthy": None, "message": f"health check unavailable: {_he}"}
-            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, error_class, model_name, source_table, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, error_class, model_name, source_table, trade_instance_id, paper_trade_id, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            # per-row provenance: what each review is sourced from + whether it links to a canonical trade
+            _src_kind = {"paper_trades": "paper", "trade_backtest_results": "imported_backtest",
+                         "strategy_backtest_trades": "simulation"}
+            for _r in _lr_latest:
+                _r["provenance"] = _src_kind.get(_r.get("source_table"), _r.get("source_table") or "unknown")
+                _r["linked"] = _r.get("trade_instance_id") is not None
+            _lr_prov = _db_query("""SELECT CASE source_table
+                  WHEN 'paper_trades' THEN 'paper' WHEN 'trade_backtest_results' THEN 'imported_backtest'
+                  WHEN 'strategy_backtest_trades' THEN 'simulation' ELSE COALESCE(source_table,'unknown') END kind,
+                  COUNT(*) rows, COUNT(trade_instance_id) linked FROM trade_llm_reviews GROUP BY 1 ORDER BY 2 DESC""") or []
             # v4.0 backtest coverage
             _lr_paper = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='paper_trades' OR source_table IS NULL") or [])
             _lr_backtest = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='strategy_backtest_trades'") or [])
@@ -23474,6 +23484,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "paper_trades": {"reviewed": _lr_paper, "closed_total": _lr_pt_closed, "unreviewed": max(0, _lr_pt_unreviewed)},
                     "backtest_trades": {"reviewed": _lr_backtest, "total": _lr_bt_total, "unreviewed": max(0, _lr_bt_unreviewed)},
                 },
+                "provenance": {r["kind"]: {"rows": r["rows"], "trade_instance_linked": r["linked"]} for r in _lr_prov},
                 "latest_reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _lr_latest],
                 "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False,
                            "alpaca_mode": _os_lr.environ.get("ALPACA_MODE", "unknown")},
