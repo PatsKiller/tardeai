@@ -22361,6 +22361,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/backtesting/data-quality" and method == "GET":
+        # ADVISORY per-tab data-trust scorecard. Read-only; never affects GO/WAIT or trading.
+        try:
+            def _c(sql):
+                r = _db_query(sql, fetch="one"); return (list(r.values())[0] if r else 0) or 0
+            def _tier(p):
+                if p is None:
+                    return "no_data"
+                return "excellent" if p >= 0.9 else "usable" if p >= 0.6 else "advisory" if p >= 0.25 else "untrusted"
+            def _pct(n, d):
+                return round(n / d, 3) if d else None
+            tabs = {}
+            # Entry Quality — trade_backtest_results linked to trade_instance
+            eq = _c("SELECT COUNT(*) c FROM trade_backtest_results")
+            eql = _c("SELECT COUNT(*) c FROM trade_backtest_results WHERE trade_instance_id IS NOT NULL")
+            tabs["entry_quality"] = {"rows": eq, "linked": eql, "pct": _pct(eql, eq), "tier": _tier(_pct(eql, eq)),
+                                     "basis": "trade_instance-linked backtest rows"}
+            # AI Trade Eval — structured evals linked to trade_instance
+            ev = _c("SELECT COUNT(*) c FROM trade_llm_reviews WHERE review_stage='structured_backtest_eval'")
+            evl = _c("SELECT COUNT(*) c FROM trade_llm_reviews WHERE review_stage='structured_backtest_eval' AND trade_instance_id IS NOT NULL")
+            tabs["trade_eval"] = {"rows": ev, "linked": evl, "pct": _pct(evl, ev), "tier": _tier(_pct(evl, ev)),
+                                  "basis": "structured evals linked to a canonical trade_instance"}
+            # Edge Comparison — all keyed by trade_instance
+            ec = _c("SELECT COUNT(*) c FROM trade_edge_comparison")
+            ecl = _c("SELECT COUNT(*) c FROM trade_edge_comparison WHERE trade_instance_id IS NOT NULL")
+            tabs["edge_comparison"] = {"rows": ec, "linked": ecl, "pct": _pct(ecl, ec), "tier": _tier(_pct(ecl, ec)),
+                                       "basis": "edge rows keyed to trade_instance"}
+            # Hermes Reflections — reflection coverage of closed trade_instances
+            hbl = _c("SELECT COUNT(*) c FROM trade_instances ti WHERE lower(coalesce(status,''))='closed' AND NOT EXISTS (SELECT 1 FROM hermes_research_intelligence h WHERE h.trade_instance_id=ti.id)")
+            hlk = _c("SELECT COUNT(DISTINCT trade_instance_id) c FROM hermes_research_intelligence WHERE trade_instance_id IS NOT NULL")
+            _hd = hlk + hbl
+            tabs["hermes_reflections"] = {"linked": hlk, "backlog": hbl, "pct": _pct(hlk, _hd), "tier": _tier(_pct(hlk, _hd)),
+                                          "basis": "closed trades with a trade-linked reflection"}
+            # LLM Review Coverage — clean (non-error, non-stale) fraction
+            lr = _c("SELECT COUNT(*) c FROM trade_llm_reviews")
+            lrbad = _c("SELECT COUNT(*) c FROM trade_llm_reviews WHERE status IN ('error','superseded_stale_cost_basis')")
+            tabs["llm_review_coverage"] = {"rows": lr, "clean": lr - lrbad, "pct": _pct(lr - lrbad, lr), "tier": _tier(_pct(lr - lrbad, lr)),
+                                           "basis": "non-error, non-stale reviews (infra errors retryable, separate)"}
+            # Missed Opportunities — advisory by nature (sim outcomes, MIXED-heavy)
+            tabs["missed"] = {"tier": "advisory", "basis": "deduped by proposal_id; sim outcomes incl MIXED — advisory by design"}
+            summary = {t: tabs[t]["tier"] for t in tabs}
+            return 200, {"ok": True, "data": {"tabs": tabs, "tab_tiers": summary,
+                         "legend": {"excellent": ">=90% canonical-linked/clean", "usable": ">=60%",
+                                    "advisory": ">=25% or simulation/mixed", "untrusted": "<25% or stale/error"},
+                         "note": "ADVISORY ONLY — base-data trust per tab; does not affect GO/WAIT or trading."}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/backtesting/datasets":
         try:
             rows = _db_query("SELECT dataset_id, name, source_type, rows_count, start_date, end_date, created_at FROM backtest_datasets ORDER BY created_at DESC LIMIT 20") or []
