@@ -9,6 +9,12 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 2 — Hermes Trade Linkage (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP2_HERMES_TRADE_LINKAGE_20260605.md` | Stamp hermes related_trade_id/related_proposal_id at write + conservative 1:1 backfill |
+| `scripts/hermes_autonomous_loop.py` · `backfill_hermes_trade_links.py` | get_ticker_targets resolves ids; reflection writes stamped; backfill 0→2 (ambiguous skipped) |
+
 ## Closed-Loop Step 1 — Execution Lineage (2026-06-05)
 | Document | Purpose |
 |----------|---------|
