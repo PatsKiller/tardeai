@@ -1,3 +1,8 @@
+## Phase 205 Legacy Backup Retirement (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE205_LEGACY_BACKUP_RETIREMENT_20260606.md` | Operator-approved reversible retirement: pg timer + secrets-env cron retired (cadence covers); weekly secrets-data KEPT (coverage gap) |
+
 ## Closed-Loop Structured News Linkage (2026-06-06)
 | Document | Purpose |
 |----------|---------|
