@@ -21,6 +21,8 @@ export default function HermesPanel() {
   const { data: codex } = useApi<any>('/api/v2/hermes/codex-dev-status', 120_000)
   const { data: legacy } = useApi<any>('/api/v2/hermes/legacy-agents', 300_000)
   const { data: wfm } = useApi<any>('/api/v2/hermes/workflow-matrix', 300_000)
+  const { data: sll } = useApi<any>('/api/v2/hermes/self-learning-loops', 300_000)
+  const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
 
   const card: React.CSSProperties = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }
@@ -61,6 +63,27 @@ export default function HermesPanel() {
           {(wfm.db_lineage || []).filter((t: any) => t.exists).length > 0 && (
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>DB writes/24h: {(wfm.db_lineage || []).filter((t: any) => t.exists && t.writes_24h).map((t: any) => `${t.table.replace('hermes_', '')}=${t.writes_24h}`).join(' · ')}</div>
           )}
+        </div>
+      )}
+
+      {/* Self-Learning + Research Lanes (Phase 210, read-only) */}
+      {(sll || rmx) && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Self-Learning & Research Lanes</div>
+          {sll && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>
+              Closed-loop: <b style={{ color: '#f59e0b' }}>{(sll.closed_loop_status || '').split('—')[0]}</b> ·
+              {sll.loop_count} loops · {sll.advisory_only_loops} advisory-only · {sll.loops_affecting_prompts} feed prompts ·
+              <b style={{ color: '#22c55e' }}> {sll.loops_affecting_scoring_directly} mutate scoring</b> (operator-gated)
+            </div>
+          )}
+          {rmx && (
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+              Internal deep lane: <b>{rmx.internal_deep_research_lane?.model}</b> ({rmx.internal_deep_research_lane?.status}) ·
+              gemma4 {rmx.internal_deep_research_lane?.gemma4} · External lanes: {(rmx.external_lanes || []).map((l: any) => l.lane.split(' ')[0]).join(', ')} (designed, advisory-only)
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>ℹ Hermes self-learns to improve TradeAI: observe→normalize→evaluate→learn→promote→apply. Scoring changes require a separate operator gate. Read-only.</div>
         </div>
       )}
 
