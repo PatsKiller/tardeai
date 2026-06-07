@@ -32,8 +32,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [hermes-coordinator]
 log = logging.getLogger("hermes_coordinator")
 
 PY = str(ROOT / ".venv" / "bin" / "python")
-KILL_FILES = [ROOT / "data" / "runtime" / "HERMES_DISABLED",
-              ROOT / "data" / "runtime" / "COORDINATOR_DISABLED"]
+sys.path.insert(0, str(ROOT / "scripts"))
+# Canonical kill-switch via the shared helper (Phase 214) — never the retired sidecar path.
+# COORDINATOR_DISABLED is a coordinator-only extra stop file.
+COORD_EXTRA = ROOT / "data" / "runtime" / "COORDINATOR_DISABLED"
 DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
           dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
           password=os.getenv("DB_PASSWORD", ""))
@@ -46,10 +48,11 @@ CAP_EMBED = 2
 
 
 def kill_switch_active():
-    for f in KILL_FILES:
-        if f.exists():
-            return str(f)
-    return None
+    """Canonical kill-switch (data/runtime/HERMES_DISABLED) + coordinator-only COORDINATOR_DISABLED.
+    The retired sidecar .hermes/DISABLED path is never consulted (see hermes_killswitch)."""
+    from hermes_killswitch import is_hermes_disabled
+    _active, path = is_hermes_disabled(extra=[COORD_EXTRA])
+    return path or None
 
 
 def run_script(label, args, timeout=600):

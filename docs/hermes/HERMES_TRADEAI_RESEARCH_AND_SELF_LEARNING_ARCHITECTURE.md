@@ -76,7 +76,7 @@ scoring change without operator gate; tradeai/tradeai12b tool-less; retired gate
 ZERO; Level 7 PROHIBITED; external lanes credential-free in-app.
 
 ## 14. Current gaps and next gates
-- P1: repoint Coordinator kill-switch off retired `.hermes/DISABLED`; harden serverops tools.
+- P1: ✓ kill-switch canonical via scripts/hermes_killswitch.py (Phase 214; retired path ignored). Remaining P1: harden serverops tools.
 - P2: create dedicated hermes_research_backlog table; implement hermes_external_research + source-credibility
   tables; build internal deep-research overnight runner (operator-approved); wire external lanes (operator OAuth).
 - gemma4: deferred until gates pass.

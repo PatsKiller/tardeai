@@ -14801,10 +14801,18 @@ def _hermes_health():
         row = _db_query(f"SELECT COUNT(*) as cnt FROM {tbl}", fetch="one")
         hcounts[tbl] = row["cnt"] if row else 0
 
-    # Research-fleet kill switch — canonical LIVE runtime path (the sidecar .hermes was retired in
-    # global-profile migration v1.8; ~/.hermes/DISABLED was also non-canonical). Touch this file to halt.
-    kill_file = Path(str(PROJECT_ROOT)) / "data" / "runtime" / "HERMES_DISABLED"
-    kill_active = kill_file.exists()
+    # Research-fleet kill switch — canonical LIVE runtime path via the shared helper (Phase 214). The retired
+    # sidecar .hermes/DISABLED path is ignored (audit-only). Touch data/runtime/HERMES_DISABLED to halt.
+    kill_desc = {}
+    try:
+        import sys as _sysh
+        _sysh.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from hermes_killswitch import describe_killswitch as _dk
+        kill_desc = _dk()
+        kill_active = bool(kill_desc.get("active"))
+    except Exception:
+        kill_file = Path(str(PROJECT_ROOT)) / "data" / "runtime" / "HERMES_DISABLED"
+        kill_active = kill_file.exists()
 
     # Autonomous loop status
     import subprocess as _sp_h
@@ -14824,6 +14832,7 @@ def _hermes_health():
         "staging_counts": hcounts,
         "kill_switch_active": kill_active,
         "kill_switch_path": "data/runtime/HERMES_DISABLED",
+        "kill_switch": kill_desc,
         "autonomous_loop_active": loop_active,
     }
 
