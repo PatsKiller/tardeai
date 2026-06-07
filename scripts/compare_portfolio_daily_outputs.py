@@ -42,19 +42,23 @@ def main():
             bad.append(("summary", f"latest summary is a DRY_RUN, not an --apply (re-run --cadence {cad} --apply)"))
         else:
             st = {s["name"]: s for s in summ.get("steps", [])}
-            dr = st.get(report_step, {})
-            if dr.get("status") == "ok" and dr.get("label") == "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY":
-                ok.append((report_step, "ok + PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY"))
+            # report cadences use step "portfolio_<cad>_report"; lookthrough uses "portfolio_lookthrough".
+            step_key = report_step if report_step in st else ("portfolio_lookthrough" if "portfolio_lookthrough" in st else report_step)
+            # lookthrough carries a READ_ONLY_SNAPSHOT label; report cadences the advisory-draft label.
+            ok_labels = {"PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY", "READ_ONLY_SNAPSHOT"}
+            dr = st.get(step_key, {})
+            if dr.get("status") == "ok" and dr.get("label") in ok_labels:
+                ok.append((step_key, f"ok + {dr.get('label')}"))
             elif str(dr.get("status", "")).startswith("SAFETY_BLOCKED"):
-                bad.append((report_step, f"BLOCKED by exec-path guard: {dr.get('status')}"))
+                bad.append((step_key, f"BLOCKED by exec-path guard: {dr.get('status')}"))
             else:
-                bad.append((report_step, f"status={dr.get('status','MISSING')} label={dr.get('label')}"))
+                bad.append((step_key, f"status={dr.get('status','MISSING')} label={dr.get('label')}"))
             for x in ("price_cache", "db_retention"):
                 (ok if st.get(x, {}).get("status") == "EXCLUDED_NOT_RUN" else bad).append(
                     (f"excluded:{x}", st.get(x, {}).get("status", "?")))
-            # no backup/weekly/monthly/lookthrough steps must appear in the daily summary
+            # only this cadence's own step may appear (+ the always-excluded markers)
             stray = [n for n in st if n not in
-                     (report_step, "price_cache", "db_retention")]
+                     (step_key, "price_cache", "db_retention")]
             (bad if stray else ok).append(("cadence_isolation", f"stray steps {stray}" if stray else f"{cad}-only"))
 
     # 2. report state artifacts present + fresh (same artifacts a legacy daily run refreshes)

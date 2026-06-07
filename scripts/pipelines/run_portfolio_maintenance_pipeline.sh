@@ -123,7 +123,12 @@ run_monthly()    {
     "$PROJ/scripts/portfolio_yaml_advisor.py" || return 0
   pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"
 }
-run_lookthrough(){ pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"; }
+run_lookthrough(){
+  assert_review_only_chain "portfolio_lookthrough" \
+    "$PROJ/linux_launchers/run_lookthrough.sh" "$PROJ/scripts/phase3_lookthrough_fetcher.py" \
+    "$PROJ/scripts/phase3_lookthrough_resolver.py" "$PROJ/scripts/phase2_coverage_audit.py" || return 0
+  pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"
+}
 
 case "$CADENCE" in
   backup)      run_backup ;;
