@@ -24,33 +24,38 @@ def q1(cur, sql):
 
 
 def main():
+    # cadence-parameterized: works for the daily OR weekly review-only report cadence
+    cad = "daily"
+    if "--cadence" in sys.argv:
+        cad = sys.argv[sys.argv.index("--cadence") + 1]
+    report_step = f"portfolio_{cad}_report"
     bad, ok, note = [], [], []
 
-    # 1. daily cadence apply summary — must be a real --apply, ok, review-only labeled
-    sp = os.path.join(ROOT, "data/runtime/portfolio_maintenance_daily_last_run.json")
+    # 1. cadence apply summary — must be a real --apply, ok, review-only labeled
+    sp = os.path.join(ROOT, f"data/runtime/portfolio_maintenance_{cad}_last_run.json")
     summ = None
     if not os.path.exists(sp):
-        bad.append(("summary", "no daily cadence apply summary"))
+        bad.append(("summary", f"no {cad} cadence apply summary"))
     else:
         summ = json.load(open(sp))
         if summ.get("dry_run") is True:
-            bad.append(("summary", "latest summary is a DRY_RUN, not an --apply (re-run --cadence daily --apply)"))
+            bad.append(("summary", f"latest summary is a DRY_RUN, not an --apply (re-run --cadence {cad} --apply)"))
         else:
             st = {s["name"]: s for s in summ.get("steps", [])}
-            dr = st.get("portfolio_daily_report", {})
+            dr = st.get(report_step, {})
             if dr.get("status") == "ok" and dr.get("label") == "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY":
-                ok.append(("daily_report_step", "ok + PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY"))
+                ok.append((report_step, "ok + PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY"))
             elif str(dr.get("status", "")).startswith("SAFETY_BLOCKED"):
-                bad.append(("daily_report_step", f"BLOCKED by exec-path guard: {dr.get('status')}"))
+                bad.append((report_step, f"BLOCKED by exec-path guard: {dr.get('status')}"))
             else:
-                bad.append(("daily_report_step", f"status={dr.get('status','MISSING')} label={dr.get('label')}"))
+                bad.append((report_step, f"status={dr.get('status','MISSING')} label={dr.get('label')}"))
             for x in ("price_cache", "db_retention"):
                 (ok if st.get(x, {}).get("status") == "EXCLUDED_NOT_RUN" else bad).append(
                     (f"excluded:{x}", st.get(x, {}).get("status", "?")))
             # no backup/weekly/monthly/lookthrough steps must appear in the daily summary
             stray = [n for n in st if n not in
-                     ("portfolio_daily_report", "price_cache", "db_retention")]
-            (bad if stray else ok).append(("cadence_isolation", f"stray steps {stray}" if stray else "daily-only"))
+                     (report_step, "price_cache", "db_retention")]
+            (bad if stray else ok).append(("cadence_isolation", f"stray steps {stray}" if stray else f"{cad}-only"))
 
     # 2. report state artifacts present + fresh (same artifacts a legacy daily run refreshes)
     for nm in ("holdings.json", "performance_history.json"):
@@ -87,7 +92,7 @@ def main():
             ("no_destructive_or_broker_steps", "clean" if not (labels & forbidden) else str(labels & forbidden)))
 
     v = "PASS" if not bad else "FAIL"
-    print(f"DAILY CADENCE OUTPUT DIFF: {v} ({len(bad)} unacceptable)")
+    print(f"{cad.upper()} CADENCE OUTPUT DIFF: {v} ({len(bad)} unacceptable)")
     for k, m in ok: print(f"  OK   {k}: {m}")
     for k, m in note: print(f"  NOTE {k}: {m}")
     for k, m in bad: print(f"  FAIL {k}: {m}")
