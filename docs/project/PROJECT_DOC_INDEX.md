@@ -1,4 +1,6 @@
 ## Hermes Global Install Migration (2026-06-06)
+| `docs/project/Trade_AI_v12_Reference_Architecture.docx` | Canonical architecture; includes **Hermes Global Profile Architecture Update — 2026-06-06** + Migration Completion Addendum |
+
 | Document | Purpose |
 |----------|---------|
 | `docs/hermes/HERMES_GLOBAL_INSTALL_MIGRATION_20260606.md` | Sidecar->global Hermes v0.16.0; verified state, canonical commands, no-delete policy, rollback |
