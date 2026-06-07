@@ -28,3 +28,14 @@ SOUL saves enforce: tradeai/tradeai12b boundary lines required; unsafe enabling 
 ## Safety
 Read + guarded-write of profile identity/SOUL only. No gateway/Telegram/Discord/Codex/cron/systemd enable;
 no broker/trading/proposal/protection changes; no live trading; backups before every write.
+
+
+## Update (2026-06-07) — switcher + dropdowns + metadata fields
+- **Identity switcher**: left-side list of all 5 profiles; switch identity without closing the modal
+  (`GET /api/v2/hermes/identity?profile=__all__`).
+- **Dropdowns**: Model (from live `ollama list`) + Provider (allow-list; local-only profiles show only
+  `custom`). Cloud/unsafe choices still blocked server-side.
+- **Editable metadata**: Label/Name, Role/Purpose, Description — persisted to
+  `~/.hermes/profiles/<profile>/identity_meta.json` (our metadata, separate from Hermes config). Defaults
+  fall back to built-in labels when no override exists.
+- model/provider still write to `config.yaml` (backup-first); SOUL unchanged.

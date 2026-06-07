@@ -15300,31 +15300,72 @@ def _hermes_legacy_agents(query=None):
 
 
 HERMES_LOCAL_ONLY = ("default", "tradeai", "tradeai12b")  # must stay on local Ollama
+HERMES_PROVIDERS = ["custom", "openai-codex", "xai-oauth", "nous"]  # custom = local Ollama
+
+
+def _hermes_identity_meta_path(profile):
+    return _hermes_profile_dir(profile) / "identity_meta.json"
+
+
+def _hermes_identity_meta(profile):
+    p = _hermes_identity_meta_path(profile)
+    try:
+        import json as _j
+        return _j.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def _hermes_available_models():
+    out = _hermes_run(["ollama", "list"], timeout=8) or ""
+    models = []
+    for ln in out.splitlines()[1:]:
+        nm = ln.split()[0] if ln.split() else ""
+        if nm and "embed" not in nm.lower():
+            models.append(nm)
+    return models
 
 
 def _hermes_identity_detail(query=None):
-    """GET /api/v2/hermes/identity?profile=NAME — full editable identity (model/provider) + read-only context."""
+    """GET /api/v2/hermes/identity?profile=NAME — editable identity (model/provider/label/purpose/desc) +
+    available models/providers + read-only context. Use ?profile=__all__ for the full identity list."""
     profile = (query or {}).get("profile")
     if isinstance(profile, list):
         profile = profile[0] if profile else None
+    avail_models = _hermes_available_models()
+
+    def one(name):
+        cfg = _hermes_profile_dir(name) / "config.yaml"
+        model = provider = base_url = None
+        try:
+            import yaml as _y
+            m = (_y.safe_load(cfg.read_text()) or {}).get("model") or {}
+            model, provider, base_url = m.get("default"), m.get("provider"), m.get("base_url")
+        except Exception:
+            pass
+        meta = _hermes_identity_meta(name)
+        local = name in HERMES_LOCAL_ONLY
+        return {"profile": name,
+                "label": meta.get("label") or HERMES_PROFILES[name]["label"],
+                "purpose": meta.get("purpose") or HERMES_PROFILES[name]["purpose"],
+                "description": meta.get("description", ""),
+                "config_path": str(cfg).replace(str(Path.home()), "~"),
+                "model": model or "", "provider": provider or "", "base_url": base_url or "",
+                "tools": _hermes_profile_tools(name), "soul_hash": _hermes_soul_hash(name),
+                "local_only": local,
+                "available_models": avail_models,
+                "available_providers": (["custom"] if local else HERMES_PROVIDERS),
+                "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
+                                "gemma3:12b (unconstrained), and qwen3:14b are blocked." if local
+                                else "dev/serverops may use other providers (operator-driven).")}
+
+    if profile == "__all__":
+        return {"ok": True, "identities": [one(n) for n in HERMES_PROFILES]}
     if profile not in HERMES_PROFILES:
         return {"ok": False, "error": "unknown profile"}
-    cfg = _hermes_profile_dir(profile) / "config.yaml"
-    model = provider = base_url = None
-    try:
-        import yaml as _y
-        m = (_y.safe_load(cfg.read_text()) or {}).get("model") or {}
-        model, provider, base_url = m.get("default"), m.get("provider"), m.get("base_url")
-    except Exception:
-        pass
-    return {"ok": True, "profile": profile, "label": HERMES_PROFILES[profile]["label"],
-            "purpose": HERMES_PROFILES[profile]["purpose"], "config_path": str(cfg).replace(str(Path.home()), "~"),
-            "model": model or "", "provider": provider or "", "base_url": base_url or "",
-            "tools": _hermes_profile_tools(profile), "soul_hash": _hermes_soul_hash(profile),
-            "local_only": profile in HERMES_LOCAL_ONLY,
-            "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
-                            "gemma3:12b (unconstrained), and qwen3:14b are blocked." if profile in HERMES_LOCAL_ONLY
-                            else "dev/serverops may use other providers (operator-driven).")}
+    d = one(profile)
+    d["ok"] = True
+    return d
 
 
 def _hermes_validate_identity(profile, model, provider):
@@ -15640,12 +15681,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "unknown profile"}
                 model = (b.get("model") or "").strip()
                 provider = (b.get("provider") or "").strip()
-                if not model and not provider:
+                meta_fields = {k: b[k] for k in ("label", "purpose", "description") if k in b}
+                if not model and not provider and not meta_fields:
                     return 400, {"ok": False, "error": "nothing to update"}
                 errs = _hermes_validate_identity(profile, model, provider)
                 if errs:
                     return 400, {"ok": False, "errors": errs}
+                # editable metadata (label/purpose/description) → our own identity_meta.json (not Hermes config)
+                if meta_fields:
+                    import json as _jm
+                    mp = _hermes_identity_meta_path(profile)
+                    cur = _hermes_identity_meta(profile)
+                    cur.update({k: (str(v)[:400] if v is not None else "") for k, v in meta_fields.items()})
+                    mp.parent.mkdir(parents=True, exist_ok=True)
+                    mp.write_text(_jm.dumps(cur, indent=2))
                 cfg = _hermes_profile_dir(profile) / "config.yaml"
+                if not model and not provider:
+                    return 200, {"ok": True, "profile": profile, "meta_updated": list(meta_fields.keys())}
                 if not str(cfg.resolve()).startswith(str(HERMES_HOME.resolve())):
                     return 400, {"ok": False, "error": "path outside Hermes home rejected"}
                 data = (_yi.safe_load(cfg.read_text()) if cfg.exists() else {}) or {}
