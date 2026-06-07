@@ -36,7 +36,9 @@ export default function HermesSoulEditor({ profile, onClose }: { profile: string
   const pV = provider ?? cur.provider ?? ''
   const content = soul ?? soulData?.content ?? ''
   const isTA = sel === 'tradeai' || sel === 'tradeai12b'
-  const modelOpts: string[] = Array.from(new Set([...(cur.available_models || []), cur.model].filter(Boolean)))
+  // model options follow the selected provider (custom=local ollama; openai-codex/xai-oauth/nous=free lanes)
+  const provModels: string[] = (cur.model_options && cur.model_options[pV]) || cur.available_models || []
+  const modelOpts: string[] = Array.from(new Set([...provModels, cur.model].filter(Boolean)))
 
   async function post(url: string, payload: any, setMsg: (m: any) => void) {
     setBusy(true); setMsg(null)
