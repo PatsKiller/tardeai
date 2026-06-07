@@ -28,6 +28,7 @@
 | `docs/hermes/HERMES_AGENT_FUNCTION_INDEX.md` | who handles X: research ideas/sources/librarian/taxonomy |
 | `docs/hermes/HERMES_DEEP_RESEARCH_LOCAL_RUNNER_20260607.md` | Internal overnight deep-research runner (gemma3:27b/overnight, advisory-staging-only, manual) |
 | `docs/hermes/HERMES_CLAUDE_EXTERNAL_LANE_20260607.md` | Claude external researcher lane: wired, redaction-first, advisory-only, manual; blocked by Anthropic credits |
+| `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM governance: limited criteria, per-call operator approval, data-class restrictions, cost/privacy, escalation ladder, prohibited uses |
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |

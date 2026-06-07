@@ -20,3 +20,5 @@ recommendation · evidence list · dissenting view · confidence · risk flags �
 - ChatGPT: code/design review, synthesis, alternative reasoning.
 - Grok: market/social/news narrative, sentiment/catalyst, momentum.
 - Consensus panel: sharp internal disagreement + high importance.
+
+> Governance: see EXTERNAL_LLM_USAGE_POLICY_20260607.md (limited criteria, per-call operator approval, data-class restrictions, prohibited uses).
