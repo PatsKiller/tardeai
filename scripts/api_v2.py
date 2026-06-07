@@ -11601,10 +11601,15 @@ def _portfolio_cadence_status():
                                 "legacy_timer": _timer("portfolio-weekly.timer"),
                                 "legacy_retired": True, "retired_legacy_count": 1,
                                 "active_legacy_count": 0},
-                "monthly":     {"status": "not_migrated", "summary": _summary("monthly")},
+                "monthly":     {"status": "migrated", "summary": _summary("monthly"),
+                                "timer": _timer("tradeai-portfolio-monthly-cadence.timer"),
+                                "advisory_draft_review_only": True,
+                                "legacy_timer": _timer("portfolio-monthly.timer"),
+                                "legacy_retired": True, "retired_legacy_count": 1,
+                                "active_legacy_count": 0},
                 "lookthrough": {"status": "not_migrated", "summary": _summary("lookthrough")},
             },
-            "not_migrated": ["monthly", "lookthrough", "db_retention", "price_cache"],
+            "not_migrated": ["lookthrough", "db_retention", "price_cache"],
             "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited",
                        "destructive_excluded": ["db_retention", "price_cache"],
                        "safety_net_watchdog": "untouched"}}
@@ -15449,6 +15454,56 @@ def _hermes_workflow_matrix(query=None):
     }
 
 
+def _hermes_self_learning_loops(query=None):
+    """GET /api/v2/hermes/self-learning-loops — read-only self-learning loop health (Phase 210B JSON)."""
+    import json as _jl
+    p = PROJECT_ROOT / "data" / "hermes" / "hermes_self_learning_loop_audit_latest.json"
+    try:
+        return _jl.loads(p.read_text()) if p.exists() else {"note": "run scripts/audit_hermes_self_learning_loops.py"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _hermes_researcher_matrix(query=None):
+    """GET /api/v2/hermes/researcher-matrix — read-only identity/role/lane matrix (advisory; no execution)."""
+    return {
+        "generated_note": "read-only researcher responsibility matrix (Phase 210E)",
+        "internal_deep_research_lane": {"name": "Hermes Deep Research — Local", "model": "gemma3:27b / gemma3-overnight",
+            "process": "BATCH_OVERNIGHT", "status": "designed (not enabled)", "gemma4": "deferred — not installed"},
+        "external_lanes": [
+            {"lane": "Claude (Anthropic)", "role": "high-stakes reasoning: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": "designed", "advisory_only": True},
+            {"lane": "ChatGPT (OpenAI)", "role": "second opinion, code/design review, synthesis, operator explanation", "status": "designed", "advisory_only": True},
+            {"lane": "Grok (xAI)", "role": "market/social/news narrative, sentiment/catalyst (source-scored)", "status": "designed", "advisory_only": True},
+            {"lane": "Consensus Panel", "role": "run when internal vs TradeAI disagree sharply + high importance", "status": "designed", "advisory_only": True},
+        ],
+        "chat_profiles": {
+            "tradeai": "stable Trade AI advisory (gemma3:4b, tool-less)",
+            "tradeai12b": "experimental deep advisory (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "default": "general (tool-less)", "dev": "engineering/Codex (future)", "serverops": "server-ops (future)"},
+        "safety": "All advisory-only. No external credentials in-app. No broker/trading mutation. tradeai/tradeai12b tool-less.",
+    }
+
+
+def _hermes_external_escalation_policy(query=None):
+    """GET /api/v2/hermes/external-escalation-policy — read-only escalation triggers/priority/routing (210G)."""
+    return {
+        "generated_note": "read-only external escalation policy (Phase 210G)",
+        "triggers": ["TradeAI vs Hermes score delta > 8", "Hermes flags stop/protection defect",
+                     "weak evidence + high portfolio impact", "repeated operator/Hermes disagreement",
+                     "new strategy underperforming", "high-$ position with profit-giveback risk",
+                     "defense/income/retirement/tax-sensitive topic", "momentum catalyst high social/news volatility",
+                     "source-credibility conflict", "high-LLM local failure/timeout", "model uncertainty above threshold"],
+        "priority": {"P0": "escalate before recommendation", "P1": "escalate overnight",
+                     "P2": "queue for weekly research", "P3": "no external escalation"},
+        "routing": {"Claude": "retirement/tax/SSDI/IRMAA, policy/legal, final high-stakes challenge",
+                    "ChatGPT": "code/design review, synthesis, alternative reasoning",
+                    "Grok": "market/social/news narrative, sentiment/catalyst",
+                    "Consensus": "sharp internal disagreement + high importance"},
+        "output_schema": ["recommendation", "evidence", "dissent", "confidence", "risk_flags", "learning_candidate", "operator_action"],
+        "status": "designed — not enabled (operator-driven auth required)",
+    }
+
+
 def _hermes_terminal_commands(query=None):
     """GET /api/v2/hermes/terminal-commands — copyable canonical commands + diagnostics."""
     return {
@@ -15666,6 +15721,9 @@ ROUTES = {
     "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
     "/api/v2/hermes/workflow-matrix": _hermes_workflow_matrix,
+    "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
+    "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
+    "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
