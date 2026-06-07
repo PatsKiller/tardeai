@@ -1,3 +1,8 @@
+## Portfolio Daily Report Cadence Migration (Phase 207, 2026-06-07)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE207_DAILY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | daily report cadence migrated to controller (advisory-draft review-only) + scheduled parallel (tradeai-portfolio-daily-cadence.timer Mon-Fri 07:30); dry-run/apply/diff/systemd-cycle all PASS; legacy kept active (retired=0, deferred to Phase 208); /api/v2/system/portfolio-cadence-status added; no broker/proposal/protection/GO-WAIT/strategy changes |
+
 ## Hermes Legacy/Retired Agent Visibility (Phase 206, 2026-06-07)
 | Document | Purpose |
 |----------|---------|
