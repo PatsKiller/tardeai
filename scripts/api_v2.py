@@ -15025,6 +15025,197 @@ def _atm_adjustment_proposal_detail(pid):
     return out
 
 
+# ══ Hermes global-profile management (Command Center → System → Hermes) ════════════════════════
+# Read/edit ONLY approved Hermes profile identity (SOUL.md) + read-only status. Never enables the
+# retired sidecar gateway, never touches broker/trading, never reads .env/secrets.
+HERMES_HOME = Path.home() / ".hermes"
+HERMES_VENV = Path.home() / ".local" / "share" / "hermes-agent-venv"
+HERMES_CLI = Path.home() / ".local" / "bin" / "hermes"
+HERMES_PROFILES = {
+    "default":    {"sub": "",                  "label": "Global Hermes Identity",            "purpose": "general"},
+    "tradeai":    {"sub": "profiles/tradeai",    "label": "Trade AI Advisory Identity",        "purpose": "Trade AI advisory"},
+    "tradeai12b": {"sub": "profiles/tradeai12b", "label": "Experimental 12B Trade AI Identity", "purpose": "12B advisory"},
+    "dev":        {"sub": "profiles/dev",        "label": "Development / Codex Identity",       "purpose": "Codex/dev"},
+    "serverops":  {"sub": "profiles/serverops",  "label": "ServerOps Identity",                "purpose": "server ops"},
+}
+HERMES_UNSAFE_PHRASES = ["execute trades", "place orders", "modify stops", "approve proposals",
+                         "read raw secrets", "broker credentials", "use tools to execute actions",
+                         "autonomous trading"]
+HERMES_REQUIRED_TRADEAI = ["You do not execute trades.", "You do not place orders.",
+                           "You do not modify stops.", "You do not create, approve, or promote trade proposals.",
+                           "You do not read raw secrets"]
+
+
+def _hermes_profile_dir(profile):
+    sub = HERMES_PROFILES[profile]["sub"]
+    return (HERMES_HOME / sub) if sub else HERMES_HOME
+
+
+def _hermes_soul_path(profile):
+    return _hermes_profile_dir(profile) / "SOUL.md"
+
+
+def _hermes_profile_model(profile):
+    cfg = _hermes_profile_dir(profile) / "config.yaml"
+    try:
+        import yaml as _y
+        d = _y.safe_load(cfg.read_text()) or {}
+        return ((d.get("model") or {}).get("default")) or None
+    except Exception:
+        return None
+
+
+def _hermes_run(cmd, timeout=8, env=None):
+    """Run a command, return stdout (stripped) regardless of exit code; None on error/timeout."""
+    import subprocess as _sp
+    try:
+        e = None
+        if env:
+            e = dict(os.environ); e.update(env)
+        r = _sp.run(cmd, capture_output=True, text=True, timeout=timeout, env=e)
+        return (r.stdout or "").strip() or (r.stderr or "").strip() or None
+    except Exception:
+        return None
+
+
+def _hermes_profile_tools(profile):
+    """Authoritative tool state from `hermes -p <profile> tools list` (line-anchored count of enabled rows).
+    Uses the full CLI path + -p (the ~/.local/bin/<name> wrappers do `exec hermes ...` which needs PATH)."""
+    if _hermes_profile_model(profile) is None:
+        return "future"
+    out = _hermes_run([str(HERMES_CLI), "-p", profile, "tools", "list"], timeout=12)
+    if not out:
+        return "unknown"
+    import re as _re_t
+    # Strict toolset-row format only: "  ✓ enabled  <toolset_id> ...". Names the enabled toolsets so the
+    # operator sees exactly what's on (some, e.g. x_search, auto-enable when credentials exist in the env).
+    enabled_ids, disabled = [], 0
+    for ln in out.splitlines():
+        m = _re_t.match(r"\s*✓ enabled\s\s+([a-z][a-z_]*)", ln)
+        if m:
+            enabled_ids.append(m.group(1))
+        elif _re_t.match(r"\s*✗ disabled\s\s+[a-z]", ln):
+            disabled += 1
+    if not enabled_ids:
+        return "disabled" if disabled else "unknown"
+    return f"{len(enabled_ids)} enabled: {', '.join(enabled_ids)}"
+
+
+def _hermes_svc(state):
+    # systemctl --user needs the user runtime bus; the server may lack it, so inject XDG_RUNTIME_DIR.
+    out = _hermes_run(["systemctl", "--user", state, "hermes-gateway.service"], timeout=6,
+                      env={"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"})
+    return (out.splitlines()[0].strip() if out else "unknown")
+
+
+def _hermes_profiles_status(query=None):
+    """GET /api/v2/hermes/profiles-status — read-only global Hermes + per-profile status."""
+    _vraw = _hermes_run([str(HERMES_CLI), "--version"], timeout=10)
+    ver = (_vraw.splitlines()[0].strip() if _vraw else None)
+    retired = sorted(str(p.name) for p in PROJECT_ROOT.joinpath("hermes_sidecar").glob(".hermes.RETIRED_*")) \
+        if PROJECT_ROOT.joinpath("hermes_sidecar").exists() else []
+    retired += sorted(str(p.name) for p in PROJECT_ROOT.joinpath("hermes_sidecar").glob("install.RETIRED_*")) \
+        if PROJECT_ROOT.joinpath("hermes_sidecar").exists() else []
+    rows = []
+    for name, meta in HERMES_PROFILES.items():
+        model = _hermes_profile_model(name)
+        configured = model is not None
+        rows.append({
+            "profile": name, "label": meta["label"], "purpose": meta["purpose"],
+            "model": model or "unset",
+            "tools": _hermes_profile_tools(name),
+            "status": ("active" if name in ("default", "tradeai") else
+                       "experimental" if name == "tradeai12b" else "unconfigured") if configured else "unconfigured",
+            "soul_exists": _hermes_soul_path(name).exists(),
+            "soul_bytes": (_hermes_soul_path(name).stat().st_size if _hermes_soul_path(name).exists() else 0),
+        })
+    return {
+        "version": ver, "cli_path": "~/.local/bin/hermes", "venv_path": "~/.local/share/hermes-agent-venv",
+        "home_path": "~/.hermes",
+        "sidecar_retired_dirs": retired,
+        "sidecar_status": "rename-retired (rollback/audit only)",
+        "gateway_service_active": _hermes_svc("is-active"),
+        "gateway_service_enabled": _hermes_svc("is-enabled"),
+        "gateway_note": "retired sidecar gateway must remain disabled — do not enable",
+        "tools_note": "Tool state reflects the SERVER runtime env. Safety-critical toolsets "
+                      "(terminal/file/code_execution/browser/computer_use) are disabled on tradeai/tradeai12b. "
+                      "Some read-only toolsets (e.g. x_search) auto-enable when credentials exist in the env.",
+        "profiles": rows,
+    }
+
+
+def _hermes_soul_read(query=None):
+    """GET /api/v2/hermes/soul?profile=NAME — read a profile SOUL.md (identity text only)."""
+    profile = (query or {}).get("profile")
+    if isinstance(profile, list):
+        profile = profile[0] if profile else None
+    if profile not in HERMES_PROFILES:
+        return {"ok": False, "error": "unknown profile"}
+    sp = _hermes_soul_path(profile)
+    return {"ok": True, "profile": profile, "label": HERMES_PROFILES[profile]["label"],
+            "path": str(sp).replace(str(Path.home()), "~"), "exists": sp.exists(),
+            "content": (sp.read_text() if sp.exists() else "")}
+
+
+def _hermes_validate_soul(profile, text):
+    """Fail-closed safety check for SOUL edits. Returns list of errors (empty = ok)."""
+    errs = []
+    try:
+        import re as _re_v
+        low = (text or "").lower()
+        negations = ("do not", "does not", "never", "cannot", "won't", "will not", "n't", "no ")
+        for ph in HERMES_UNSAFE_PHRASES:
+            for m in _re_v.finditer(_re_v.escape(ph), low):
+                j = m.start()
+                # sentence-scoped: from the last sentence/clause boundary up to the phrase
+                seg_start = max(low.rfind(".", 0, j), low.rfind("\n", 0, j),
+                                low.rfind(";", 0, j), low.rfind(":", 0, j))
+                seg = low[seg_start + 1:j]
+                if not any(neg in seg for neg in negations):
+                    errs.append(f"unsafe phrase without negation: '{ph}'")
+                    break
+        if profile in ("tradeai", "tradeai12b"):
+            for req in HERMES_REQUIRED_TRADEAI:
+                if req not in (text or ""):
+                    errs.append(f"missing required boundary: '{req}'")
+    except Exception as e:
+        errs.append(f"validation error (fail-closed): {e}")
+    return errs
+
+
+def _hermes_codex_dev_status(query=None):
+    """GET /api/v2/hermes/codex-dev-status — read-only readiness of the future dev/Codex profile."""
+    devdir = _hermes_profile_dir("dev")
+    return {
+        "dev_profile_exists": devdir.exists(),
+        "dev_soul_exists": _hermes_soul_path("dev").exists(),
+        "dev_model_configured": _hermes_profile_model("dev") is not None,
+        "codex_auth_configured": "not configured",
+        "codex_runtime_enabled": False,
+        "terminal_instructions": [
+            "# Run manually in terminal only when ready:",
+            "hermes profile use dev",
+            "hermes config show",
+            "# Configure Codex/OpenAI only after operator approval.",
+            "# Do not configure Codex in tradeai.",
+        ],
+        "note": "Codex setup command must be verified against current Hermes/OpenClaw docs before use. "
+                "No OAuth from the web UI; no credentials stored in the app.",
+    }
+
+
+def _hermes_terminal_commands(query=None):
+    """GET /api/v2/hermes/terminal-commands — copyable canonical commands + diagnostics."""
+    return {
+        "chat": ["hermes chat", "tradeai chat", "tradeai12b chat", "dev chat", "serverops chat"],
+        "diagnostics": ["hermes --version", "hermes profile list", "tradeai config show",
+                        "tradeai tools list", "tradeai12b config show", "tradeai12b tools list",
+                        "systemctl --user is-active hermes-gateway.service || true",
+                        "systemctl --user is-enabled hermes-gateway.service || true"],
+        "warning": "Do not use retired sidecar wrappers. The retired sidecar gateway must remain disabled.",
+    }
+
+
 ROUTES = {
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
@@ -15222,6 +15413,10 @@ ROUTES = {
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
     "/api/v2/system/access-links": lambda: _system_access_links(),
     "/api/v2/system/applications": lambda: _system_applications(),
+    "/api/v2/hermes/profiles-status": _hermes_profiles_status,
+    "/api/v2/hermes/soul": _hermes_soul_read,
+    "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
+    "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
@@ -15265,6 +15460,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/hermes/soul":
+            # Save a Hermes profile SOUL.md — backup first, fail-closed safety validation, write only
+            # the selected SOUL.md under ~/.hermes. Never touches .env/secrets/broker/trading.
+            try:
+                import shutil as _shutil, time as _tsoul
+                b = body or {}
+                profile = b.get("profile")
+                content = b.get("content")
+                if profile not in HERMES_PROFILES:
+                    return 400, {"ok": False, "error": "unknown profile"}
+                if not isinstance(content, str) or not content.strip():
+                    return 400, {"ok": False, "error": "content required"}
+                errs = _hermes_validate_soul(profile, content)
+                if errs:
+                    return 400, {"ok": False, "errors": errs}
+                sp = _hermes_soul_path(profile)
+                # path-traversal guard: resolved target must live under ~/.hermes
+                if not str(sp.resolve()).startswith(str(HERMES_HOME.resolve())):
+                    return 400, {"ok": False, "error": "path outside Hermes home rejected"}
+                bdir = HERMES_HOME / "profile_backups" / profile
+                bdir.mkdir(parents=True, exist_ok=True)
+                backup = None
+                if sp.exists():
+                    backup = bdir / f"SOUL.md.bak_{int(_tsoul.time())}"
+                    _shutil.copy(str(sp), str(backup))  # IRON RULE: backup before overwrite
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                sp.write_text(content)
+                return 200, {"ok": True, "profile": profile,
+                             "saved": str(sp).replace(str(Path.home()), "~"),
+                             "backup": (str(backup).replace(str(Path.home()), "~") if backup else None),
+                             "bytes": len(content)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/hermes/advisory-choice":
             try:
                 import json as _jac2
