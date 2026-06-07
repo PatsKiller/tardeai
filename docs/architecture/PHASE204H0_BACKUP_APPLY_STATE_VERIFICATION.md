@@ -54,6 +54,11 @@ after a separate observation period. Backups are functioning (cadence verified, 
 to Drive), so there is no operational gap. If you still want a parallel-observation safety window, the
 legacy lines are one uncomment away (reversible). Otherwise this workstream is **complete**.
 
+### Operator decision (2026-06-07): ACCEPT AS COMPLETE
+Operator accepted the migration as complete. Final posture: `tradeai-portfolio-backup-cadence.timer`
+@02:30 is the **sole** backup path; legacy backup cron lines stay **retired**; no parallel-observation
+window will be run. No changes made. Phase 204 + Phase 205 are **closed**.
+
 ## Safety
 No live trading; live Alpaca endpoint blocked; no GO/WAIT/strategy/threshold/protection/broker/stop
 changes; no destructive jobs; safety-net monitor/watchdog untouched. Verification was read-only.
