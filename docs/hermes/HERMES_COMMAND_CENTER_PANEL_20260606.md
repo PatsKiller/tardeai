@@ -82,3 +82,7 @@ The `/v3/hermes` Research Agent Graph kill-switch banner now reads the canonical
 **`data/runtime/HERMES_DISABLED`** (was the retired `hermes_sidecar/.hermes/DISABLED`). `_hermes_health`
 (`/api/v2/hermes/health`) reads that path and returns `kill_switch_active` + `kill_switch_path`. Banner
 wording corrected: `touch` = HALT, `rm` = resume. See `HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md`.
+
+---
+## Operator decision: tradeai tool-less (2026-06-07)
+tradeai/tradeai12b remain 0 tools by operator decision; advisory-only, no self-fetch. See HERMES_TRADEAI_TOOL_POLICY_DECISION_20260607.md.
