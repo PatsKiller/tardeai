@@ -1,3 +1,8 @@
+## Portfolio Lookthrough Cadence Migration — ALL CADENCES COMPLETE (Phase 210, 2026-06-07)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE210_LOOKTHROUGH_CADENCE_MIGRATION_CLOSEOUT.md` | lookthrough (READ_ONLY_SNAPSHOT) migrated + legacy retired; ALL report cadences now controller-owned (backup/daily/weekly/monthly/lookthrough); only db_retention/price_cache excluded; dry-run/apply/diff/systemd-cycle PASS |
+
 ## Portfolio Monthly Report Cadence Migration (Phase 209, 2026-06-07)
 | Document | Purpose |
 |----------|---------|
