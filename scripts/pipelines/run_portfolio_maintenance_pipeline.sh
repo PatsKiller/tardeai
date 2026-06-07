@@ -116,7 +116,13 @@ run_weekly()     {
     "$PROJ/scripts/portfolio_weekly_report.py" "$PROJ/scripts/portfolio_yaml_advisor.py" || return 0
   pm_step "portfolio_weekly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
 }
-run_monthly()    { pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"; }
+run_monthly()    {
+  assert_review_only_chain "portfolio_monthly_report" \
+    "$PROJ/linux_launchers/run_portfolio_monthly.sh" "$PROJ/scripts/portfolio_orchestrator.py" \
+    "$PROJ/scripts/portfolio_ai_analyst.py" "$PROJ/scripts/portfolio_monthly_report.py" \
+    "$PROJ/scripts/portfolio_yaml_advisor.py" || return 0
+  pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"
+}
 run_lookthrough(){ pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"; }
 
 case "$CADENCE" in
