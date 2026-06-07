@@ -52,3 +52,7 @@ data class (§4). External advice is **advisory input to the operator only** —
 ## 8. References
 PHASE210D (lane design), PHASE210G (triggers), HERMES_CLAUDE_EXTERNAL_LANE_20260607 (Claude lane),
 endpoint `/api/v2/hermes/external-research` (audit view), table `hermes_external_research`.
+
+---
+## Update (2026-06-07): ChatGPT = openai-codex OAuth (free), NOT OpenAI API
+ChatGPT lane wired to the FREE ChatGPT-subscription OAuth (provider openai-codex) via Hermes CLI one-shot — the metered OpenAI API route was removed. auth_pending until `hermes login --provider openai-codex`. Grok via xAI API (free xai-oauth proxy available). See HERMES_EXTERNAL_LANES_STATUS_20260607.md.

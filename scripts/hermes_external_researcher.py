@@ -17,7 +17,18 @@ from datetime import date
 
 ROOT = Path(__file__).resolve().parent.parent
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-# Default model: cost-aware strong model; operator may override with --model (e.g. claude-opus-4-8).
+# Per-lane config. key_env read at call-time only (never stored/logged). Cost-aware default models;
+# operator may override with --model.
+HERMES_CLI = str(Path.home() / ".local" / "bin" / "hermes")
+LANE_CFG = {
+    # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
+    # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
+    "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
+    "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": None,
+                "auth_hint": "hermes login --provider openai-codex   (operator OAuth — free under your ChatGPT subscription)"},
+    "grok":    {"kind": "openai", "url": "https://api.x.ai/v1/chat/completions", "key_env": "XAI_API_KEY", "default_model": "grok-3-mini",
+                "free_alt": "hermes login --provider xai-oauth && hermes proxy start --provider xai  (free OAuth proxy alternative)"},
+}
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 # ---- redaction ----
@@ -84,34 +95,81 @@ Return ONLY valid JSON:
   "operator_action":"what the human operator should consider"}}"""
 
 
-def call_claude(model, prompt, max_tokens=1500):
-    key = os.environ.get("ANTHROPIC_API_KEY")
+def _get_key(env_name):
+    key = os.environ.get(env_name)
     if not key:
-        # try .env without storing/printing it
         for ln in (ROOT / ".env").read_text().splitlines():
-            if ln.startswith("ANTHROPIC_API_KEY="):
+            if ln.startswith(env_name + "="):
                 key = ln.split("=", 1)[1].strip()
     if not key:
-        raise RuntimeError("no ANTHROPIC_API_KEY in environment — operator must set it; key is never stored by this tool")
+        raise RuntimeError(f"no {env_name} in environment — operator must set it; key is never stored by this tool")
+    return key
+
+
+def _codex_authed():
+    """True if the openai-codex OAuth login is present (free ChatGPT-subscription route)."""
+    import subprocess
+    try:
+        out = subprocess.run([HERMES_CLI, "auth", "list"], capture_output=True, text=True, timeout=15).stdout
+        if "openai-codex" in out.lower() or "codex" in out.lower():
+            return True
+    except Exception:
+        pass
+    # auth.json may hold codex creds
+    aj = Path.home() / ".hermes" / "auth.json"
+    try:
+        return "codex" in aj.read_text().lower() if aj.exists() else False
+    except Exception:
+        return False
+
+
+def call_codex_cli(model, prompt):
+    """ChatGPT via the FREE openai-codex OAuth (Hermes one-shot). No OpenAI API key, no metered billing."""
+    import subprocess
+    if not _codex_authed():
+        raise RuntimeError("AUTH_PENDING: openai-codex not logged in. Operator must run: "
+                           "hermes login --provider openai-codex (free under ChatGPT subscription).")
+    cmd = [HERMES_CLI, "-z", prompt, "--provider", "openai-codex"]
+    if model:
+        cmd += ["-m", model]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                       env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"})
+    return (r.stdout or "").strip() or (r.stderr or "").strip()
+
+
+def call_external(lane, model, prompt, max_tokens=1500):
+    cfg = LANE_CFG[lane]
+    if cfg["kind"] == "codex_cli":
+        return call_codex_cli(model, prompt)
+    key = _get_key(cfg["key_env"])
+    if cfg["kind"] == "anthropic":
+        body = json.dumps({"model": model, "max_tokens": max_tokens,
+                           "messages": [{"role": "user", "content": prompt}]}).encode()
+        req = urllib.request.Request(cfg["url"], data=body, headers={
+            "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+        resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+        return "".join(p.get("text", "") for p in resp.get("content", []) if p.get("type") == "text")
+    # openai-compatible (chatgpt + grok)
     body = json.dumps({"model": model, "max_tokens": max_tokens,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
-    req = urllib.request.Request(ANTHROPIC_URL, data=body, headers={
-        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    req = urllib.request.Request(cfg["url"], data=body, headers={
+        "Authorization": f"Bearer {key}", "content-type": "application/json"})
     resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
-    parts = resp.get("content", [])
-    return "".join(p.get("text", "") for p in parts if p.get("type") == "text")
+    return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="claude", choices=["claude"])  # other lanes designed, not yet wired
+    ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok"])
     ap.add_argument("--question", required=True)
     ap.add_argument("--symbol", default=None)
     ap.add_argument("--priority", default="P1")
     ap.add_argument("--trigger", default="manual")
-    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--model", default=None, help="override; defaults to the lane's cost-aware model")
     ap.add_argument("--apply", action="store_true", help="actually call the external model (default dry-run)")
     args = ap.parse_args()
+    if not args.model:
+        args.model = LANE_CFG[args.lane]["default_model"]
 
     question = redact(args.question)
     ctx = safe_context(args.symbol)
@@ -131,7 +189,7 @@ def main():
             k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
     status, parsed, raw = "sent", {}, ""
     try:
-        raw = call_claude(args.model, prompt)
+        raw = call_external(args.lane, args.model, prompt)
         parsed = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]) if "{" in raw else {}
     except urllib.error.HTTPError as he:
         detail = ""
@@ -141,7 +199,9 @@ def main():
             detail = str(he)
         status = "error"; parsed = {"recommendation": f"[ERROR HTTP {he.code}] {detail}"[:300], "error": detail[:300]}
     except Exception as e:
-        status = "error"; parsed = {"recommendation": f"[ERROR] {str(e)[:200]}", "error": str(e)[:200]}
+        msg = str(e)[:240]
+        status = "auth_pending" if "AUTH_PENDING" in msg else "error"
+        parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
     c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                          user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
     cur.execute("""INSERT INTO hermes_external_research

@@ -15490,7 +15490,7 @@ def _hermes_external_research(query=None):
                         status, left(recommendation,240) recommendation, confidence, usefulness_score
                         FROM hermes_external_research ORDER BY id DESC LIMIT 50""") or []
     return {"generated_note": "read-only external research lane outputs (Phase 210D, redacted)",
-            "lanes_wired": ["claude"], "lanes_designed": ["chatgpt", "grok", "consensus"],
+            "lanes_wired": ["claude", "chatgpt (openai-codex OAuth)", "grok"], "lanes_designed": ["consensus"],
             "count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
             "note": "Advisory-only. Inputs are redacted before send. API key read from env at call-time, never stored."}
 

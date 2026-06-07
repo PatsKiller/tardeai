@@ -34,3 +34,7 @@ operator/Hermes disagreement. Compares the 3 external views into one escalation 
 ---
 ## Claude lane WIRED (2026-06-07)
 `scripts/hermes_external_researcher.py --lane claude` built+verified (redaction proven, request reaches Anthropic). Blocked only by Anthropic credit balance (operator billing). Manual/escalation; not auto-scheduled. See HERMES_CLAUDE_EXTERNAL_LANE_20260607.md.
+
+---
+## ChatGPT + Grok lanes wired (2026-06-07)
+chatgpt = openai-codex OAuth (free; auth_pending), grok = xAI API (working). Same redaction/dry-run/advisory pattern. See HERMES_EXTERNAL_LANES_STATUS_20260607.md.
