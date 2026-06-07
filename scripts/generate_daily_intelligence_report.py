@@ -101,6 +101,20 @@ def generate_report() -> dict:
     """)
     dq_count = cur.fetchone()["cnt"]
 
+    # Hermes research feed (daily-report wiring gate 2026-06-07): surface what the Hermes research fleet
+    # produced + notable findings so the operator sees Hermes intelligence in the daily digest.
+    hermes_feed = {"research_24h": 0, "top_findings": []}
+    try:
+        cur.execute("SELECT count(*) cnt FROM hermes_research_intelligence WHERE created_at > NOW() - INTERVAL '24 hours'")
+        hermes_feed["research_24h"] = cur.fetchone()["cnt"]
+        cur.execute("""SELECT topic, left(summary,140) summary FROM hermes_research_intelligence
+                       WHERE summary IS NOT NULL AND (topic ILIKE '%%weak%%' OR topic ILIKE '%%challenge%%'
+                             OR research_type='deep_research_local')
+                       ORDER BY created_at DESC LIMIT 5""")
+        hermes_feed["top_findings"] = [{"topic": (r["topic"] or "")[:60], "summary": r["summary"]} for r in cur.fetchall()]
+    except Exception:
+        pass
+
     conn.close()
 
     report = {
@@ -126,6 +140,7 @@ def generate_report() -> dict:
         "stale_symbols": [r["symbol"] for r in stale],
         "unresolved_conflicts": len(conflicts),
         "data_quality_issues_7d": dq_count,
+        "hermes_research": hermes_feed,
     }
 
     # Count alert types
@@ -163,6 +178,12 @@ def format_telegram(report: dict) -> str:
         f"  Stale analyses: {report['stale_analyses']}",
         f"  Unresolved conflicts: {report['unresolved_conflicts']}",
     ]
+
+    hr = report.get("hermes_research", {})
+    if hr:
+        lines.append(f"\n*Hermes research (24h)*: {hr.get('research_24h', 0)} findings")
+        for f in (hr.get("top_findings") or [])[:3]:
+            lines.append(f"  • {f['topic']}: {f['summary']}")
 
     return "\n".join(lines)
 
