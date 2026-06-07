@@ -76,3 +76,9 @@ dev profile: code_execution, terminal, computer_use disabled before Codex login 
 ---
 ## Two Hermes layers clarified (2026-06-06)
 /v3/hermes = **Hermes Research Agent Graph** (Trade AI research-workflow layer, systemd timers + project scripts). System → Hermes = **Global Hermes Profile** management. Separate subsystems; both kept. SearXNG health confirmed UP (infra _ping hardened 3s->6s). See HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md.
+
+## Research-graph kill-switch repoint (2026-06-06)
+The `/v3/hermes` Research Agent Graph kill-switch banner now reads the canonical live path
+**`data/runtime/HERMES_DISABLED`** (was the retired `hermes_sidecar/.hermes/DISABLED`). `_hermes_health`
+(`/api/v2/hermes/health`) reads that path and returns `kill_switch_active` + `kill_switch_path`. Banner
+wording corrected: `touch` = HALT, `rm` = resume. See `HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md`.

@@ -97,7 +97,7 @@ def main():
     checks["hermes_embeddings"] = {"count": emb, "ok": isinstance(emb, int)}
 
     # 9. Kill switch
-    kill_path = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+    kill_path = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
     checks["kill_switch"] = {"active": kill_path.exists(), "ok": True}
 
     # 10. Safe view availability

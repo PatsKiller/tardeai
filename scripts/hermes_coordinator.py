@@ -3,7 +3,7 @@
 
 OPERATOR DIRECTIVE 2026-06-02 (Option B): runs all agents LIVE (--apply), including
 auto-promote and RAG embedding. Kill switch left un-tripped (off) but STILL CHECKED
-each run, so `touch hermes_sidecar/.hermes/DISABLED` halts everything next tick.
+each run, so `touch data/runtime/HERMES_DISABLED` halts everything next tick.
 
 WALL NOTE: this opens the challenger wall by operator directive — promoted research +
 embeddings flow into the core intelligence/RAG the trading agents read. Every promote
@@ -32,8 +32,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [hermes-coordinator]
 log = logging.getLogger("hermes_coordinator")
 
 PY = str(ROOT / ".venv" / "bin" / "python")
-KILL_FILES = [ROOT / "hermes_sidecar" / ".hermes" / "DISABLED",
-              ROOT / "hermes_sidecar" / ".hermes" / "COORDINATOR_DISABLED"]
+KILL_FILES = [ROOT / "data" / "runtime" / "HERMES_DISABLED",
+              ROOT / "data" / "runtime" / "COORDINATOR_DISABLED"]
 DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
           dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
           password=os.getenv("DB_PASSWORD", ""))

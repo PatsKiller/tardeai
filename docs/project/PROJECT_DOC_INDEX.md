@@ -1,4 +1,5 @@
 ## Hermes Global Install Migration (2026-06-06)
+| `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |
 | `docs/hermes/HERMES_DEV_CODEX_SETUP_20260606.md` | dev profile Codex readiness: verified openai-codex OAuth device-code route (operator-run); SOUL hardened; tradeai unchanged |
 | `docs/hermes/HERMES_COMMAND_CENTER_PANEL_20260606.md` | Command Center System→Hermes panel: profile status, SOUL editor, terminal commands, Codex-dev readiness (read-only/guarded) |

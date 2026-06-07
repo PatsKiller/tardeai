@@ -25,7 +25,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
-KILL = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+KILL = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [hermes-yt] %(message)s")
 log = logging.getLogger()

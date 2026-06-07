@@ -7,7 +7,7 @@ import os, sys, json, urllib.request
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FEEDS = ROOT / "config" / "hermes_rss_feeds.txt"
-KILL = ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 
 def main():
     apply = "--apply" in sys.argv

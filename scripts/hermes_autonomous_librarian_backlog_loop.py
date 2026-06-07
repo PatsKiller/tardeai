@@ -9,7 +9,7 @@ Default: dry-run (file output only). --apply writes to hermes_research_intellige
 Safety:
     - Max 5 rows/day
     - Max runtime 600s
-    - Kill switch: hermes_sidecar/.hermes/DISABLED or LIBRARIAN_DISABLED
+    - Kill switch: data/runtime/HERMES_DISABLED or data/runtime/LIBRARIAN_DISABLED
     - No broker/proposal/trade/journal/holdings
     - No embeddings, no promotions
 """
@@ -31,8 +31,8 @@ def get_db():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
 
 def check_kill_switch():
-    for f in ["DISABLED", "LIBRARIAN_DISABLED"]:
-        if (PR / "hermes_sidecar" / ".hermes" / f).exists():
+    for f in ["HERMES_DISABLED", "LIBRARIAN_DISABLED"]:
+        if (PR / "data" / "runtime" / f).exists():
             return True
     return False
 
