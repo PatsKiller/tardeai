@@ -7,9 +7,9 @@ Endpoint: `GET /api/v2/hermes/llm-auth-status`. UI: System → Hermes → "LLM A
 ## Current status (2026-06-07)
 | Lane | Type | Status | Login (operator, in terminal) |
 |------|------|--------|-------------------------------|
-| ChatGPT (Codex) | OAuth — free (ChatGPT subscription) | **auth pending** | `hermes login --provider openai-codex` |
-| Grok (xAI) | OAuth proxy — free | **auth pending** | `hermes login --provider xai-oauth` ; `hermes proxy start --provider xai` |
-| Nous Portal | OAuth | **auth pending** | `hermes login --provider nous` |
+| ChatGPT (Codex) | OAuth — free (ChatGPT subscription) | **auth pending** | `hermes auth add openai-codex --type oauth` |
+| Grok (xAI) | OAuth proxy — free | **auth pending** | `hermes auth add xai-oauth --type oauth` ; `hermes proxy start --provider xai` |
+| Nous Portal | OAuth | **auth pending** | `hermes auth add nous --type oauth` |
 | Claude (Anthropic) | API key (+credits) | key present; **credits needed** | set ANTHROPIC_API_KEY + add credits |
 | Local (Ollama) | local — always free | **✓ ready** | (none) |
 
@@ -19,3 +19,13 @@ LLM. Run the login commands above (Google SSO in browser) to activate the free e
 ## Safety
 The app never sees/stores credentials. `hermes login` runs device-code/browser OAuth under the operator's
 session; tokens live in the Hermes auth store, not in this app or its DB. No auto-login.
+
+---
+## Correction (2026-06-07): `hermes login` removed in v0.16.0
+The `hermes login` subcommand was removed. Current OAuth login command:
+`hermes auth add <provider> --type oauth` (add `--manual-paste` on a headless/remote box — it prints an auth
+URL; you authenticate in your browser via Google SSO, then paste the redirected callback URL back).
+Examples: `hermes auth add openai-codex --type oauth --manual-paste` ·
+`hermes auth add xai-oauth --type oauth --manual-paste` then `hermes proxy start --provider xai`.
+This is interactive (paste-back) — run it in YOUR terminal; it cannot be brokered headlessly. Alternatively
+`hermes model` (interactive picker) or `hermes setup model`.

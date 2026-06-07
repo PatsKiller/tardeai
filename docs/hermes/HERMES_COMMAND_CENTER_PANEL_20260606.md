@@ -67,7 +67,7 @@ was subsequently pinned the same way (`~/.hermes/config.yaml`), so **all three**
 
 ---
 ## dev Codex route (2026-06-06)
-codex-dev-status now surfaces the verified route: provider openai-codex via OAuth device-code (`hermes login --provider openai-codex`). Auth is operator-interactive; dev SOUL hardened; dev tools left enabled per operator. See HERMES_DEV_CODEX_SETUP_20260606.md.
+codex-dev-status now surfaces the verified route: provider openai-codex via OAuth device-code (`hermes auth add openai-codex --type oauth`). Auth is operator-interactive; dev SOUL hardened; dev tools left enabled per operator. See HERMES_DEV_CODEX_SETUP_20260606.md.
 
 ---
 ## dev high-risk tools disabled (2026-06-06)
