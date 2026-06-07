@@ -1,4 +1,6 @@
 ## Hermes Global Install Migration (2026-06-06)
+| `docs/hermes/HERMES_GLOBAL_PROFILE_MIGRATION_V1_8_CLOSEOUT_20260606.md` | Final v1.8 closeout: global Hermes canonical, sidecar retired/dormant, Reference Architecture updated, safety state verified |
+
 | `docs/project/Trade_AI_v12_Reference_Architecture.docx` | Canonical architecture; includes **Hermes Global Profile Architecture Update — 2026-06-06** + Migration Completion Addendum |
 
 | Document | Purpose |
