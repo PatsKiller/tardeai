@@ -39,3 +39,13 @@ no broker/trading/proposal/protection changes; no live trading; backups before e
   `~/.hermes/profiles/<profile>/identity_meta.json` (our metadata, separate from Hermes config). Defaults
   fall back to built-in labels when no override exists.
 - model/provider still write to `config.yaml` (backup-first); SOUL unchanged.
+
+---
+## Codex + free-LLM model menus selectable (2026-06-07)
+The identity editor's Provider + Model dropdowns now expose the free OAuth lanes for dev/serverops:
+- Providers: custom (local Ollama), **openai-codex** (free ChatGPT subscription), **xai-oauth** (free Grok), **nous**.
+- Model menu follows the selected provider: custom→live `ollama list`; openai-codex→gpt-5-codex/gpt-5/gpt-5-mini/o4-mini;
+  xai-oauth→grok-4/grok-3/grok-3-mini; nous→Hermes-4-405B/70B/DeepHermes-3.
+- **tradeai/tradeai12b/default remain custom-only** (cloud providers + gemma3:12b/qwen3:14b guard-blocked).
+- Exact cloud model IDs resolve via `hermes model` after the operator completes the OAuth login.
+Backend: `model_options` map + `available_providers` per profile in GET /api/v2/hermes/identity.

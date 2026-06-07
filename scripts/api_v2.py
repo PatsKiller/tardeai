@@ -15331,6 +15331,15 @@ def _hermes_available_models():
     return models
 
 
+# Curated model menus per provider (free/OAuth lanes). Exact cloud IDs resolve via `hermes model` after
+# login; these are selectable defaults. custom (local Ollama) is populated live from `ollama list`.
+HERMES_PROVIDER_MODELS = {
+    "openai-codex": ["gpt-5-codex", "gpt-5", "gpt-5-mini", "o4-mini"],   # FREE ChatGPT-subscription OAuth
+    "xai-oauth": ["grok-4", "grok-3", "grok-3-mini"],                    # FREE xAI OAuth proxy
+    "nous": ["Hermes-4-405B", "Hermes-4-70B", "DeepHermes-3-Mistral-24B"],  # Nous Portal OAuth
+}
+
+
 def _hermes_identity_detail(query=None):
     """GET /api/v2/hermes/identity?profile=NAME — editable identity (model/provider/label/purpose/desc) +
     available models/providers + read-only context. Use ?profile=__all__ for the full identity list."""
@@ -15360,9 +15369,14 @@ def _hermes_identity_detail(query=None):
                 "local_only": local,
                 "available_models": avail_models,
                 "available_providers": (["custom"] if local else HERMES_PROVIDERS),
+                # provider -> selectable models (custom=live ollama; cloud/OAuth=curated free-lane menus).
+                # local-only profiles only get custom (cloud is guard-blocked there).
+                "model_options": ({"custom": avail_models} if local else
+                                  {"custom": avail_models, **HERMES_PROVIDER_MODELS}),
                 "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
                                 "gemma3:12b (unconstrained), and qwen3:14b are blocked." if local
-                                else "dev/serverops may use other providers (operator-driven).")}
+                                else "dev/serverops may use free OAuth lanes: openai-codex (ChatGPT), "
+                                     "xai-oauth (Grok), nous. Complete the OAuth login before use.")}
 
     if profile == "__all__":
         return {"ok": True, "identities": [one(n) for n in HERMES_PROFILES]}
