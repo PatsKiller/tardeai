@@ -384,6 +384,8 @@ def run(args, run_id):
     written = 0
     if args.apply:
         conn = db(); wc = conn.cursor()
+        # idempotent per run_id: a re-run with the same run_id replaces its rows (no duplicate snapshots)
+        wc.execute("DELETE FROM profit_protection_rule_backtests WHERE run_id=%s", (run_id,))
         cols = ["run_id", "rule_name", "strategy_family", "source_system", "sample_size",
                 "baseline_money_left", "simulated_money_left", "avoided_giveback",
                 "premature_exit_cost", "net_improvement", "win_rate_delta", "profit_factor_delta",
