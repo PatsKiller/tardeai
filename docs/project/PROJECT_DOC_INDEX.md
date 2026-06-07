@@ -1,3 +1,8 @@
+## Hermes Legacy/Retired Agent Visibility (Phase 206, 2026-06-07)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE206_HERMES_LEGACY_AGENT_VISIBILITY_CLOSEOUT.md` | read-only "Legacy / Retired Agents" audit section in v3 System→Hermes: inventory script (24 items, redacted, no exec) + GET /api/v2/hermes/legacy-agents + HermesPanel card; gateway stays disabled, no wrapper exec, retired dirs unchanged; 206A–H evidence + mapping plan |
+
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |
