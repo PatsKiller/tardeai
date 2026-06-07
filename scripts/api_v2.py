@@ -15191,6 +15191,41 @@ def _hermes_validate_soul(profile, text):
     return errs
 
 
+def _hermes_legacy_agents(query=None):
+    """GET /api/v2/hermes/legacy-agents — READ-ONLY inventory of retired/legacy Hermes agents and
+    artifacts (for the Command Center audit view). No enable/run/edit actions; secrets redacted;
+    runtime-state contents not exposed; the retired gateway stays disabled. Backed by
+    scripts/hermes_legacy_agent_inventory.py (retired dirs are immutable, so the cached JSON is used;
+    regenerated only if absent)."""
+    inv_path = PROJECT_ROOT / "data" / "hermes" / "legacy_agent_inventory_latest.json"
+    report = None
+    try:
+        if not inv_path.exists():
+            import hermes_legacy_agent_inventory as _inv
+            report = _inv.main()
+        else:
+            report = json.loads(inv_path.read_text())
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "items": [], "counts": {}, "read_only": True}
+    gw_active = _hermes_svc("is-active")
+    gw_enabled = _hermes_svc("is-enabled")
+    return {
+        "ok": True,
+        "read_only": True,
+        "scanned_at": report.get("scanned_at"),
+        "retired_dirs": report.get("retired_dirs", []),
+        "counts": report.get("counts", {}),
+        "total": report.get("total", 0),
+        "items": [{k: _json_clean(v) for k, v in it.items()} for it in report.get("items", [])],
+        "gateway_service_active": gw_active,
+        "gateway_service_enabled": gw_enabled,
+        "actions_available": [],  # no enable/run/edit for retired items — audit only
+        "warning": report.get("warning") or
+                   "Retired sidecar artifacts are shown for audit only. Do not enable the retired "
+                   "gateway or execute retired wrappers.",
+    }
+
+
 def _hermes_codex_dev_status(query=None):
     """GET /api/v2/hermes/codex-dev-status — read-only readiness of the dev/Codex profile.
     Verified route (from `hermes login --help`): provider `openai-codex` via OAuth device-code."""
@@ -15429,6 +15464,7 @@ ROUTES = {
     "/api/v2/system/access-links": lambda: _system_access_links(),
     "/api/v2/system/applications": lambda: _system_applications(),
     "/api/v2/hermes/profiles-status": _hermes_profiles_status,
+    "/api/v2/hermes/legacy-agents": _hermes_legacy_agents,
     "/api/v2/hermes/soul": _hermes_soul_read,
     "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
