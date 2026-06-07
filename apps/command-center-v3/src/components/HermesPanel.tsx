@@ -74,6 +74,7 @@ export default function HermesPanel() {
   const { data: st } = useApi<any>('/api/v2/hermes/profiles-status', 60_000)
   const { data: tc } = useApi<any>('/api/v2/hermes/terminal-commands', 300_000)
   const { data: codex } = useApi<any>('/api/v2/hermes/codex-dev-status', 120_000)
+  const { data: legacy } = useApi<any>('/api/v2/hermes/legacy-agents', 300_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
 
   const card: React.CSSProperties = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }
@@ -123,6 +124,51 @@ export default function HermesPanel() {
           </tbody>
         </table>
         {st?.tools_note && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>ℹ {st.tools_note}</div>}
+      </div>
+
+      {/* Legacy / Retired Agents — read-only audit (Phase 206) */}
+      <div style={{ ...card, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.05)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Legacy / Retired Agents — Read Only</div>
+          <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+            {(legacy?.total ?? 0)} items · gateway {legacy?.gateway_service_active}/{legacy?.gateway_service_enabled} · scanned {legacy?.scanned_at ? new Date(legacy.scanned_at).toLocaleString() : '—'}
+          </span>
+        </div>
+        <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 8, fontWeight: 600 }}>
+          ⚠ Retired sidecar artifacts are shown for audit only. Do not enable the retired gateway or execute retired wrappers.
+        </div>
+        {!legacy ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>Loading legacy inventory…</div> :
+         (legacy.items || []).filter((i: any) => i.status !== 'ACTIVE_PROFILE').length === 0 ?
+         <div style={{ fontSize: 11, color: 'var(--text3)' }}>No retired agent artifacts found.</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+              {['Name', 'Source', 'Classification', 'Model', 'Tools', 'Purpose / Safety', 'Modified', 'Recommendation'].map(h =>
+                <th key={h} style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {(legacy.items || []).filter((i: any) => i.status !== 'ACTIVE_PROFILE').map((i: any, idx: number) => {
+                const danger = i.status === 'RETIRED_WRAPPER' || i.status === 'UNSAFE_RUNTIME_ARTIFACT'
+                const tools = i.tools && (i.tools.toolsets || i.tools.disabled_toolsets)
+                  ? `ts:${JSON.stringify(i.tools.toolsets ?? [])}` : '—'
+                return (
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)', opacity: 0.92 }}>
+                    <td style={{ padding: '5px 6px', fontFamily: 'monospace' }}>{i.name}</td>
+                    <td style={{ padding: '5px 6px', color: 'var(--text3)', fontSize: 9 }}>{i.source_dir}</td>
+                    <td style={{ padding: '5px 6px', color: danger ? '#ef4444' : '#f59e0b', fontWeight: 600 }}>{i.status}</td>
+                    <td style={{ padding: '5px 6px' }}>{i.model ? <code>{i.model}</code> : '—'}</td>
+                    <td style={{ padding: '5px 6px', color: 'var(--text3)' }}>{tools}</td>
+                    <td style={{ padding: '5px 6px', color: 'var(--text3)' }}>{i.purpose || i.safety_note}</td>
+                    <td style={{ padding: '5px 6px', color: 'var(--text3)', fontSize: 9 }}>{i.last_modified ? new Date(i.last_modified).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '5px 6px', color: danger ? '#ef4444' : 'var(--text2)' }}>{i.migration_recommendation}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
+          Source: /api/v2/hermes/legacy-agents · read-only · no enable/run/edit · secrets redacted · runtime-state contents not exposed.
+        </div>
       </div>
 
       {/* Terminal commands */}
