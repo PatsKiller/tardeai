@@ -19,8 +19,7 @@ OpenAI API key, no per-call billing. It is `auth_pending` until the operator com
 
 ## Grok — repointed to the FREE xAI OAuth proxy (2026-06-07)
 Grok now routes through the local xai-oauth proxy (`hermes proxy start --provider xai`, 127.0.0.1:8645) — the
-metered xAI API key route was removed. auth_pending until the operator runs `hermes login --provider
-xai-oauth` and starts the proxy. Override the proxy URL with HERMES_XAI_PROXY_URL if needed.
+metered xAI API key route was removed. auth_pending until the operator runs `hermes auth add xai-oauth --type oauth` and starts the proxy. Override the proxy URL with HERMES_XAI_PROXY_URL if needed.
 
 ## Safety (all lanes)
 Redaction verified (amounts/account#/keys stripped); API keys/OAuth read at call-time only, never stored/
