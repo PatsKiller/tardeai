@@ -11595,11 +11595,16 @@ def _portfolio_cadence_status():
                                 "legacy_timer": _timer("portfolio-daily.timer"),
                                 "legacy_retired": True, "retired_legacy_count": 1,
                                 "active_legacy_count": 0},
-                "weekly":      {"status": "not_migrated", "summary": _summary("weekly")},
+                "weekly":      {"status": "migrated", "summary": _summary("weekly"),
+                                "timer": _timer("tradeai-portfolio-weekly-cadence.timer"),
+                                "advisory_draft_review_only": True,
+                                "legacy_timer": _timer("portfolio-weekly.timer"),
+                                "legacy_retired": True, "retired_legacy_count": 1,
+                                "active_legacy_count": 0},
                 "monthly":     {"status": "not_migrated", "summary": _summary("monthly")},
                 "lookthrough": {"status": "not_migrated", "summary": _summary("lookthrough")},
             },
-            "not_migrated": ["weekly", "monthly", "lookthrough", "db_retention", "price_cache"],
+            "not_migrated": ["monthly", "lookthrough", "db_retention", "price_cache"],
             "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited",
                        "destructive_excluded": ["db_retention", "price_cache"],
                        "safety_net_watchdog": "untouched"}}
@@ -15122,6 +15127,14 @@ def _hermes_soul_path(profile):
     return _hermes_profile_dir(profile) / "SOUL.md"
 
 
+def _hermes_soul_hash(profile):
+    p = _hermes_soul_path(profile)
+    if not p.exists():
+        return None
+    import hashlib as _hl
+    return _hl.sha256(p.read_text(errors="ignore").encode()).hexdigest()[:16]
+
+
 def _hermes_profile_model(profile):
     cfg = _hermes_profile_dir(profile) / "config.yaml"
     try:
@@ -15194,6 +15207,8 @@ def _hermes_profiles_status(query=None):
                        "experimental" if name == "tradeai12b" else "unconfigured") if configured else "unconfigured",
             "soul_exists": _hermes_soul_path(name).exists(),
             "soul_bytes": (_hermes_soul_path(name).stat().st_size if _hermes_soul_path(name).exists() else 0),
+            "soul_hash": _hermes_soul_hash(name),
+            "soul_mtime": (int(_hermes_soul_path(name).stat().st_mtime) if _hermes_soul_path(name).exists() else None),
         })
     return {
         "version": ver, "cli_path": "~/.local/bin/hermes", "venv_path": "~/.local/share/hermes-agent-venv",
