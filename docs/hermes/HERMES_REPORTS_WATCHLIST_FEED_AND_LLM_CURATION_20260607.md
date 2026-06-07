@@ -66,7 +66,7 @@ implement per-workflow on approval.
    challenges, lessons). Advisory-only; additive; fails open.
 
 ### Next (operator-gated)
-- [DONE 2026-06-07] `generate_daily_intelligence_report.py` now surfaces a Hermes research feed (24h count + top weak-strategy/thesis/deep-research findings) in the report + Telegram output. (Data-report; no LLM, so Hermes findings are surfaced as content.) Next: morning digest LLM prompt via build_context.
+- [DONE 2026-06-07] `generate_daily_intelligence_report.py` now surfaces a Hermes research feed (24h count + top weak-strategy/thesis/deep-research findings) in the report + Telegram output. (Data-report; no LLM, so Hermes findings are surfaced as content.) [morning digest DONE 2026-06-07: _ollama_narrative prepends the cached Hermes self-learning block to all digest narratives.]
 - Migrate ad-hoc report prompts to versioned templates in scripts/prompts/.
 - Add outcome-feedback capture (usefulness/calibration) for report/advisory LLM calls.
 - [DONE 2026-06-07] monthly_advisory routed OFF paid Claude/OpenAI APIs → FREE local gemma3 (27b fiduciary + 12b alternative; dual-perspective preserved) + Hermes self-learning context. Env overrides MONTHLY_ADVISORY_FIDUCIARY_MODEL / _ALT_MODEL. Legacy paid callers retained but unused.

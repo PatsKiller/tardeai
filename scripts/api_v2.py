@@ -15468,6 +15468,40 @@ def _hermes_workflow_matrix(query=None):
     }
 
 
+def _hermes_llm_auth_status(query=None):
+    """GET /api/v2/hermes/llm-auth-status — read-only OAuth/auth status per LLM lane + guided login commands.
+    Credentials are never entered or stored here; OAuth (Google SSO) is completed by the operator in a browser."""
+    auth_out = (_hermes_run([str(HERMES_CLI), "auth", "list"], timeout=10) or "").lower()
+    proxy_out = (_hermes_run([str(HERMES_CLI), "proxy", "status"], timeout=10,
+                             env={"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}) or "").lower()
+    def proxy_authed(name):
+        for ln in proxy_out.splitlines():
+            if name in ln and "logged in" in ln and "not logged in" not in ln:
+                return True
+        return False
+    anth = bool(os.environ.get("ANTHROPIC_API_KEY")) or any(l.startswith("anthropic_api_key=") for l in
+                ((PROJECT_ROOT / ".env").read_text().splitlines() if (PROJECT_ROOT / ".env").exists() else []))
+    lanes = [
+        {"lane": "ChatGPT (Codex)", "provider": "openai-codex", "kind": "OAuth (free, ChatGPT subscription)",
+         "authed": ("openai-codex" in auth_out or "codex" in auth_out),
+         "login_command": "hermes login --provider openai-codex"},
+        {"lane": "Grok (xAI)", "provider": "xai-oauth", "kind": "OAuth proxy (free)",
+         "authed": proxy_authed("xai"),
+         "login_command": "hermes login --provider xai-oauth ; hermes proxy start --provider xai"},
+        {"lane": "Nous Portal", "provider": "nous", "kind": "OAuth",
+         "authed": proxy_authed("nous"), "login_command": "hermes login --provider nous"},
+        {"lane": "Claude (Anthropic)", "provider": "anthropic", "kind": "API key (+credits)",
+         "authed": anth, "login_command": "set ANTHROPIC_API_KEY in env + add Anthropic credits"},
+        {"lane": "Local (Ollama)", "provider": "custom", "kind": "local (always free)",
+         "authed": True, "login_command": "(none — local gemma3 via Ollama)"},
+    ]
+    return {"generated_note": "read-only LLM auth/OAuth status — no credentials entered or stored here",
+            "google_sso_note": "External OAuth logins (ChatGPT/Codex, xAI, Nous) authenticate in your browser; "
+                               "use Google SSO at the provider's prompt. This app never sees or stores your credentials.",
+            "any_external_oauth_active": any(l["authed"] for l in lanes if l["provider"] in ("openai-codex", "xai-oauth", "nous")),
+            "lanes": lanes}
+
+
 def _hermes_self_learning_loops(query=None):
     """GET /api/v2/hermes/self-learning-loops — read-only self-learning loop health (Phase 210B JSON)."""
     import json as _jl
@@ -15747,6 +15781,7 @@ ROUTES = {
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
     "/api/v2/hermes/workflow-matrix": _hermes_workflow_matrix,
     "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
+    "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/external-research": _hermes_external_research,
