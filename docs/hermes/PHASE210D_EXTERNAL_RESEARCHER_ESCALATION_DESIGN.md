@@ -30,3 +30,7 @@ operator/Hermes disagreement. Compares the 3 external views into one escalation 
   rate limits, privacy controls (redact secrets/holdings/.env), storage table (hermes_external_research —
   proposed), v3 visibility (External Escalation Queue), learning feedback (was the external advice useful vs
   outcome → source/lane usefulness score).
+
+---
+## Claude lane WIRED (2026-06-07)
+`scripts/hermes_external_researcher.py --lane claude` built+verified (redaction proven, request reaches Anthropic). Blocked only by Anthropic credit balance (operator billing). Manual/escalation; not auto-scheduled. See HERMES_CLAUDE_EXTERNAL_LANE_20260607.md.

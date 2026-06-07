@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""hermes_external_researcher.py — Hermes External Researcher lanes (Phase 210D/G). Claude lane implemented.
+
+ADVISORY-ONLY. MANUAL / escalation-triggered (NOT auto-scheduled). Sends a REDACTED escalation packet to an
+external cloud model and stores the structured response in hermes_external_research. NEVER touches broker/
+order/stop/proposal/holdings/trading. The API key is read from the environment at call-time only — never
+stored, logged, or returned. DRY-RUN by default (shows exactly what WOULD be sent); --apply to call out.
+
+  python3 scripts/hermes_external_researcher.py --lane claude --question "..." [--symbol AAPL]      # dry-run
+  python3 scripts/hermes_external_researcher.py --lane claude --question "..." --apply               # send
+Redaction (hard): strips $ amounts, account numbers, API keys/tokens, .env content, broker creds, emails,
+long digit runs — and only a whitelisted, high-level context is ever assembled.
+"""
+import os, sys, re, json, argparse, urllib.request
+from pathlib import Path
+from datetime import date
+
+ROOT = Path(__file__).resolve().parent.parent
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+# Default model: cost-aware strong model; operator may override with --model (e.g. claude-opus-4-8).
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
+# ---- redaction ----
+_PATTpairs = [
+    (re.compile(r"\$\s?\d[\d,]*(\.\d+)?"), "$[REDACTED_AMOUNT]"),
+    (re.compile(r"\b\d{6,}\b"), "[REDACTED_NUM]"),                 # account #s / long digit runs
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
+    (re.compile(r"sk-[A-Za-z0-9]{16,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|xoxb-[A-Za-z0-9-]+"), "[REDACTED_KEY]"),
+    (re.compile(r"\b\d{1,3}(,\d{3})+(\.\d+)?\b"), "[REDACTED_NUM]"),
+]
+_FORBIDDEN_SUBSTR = ["api_key", "apikey", "secret", "password", "token", "credential", "ANTHROPIC", "ALPACA",
+                     "DB_PASSWORD", "BEGIN PRIVATE", "-----BEGIN"]
+
+
+def redact(text):
+    if text is None:
+        return None
+    s = str(text)
+    for pat, repl in _PATTpairs:
+        s = pat.sub(repl, s)
+    low = s.lower()
+    for f in _FORBIDDEN_SUBSTR:
+        if f.lower() in low:
+            # drop the whole line containing a forbidden marker
+            s = "\n".join(ln for ln in s.splitlines() if f.lower() not in ln.lower())
+    return s
+
+
+def safe_context(symbol):
+    """Whitelisted, high-level context only — NO dollar amounts, account ids, positions, or secrets.
+    Reads safe summary fields and redacts the result as defense-in-depth."""
+    if not symbol:
+        return {}
+    import psycopg2
+    for ln in (ROOT / ".env").read_text().splitlines():
+        if "=" in ln and not ln.strip().startswith("#"):
+            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+    ctx = {"symbol": symbol}
+    try:
+        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
+                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+        cur.execute("""SELECT strategy_id, status, count(*) FROM trade_instances WHERE symbol=%s
+                       GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5""", (symbol,))
+        ctx["trade_strategy_status_counts"] = [list(map(str, r)) for r in cur.fetchall()]  # counts only, no $
+        cur.execute("""SELECT topic FROM hermes_research_intelligence WHERE symbol=%s
+                       ORDER BY created_at DESC LIMIT 5""", (symbol,))
+        ctx["recent_research_topics"] = [redact(r[0]) for r in cur.fetchall()]
+        c.close()
+    except Exception as e:
+        ctx["context_error"] = str(e)[:80]
+    return ctx
+
+
+PROMPT = """You are an external high-stakes research analyst (Anthropic/Claude lane) advising a PAPER-trading
+research system. This is ADVISORY ONLY — you do not execute or recommend executing any live trade. You are
+given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a careful external challenge.
+
+Question: {question}
+Redacted context (JSON): {context}
+
+Return ONLY valid JSON:
+{{"recommendation":"...", "evidence":["..."], "dissent":"the strongest counter-view",
+  "confidence":0.0-1.0, "risk_flags":["..."], "learning_candidate":"what the system should learn",
+  "operator_action":"what the human operator should consider"}}"""
+
+
+def call_claude(model, prompt, max_tokens=1500):
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        # try .env without storing/printing it
+        for ln in (ROOT / ".env").read_text().splitlines():
+            if ln.startswith("ANTHROPIC_API_KEY="):
+                key = ln.split("=", 1)[1].strip()
+    if not key:
+        raise RuntimeError("no ANTHROPIC_API_KEY in environment — operator must set it; key is never stored by this tool")
+    body = json.dumps({"model": model, "max_tokens": max_tokens,
+                       "messages": [{"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request(ANTHROPIC_URL, data=body, headers={
+        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    parts = resp.get("content", [])
+    return "".join(p.get("text", "") for p in parts if p.get("type") == "text")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lane", default="claude", choices=["claude"])  # other lanes designed, not yet wired
+    ap.add_argument("--question", required=True)
+    ap.add_argument("--symbol", default=None)
+    ap.add_argument("--priority", default="P1")
+    ap.add_argument("--trigger", default="manual")
+    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--apply", action="store_true", help="actually call the external model (default dry-run)")
+    args = ap.parse_args()
+
+    question = redact(args.question)
+    ctx = safe_context(args.symbol)
+    ctx = json.loads(redact(json.dumps(ctx)))  # defense-in-depth redaction pass over whole context
+    prompt = PROMPT.format(question=question, context=json.dumps(ctx))
+
+    print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
+    print("REDACTED packet that WOULD be sent:")
+    print(json.dumps({"question": question, "context": ctx}, indent=2)[:1200])
+    if not args.apply:
+        print("\n(dry-run — nothing sent. Re-run with --apply to call the external model.)")
+        return
+
+    import psycopg2
+    for ln in (ROOT / ".env").read_text().splitlines():
+        if "=" in ln and not ln.strip().startswith("#"):
+            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+    status, parsed, raw = "sent", {}, ""
+    try:
+        raw = call_claude(args.model, prompt)
+        parsed = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]) if "{" in raw else {}
+    except urllib.error.HTTPError as he:
+        detail = ""
+        try:
+            detail = json.loads(he.read()).get("error", {}).get("message", "")
+        except Exception:
+            detail = str(he)
+        status = "error"; parsed = {"recommendation": f"[ERROR HTTP {he.code}] {detail}"[:300], "error": detail[:300]}
+    except Exception as e:
+        status = "error"; parsed = {"recommendation": f"[ERROR] {str(e)[:200]}", "error": str(e)[:200]}
+    c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
+                         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+    cur.execute("""INSERT INTO hermes_external_research
+        (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
+         recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
+         parsed.get("recommendation"), json.dumps(parsed.get("evidence")), parsed.get("dissent"),
+         parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
+         parsed.get("operator_action")))
+    rid = cur.fetchone()[0]; c.commit(); c.close()
+    print(f"\nstored hermes_external_research id={rid} status={status}")
+    if status == "sent":
+        print("recommendation:", (parsed.get("recommendation") or "")[:200])
+
+
+if __name__ == "__main__":
+    main()
