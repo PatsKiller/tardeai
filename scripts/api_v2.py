@@ -13204,7 +13204,9 @@ def _hermes_infra():
             return False
 
     services = []
-    sx_up = _ping(os.environ.get("SEARXNG_URL", "http://127.0.0.1:18888/").split("/search")[0] or "http://127.0.0.1:18888/")
+    # HTTP health is the source of truth (proves reachability). Slightly longer timeout to avoid false
+    # DOWN under transient load; any 200-499 response from SearXNG counts as up.
+    sx_up = _ping(os.environ.get("SEARXNG_URL", "http://127.0.0.1:18888/").split("/search")[0] or "http://127.0.0.1:18888/", timeout=6)
     sourced = _db_query("SELECT COUNT(*) c FROM hermes_research_intelligence WHERE source_urls_json IS NOT NULL AND source_urls_json::text NOT IN ('null','[]','{}')", fetch="one") or {}
     services.append({"name": "SearXNG", "kind": "docker", "status": "up" if sx_up else "down", "detail": "127.0.0.1:18888 (searxng/searxng)", "sourced_rows": _json_clean(sourced.get("c", 0))})
     # Ollama + loaded models
