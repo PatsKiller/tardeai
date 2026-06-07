@@ -163,6 +163,8 @@ def run(apply, json_path, md_path, run_id, min_sample, operator_override=False):
     written = 0
     if apply:
         conn = db(); wc = conn.cursor()
+        # idempotent per run_id: a re-run with the same run_id replaces its rows
+        wc.execute("DELETE FROM profit_protection_shadow_recommendations WHERE run_id=%s", (run_id,))
         cols = ["run_id", "strategy_family", "current_thresholds", "proposed_thresholds",
                 "evidence_sample_size", "expected_giveback_reduction", "expected_premature_exit_cost",
                 "confidence", "graft_verdict", "notes"]
