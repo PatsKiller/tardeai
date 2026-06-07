@@ -1,3 +1,8 @@
+## Portfolio Weekly Report Cadence Migration (Phase 208, 2026-06-07)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE208_WEEKLY_PORTFOLIO_REPORT_CADENCE_MIGRATION_CLOSEOUT.md` | weekly report migrated to controller (advisory-draft review-only) + legacy portfolio-weekly.timer retired (operator-approved); cadence timer Sun 20:30; dry-run/apply/diff/systemd-cycle PASS; no broker/proposal/protection/strategy-YAML changes; monthly/lookthrough not migrated |
+
 ## Portfolio Daily Report Cadence Migration (Phase 207, 2026-06-07)
 | Document | Purpose |
 |----------|---------|
