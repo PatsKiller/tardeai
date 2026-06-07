@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-06-07T02:26:02.197780+00:00",
+  "run_at": "2026-06-07T02:38:34.146529+00:00",
   "run_id": "ppbt_auto_20260607",
   "applied": true,
   "written": 12,
@@ -39,10 +39,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 16,
       "excluded_reasons": {
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
         "not_winner": 14,
-        "bars_lt_10": 5
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -76,10 +76,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -113,10 +113,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -150,10 +150,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -187,10 +187,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -224,10 +224,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -261,10 +261,10 @@
       "reliable_sample_size": 11,
       "excluded_count": 23,
       "excluded_reasons": {
-        "not_winner": 21,
-        "mfe_r_gt_20": 2,
         "no_planned_stop": 11,
-        "bars_lt_10": 5
+        "not_winner": 21,
+        "bars_lt_10": 5,
+        "mfe_r_gt_20": 2
       },
       "premature_exit_cost_known": true,
       "premature_exit_cost_method": "intrabar_path_replay",
@@ -368,8 +368,8 @@
       "reliable_sample_size": 7,
       "excluded_count": 11,
       "excluded_reasons": {
-        "not_winner": 10,
         "bars_lt_10": 4,
+        "not_winner": 10,
         "no_planned_stop": 4
       },
       "premature_exit_cost_known": true,
