@@ -15,6 +15,7 @@
 
 | `docs/project/PHASE208_HERMES_END_TO_END_AGENT_AUDIT_CLOSEOUT.md` | Phase 208 closeout: full Hermes identity/SOUL/job/fleet audit; retired=audit-only proof; 0 P0 risks |
 | `docs/hermes/HERMES_TRADEAI_TOOL_POLICY_DECISION_20260607.md` | Operator decision: tradeai/tradeai12b stay fully tool-less (advisory-only); rationale + consequence |
+| `docs/hermes/HERMES_IDENTITY_EDITOR_20260607.md` | v3 Hermes identity editor (model/provider + SOUL) with hard guards; System->Hermes + /v3/hermes graph |
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |
