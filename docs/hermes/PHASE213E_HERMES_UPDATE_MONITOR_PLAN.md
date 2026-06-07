@@ -6,7 +6,7 @@ auto-upgrades.** No alert storm when nothing is new.
 
 Verified now: installed 0.16.0, no newer → "Hermes is up to date; no action."
 
-## Schedule (PLAN ONLY — not enabled without operator approval)
-Weekly, read-only: a systemd user timer `hermes-update-check.timer` (OnCalendar weekly) → oneshot service
-running the checker. Not created/enabled in this phase. When a newer build appears, the operator re-runs
+## Schedule — ENABLED (operator-approved 2026-06-07)
+Weekly, read-only: systemd user `hermes-update-check.timer` (OnCalendar=Mon 03:00, Persistent, RandomizedDelaySec=600)
+→ oneshot `hermes-update-check.service` running the checker. **enabled=enabled, active=active**; next run Mon 2026-06-08 03:02; first run success. Units in ~/.config/systemd/user (untracked, per convention). Operate: `systemctl --user status|disable hermes-update-check.timer`. When a newer build appears, the operator re-runs
 PHASE212E (one command); the chatgpt lane auto-recovers if the headless fix lands.
