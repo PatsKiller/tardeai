@@ -79,8 +79,8 @@ versions = {
     }
 }
 
-# Hermes installed version
-hpip = run([str(ROOT / "hermes_sidecar/install/.venv/bin/pip"), "show", "hermes-agent"])
+# Hermes installed version (global install; sidecar retired 2026-06-06)
+hpip = run([str(Path.home() / ".local/share/hermes-agent-venv/bin/pip"), "show", "hermes-agent"])
 if hpip:
     m = re.search(r'Version:\s*(\S+)', hpip)
     versions["packages"]["hermes-agent"]["installed"] = m.group(1) if m else None

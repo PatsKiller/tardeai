@@ -46,3 +46,7 @@ gemma3:4b → `HERMES_4B_STILL_OK` (/api/generate) ✓ · gemma3:12b-ctx4k → `
 ---
 ## Update (2026-06-06): Stage D executed
 Sidecar rename-retired to hermes_sidecar/.hermes.RETIRED_20260606_2140 + install.RETIRED_20260606_2140 (no deletion). Rollback via backups/hermes_sidecar_FINAL_BEFORE_RENAME_RETIRE_20260606_2140.tgz + retired dirs.
+
+---
+## Status path repoint (2026-06-06)
+api_v2.py + check_system_versions.sh repointed from retired sidecar to global Hermes (~/.local/share/hermes-agent-venv, ~/.hermes). Disabled hermes-gateway.service unit file retained as audit artifact (not removed).
