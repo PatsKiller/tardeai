@@ -111,6 +111,9 @@ run_daily()      {
 }
 # secrets-data now owned by the gated backup cadence (above); run_weekly keeps only the advisory report.
 run_weekly()     {
+  assert_review_only_chain "portfolio_weekly_report" \
+    "$PROJ/linux_launchers/run_portfolio_weekly.sh" "$PROJ/scripts/portfolio_orchestrator.py" \
+    "$PROJ/scripts/portfolio_weekly_report.py" "$PROJ/scripts/portfolio_yaml_advisor.py" || return 0
   pm_step "portfolio_weekly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
 }
 run_monthly()    { pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"; }
