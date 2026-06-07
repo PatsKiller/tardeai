@@ -15299,6 +15299,49 @@ def _hermes_legacy_agents(query=None):
     }
 
 
+HERMES_LOCAL_ONLY = ("default", "tradeai", "tradeai12b")  # must stay on local Ollama
+
+
+def _hermes_identity_detail(query=None):
+    """GET /api/v2/hermes/identity?profile=NAME — full editable identity (model/provider) + read-only context."""
+    profile = (query or {}).get("profile")
+    if isinstance(profile, list):
+        profile = profile[0] if profile else None
+    if profile not in HERMES_PROFILES:
+        return {"ok": False, "error": "unknown profile"}
+    cfg = _hermes_profile_dir(profile) / "config.yaml"
+    model = provider = base_url = None
+    try:
+        import yaml as _y
+        m = (_y.safe_load(cfg.read_text()) or {}).get("model") or {}
+        model, provider, base_url = m.get("default"), m.get("provider"), m.get("base_url")
+    except Exception:
+        pass
+    return {"ok": True, "profile": profile, "label": HERMES_PROFILES[profile]["label"],
+            "purpose": HERMES_PROFILES[profile]["purpose"], "config_path": str(cfg).replace(str(Path.home()), "~"),
+            "model": model or "", "provider": provider or "", "base_url": base_url or "",
+            "tools": _hermes_profile_tools(profile), "soul_hash": _hermes_soul_hash(profile),
+            "local_only": profile in HERMES_LOCAL_ONLY,
+            "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
+                            "gemma3:12b (unconstrained), and qwen3:14b are blocked." if profile in HERMES_LOCAL_ONLY
+                            else "dev/serverops may use other providers (operator-driven).")}
+
+
+def _hermes_validate_identity(profile, model, provider):
+    """Hard guards for identity edits. Returns list of errors (empty = ok)."""
+    errs = []
+    m = (model or "").strip().lower()
+    p = (provider or "").strip().lower()
+    if m:
+        if "qwen3:14b" in m or m == "qwen3":
+            errs.append("qwen3:14b must not be reintroduced as a Hermes model")
+        if m == "gemma3:12b" and profile in ("default", "tradeai"):
+            errs.append("gemma3:12b (unconstrained) is not approved for default/tradeai — use gemma3:12b-ctx4k on tradeai12b")
+    if p and profile in HERMES_LOCAL_ONLY and p not in ("custom",):
+        errs.append(f"{profile} must stay on local Ollama (provider=custom); cloud providers are blocked here")
+    return errs
+
+
 def _hermes_codex_dev_status(query=None):
     """GET /api/v2/hermes/codex-dev-status — read-only readiness of the dev/Codex profile.
     Verified route (from `hermes login --help`): provider `openai-codex` via OAuth device-code."""
@@ -15540,6 +15583,7 @@ ROUTES = {
     "/api/v2/hermes/profiles-status": _hermes_profiles_status,
     "/api/v2/hermes/legacy-agents": _hermes_legacy_agents,
     "/api/v2/hermes/soul": _hermes_soul_read,
+    "/api/v2/hermes/identity": _hermes_identity_detail,
     "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
     "/api/v2/hermes/health": lambda: _hermes_health(),
@@ -15585,6 +15629,43 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/hermes/identity":
+            # Save identity (model/provider) on a profile config.yaml — backup-first + hard safety guards.
+            # Never edits tools (tradeai/tradeai12b stay tool-less). Never touches broker/trading.
+            try:
+                import shutil as _shi, time as _ti, yaml as _yi
+                b = body or {}
+                profile = b.get("profile")
+                if profile not in HERMES_PROFILES:
+                    return 400, {"ok": False, "error": "unknown profile"}
+                model = (b.get("model") or "").strip()
+                provider = (b.get("provider") or "").strip()
+                if not model and not provider:
+                    return 400, {"ok": False, "error": "nothing to update"}
+                errs = _hermes_validate_identity(profile, model, provider)
+                if errs:
+                    return 400, {"ok": False, "errors": errs}
+                cfg = _hermes_profile_dir(profile) / "config.yaml"
+                if not str(cfg.resolve()).startswith(str(HERMES_HOME.resolve())):
+                    return 400, {"ok": False, "error": "path outside Hermes home rejected"}
+                data = (_yi.safe_load(cfg.read_text()) if cfg.exists() else {}) or {}
+                if not isinstance(data.get("model"), dict):
+                    data["model"] = {}
+                bdir = HERMES_HOME / "profile_backups" / profile
+                bdir.mkdir(parents=True, exist_ok=True)
+                backup = bdir / f"config.yaml.bak_{int(_ti.time())}"
+                if cfg.exists():
+                    _shi.copy(str(cfg), str(backup))  # IRON RULE: backup before write
+                if model:
+                    data["model"]["default"] = model
+                if provider:
+                    data["model"]["provider"] = provider
+                cfg.write_text(_yi.safe_dump(data, sort_keys=False))
+                return 200, {"ok": True, "profile": profile,
+                             "model": data["model"].get("default"), "provider": data["model"].get("provider"),
+                             "backup": str(backup).replace(str(Path.home()), "~") if cfg.exists() else None}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/hermes/soul":
             # Save a Hermes profile SOUL.md — backup first, fail-closed safety validation, write only
             # the selected SOUL.md under ~/.hermes. Never touches .env/secrets/broker/trading.
