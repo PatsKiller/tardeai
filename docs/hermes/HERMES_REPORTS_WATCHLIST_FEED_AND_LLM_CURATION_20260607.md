@@ -66,7 +66,7 @@ implement per-workflow on approval.
    challenges, lessons). Advisory-only; additive; fails open.
 
 ### Next (operator-gated)
-- Route `generate_daily_intelligence_report.py` + morning digest LLM calls through build_context/Hermes block.
+- [DONE 2026-06-07] `generate_daily_intelligence_report.py` now surfaces a Hermes research feed (24h count + top weak-strategy/thesis/deep-research findings) in the report + Telegram output. (Data-report; no LLM, so Hermes findings are surfaced as content.) Next: morning digest LLM prompt via build_context.
 - Migrate ad-hoc report prompts to versioned templates in scripts/prompts/.
 - Add outcome-feedback capture (usefulness/calibration) for report/advisory LLM calls.
 - (Separate) monthly_advisory still calls paid external APIs (Claude/OpenAI) — route to free lanes per the
