@@ -15,6 +15,53 @@ function Copy({ text }: { text: string }) {
   )
 }
 
+// One self-learning loop row + on-demand drill-down (process steps, queue/completed, recent items + timestamps).
+function LoopRow({ loop, expanded, onToggle }: { loop: any; expanded: boolean; onToggle: () => void }) {
+  const { data: detail } = useApi<any>(expanded ? `/api/v2/hermes/loop-detail?loop=${loop.loop}` : '', 60_000)
+  const sc = loop.affects_scoring === true ? '#ef4444' : loop.affects_scoring === 'gated' ? '#f59e0b' : 'var(--text3)'
+  return (
+    <>
+      <tr onClick={onToggle} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+        <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{expanded ? '▾' : '▸'}</td>
+        <td style={{ padding: '3px 6px', fontWeight: 600 }}>{loop.loop}{loop.affects_scoring ? <span style={{ color: sc, fontSize: 9 }}> ⚑scoring</span> : null}</td>
+        <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{loop.what_learned}</td>
+        <td style={{ padding: '3px 6px' }}>{loop.rows ?? '—'}</td>
+        <td style={{ padding: '3px 6px', color: loop.queued ? '#f59e0b' : 'var(--text3)' }}>{loop.queued ?? '—'}</td>
+        <td style={{ padding: '3px 6px', color: '#22c55e' }}>{loop.completed ?? (loop.rows ?? '—')}</td>
+        <td style={{ padding: '3px 6px', color: 'var(--text3)', fontSize: 10 }}>{(loop.last || '').slice(0, 16) || '—'}</td>
+      </tr>
+      {expanded && (
+        <tr><td colSpan={7} style={{ padding: '4px 10px 10px', background: 'var(--bg2)' }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
+            Process: {(detail?.process_steps || loop.process_steps || []).map((s: string, i: number) => (
+              <span key={i}>{i > 0 ? ' → ' : ''}<b style={{ color: 'var(--text1)' }}>{s}</b></span>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
+            table <code>{loop.table}</code> · {loop.advisory_only ? 'advisory-only' : 'NON-advisory'} ·
+            scoring: <b style={{ color: sc }}>{String(loop.affects_scoring)}</b>{loop.affects_scoring ? ' (operator-gated)' : ''}
+          </div>
+          {!detail ? <div style={{ fontSize: 10, color: 'var(--text3)' }}>loading recent items…</div> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+              <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+                {Object.keys((detail.recent_items || [{}])[0] || {}).map(h => <th key={h} style={{ padding: '2px 6px' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {(detail.recent_items || []).map((it: any, i: number) => (
+                  <tr key={i}>{Object.values(it).map((v: any, j: number) => (
+                    <td key={j} style={{ padding: '2px 6px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{String(v ?? '—').slice(0, 28)}</td>
+                  ))}</tr>
+                ))}
+                {(detail.recent_items || []).length === 0 && <tr><td style={{ padding: '2px 6px', color: 'var(--text3)' }}>no items yet</td></tr>}
+              </tbody>
+            </table>
+          )}
+        </td></tr>
+      )}
+    </>
+  )
+}
+
 export default function HermesPanel() {
   const { data: st } = useApi<any>('/api/v2/hermes/profiles-status', 60_000)
   const { data: tc } = useApi<any>('/api/v2/hermes/terminal-commands', 300_000)
@@ -25,6 +72,7 @@ export default function HermesPanel() {
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
+  const [openLoop, setOpenLoop] = useState<string | null>(null)
 
   const card: React.CSSProperties = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }
   const kv: React.CSSProperties = { fontSize: 12, color: 'var(--text3)' }
@@ -109,13 +157,26 @@ export default function HermesPanel() {
               <b style={{ color: '#22c55e' }}> {sll.loops_affecting_scoring_directly} mutate scoring</b> (operator-gated)
             </div>
           )}
+          {/* per-loop drill-down: process steps, queue/completed, recent items + timestamps */}
+          {sll?.loops && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, margin: '4px 0 8px' }}>
+              <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+                {['', 'Loop', 'Learns', 'Total', 'Queued', 'Done', 'Last'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {sll.loops.map((l: any) => (
+                  <LoopRow key={l.loop} loop={l} expanded={openLoop === l.loop} onToggle={() => setOpenLoop(openLoop === l.loop ? null : l.loop)} />
+                ))}
+              </tbody>
+            </table>
+          )}
           {rmx && (
             <div style={{ fontSize: 11, color: 'var(--text3)' }}>
               Internal deep lane: <b>{rmx.internal_deep_research_lane?.model}</b> ({rmx.internal_deep_research_lane?.status}) ·
               gemma4 {rmx.internal_deep_research_lane?.gemma4} · External lanes: {(rmx.external_lanes || []).map((l: any) => l.lane.split(' ')[0]).join(', ')} (designed, advisory-only)
             </div>
           )}
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>ℹ Hermes self-learns to improve TradeAI: observe→normalize→evaluate→learn→promote→apply. Scoring changes require a separate operator gate. Read-only.</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>ℹ Hermes self-learns to improve TradeAI: observe→normalize→evaluate→learn→promote→apply. Scoring changes require a separate operator gate. Read-only. Click a loop to drill into its steps, queue/completed, and recent items.</div>
         </div>
       )}
 

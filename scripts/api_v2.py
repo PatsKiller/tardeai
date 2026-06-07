@@ -15558,6 +15558,44 @@ def _hermes_self_learning_loops(query=None):
         return {"error": str(e)}
 
 
+def _hermes_loop_detail(query=None):
+    """GET /api/v2/hermes/loop-detail?loop=NAME — drill-down for one self-learning loop: process steps,
+    queue/completed counts, and recent items with timestamps. Read-only; loop name validated against the audit."""
+    import json as _jl
+    name = (query or {}).get("loop")
+    if isinstance(name, list):
+        name = name[0] if name else None
+    p = PROJECT_ROOT / "data" / "hermes" / "hermes_self_learning_loop_audit_latest.json"
+    try:
+        loops = _jl.loads(p.read_text()).get("loops", [])
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    loop = next((l for l in loops if l["loop"] == name), None)
+    if not loop:
+        return {"ok": False, "error": "unknown loop", "valid": [l["loop"] for l in loops]}
+    table = loop["table"]              # from the trusted audit list (not user input) → safe to interpolate
+    status_col = loop.get("status_col")
+    # column introspection
+    cols = {r["column_name"] for r in (_db_query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name=%s", (table,)) or [])}
+    ts = "created_at" if "created_at" in cols else ("close_date" if "close_date" in cols else None)
+    idc = "id" if "id" in cols else None
+    label = next((c for c in ("symbol", "lane", "topic", "strategy_id", "agent_name", "hermes_agent_name") if c in cols), None)
+    sel = ", ".join([c for c in (idc, ts, status_col, label) if c])
+    items = []
+    if sel and ts:
+        items = _db_query(f"SELECT {sel} FROM {table} ORDER BY {ts} DESC NULLS LAST LIMIT 12") or []
+    elif sel:
+        items = _db_query(f"SELECT {sel} FROM {table} ORDER BY {idc or sel.split(',')[0]} DESC LIMIT 12") or []
+    return {"ok": True, "loop": name, "table": table, "what_learned": loop.get("what_learned"),
+            "process_steps": loop.get("process_steps", []),
+            "counts": {"total": loop.get("rows"), "queued": loop.get("queued"), "completed": loop.get("completed"),
+                       "last": loop.get("last")},
+            "advisory_only": loop.get("advisory_only"), "affects_scoring": loop.get("affects_scoring"),
+            "timestamp_col": ts, "status_col": status_col,
+            "recent_items": [{k: _json_clean(v) for k, v in r.items()} for r in items]}
+
+
 def _hermes_researcher_matrix(query=None):
     """GET /api/v2/hermes/researcher-matrix — read-only identity/role/lane matrix (advisory; no execution)."""
     return {
@@ -15827,6 +15865,7 @@ ROUTES = {
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
     "/api/v2/hermes/workflow-matrix": _hermes_workflow_matrix,
     "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
+    "/api/v2/hermes/loop-detail": _hermes_loop_detail,
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
