@@ -23,6 +23,7 @@ export default function HermesPanel() {
   const { data: wfm } = useApi<any>('/api/v2/hermes/workflow-matrix', 300_000)
   const { data: sll } = useApi<any>('/api/v2/hermes/self-learning-loops', 300_000)
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
+  const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
 
   const card: React.CSSProperties = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }
@@ -63,6 +64,29 @@ export default function HermesPanel() {
           {(wfm.db_lineage || []).filter((t: any) => t.exists).length > 0 && (
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>DB writes/24h: {(wfm.db_lineage || []).filter((t: any) => t.exists && t.writes_24h).map((t: any) => `${t.table.replace('hermes_', '')}=${t.writes_24h}`).join(' · ')}</div>
           )}
+        </div>
+      )}
+
+      {/* LLM Auth / OAuth status (read-only; guided login — no credential entry) */}
+      {auth && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>LLM Auth / OAuth</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+              {['Lane', 'Type', 'Status', 'Login (run in terminal)'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {(auth.lanes || []).map((l: any) => (
+                <tr key={l.provider} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '4px 6px', fontWeight: 600 }}>{l.lane}</td>
+                  <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{l.kind}</td>
+                  <td style={{ padding: '4px 6px', color: l.authed ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{l.authed ? '✓ ready' : 'auth pending'}</td>
+                  <td style={{ padding: '4px 6px', fontFamily: 'monospace', fontSize: 10 }}>{l.login_command !== '(none — local gemma3 via Ollama)' && <>{l.login_command}<Copy text={l.login_command} /></>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10, color: '#60a5fa', marginTop: 6 }}>🔐 {auth.google_sso_note}</div>
         </div>
       )}
 

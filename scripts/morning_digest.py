@@ -114,11 +114,29 @@ def _send_telegram(message: str, project_root: Path) -> bool:
     return success
 
 
+_HERMES_CTX_CACHE = None
+
+
+def _hermes_ctx():
+    """Cached Hermes self-learning block (portfolio-level) for curated, learning-over-time prompts."""
+    global _HERMES_CTX_CACHE
+    if _HERMES_CTX_CACHE is None:
+        try:
+            from llm_context_engine import get_hermes_knowledge
+            _HERMES_CTX_CACHE = get_hermes_knowledge(context_type='morning_digest', limit=4) or ""
+        except Exception:
+            _HERMES_CTX_CACHE = ""
+    return _HERMES_CTX_CACHE
+
+
 def _ollama_narrative(prompt: str, timeout: int = 90) -> str:
-    """Generate narrative via local LLM (routed through local_llm.generate)."""
+    """Generate narrative via local LLM (routed through local_llm.generate). Curated: prepends the Hermes
+    self-learning context so the digest reflects accumulated research/lessons and improves over time."""
     try:
         from local_llm import generate
-        return generate(prompt, timeout=timeout,
+        hk = _hermes_ctx()
+        full = (hk + "\n\n" + prompt) if hk else prompt
+        return generate(full, timeout=timeout,
                         caller="morning_digest", process_type="STANDARD")
     except Exception as e:
         print(f"  [digest] LLM error: {e}")
