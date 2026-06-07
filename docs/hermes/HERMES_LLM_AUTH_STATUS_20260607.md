@@ -29,3 +29,25 @@ Examples: `hermes auth add openai-codex --type oauth --manual-paste` ·
 `hermes auth add xai-oauth --type oauth --manual-paste` then `hermes proxy start --provider xai`.
 This is interactive (paste-back) — run it in YOUR terminal; it cannot be brokered headlessly. Alternatively
 `hermes model` (interactive picker) or `hermes setup model`.
+
+---
+## OAuth + proxy monitoring in Command Center (2026-06-07)
+`/api/v2/hermes/llm-auth-status` + the System → Hermes "LLM Auth / OAuth" card now monitor BOTH auth and the
+proxy:
+- per-lane: `authed` (OAuth/credential present) + `usable` (authed AND, for xai/nous, proxy running).
+- `proxy`: {running (socket check :8645), url, needed_by, start_command, warning} — warns if xAI is authed
+  but the proxy is DOWN.
+- Status labels: "✓ ready" (usable) / "authed · needs proxy" / "auth pending".
+- Detection fix: xAI reports "ready" (not "logged in") — now matched correctly.
+
+### Live (2026-06-07): Grok WIRED + WORKING
+xAI OAuth saved (loopback_pkce); `hermes proxy start --provider xai` running on :8645; grok lane verified
+end-to-end (real response stored in hermes_external_research). ChatGPT/Codex + Nous still auth-pending.
+
+### Proxy persistence (operator decision)
+The proxy currently runs as a foreground process. For durable uptime + auto-restart it should be a systemd
+**user** service (operator-approved) — otherwise it stops if its shell exits. The card shows DOWN if it stops.
+
+## Grok usage command
+1. (once, persistent) `hermes proxy start --provider xai`
+2. `python3 scripts/hermes_external_researcher.py --lane grok --question "..." --apply`
