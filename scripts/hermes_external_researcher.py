@@ -24,7 +24,7 @@ LANE_CFG = {
     # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
-    "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": None,
+    "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5-codex",
                 "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
     "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
                 "default_model": "grok-3-mini",
@@ -135,7 +135,14 @@ def call_codex_cli(model, prompt):
         cmd += ["-m", model]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
                        env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"})
-    return (r.stdout or "").strip() or (r.stderr or "").strip()
+    out = (r.stdout or "").strip() or (r.stderr or "").strip()
+    if (not out) or out.lower().startswith("hermes -z:") or "no final response" in out.lower() or "treating the run as failed" in out.lower():
+        # Hermes v0.16.0: the codex/ChatGPT agent backend doesn't finalize a response via the headless `-z`
+        # one-shot (works interactively in `hermes -p dev chat`). Surface clearly rather than as garbage.
+        raise RuntimeError("CODEX_HEADLESS_UNAVAILABLE: openai-codex is authed but the headless one-shot "
+                           "(hermes -z) returns no final response in v0.16.0. Use interactive `hermes -p dev chat`; "
+                           "the automated ChatGPT researcher lane is pending a Hermes fix.")
+    return out
 
 
 def call_xai_proxy(url, model, prompt, max_tokens=1500):
@@ -223,7 +230,8 @@ def main():
         status = "error"; parsed = {"recommendation": f"[ERROR HTTP {he.code}] {detail}"[:300], "error": detail[:300]}
     except Exception as e:
         msg = str(e)[:240]
-        status = "auth_pending" if "AUTH_PENDING" in msg else "error"
+        status = ("auth_pending" if "AUTH_PENDING" in msg else
+                  "unavailable" if "UNAVAILABLE" in msg else "error")
         parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
     c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                          user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()

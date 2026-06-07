@@ -15493,6 +15493,8 @@ def _hermes_llm_auth_status(query=None):
     lanes = [
         {"lane": "ChatGPT (Codex)", "provider": "openai-codex", "kind": "OAuth (free, ChatGPT subscription)",
          "authed": ("openai-codex" in auth_out or "codex" in auth_out),
+         "note": "authed; interactive `hermes -p dev chat` works. Headless researcher one-shot (hermes -z) "
+                 "returns no final response in Hermes v0.16.0 — automated lane pending a Hermes fix.",
          "login_command": "hermes auth add openai-codex --type oauth"},
         {"lane": "Grok (xAI)", "provider": "xai-oauth", "kind": "OAuth proxy (free)",
          "authed": proxy_authed("xai"),
