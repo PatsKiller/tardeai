@@ -40,7 +40,6 @@ is_runtime_dump_excluded() {
     docs/hermes/*hermes_auto_ticker_challenger_*_payload.json) return 0 ;;  # nested drain payloads
     docs/hermes/*_payload.json)                                return 0 ;;  # any hermes payload json
     docs/hermes/*latest_*_summary.json)                        return 0 ;;  # latest_* snapshot summaries
-    docs/_generated/profit_capture/pc_*)                       return 0 ;;  # weekly profit-capture run artifacts (keep README)
   esac
   return 1
 }
