@@ -22,3 +22,12 @@ All profiles use provider=custom → local Ollama (`http://127.0.0.1:11434/v1`, 
 ## Verified (2026-06-06)
 tradeai + tradeai12b tools: web/browser/terminal/file/code_execution/vision/video all **disabled (✗)**.
 SOULs present for all; no `execute actions via your tools` phrase in tradeai/tradeai12b (only safe negated boundaries).
+
+### x_search pinned off (2026-06-06)
+`x_search` (read-only X/Twitter search) auto-enabled in the **Command Center server runtime** for
+`tradeai`/`tradeai12b` because ambient xAI/X credentials exist there (a bare shell showed it disabled).
+It is now **explicitly pinned off** via `disabled_toolsets: [x_search]` in each profile config, so the
+profile policy wins over the ambient credentials. Both stable Trade AI profiles now show **zero enabled
+tools** in BOTH bare shell and Command Center runtime (`/api/v2/hermes/profiles-status`:
+`tradeai: disabled`, `tradeai12b: disabled`). `default` is out of scope (still shows x_search). No
+credentials read/removed; no `.env` edited.

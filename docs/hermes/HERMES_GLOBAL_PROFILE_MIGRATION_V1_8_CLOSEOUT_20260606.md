@@ -50,6 +50,16 @@ COMPLETE.
 - No broker/trading/order/stop/proposal/holdings files touched.
 - No secrets migrated.
 
+## Follow-up — x_search pinned off (2026-06-06)
+
+Per the v1.8 safety boundary ("tradeai/tradeai12b run with tools disabled unless explicitly approved"),
+`x_search` — which was auto-enabling in the **Command Center server runtime** due to ambient xAI/X
+credentials — is now explicitly pinned off for both stable Trade AI profiles via
+`disabled_toolsets: [x_search]` in `~/.hermes/profiles/{tradeai,tradeai12b}/config.yaml`. Both now show
+**zero enabled tools** in both bare shell and Command Center runtime
+(`/api/v2/hermes/profiles-status`). `default` is out of scope and unchanged. No credentials read/removed;
+no `.env` edited; collector code unchanged.
+
 ## Remaining Notes
 
 A disabled `hermes-gateway.service` unit file remains as an inactive audit artifact. It must not be enabled without explicit operator approval. Non-blocking follow-ups (optional): remove the disabled unit file; the operator's legacy sidecar `hermes chat` (PID 3549046) can be exited at will.
