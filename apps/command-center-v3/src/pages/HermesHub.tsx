@@ -239,10 +239,15 @@ export default function HermesHub({ onDrill }: Props) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Hermes</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Hermes Research Agent Graph</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Sidecar research desk · {staging.hermes_research_intelligence ?? 0} intelligence rows
+            Trade AI research-agent workflow layer · {staging.hermes_research_intelligence ?? 0} intelligence rows
             {killSwitch && <span style={{ color: '#ef4444', marginLeft: 8 }}>KILL SWITCH ACTIVE</span>}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, maxWidth: 720 }}>
+            This is the research-agent workflow layer (separate from the global Hermes profile/chat layer).
+            Global profiles — <b>default · tradeai · tradeai12b · dev · serverops</b> — are managed under <b>System → Hermes</b>.
+            Runs on project <code>.venv</code> + <code>scripts/hermes_*.py</code> (systemd timers); independent of the retired sidecar install.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>

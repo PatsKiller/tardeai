@@ -72,3 +72,7 @@ codex-dev-status now surfaces the verified route: provider openai-codex via OAut
 ---
 ## dev high-risk tools disabled (2026-06-06)
 dev profile: code_execution, terminal, computer_use disabled before Codex login (hard boundary for cloud-backed dev). Panel collector now shows real per-profile tool state even when model unset. See HERMES_DEV_CODEX_SETUP_20260606.md.
+
+---
+## Two Hermes layers clarified (2026-06-06)
+/v3/hermes = **Hermes Research Agent Graph** (Trade AI research-workflow layer, systemd timers + project scripts). System → Hermes = **Global Hermes Profile** management. Separate subsystems; both kept. SearXNG health confirmed UP (infra _ping hardened 3s->6s). See HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md.
