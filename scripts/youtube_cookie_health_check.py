@@ -20,7 +20,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 COOKIE = PROJECT_ROOT / "config" / "youtube_cookies.txt"
-AUTH = {"SID", "SAPISID", "__Secure-1PSID", "LOGIN_INFO"}
+AUTH = {"SID", "HSID", "SSID", "SAPISID", "LOGIN_INFO",
+        "__Secure-1PSID", "__Secure-3PSID",
+        "__Secure-1PAPISID", "__Secure-3PAPISID"}
 STALE_H = 72
 
 REFRESH_STEPS = (
@@ -29,7 +31,7 @@ REFRESH_STEPS = (
     "config/youtube_cookies.txt:\n"
     "• Chrome ext 'Get cookies.txt LOCALLY', or\n"
     "• yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt\n"
-    "Must include auth cookies (SID, SAPISID, __Secure-1PSID, LOGIN_INFO).\n"
+    "Must include auth cookies (e.g. SID / __Secure-1PSID / __Secure-3PSID / SAPISID / LOGIN_INFO).\n"
     "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels"
 )
 

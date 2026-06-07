@@ -108,7 +108,12 @@ def _system_pipeline_health():
                 parts = ln.split("\t")
                 if len(parts) >= 6:
                     names.add(parts[5])
-            auth = names & {"SID", "SAPISID", "__Secure-1PSID", "LOGIN_INFO"}
+            # Authenticated YouTube/Google session cookies. Includes the 3P (third-party-context)
+            # variants modern exports use — checking only 1P/legacy names false-flagged a logged-in
+            # jar as RED. Matches scripts/credential_monitor.py.
+            auth = names & {"SID", "HSID", "SSID", "SAPISID", "LOGIN_INFO",
+                            "__Secure-1PSID", "__Secure-3PSID",
+                            "__Secure-1PAPISID", "__Secure-3PAPISID"}
             yt["auth_cookies"] = len(auth)
             yt["refreshed"] = _json_clean(datetime.fromtimestamp(_os.path.getmtime(cpath)).astimezone())
             tlatest = s1("SELECT MAX(ingested_at) FROM youtube_transcripts")
