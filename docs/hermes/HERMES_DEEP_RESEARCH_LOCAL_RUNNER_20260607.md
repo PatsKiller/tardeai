@@ -36,3 +36,24 @@ gemma3:27b is the production lane (run overnight to allow the 17GB model to warm
 
 ## Promotion path
 deep_research_local → librarian review → embedding/promote → RAG → future advisory context (Phase 210F).
+
+---
+## Scheduled nightly (2026-06-07, operator-approved)
+Enabled as a systemd **user** timer (overnight window; runner's --apply self-gates to 22:00–06:00 local).
+
+- `hermes-deep-research-local.timer` — `OnCalendar=*-*-* 02:30:00` (local), Persistent, RandomizedDelaySec=300.
+  is-enabled=enabled, is-active=active. Next run ~02:31 local.
+- `hermes-deep-research-local.service` — Type=oneshot, TimeoutStartSec=3600 (27b is slow to warm),
+  ExecStart=`.venv/bin/python scripts/hermes_deep_research_local.py --apply --max-rows 3 --model gemma3:27b`.
+
+Unit files live in `~/.config/systemd/user/` (same convention as the other hermes-* timers; not repo-tracked).
+
+### Operate
+```
+systemctl --user list-timers --all | grep deep-research      # next run
+systemctl --user status hermes-deep-research-local.service    # last run result
+journalctl --user -u hermes-deep-research-local.service       # logs
+systemctl --user disable --now hermes-deep-research-local.timer   # stop scheduling (reversible)
+touch data/runtime/HERMES_DISABLED                           # emergency kill-switch (runner aborts)
+```
+Still advisory/staging-only; the timer only runs the same guarded runner. Disable or kill-switch any time.
