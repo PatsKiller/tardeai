@@ -25,10 +25,10 @@ LANE_CFG = {
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
     "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": None,
-                "auth_hint": "hermes login --provider openai-codex   (operator OAuth — free under your ChatGPT subscription)"},
+                "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
     "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
                 "default_model": "grok-3-mini",
-                "auth_hint": "hermes login --provider xai-oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
+                "auth_hint": "hermes auth add xai-oauth --type oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -129,7 +129,7 @@ def call_codex_cli(model, prompt):
     import subprocess
     if not _codex_authed():
         raise RuntimeError("AUTH_PENDING: openai-codex not logged in. Operator must run: "
-                           "hermes login --provider openai-codex (free under ChatGPT subscription).")
+                           "hermes auth add openai-codex --type oauth (free under ChatGPT subscription).")
     cmd = [HERMES_CLI, "-z", prompt, "--provider", "openai-codex"]
     if model:
         cmd += ["-m", model]
@@ -149,7 +149,7 @@ def call_xai_proxy(url, model, prompt, max_tokens=1500):
             pass
     except Exception:
         raise RuntimeError("AUTH_PENDING: xAI OAuth proxy not reachable. Operator must run: "
-                           "hermes login --provider xai-oauth ; hermes proxy start --provider xai")
+                           "hermes auth add xai-oauth --type oauth ; hermes proxy start --provider xai")
     body = json.dumps({"model": model, "max_tokens": max_tokens,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(url, data=body, headers={

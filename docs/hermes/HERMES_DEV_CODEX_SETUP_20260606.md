@@ -14,7 +14,7 @@ Not Trade AI runtime; not an autonomous gateway. tradeai/tradeai12b are unchange
 
 ## Verified local command
 ```
-hermes login --provider openai-codex   # OAuth device-code (browser) — OPERATOR runs this manually
+hermes auth add openai-codex --type oauth   # OAuth device-code (browser) — OPERATOR runs this manually
 dev model                              # pick the Codex model for the dev profile (interactive)
 dev config show                        # verify provider/model on dev
 ```
@@ -52,7 +52,7 @@ failed/disabled. No broker/trading changes. Live chat sessions untouched.
 
 ## Command Center status update
 `/api/v2/hermes/codex-dev-status` now surfaces: `supported_provider=openai-codex`,
-`verified_login_command=hermes login --provider openai-codex`, live `codex_auth_configured`
+`verified_login_command=hermes auth add openai-codex --type oauth`, live `codex_auth_configured`
 (from `hermes auth list`), `codex_runtime_enabled=false`, dev tools note, and operator terminal instructions.
 The System→Hermes panel renders these (auth-pending until the operator completes device-code login).
 

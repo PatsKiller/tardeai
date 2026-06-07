@@ -7,8 +7,8 @@ DRY-RUN by default, manual/escalation, governed by EXTERNAL_LLM_USAGE_POLICY_202
 | Lane | Route | Cost model | Status | Activate |
 |------|-------|-----------|--------|----------|
 | **claude** | Anthropic API (`api.anthropic.com`, key from env) | metered API | wired; **blocked by credits** | add Anthropic billing credits |
-| **chatgpt** | **openai-codex OAuth** via Hermes CLI one-shot (`hermes -z … --provider openai-codex`) — **NOT the OpenAI API** | **FREE (ChatGPT subscription)** | wired; **auth_pending** | operator: `hermes login --provider openai-codex` |
-| **grok** | **xai-oauth proxy** (`hermes proxy start --provider xai`, local :8645) — **NOT the xAI API** | **FREE (xAI OAuth)** | wired; **auth_pending** | operator: `hermes login --provider xai-oauth` + `hermes proxy start --provider xai` |
+| **chatgpt** | **openai-codex OAuth** via Hermes CLI one-shot (`hermes -z … --provider openai-codex`) — **NOT the OpenAI API** | **FREE (ChatGPT subscription)** | wired; **auth_pending** | operator: `hermes auth add openai-codex --type oauth` |
+| **grok** | **xai-oauth proxy** (`hermes proxy start --provider xai`, local :8645) — **NOT the xAI API** | **FREE (xAI OAuth)** | wired; **auth_pending** | operator: `hermes auth add xai-oauth --type oauth` + `hermes proxy start --provider xai` |
 
 ## Why ChatGPT uses Codex OAuth, not the OpenAI API
 Per operator directive: ChatGPT must run on the **free ChatGPT-subscription OAuth (openai-codex)**, not the

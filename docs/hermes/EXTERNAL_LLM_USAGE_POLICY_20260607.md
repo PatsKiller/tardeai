@@ -55,7 +55,7 @@ endpoint `/api/v2/hermes/external-research` (audit view), table `hermes_external
 
 ---
 ## Update (2026-06-07): ChatGPT = openai-codex OAuth (free), NOT OpenAI API
-ChatGPT lane wired to the FREE ChatGPT-subscription OAuth (provider openai-codex) via Hermes CLI one-shot — the metered OpenAI API route was removed. auth_pending until `hermes login --provider openai-codex`. Grok via xAI API (free xai-oauth proxy available). See HERMES_EXTERNAL_LANES_STATUS_20260607.md.
+ChatGPT lane wired to the FREE ChatGPT-subscription OAuth (provider openai-codex) via Hermes CLI one-shot — the metered OpenAI API route was removed. auth_pending until `hermes auth add openai-codex --type oauth`. Grok via xAI API (free xai-oauth proxy available). See HERMES_EXTERNAL_LANES_STATUS_20260607.md.
 
 ---
 ## Grok repointed to free xai-oauth proxy (2026-06-07)
