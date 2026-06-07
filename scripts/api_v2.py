@@ -15080,9 +15080,8 @@ def _hermes_run(cmd, timeout=8, env=None):
 
 def _hermes_profile_tools(profile):
     """Authoritative tool state from `hermes -p <profile> tools list` (line-anchored count of enabled rows).
-    Uses the full CLI path + -p (the ~/.local/bin/<name> wrappers do `exec hermes ...` which needs PATH)."""
-    if _hermes_profile_model(profile) is None:
-        return "future"
+    Uses the full CLI path + -p (the ~/.local/bin/<name> wrappers do `exec hermes ...` which needs PATH).
+    Reported even when the model is unset, so disabled high-risk tools are visible (profile state wins)."""
     out = _hermes_run([str(HERMES_CLI), "-p", profile, "tools", "list"], timeout=12)
     if not out:
         return "unknown"

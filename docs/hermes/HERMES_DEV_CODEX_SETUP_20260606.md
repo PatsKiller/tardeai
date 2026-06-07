@@ -55,3 +55,12 @@ failed/disabled. No broker/trading changes. Live chat sessions untouched.
 `verified_login_command=hermes login --provider openai-codex`, live `codex_auth_configured`
 (from `hermes auth list`), `codex_runtime_enabled=false`, dev tools note, and operator terminal instructions.
 The System→Hermes panel renders these (auth-pending until the operator completes device-code login).
+
+---
+## High-risk dev tools disabled before Codex login (2026-06-06)
+Before operator OAuth, the dev profile had its high-risk LOCAL execution toolsets explicitly disabled via `hermes -p dev tools disable code_execution terminal computer_use`:
+- `terminal` — disabled
+- `code_execution` — disabled
+- `computer_use` — disabled
+
+This is a hard boundary so the future cloud-backed dev profile cannot directly run terminal commands, execute code, or control the computer unless the operator explicitly re-enables them later. dev went 17 -> 14 enabled (web/browser/file/vision/skills/todo/memory/etc. remain per operator). Codex remains future/human-invoked; the operator completes OAuth manually. The status collector now reports dev's real tool state (profile-level disabled wins over model-unset "future" label).

@@ -92,3 +92,6 @@ The full Claude Code prompts were delivered in the operator chat and are intenti
 
 ## dev Codex readiness (2026-06-06)
 The future dev/Codex profile route is verified: provider openai-codex via OAuth device-code (operator-interactive). dev SOUL hardened with Codex policy. Codex NOT configured in tradeai/tradeai12b/default. No gateway/cron/runtime enabled. See HERMES_DEV_CODEX_SETUP_20260606.md.
+
+## dev high-risk tools disabled (2026-06-06)
+Before Codex OAuth, dev had terminal/code_execution/computer_use disabled as a hard boundary. tradeai/tradeai12b unchanged (0 tools). No OAuth run; no gateway/runtime enabled.
