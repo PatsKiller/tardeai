@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
+import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Overview', 'Workflow', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
@@ -90,6 +91,8 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: infra } = useApi<any>('/api/v2/hermes/infra', 60_000)
   const { data: provData } = useApi<any>('/api/v2/hermes/provenance', 60_000)
   const { data: sourcesData } = useApi<any>('/api/v2/hermes/sources', 120_000)
+  const { data: profStatus } = useApi<any>('/api/v2/hermes/profiles-status', 120_000)
+  const [editProfile, setEditProfile] = useState<string | null>(null)
   const credByDomain: Record<string, number> = {}
   for (const s of (sourcesData?.sources ?? [])) if (s.type === 'web') credByDomain[s.name] = Number(s.credibility ?? 0)
   const infraSvc: any[] = infra?.services ?? []
@@ -237,6 +240,7 @@ export default function HermesHub({ onDrill }: Props) {
 
   return (
     <div>
+      {editProfile && <HermesSoulEditor profile={editProfile} onClose={() => setEditProfile(null)} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Hermes Research Agent Graph</div>
@@ -260,6 +264,23 @@ export default function HermesHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {/* Global Hermes Profiles — identity/SOUL editor (shared with System → Hermes) */}
+      {(profStatus?.profiles?.length ?? 0) > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>Global Hermes profiles · edit identity</span>
+          {profStatus.profiles.map((p: any) => (
+            <button key={p.profile} onClick={() => setEditProfile(p.profile)}
+              title={`${PROFILE_LABELS[p.profile] || p.profile} · ${p.model} · tools: ${p.tools}${p.soul_hash ? ' · SOUL ' + p.soul_hash : ''}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text1)', fontSize: 11 }}>
+              <span style={{ fontWeight: 600 }}>{p.profile}</span>
+              <span style={{ fontSize: 9, color: /enabled:/.test(p.tools) ? '#f59e0b' : p.tools === 'disabled' ? '#22c55e' : 'var(--text3)' }}>{p.tools}</span>
+              <span style={{ fontSize: 9, color: '#60a5fa' }}>✎ SOUL</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Infra health strip (idea C) — services the whole fleet depends on */}
       {infraSvc.length > 0 && (
