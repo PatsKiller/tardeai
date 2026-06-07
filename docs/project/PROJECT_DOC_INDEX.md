@@ -4,7 +4,8 @@
 | `docs/hermes/HERMES_GLOBAL_INSTALL_MIGRATION_20260606.md` | Sidecar->global Hermes v0.16.0; verified state, canonical commands, no-delete policy, rollback |
 | `docs/hermes/HERMES_PROFILE_MATRIX_20260606.md` | default/tradeai/tradeai12b/dev/serverops/sidecar matrix (path/model/tools/purpose/safety) |
 | `docs/hermes/HERMES_MODEL_CANARY_STATUS_20260606.md` | gemma3:4b approved default; 12b-ctx4k experimental; qwen3:14b removed; canaries pass live |
-| `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Staged reversible retirement (Stage A done; B-D operator-gated, no deletion) |
+| `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Staged reversible retirement (A-C done; D prepared-not-executed, operator-gated, no deletion) |
+| `docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md` | What migrated vs intentionally excluded (no secrets/dumps/qwen); rollback evidence |
 
 ## Profit-Capture Rule Backtest Quality + Hardening (Phase 206b, 2026-06-06)
 | Document | Purpose |

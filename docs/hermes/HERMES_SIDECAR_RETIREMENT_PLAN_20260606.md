@@ -40,3 +40,16 @@ Wrapper stubs may be PREPARED (drafted in docs) but NOT installed without operat
 
 ## Rollback
 Sidecar remains fully functional until Stage D. Restore from the snapshot tarball if needed. All steps reversible.
+
+---
+## Status update (2026-06-06, Phase A continuation)
+- Stage A (preserve): **DONE** — added pre-retire backup `backups/hermes_sidecar_PRE_RETIRE_20260606_2128.tgz`
+  (118M) + `docs/hermes/HERMES_SIDECAR_PRE_RETIRE_FILE_INVENTORY_20260606_2128.txt` (107 files).
+- Stage B (curated migration): documented in `HERMES_CURATED_MIGRATION_INVENTORY_20260606.md`; no unsafe/
+  runtime content copied into canonical profiles.
+- Stage C (validate): **PASS** — profiles correct, tradeai/tradeai12b tools disabled (0/25), canaries pass
+  (gemma3:4b + gemma3:12b-ctx4k), unsafe phrase absent.
+- Stage D (rename-retire): **PREPARED, NOT EXECUTED** — retirement stubs drafted under `docs/hermes/stubs/`
+  (`run_hermes_readonly.sh.retired.stub`, `run_hermes_gateway.sh.retired.stub`). The sidecar is **still in
+  place and functional**; rename-retire awaits explicit operator approval token
+  `APPROVE_RENAME_RETIRE_HERMES_SIDECAR`. No deletion will ever occur (rename-only).
