@@ -37,7 +37,12 @@ def borders(t):
 def main():
     doc = Document(DOCX_PATH)
     if any(MARKER in (p.text or "") for p in doc.paragraphs):
-        print("v1.8 section already present, skip")
+        if any(COMPLETION_MARKER in (p.text or "") for p in doc.paragraphs):
+            print("v1.8 section + completion addendum already present, skip")
+            return
+        append_completion(doc)
+        doc.save(DOCX_PATH)
+        print("completion addendum appended (main v1.8 section already present)")
         return
 
     p = doc.add_paragraph()
@@ -85,8 +90,31 @@ def main():
         "docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md; "
         "docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md.")
 
+    append_completion(doc)
     doc.save(DOCX_PATH)
-    print("v1.8 Hermes Global Profile Architecture section appended + saved")
+    print("v1.8 Hermes Global Profile Architecture section + completion addendum appended + saved")
+
+
+COMPLETION_MARKER = "Hermes Migration Completion Addendum — 2026-06-06"
+
+
+def append_completion(doc):
+    p = doc.add_paragraph()
+    if h(doc, 3):
+        p.style = h(doc, 3)
+    p.text = COMPLETION_MARKER
+    doc.add_paragraph(
+        "The Hermes sidecar-to-global migration is now fully complete. Beyond the rename-retirement recorded "
+        "above: the old hermes-gateway.service was found still active/enabled and was stopped and disabled "
+        "(operator-approved); the recreated runtime directory was re-retired; previously-tracked sidecar "
+        "runtime/state files were removed from Git tracking and gitignored (preserved on disk in the "
+        ".RETIRED_* directories and backup tarballs); a launch-path audit confirmed no process, systemd unit, "
+        "timer, cron job, shell startup, or PATH command can relaunch the sidecar; and the status scripts "
+        "(scripts/api_v2.py, scripts/check_system_versions.sh) were repointed from the retired sidecar to the "
+        "global Hermes install (~/.local/share/hermes-agent-venv, ~/.hermes). The disabled hermes-gateway.service "
+        "unit file is retained as an inactive audit artifact, not an active launch path. The operator's live "
+        "interactive chat sessions were preserved throughout. See HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md "
+        "(Stage D, Git Hygiene, Launch Path Audit, Status Path Repoint sections).")
 
 
 if __name__ == "__main__":
