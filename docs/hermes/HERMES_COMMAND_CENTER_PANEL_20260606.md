@@ -54,8 +54,9 @@ in each profile's `~/.hermes/profiles/<profile>/config.yaml` (the native `tools 
 no-op when the tool is already default-off in a credential-free shell, so the explicit list entry is what
 makes the profile policy win over ambient xAI/X credentials). Verified: both profiles now show
 **zero enabled tools** in BOTH the bare shell (`tools list`) AND the Command Center runtime view
-(`/api/v2/hermes/profiles-status` → `tradeai: disabled`, `tradeai12b: disabled`). The `default` profile is
-out of scope and unchanged. No credentials were read or removed; no `.env` edited; collector code unchanged.
+(`/api/v2/hermes/profiles-status` → `tradeai: disabled`, `tradeai12b: disabled`). **Update:** `default`
+was subsequently pinned the same way (`~/.hermes/config.yaml`), so **all three** profiles now show
+`disabled` in the runtime view. No credentials were read or removed; no `.env` edited; collector code unchanged.
 
 ## Test results
 - `python3 -m py_compile scripts/api_v2.py` → OK
