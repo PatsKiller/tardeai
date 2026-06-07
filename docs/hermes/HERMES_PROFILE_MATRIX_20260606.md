@@ -29,5 +29,6 @@ SOULs present for all; no `execute actions via your tools` phrase in tradeai/tra
 It is now **explicitly pinned off** via `disabled_toolsets: [x_search]` in each profile config, so the
 profile policy wins over the ambient credentials. Both stable Trade AI profiles now show **zero enabled
 tools** in BOTH bare shell and Command Center runtime (`/api/v2/hermes/profiles-status`:
-`tradeai: disabled`, `tradeai12b: disabled`). `default` is out of scope (still shows x_search). No
-credentials read/removed; no `.env` edited.
+`tradeai: disabled`, `tradeai12b: disabled`). **`default` was subsequently pinned the same way**
+(`~/.hermes/config.yaml` → `disabled_toolsets: [x_search]`), so **all three** profiles (default, tradeai,
+tradeai12b) now show `disabled` in the runtime. No credentials read/removed; no `.env` edited.

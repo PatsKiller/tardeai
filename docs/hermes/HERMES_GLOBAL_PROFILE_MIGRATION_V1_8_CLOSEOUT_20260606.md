@@ -57,8 +57,9 @@ Per the v1.8 safety boundary ("tradeai/tradeai12b run with tools disabled unless
 credentials — is now explicitly pinned off for both stable Trade AI profiles via
 `disabled_toolsets: [x_search]` in `~/.hermes/profiles/{tradeai,tradeai12b}/config.yaml`. Both now show
 **zero enabled tools** in both bare shell and Command Center runtime
-(`/api/v2/hermes/profiles-status`). `default` is out of scope and unchanged. No credentials read/removed;
-no `.env` edited; collector code unchanged.
+(`/api/v2/hermes/profiles-status`). `default` was subsequently pinned the same way
+(`~/.hermes/config.yaml`), so **all three** profiles now show `disabled` in the runtime. No credentials
+read/removed; no `.env` edited; collector code unchanged.
 
 ## Remaining Notes
 
