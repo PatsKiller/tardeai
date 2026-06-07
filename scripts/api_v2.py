@@ -15484,6 +15484,17 @@ def _hermes_researcher_matrix(query=None):
     }
 
 
+def _hermes_external_research(query=None):
+    """GET /api/v2/hermes/external-research — read-only recent external-researcher packets (redacted)."""
+    rows = _db_query("""SELECT id, created_at, lane, priority, symbol, left(question,160) question, model,
+                        status, left(recommendation,240) recommendation, confidence, usefulness_score
+                        FROM hermes_external_research ORDER BY id DESC LIMIT 50""") or []
+    return {"generated_note": "read-only external research lane outputs (Phase 210D, redacted)",
+            "lanes_wired": ["claude"], "lanes_designed": ["chatgpt", "grok", "consensus"],
+            "count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            "note": "Advisory-only. Inputs are redacted before send. API key read from env at call-time, never stored."}
+
+
 def _hermes_external_escalation_policy(query=None):
     """GET /api/v2/hermes/external-escalation-policy — read-only escalation triggers/priority/routing (210G)."""
     return {
@@ -15724,6 +15735,7 @@ ROUTES = {
     "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
+    "/api/v2/hermes/external-research": _hermes_external_research,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
