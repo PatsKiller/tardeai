@@ -19,7 +19,9 @@ from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-INTERVAL = "5m"          # 60-day lookback; sufficient to detect intra-hold pullbacks
+INTERVAL = "5m"          # 60-day lookback; default; sufficient to detect intra-hold pullbacks
+FINE_INTERVAL = "1m"     # ~7-day lookback; tighter premature-exit detection for recent trades
+FINE_DAYS = 30           # yfinance 1m lookback (~30d via date-range); attempt 1m within this window
 FETCH_PAD_MIN = 10       # pad the window slightly so the entry/exit bars are included
 SLEEP_BETWEEN = 0.4      # gentle pacing between symbol fetches
 
@@ -40,8 +42,8 @@ def db():
                             password=os.environ["DB_PASSWORD"])
 
 
-def fetch_bars(symbol, start, end):
-    """Fetch 5m OHLC bars in [start,end] (UTC) via yfinance. Returns list of dicts or []."""
+def fetch_bars(symbol, start, end, interval=INTERVAL):
+    """Fetch OHLC bars in [start,end] (UTC) at the given interval via yfinance. list or {error}."""
     try:
         import yfinance as yf
         import pandas as pd  # noqa
@@ -49,10 +51,9 @@ def fetch_bars(symbol, start, end):
         e = (end + timedelta(minutes=FETCH_PAD_MIN))
         df = yf.download(symbol, start=s.strftime("%Y-%m-%d"),
                          end=(e + timedelta(days=1)).strftime("%Y-%m-%d"),
-                         interval=INTERVAL, progress=False, auto_adjust=False)
+                         interval=interval, progress=False, auto_adjust=False)
         if df is None or len(df) == 0:
             return []
-        # flatten possible multiindex columns
         if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
             df.columns = [c[0] for c in df.columns]
         out = []
@@ -75,7 +76,23 @@ def fetch_bars(symbol, start, end):
         return {"error": str(e)[:200]}
 
 
-def run(apply, all_closed):
+def fetch_best(symbol, start, end, fine, fine_days):
+    """Pick the finest interval that FULLY covers the window. Tries 1m for recent windows and only
+    accepts it if its earliest bar reaches the entry (so we never trade full 5m coverage for a
+    partial 1m one). Falls back to 5m. Returns (bars, interval) or ({error}, interval)."""
+    now = datetime.now(timezone.utc)
+    fine_eligible = fine and (now - end) <= timedelta(days=fine_days)
+    if fine_eligible:
+        b1 = fetch_bars(symbol, start, end, FINE_INTERVAL)
+        if isinstance(b1, dict) and b1.get("error"):
+            return b1, FINE_INTERVAL
+        # accept 1m only if it covers the window start (1m history is ~7d; older starts are gappy)
+        if b1 and b1[0]["bar_time"] <= start + timedelta(minutes=FETCH_PAD_MIN):
+            return b1, FINE_INTERVAL
+    return fetch_bars(symbol, start, end, INTERVAL), INTERVAL
+
+
+def run(apply, all_closed, fine=False, fine_days=FINE_DAYS):
     load_env()
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -90,7 +107,7 @@ def run(apply, all_closed):
 
     results = []
     counts = {"ok": 0, "no_bars": 0, "fetch_error": 0, "not_long": 0, "total": len(trades),
-              "total_bars": 0}
+              "total_bars": 0, "by_interval": {}}
     wc = conn.cursor()
 
     def log_status(rec):
@@ -119,7 +136,8 @@ def run(apply, all_closed):
             counts["not_long"] += 1; results.append(rec); log_status(rec)
             continue
 
-        bars = fetch_bars(sym, start, end)
+        bars, used_interval = fetch_best(sym, start, end, fine, fine_days)
+        rec["timeframe"] = used_interval
         if isinstance(bars, dict) and bars.get("error"):
             rec["status"] = "fetch_error"; rec["note"] = bars["error"]
             counts["fetch_error"] += 1; results.append(rec); log_status(rec)
@@ -131,6 +149,7 @@ def run(apply, all_closed):
 
         rec["bars_ingested"] = len(bars); rec["status"] = "ok"
         counts["ok"] += 1; counts["total_bars"] += len(bars)
+        counts["by_interval"][used_interval] = counts["by_interval"].get(used_interval, 0) + 1
         results.append(rec)
 
         if apply:
@@ -139,14 +158,15 @@ def run(apply, all_closed):
                 wc.execute("""INSERT INTO trade_intrabar_bars
                     (trade_instance_id,symbol,bar_seq,bar_time,open,high,low,close,volume,timeframe,source)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'yfinance')""",
-                    (tid, sym, seq, b["bar_time"], b["open"], b["high"], b["low"], b["close"], b["volume"], INTERVAL))
+                    (tid, sym, seq, b["bar_time"], b["open"], b["high"], b["low"], b["close"], b["volume"], used_interval))
             log_status(rec)
         time.sleep(SLEEP_BETWEEN)
 
     conn.close()
     report = {"run_at": datetime.now(timezone.utc).isoformat(), "applied": apply,
               "scope": ("measurable" if all_closed else "measurable_winners"),
-              "interval": INTERVAL, "counts": counts,
+              "default_interval": INTERVAL, "fine": fine, "fine_interval": FINE_INTERVAL,
+              "fine_days": fine_days, "counts": counts,
               "coverage_pct": round(100 * counts["ok"] / counts["total"], 1) if counts["total"] else 0.0,
               "results": results}
     print(json.dumps(report, indent=2, default=str))
@@ -157,5 +177,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--all-closed", action="store_true", help="ingest all measurable (not just winners)")
+    ap.add_argument("--fine", action="store_true",
+                    help="use 1m bars for trades within --fine-days when they fully cover the window")
+    ap.add_argument("--fine-days", type=int, default=FINE_DAYS)
     a = ap.parse_args()
-    run(a.apply, a.all_closed)
+    run(a.apply, a.all_closed, a.fine, a.fine_days)

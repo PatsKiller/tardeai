@@ -69,12 +69,26 @@ grafted; no thresholds/strategy/GO-WAIT/orders changed.
 panel shows a "Best rule net" card (red when negative) and a qualifier: `avoided − premature = net`,
 reliable n vs raw n, estimate quality (`path measured`), and `DO_NOT_GRAFT`.
 
+## 1-minute tightening (addendum)
+
+`ingest_trade_intrabar_bars.py --fine` upgrades trades to **1m** bars when the window ended within
+`--fine-days` (default 30, yfinance's 1m lookback) **and** the 1m data reaches back to the entry
+(coverage check), so we never trade a full 5m path for a partial 1m one. Fallback to 5m otherwise.
+
+- Persisted: **30 trades on 1m (10,836 bars) + 1 on 5m**; coverage 91.2% (31/34).
+- Finer granularity **reduced measured premature cost** (5m bars' wider high–low ranges over-trigger
+  stops): `trail5_after_2R` premature $322.61→**$263.74** (net −$265.94→**−$207.07**),
+  `lock50_after_2R` premature $347.97→**$289.10**. reliable n 8→**9**.
+- Conclusion unchanged: still net-negative for the core rules, every rule and family
+  **DO_NOT_GRAFT** (reliable n 9 < 20). 1m makes the premature-exit price more accurate, not the
+  verdict different.
+
 ## Limitations (honest)
 
-- 5m granularity (not tick): intrabar fill order within a 5m bar is unknown, so the pricer uses a
-  conservative gap-down fill. Tighter granularity (1m) is available only for ~7-day-old windows.
-- 5 trades (and any with no path) remain single-peak `upper_bound`; their rule rows are labelled
-  `partial_path`/`upper_bound_single_peak`, not `path_measured`.
+- 1m/5m granularity (not tick): intrabar fill order within a bar is unknown, so the pricer uses a
+  conservative gap-down fill. 1m is used where it fully covers the window; older windows use 5m.
+- 3 trades (no path) remain single-peak; their rule rows are labelled `partial_path` /
+  `upper_bound_single_peak`, not `path_measured`.
 - Long-only; the 34 measurable trades are all long.
 
 ## Safety proof
