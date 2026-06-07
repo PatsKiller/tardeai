@@ -364,7 +364,7 @@ export default function HermesHub({ onDrill }: Props) {
             </span>
           </div>
           <div style={{ fontSize: 10, color: '#ef4444', padding: '6px 10px', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, fontWeight: 600 }}>
-            ⚠ WALL OPENED (operator directive B, 2026-06-02): the Coordinator runs the fleet LIVE every 15 min — auto-promote + RAG embeddings now flow into the core intelligence the trading agents read. Kill switch is OFF (re-arm: <code>touch hermes_sidecar/.hermes/DISABLED</code>). Every promote/embed is audited + reversible.
+            ⚠ WALL OPENED (operator directive B, 2026-06-02): the Coordinator runs the fleet LIVE every 15 min — auto-promote + RAG embeddings now flow into the core intelligence the trading agents read. Kill switch is {killSwitch ? 'ON (halted)' : 'OFF'} (halt: <code>touch data/runtime/HERMES_DISABLED</code> · resume: <code>rm data/runtime/HERMES_DISABLED</code>). Every promote/embed is audited + reversible.
           </div>
           <div style={{ fontSize: 10, color: '#f59e0b', padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)', borderRadius: 6 }}>
             Each node shows <b>approval</b> (governance) and <b>execution footprint</b> (validated DB rows) separately, plus the <b>active job classifications</b> (what it's working on) and <b>next scheduled run</b>. Post directive-B all agents run live via the Coordinator every ~15 min. Click a node for the full breakdown.
@@ -403,7 +403,7 @@ export default function HermesHub({ onDrill }: Props) {
             </ReactFlow>
           </div>
           <div style={{ fontSize: 8, color: 'var(--text3)' }}>
-            Directive B (2026-06-02): all 7 agents now live. Coordinator (cron */15) orchestrates the full fleet with auto-promote + RAG embedding writing into core intelligence; Autonomous Research Manager enabled; kill switch off but checked each tick (touch hermes_sidecar/.hermes/DISABLED to halt). Every promote/embed audited + reversible. Footprint from /api/v2/hermes/agent-footprint.
+            Directive B (2026-06-02): all 7 agents now live. Coordinator (cron */15) orchestrates the full fleet with auto-promote + RAG embedding writing into core intelligence; Autonomous Research Manager enabled; kill switch checked each tick (touch data/runtime/HERMES_DISABLED to halt; rm to resume). Every promote/embed audited + reversible. Footprint from /api/v2/hermes/agent-footprint.
           </div>
         </div>
       )}

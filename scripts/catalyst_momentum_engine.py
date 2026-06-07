@@ -11,7 +11,7 @@ scalp-critic gate) on 3 cadence bands, and feeds BOTH:
       NEVER bypasses gates; capped per run.
 
 Bands: premarket_scalp (4–11 AM, fast), market_swing (9:30–4, multi-hour/day), overnight (24/7 baseline).
-LLM classification on gemma3:4b. Kill-switch aware (hermes_sidecar/.hermes/DISABLED). Default dry-run.
+LLM classification on gemma3:4b. Kill-switch aware (data/runtime/HERMES_DISABLED). Default dry-run.
 """
 import os
 import sys
@@ -34,7 +34,7 @@ import psycopg2
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [catalyst-momentum] %(message)s")
 log = logging.getLogger("catalyst_momentum")
 PY = str(ROOT / ".venv" / "bin" / "python")
-KILL = ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
           dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
           password=os.getenv("DB_PASSWORD", ""))

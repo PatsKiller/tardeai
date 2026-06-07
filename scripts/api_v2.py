@@ -14722,8 +14722,9 @@ def _hermes_health():
         row = _db_query(f"SELECT COUNT(*) as cnt FROM {tbl}", fetch="one")
         hcounts[tbl] = row["cnt"] if row else 0
 
-    # Kill switch status (global Hermes home)
-    kill_file = Path.home() / ".hermes" / "DISABLED"
+    # Research-fleet kill switch — canonical LIVE runtime path (the sidecar .hermes was retired in
+    # global-profile migration v1.8; ~/.hermes/DISABLED was also non-canonical). Touch this file to halt.
+    kill_file = Path(str(PROJECT_ROOT)) / "data" / "runtime" / "HERMES_DISABLED"
     kill_active = kill_file.exists()
 
     # Autonomous loop status
@@ -14743,6 +14744,7 @@ def _hermes_health():
         "session_count": session_count,
         "staging_counts": hcounts,
         "kill_switch_active": kill_active,
+        "kill_switch_path": "data/runtime/HERMES_DISABLED",
         "autonomous_loop_active": loop_active,
     }
 

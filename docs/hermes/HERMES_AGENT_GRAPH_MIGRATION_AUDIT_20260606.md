@@ -58,3 +58,10 @@ default · tradeai · tradeai12b · dev · serverops (see HERMES_PROFILE_MATRIX 
 ## Safety
 Read-only diagnosis + UI label + ping timeout change + doc. No Docker/service restart or enable; no gateway/
 Telegram/Discord/Codex/cron/systemd enablement; no broker/trading/secrets touched; no graph code deleted.
+
+## Kill-switch repoint (2026-06-06)
+The live Research Agent Graph / Coordinator kill-switch was repointed from the retired
+`hermes_sidecar/.hermes/DISABLED` (and the non-canonical `~/.hermes/DISABLED`) to the canonical live
+path **`data/runtime/HERMES_DISABLED`** across all 7 live readers, the Command Center API/UI, and the
+coordinator cron comment. `touch data/runtime/HERMES_DISABLED` halts the fleet next tick; `rm` resumes.
+See `HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md`.

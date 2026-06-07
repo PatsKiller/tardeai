@@ -19,7 +19,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCKFILE = Path("/tmp/hermes_autonomous_loop.lock")
-KILL_FILE = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
