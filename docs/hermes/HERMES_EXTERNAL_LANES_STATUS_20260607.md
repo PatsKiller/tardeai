@@ -8,7 +8,7 @@ DRY-RUN by default, manual/escalation, governed by EXTERNAL_LLM_USAGE_POLICY_202
 |------|-------|-----------|--------|----------|
 | **claude** | Anthropic API (`api.anthropic.com`, key from env) | metered API | wired; **blocked by credits** | add Anthropic billing credits |
 | **chatgpt** | **openai-codex OAuth** via Hermes CLI one-shot (`hermes -z … --provider openai-codex`) — **NOT the OpenAI API** | **FREE (ChatGPT subscription)** | wired; **auth_pending** | operator: `hermes login --provider openai-codex` |
-| **grok** | xAI API (`api.x.ai`, XAI_API_KEY) | metered API | **wired + working** | live now (free alt below) |
+| **grok** | **xai-oauth proxy** (`hermes proxy start --provider xai`, local :8645) — **NOT the xAI API** | **FREE (xAI OAuth)** | wired; **auth_pending** | operator: `hermes login --provider xai-oauth` + `hermes proxy start --provider xai` |
 
 ## Why ChatGPT uses Codex OAuth, not the OpenAI API
 Per operator directive: ChatGPT must run on the **free ChatGPT-subscription OAuth (openai-codex)**, not the
@@ -17,10 +17,10 @@ lane uses the Hermes one-shot CLI with `--provider openai-codex`, which uses the
 OpenAI API key, no per-call billing. It is `auth_pending` until the operator completes the device-code login.
 (The earlier OpenAI-API wiring was removed.)
 
-## Grok — free OAuth alternative (optional)
-Grok currently uses the xAI API key (working). To switch Grok to the FREE xAI OAuth proxy instead:
-`hermes login --provider xai-oauth` then `hermes proxy start --provider xai` (local OpenAI-compatible proxy
-on 127.0.0.1:8645). Say the word and I'll repoint the grok lane at the proxy.
+## Grok — repointed to the FREE xAI OAuth proxy (2026-06-07)
+Grok now routes through the local xai-oauth proxy (`hermes proxy start --provider xai`, 127.0.0.1:8645) — the
+metered xAI API key route was removed. auth_pending until the operator runs `hermes login --provider
+xai-oauth` and starts the proxy. Override the proxy URL with HERMES_XAI_PROXY_URL if needed.
 
 ## Safety (all lanes)
 Redaction verified (amounts/account#/keys stripped); API keys/OAuth read at call-time only, never stored/

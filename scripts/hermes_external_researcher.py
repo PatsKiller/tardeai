@@ -26,8 +26,9 @@ LANE_CFG = {
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
     "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": None,
                 "auth_hint": "hermes login --provider openai-codex   (operator OAuth — free under your ChatGPT subscription)"},
-    "grok":    {"kind": "openai", "url": "https://api.x.ai/v1/chat/completions", "key_env": "XAI_API_KEY", "default_model": "grok-3-mini",
-                "free_alt": "hermes login --provider xai-oauth && hermes proxy start --provider xai  (free OAuth proxy alternative)"},
+    "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
+                "default_model": "grok-3-mini",
+                "auth_hint": "hermes login --provider xai-oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -137,10 +138,32 @@ def call_codex_cli(model, prompt):
     return (r.stdout or "").strip() or (r.stderr or "").strip()
 
 
+def call_xai_proxy(url, model, prompt, max_tokens=1500):
+    """Grok via the FREE xAI OAuth proxy (hermes proxy start --provider xai). No xAI API key.
+    The proxy attaches the real OAuth creds; any bearer token works. auth_pending if proxy not running."""
+    import socket as _s
+    from urllib.parse import urlparse as _up
+    u = _up(url)
+    try:
+        with _s.create_connection((u.hostname, u.port or 8645), timeout=4):
+            pass
+    except Exception:
+        raise RuntimeError("AUTH_PENDING: xAI OAuth proxy not reachable. Operator must run: "
+                           "hermes login --provider xai-oauth ; hermes proxy start --provider xai")
+    body = json.dumps({"model": model, "max_tokens": max_tokens,
+                       "messages": [{"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request(url, data=body, headers={
+        "Authorization": "Bearer hermes-proxy", "content-type": "application/json"})
+    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+
 def call_external(lane, model, prompt, max_tokens=1500):
     cfg = LANE_CFG[lane]
     if cfg["kind"] == "codex_cli":
         return call_codex_cli(model, prompt)
+    if cfg["kind"] == "xai_proxy":
+        return call_xai_proxy(cfg["url"], model, prompt)
     key = _get_key(cfg["key_env"])
     if cfg["kind"] == "anthropic":
         body = json.dumps({"model": model, "max_tokens": max_tokens,
