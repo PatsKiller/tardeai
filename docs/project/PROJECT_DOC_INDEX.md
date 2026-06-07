@@ -30,6 +30,7 @@
 | `docs/hermes/HERMES_CLAUDE_EXTERNAL_LANE_20260607.md` | Claude external researcher lane: wired, redaction-first, advisory-only, manual; blocked by Anthropic credits |
 | `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM governance: limited criteria, per-call operator approval, data-class restrictions, cost/privacy, escalation ladder, prohibited uses |
 | `docs/hermes/HERMES_EXTERNAL_LANES_STATUS_20260607.md` | External lanes status: claude(API,credits), chatgpt(openai-codex OAuth FREE,auth_pending), grok(xAI API,live) |
+| `docs/hermes/HERMES_JOURNAL_BACKTEST_INTERNAL_EXTERNAL_MAPPING_20260607.md` | Journal-review + backtesting → internal owner → external escalation lane/triggers |
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |
