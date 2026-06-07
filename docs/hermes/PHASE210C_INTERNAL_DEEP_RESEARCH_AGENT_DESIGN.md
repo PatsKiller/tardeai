@@ -30,3 +30,7 @@ tradeai12b = interactive, manual, 12B-ctx4k, single-turn advisory. Deep Research
 ## Automation
 Yes — but ONLY during an approved overnight window, behind the existing kill-switch, advisory-only, with
 per-run caps. Not enabled in this phase (design only).
+
+---
+## IMPLEMENTED (2026-06-07)
+Runner built: `scripts/hermes_deep_research_local.py` (manual/overnight, advisory-only). Verified dry-run+apply (id=2003). NOT auto-scheduled. See HERMES_DEEP_RESEARCH_LOCAL_RUNNER_20260607.md.
