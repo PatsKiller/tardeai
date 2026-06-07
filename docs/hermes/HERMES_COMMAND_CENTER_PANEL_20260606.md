@@ -48,6 +48,15 @@ remain DISABLED. The panel names enabled toolsets (e.g. "1 enabled: x_search") a
 so it is visible rather than misreported as "disabled". Operator may explicitly pin x_search off in the
 tradeai/tradeai12b config if desired (separate change).
 
+### Resolution (2026-06-06) — x_search pinned off
+`x_search` is now explicitly pinned off for `tradeai` and `tradeai12b` via `disabled_toolsets: [x_search]`
+in each profile's `~/.hermes/profiles/<profile>/config.yaml` (the native `tools disable x_search` is a
+no-op when the tool is already default-off in a credential-free shell, so the explicit list entry is what
+makes the profile policy win over ambient xAI/X credentials). Verified: both profiles now show
+**zero enabled tools** in BOTH the bare shell (`tools list`) AND the Command Center runtime view
+(`/api/v2/hermes/profiles-status` → `tradeai: disabled`, `tradeai12b: disabled`). The `default` profile is
+out of scope and unchanged. No credentials were read or removed; no `.env` edited; collector code unchanged.
+
 ## Test results
 - `python3 -m py_compile scripts/api_v2.py` → OK
 - `bash -n scripts/check_system_versions.sh` → OK
