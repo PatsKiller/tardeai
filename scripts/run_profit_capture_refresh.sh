@@ -48,4 +48,27 @@ PGPASSWORD="$(grep '^DB_PASSWORD=' "$PROJ/.env" | cut -d= -f2)" \
    FROM profit_protection_rule_backtests WHERE run_id='ppbt_auto_$DAY'" \
   >> "$LOG" 2>&1 || echo "[$(ts)] WARN reliable_n query failed" >> "$LOG"
 
+# 7) auto-commit + push the artifacts as a permanent git audit trail.
+#    Best-effort and SCOPED to the artifact path: it stages/commits ONLY
+#    docs/_generated/profit_capture/ (never sweeps unrelated working-tree changes), skips when
+#    nothing changed (no empty commits), and never fails the pipeline if commit/push is unavailable.
+ART_REL="docs/_generated/profit_capture"
+if [ -n "$(git -C "$PROJ" status --porcelain -- "$ART_REL/" 2>/dev/null)" ]; then
+  git -C "$PROJ" add "$ART_REL/" >> "$LOG" 2>&1
+  if git -C "$PROJ" diff --cached --quiet -- "$ART_REL/" 2>/dev/null; then
+    echo "[$(ts)] artifacts: nothing to commit" >> "$LOG"
+  else
+    if git -C "$PROJ" commit -q -m "chore(audit): profit-capture refresh artifacts $DAY" -- "$ART_REL/" >> "$LOG" 2>&1; then
+      echo "[$(ts)] artifacts committed ($DAY)" >> "$LOG"
+      git -C "$PROJ" push >> "$LOG" 2>&1 \
+        && echo "[$(ts)] artifacts pushed ($DAY)" >> "$LOG" \
+        || echo "[$(ts)] WARN artifact push failed — committed locally, will push next run" >> "$LOG"
+    else
+      echo "[$(ts)] WARN artifact commit failed" >> "$LOG"
+    fi
+  fi
+else
+  echo "[$(ts)] artifacts: no change since last run" >> "$LOG"
+fi
+
 echo "[$(ts)] === profit-capture refresh done ($STAMP) ===" >> "$LOG"
