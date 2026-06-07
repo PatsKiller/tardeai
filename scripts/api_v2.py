@@ -14919,13 +14919,17 @@ def _atm_profit_capture():
     # rule-backtest potential recovery (latest run by recency, best net rule) — EVIDENCE ONLY.
     # Recovery is an UPPER BOUND (single-peak MFE; premature-exit cost unknown). Confidence and
     # graft verdict key off RELIABLE sample size, not raw n. See Phase 206b hardening.
-    bt = _db_query("""SELECT rule_name, avoided_giveback, net_improvement, recommendation_confidence,
-                             reliable_sample_size, raw_sample_size, estimate_quality,
-                             premature_exit_cost_known, premature_exit_cost_warning, graft_verdict
+    # Prefer the best rule that actually has reliable evidence (a real path-measured result), so the
+    # UI surfaces the honest finding rather than a vacuous zero-sample rule. Falls back to any rule.
+    bt = _db_query("""SELECT rule_name, avoided_giveback, premature_exit_cost, net_improvement,
+                             recommendation_confidence, reliable_sample_size, raw_sample_size,
+                             estimate_quality, premature_exit_cost_known, premature_exit_cost_warning,
+                             graft_verdict
                       FROM profit_protection_rule_backtests
                       WHERE run_id = (SELECT run_id FROM profit_protection_rule_backtests
                                       ORDER BY created_at DESC LIMIT 1)
-                      ORDER BY net_improvement DESC NULLS LAST LIMIT 1""", fetch="one")
+                      ORDER BY (reliable_sample_size > 0) DESC, net_improvement DESC NULLS LAST
+                      LIMIT 1""", fetch="one")
     best_rule = {k: _json_clean(v) for k, v in bt.items()} if bt else None
 
     summary = {
@@ -14937,6 +14941,8 @@ def _atm_profit_capture():
         "operator_acted": len(acted),
         "no_advisory_generated": len(no_adv),
         "rule_backtest_potential_recovery_usd": (best_rule or {}).get("avoided_giveback"),
+        "rule_backtest_premature_cost_usd": (best_rule or {}).get("premature_exit_cost"),
+        "rule_backtest_net_usd": (best_rule or {}).get("net_improvement"),
         "rule_backtest_best_rule": (best_rule or {}).get("rule_name"),
         "rule_backtest_reliable_n": (best_rule or {}).get("reliable_sample_size"),
         "rule_backtest_raw_n": (best_rule or {}).get("raw_sample_size"),
@@ -14975,7 +14981,8 @@ def _atm_profit_capture():
         "summary": summary, "breakdowns": breakdowns, "trades": trades,
         "labels": {"mode": "Advisory only", "execution": "No broker/order changes",
                    "shadow": "Shadow recommendations do not modify GO/WAIT or strategy.",
-                   "estimate": "Rule recovery is an upper bound (single-peak MFE; premature-exit cost unknown).",
+                   "estimate": "Premature-exit cost is path-measured from real intrabar bars where available "
+                               "(estimate_quality=path_measured); single-peak upper bound otherwise.",
                    "graft": "Best rule is shadow / insufficient evidence — DO_NOT_GRAFT."},
         "note": "Canonical all-trades profit-capture. Give-back scored only on bar-based MFE; "
                 "others flagged DATA_INCOMPLETE (honest unknown). Read-only, advisory only."}
