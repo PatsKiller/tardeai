@@ -15404,7 +15404,7 @@ def _hermes_validate_identity(profile, model, provider):
 
 def _hermes_codex_dev_status(query=None):
     """GET /api/v2/hermes/codex-dev-status — read-only readiness of the dev/Codex profile.
-    Verified route (from `hermes login --help`): provider `openai-codex` via OAuth device-code."""
+    Current route: provider openai-codex via `hermes auth add openai-codex --type oauth` (hermes login removed v0.16.0)."""
     devdir = _hermes_profile_dir("dev")
     auth_out = _hermes_run([str(HERMES_CLI), "auth", "list"], timeout=8) or ""
     codex_auth = "configured" if "openai-codex" in auth_out.lower() else "not configured"
@@ -15425,7 +15425,7 @@ def _hermes_codex_dev_status(query=None):
             "dev config show                        # verify provider/model on dev",
             "# Do NOT configure Codex in tradeai/tradeai12b. Do not paste tokens into the web UI.",
         ],
-        "note": "Verified route: provider 'openai-codex' via OAuth device-code (hermes login). Auth is "
+        "note": "Current route: provider 'openai-codex' via 'hermes auth add openai-codex --type oauth' (hermes login removed v0.16.0). Auth is "
                 "operator-interactive (browser) — no OAuth from the web UI, no credentials stored in the app.",
     }
 
