@@ -15606,21 +15606,48 @@ def _hermes_loop_detail(query=None):
 
 
 def _hermes_researcher_matrix(query=None):
-    """GET /api/v2/hermes/researcher-matrix — read-only identity/role/lane matrix (advisory; no execution)."""
+    """GET /api/v2/hermes/researcher-matrix — read-only identity/role/lane matrix. Lane statuses reflect the
+    canonical status snapshot (Phase 217) so the portal label matches live truth."""
+    # live lane status from the canonical snapshot (built by build_hermes_canonical_status.py)
+    canon = {}
+    try:
+        canon = json.loads((PROJECT_ROOT / "data" / "runtime" / "hermes_canonical_status_latest.json").read_text())
+    except Exception:
+        canon = {}
+    dr = canon.get("deep_research_lane", {})
+    lanes_live = {l.get("provider"): l for l in canon.get("llm_lanes", [])}
+
+    def lane_status(provider, fallback="designed"):
+        l = lanes_live.get(provider)
+        if not l:
+            return fallback
+        if l.get("headless_status") == "ready":
+            return "live (headless ready)"
+        if l.get("authed"):
+            return f"authed · {l.get('headless_status')}"
+        return l.get("reason_code") or "auth_pending"
+
+    deep_status = ("built + nightly-scheduled (advisory/staging, operator-run)"
+                   if dr.get("timer_enabled") else "designed (runner built)")
     return {
-        "generated_note": "read-only researcher responsibility matrix (Phase 210E)",
-        "internal_deep_research_lane": {"name": "Hermes Deep Research — Local", "model": "gemma3:27b / gemma3-overnight",
-            "process": "BATCH_OVERNIGHT", "status": "designed (not enabled)", "gemma4": "deferred — not installed"},
+        "generated_note": "read-only researcher matrix; lane statuses from canonical snapshot (Phase 217)",
+        "internal_deep_research_lane": {"name": "Hermes Deep Research — Local",
+            "model": dr.get("model", "gemma3:27b / gemma3-overnight"), "process": "BATCH_OVERNIGHT",
+            "design_status": "designed", "runner_built": dr.get("runner_built", True),
+            "timer_enabled": dr.get("timer_enabled"), "next_run": dr.get("next_run"),
+            "status": deep_status, "gemma4": "deferred — not installed"},
         "external_lanes": [
-            {"lane": "Claude (Anthropic)", "role": "high-stakes reasoning: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": "designed", "advisory_only": True},
-            {"lane": "ChatGPT (OpenAI)", "role": "second opinion, code/design review, synthesis, operator explanation", "status": "designed", "advisory_only": True},
-            {"lane": "Grok (xAI)", "role": "market/social/news narrative, sentiment/catalyst (source-scored)", "status": "designed", "advisory_only": True},
+            {"lane": "Claude (Anthropic)", "role": "high-stakes: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": lane_status("anthropic"), "advisory_only": True},
+            {"lane": "ChatGPT (Codex)", "role": "second opinion, code/design review, synthesis", "status": lane_status("openai-codex") + " (interactive-only on 0.16.0)", "advisory_only": True},
+            {"lane": "Grok (xAI)", "role": "market/social/news narrative, sentiment/catalyst (source-scored)", "status": lane_status("xai-oauth"), "advisory_only": True},
             {"lane": "Consensus Panel", "role": "run when internal vs TradeAI disagree sharply + high importance", "status": "designed", "advisory_only": True},
         ],
         "chat_profiles": {
             "tradeai": "stable Trade AI advisory (gemma3:4b, tool-less)",
             "tradeai12b": "experimental deep advisory (gemma3:12b-ctx4k, tool-less, manual-only)",
-            "default": "general (tool-less)", "dev": "engineering/Codex (future)", "serverops": "server-ops (future)"},
+            "default": "general (tool-less)", "dev": "engineering/Codex (interactive)",
+            "serverops": "server-ops (HOLD — P1: 18 tools enabled, hardening required)"},
+        "canonical_docs": canon.get("canonical_docs"),
         "safety": "All advisory-only. No external credentials in-app. No broker/trading mutation. tradeai/tradeai12b tool-less.",
     }
 

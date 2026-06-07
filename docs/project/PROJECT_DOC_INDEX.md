@@ -43,6 +43,7 @@
 | `docs/hermes/PHASE213I_EXTERNAL_FEEDBACK_LOOP_AND_DRILLDOWN.md` | External-researcher feedback loop (usefulness scoring) + all-loop drill-down (steps/queue/completed/timestamps) |
 | `docs/project/PHASE214_COORDINATOR_KILLSWITCH_REPOINT_CLOSEOUT.md` | Phase 214: canonical kill-switch helper; Coordinator centralized; retired .hermes/DISABLED ignored (P1 #1 closed) |
 | `docs/hermes/HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md` | CANONICAL Hermes matrix (agents/workflows/SOULs/loops/lanes) rebuilt from live v3 portal truth (.md + .docx) |
+| `docs/project/PHASE217_PORTAL_SYSTEM_DOC_ALIGNMENT_CLOSEOUT.md` | Phase 217: canonical status builder; portal/state/docs aligned from one source (deep lane built+scheduled, serverops P1) |
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |

@@ -1,6 +1,10 @@
 # Hermes Agents, Workflows, SOULs & Self-Learning Matrix
 
-_ms01-openclaw · 2026-06-07 · **rebuilt from live v3 portal truth** · advisory-only · paper-only · live trading PROHIBITED_
+_ms01-openclaw · 2026-06-07 · **generated from canonical status snapshot** (`data/runtime/hermes_canonical_status_latest.json`, Phase 217) · advisory-only · paper-only · live trading PROHIBITED_
+
+> This document and its `.docx` are regenerated from the single canonical snapshot built by
+> `scripts/build_hermes_canonical_status.py` (which merges live `/api/v2/hermes/*` + systemd state). Portal
+> cards (`researcher-matrix`), system state, and these docs therefore agree.
 
 ## 1. Executive summary
 Hermes is the research & self-learning layer that improves TradeAI v12 over time — it never trades. This
@@ -85,8 +89,9 @@ recommendation's usefulness (local gemma3, intrinsic + outcome-aware) → `usefu
 
 ## 14. Internal deep research lane
 **Hermes Deep Research — Local**: gemma3:27b / gemma3-overnight, BATCH_OVERNIGHT, advisory + staging only.
-Lane status: **designed (not enabled)** per researcher-matrix; runner built (`hermes_deep_research_local.py`)
-and scheduled nightly (`hermes-deep-research-local.timer` 02:30, --apply self-gated to overnight). gemma4 deferred.
+Lane status: **built + nightly-scheduled (advisory/staging, operator-run)** — runner
+`hermes_deep_research_local.py` built; `hermes-deep-research-local.timer` **enabled** (02:30 local, `--apply`
+self-gated to overnight); writes `hermes_research_intelligence` staging; kill-switch + health-gate. gemma4 deferred.
 
 ## 15. External researcher lanes
 `scripts/hermes_external_researcher.py` (redaction-first, dry-run default, `--apply`, advisory, stores
