@@ -35,3 +35,5 @@ python3 scripts/hermes_external_researcher.py --lane claude --question "..." --m
 
 ## Other lanes
 chatgpt / grok / consensus remain designed (210D); same runner pattern; wire when operator approves + provides access.
+
+> Governance/approval: EXTERNAL_LLM_USAGE_POLICY_20260607.md.
