@@ -11541,10 +11541,68 @@ def _governance_pipeline_status():
             "failures": failures, "next_run": next_run,
             "retired_legacy_cron": retired, "active_legacy_governance_cron": active_legacy,
             "retired_legacy_timers": retired_timers, "retired_legacy_timers_total": len(gov_timers),
-            "portfolio_maintenance": {"status": "not_migrated", "candidate_count": 8,
-                                      "controller": "run_portfolio_maintenance_pipeline.sh (dry-run skeleton)"},
+            "portfolio_maintenance": {"status": "partial_migrated",
+                                      "backup": "migrated", "daily": "pilot_scheduled_parallel",
+                                      "weekly": "not_migrated", "monthly": "not_migrated",
+                                      "lookthrough": "not_migrated",
+                                      "controller": "run_portfolio_maintenance_pipeline.sh (cadence-aware)",
+                                      "detail": "see /api/v2/system/portfolio-cadence-status"},
             "safety_net": {"freshness_monitor": "untouched", "watchdog": "untouched"},
             "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited"}}
+
+
+def _portfolio_cadence_status():
+    """GET /api/v2/system/portfolio-cadence-status — read-only portfolio-maintenance cadence migration
+    status (Phase 204 backup migrated + Phase 207 daily pilot). Reads cadence summary JSONs + systemd
+    timer states. No mutation."""
+    import json as _j, subprocess as _sp
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _summary(cad):
+        p = os.path.join(root, "data", "runtime", f"portfolio_maintenance_{cad}_last_run.json")
+        if not os.path.exists(p):
+            return None
+        try:
+            d = _j.load(open(p))
+            steps = d.get("steps", [])
+            return {"last_run_utc": d.get("run_ts_utc"), "dry_run": d.get("dry_run"),
+                    "overall": d.get("overall_status"),
+                    "labels": sorted({s.get("label") for s in steps if s.get("label")}),
+                    "review_only": any(s.get("label") == "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" for s in steps)}
+        except Exception:
+            return None
+
+    def _timer(unit):
+        # systemctl --user needs the user runtime bus; the server may lack it, so inject XDG_RUNTIME_DIR.
+        e = dict(os.environ); e["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        def _s(args):
+            try:
+                return _sp.run(["systemctl", "--user"] + args, capture_output=True, text=True, timeout=6, env=e).stdout.strip()
+            except Exception:
+                return ""
+        return {"active": _s(["is-active", unit]) or "unknown",
+                "enabled": _s(["is-enabled", unit]) or "unknown",
+                "next": _s(["show", unit, "-p", "NextElapseUSecRealtime", "--value"]) or None}
+
+    return {"ok": True, "read_only": True,
+            "cadences": {
+                "backup":      {"status": "migrated", "summary": _summary("backup"),
+                                "timer": _timer("tradeai-portfolio-backup-cadence.timer"),
+                                "legacy_retired": True},
+                "daily":       {"status": "pilot_scheduled_parallel", "summary": _summary("daily"),
+                                "timer": _timer("tradeai-portfolio-daily-cadence.timer"),
+                                "advisory_draft_review_only": True,
+                                "legacy_timer": _timer("portfolio-daily.timer"),
+                                "legacy_retired": False, "retired_legacy_count": 0,
+                                "active_legacy_count": 1},
+                "weekly":      {"status": "not_migrated", "summary": _summary("weekly")},
+                "monthly":     {"status": "not_migrated", "summary": _summary("monthly")},
+                "lookthrough": {"status": "not_migrated", "summary": _summary("lookthrough")},
+            },
+            "not_migrated": ["weekly", "monthly", "lookthrough", "db_retention", "price_cache"],
+            "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited",
+                       "destructive_excluded": ["db_retention", "price_cache"],
+                       "safety_net_watchdog": "untouched"}}
 
 
 def _research_topics_unified():
@@ -15349,6 +15407,7 @@ ROUTES = {
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
+    "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
     "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
