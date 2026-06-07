@@ -64,6 +64,26 @@ pm_step() {
 pm_excluded() { echo "  ---- EXCLUDED_NOT_RUN: $1 ($2) ----"
   STEP_NAMES+=("$1"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0); STEP_LABEL+=("EXCLUDED"); }
 
+# Fail-closed guard for advisory-draft / report steps: a review-only step must NOT invoke a broker/order
+# EXECUTION call-site or a protection/stop mutation. Static scan of the launcher chain; if any is found
+# the step is BLOCKED (recorded, overall=degraded) and NOT run. (Drafts stay drafts; nothing executes.)
+assert_review_only_chain() {
+  local step="$1"; shift
+  local f hit=0
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    if grep -qE '\b(submit_order|place_order|cancel_order|replace_order|move_stop|update_stop)\s*\(' "$f" 2>/dev/null; then
+      echo "  [SAFETY-FAIL] broker/order/stop execution call-site in $f — BLOCKING review-only step '$step'" >&2
+      hit=1
+    fi
+  done
+  if [ "$hit" = "1" ]; then
+    STEP_NAMES+=("$step"); STEP_STATUS+=("SAFETY_BLOCKED_EXEC_PATH"); STEP_MS+=(0)
+    STEP_LABEL+=("PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY"); overall=1; return 1
+  fi
+  return 0
+}
+
 # backup cadence = the canonical owner of ALL backups (2026-06-06: legacy timers/crons retired).
 #   - portfolio_backup (pg) + secrets_backup_env: run every daily fire.
 #   - secrets_backup_data: folded in here with a WEEKLY staleness gate (>=6 days since last success),
@@ -84,7 +104,11 @@ run_backup() {
     STEP_NAMES+=("secrets_backup_data"); STEP_STATUS+=("GATED_SKIP_FRESH"); STEP_MS+=(0); STEP_LABEL+=("BACKUP_WEEKLY_GATED")
   fi
 }
-run_daily()      { pm_step "portfolio_daily_report"   "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio.sh"; }
+run_daily()      {
+  assert_review_only_chain "portfolio_daily_report" \
+    "$PROJ/linux_launchers/run_portfolio.sh" "$PROJ/scripts/portfolio_orchestrator.py" || return 0
+  pm_step "portfolio_daily_report"   "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio.sh"
+}
 # secrets-data now owned by the gated backup cadence (above); run_weekly keeps only the advisory report.
 run_weekly()     {
   pm_step "portfolio_weekly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
