@@ -112,3 +112,7 @@ The global install is additive; to revert to sidecar-only: keep using
 2. Validate global profiles interactively (`hermes chat`, `tradeai chat`, `tradeai12b chat`).
 3. On approval: Stage D retirement (rename sidecar dirs to .RETIRED_<ts>, install wrapper stubs) — NOT done here.
 4. dev/serverops profiles remain unconfigured until operator enables (Codex/server-ops out of scope now).
+
+---
+## Stage D status (2026-06-06): EXECUTED
+Sidecar rename-retired (operator-approved, rename-only, no deletion). Retired: hermes_sidecar/.hermes.RETIRED_20260606_2140 + install.RETIRED_20260606_2140; wrappers stubbed. Sidecar retained as rollback/audit only. Canonical runtime = global Hermes profiles.
