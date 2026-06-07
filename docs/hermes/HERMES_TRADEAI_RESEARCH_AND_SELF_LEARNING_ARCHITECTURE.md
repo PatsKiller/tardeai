@@ -51,9 +51,9 @@ no in-app credentials, no broker mutation, designed but not enabled. See `PHASE2
 Grok (xai-oauth proxy) = working free automated external lane. Local Ollama = primary automated lane. Claude = high-stakes once Anthropic credits added. ChatGPT/Codex = free + INTERACTIVE-ONLY (`hermes -p dev chat`); automated headless lane UNAVAILABLE on Hermes 0.16.0 (reason hermes_headless_limit), cache-gated so it is NOT retried until Hermes>0.16.0. Nous = auth-pending.
 
 ## 9. Self-learning feedback architecture
-Observe → Normalize → Evaluate → Learn → Promote → Apply (safely). 10 live loops (proposal_outcome_chain,
+Observe → Normalize → Evaluate → Learn → Promote → Apply (safely). 11 live loops incl. external_researcher_feedback (Phase 213; usefulness vs outcome → advisory lane routing) (proposal_outcome_chain,
 trade_edge_comparison, trade_llm_reviews, shadow scores/efficacy, research_intelligence, promotion_audit,
-memory_events, agent_performance_history, RAG). **Scoring changes require a separate operator-gated graft**
+memory_events, agent_performance_history, RAG, external_researcher_feedback). Each loop is drill-down-able in v3 (process steps, queue/completed, recent timestamped items via /api/v2/hermes/loop-detail). **Scoring changes require a separate operator-gated graft**
 (shadow-first; MIN_SAMPLES=20/MIN_HITRATE=0.60). See `PHASE210B` / `PHASE210F`.
 
 ## 10. RAG / embedding / promotion path
