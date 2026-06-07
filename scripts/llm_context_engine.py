@@ -322,6 +322,47 @@ def build_context(symbol=None, context_type='general', trade_id=None,
         sections.append("COVERED CALL DATA:")
         sections.append(get_covered_call_context(symbol, conn))
 
+    # Hermes self-learning injection — promoted research + accumulated lessons (learns over time).
+    hk = get_hermes_knowledge(symbol=symbol, context_type=context_type, conn=conn)
+    if hk:
+        sections.append(hk)
+
     sections.append(ANTI_HALLUCINATION)
 
     return "\n".join(sections)
+
+
+def get_hermes_knowledge(symbol=None, context_type='general', limit=5, conn=None):
+    """Hermes self-learning context block: recent staged/promoted research findings + recent trade-close
+    lessons. Read-only, advisory. Injected into every build_context() prompt so LLM submissions improve as
+    Hermes learns. Returns '' on any error (never blocks a prompt)."""
+    try:
+        c = conn or _get_conn()
+        if c is None:
+            return ""
+        cur = c.cursor()
+        if symbol:
+            cur.execute("""SELECT topic, left(summary,200) FROM hermes_research_intelligence
+                           WHERE summary IS NOT NULL AND symbol=%s ORDER BY created_at DESC LIMIT %s""", (symbol, limit))
+        else:
+            cur.execute("""SELECT topic, left(summary,200) FROM hermes_research_intelligence
+                           WHERE summary IS NOT NULL ORDER BY created_at DESC LIMIT %s""", (limit,))
+        research = cur.fetchall()
+        if symbol:
+            cur.execute("""SELECT left(summary,160) FROM trade_llm_reviews
+                           WHERE summary IS NOT NULL AND symbol=%s ORDER BY created_at DESC LIMIT %s""", (symbol, limit))
+        else:
+            cur.execute("""SELECT left(summary,160) FROM trade_llm_reviews
+                           WHERE summary IS NOT NULL ORDER BY created_at DESC LIMIT %s""", (limit,))
+        lessons = cur.fetchall()
+        if not research and not lessons:
+            return ""
+        lines = ["HERMES RESEARCH & LESSONS (advisory; Hermes self-learning — context, not directives):"]
+        for t, s in research:
+            lines.append(f"  • [{(t or 'research')[:50]}] {s}")
+        for row in lessons:
+            if row and row[0]:
+                lines.append(f"  • lesson: {row[0]}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
