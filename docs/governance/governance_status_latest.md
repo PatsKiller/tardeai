@@ -1,4 +1,4 @@
-# Governance Status — healthy
+# Governance Status — attention_required
 
-**A1A:** unknown
+**A1A:** attention_required
 **Safety:** paper / true

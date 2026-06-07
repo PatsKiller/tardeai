@@ -1,60 +1,79 @@
 # System Facts — Latest
 
-Generated: 2026-05-22T20:30:00Z (post ATM-SAFE-1)
+Generated: 2026-06-05T10:07:06.410217
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.13.7
-- Portfolio: $1,201,120 / 47 positions
+- Git: main @ cfdcaae
 
 ## Database
 - Connected: True
-- Tables: 376
-- paper_trades: 5 open, 11 closed (30d)
-- paper_trade_proposals: 5 pending, 111 total
-- incubator_universe: 1,533 active
-- strategy_registry: 23 active strategies
-- atm_decision_log: 105 decisions today
-- enrichment_log: active (new)
-- audit_log: 45 entries (24h), schema fixed
-
-## ATM State
-- Mode: dry_run (frozen by ATM-SAFE-1 at 16:13:49 ET)
-- Config hash: e0671b4e944f
-- Classifier health threshold: 0.0 (temp cold-start bypass)
-- B-1 observation: active, expires 2026-05-25
-- Auto-enrichment: active (*/5 cron, non-blocking AI review)
-- Strategies with health baseline: 0 of 23
-
-## Execution Safety
-- ALPACA_MODE: paper
-- LLM_DISABLE_LIVE_EXECUTION: true
-- Quote fail-closed: enforced (blocks if no price source)
-- Audit logging: fixed (event_type column)
-- Risk gate on promoter: active
-- Enrichment pre-check on ATM: active
+- Tables: 436
+- trade_ai_scans: 17473
+- paper_trade_proposals: 170
+- paper_trades: 50
+- watchlist_agent_results: 9099
+- news_articles: 6085
+- topic_monitor: 17
+- content_embeddings: 33098
+- pipeline_stages: 44
+- pipeline_runs: 6342
+- config_documents: 38
+- content_entity_links: 85
+- blocked_content: 9
 
 ## Codebase
-- Cron jobs: 142
-- API endpoints: 217
-- Dashboard pages: 80
-- Screeners: 18 active
-- Orchestrator windows: 0900, 1000, 1200, 1400, 1600, 1730
+- python_script_count: 733
+- sql_migration_count: 52
+- yaml_config_count: 48
+- json_config_count: 6
+- strategy_count: 23
+- frontend_page_count: 94
+- react_component_count: 155
+- cron_job_count: 212
 
-## Paper Trading Performance (30d)
-- Closed: 11 trades (5W / 4L / 2 broker-review)
-- Win rate: 45.5%
-- Total P&L: $379.45
-- Avg R: 0.13R
-- Open: 5 positions (NWG, NVDA, AGNC, CMCSA, ASPN)
+## Safety
+- ALPACA_MODE: paper
+- Live trading: BLOCKED
+- Holdings: $1,200,281
+- Holdings guard: PASSED
+- Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, win_rate_below_threshold, governance_not_approved
 
-## Maturity (post-STOP-V2)
-- Overall: 7.0 / 10.0
-- Execution safety: 8.5
-- Paper governance: 7.5
-- Stop protection: 8.5 (NEW)
-- Auditability: 7.0
-- Quote readiness: 7.0
-- Strategy proof: 3.5
-- Live readiness: 2.0
-- Operational: 7.5
+## Documentation Drift
+- **docs/LLM_DATA_DICTIONARY.md**: strategy_count claimed=4 actual=23
+- **docs/CHEAT_SHEET.md**: table_count claimed=330 actual=436
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=733
+- **docs/COMMAND_CENTER_PAGE_MATRIX.md**: table_count claimed=2 actual=436
+- **docs/COMMAND_CENTER_PAGE_MATRIX.md**: strategy_count claimed=3 actual=23
+- **docs/COMMAND_CENTER_PAGE_MATRIX.md**: cron_job_count claimed=2 actual=212
+- **docs/COMMAND_CENTER_PAGE_MATRIX.md**: frontend_page_count claimed=2 actual=94
+- **docs/COMMAND_CENTER_PAGE_MATRIX.md**: frontend_page_count claimed=2 actual=94
+- **docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md**: python_script_count claimed=5 actual=733
+- **docs/RESTORE_GUIDE.md**: table_count claimed=334 actual=436
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=733
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=733
+- **docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md**: table_count claimed=426 actual=436
+- **docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md**: strategy_count claimed=26 actual=23
+- **docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md**: cron_job_count claimed=184 actual=212
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: table_count claimed=426 actual=436
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: table_count claimed=426 actual=436
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=26 actual=23
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=3 actual=23
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: cron_job_count claimed=184 actual=212
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=56 actual=733
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=376 actual=733
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: frontend_page_count claimed=63 actual=94
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: frontend_page_count claimed=63 actual=94
+- **docs/DASHBOARD_AUDIT_WORKFLOW.md**: python_script_count claimed=3 actual=733
+- **docs/DASHBOARD_AUDIT_WORKFLOW.md**: python_script_count claimed=3 actual=733
+- **docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md**: cron_job_count claimed=2 actual=212
+- **docs/COST_MODEL.md**: table_count claimed=334 actual=436
