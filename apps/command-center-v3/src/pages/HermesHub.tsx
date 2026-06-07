@@ -276,7 +276,7 @@ export default function HermesHub({ onDrill }: Props) {
                 background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text1)', fontSize: 11 }}>
               <span style={{ fontWeight: 600 }}>{p.profile}</span>
               <span style={{ fontSize: 9, color: /enabled:/.test(p.tools) ? '#f59e0b' : p.tools === 'disabled' ? '#22c55e' : 'var(--text3)' }}>{p.tools}</span>
-              <span style={{ fontSize: 9, color: '#60a5fa' }}>✎ SOUL</span>
+              <span style={{ fontSize: 9, color: '#60a5fa' }}>✎ Identity</span>
             </button>
           ))}
         </div>

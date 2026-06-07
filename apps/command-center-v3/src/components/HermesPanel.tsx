@@ -62,7 +62,7 @@ export default function HermesPanel() {
                 <td style={{ padding: '6px 8px' }}>{p.status}</td>
                 <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{p.purpose}</td>
                 <td style={{ padding: '6px 8px' }}>
-                  <button onClick={() => setEditProfile(p.profile)} style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg1)', color: '#60a5fa', cursor: 'pointer' }}>View/Edit SOUL</button>
+                  <button onClick={() => setEditProfile(p.profile)} style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg1)', color: '#60a5fa', cursor: 'pointer' }}>Edit Identity</button>
                   {p.soul_hash && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }} title={p.soul_mtime ? `modified ${new Date(p.soul_mtime * 1000).toLocaleString()}` : ''}>SOUL {p.soul_hash}{p.soul_mtime ? ` · ${new Date(p.soul_mtime * 1000).toLocaleDateString()}` : ''}</div>}
                 </td>
               </tr>
