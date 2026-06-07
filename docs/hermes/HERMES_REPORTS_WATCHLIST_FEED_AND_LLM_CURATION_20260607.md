@@ -53,3 +53,21 @@ Infra that EXISTS: `scripts/llm_context_engine.py` ("Centralized data context bu
 
 These wire Hermes research INTO the reports AND make every submission curated + self-improving. I can
 implement per-workflow on approval.
+
+---
+## Wiring pilot — DONE (2026-06-07)
+1. **Engine made Hermes-aware:** `llm_context_engine.get_hermes_knowledge(symbol,context_type)` injects
+   recent Hermes research findings + recent trade-close lessons; `build_context()` now appends a
+   "HERMES RESEARCH & LESSONS" section to EVERY prompt it builds → fixes the "engine lacks RAG/lessons" gap;
+   prompts now improve as Hermes learns. Fails open (never blocks a prompt). Verified: 1440-char block;
+   build_context(symbol) includes the HERMES section.
+2. **First report wired:** `monthly_advisory.py` now appends the Hermes self-learning block to its context,
+   so the monthly advisory benefits from accumulated Hermes intelligence (weak-strategy findings, thesis
+   challenges, lessons). Advisory-only; additive; fails open.
+
+### Next (operator-gated)
+- Route `generate_daily_intelligence_report.py` + morning digest LLM calls through build_context/Hermes block.
+- Migrate ad-hoc report prompts to versioned templates in scripts/prompts/.
+- Add outcome-feedback capture (usefulness/calibration) for report/advisory LLM calls.
+- (Separate) monthly_advisory still calls paid external APIs (Claude/OpenAI) — route to free lanes per the
+  external-LLM policy in a later gate.

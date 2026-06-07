@@ -173,6 +173,17 @@ def run_monthly_advisory(portfolio, analysis, risk, perf_history,
     ctx = _build_portfolio_context(portfolio, analysis, risk, perf_history,
                                     retirement, tax_proj, rebalancing, div_cal)
 
+    # Curated-LLM wiring pilot (2026-06-07): inject Hermes self-learning context (promoted research +
+    # recent trade lessons) so the monthly advisory benefits from accumulated Hermes intelligence and
+    # improves over time. Advisory-only; fails open (never blocks the report).
+    try:
+        from llm_context_engine import get_hermes_knowledge
+        _hk = get_hermes_knowledge(context_type='monthly_advisory', limit=6)
+        if _hk:
+            ctx = ctx + "\n\n" + _hk
+    except Exception:
+        pass
+
     # ── OPUS PROMPT: Conservative, fiduciary, risk-aware ──────────
     opus_prompt = f"""{ctx}
 
