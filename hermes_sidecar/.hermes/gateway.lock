@@ -1,1 +1,0 @@
-{"pid": 2392635, "kind": "hermes-gateway", "argv": ["/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/hermes_sidecar/install/.venv/bin/hermes", "gateway", "run", "--accept-hooks"], "start_time": 19907744}
