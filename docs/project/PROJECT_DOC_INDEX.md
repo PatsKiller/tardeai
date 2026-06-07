@@ -1,4 +1,5 @@
 ## Hermes Global Install Migration (2026-06-06)
+| `docs/hermes/HERMES_DEV_CODEX_SETUP_20260606.md` | dev profile Codex readiness: verified openai-codex OAuth device-code route (operator-run); SOUL hardened; tradeai unchanged |
 | `docs/hermes/HERMES_COMMAND_CENTER_PANEL_20260606.md` | Command Center System→Hermes panel: profile status, SOUL editor, terminal commands, Codex-dev readiness (read-only/guarded) |
 | `docs/hermes/HERMES_GLOBAL_PROFILE_MIGRATION_V1_8_CLOSEOUT_20260606.md` | Final v1.8 closeout: global Hermes canonical, sidecar retired/dormant, Reference Architecture updated, safety state verified |
 

@@ -15184,23 +15184,30 @@ def _hermes_validate_soul(profile, text):
 
 
 def _hermes_codex_dev_status(query=None):
-    """GET /api/v2/hermes/codex-dev-status — read-only readiness of the future dev/Codex profile."""
+    """GET /api/v2/hermes/codex-dev-status — read-only readiness of the dev/Codex profile.
+    Verified route (from `hermes login --help`): provider `openai-codex` via OAuth device-code."""
     devdir = _hermes_profile_dir("dev")
+    auth_out = _hermes_run([str(HERMES_CLI), "auth", "list"], timeout=8) or ""
+    codex_auth = "configured" if "openai-codex" in auth_out.lower() else "not configured"
     return {
         "dev_profile_exists": devdir.exists(),
         "dev_soul_exists": _hermes_soul_path("dev").exists(),
         "dev_model_configured": _hermes_profile_model("dev") is not None,
-        "codex_auth_configured": "not configured",
+        "supported_provider": "openai-codex",
+        "verified_login_command": "hermes login --provider openai-codex",
+        "codex_auth_configured": codex_auth,
         "codex_runtime_enabled": False,
+        "dev_tools_note": "dev keeps full development toolsets enabled (operator-approved 2026-06-06); "
+                          "SOUL forbids sending raw secrets/holdings/.env to cloud models.",
         "terminal_instructions": [
-            "# Run manually in terminal only when ready:",
-            "hermes profile use dev",
-            "hermes config show",
-            "# Configure Codex/OpenAI only after operator approval.",
-            "# Do not configure Codex in tradeai.",
+            "# Codex/ChatGPT for the dev profile is human-invoked only. Run manually in YOUR terminal:",
+            "hermes login --provider openai-codex   # OAuth device-code (browser); operator completes login",
+            "dev model                              # pick the Codex model for the dev profile (interactive)",
+            "dev config show                        # verify provider/model on dev",
+            "# Do NOT configure Codex in tradeai/tradeai12b. Do not paste tokens into the web UI.",
         ],
-        "note": "Codex setup command must be verified against current Hermes/OpenClaw docs before use. "
-                "No OAuth from the web UI; no credentials stored in the app.",
+        "note": "Verified route: provider 'openai-codex' via OAuth device-code (hermes login). Auth is "
+                "operator-interactive (browser) — no OAuth from the web UI, no credentials stored in the app.",
     }
 
 

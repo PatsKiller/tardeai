@@ -89,3 +89,6 @@ The Hermes v1.8 closeout was executed through a sequence of operator-approved Cl
 ### Note
 
 The full Claude Code prompts were delivered in the operator chat and are intentionally **not embedded verbatim** here, to avoid bloating the closeout document. This section records that they were used and their scope; the operator chat holds the complete prompt text.
+
+## dev Codex readiness (2026-06-06)
+The future dev/Codex profile route is verified: provider openai-codex via OAuth device-code (operator-interactive). dev SOUL hardened with Codex policy. Codex NOT configured in tradeai/tradeai12b/default. No gateway/cron/runtime enabled. See HERMES_DEV_CODEX_SETUP_20260606.md.

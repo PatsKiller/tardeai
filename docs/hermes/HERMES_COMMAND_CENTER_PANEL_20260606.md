@@ -64,3 +64,7 @@ was subsequently pinned the same way (`~/.hermes/config.yaml`), so **all three**
 - `npm run build` (v3) → OK
 - Endpoint smoke: profiles-status/terminal-commands/codex-dev-status/soul → 200
 - SOUL save: valid round-trip SAVES (backup created); unsafe content REJECTED with reasons; missing-boundary REJECTED; bad/traversal profile REJECTED.
+
+---
+## dev Codex route (2026-06-06)
+codex-dev-status now surfaces the verified route: provider openai-codex via OAuth device-code (`hermes login --provider openai-codex`). Auth is operator-interactive; dev SOUL hardened; dev tools left enabled per operator. See HERMES_DEV_CODEX_SETUP_20260606.md.
