@@ -1,5 +1,7 @@
 # Hermes / TradeAI Research & Self-Learning Architecture
 
+> **Canonical live matrix:** see HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md (.md/.docx), rebuilt from live v3 portal truth 2026-06-07 (Phase 216).
+
 _ms01-openclaw · 2026-06-07 · advisory-only · paper-only · live trading PROHIBITED_
 
 ## 1. Executive summary
