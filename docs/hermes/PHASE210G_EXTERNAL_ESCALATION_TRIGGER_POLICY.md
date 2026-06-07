@@ -22,3 +22,11 @@ recommendation · evidence list · dissenting view · confidence · risk flags �
 - Consensus panel: sharp internal disagreement + high importance.
 
 > Governance: see EXTERNAL_LLM_USAGE_POLICY_20260607.md (limited criteria, per-call operator approval, data-class restrictions, prohibited uses).
+
+---
+## Journal/Backtest-specific escalation triggers (2026-06-07)
+- Backtest weak strategy (PF<1 / low WR, sufficient n) on a live/proposed strategy → ChatGPT (design) / Claude (retire).
+- Recurring journal mistake pattern across N trades, or tax/retirement-sensitive lesson → Claude / ChatGPT.
+- Edge-comparison large profit-left-on-table on a high-$ position → Claude (P0 giveback).
+- Entry-grade decay on an active strategy → ChatGPT / Grok (narrative).
+See HERMES_JOURNAL_BACKTEST_INTERNAL_EXTERNAL_MAPPING_20260607.md. Operator-gated; no auto-escalation.
