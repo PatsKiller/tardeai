@@ -66,3 +66,16 @@ Operator approval token: APPROVE_RENAME_RETIRE_HERMES_SIDECAR. **Rename-retire o
 - Rollback preserved via the two backup tarballs + the retired directories (nothing deleted).
 - Canonical commands: `hermes chat`, `tradeai chat`, `tradeai12b chat`, `dev chat`, `serverops chat`.
 - NOT enabled: gateway, Telegram, Discord, Codex, serverops, cron, systemd.
+
+## Git Hygiene Cleanup
+
+After Stage D rename-retire, previously tracked runtime/state files under `hermes_sidecar/.hermes/*` were removed from Git tracking. The files were not deleted from disk; they remain preserved in the `.RETIRED_*` directories and backup tarballs. Ignore rules were added so Hermes runtime state, SQLite databases, request dumps, lock files, gateway state, and retired sidecar directories are not accidentally tracked again.
+
+### Gateway found still-enabled — now stopped/disabled (20260606_2154)
+During git-hygiene cleanup, the old sidecar gateway was discovered STILL RUNNING and systemd-enabled
+(`hermes-gateway.service`, PID 2392635, ~7 days, `gateway run --accept-hooks`) — it had recreated
+`hermes_sidecar/.hermes` after the 21:40 rename. Operator-approved action: `systemctl --user stop` +
+`disable hermes-gateway.service` (now is-active=failed/stopped, is-enabled=disabled); no other process
+remains. The operator's interactive `hermes chat` (PID 3549046) was deliberately preserved. The recreated
+runtime dir was re-retired to `hermes_sidecar/.hermes.RETIRED_20260606_2154`. No deletion; all retired dirs +
+backups preserved. Gateway/Telegram/Discord/Codex/cron remain OFF.

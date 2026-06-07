@@ -116,3 +116,17 @@ apps/broker-admin/.admin_password
 docs/hermes/phase3b_dryrun/
 docs/hermes/**/latest_*.json
 hermes_sidecar/.hermes/channel_directory.json
+
+# Hermes runtime / retired sidecar artifacts (git hygiene after Stage D rename-retire 2026-06-06)
+# NOTE: wrappers hermes_sidecar/run_hermes_readonly.sh + run_hermes_gateway.sh stay TRACKED (retirement stubs)
+hermes_sidecar/.hermes/
+hermes_sidecar/.hermes.*
+hermes_sidecar/install/
+hermes_sidecar/install.*
+hermes_sidecar/**/*.db
+hermes_sidecar/**/*.db-shm
+hermes_sidecar/**/*.db-wal
+hermes_sidecar/**/gateway.pid
+hermes_sidecar/**/gateway.lock
+hermes_sidecar/**/auth.lock
+hermes_sidecar/**/sessions/request_dump_*.json
