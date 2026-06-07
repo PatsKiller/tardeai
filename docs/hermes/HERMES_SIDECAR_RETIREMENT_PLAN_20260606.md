@@ -100,3 +100,16 @@ Result:
 3. `scripts/check_system_versions.sh` runs `pip show hermes-agent` against `hermes_sidecar/install/.venv` (now `install.RETIRED_*`); the version check fails gracefully. Recommend repointing to the global venv.
 4. User crontab line 384 is a **stale comment** referencing `hermes_sidecar/.hermes/DISABLED`; no active cron line launches the sidecar.
 5. The operator's interactive `hermes chat` on the old sidecar install (PID 3549046) remains live by request and was not disturbed; a new global `tradeai12b chat` session is also running (canonical).
+
+## Status Path Repoint
+
+After the launch-path audit, stale read-only references were found in `scripts/api_v2.py` and `scripts/check_system_versions.sh`. These were repointed from the retired sidecar install to the global Hermes install:
+
+- active Hermes CLI: `~/.local/bin/hermes`
+- active Hermes venv: `~/.local/share/hermes-agent-venv`
+- active Hermes home: `~/.hermes`
+- active profiles: `~/.hermes/profiles/*`
+
+Specifically: api_v2.py system-version panel (install_path/hermes_home/pip/version_cmd), Hermes Gateway service status (now reads `~/.hermes/gateway.pid`; gateway is chat-only/not-run by design → normally "down"), proposal-sandbox drafts (`~/.hermes/drafts/proposals`), memories (`~/.hermes/memories`), sessions (`~/.hermes/sessions`), and kill-switch (`~/.hermes/DISABLED`); and check_system_versions.sh `pip show hermes-agent` now targets `~/.local/share/hermes-agent-venv`.
+
+The disabled `hermes-gateway.service` unit file remains present but inactive/disabled. It is retained temporarily as an audit artifact and is not an active launch path (removal not approved in this task).

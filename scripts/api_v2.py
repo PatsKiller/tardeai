@@ -12912,9 +12912,9 @@ def _system_access_links():
             "api_url": f"http://{ts_fqdn}:18790",
             "category": "localhost",
             "health": _check("http://localhost:18790/health"),
-            "install_path": "hermes_sidecar/install/.venv/",
-            "hermes_home": "hermes_sidecar/.hermes/",
-            "note": "API server, requires Bearer token",
+            "install_path": "~/.local/share/hermes-agent-venv/",
+            "hermes_home": "~/.hermes/",
+            "note": "global Hermes install; chat via tradeai/tradeai12b profiles (sidecar retired 2026-06-06)",
         },
     ]
 
@@ -13082,7 +13082,8 @@ def _system_applications():
 
     # ── AI / Agent ──
     hermes_ver = None
-    _hpip = _run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"], timeout=10)
+    # Global Hermes install (sidecar retired 2026-06-06). Status read from the global venv.
+    _hpip = _run([os.path.expanduser("~/.local/share/hermes-agent-venv/bin/pip"), "show", "hermes-agent"], timeout=10)
     if _hpip:
         import re as _re2
         _hm = _re2.search(r'Version:\s*(\S+)', _hpip)
@@ -13090,9 +13091,9 @@ def _system_applications():
     hermes_latest = _latest("hermes-agent")
     apps.append({"name": "Hermes Agent", "category": "agent",
         "installed": hermes_ver, "latest": hermes_latest,
-        "path": f"{pr}/hermes_sidecar/install/.venv/",
-        "version_cmd": "hermes_sidecar/install/.venv/bin/hermes version",
-        "update_cmd": "hermes_sidecar/install/.venv/bin/pip install --upgrade hermes-agent (requires backup + approval)"})
+        "path": "~/.local/share/hermes-agent-venv/",
+        "version_cmd": "hermes --version",
+        "update_cmd": "~/.local/share/hermes-agent-venv/bin/pip install --upgrade hermes-agent (requires backup + approval)"})
 
     claude_ver = _ver(_run([str(Path.home() / ".local/bin/claude"), "--version"]))
     claude_latest = _latest("claude-code")
@@ -13216,10 +13217,11 @@ def _hermes_infra():
     except Exception:
         pass
     services.append({"name": "Ollama (LLM)", "kind": "service", "status": "up" if ol_up else "down", "detail": models or "no models loaded"})
-    # Hermes gateway (pid file)
+    # Hermes gateway (global ~/.hermes pid file). Sidecar gateway retired/disabled 2026-06-06; gateway is
+    # not run in the global profile model (chat-only), so this is normally "down" by design.
     gw = "down"
     try:
-        pidf = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "gateway.pid"
+        pidf = Path.home() / ".hermes" / "gateway.pid"
         if pidf.exists():
             raw = pidf.read_text().strip()
             import json as _j
@@ -13227,7 +13229,7 @@ def _hermes_infra():
             os.kill(pid, 0); gw = "up"
     except Exception:
         gw = "down"
-    services.append({"name": "Hermes Gateway", "kind": "process", "status": gw, "detail": "hermes sidecar :18790"})
+    services.append({"name": "Hermes Gateway", "kind": "process", "status": gw, "detail": "global Hermes; sidecar gateway retired/disabled (profiles are chat-only)"})
     services.append({"name": "Postgres", "kind": "db", "status": "up", "detail": "trade_ai"})  # this query proves it
 
     # Web-source domains (provenance) — parse source_urls_json
@@ -13558,7 +13560,7 @@ def _hermes_sl_drilldown():
 def _hermes_proposal_sandbox():
     """GET /api/v2/hermes/proposal-sandbox — read-only file-based proposal draft packets."""
     import json as _jps
-    drafts_dir = PROJECT_ROOT / "hermes_sidecar" / "drafts" / "proposals"
+    drafts_dir = Path.home() / ".hermes" / "drafts" / "proposals"  # global (sidecar retired 2026-06-06)
     packets = []
     if drafts_dir.exists():
         for f in sorted(drafts_dir.glob("*.json")):
@@ -14698,8 +14700,8 @@ def _hermes_health():
     except Exception:
         pass
 
-    # Read memory files
-    mem_dir = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "memories"
+    # Read memory files (global Hermes home; sidecar retired 2026-06-06)
+    mem_dir = Path.home() / ".hermes" / "memories"
     memories = []
     if mem_dir.exists():
         for f in sorted(mem_dir.iterdir()):
@@ -14707,8 +14709,8 @@ def _hermes_health():
                 memories.append({"name": f.name, "size": f.stat().st_size,
                                  "modified": f.stat().st_mtime})
 
-    # Read session count
-    sess_dir = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "sessions"
+    # Read session count (global Hermes home)
+    sess_dir = Path.home() / ".hermes" / "sessions"
     session_count = len(list(sess_dir.iterdir())) if sess_dir.exists() else 0
 
     # Hermes staging table counts
@@ -14718,8 +14720,8 @@ def _hermes_health():
         row = _db_query(f"SELECT COUNT(*) as cnt FROM {tbl}", fetch="one")
         hcounts[tbl] = row["cnt"] if row else 0
 
-    # Kill switch status
-    kill_file = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+    # Kill switch status (global Hermes home)
+    kill_file = Path.home() / ".hermes" / "DISABLED"
     kill_active = kill_file.exists()
 
     # Autonomous loop status
