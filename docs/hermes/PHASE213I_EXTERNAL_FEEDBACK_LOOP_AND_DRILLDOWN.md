@@ -19,3 +19,10 @@ Each loop in the audit carries `process_steps` + `status_col`. New endpoint
 and recent items with timestamps (id/status/symbol/etc). Command Center → System → Hermes →
 "Self-Learning & Research Lanes" card now lists all 11 loops; click any loop to expand its steps,
 queue/completed counts, and recent timestamped items. Read-only.
+
+## Scheduled daily (2026-06-07, operator-approved)
+`hermes-external-feedback.timer` (systemd user): OnCalendar=*-*-* 04:00 (Persistent, +≤5min jitter) →
+oneshot `hermes-external-feedback.service` runs `hermes_external_feedback_loop.py --apply --model gemma3:4b`
+(TimeoutStartSec=600). enabled+active; next run ~04:00 daily; first run success. Advisory-only; honors the
+HERMES_DISABLED kill-switch. Units in ~/.config/systemd/user (untracked, per convention).
+Operate: `systemctl --user status|disable hermes-external-feedback.timer`.
