@@ -130,7 +130,3 @@ hermes_sidecar/**/gateway.pid
 hermes_sidecar/**/gateway.lock
 hermes_sidecar/**/auth.lock
 hermes_sidecar/**/sessions/request_dump_*.json
-
-# Profit-capture refresh artifacts (generated weekly; keep README only)
-docs/_generated/profit_capture/*
-!docs/_generated/profit_capture/README.md
