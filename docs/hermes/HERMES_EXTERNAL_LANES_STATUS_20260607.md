@@ -25,3 +25,9 @@ metered xAI API key route was removed. auth_pending until the operator runs `her
 Redaction verified (amounts/account#/keys stripped); API keys/OAuth read at call-time only, never stored/
 logged/returned; dry-run default; advisory-only (no broker/order/stop/proposal/trading); not auto-scheduled;
 per-call operator approval (`--apply`).
+
+---
+## Phase 212 (2026-06-07): ChatGPT/Codex headless — no Hermes fix available
+0.16.0 is the latest Hermes build (no newer/pre-release). All headless command shapes fail for Codex →
+chatgpt automated lane stays `unavailable` (reason: hermes_headless_limit). Codex interactive works.
+Grok (xai-oauth proxy) is the working free automated external lane. See PHASE212* docs.

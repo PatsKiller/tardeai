@@ -82,3 +82,8 @@ through the non-interactive `-z` harness). Not a credential issue.
 - ⛔ The automated `--lane chatgpt` researcher returns status=`unavailable` (CODEX_HEADLESS_UNAVAILABLE) until
   a Hermes fix enables headless codex output. The lane is wired correctly and will work once `-z` finalizes codex.
 - Grok (xai-oauth proxy) and Claude (API+credits) are the headless-capable external lanes.
+
+---
+## Phase 212 (2026-06-07): headless reason = hermes_headless_limit
+Confirmed 0.16.0 is the latest Hermes; no upgrade fixes headless Codex. chatgpt researcher lane reason code:
+`hermes_headless_limit` (auth + version are fine; the headless path is the blocker). Re-evaluate on Hermes >0.16.0.
