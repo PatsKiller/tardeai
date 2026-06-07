@@ -7,6 +7,11 @@
 | `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Staged reversible retirement (A-C done; Stage D EXECUTED 2026-06-06 (rename-retire, no deletion)) |
 | `docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md` | What migrated vs intentionally excluded (no secrets/dumps/qwen); rollback evidence |
 
+## Profit-Capture Evidence-Floor Ceiling (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PROFIT_CAPTURE_EVIDENCE_FLOOR_CEILING_20260606.md` | determination: reliable n≥20 floor NOT reachable (Schwab winners are duplicates of paper / too old for intraday paths / stopless); true ceiling 9, clean INFU planned_stop repair → 11; shortcuts (double-count, ambiguous-stop guess) refused; DO_NOT_GRAFT upheld |
+
 ## Profit-Capture Intrabar Path + Path-Measured Premature-Exit (Phase 206c, 2026-06-06)
 | Document | Purpose |
 |----------|---------|
