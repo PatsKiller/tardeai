@@ -1,3 +1,11 @@
+## Hermes Global Install Migration (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_GLOBAL_INSTALL_MIGRATION_20260606.md` | Sidecar->global Hermes v0.16.0; verified state, canonical commands, no-delete policy, rollback |
+| `docs/hermes/HERMES_PROFILE_MATRIX_20260606.md` | default/tradeai/tradeai12b/dev/serverops/sidecar matrix (path/model/tools/purpose/safety) |
+| `docs/hermes/HERMES_MODEL_CANARY_STATUS_20260606.md` | gemma3:4b approved default; 12b-ctx4k experimental; qwen3:14b removed; canaries pass live |
+| `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Staged reversible retirement (Stage A done; B-D operator-gated, no deletion) |
+
 ## Profit-Capture Rule Backtest Quality + Hardening (Phase 206b, 2026-06-06)
 | Document | Purpose |
 |----------|---------|
