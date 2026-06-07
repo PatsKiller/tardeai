@@ -53,3 +53,16 @@ Sidecar remains fully functional until Stage D. Restore from the snapshot tarbal
   (`run_hermes_readonly.sh.retired.stub`, `run_hermes_gateway.sh.retired.stub`). The sidecar is **still in
   place and functional**; rename-retire awaits explicit operator approval token
   `APPROVE_RENAME_RETIRE_HERMES_SIDECAR`. No deletion will ever occur (rename-only).
+
+---
+## Stage D EXECUTED (2026-06-06, operator-approved)
+Operator approval token: APPROVE_RENAME_RETIRE_HERMES_SIDECAR. **Rename-retire only — no deletion.**
+- Final pre-rename backup: `backups/hermes_sidecar_FINAL_BEFORE_RENAME_RETIRE_20260606_2140.tgz` (118M) +
+  inventory `docs/hermes/HERMES_SIDECAR_FINAL_BEFORE_RENAME_RETIRE_FILE_INVENTORY_20260606_2140.txt` (107 files).
+- Renamed: `hermes_sidecar/.hermes` → `hermes_sidecar/.hermes.RETIRED_20260606_2140`;
+  `hermes_sidecar/install` → `hermes_sidecar/install.RETIRED_20260606_2140`.
+- Wrappers `run_hermes_readonly.sh` + `run_hermes_gateway.sh` replaced with retirement stubs (print message, exit 2).
+- Validation PASS: global hermes v0.16.0 + profiles intact; active sidecar dirs gone; retired dirs present.
+- Rollback preserved via the two backup tarballs + the retired directories (nothing deleted).
+- Canonical commands: `hermes chat`, `tradeai chat`, `tradeai12b chat`, `dev chat`, `serverops chat`.
+- NOT enabled: gateway, Telegram, Discord, Codex, serverops, cron, systemd.
