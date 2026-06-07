@@ -8,8 +8,23 @@ import json, os, time, requests
 from pathlib import Path
 from datetime import datetime
 
-OPUS   = "claude-opus-4-20250514"
-GPT4O  = "gpt-4o"
+OPUS   = "claude-opus-4-20250514"   # legacy paid (no longer the default — see free local lanes below)
+GPT4O  = "gpt-4o"                    # legacy paid
+# Gate 4 (2026-06-07): monthly advisory runs on FREE local Ollama models by default — no paid API.
+# Dual perspective preserved: 27b (deep fiduciary) + 12b (alternative). Override via env.
+FIDUCIARY_MODEL = os.environ.get("MONTHLY_ADVISORY_FIDUCIARY_MODEL", "gemma3:27b")
+ALT_MODEL       = os.environ.get("MONTHLY_ADVISORY_ALT_MODEL", "gemma3:12b")
+
+
+def _call_local(prompt, model, max_tokens=2500):
+    """FREE local Ollama call (no paid API). Returns text or an error string (never raises)."""
+    try:
+        r = requests.post("http://127.0.0.1:11434/api/chat", timeout=600, json={
+            "model": model, "stream": False, "messages": [{"role": "user", "content": prompt}],
+            "options": {"num_ctx": 16384, "num_predict": max_tokens, "temperature": 0.3}})
+        return r.json().get("message", {}).get("content", "").strip() or "(empty local response)"
+    except Exception as e:
+        return f"Error (local {model}): {str(e)[:200]}"
 
 def _get_key(provider):
     """Get API key for 'anthropic' or 'openai'."""
@@ -257,17 +272,17 @@ Rules:
     results = {
         "generated_at": datetime.now().isoformat(),
         "opus": None,
-        "opus_model": OPUS,
+        "opus_model": FIDUCIARY_MODEL,
         "gpt4o": None,
-        "gpt4o_model": GPT4O,
+        "gpt4o_model": ALT_MODEL,
     }
 
-    print(f"  [advisory] Generating Opus advisory (conservative) — {OPUS}...")
-    results["opus"] = _call_claude(opus_prompt, OPUS, max_tokens=2500)
+    print(f"  [advisory] Generating fiduciary advisory (conservative) — {FIDUCIARY_MODEL} (free local)...")
+    results["opus"] = _call_local(opus_prompt, FIDUCIARY_MODEL, max_tokens=2500)
     time.sleep(1)
 
-    print(f"  [advisory] Generating GPT-4o advisory (opportunity-focused) — {GPT4O}...")
-    results["gpt4o"] = _call_openai(sonnet_prompt, GPT4O, max_tokens=2500)
+    print(f"  [advisory] Generating alternative advisory (opportunity-focused) — {ALT_MODEL} (free local)...")
+    results["gpt4o"] = _call_local(sonnet_prompt, ALT_MODEL, max_tokens=2500)
 
     # Save to state
     cache_path = state_dir / "monthly_advisory.json"

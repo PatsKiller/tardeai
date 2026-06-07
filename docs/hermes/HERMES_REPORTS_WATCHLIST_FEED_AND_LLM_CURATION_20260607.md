@@ -69,5 +69,4 @@ implement per-workflow on approval.
 - [DONE 2026-06-07] `generate_daily_intelligence_report.py` now surfaces a Hermes research feed (24h count + top weak-strategy/thesis/deep-research findings) in the report + Telegram output. (Data-report; no LLM, so Hermes findings are surfaced as content.) Next: morning digest LLM prompt via build_context.
 - Migrate ad-hoc report prompts to versioned templates in scripts/prompts/.
 - Add outcome-feedback capture (usefulness/calibration) for report/advisory LLM calls.
-- (Separate) monthly_advisory still calls paid external APIs (Claude/OpenAI) — route to free lanes per the
-  external-LLM policy in a later gate.
+- [DONE 2026-06-07] monthly_advisory routed OFF paid Claude/OpenAI APIs → FREE local gemma3 (27b fiduciary + 12b alternative; dual-perspective preserved) + Hermes self-learning context. Env overrides MONTHLY_ADVISORY_FIDUCIARY_MODEL / _ALT_MODEL. Legacy paid callers retained but unused.
