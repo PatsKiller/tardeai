@@ -15411,6 +15411,44 @@ def _hermes_codex_dev_status(query=None):
     }
 
 
+def _hermes_workflow_matrix(query=None):
+    """GET /api/v2/hermes/workflow-matrix — read-only aggregate of the Phase 209 audit (profiles, graph
+    nodes, workflow owners, DB lineage) + operator guidance. Reads the latest audit JSON if present."""
+    import json as _jw
+    base = PROJECT_ROOT / "data" / "hermes"
+    def load(name):
+        p = base / name
+        try:
+            return _jw.loads(p.read_text()) if p.exists() else None
+        except Exception:
+            return None
+    owners = load("hermes_workflow_owner_matrix_latest.json") or {}
+    lineage = load("hermes_db_lineage_latest.json") or {}
+    nodes = load("hermes_graph_node_inventory_latest.json") or {}
+    return {
+        "generated_note": "read-only Phase 209 workflow matrix",
+        "graph_nodes": nodes.get("nodes", []),
+        "workflow_owners": owners.get("rows", []),
+        "workflow_count": owners.get("workflow_count"),
+        "any_cli_profile_in_jobs": owners.get("any_cli_profile_in_jobs"),
+        "db_lineage": lineage.get("tables", []),
+        "safe_views_count": len(lineage.get("safe_views", [])),
+        "chat_usage": {
+            "default": "general non-trading help (tools off)",
+            "tradeai": "Trade AI advisory/review — stable (gemma3:4b, tool-less)",
+            "tradeai12b": "deeper/experimental Trade AI analysis (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "dev": "engineering/Codex (future, human-invoked)",
+            "serverops": "future server-ops (advisory until hardened)",
+        },
+        "quick_answers": {
+            "who_owns_librarian": "hermes_autonomous_librarian_backlog_loop.py via hermes-librarian-backlog-loop.timer",
+            "tradeai_vs_tradeai12b": "Same advisory role; tradeai=stable 4b default, tradeai12b=experimental 12B for deeper analysis (not used by automation).",
+            "tradeai12b_automated": "No — no automated job uses any chat profile; fleet scripts call Ollama directly.",
+        },
+        "note": "Regenerate the underlying JSON with scripts/audit_hermes_workflow_owners.py + audit_hermes_db_lineage.py.",
+    }
+
+
 def _hermes_terminal_commands(query=None):
     """GET /api/v2/hermes/terminal-commands — copyable canonical commands + diagnostics."""
     return {
@@ -15627,6 +15665,7 @@ ROUTES = {
     "/api/v2/hermes/identity": _hermes_identity_detail,
     "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
     "/api/v2/hermes/terminal-commands": _hermes_terminal_commands,
+    "/api/v2/hermes/workflow-matrix": _hermes_workflow_matrix,
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
