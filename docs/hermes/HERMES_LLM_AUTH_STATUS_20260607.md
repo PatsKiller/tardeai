@@ -51,3 +51,19 @@ The proxy currently runs as a foreground process. For durable uptime + auto-rest
 ## Grok usage command
 1. (once, persistent) `hermes proxy start --provider xai`
 2. `python3 scripts/hermes_external_researcher.py --lane grok --question "..." --apply`
+
+---
+## xAI proxy now a systemd service (2026-06-07, operator-approved)
+- `hermes-xai-proxy.service` (user): ExecStart=`hermes proxy start --provider xai`, Type=simple,
+  **Restart=always** (RestartSec=10), WantedBy=default.target. active=active, enabled=enabled, listening :8645.
+- Survives shell exit + auto-restarts; Command Center proxy monitor reflects UP/DOWN live.
+- Operate: `systemctl --user status|restart|stop hermes-xai-proxy.service`. Unit in ~/.config/systemd/user (untracked, per convention).
+
+## ChatGPT/Codex login — BLOCKED by ChatGPT workspace policy (2026-06-07)
+The Codex device-code login (`hermes auth add openai-codex --type oauth`) returns:
+"Please contact your workspace admin to enable device code authentication."
+This is a **ChatGPT workspace (Business/Enterprise/Edu) admin policy** — device-code auth is disabled for
+the org on account john@jwwhiting.com. Resolution is EXTERNAL to this system: the **ChatGPT workspace admin**
+must enable device-code authentication in ChatGPT admin settings. If john@jwwhiting.com is the workspace
+owner/admin, enable it there; if it's a managed workspace, the org admin must. Until then the ChatGPT/Codex
+lane stays auth_pending. (Grok via xai-oauth is unaffected and working; Claude needs Anthropic credits.)
