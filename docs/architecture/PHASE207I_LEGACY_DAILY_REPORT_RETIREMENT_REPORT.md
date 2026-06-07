@@ -1,6 +1,17 @@
 # Phase 207I — Legacy Daily Report Retirement Decision — 2026-06-07
 
-## Decision: HOLD — retire NOTHING this phase. Legacy `portfolio-daily.timer` stays ACTIVE.
+## Decision: RETIRED (operator-approved 2026-06-07).
+
+> **Update — operator approved immediate retirement.** After all gate conditions passed, the operator
+> directed retiring the legacy daily timer now. Done: `systemctl --user disable --now portfolio-daily.timer`
+> → now **inactive / disabled**. Unit files **preserved** on disk (not deleted); the cadence timer
+> `tradeai-portfolio-daily-cadence.timer` (Mon-Fri 07:30) is the **sole** daily-report path.
+> **retired_legacy_count = 1.** Before/after snapshot: `data/runtime/legacy_daily_retirement_20260607/`.
+> Rollback: `systemctl --user enable --now portfolio-daily.timer`. (Out of scope, left active: the
+> separate `run_alex_daily.py --daily` @05:00 and standalone `portfolio_orchestrator.py` @07:15 cron jobs
+> — not what the daily cadence replaces.)
+
+### Original decision (superseded): HOLD — retire NOTHING this phase. Legacy `portfolio-daily.timer` stays ACTIVE.
 
 ## Gate conditions (all technically passed)
 | condition | status |
