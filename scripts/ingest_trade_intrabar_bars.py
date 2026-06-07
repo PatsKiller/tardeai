@@ -14,10 +14,14 @@ Usage:
   python3 scripts/ingest_trade_intrabar_bars.py --apply    # persist paths
   python3 scripts/ingest_trade_intrabar_bars.py --all-closed  # widen beyond measurable winners
 """
-import os, sys, json, argparse, time
+import os, sys, json, argparse, time, logging
 from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Silence yfinance's own "possibly delisted / Failed download" chatter: a failed 1m fetch for a long
+# window is EXPECTED (we fall back to 5m) and is not an error worth logging.
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 INTERVAL = "5m"          # 60-day lookback; default; sufficient to detect intra-hold pullbacks
 FINE_INTERVAL = "1m"     # ~7-day lookback; tighter premature-exit detection for recent trades
@@ -84,10 +88,10 @@ def fetch_best(symbol, start, end, fine, fine_days):
     fine_eligible = fine and (now - end) <= timedelta(days=fine_days)
     if fine_eligible:
         b1 = fetch_bars(symbol, start, end, FINE_INTERVAL)
-        if isinstance(b1, dict) and b1.get("error"):
-            return b1, FINE_INTERVAL
-        # accept 1m only if it covers the window start (1m history is ~7d; older starts are gappy)
-        if b1 and b1[0]["bar_time"] <= start + timedelta(minutes=FETCH_PAD_MIN):
+        # Accept 1m ONLY if it fetched cleanly AND covers the window start. yfinance caps 1m at 8
+        # days per request, so long windows error or come back partial — in every such case we fall
+        # through to 5m (which has a 60-day window) rather than dropping the trade's path.
+        if isinstance(b1, list) and b1 and b1[0]["bar_time"] <= start + timedelta(minutes=FETCH_PAD_MIN):
             return b1, FINE_INTERVAL
     return fetch_bars(symbol, start, end, INTERVAL), INTERVAL
 
