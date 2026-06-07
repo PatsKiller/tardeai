@@ -79,3 +79,24 @@ During git-hygiene cleanup, the old sidecar gateway was discovered STILL RUNNING
 remains. The operator's interactive `hermes chat` (PID 3549046) was deliberately preserved. The recreated
 runtime dir was re-retired to `hermes_sidecar/.hermes.RETIRED_20260606_2154`. No deletion; all retired dirs +
 backups preserved. Gateway/Telegram/Discord/Codex/cron remain OFF.
+
+## Launch Path Audit
+
+After Stage D rename-retirement, the old `hermes-gateway.service` was found still active/enabled and recreating `hermes_sidecar/.hermes`. It was stopped and disabled with operator approval. A follow-up launch-path audit checked processes, user/system systemd units, timers, cron, shell startup files, PATH commands, repository references, and Git tracking/ignore state.
+
+Result:
+- No active old sidecar gateway process remains.
+- `hermes-gateway.service` is inactive (active=failed) and disabled.
+- No old sidecar runtime files remain tracked in Git (0 under `hermes_sidecar/.hermes` + `install`).
+- Retired directories remain preserved on disk and ignored by Git.
+- PATH commands resolve to the global install (`hermes`→`~/.local/share/hermes-agent-venv`; `tradeai`/`tradeai12b`/`dev`/`serverops`→`~/.local/bin`).
+- All other enabled `hermes-*`/`tradeai-*` systemd timers run the project research pipeline (`.venv` + `scripts/hermes_*.py`), NOT the sidecar CLI install.
+- No active cron job, no system systemd unit, and no shell-startup file launches the sidecar.
+- Canonical usage is through global Hermes profiles.
+
+### Remaining Launch Path Findings (non-blocking; read-only/stale, no relaunch risk)
+1. `~/.config/systemd/user/hermes-gateway.service` unit file still contains the old sidecar ExecStart. It is **disabled** so it cannot auto-start, but the file should eventually be removed or repointed (operator approval required — runtime change, not done in this audit).
+2. `scripts/api_v2.py` has read-only references to old sidecar paths (version/status display, `gateway.pid`, `.hermes/memories`, `.hermes/sessions`, `drafts/proposals`). These now point at moved/`.RETIRED_*` paths and return empty/stale rather than launching anything. Recommend repointing status reads to the global `~/.hermes` (or marking the panel legacy) in a later change.
+3. `scripts/check_system_versions.sh` runs `pip show hermes-agent` against `hermes_sidecar/install/.venv` (now `install.RETIRED_*`); the version check fails gracefully. Recommend repointing to the global venv.
+4. User crontab line 384 is a **stale comment** referencing `hermes_sidecar/.hermes/DISABLED`; no active cron line launches the sidecar.
+5. The operator's interactive `hermes chat` on the old sidecar install (PID 3549046) remains live by request and was not disturbed; a new global `tradeai12b chat` session is also running (canonical).
