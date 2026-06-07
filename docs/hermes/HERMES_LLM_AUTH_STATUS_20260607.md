@@ -67,3 +67,18 @@ the org on account john@jwwhiting.com. Resolution is EXTERNAL to this system: th
 must enable device-code authentication in ChatGPT admin settings. If john@jwwhiting.com is the workspace
 owner/admin, enable it there; if it's a managed workspace, the org admin must. Until then the ChatGPT/Codex
 lane stays auth_pending. (Grok via xai-oauth is unaffected and working; Claude needs Anthropic credits.)
+
+---
+## ChatGPT/Codex — authed, but headless researcher lane unavailable in v0.16.0 (2026-06-07)
+After the workspace admin enabled device-code auth, the operator completed the Codex OAuth (creds saved:
+`openai-codex-oauth-1`). **Auth works + is detected.** HOWEVER: the automated researcher lane uses the Hermes
+**headless one-shot** `hermes -z --provider openai-codex -m <model>`, which returns **"no final response was
+produced; treating the run as failed"** for EVERY codex model (gpt-5-codex/gpt-5/o4-mini/etc.) and every
+profile — a **Hermes v0.16.0 limitation** (the codex/ChatGPT agent backend doesn't finalize a response
+through the non-interactive `-z` harness). Not a credential issue.
+
+- ✅ ChatGPT/Codex is usable INTERACTIVELY: `hermes -p dev chat` (subscription-backed, free). dev profile now
+  configured to provider openai-codex / gpt-5-codex.
+- ⛔ The automated `--lane chatgpt` researcher returns status=`unavailable` (CODEX_HEADLESS_UNAVAILABLE) until
+  a Hermes fix enables headless codex output. The lane is wired correctly and will work once `-z` finalizes codex.
+- Grok (xai-oauth proxy) and Claude (API+credits) are the headless-capable external lanes.
