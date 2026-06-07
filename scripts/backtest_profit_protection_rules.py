@@ -121,9 +121,15 @@ RULES = [
 
 
 def annotate_eligibility(t, min_bars, max_mfe_r, require_stop):
-    """Row-level eligibility flags + excluded_reason for give-back rules."""
-    bars = t["bars_analyzed"]
-    t["has_bar_path"] = bars is not None and bars > 0
+    """Row-level eligibility flags + excluded_reason for give-back rules.
+
+    Phase 206c: the bar-detail gate uses the REAL intrabar path bar count where available
+    (t['path_bars']), falling back to the MFE summary count (t['bars_analyzed']). A real path is
+    what makes premature-exit cost measurable, so 'reliable' now requires a real path."""
+    mfe_bars = t.get("bars_analyzed") or 0
+    path_bars = t.get("path_bars") or 0
+    eff_bars = max(mfe_bars, path_bars)
+    t["has_bar_path"] = bool(t.get("has_path"))     # real intrabar path present
     t["has_planned_stop"] = t["initial_risk_usd"] is not None
     t["has_valid_mfe"] = t["mfe_r"] is not None and t["max_profit_usd"] is not None
     t["mfe_outlier"] = bool(t["mfe_r"] is not None and t["mfe_r"] > max_mfe_r)
@@ -132,7 +138,7 @@ def annotate_eligibility(t, min_bars, max_mfe_r, require_stop):
     reasons = []
     if not t["has_valid_mfe"]:
         reasons.append("no_valid_mfe")
-    if not t["has_bar_path"] or (bars is not None and bars < min_bars):
+    if eff_bars < min_bars:
         reasons.append(f"bars_lt_{min_bars}")
     if t["mfe_outlier"]:
         reasons.append(f"mfe_r_gt_{max_mfe_r:g}")
@@ -149,8 +155,8 @@ def annotate_eligibility(t, min_bars, max_mfe_r, require_stop):
     t["eligible_for_breakeven_rule"] = (len(reasons) == 0)        # winners + losers (risk-control)
     t["eligible_for_giveback_rule"] = (len(gb_reasons) == 0)      # winners only
     t["excluded_reason"] = (",".join(gb_reasons) or None)
-    # 'reliable' = passes quality gate AND has a real multi-bar path
-    t["reliable"] = bool(t["eligible_for_giveback_rule"] and bars is not None and bars >= min_bars)
+    # 'reliable' = passes the give-back gate AND has a REAL intrabar path (premature cost measurable)
+    t["reliable"] = bool(t["eligible_for_giveback_rule"] and t["has_bar_path"])
     return t
 
 
@@ -164,16 +170,30 @@ def confidence_from_reliable(n):
     return "stronger"
 
 
-def evaluate(rule_fn, trigger_fn, trades):
+def evaluate(rule_name, single_peak_fn, trigger_fn, trades, bars_by_tid):
+    """Evaluate a rule. When a trade has a real intrabar path, the simulated capture and the
+    premature-exit decision are PATH-MEASURED (replaying the rule against the actual bars);
+    otherwise we fall back to the single-peak MFE approximation (upper bound)."""
+    try:
+        from profit_protection_path_pricer import price_rule, RULE_SPECS
+        spec = RULE_SPECS.get(rule_name)
+    except Exception:
+        spec = None
+
     base_ml = sim_ml = avoided = premature = 0.0
     base_wins = sim_wins = 0
     base_gw = base_gl = sim_gw = sim_gl = 0.0
-    triggered = 0
+    triggered = path_priced = 0
     for t in trades:
         realized = t["realized_pnl"]
         if trigger_fn(t):
             triggered += 1
-        sim = rule_fn(t)
+        bars = bars_by_tid.get(t["trade_instance_id"])
+        pr = price_rule(t, bars, spec) if (spec and bars) else None
+        if pr and pr.get("priced"):
+            sim = pr["simulated_capture"]; path_priced += 1
+        else:
+            sim = single_peak_fn(t)
         delta = sim - realized
         if delta > 0:
             avoided += delta
@@ -192,6 +212,8 @@ def evaluate(rule_fn, trigger_fn, trades):
     n = len(trades)
     base_pf = (base_gw / base_gl) if base_gl > 0 else None
     sim_pf = (sim_gw / sim_gl) if sim_gl > 0 else None
+    # premature cost is KNOWN only when every evaluated trade was priced on its real path
+    premature_known = bool(n > 0 and path_priced == n)
     return {
         "baseline_money_left": round(base_ml, 2),
         "simulated_money_left": round(sim_ml, 2),
@@ -201,6 +223,8 @@ def evaluate(rule_fn, trigger_fn, trades):
         "win_rate_delta": round((sim_wins - base_wins) / n, 4) if n else 0.0,
         "profit_factor_delta": (round(sim_pf - base_pf, 4) if (base_pf is not None and sim_pf is not None) else None),
         "triggered_sample_size": triggered,
+        "path_priced_count": path_priced,
+        "premature_exit_cost_known": premature_known,
     }
 
 
@@ -219,24 +243,39 @@ def run(args, run_id):
                                       AND m.trade_id = c.source_trade_id::int
         WHERE c.measurable = true
     """)
+    rows = cur.fetchall()
+
+    # Load real intrabar paths (Phase 206c) FIRST so premature-exit cost can be PATH-MEASURED and
+    # so the data-quality gate can use the REAL path bar count, not the stale MFE summary count.
+    bars_by_tid = {}
+    cur.execute("""SELECT trade_instance_id, open, high, low, close
+                   FROM trade_intrabar_bars ORDER BY trade_instance_id, bar_seq""")
+    for b in cur.fetchall():
+        bars_by_tid.setdefault(b["trade_instance_id"], []).append(
+            {"open": f(b["open"]), "high": f(b["high"]), "low": f(b["low"]), "close": f(b["close"])})
+    conn.close()
+    path_trades = len(bars_by_tid)
+
     trades = []
-    for r in cur.fetchall():
+    for r in rows:
         d = dict(r)
         entry = f(d["entry_price"]); ps = f(d["planned_stop"]); shares = f(d["shares"])
         initial_risk = ((entry - ps) * shares) if (entry and ps and shares and entry > ps) else None
+        tid = d["trade_instance_id"]
+        path_bars = len(bars_by_tid.get(tid, []))
         t = {
-            "trade_instance_id": d["trade_instance_id"], "source_system": d["source_system"],
+            "trade_instance_id": tid, "source_system": d["source_system"],
             "strategy_id": d["strategy_id"], "family": family_of(d["strategy_id"]),
-            "entry_price": entry, "shares": shares,
+            "entry_price": entry, "shares": shares, "planned_stop": ps,
             "realized_pnl": f(d["realized_pnl"]) or 0.0,
             "max_profit_usd": f(d["max_profit_usd"]) or 0.0,
             "money_left_usd": f(d["money_left_usd"]) or 0.0,
             "mfe_price": f(d["mfe_price"]), "mfe_r": f(d["mfe_r"]),
-            "bars_analyzed": d["bars_analyzed"], "initial_risk_usd": initial_risk,
+            "bars_analyzed": d["bars_analyzed"], "path_bars": path_bars,
+            "has_path": path_bars > 0, "initial_risk_usd": initial_risk,
         }
         annotate_eligibility(t, args.min_bars_analyzed, args.max_mfe_r, args.require_planned_stop)
         trades.append(t)
-    conn.close()
 
     raw_n = len(trades)
     quality_gated = args.quality_gated or args.winners_only
@@ -266,7 +305,7 @@ def run(args, run_id):
         if not pop:
             continue
 
-        ev = evaluate(fn, trigger_fn, eligible)
+        ev = evaluate(rule_name, fn, trigger_fn, eligible, bars_by_tid)
 
         # sample tiers
         quality_eligible_n = len(eligible)
@@ -282,11 +321,22 @@ def run(args, run_id):
 
         confidence = confidence_from_reliable(reliable_n)
 
-        # premature-exit honesty: single-peak MFE cannot order stop-trigger vs later profit
-        premature_known = False
-        premature_method = "single_peak_mfe_floor_after_peak"
-        premature_warning = "single_peak_mfe_cannot_order_stop_trigger_vs_later_profit"
-        estimate_quality = "upper_bound_single_peak" if not premature_known else "measured"
+        # premature-exit honesty: PATH-MEASURED when every eligible trade had a real intrabar path
+        # (Phase 206c); else single-peak MFE upper bound (cannot order stop-trigger vs later profit).
+        path_priced = ev["path_priced_count"]
+        premature_known = ev["premature_exit_cost_known"]
+        if premature_known:
+            premature_method = "intrabar_path_replay"
+            premature_warning = None
+            estimate_quality = "path_measured"
+        elif path_priced > 0:
+            premature_method = "mixed_path_and_single_peak"
+            premature_warning = f"premature cost path-measured for {path_priced}/{quality_eligible_n} trades; rest single-peak"
+            estimate_quality = "partial_path"
+        else:
+            premature_method = "single_peak_mfe_floor_after_peak"
+            premature_warning = "single_peak_mfe_cannot_order_stop_trigger_vs_later_profit"
+            estimate_quality = "upper_bound_single_peak"
 
         # recommendation requires positive net AND a met reliable floor AND known premature cost
         recommended = bool(ev["net_improvement"] > 0
@@ -328,6 +378,7 @@ def run(args, run_id):
             "premature_exit_cost_warning": premature_warning,
             "estimate_quality": estimate_quality,
             "graft_verdict": graft_verdict,
+            "path_priced_count": path_priced,   # report-only (not a DB column)
         })
 
     written = 0
@@ -350,6 +401,7 @@ def run(args, run_id):
 
     report = {"run_at": datetime.now(timezone.utc).isoformat(), "run_id": run_id,
               "applied": args.apply, "written": written, "raw_measurable_trades": raw_n,
+              "trades_with_intrabar_path": path_trades,
               "gate": {"quality_gated": quality_gated, "winners_only": args.winners_only,
                        "min_bars_analyzed": args.min_bars_analyzed, "max_mfe_r": args.max_mfe_r,
                        "require_planned_stop": args.require_planned_stop,
@@ -359,24 +411,29 @@ def run(args, run_id):
         json.dump(report, open(args.json, "w"), indent=2, default=str)
     if args.markdown:
         L = ["# Profit-Protection Rule Backtests — quality-gated (evidence only)", "",
-             f"run_id: {run_id}  |  raw measurable: {raw_n}  |  gate: {report['gate']}", "",
-             "**No rule applied to live trading. Recovery is an UPPER BOUND (single-peak MFE; "
-             "premature-exit cost unknown). Confidence uses reliable n, not raw n.**", "",
-             "| rule | scope | raw | qual | trig | winner | reliable | avoided$(UB) | net$(UB) | conf | graft |",
-             "|------|-------|-----|------|------|--------|----------|--------------|----------|------|-------|"]
+             f"run_id: {run_id}  |  raw measurable: {raw_n}  |  trades with intrabar path: "
+             f"{path_trades}  |  gate: {report['gate']}", "",
+             "**No rule applied to live trading. Where a trade has a real intrabar path, "
+             "premature-exit cost is PATH-MEASURED (estimate_quality=path_measured); otherwise it is a "
+             "single-peak upper bound. Confidence uses reliable n, not raw n.**", "",
+             "| rule | scope | raw | qual | reliable | path | avoided$ | premature$ | net$ | estimate | conf | graft |",
+             "|------|-------|-----|------|----------|------|----------|------------|------|----------|------|-------|"]
         for r in sorted(results, key=lambda x: -x["net_improvement"]):
             L.append(f"| {r['rule_name']} | {r['scope']} | {r['raw_sample_size']} | "
-                     f"{r['quality_eligible_sample_size']} | {r['triggered_sample_size']} | "
-                     f"{r['winner_sample_size']} | {r['reliable_sample_size']} | "
-                     f"{r['avoided_giveback']} | {r['net_improvement']} | "
+                     f"{r['quality_eligible_sample_size']} | {r['reliable_sample_size']} | "
+                     f"{r['path_priced_count']} | {r['avoided_giveback']} | {r['premature_exit_cost']} | "
+                     f"{r['net_improvement']} | {r['estimate_quality']} | "
                      f"{r['recommendation_confidence']} | {r['graft_verdict']} |")
         open(args.markdown, "w").write("\n".join(L) + "\n")
 
     best = max(results, key=lambda x: x["net_improvement"]) if results else None
-    print(json.dumps({"run_id": run_id, "raw_measurable": raw_n, "rules": len(results),
+    print(json.dumps({"run_id": run_id, "raw_measurable": raw_n,
+                      "trades_with_intrabar_path": path_trades, "rules": len(results),
                       "gate": report["gate"],
                       "best_by_net": ({"rule": best["rule_name"], "reliable_n": best["reliable_sample_size"],
-                                       "avoided_upper_bound": best["avoided_giveback"],
+                                       "avoided": best["avoided_giveback"], "premature": best["premature_exit_cost"],
+                                       "net": best["net_improvement"], "estimate_quality": best["estimate_quality"],
+                                       "premature_known": best["premature_exit_cost_known"],
                                        "confidence": best["recommendation_confidence"],
                                        "graft": best["graft_verdict"]} if best else None),
                       "all_do_not_graft": all(r["graft_verdict"].startswith(("DO_NOT_GRAFT", "REJECTED"))

@@ -7,6 +7,11 @@
 | `docs/hermes/HERMES_SIDECAR_RETIREMENT_PLAN_20260606.md` | Staged reversible retirement (A-C done; Stage D EXECUTED 2026-06-06 (rename-retire, no deletion)) |
 | `docs/hermes/HERMES_CURATED_MIGRATION_INVENTORY_20260606.md` | What migrated vs intentionally excluded (no secrets/dumps/qwen); rollback evidence |
 
+## Profit-Capture Intrabar Path + Path-Measured Premature-Exit (Phase 206c, 2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PROFIT_CAPTURE_INTRABAR_PREMATURE_EXIT_20260606.md` | ingest real 5m intrabar paths (trade_intrabar_bars, 3043 bars/29 trades, all 13 winners) + path-replay pricer → premature-exit cost now PATH-MEASURED; reverses single-peak optimism (trail5 +$447→net −$266); every rule net-negative; still DO_NOT_GRAFT (reliable n=8<20); validation 14/14 |
+
 ## Profit-Capture Rule Backtest Quality + Hardening (Phase 206b, 2026-06-06)
 | Document | Purpose |
 |----------|---------|

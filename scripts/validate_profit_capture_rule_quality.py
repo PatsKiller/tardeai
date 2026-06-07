@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 FORBIDDEN = re.compile(r"\b(?:submit_order|place_order|cancel_order|replace_order|"
                        r"set_go_wait|mutate_strategy|enable_live)\s*\(|live_trading_allowed\s*=\s*True")
 SCRIPTS = ["backtest_profit_protection_rules.py", "profit_protection_shadow_thresholds.py",
-           "validate_profit_capture_rule_quality.py"]
+           "validate_profit_capture_rule_quality.py", "ingest_trade_intrabar_bars.py",
+           "profit_protection_path_pricer.py"]
 RELIABLE_FLOOR = 20
 
 
@@ -82,13 +83,25 @@ def run(json_path, md_path):
                   for r in rules)
     chk("confidence keyed to reliable n", conf_ok, "low-reliable rows are 'insufficient'")
 
-    # premature-exit cost flagged unknown under single-peak
-    prem_ok = all(r["premature_exit_cost_known"] is False for r in rules)
-    chk("premature-exit cost flagged unknown", prem_ok and bool(rules), "all premature_exit_cost_known=false")
+    # premature-exit cost is path-measured where a real intrabar path exists (Phase 206c);
+    # otherwise honestly flagged single-peak upper bound.
+    path_measured = [r for r in rules if (r["estimate_quality"] or "") == "path_measured"]
+    pm_ok = all(r["premature_exit_cost_known"] is True for r in path_measured)
+    chk("premature cost path-measured where path exists", pm_ok and bool(path_measured),
+        f"{len(path_measured)} path_measured rule rows; all known=true={pm_ok}")
 
-    # estimate quality labelled upper bound
-    est_ok = all((r["estimate_quality"] or "").startswith("upper_bound") for r in rules)
-    chk("recovery labelled upper bound", est_ok and bool(rules), "")
+    # estimate quality is one of the honest labels; unknown rows still flagged as such
+    valid_est = {"path_measured", "partial_path", "upper_bound_single_peak"}
+    est_ok = all((r["estimate_quality"] or "") in valid_est for r in rules)
+    unknown_flagged = all((r["premature_exit_cost_known"] is True) or
+                          ((r["estimate_quality"] or "").startswith(("upper_bound", "partial")))
+                          for r in rules)
+    chk("estimate quality honestly labelled", est_ok and unknown_flagged and bool(rules), "")
+
+    # intrabar paths ingested + coverage logged honestly
+    cur.execute("SELECT count(*) n, count(DISTINCT trade_instance_id) t FROM trade_intrabar_bars")
+    _b = cur.fetchone()
+    chk("intrabar paths ingested", _b["n"] > 0 and _b["t"] > 0, f"{_b['n']} bars / {_b['t']} trades")
 
     # all graft verdicts blocked (reliable n below floor / unknown premature)
     blocked = all(r["graft_verdict"].startswith(("DO_NOT_GRAFT", "REJECTED")) for r in rules)

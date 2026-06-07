@@ -82,19 +82,26 @@ export default function ProtectionOutcomesPanel({ onDrill }: Props) {
         {card('Advisory existed', `${s.advisory_existed ?? 0}`, '#60a5fa')}
         {card('Operator acted', `${s.operator_acted ?? 0}`, (s.operator_acted ?? 0) > 0 ? '#22c55e' : '#f59e0b')}
         {card('No advisory', `${s.no_advisory_generated ?? 0}`, '#ef4444')}
-        {card('Rule recovery (~UB)', fmt$(s.rule_backtest_potential_recovery_usd ?? 0, 0), '#a78bfa',
+        {card('Best rule net', fmt$(s.rule_backtest_net_usd ?? 0, 0), (s.rule_backtest_net_usd ?? 0) >= 0 ? '#22c55e' : '#ef4444',
           s.rule_backtest_best_rule ? `${s.rule_backtest_best_rule} · reliable n=${s.rule_backtest_reliable_n ?? 0}` : 'shadow only')}
       </div>
 
-      {/* Evidence-quality qualifier — keep the directional signal but qualify it honestly */}
+      {/* Evidence-quality qualifier — path-measured premature-exit cost (Phase 206c) */}
       <div style={{ marginBottom: 14, padding: '8px 12px', background: 'rgba(167,139,250,.06)', border: '1px solid rgba(167,139,250,.2)', borderRadius: 8, fontSize: 10, color: 'var(--text2)' }}>
-        <span style={{ fontWeight: 700, color: '#a78bfa' }}>Best shadow rule: {s.rule_backtest_best_rule ?? '—'}</span>
+        <span style={{ fontWeight: 700, color: '#a78bfa' }}>Best rule (by net): {s.rule_backtest_best_rule ?? '—'}</span>
+        {'  ·  '}avoided <b style={{ color: '#22c55e' }}>{fmt$(s.rule_backtest_potential_recovery_usd ?? 0, 0)}</b>
+        {' − premature '}<b style={{ color: '#ef4444' }}>{fmt$(s.rule_backtest_premature_cost_usd ?? 0, 0)}</b>
+        {' = net '}<b style={{ color: (s.rule_backtest_net_usd ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(s.rule_backtest_net_usd ?? 0, 0)}</b>
         {'  ·  '}reliable n: <b>{s.rule_backtest_reliable_n ?? 0}</b> (raw {s.rule_backtest_raw_n ?? 0})
         {'  ·  '}estimate: <b>{(s.rule_backtest_estimate_quality ?? 'upper_bound_single_peak').replace(/_/g, ' ')}</b>
         {'  ·  '}graft: <b style={{ color: '#f59e0b' }}>{(s.rule_backtest_graft_verdict ?? 'DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE').replace(/_/g, ' ')}</b>
-        {s.rule_backtest_premature_cost_known === false && (
+        {s.rule_backtest_premature_cost_known === true ? (
+          <div style={{ marginTop: 4, color: 'var(--text3)', fontSize: 9 }}>
+            ✓ Premature-exit cost is path-measured from real intrabar bars. On this sample the best rule's net is {(s.rule_backtest_net_usd ?? 0) >= 0 ? 'positive but below the evidence floor' : 'negative — premature exits exceed avoided give-back'}; not decision-grade; not grafted.
+          </div>
+        ) : (
           <div style={{ marginTop: 4, color: '#f59e0b', fontSize: 9 }}>
-            ⚠ Recovery is an upper bound — single-peak MFE cannot order stop-trigger vs later profit; premature-exit cost is unknown. Not decision-grade; not grafted.
+            ⚠ No real intrabar path for the best rule — recovery is a single-peak upper bound; premature-exit cost unknown. Not decision-grade; not grafted.
           </div>
         )}
       </div>
