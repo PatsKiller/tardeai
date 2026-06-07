@@ -53,3 +53,28 @@ COMPLETE.
 ## Remaining Notes
 
 A disabled `hermes-gateway.service` unit file remains as an inactive audit artifact. It must not be enabled without explicit operator approval. Non-blocking follow-ups (optional): remove the disabled unit file; the operator's legacy sidecar `hermes chat` (PID 3549046) can be exited at will.
+
+## 6. Claude Code Execution Prompt
+
+The Hermes v1.8 closeout was executed through a sequence of operator-approved Claude Code prompts, each scoped and run with explicit approval:
+
+- sidecar rename-retirement (Stage D)
+- gateway stop/disable (`hermes-gateway.service`)
+- git hygiene cleanup (untrack + gitignore retired runtime/state)
+- launch-path audit (process / systemd / timer / cron / shell / PATH / repo / git)
+- status path repoint (`scripts/api_v2.py`, `scripts/check_system_versions.sh` → global Hermes install)
+- Reference Architecture v1.8 verification
+- final runtime closeout
+
+### Safety boundary (held across all prompts)
+
+- no deletion
+- no gateway/Telegram/Discord/Codex/cron/systemd runtime enablement
+- no broker/trading/order/stop/proposal/holdings changes
+- no secrets migrated
+- `qwen3:14b` not reintroduced
+- `gemma3:12b` not promoted outside `tradeai12b`
+
+### Note
+
+The full Claude Code prompts were delivered in the operator chat and are intentionally **not embedded verbatim** here, to avoid bloating the closeout document. This section records that they were used and their scope; the operator chat holds the complete prompt text.
