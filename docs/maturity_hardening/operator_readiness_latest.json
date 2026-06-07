@@ -1,15 +1,32 @@
 {
-  "generated_at": "2026-06-04T12:00:42.423325+00:00",
-  "overall_maturity": "?",
+  "generated_at": "2026-06-05T14:07:06.922502+00:00",
+  "overall_maturity": 6.8,
   "a5_complete": true,
   "a5_end_date": "2026-05-22",
-  "governance_status": "healthy",
-  "allowed_actions": [],
-  "blocked_actions": [],
+  "governance_status": "attention_required",
+  "allowed_actions": [
+    "A-5 observation check",
+    "Final A-5 review",
+    "Phase 8D strategy quality",
+    "SP-2 shadow outcomes",
+    "DOC-CLEAN-1D review triage",
+    "Live-readiness dashboard"
+  ],
+  "blocked_actions": [
+    "Live trading"
+  ],
   "waiting_actions": [],
-  "operator_required": [],
-  "top_blockers": [],
+  "operator_required": [
+    "BR-2 offsite backup"
+  ],
+  "top_blockers": [
+    "strategy_proof: insufficient closed trades",
+    "agent_learning: Evidence quality: weak",
+    "backup_recovery: P0: No offsite backup configured",
+    "backup_recovery: No restore drill executed",
+    "live_readiness: Backup readiness 5.3/10 (need 7+)"
+  ],
   "live_trading": "BLOCKED",
   "strategy_decisions": "review_ready",
-  "recommended_next": "Continue observation"
+  "recommended_next": "A-5 observation check"
 }

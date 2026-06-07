@@ -1,5 +1,5 @@
-# A1A Compliance — healthy
+# A1A Compliance — attention_required
 
-Findings: 0
+Findings: 1
 
-No findings. Documentation appears compliant.
+- **[P0]** missing_required_doc: Required doc missing: docs/v4_1_deployment_log.md
