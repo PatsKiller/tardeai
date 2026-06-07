@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "updated_at": "2026-06-07T12:00:00",
+  "lanes": {
+    "chatgpt": {
+      "provider": "openai-codex",
+      "lane": "chatgpt",
+      "interactive_status": "ready",
+      "headless_status": "unavailable",
+      "reason_code": "hermes_headless_limit",
+      "tested_hermes_version": "0.16.0",
+      "tested_at": "2026-06-07T12:00:00",
+      "next_retest_condition": "hermes_version_gt_0.16.0_or_changelog_fix",
+      "next_retest_not_before": "2026-06-14T12:00:00",
+      "command_tested": "hermes -z --provider openai-codex -m gpt-5-codex",
+      "failure_signature": "no final response was produced; treating the run as failed",
+      "guidance": "ChatGPT/Codex is interactive-only on Hermes 0.16.0; use Grok lane for free automation or run `hermes -p dev chat` manually."
+    },
+    "grok": {
+      "provider": "xai-oauth",
+      "lane": "grok",
+      "interactive_status": "ready",
+      "headless_status": "ready",
+      "reason_code": "ok",
+      "tested_hermes_version": "0.16.0",
+      "tested_at": "2026-06-07T12:00:00",
+      "next_retest_condition": "none",
+      "next_retest_not_before": null,
+      "command_tested": "xai-oauth proxy :8645",
+      "failure_signature": null
+    },
+    "claude": {
+      "provider": "anthropic",
+      "lane": "claude",
+      "interactive_status": "n/a",
+      "headless_status": "credits_required",
+      "reason_code": "anthropic_credits_required",
+      "tested_hermes_version": "0.16.0",
+      "tested_at": "2026-06-07T12:00:00",
+      "next_retest_condition": "anthropic_credits_added",
+      "next_retest_not_before": null,
+      "command_tested": "anthropic API",
+      "failure_signature": "credit balance is too low"
+    },
+    "nous": {
+      "provider": "nous",
+      "lane": "nous",
+      "interactive_status": "n/a",
+      "headless_status": "auth_pending",
+      "reason_code": "auth_pending",
+      "tested_hermes_version": "0.16.0",
+      "tested_at": "2026-06-07T12:00:00",
+      "next_retest_condition": "nous_oauth_completed",
+      "next_retest_not_before": null,
+      "command_tested": null,
+      "failure_signature": null
+    },
+    "local": {
+      "provider": "ollama",
+      "lane": "local",
+      "interactive_status": "ready",
+      "headless_status": "ready",
+      "reason_code": "ok",
+      "tested_hermes_version": "0.16.0",
+      "tested_at": "2026-06-07T12:00:00",
+      "next_retest_condition": "none",
+      "next_retest_not_before": null
+    }
+  }
+}

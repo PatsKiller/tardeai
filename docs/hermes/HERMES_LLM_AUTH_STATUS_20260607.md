@@ -87,3 +87,10 @@ through the non-interactive `-z` harness). Not a credential issue.
 ## Phase 212 (2026-06-07): headless reason = hermes_headless_limit
 Confirmed 0.16.0 is the latest Hermes; no upgrade fixes headless Codex. chatgpt researcher lane reason code:
 `hermes_headless_limit` (auth + version are fine; the headless path is the blocker). Re-evaluate on Hermes >0.16.0.
+
+---
+## Phase 213 (2026-06-07): capability cache + lane hardening
+chatgpt lane now reads `data/runtime/hermes_llm_capabilities.json` and **fails closed without retrying** the
+Codex headless path (reason hermes_headless_limit) until Hermes > 0.16.0 (or `--force-retest`). v3
+llm-auth-status surfaces interactive vs headless status per lane. Read-only `check_hermes_update_available.py`
+watches for a newer build (no auto-upgrade). Codex = interactive-only; Grok = free automated lane.

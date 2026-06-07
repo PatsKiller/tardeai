@@ -47,6 +47,9 @@ Claude (high-stakes: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge)
 code/synthesis), Grok (market/social narrative, source-scored), + optional Consensus Panel. All advisory-only,
 no in-app credentials, no broker mutation, designed but not enabled. See `PHASE210D` / `PHASE210G`.
 
+## 8b. External lane status (Phase 213, 2026-06-07)
+Grok (xai-oauth proxy) = working free automated external lane. Local Ollama = primary automated lane. Claude = high-stakes once Anthropic credits added. ChatGPT/Codex = free + INTERACTIVE-ONLY (`hermes -p dev chat`); automated headless lane UNAVAILABLE on Hermes 0.16.0 (reason hermes_headless_limit), cache-gated so it is NOT retried until Hermes>0.16.0. Nous = auth-pending.
+
 ## 9. Self-learning feedback architecture
 Observe → Normalize → Evaluate → Learn → Promote → Apply (safely). 10 live loops (proposal_outcome_chain,
 trade_edge_comparison, trade_llm_reviews, shadow scores/efficacy, research_intelligence, promotion_audit,

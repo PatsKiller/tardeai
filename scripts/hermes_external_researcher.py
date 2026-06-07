@@ -188,6 +188,36 @@ def call_external(lane, model, prompt, max_tokens=1500):
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
+CAP_CACHE = ROOT / "data" / "runtime" / "hermes_llm_capabilities.json"
+
+
+def read_capability(lane):
+    """Return the cached capability dict for a lane, or {} if absent/unreadable."""
+    try:
+        return json.loads(CAP_CACHE.read_text()).get("lanes", {}).get(lane, {})
+    except Exception:
+        return {}
+
+
+def cache_blocks_lane(cap, force_retest):
+    """True if the capability cache says this lane is not headless-ready and we're inside the retest window.
+    Prevents re-running a known-bad path (e.g. Codex headless) on every status check."""
+    if force_retest:
+        return False
+    hs = cap.get("headless_status")
+    if not hs or hs == "ready":
+        return False
+    nb = cap.get("next_retest_not_before")
+    if nb:
+        from datetime import datetime
+        try:
+            if datetime.now().isoformat() >= nb:   # retest window elapsed → allow one attempt
+                return False
+        except Exception:
+            pass
+    return True   # known-blocked and (no retest date, or not yet due)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok"])
@@ -197,6 +227,8 @@ def main():
     ap.add_argument("--trigger", default="manual")
     ap.add_argument("--model", default=None, help="override; defaults to the lane's cost-aware model")
     ap.add_argument("--apply", action="store_true", help="actually call the external model (default dry-run)")
+    ap.add_argument("--force-retest", action="store_true",
+                    help="bypass the capability cache and re-attempt a known-blocked lane (e.g. Codex headless)")
     args = ap.parse_args()
     if not args.model:
         args.model = LANE_CFG[args.lane]["default_model"]
@@ -217,6 +249,28 @@ def main():
     for ln in (ROOT / ".env").read_text().splitlines():
         if "=" in ln and not ln.strip().startswith("#"):
             k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+
+    # Capability-cache gate: don't re-run a known-blocked lane (e.g. Codex headless) on every call.
+    cap = read_capability(args.lane)
+    if cache_blocks_lane(cap, args.force_retest):
+        reason = cap.get("reason_code", "unavailable")
+        status = cap.get("headless_status", "unavailable")
+        guidance = cap.get("guidance") or f"{args.lane} headless is {status} ({reason}); see capability cache."
+        print(f"\n[capability-cache] {args.lane} skipped — headless_status={status} reason={reason}")
+        print(f"  {guidance}")
+        print(f"  (override with --force-retest; next auto-retest: {cap.get('next_retest_not_before') or cap.get('next_retest_condition')})")
+        parsed = {"recommendation": f"[{status.upper()}] {guidance} (cached reason: {reason}; not retried)"}
+        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
+                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+        cur.execute("""INSERT INTO hermes_external_research
+            (lane, trigger_reason, priority, symbol, question, redacted_context, model, status, recommendation)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model,
+             status, parsed["recommendation"]))
+        rid = cur.fetchone()[0]; c.commit(); c.close()
+        print(f"stored hermes_external_research id={rid} status={status} (cache-gated, no external call)")
+        return
+
     status, parsed, raw = "sent", {}, ""
     try:
         raw = call_external(args.lane, args.model, prompt)

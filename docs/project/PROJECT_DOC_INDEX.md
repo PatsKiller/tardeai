@@ -34,6 +34,7 @@
 | `docs/hermes/HERMES_REPORTS_WATCHLIST_FEED_AND_LLM_CURATION_20260607.md` | Audit: Hermes feeds watchlist(RAG) not reports (gap); curated-LLM+learning standard + agent mapping + next gates |
 | `docs/hermes/HERMES_LLM_AUTH_STATUS_20260607.md` | LLM OAuth status + guided login (Google SSO, no creds stored); System→Hermes card |
 | `docs/project/PHASE212_CODEX_HEADLESS_HERMES_BUILD_EVALUATION_CLOSEOUT.md` | Phase 212: 0.16.0 is latest Hermes; headless Codex unfixable now; Grok=free automated lane; no upgrade/promotion |
+| `docs/project/PHASE213_CODEX_HEADLESS_CLOSEOUT_EXTERNAL_LANE_HARDENING.md` | Phase 213: capability cache + lane hardening; Codex headless not retried (hermes_headless_limit); Grok=free automated lane |
 ## Hermes Global Install Migration (2026-06-06)
 | `docs/hermes/HERMES_RESEARCH_GRAPH_KILL_SWITCH_REPOINT_20260606.md` | repoint research-fleet kill-switch from retired hermes_sidecar/.hermes/DISABLED (+non-canonical ~/.hermes/DISABLED) to canonical data/runtime/HERMES_DISABLED across 7 live readers + API/UI + cron comment; OFF/ON/OFF verified; banner wording fixed (touch=halt) |
 | `docs/hermes/HERMES_AGENT_GRAPH_MIGRATION_AUDIT_20260606.md` | Reconciles /v3/hermes research-agent graph vs global profiles (both kept); SearXNG UP diagnosis + ping fix |

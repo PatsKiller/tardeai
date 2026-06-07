@@ -31,3 +31,10 @@ per-call operator approval (`--apply`).
 0.16.0 is the latest Hermes build (no newer/pre-release). All headless command shapes fail for Codex →
 chatgpt automated lane stays `unavailable` (reason: hermes_headless_limit). Codex interactive works.
 Grok (xai-oauth proxy) is the working free automated external lane. See PHASE212* docs.
+
+---
+## Phase 213 (2026-06-07): lane hardening
+ChatGPT/Codex: free + interactive-only (`hermes -p dev chat`); automated lane cache-gated to `unavailable`
+(hermes_headless_limit) — NOT retried until Hermes>0.16.0. Grok (xai-oauth proxy) = current free automated
+external lane. Local Ollama = primary automated lane. Claude = high-stakes once credits added. Capability
+cache: data/runtime/hermes_llm_capabilities.json. Override: --force-retest.

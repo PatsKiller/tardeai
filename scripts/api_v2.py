@@ -11607,9 +11607,15 @@ def _portfolio_cadence_status():
                                 "legacy_timer": _timer("portfolio-monthly.timer"),
                                 "legacy_retired": True, "retired_legacy_count": 1,
                                 "active_legacy_count": 0},
-                "lookthrough": {"status": "not_migrated", "summary": _summary("lookthrough")},
+                "lookthrough": {"status": "migrated", "summary": _summary("lookthrough"),
+                                "timer": _timer("tradeai-portfolio-lookthrough-cadence.timer"),
+                                "read_only_snapshot": True,
+                                "legacy_timer": _timer("portfolio-lookthrough.timer"),
+                                "legacy_retired": True, "retired_legacy_count": 1,
+                                "active_legacy_count": 0},
             },
-            "not_migrated": ["lookthrough", "db_retention", "price_cache"],
+            "all_report_cadences_migrated": True,
+            "not_migrated": ["db_retention", "price_cache"],
             "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited",
                        "destructive_excluded": ["db_retention", "price_cache"],
                        "safety_net_watchdog": "untouched"}}
@@ -15506,7 +15512,14 @@ def _hermes_llm_auth_status(query=None):
         {"lane": "Local (Ollama)", "provider": "custom", "kind": "local (always free)",
          "authed": True, "login_command": "(none — local gemma3 via Ollama)"},
     ]
-    # mark which authed lanes also need the proxy up to actually work
+    # merge the capability cache (interactive vs headless automation status; reason; retest) — read-only
+    cap_lanes = {}
+    try:
+        cap_lanes = json.loads((PROJECT_ROOT / "data" / "runtime" / "hermes_llm_capabilities.json").read_text()).get("lanes", {})
+    except Exception:
+        cap_lanes = {}
+    prov2cap = {"openai-codex": "chatgpt", "xai-oauth": "grok", "nous": "nous", "anthropic": "claude", "custom": "local"}
+    # mark which authed lanes also need the proxy up to actually work + attach capability cache
     for l in lanes:
         if l["provider"] in ("xai-oauth", "nous"):
             l["proxy_required"] = True
@@ -15514,6 +15527,14 @@ def _hermes_llm_auth_status(query=None):
         else:
             l["proxy_required"] = False
             l["usable"] = l["authed"]
+        cap = cap_lanes.get(prov2cap.get(l["provider"], ""), {})
+        if cap:
+            l["interactive_status"] = cap.get("interactive_status")
+            l["headless_status"] = cap.get("headless_status")
+            l["reason_code"] = cap.get("reason_code")
+            l["next_retest"] = cap.get("next_retest_not_before") or cap.get("next_retest_condition")
+            if cap.get("guidance"):
+                l["guidance"] = cap["guidance"]
     xai_ready = next((l["authed"] for l in lanes if l["provider"] == "xai-oauth"), False)
     return {"generated_note": "read-only LLM auth/OAuth + proxy status — no credentials entered or stored here",
             "google_sso_note": "External OAuth logins (ChatGPT/Codex, xAI, Nous) authenticate in your browser; "
