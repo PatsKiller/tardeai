@@ -1,3 +1,5 @@
+> **Canonical:** the Hermes matrix is now generated from `data/runtime/hermes_canonical_status_latest.json` and HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.md (Phase 217); this older matrix is superseded.
+
 # Hermes Researcher Responsibility Matrix (2026-06-07)
 
 ## Table 1 — Identity / Model Matrix
