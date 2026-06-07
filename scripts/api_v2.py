@@ -15475,10 +15475,19 @@ def _hermes_llm_auth_status(query=None):
     proxy_out = (_hermes_run([str(HERMES_CLI), "proxy", "status"], timeout=10,
                              env={"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}) or "").lower()
     def proxy_authed(name):
+        # authed when the provider line shows 'ready' or 'logged in' (and not 'not logged in')
         for ln in proxy_out.splitlines():
-            if name in ln and "logged in" in ln and "not logged in" not in ln:
+            if name in ln and ("ready" in ln or ("logged in" in ln and "not logged in" not in ln)):
                 return True
         return False
+    # proxy server running? (xai/nous OAuth lanes need the local proxy listening on :8645)
+    proxy_running = False
+    try:
+        import socket as _sk
+        with _sk.create_connection(("127.0.0.1", 8645), timeout=2):
+            proxy_running = True
+    except Exception:
+        proxy_running = False
     anth = bool(os.environ.get("ANTHROPIC_API_KEY")) or any(l.startswith("anthropic_api_key=") for l in
                 ((PROJECT_ROOT / ".env").read_text().splitlines() if (PROJECT_ROOT / ".env").exists() else []))
     lanes = [
@@ -15495,9 +15504,23 @@ def _hermes_llm_auth_status(query=None):
         {"lane": "Local (Ollama)", "provider": "custom", "kind": "local (always free)",
          "authed": True, "login_command": "(none — local gemma3 via Ollama)"},
     ]
-    return {"generated_note": "read-only LLM auth/OAuth status — no credentials entered or stored here",
+    # mark which authed lanes also need the proxy up to actually work
+    for l in lanes:
+        if l["provider"] in ("xai-oauth", "nous"):
+            l["proxy_required"] = True
+            l["usable"] = bool(l["authed"] and proxy_running)
+        else:
+            l["proxy_required"] = False
+            l["usable"] = l["authed"]
+    xai_ready = next((l["authed"] for l in lanes if l["provider"] == "xai-oauth"), False)
+    return {"generated_note": "read-only LLM auth/OAuth + proxy status — no credentials entered or stored here",
             "google_sso_note": "External OAuth logins (ChatGPT/Codex, xAI, Nous) authenticate in your browser; "
                                "use Google SSO at the provider's prompt. This app never sees or stores your credentials.",
+            "proxy": {"running": proxy_running, "url": "http://127.0.0.1:8645/v1",
+                      "needed_by": [l["lane"] for l in lanes if l["proxy_required"] and l["authed"]],
+                      "start_command": "hermes proxy start --provider xai",
+                      "warning": ("xAI OAuth is ready but the proxy is DOWN — start it to use Grok."
+                                  if (xai_ready and not proxy_running) else None)},
             "any_external_oauth_active": any(l["authed"] for l in lanes if l["provider"] in ("openai-codex", "xai-oauth", "nous")),
             "lanes": lanes}
 
