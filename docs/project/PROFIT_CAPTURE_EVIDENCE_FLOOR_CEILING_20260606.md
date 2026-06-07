@@ -64,10 +64,29 @@ only `WHERE status='open'`, never for closed trades) — no execution effect. St
 
 Only **forward accumulation of more independent recent winning paper trades** (each with a planned
 stop and within the ~60-day intraday-bar window) raises reliable_n honestly. At the current rate this
-takes time; it is not a code change. Re-run `ingest_trade_intrabar_bars.py --fine --apply --all-closed`
-then `backtest_profit_protection_rules.py --apply --quality-gated --winners-only ...` periodically and
-watch `reliable_sample_size` climb. A future **operator-approved, clearly-labelled low-confidence
+takes time; it is not a code change. A future **operator-approved, clearly-labelled low-confidence
 pilot** is the only adoption path short of the floor — never an automatic graft.
+
+### Scheduled refresh (so reliable_n climbs automatically)
+
+`scripts/run_profit_capture_refresh.sh` runs the evidence-only chain end-to-end and logs the headline
+`reliable_n=N / floor 20 ; verdicts=...` each run:
+
+1. `analyze_profit_capture_all_trades.py --apply` (refresh measurable set from newly closed trades)
+2. `ingest_trade_intrabar_bars.py --apply --fine --all-closed` (ingest real intrabar paths)
+3. `backtest_profit_protection_rules.py --apply --quality-gated --winners-only --min-bars-analyzed 10
+   --max-mfe-r 20 --require-planned-stop --run-id ppbt_auto_<YYYYMMDD>`
+4. `profit_protection_shadow_thresholds.py --apply` (advisory only)
+5. `validate_profit_capture_rule_quality.py`
+
+Scheduled **weekly, Sunday 03:30** via cron (safe_flock single-run guard + 20m timeout):
+```
+30 3 * * 0 cd <PROJ> && bash scripts/safe_flock.sh /tmp/tradeai_profit_capture_refresh.lock \
+   timeout 20m bash scripts/run_profit_capture_refresh.sh >> logs/profit_capture_refresh_cron.log 2>&1
+```
+It NEVER grafts: each run re-derives `reliable_sample_size` and holds `DO_NOT_GRAFT` until the floor
+is met. Watch progress in `logs/profit_capture_refresh.log`. Each run writes a date-stamped backtest
+snapshot (`ppbt_auto_<date>`); the endpoint/UI pick the latest by recency.
 
 ## Current state
 
