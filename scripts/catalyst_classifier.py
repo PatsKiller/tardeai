@@ -20,7 +20,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CALIB = ROOT / "data" / "runtime" / "catalyst_calibration.json"
+MATURITY = ROOT / "data" / "runtime" / "source_maturity_latest.json"
 OLLAMA = "http://127.0.0.1:11434/api/chat"
+
+# source maturity tier → confidence multiplier (Gate 3): a catalyst from a trusted/core source is more
+# reliable than one from an unvetted candidate / noisy demoted source. Bounded; confidence re-clamped [0,1].
+_TIER_CONF = {"core": 1.15, "trusted": 1.10, "probationary": 1.0, "candidate": 0.95, "demoted": 0.80}
+_MATURITY_CACHE = None
+
+
+def _source_tier(source):
+    global _MATURITY_CACHE
+    if not source:
+        return None
+    if _MATURITY_CACHE is None:
+        try:
+            _MATURITY_CACHE = {s["source"]: s["tier"] for s in json.loads(MATURITY.read_text()).get("sources", [])}
+        except Exception:
+            _MATURITY_CACHE = {}
+    return _MATURITY_CACHE.get(source)
 
 # --- directional catalyst taxonomy: catalyst_type -> (base_weight 0..1, direction, [regex]) ---
 TYPE_PATTERNS = [
@@ -123,9 +141,9 @@ def _llm(title, summary, model="gemma3:4b", timeout=25):
         return None
 
 
-def classify(title, summary="", symbol=None, allow_llm=True, llm_threshold=0.55, model="gemma3:4b"):
+def classify(title, summary="", symbol=None, source=None, allow_llm=True, llm_threshold=0.55, model="gemma3:4b"):
     """Hybrid classify. Returns dict with catalyst_type, direction, impact_score (0-10, calibrated),
-    confidence, severity, method, rationale."""
+    confidence (source-maturity-adjusted), severity, method, rationale, source_tier."""
     r = _deterministic(title, summary)
     if allow_llm and r["confidence"] < llm_threshold and r["method"] != "regex":
         llm = _llm(title, summary, model=model)
@@ -133,10 +151,13 @@ def classify(title, summary="", symbol=None, allow_llm=True, llm_threshold=0.55,
             r = llm
     mult = _calibration_mult(r["catalyst_type"])
     impact = max(0.0, min(10.0, round(r["base_weight"] * 10 * mult, 1)))
+    # Gate 3: adjust confidence by the surfacing source's maturity tier.
+    tier = _source_tier(source)
+    conf = r["confidence"] * _TIER_CONF.get(tier, 1.0)
+    conf = round(max(0.0, min(1.0, conf)), 2)
     return {"catalyst_type": r["catalyst_type"], "direction": r.get("direction", "neutral"),
-            "impact_score": impact, "confidence": round(r["confidence"], 2),
-            "severity": _severity(impact), "method": r["method"],
-            "calibration_mult": round(mult, 3), "rationale": r.get("rationale", "")}
+            "impact_score": impact, "confidence": conf, "severity": _severity(impact), "method": r["method"],
+            "calibration_mult": round(mult, 3), "source_tier": tier, "rationale": r.get("rationale", "")}
 
 
 if __name__ == "__main__":

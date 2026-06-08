@@ -133,7 +133,7 @@ def run(as_json: bool = False):
     created = []
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
         if _cc:
-            cls = _cc(title, summary, symbol, allow_llm=(LLM_BUDGET > 0))
+            cls = _cc(title, summary, symbol, source=source, allow_llm=(LLM_BUDGET > 0))
             if cls.get("method") == "llm":
                 LLM_BUDGET -= 1
             ctype, severity = cls["catalyst_type"], cls["severity"]
