@@ -20,6 +20,14 @@ const ACTION_LABEL: Record<string, string> = {
   KEEP_CURRENT_STOP: 'Keep Current',
 }
 
+const ACTION_TIP: Record<string, string> = {
+  MOVE_STOP_TO_BREAKEVEN: 'Raise the stop to your entry price — removes downside risk; from here the trade can\'t lose.',
+  MOVE_STOP_TO_PROFIT_LOCK: 'Raise the stop above entry to lock in part of the open gain, while leaving room to run.',
+  ADD_FIXED_TAKE_PROFIT: 'Set a take-profit target so gains are realized automatically if price reaches it.',
+  CONVERT_TO_TRAILING_STOP: 'Switch to a stop that follows price up, locking in more as the trade gains.',
+  KEEP_CURRENT_STOP: 'No change recommended — current protection is appropriate.',
+}
+
 export default function ProtectionPanel({ onDrill }: Props) {
   const { data: proposals } = useApi<any>('/api/v2/atm/protection-adjustment-proposals', 60_000)
   const { data: coverage } = useApi<any>('/api/v2/atm/protection-coverage', 60_000)
@@ -37,24 +45,24 @@ export default function ProtectionPanel({ onDrill }: Props) {
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
         <div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>Protection Advisory</span>
-          <span style={{ marginLeft: 8, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b' }}>
+          <span title="Suggested stop/take-profit adjustments to protect open positions. Advisory only — nothing executes from here." style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', cursor: 'help' }}>Protection Advisory ⓘ</span>
+          <span title="Suggestions only — no orders are placed from this panel." style={{ marginLeft: 8, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', cursor: 'help' }}>
             ADVISORY ONLY
           </span>
-          <span style={{ marginLeft: 6, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(96,165,250,.1)', color: '#60a5fa' }}>
+          <span title="Applies to paper positions only. Live trading is prohibited." style={{ marginLeft: 6, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(96,165,250,.1)', color: '#60a5fa', cursor: 'help' }}>
             PAPER
           </span>
         </div>
-        <span style={{ fontSize: 9, color: 'var(--text3)' }}>{totalCandidates} proposals across {trades.length} positions</span>
+        <span title="Total adjustment options across the positions evaluated." style={{ fontSize: 9, color: 'var(--text3)', cursor: 'help' }}>{totalCandidates} proposals across {trades.length} positions ⓘ</span>
       </div>
 
       {/* Coverage strip */}
       {coverage && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 14, fontSize: 10 }}>
-          <span style={{ color: '#22c55e' }}>Protected: {cov.protected_at_broker ?? 0}/{cov.total_open_positions ?? 0}</span>
-          <span style={{ color: cov.take_profit_missing > 0 ? '#f59e0b' : 'var(--text3)' }}>TP missing: {cov.take_profit_missing ?? 0}</span>
-          <span style={{ color: cov.large_gain_no_profit_protection > 0 ? '#ef4444' : 'var(--text3)' }}>Large gain unprotected: {cov.large_gain_no_profit_protection ?? 0}</span>
-          <span style={{ color: 'var(--text3)' }}>Trailing: {cov.trailing_active ?? 0}</span>
+          <span title="Open positions that have a protective stop active at the broker." style={{ color: '#22c55e', cursor: 'help' }}>Protected: {cov.protected_at_broker ?? 0}/{cov.total_open_positions ?? 0} ⓘ</span>
+          <span title="Open positions with no take-profit target set." style={{ color: cov.take_profit_missing > 0 ? '#f59e0b' : 'var(--text3)', cursor: 'help' }}>TP missing: {cov.take_profit_missing ?? 0} ⓘ</span>
+          <span title="Positions up significantly but with no profit protection (stop still ≤ entry) — gains at risk of giving back." style={{ color: cov.large_gain_no_profit_protection > 0 ? '#ef4444' : 'var(--text3)', cursor: 'help' }}>Large gain unprotected: {cov.large_gain_no_profit_protection ?? 0} ⓘ</span>
+          <span title="Positions using a trailing stop that follows price up." style={{ color: 'var(--text3)', cursor: 'help' }}>Trailing: {cov.trailing_active ?? 0} ⓘ</span>
         </div>
       )}
 
@@ -91,7 +99,7 @@ export default function ProtectionPanel({ onDrill }: Props) {
                       }}
                     >
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, color, fontSize: 10 }}>{label}</span>
+                        <span title={ACTION_TIP[c.action] ?? ''} style={{ fontWeight: 600, color, fontSize: 10, cursor: 'help', borderBottom: '1px dotted ' + color }}>{label}</span>
                         {hasStopChange && (
                           <span style={{ color: 'var(--text2)' }}>
                             stop: {fmt$(c.current_stop, 2)} → <span style={{ color }}>{fmt$(c.proposed_stop, 2)}</span>
