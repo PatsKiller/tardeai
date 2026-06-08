@@ -22,6 +22,8 @@ for ln in (ROOT / ".env").read_text().splitlines():
         k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 import psycopg2
 import psycopg2.extras
+sys.path.insert(0, str(ROOT / "scripts"))
+import directive_promotion as dp  # the real evaluation engine (governor → classify Bucket 2/3 → watchpool)
 
 
 def _db():
@@ -55,54 +57,47 @@ def main():
     c = _db(); cur = c.cursor()
     cur.execute("SELECT * FROM watch_directives WHERE status='active'")
     directives = cur.fetchall()
-    # today's GO/WAIT set (qualification)
-    cur.execute("SELECT DISTINCT symbol FROM trade_ai_scans WHERE run_date>=current_date AND decision IN('GO','WAIT')")
-    go_wait = {r["symbol"] for r in cur.fetchall()}
 
     def recent_hit(did, sym, by):
         cur.execute("""SELECT 1 FROM watch_directive_hits WHERE directive_id=%s AND symbol=%s AND surfaced_by=%s
                        AND surfaced_at > now()-interval '12 hours' LIMIT 1""", (did, sym, by))
         return cur.fetchone() is not None
 
-    def promote(sym, did, reason):
-        cur.execute("SELECT 1 FROM watchlist_items WHERE symbol=%s AND source='operator_directive' LIMIT 1", (sym,))
-        if cur.fetchone():
-            cur.execute("""UPDATE watchlist_items SET in_directive_watch=true, directive_id=%s, last_validated_at=now()
-                           WHERE symbol=%s AND source='operator_directive'""", (did, sym))
-            return "already_watched"
-        cur.execute("""INSERT INTO watchlist_items (symbol, source, status, origin_system, directive_id,
-                       in_directive_watch, source_tier, first_seen_at, provenance_reason, updated_at)
-                       VALUES (%s,'operator_directive','active','operator_directive',%s,true,%s,now(),%s,now())""",
-                    (sym, did, (pills.get(sym) or {}).get("recommendation_key"), reason))
-        return "promoted_to_watchlist"
+    def evaluate(sym, did, reason, source_system, auto):
+        # RECONCILED: route through the REAL evaluation engine instead of a flat watchlist add.
+        # promote_directive_lead = governor (tier+divergence) → register provenance → enrich-on-demand
+        # → classify (Bucket 2/3 ONLY; momentum_scalp/gap_and_go/SAME_DAY excluded) → watchpool. It
+        # records the watch_directive_hit itself and runs under its own app-role connection.
+        try:
+            return dp.promote_directive_lead(sym, did, reason, source_system, auto=auto)
+        except Exception as e:
+            return {"status": "ERROR", "error": str(e)[:140]}
 
-    def record_hit(did, sym, by, reason):
-        p = pills.get(sym) or {}
-        qualified = sym in go_wait
-        pstatus = "PROMOTED" if qualified else "MONITORED_NO_QUALIFY"
-        cur.execute("""INSERT INTO watch_directive_hits (directive_id, symbol, surfaced_by, source_tier,
-                       hit_reason, divergence, promoted, promotion_status, surfaced_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now())""",
-                    (did, sym, by, p.get("recommendation_key"), reason, p.get("divergence"),
-                     qualified, pstatus))
-        return pstatus
-
-    report = {"directives": len(directives), "ta_hits": 0, "hermes_drained": 0, "promoted": 0, "detail": []}
+    report = {"directives": len(directives), "ta_hits": 0, "hermes_drained": 0,
+              "promoted": 0, "staged": 0, "detail": []}
     for d in directives:
         did = d["id"]
-        # ── Trade AI side ──
+        # ── Trade AI side: resolve the directive's own symbols ──
         if d["trade_ai_enabled"]:
+            # ticker = operator named the exact symbol → auto (real eval; scalp firewall still applies).
+            # sector/trend surfaced symbols → governor decides (typically STAGE for one-tap).
+            is_ticker = d["kind"] == "ticker"
+            src = "operator" if is_ticker else "trade_ai"  # surfaced_by my engine will record
             for sym in _resolve(d):
-                if recent_hit(did, sym, "trade_ai"):
+                if recent_hit(did, sym, src):   # dedup on the same surfaced_by (was 'trade_ai' only — bug)
                     continue
                 if not dry:
-                    ps = record_hit(did, sym, "trade_ai", f"directive:{d['label']}")
-                    pr = promote(sym, did, f"operator directive {d['label']}")
-                    if pr == "promoted_to_watchlist":
-                        report["promoted"] += 1
+                    res = evaluate(sym, did, f"directive:{d['label']}", src,
+                                   True if is_ticker else None)
+                    st = res.get("status")
+                    report["promoted"] += 1 if st == "PROMOTED" else 0
+                    report["staged"] += 1 if st == "STAGED_FOR_REVIEW" else 0
+                    report["detail"].append({"directive": d["label"], "symbol": sym,
+                                             "surfaced_by": "trade_ai", "status": st})
+                else:
+                    report["detail"].append({"directive": d["label"], "symbol": sym, "surfaced_by": "trade_ai"})
                 report["ta_hits"] += 1
-                report["detail"].append({"directive": d["label"], "symbol": sym, "surfaced_by": "trade_ai"})
-        # ── Hermes drain (firewall: app drains staging) ──
+        # ── Hermes drain (firewall: app drains staging, then evaluates under app role) ──
         if d["hermes_enabled"]:
             cur.execute("""SELECT * FROM hermes_directive_hits_staging WHERE drained=false AND directive_id=%s LIMIT 50""", (did,))
             for h in cur.fetchall():
@@ -110,11 +105,16 @@ def main():
                 if not sym:
                     continue
                 if not dry:
-                    record_hit(did, sym, "hermes", f"hermes:{(h.get('thesis') or '')[:60]}")
-                    promote(sym, did, f"hermes lead for directive {d['label']}")
+                    res = evaluate(sym, did, f"hermes:{(h.get('thesis') or '')[:60]}", "hermes", None)
+                    st = res.get("status")
+                    report["promoted"] += 1 if st == "PROMOTED" else 0
+                    report["staged"] += 1 if st == "STAGED_FOR_REVIEW" else 0
                     cur.execute("UPDATE hermes_directive_hits_staging SET drained=true, drained_at=now() WHERE id=%s", (h["id"],))
+                    report["detail"].append({"directive": d["label"], "symbol": sym,
+                                             "surfaced_by": "hermes", "status": st})
+                else:
+                    report["detail"].append({"directive": d["label"], "symbol": sym, "surfaced_by": "hermes"})
                 report["hermes_drained"] += 1
-                report["detail"].append({"directive": d["label"], "symbol": sym, "surfaced_by": "hermes"})
         if not dry:
             cur.execute("UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s", (did,))
     if not dry:
