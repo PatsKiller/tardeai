@@ -159,10 +159,22 @@ def emit_siem(cur, f, extra=None):
     payload = {**f, "monitor": "system_freshness_monitor"}
     if extra:
         payload.update(extra)
+    # Idempotent write: alert_uid is globally UNIQUE (alert_events_alert_uid_key), but rows are never
+    # deleted — so after the DEDUP_HOURS window recent_uid() passes and a plain INSERT would hit the unique
+    # constraint and crash. ON CONFLICT updates the existing row in place (no updated_at column exists; we
+    # refresh created_at so the dedup window resets → one re-fire per window, matching insert semantics).
     cur.execute("""INSERT INTO alert_events
         (alert_uid, alert_type, symbol, severity, source_script, raw_text,
          parsed_payload, requires_agent_review, data_quality_status, created_at)
-        VALUES (%s,%s,%s,%s,'system_freshness_monitor.py',%s,%s,%s,'valid',%s) RETURNING id""",
+        VALUES (%s,%s,%s,%s,'system_freshness_monitor.py',%s,%s,%s,'valid',%s)
+        ON CONFLICT (alert_uid) DO UPDATE SET
+            severity = EXCLUDED.severity,
+            raw_text = EXCLUDED.raw_text,
+            parsed_payload = EXCLUDED.parsed_payload,
+            requires_agent_review = EXCLUDED.requires_agent_review,
+            data_quality_status = EXCLUDED.data_quality_status,
+            created_at = EXCLUDED.created_at
+        RETURNING id""",
         (uid, SIEM_ALERT_TYPE, None, SEV_MAP[f["sev"]], f["detail"],
          json.dumps(payload, default=str), f["sev"] in ("P0", "P1"), datetime.now(timezone.utc)))
     return cur.fetchone()[0]
