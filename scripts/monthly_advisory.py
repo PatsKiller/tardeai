@@ -4,9 +4,15 @@ Generates two competing advisory perspectives from the full portfolio:
   2. Sonnet — Opportunity-focused, direct, conviction-driven
 Both pull from the same live data. Monthly run only.
 """
-import json, os, time, requests
+import json, os, sys, time, requests
 from pathlib import Path
 from datetime import datetime
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from llm_net import post_retry
+except Exception:
+    def post_retry(url, json_payload, timeout=120, **_):  # fallback: plain post if helper missing
+        return requests.post(url, json=json_payload, timeout=timeout)
 
 OPUS   = "claude-opus-4-20250514"   # legacy paid (no longer the default — see free local lanes below)
 GPT4O  = "gpt-4o"                    # legacy paid
@@ -19,9 +25,10 @@ ALT_MODEL       = os.environ.get("MONTHLY_ADVISORY_ALT_MODEL", "gemma3:12b")
 def _call_local(prompt, model, max_tokens=2500):
     """FREE local Ollama call (no paid API). Returns text or an error string (never raises)."""
     try:
-        r = requests.post("http://127.0.0.1:11434/api/chat", timeout=600, json={
+        r = post_retry("http://127.0.0.1:11434/api/chat", {
             "model": model, "stream": False, "messages": [{"role": "user", "content": prompt}],
-            "options": {"num_ctx": 16384, "num_predict": max_tokens, "temperature": 0.3}})
+            "options": {"num_ctx": 16384, "num_predict": max_tokens, "temperature": 0.3}},
+            timeout=600, attempts=2, base=2.0)
         return r.json().get("message", {}).get("content", "").strip() or "(empty local response)"
     except Exception as e:
         return f"Error (local {model}): {str(e)[:200]}"
