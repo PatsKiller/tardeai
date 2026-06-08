@@ -15777,12 +15777,25 @@ def _watch_directives(query=None):
                         ORDER BY h.surfaced_at DESC LIMIT 40""") or []
     staging = _db_query("SELECT count(*) c, count(*) FILTER (WHERE NOT drained) undrained FROM hermes_directive_hits_staging", fetch="one") or {}
     promoted = _db_query("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
+    health = {}
+    try:
+        import json as _jw
+        _h = _jw.loads((PROJECT_ROOT / "data" / "runtime" / "watch_directives_history.json").read_text()).get("snapshots", [])
+        if _h:
+            _l = _h[-1]
+            health = {"status": _l.get("status"), "hits_24h": _l.get("hits_24h"),
+                      "by_status_24h": _l.get("by_status_24h"), "by_surfaced_24h": _l.get("by_surfaced_24h"),
+                      "promoted_total": _l.get("promoted_total"), "staging_undrained": _l.get("staging_undrained"),
+                      "stale_directives": _l.get("stale_directives"), "notes": _l.get("notes", []),
+                      "trend": [{"date": s["date"], "hits_7d": s.get("hits_7d"), "promoted_total": s.get("promoted_total")} for s in _h[-14:]]}
+    except Exception:
+        pass
     return {"note": "Operator-owned watch directives honored by Trade AI + Hermes (firewall: Hermes proposes via "
                     "staging only). Advisory; no GO/WAIT or scoring change.",
             "directive_count": len(directives), "directives": [{k: _json_clean(v) for k, v in r.items()} for r in directives],
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
-            "promoted_to_watchlist": promoted.get("c")}
+            "promoted_to_watchlist": promoted.get("c"), "health": health}
 
 
 def _watch_provenance(symbol):

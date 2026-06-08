@@ -210,6 +210,14 @@ export default function HermesPanel() {
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
             {wd.directive_count} active · promoted to watched universe: {wd.promoted_to_watchlist} · Hermes staging: {wd.hermes_staging?.undrained || 0} undrained
           </div>
+          {wd.health?.status && (
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+              servicing: <b style={{ color: wd.health.status === 'ACTIVE' ? '#22c55e' : wd.health.status === 'STALLED' ? '#ef4444' : 'var(--text2)' }}>{wd.health.status}</b>
+              {' '}· {wd.health.hits_24h} hits/24h{wd.health.by_status_24h ? ' (' + Object.entries(wd.health.by_status_24h).map(([k, v]: any) => `${v} ${k.toLowerCase().replace('_', ' ')}`).join(', ') + ')' : ''}
+              {' '}· {wd.health.promoted_total} promoted
+              {(wd.health.notes || []).length > 0 && <span style={{ color: '#f59e0b' }}> · {wd.health.notes.join('; ')}</span>}
+            </div>
+          )}
           {wd.directive_count === 0 ? (
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>No directives yet. Operator adds ticker/sector/trend directives → Trade AI + Hermes honor them (Hermes proposes via staging only).</div>
           ) : (
