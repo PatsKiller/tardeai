@@ -15785,6 +15785,94 @@ def _watch_directives(query=None):
             "promoted_to_watchlist": promoted.get("c")}
 
 
+def _watch_provenance(symbol):
+    """GET /api/v2/watch/provenance/{symbol} — unified provenance contract for the shared pill row.
+    origin + tier + freshness + directive link + Street consensus (Yahoo-authoritative) + divergence.
+    Read-only. Uncovered symbol -> explicit nulls, never fabricated."""
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"error": "symbol required"}
+    item = _db_query("""SELECT wi.symbol, wi.origin_system, wi.origin_detail, wi.directive_id,
+                          wi.in_directive_watch, wi.source_tier, wi.first_seen_at, wi.last_validated_at,
+                          wi.seen_count, wi.provenance_reason, wi.source, d.label AS directive_label, d.kind AS directive_kind
+                        FROM watchlist_items wi LEFT JOIN watch_directives d ON d.id = wi.directive_id
+                        WHERE wi.symbol = %s ORDER BY wi.updated_at DESC NULLS LAST LIMIT 1""",
+                     (symbol,), fetch="one") or {}
+    pool = _db_query("""SELECT strategy_id, bucket, current_status, expires_at, origin_system, directive_id
+                        FROM strategy_watchpool WHERE symbol = %s AND current_status = 'ACTIVE'
+                        ORDER BY entered_at DESC""", (symbol,)) or []
+    # Tier + divergence + Street consensus via the promotion engine's read-models (shared source of truth).
+    tier, divergence, street = item.get("source_tier"), "unavailable", None
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import directive_promotion as _dp
+        if item.get("origin_system"):
+            tier = tier or _dp.get_source_tier(item.get("origin_system"))
+        divergence = _dp.get_divergence_status(symbol)
+        street = _dp.get_street_consensus(symbol)
+    except Exception:
+        pass
+    return {"symbol": symbol,
+            "origin_system": item.get("origin_system"), "origin_detail": item.get("origin_detail"),
+            "source": item.get("source"),
+            "directive": {"id": item.get("directive_id"), "label": item.get("directive_label"),
+                          "kind": item.get("directive_kind")} if item.get("directive_id") else None,
+            "in_directive_watch": item.get("in_directive_watch"),
+            "source_tier": tier, "divergence": divergence,
+            "first_seen_at": _json_clean(item.get("first_seen_at")),
+            "last_validated_at": _json_clean(item.get("last_validated_at")),
+            "seen_count": item.get("seen_count"), "reason": item.get("provenance_reason"),
+            "watchpool": [{k: _json_clean(v) for k, v in r.items()} for r in pool],
+            "street_consensus": street,
+            "note": "Street consensus = Yahoo (authoritative). null = no professional coverage (not fabricated)."}
+
+
+def _watch_directive_create(body):
+    """POST /api/v2/watch/directives — create an operator watch directive (APP ROLE — the firewall:
+    Hermes can never write this). kind ticker|sector|trend; spec is the resolution payload."""
+    import json as _j
+    kind = (body.get("kind") or "").strip().lower()
+    label = (body.get("label") or "").strip()
+    spec = body.get("spec") or {}
+    if kind not in ("ticker", "sector", "trend"):
+        return 400, {"ok": False, "error": "kind must be ticker|sector|trend"}
+    if not label:
+        return 400, {"ok": False, "error": "label required"}
+    if kind == "ticker" and not (spec.get("symbol")):
+        return 400, {"ok": False, "error": "ticker directive needs spec.symbol"}
+    row = _db_query("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
+                          trade_ai_enabled, hermes_enabled)
+                       VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (kind, label, _j.dumps(spec), body.get("rationale"),
+                     body.get("created_by", "operator"), body.get("ttl_days"),
+                     body.get("priority", "normal"),
+                     bool(body.get("trade_ai_enabled", True)), bool(body.get("hermes_enabled", True))),
+                    fetch="one")
+    return 200, {"ok": True, "directive_id": (row or {}).get("id"), "kind": kind, "label": label}
+
+
+def _watch_directive_promote(body):
+    """POST /api/v2/watch/directives/promote — operator one-tap promotion of a staged hit.
+    Routes through the real engine with auto=True (operator override); scalp firewall + fail-closed
+    still apply. Runs under the app role."""
+    symbol = (body.get("symbol") or "").upper().strip()
+    directive_id = body.get("directive_id")
+    if not symbol or not directive_id:
+        return 400, {"ok": False, "error": "symbol and directive_id required"}
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import directive_promotion as _dp
+        res = _dp.promote_directive_lead(symbol, int(directive_id),
+                                         body.get("reason") or "operator one-tap promote",
+                                         body.get("source_system") or "operator",
+                                         auto=True, actor="operator")
+        return 200, {"ok": True, "result": res}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:200]}
+
+
 def _llm_retry_health(query=None):
     """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
     import json as _jr
@@ -17237,6 +17325,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+    # Watch Directives — create (operator) + one-tap promote (operator override). App role; firewall preserved.
+    if method == "POST" and base_path == "/api/v2/watch/directives":
+        try:
+            return _watch_directive_create(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/watch/directives/promote":
+        try:
+            return _watch_directive_promote(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # Phase 192I — guarded operator approval (POST). Paper-only; calls the guarded engine.
     if method == "POST" and base_path.startswith("/api/v2/atm/protection-adjustment-proposals/") \
             and base_path.endswith("/approve"):
@@ -17941,6 +18041,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if pid_str.isdigit():
             try:
                 return 200, {"ok": True, "data": _proposal_detail(int(pid_str))}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/watch/provenance/"):
+        symbol = base_path[len("/api/v2/watch/provenance/"):].strip("/").upper()
+        if symbol:
+            try:
+                return 200, {"ok": True, "data": _watch_provenance(symbol)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
