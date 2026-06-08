@@ -59,11 +59,21 @@ Reconciled to route ALL promotion through the D-1 engine (was a flat watchlist-a
   ACTIVE watchpool, Street consensus [Yahoo-authoritative; null = uncovered], divergence).
 - `POST /api/v2/watch/directives` (operator-create, app role) · `POST /api/v2/watch/directives/promote`
   (one-tap, auto=True) · `GET /api/v2/watchpool` (unified list) · `GET /api/v2/watch-directives`
-  (directives + hits + staging + **health**).
-- **`/v3/watchpool`** page (`WatchpoolHub.tsx`): add-directive form (Ticker/Sector/Trend selector),
-  directives list with one-tap **Promote** on staged hits, unified watchpool with the shared provenance
-  pill row (origin=violet for directives, divergence colors). System→Hermes shows directives + a
-  servicing-health line.
+  (directives + hits + staging + **health**) · `GET /api/v2/watch/sectors` (Finviz sector list +
+  DISTINCT constituent counts + sample, for the Add-Watch sector dropdown/preview).
+- **Two operator UI surfaces (same provenance pill row):**
+  - **`/v3/watchlist`** (`WatchlistHub.tsx`) — the primary page. **"+ Add Watch" full-circle modal**
+    (Ticker/Sector/Trend; sector dropdown with live constituent-count + first-10 preview; trend
+    keywords+seeds; rationale/priority/TTL + TA/Hermes toggles + read-only governor preview → POST
+    create). **Filter bar** (origin / advisory band / kind / directive / search). **Watch Directives
+    section** (sector/trend first-class; click to filter to a directive's hits). **Provenance pill
+    row** (origin=violet for directives, source-tier, freshness, divergence) replacing the old
+    `source · bucket` text; row click → `/watch/provenance` drill.
+  - **`/v3/watchpool`** (`WatchpoolHub.tsx`) — directives manager + unified watchpool with one-tap
+    **Promote** on staged hits. System→Hermes shows directives + a servicing-health line.
+- **Provenance backfill** (`migrations/2026-06-08_provenance_backfill.sql`): one-time additive map of
+  `watchlist_items.source → origin_system` (10,230 rows) so existing rows show real origin pills, not
+  blanks. Touches only the additive provenance columns — never `source`/screener output.
 
 ## D-4 — Telegram + morning brief
 - Telegram (`telegram_command_handler.py`): `watch ticker SYM [because <thesis>]`, `watch sector NAME`,
