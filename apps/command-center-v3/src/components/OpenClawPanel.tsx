@@ -35,20 +35,20 @@ export default function OpenClawPanel() {
         <div style={{ fontWeight: 700, marginBottom: 8 }}>Agents</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
-            {['Agent', 'Identity', 'Model', 'Workspace', 'SOUL', 'Actions'].map(h => <th key={h} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            {['Agent', 'Identity', 'Model', 'Registration', 'SOUL', 'Actions'].map(h => <th key={h} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {(st?.agents || []).map((a: any) => (
-              <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', opacity: a.registered === false ? 0.85 : 1 }}>
                 <td style={{ padding: '6px 8px', fontWeight: 600 }}>{a.emoji ? a.emoji + ' ' : ''}{a.name}</td>
-                <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{a.identity_name || '—'}</td>
-                <td style={{ padding: '6px 8px' }}><code>{a.model}</code></td>
-                <td style={{ padding: '6px 8px', color: 'var(--text3)', fontSize: 10 }}>{a.workspace}</td>
+                <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{a.identity_name || (a.registered === false ? `unregistered · ${(a.skills || []).length} skill(s)` : '—')}</td>
+                <td style={{ padding: '6px 8px' }}>{a.model ? <code>{a.model}</code> : '—'}</td>
+                <td style={{ padding: '6px 8px', color: a.registered === false ? '#f59e0b' : '#22c55e' }}>{a.registered === false ? 'unregistered' : 'registered'}</td>
                 <td style={{ padding: '6px 8px', color: a.soul_exists ? '#22c55e' : 'var(--text3)' }}>{a.soul_exists ? 'present' : '—'}</td>
                 <td style={{ padding: '6px 8px' }}>
-                  {a.soul_exists
+                  {a.registered !== false && a.soul_exists
                     ? <button onClick={() => setEditAgent({ id: a.id, title: a.identity_name || a.name })} style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg1)', color: '#60a5fa', cursor: 'pointer' }}>Edit Identity</button>
-                    : <span style={{ fontSize: 10, color: 'var(--text3)' }}>no SOUL</span>}
+                    : <span style={{ fontSize: 10, color: 'var(--text3)' }}>{a.registered === false ? 'read-only' : 'no SOUL'}</span>}
                 </td>
               </tr>
             ))}

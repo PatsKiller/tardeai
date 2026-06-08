@@ -15457,8 +15457,10 @@ def _openclaw_status(query=None):
     mp = (defaults.get("model") or {})
     model_primary = mp.get("primary")
     rows = []
+    registered_ids = set()
     for a in (agdef.get("list") or []):
         aid = a.get("id")
+        registered_ids.add(aid)
         ident = a.get("identity") or {}
         soul = _openclaw_agent_soul_path(aid)
         idf = OPENCLAW_HOME / "agents" / str(aid) / "agent" / "IDENTITY.md"
@@ -15467,7 +15469,18 @@ def _openclaw_status(query=None):
                      "model": a.get("model") or model_primary,
                      "workspace": str(a.get("workspace") or "").replace(str(Path.home()), "~"),
                      "soul_exists": soul.exists(), "identity_md_exists": idf.exists(),
-                     "skills": a.get("skills") or []})
+                     "skills": a.get("skills") or [], "registered": True})
+    # unregistered agent dirs present on disk but not in openclaw.json (read-only, not editable)
+    adir = OPENCLAW_HOME / "agents"
+    if adir.exists():
+        for d in sorted(p for p in adir.iterdir() if p.is_dir() and p.name not in registered_ids):
+            soul = _openclaw_agent_soul_path(d.name)
+            sk = sorted(s.stem for s in (d / "skills").glob("*.md")) if (d / "skills").is_dir() else []
+            rows.append({"id": d.name, "name": d.name, "identity_name": None, "emoji": None,
+                         "model": None,
+                         "workspace": str(d).replace(str(Path.home()), "~"),
+                         "soul_exists": soul.exists(), "identity_md_exists": False,
+                         "skills": sk, "registered": False})
     skills = sorted([p.name for p in (OPENCLAW_HOME / "skills").glob("*") if p.is_dir()]) \
         if (OPENCLAW_HOME / "skills").exists() else []
     ch = cfg.get("channels") or {}
