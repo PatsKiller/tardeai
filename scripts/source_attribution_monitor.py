@@ -17,6 +17,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HIST = ROOT / "data" / "runtime" / "source_attribution_history.json"
+MATURITY = ROOT / "data" / "runtime" / "source_maturity_latest.json"
+TIER_RANK = {"demoted": -1, "candidate": 0, "probationary": 1, "trusted": 2, "core": 3}
 OVERLAP_OK = 70.0          # % traded symbols with recent news = healthy
 RAMP_DAYS = 5              # after this many healthy-overlap days, expect attributions > 0
 for ln in (ROOT / ".env").read_text().splitlines():
@@ -53,12 +55,30 @@ def main():
             "source_rows": src_rows, "sources_with_trades": int(with_trades),
             "sources_outcome_proven": int(proven), "total_attributions": int(attribs)}
 
+    # tier snapshot + per-source tiers (for movement tracking as outcomes accrue)
+    try:
+        mat = json.loads(MATURITY.read_text())
+        snap["tier_counts"] = mat.get("tier_counts", {})
+        snap["source_tiers"] = {s["source"]: s["tier"] for s in mat.get("sources", [])}
+    except Exception:
+        snap["tier_counts"], snap["source_tiers"] = {}, {}
+
     hist = []
     try:
         hist = json.loads(HIST.read_text()).get("snapshots", [])
     except Exception:
         pass
     prev = hist[-1] if hist else None
+
+    # tier transitions vs the prior snapshot (promotions ↑ / demotions ↓)
+    transitions = []
+    if prev and prev.get("source_tiers"):
+        for src, tier in snap["source_tiers"].items():
+            old = prev["source_tiers"].get(src)
+            if old and old != tier:
+                direction = "promotion" if TIER_RANK.get(tier, 0) > TIER_RANK.get(old, 0) else "demotion"
+                transitions.append({"source": src, "from": old, "to": tier, "direction": direction})
+    snap["tier_transitions"] = transitions
     # healthy-overlap streak (for stall detection)
     streak = 0
     for s in reversed(hist + [snap]):
@@ -74,6 +94,14 @@ def main():
         status = "REGRESSED"; notes.append(f"overlap dropped {prev['overlap_pct']}%→{overlap_pct}%")
     if overlap_pct >= OVERLAP_OK and attribs == 0 and streak >= RAMP_DAYS:
         status = "STALLED"; notes.append(f"overlap healthy {streak}d but 0 attributions — check attribution loop")
+    # notable tier movements (demotion of a trusted/core source is worth surfacing)
+    promos = [t for t in transitions if t["direction"] == "promotion"]
+    demos = [t for t in transitions if t["direction"] == "demotion"]
+    notable_demo = [t for t in demos if t["from"] in ("trusted", "core")]
+    if notable_demo:
+        notes.append("demoted from trusted/core: " + ", ".join(f"{t['source']}({t['from']}→{t['to']})" for t in notable_demo))
+    if promos:
+        notes.append(f"{len(promos)} promotion(s): " + ", ".join(f"{t['source']}→{t['to']}" for t in promos[:5]))
     if prev:
         snap["delta"] = {"overlap_pct": round(overlap_pct - prev["overlap_pct"], 1),
                          "total_attributions": int(attribs) - prev.get("total_attributions", 0),
@@ -84,8 +112,11 @@ def main():
         hist.append(snap); hist = hist[-90:]
         HIST.parent.mkdir(parents=True, exist_ok=True)
         HIST.write_text(json.dumps({"updated_at": snap["ts"], "snapshots": hist}, indent=2))
-    print(json.dumps({k: snap[k] for k in ("date", "overlap_pct", "traded_with_news_7d", "traded_30d",
-          "sources_with_trades", "total_attributions", "healthy_overlap_streak_days", "status", "notes")}, indent=2))
+    out = {k: snap[k] for k in ("date", "overlap_pct", "traded_with_news_7d", "traded_30d",
+          "sources_with_trades", "total_attributions", "healthy_overlap_streak_days", "status", "notes")}
+    out["tier_counts"] = snap.get("tier_counts", {})
+    out["tier_transitions"] = transitions
+    print(json.dumps(out, indent=2))
 
 
 if __name__ == "__main__":

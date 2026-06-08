@@ -15657,13 +15657,21 @@ def _hermes_source_maturity(query=None):
         h = _jm.loads((PROJECT_ROOT / "data" / "runtime" / "source_attribution_history.json").read_text()).get("snapshots", [])
         if h:
             latest = h[-1]
+            recent_transitions = []
+            for s in reversed(h):
+                for t in (s.get("tier_transitions") or []):
+                    recent_transitions.append({"date": s["date"], **t})
+                if len(recent_transitions) >= 10:
+                    break
             attribution = {"status": latest.get("status"), "overlap_pct": latest.get("overlap_pct"),
                            "traded_with_news_7d": latest.get("traded_with_news_7d"), "traded_30d": latest.get("traded_30d"),
                            "total_attributions": latest.get("total_attributions"),
                            "sources_with_trades": latest.get("sources_with_trades"),
                            "healthy_overlap_streak_days": latest.get("healthy_overlap_streak_days"),
                            "notes": latest.get("notes", []),
-                           "trend": [{"date": s["date"], "overlap_pct": s["overlap_pct"], "attributions": s["total_attributions"]} for s in h[-14:]]}
+                           "trend": [{"date": s["date"], "overlap_pct": s["overlap_pct"], "attributions": s["total_attributions"]} for s in h[-14:]],
+                           "tier_trend": [{"date": s["date"], **(s.get("tier_counts") or {})} for s in h[-14:] if s.get("tier_counts")],
+                           "recent_tier_transitions": recent_transitions[:10]}
     except Exception:
         pass
     return {"updated_at": mat.get("updated_at"), "tier_counts": mat.get("tier_counts"),
