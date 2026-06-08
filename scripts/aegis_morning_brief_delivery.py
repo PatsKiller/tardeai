@@ -144,6 +144,39 @@ def _get_pipeline_health_for_brief() -> str:
 
 # ── D1: Telegram delivery ────────────────────────────────────────────────
 
+def _get_watch_directives_brief() -> list:
+    """Watch Directives lines for the morning brief: active/paused counts, new hits (24h) with
+    tier+divergence, staged-awaiting-tap, and any auto-paused-cold mandates. Advisory."""
+    out = []
+    try:
+        counts = _db_query("SELECT status, count(*) n FROM watch_directives GROUP BY status") or []
+        by = {r["status"]: r["n"] for r in counts}
+        active, paused = by.get("active", 0), by.get("paused", 0)
+        if active == 0 and paused == 0:
+            return []
+        out.append(f"*Watch Directives:* {active} active" + (f", {paused} paused" if paused else ""))
+        hits = _db_query("""SELECT symbol, surfaced_by, source_tier, divergence, promotion_status
+                            FROM watch_directive_hits WHERE surfaced_at > NOW() - INTERVAL '24 hours'
+                            ORDER BY surfaced_at DESC LIMIT 6""") or []
+        for h in hits[:5]:
+            tag = [t for t in (h.get("source_tier"),
+                               (h.get("divergence") if h.get("divergence") not in (None, "unavailable") else None)) if t]
+            out.append(f"  • {h['symbol']} ({h.get('surfaced_by')}) "
+                       f"{(h.get('promotion_status') or '').replace('_', ' ').lower()}"
+                       + (f" [{', '.join(tag)}]" if tag else ""))
+        staged = _db_query("""SELECT count(*) n FROM watch_directive_hits
+                              WHERE promotion_status='STAGED_FOR_REVIEW' AND promoted=false""", fetch="one") or {}
+        if staged.get("n", 0) > 0:
+            out.append(f"  ⏳ {staged['n']} staged hits awaiting one-tap promote")
+        cold = _db_query("""SELECT label FROM watch_directives WHERE status='paused' AND cold_since IS NOT NULL
+                            ORDER BY updated_at DESC LIMIT 3""") or []
+        for c in cold:
+            out.append(f"  ⏸ auto-paused (cold): {c['label']}")
+    except Exception:
+        pass
+    return out
+
+
 def send_telegram_brief(brief: dict, summary: str) -> bool:
     """Send compact morning brief to Telegram."""
     sections = brief.get("sections", [])
@@ -201,6 +234,12 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
             status = "done" if d["pending"] == 0 else f'{d["done"]} done, {d["pending"]} pending'
             priority = "urgent" if et in ("STOP_TRIGGERED", "SEC_INSIDER_BUY", "FRED_RATE_CHANGE", "IRMAA_THRESHOLD") else ""
             lines.append(f"  {et}: {syms} ({status}){' !!!' if priority else ''}")
+        lines.append("")
+
+    # Watch Directives section (advisory) — counts, new hits, staged-awaiting-tap, paused-cold
+    wd_lines = _get_watch_directives_brief()
+    if wd_lines:
+        lines.extend(wd_lines)
         lines.append("")
 
     # Iris taxonomy section — only if pending proposals or low coverage
