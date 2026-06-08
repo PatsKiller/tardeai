@@ -23,7 +23,7 @@ function LoopRow({ loop, expanded, onToggle }: { loop: any; expanded: boolean; o
     <>
       <tr onClick={onToggle} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
         <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{expanded ? '▾' : '▸'}</td>
-        <td style={{ padding: '3px 6px', fontWeight: 600 }}>{loop.loop}{loop.affects_scoring ? <span style={{ color: sc, fontSize: 9 }}> ⚑scoring</span> : null}</td>
+        <td style={{ padding: '3px 6px', fontWeight: 600 }}>{loop.loop}{loop.affects_scoring ? <span style={{ color: sc, fontSize: 9 }} title={`This loop affects scoring (${loop.affects_scoring}) — operator-gated; not auto-applied`}> ⚑scoring</span> : null}</td>
         <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{loop.what_learned}</td>
         <td style={{ padding: '3px 6px' }}>{loop.rows ?? '—'}</td>
         <td style={{ padding: '3px 6px', color: loop.queued ? '#f59e0b' : 'var(--text3)' }}>{loop.queued ?? '—'}</td>
@@ -131,7 +131,7 @@ export default function HermesPanel() {
                 <tr key={l.provider} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '4px 6px', fontWeight: 600 }}>{l.lane}</td>
                   <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{l.kind}</td>
-                  <td style={{ padding: '4px 6px', color: l.usable ? '#22c55e' : l.authed ? '#f59e0b' : '#f59e0b', fontWeight: 600 }}>{l.usable ? '✓ ready' : l.authed ? 'authed · needs proxy' : 'auth pending'}</td>
+                  <td title={`${l.lane}: ${l.usable ? 'ready for use' : l.authed ? 'authenticated but the OAuth proxy is not running' : 'not authenticated — run the login command'}${l.reason_code ? ' (' + l.reason_code + ')' : ''}`} style={{ padding: '4px 6px', color: l.usable ? '#22c55e' : l.authed ? '#f59e0b' : '#f59e0b', fontWeight: 600 }}>{l.usable ? '✓ ready' : l.authed ? 'authed · needs proxy' : 'auth pending'}</td>
                   <td style={{ padding: '4px 6px', fontFamily: 'monospace', fontSize: 10 }}>{l.login_command !== '(none — local gemma3 via Ollama)' && <>{l.login_command}<Copy text={l.login_command} /></>}</td>
                 </tr>
               ))}
@@ -181,7 +181,7 @@ export default function HermesPanel() {
               {smat.top_sources.slice(0, 12).map((s: any) => (
                 <tr key={s.source} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>{s.source.slice(0, 26)}</td>
-                  <td style={{ padding: '3px 6px', fontWeight: 600, color: s.tier === 'core' ? '#22c55e' : s.tier === 'trusted' ? '#14b8a6' : s.tier === 'demoted' ? '#ef4444' : 'var(--text3)' }}>{s.tier}</td>
+                  <td title={`Maturity tier: ${s.tier} (score ${s.maturity_score}) — core=operator-trusted, trusted/probationary=earning trust, candidate=unvetted, demoted=noise. Advisory; scales catalyst confidence.`} style={{ padding: '3px 6px', fontWeight: 600, color: s.tier === 'core' ? '#22c55e' : s.tier === 'trusted' ? '#14b8a6' : s.tier === 'demoted' ? '#ef4444' : 'var(--text3)' }}>{s.tier}</td>
                   <td style={{ padding: '3px 6px' }}>{s.maturity_score}</td>
                   <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{(s.go_rate * 100).toFixed(1)}%</td>
                   <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{s.total_signals}</td>
@@ -242,7 +242,7 @@ export default function HermesPanel() {
                   <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>{t.catalyst_type}</td>
                   <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{t.samples}</td>
                   <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{t.hit_rate != null ? (t.hit_rate * 100).toFixed(0) + '%' : '—'}</td>
-                  <td style={{ padding: '3px 6px', fontWeight: 600, color: t.weight_multiplier >= 1.05 ? '#22c55e' : t.weight_multiplier <= 0.85 ? '#ef4444' : 'var(--text2)' }}>{t.weight_multiplier?.toFixed(2)}×</td>
+                  <td title={`Calibration multiplier: scales this catalyst type's impact by ${t.weight_multiplier}× based on realized 2-day moves (hit-rate ${t.hit_rate != null ? (t.hit_rate * 100).toFixed(0) + '%' : 'n/a'}, ${t.samples} samples). >1 boosts, <1 dampens.`} style={{ padding: '3px 6px', fontWeight: 600, color: t.weight_multiplier >= 1.05 ? '#22c55e' : t.weight_multiplier <= 0.85 ? '#ef4444' : 'var(--text2)' }}>{t.weight_multiplier?.toFixed(2)}×</td>
                   <td style={{ padding: '3px 6px', color: t.trusted ? '#22c55e' : 'var(--text3)' }}>{t.trusted ? '✓' : '—'}</td>
                 </tr>
               ))}

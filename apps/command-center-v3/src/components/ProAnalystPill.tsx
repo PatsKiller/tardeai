@@ -27,12 +27,13 @@ export default function ProAnalystPill({ symbol, map, compact }: { symbol?: stri
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9 }}
       title={`Street: ${p.rec} · ${p.n} analysts · mean target $${p.target} · upside ${p.upside}% · internal ${p.internal || 'n/a'} · divergence ${p.divergence}${p.stale ? ' · STALE >7d' : ''}`}>
-      <span style={{ fontWeight: 700, color: rc, border: `1px solid ${rc}`, borderRadius: 4, padding: '0 4px' }}>
+      <span title={`Professional analyst consensus rating (Yahoo): ${p.rec}${p.stale ? ' — STALE, last updated >7 days ago' : ''}`}
+        style={{ fontWeight: 700, color: rc, border: `1px solid ${rc}`, borderRadius: 4, padding: '0 4px' }}>
         {(p.rec || '').replace('_', ' ')}{p.stale ? ' ⚠' : ''}
       </span>
-      {p.n != null && <span style={{ color: 'var(--text3)' }}>{p.n}an</span>}
-      {p.upside != null && <span style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
-      {p.divergence === 'divergent' && <span style={{ color: '#ef4444', fontWeight: 700 }} title="internal vs Street divergent">⚡</span>}
+      {p.n != null && <span title={`${p.n} professional analysts covering · mean target $${p.target}`} style={{ color: 'var(--text3)' }}>{p.n}an</span>}
+      {p.upside != null && <span title={`Upside to mean analyst target ($${p.target} vs current)`} style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
+      {p.divergence === 'divergent' && <span style={{ color: '#ef4444', fontWeight: 700 }} title={`Divergence: internal signal is ${p.internal || 'n/a'} but Street consensus is ${p.street || 'n/a'} — review`}>⚡</span>}
     </span>
   )
 }
