@@ -1,12 +1,12 @@
 {
-  "checked_at": "2026-05-31T10:00:01.899569+00:00",
+  "checked_at": "2026-06-07T10:00:01.787665+00:00",
   "packages": {
     "python3": {
       "latest": "3.13.7",
       "installed": "3.13.7"
     },
     "nodejs": {
-      "latest": "24.16.0",
+      "latest": "26.3.0",
       "installed": "22.22.2"
     },
     "npm": {
@@ -22,29 +22,29 @@
       "installed": "2.51.0"
     },
     "ollama": {
-      "latest": "0.24.0",
+      "latest": "0.30.6",
       "installed": "0.24.0"
     },
     "tailscale": {
-      "latest": "1.98.3",
+      "latest": "1.98.5",
       "installed": "1.98.3"
     },
     "hermes-agent": {
-      "latest": "0.15.2",
-      "installed": "0.15.2"
+      "latest": "0.16.0",
+      "installed": "0.16.0"
     },
     "claude-code": {
-      "latest": "2.1.158",
-      "installed": "2.1.158"
+      "latest": "2.1.168",
+      "installed": "2.1.168"
     },
     "react": {
-      "latest": "19.2.6"
+      "latest": "19.2.7"
     },
     "react-router-dom": {
-      "latest": "7.16.0"
+      "latest": "7.17.0"
     },
     "vite": {
-      "latest": "8.0.14"
+      "latest": "8.0.16"
     },
     "typescript": {
       "latest": "6.0.3"
