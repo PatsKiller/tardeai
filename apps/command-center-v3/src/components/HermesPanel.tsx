@@ -202,6 +202,13 @@ export default function HermesPanel() {
             {pa.with_consensus} symbols with Street consensus · coverage: {Object.entries(pa.coverage_by_tier || {}).map(([t, v]: any) => `${t} ${v.pct}%`).join(' · ')}
             {(pa.divergent || []).length > 0 && <span style={{ color: '#f59e0b' }}> · divergent: {pa.divergent.join(', ')}</span>}
           </div>
+          {pa.coverage_health?.coverage_pct != null && (
+            <div style={{ fontSize: 10, marginBottom: 6, color: 'var(--text3)' }}>
+              coverage trend: <b style={{ color: pa.coverage_health.status === 'EXPANDING' ? '#22c55e' : pa.coverage_health.status === 'REGRESSED' ? '#ef4444' : 'var(--text2)' }}>{pa.coverage_health.status}</b>
+              {' '}· {pa.coverage_health.coverage_pct}% ({pa.coverage_health.with_consensus} symbols){pa.coverage_health.stale > 0 ? ` · ${pa.coverage_health.stale} stale` : ''}
+              {(pa.coverage_health.notes || []).length > 0 && <span style={{ color: '#22c55e' }}> · {pa.coverage_health.notes.join('; ')}</span>}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
               {['Symbol', 'Street', 'Analysts', 'Mean target', 'Upside', 'Internal', 'Divergence'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}

@@ -15669,9 +15669,21 @@ def _pro_analyst_pills(query=None):
         p = next((x for x in d.get("pills", []) if x["symbol"] == sym.upper()), None)
         return {"updated_at": d.get("updated_at"), "symbol": sym.upper(), "pill": p,
                 "found": p is not None, "note": d.get("note")}
+    coverage_health = {}
+    try:
+        h = _jp.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_coverage_history.json").read_text()).get("snapshots", [])
+        if h:
+            latest = h[-1]
+            coverage_health = {"status": latest.get("status"), "coverage_pct": latest.get("coverage_pct"),
+                               "with_consensus": latest.get("with_consensus"), "stale": latest.get("stale"),
+                               "notes": latest.get("notes", []),
+                               "trend": [{"date": s["date"], "coverage_pct": s["coverage_pct"], "with_consensus": s["with_consensus"]} for s in h[-14:]]}
+    except Exception:
+        pass
     return {"updated_at": d.get("updated_at"), "symbol_count": d.get("symbol_count"),
             "coverage_by_tier": d.get("coverage_by_tier"), "note": d.get("note"),
             "with_consensus": sum(1 for p in d.get("pills", []) if p.get("has_professional_coverage")),
+            "coverage_health": coverage_health,
             "divergent": [p["symbol"] for p in d.get("pills", []) if p.get("divergence") == "divergent"],
             "pills": [p for p in d.get("pills", []) if p.get("has_professional_coverage")][:50]}
 
