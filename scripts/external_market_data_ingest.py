@@ -109,6 +109,73 @@ def ingest_yfinance_quotes(symbols: list = None) -> dict:
     return {"source": "yfinance", "fetched": fetched, "total": len(symbols)}
 
 
+# ── Alpaca (PRIMARY: live intraday, no rate limit, IEX free feed) ─────────────────────
+
+def _alpaca_creds():
+    return (_env("ALPACA_API_KEY") or _env("ALPACA_PAPER_API_KEY") or _env("APCA_API_KEY_ID"),
+            _env("ALPACA_SECRET_KEY") or _env("ALPACA_PAPER_SECRET_KEY") or _env("APCA_API_SECRET_KEY"))
+
+
+def ingest_alpaca_quotes(symbols: list = None) -> dict:
+    """Live intraday quotes via Alpaca snapshots (IEX free feed). Primary source — no rate limits,
+    unlike yfinance (rate-limited + once-daily). Batches up to 200 symbols/request. Returns the
+    fetched count plus the symbols Alpaca could NOT price, so the caller can fall back."""
+    import requests
+    if not symbols:
+        symbols = _get_symbols()
+    key, sec = _alpaca_creds()
+    if not (key and sec):
+        return {"source": "alpaca", "fetched": 0, "total": len(symbols), "missing": list(symbols), "error": "no creds"}
+    h = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec}
+    conn = _get_conn(); cur = conn.cursor()
+    fetched = 0; got = set()
+    for i in range(0, len(symbols), 200):
+        chunk = symbols[i:i + 200]
+        try:
+            r = requests.get("https://data.alpaca.markets/v2/stocks/snapshots",
+                             headers=h, params={"symbols": ",".join(chunk), "feed": "iex"}, timeout=25)
+            if r.status_code != 200:
+                print(f"  [alpaca] HTTP {r.status_code} on batch {i}")
+                continue
+            snaps = r.json()
+            for sym, s in (snaps.items() if isinstance(snaps, dict) else []):
+                if not isinstance(s, dict):
+                    continue
+                price = (s.get("latestTrade") or {}).get("p") or (s.get("dailyBar") or {}).get("c")
+                if not price:
+                    continue
+                prev = (s.get("prevDailyBar") or {}).get("c")
+                vol = (s.get("dailyBar") or {}).get("v")
+                chg_pct = round((price - prev) / prev * 100, 4) if prev else None
+                cur.execute("""INSERT INTO market_quotes (symbol, source, price, prev_close, day_change_pct, volume)
+                               VALUES (%s, 'alpaca', %s, %s, %s, %s)""", (sym, price, prev, chg_pct, vol))
+                fetched += 1; got.add(sym)
+        except Exception as e:
+            print(f"  [alpaca] batch {i} error: {e}")
+    conn.commit(); conn.close()
+    missing = [s for s in symbols if s not in got]
+    print(f"[alpaca] Fetched {fetched}/{len(symbols)} live quotes ({len(missing)} missing → fallback)")
+    return {"source": "alpaca", "fetched": fetched, "total": len(symbols), "missing": missing}
+
+
+def ingest_quotes(symbols: list = None) -> dict:
+    """Quote ingest: Alpaca live intraday PRIMARY → yfinance fallback for any symbols Alpaca didn't
+    price (delisted/OTC/non-IEX). Live, no rate-limit dependence on yfinance."""
+    if not symbols:
+        symbols = _get_symbols()
+    a = ingest_alpaca_quotes(symbols)
+    missing = a.get("missing", [])
+    fb = {"fetched": 0}
+    if missing:
+        try:
+            fb = ingest_yfinance_quotes(missing)
+        except Exception as e:
+            print(f"  [fallback] yfinance failed (non-fatal): {e}")
+    total = a.get("fetched", 0) + fb.get("fetched", 0)
+    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} live + yfinance fallback {fb.get('fetched', 0)})")
+    return {"alpaca": a.get("fetched", 0), "fallback": fb.get("fetched", 0), "fetched": total, "total": len(symbols)}
+
+
 # ── Alpha Vantage ────────────────────────────────────────────────────
 
 def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
@@ -425,7 +492,9 @@ if __name__ == "__main__":
     if "--test" in sys.argv:
         test()
     elif "--quotes" in sys.argv:
-        ingest_yfinance_quotes()
+        ingest_quotes()  # Alpaca live-intraday primary → yfinance fallback
+    elif "--quotes-yf" in sys.argv:
+        ingest_yfinance_quotes()  # legacy yfinance-only path (kept for comparison/debug)
     elif "--fundamentals" in sys.argv:
         ingest_alpha_vantage()
     elif "--news-sentiment" in sys.argv:
@@ -433,7 +502,7 @@ if __name__ == "__main__":
     elif "--fred" in sys.argv:
         ingest_fred()
     elif "--all" in sys.argv:
-        ingest_yfinance_quotes()
+        ingest_quotes()
         ingest_alpha_vantage()
         ingest_av_news_sentiment()
         ingest_fred()
