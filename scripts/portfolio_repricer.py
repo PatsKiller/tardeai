@@ -527,7 +527,36 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
 
     print(f"  [repricer] Total: ${total:,.0f} | Day: ${day:+,.0f}")
 
+    # ── Follow-up B: unify ticker_prices for held symbols so ALL surfaces agree with the portfolio view ──
+    try:
+        _sync_ticker_prices(portfolio, root)
+    except Exception as e:
+        print(f"  [repricer] WARNING: ticker_prices sync failed: {e}")
+
     return portfolio
+
+
+def _sync_ticker_prices(portfolio, root):
+    """Write each held symbol's repriced close into ticker_prices for today (update today's row, else insert)
+    so surfaces reading ticker_prices match holdings.json. Best-effort; never breaks repricing."""
+    import psycopg2
+    _load_env(root)
+    seen, n = set(), 0
+    c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
+                         dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                         password=os.getenv("DB_PASSWORD"))
+    cur = c.cursor()
+    for h in portfolio.get("holdings", []):
+        sym, px = h.get("symbol"), h.get("price")
+        if not sym or sym in seen or h.get("is_cash") or not px or px <= 0:
+            continue
+        seen.add(sym)
+        cur.execute("UPDATE ticker_prices SET close_price=%s, source='portfolio_repricer' WHERE symbol=%s AND price_date=CURRENT_DATE", (px, sym))
+        if cur.rowcount == 0:
+            cur.execute("INSERT INTO ticker_prices (symbol, price_date, close_price, source, created_at) VALUES (%s, CURRENT_DATE, %s, 'portfolio_repricer', now())", (sym, px))
+        n += 1
+    c.commit(); c.close()
+    print(f"  [repricer] ticker_prices synced for {n} held symbols (unified with portfolio view)")
 
 
 # ── Standalone ─────────────────────────────────────────────────────────────────
