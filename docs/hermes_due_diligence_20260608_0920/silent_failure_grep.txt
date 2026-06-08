@@ -1,0 +1,4 @@
+     91 psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint "alert_events_alert_uid_key"
+     91 Traceback (most recent call last):
+      3 [hermes-bridge] 0 bridged, 90 dup-skipped, 90 candidates
+      2 [hermes-bridge] 0 bridged, 100 dup-skipped, 100 candidates
