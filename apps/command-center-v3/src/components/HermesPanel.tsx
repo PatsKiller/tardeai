@@ -151,10 +151,19 @@ export default function HermesPanel() {
       {smat?.top_sources && (
         <div style={card}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>Source Maturity</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
             tiers: {Object.entries(smat.tier_counts || {}).map(([t, n]: any) => `${t}:${n}`).join(' · ')} · {smat.source_count} sources
             {smat.operator_actions?.length > 0 && <span style={{ color: '#f59e0b' }}> · {smat.operator_actions.length} operator action(s)</span>}
           </div>
+          {smat.attribution_health?.overlap_pct != null && (
+            <div style={{ fontSize: 10, marginBottom: 6, color: 'var(--text3)' }}>
+              attribution: news↔trade overlap <b style={{ color: smat.attribution_health.overlap_pct >= 70 ? '#22c55e' : '#f59e0b' }}>{smat.attribution_health.overlap_pct}%</b>
+              {' '}({smat.attribution_health.traded_with_news_7d}/{smat.attribution_health.traded_30d}) ·
+              attributions <b>{smat.attribution_health.total_attributions}</b> ·
+              status <b style={{ color: smat.attribution_health.status === 'HEALTHY' ? '#22c55e' : smat.attribution_health.status === 'STALLED' ? '#ef4444' : '#f59e0b' }}>{smat.attribution_health.status}</b>
+              {(smat.attribution_health.notes || []).length > 0 && <span style={{ color: '#f59e0b' }}> — {smat.attribution_health.notes.join('; ')}</span>}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
               {['Source', 'Tier', 'Score', 'Go-rate', 'Signals', 'Trades'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}

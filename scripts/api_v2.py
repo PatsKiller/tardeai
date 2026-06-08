@@ -15651,8 +15651,23 @@ def _hermes_source_maturity(query=None):
     except Exception:
         pass
     srcs = mat.get("sources", [])
+    # attribution-health trend (news<->trade overlap growing → loops strengthening)
+    attribution = {}
+    try:
+        h = _jm.loads((PROJECT_ROOT / "data" / "runtime" / "source_attribution_history.json").read_text()).get("snapshots", [])
+        if h:
+            latest = h[-1]
+            attribution = {"status": latest.get("status"), "overlap_pct": latest.get("overlap_pct"),
+                           "traded_with_news_7d": latest.get("traded_with_news_7d"), "traded_30d": latest.get("traded_30d"),
+                           "total_attributions": latest.get("total_attributions"),
+                           "sources_with_trades": latest.get("sources_with_trades"),
+                           "healthy_overlap_streak_days": latest.get("healthy_overlap_streak_days"),
+                           "notes": latest.get("notes", []),
+                           "trend": [{"date": s["date"], "overlap_pct": s["overlap_pct"], "attributions": s["total_attributions"]} for s in h[-14:]]}
+    except Exception:
+        pass
     return {"updated_at": mat.get("updated_at"), "tier_counts": mat.get("tier_counts"),
-            "source_count": mat.get("source_count"),
+            "source_count": mat.get("source_count"), "attribution_health": attribution,
             "note": "Source maturity = precision(go-rate) + outcome(trade win-rate) + yield + health + credibility. "
                     "Trade-outcome is sparse until news/trade universe overlap grows; go-rate carries it for now. "
                     "Advisory; 'core' activation is operator-gated.",

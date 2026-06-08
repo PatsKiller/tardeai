@@ -1,0 +1,19 @@
+{
+  "updated_at": "2026-06-08T14:33:29.943987+00:00",
+  "snapshots": [
+    {
+      "date": "2026-06-08",
+      "ts": "2026-06-08T14:33:29.943987+00:00",
+      "traded_30d": 19,
+      "traded_with_news_7d": 16,
+      "overlap_pct": 84.2,
+      "source_rows": 139,
+      "sources_with_trades": 0,
+      "sources_outcome_proven": 0,
+      "total_attributions": 0,
+      "status": "HEALTHY",
+      "notes": [],
+      "healthy_overlap_streak_days": 1
+    }
+  ]
+}
