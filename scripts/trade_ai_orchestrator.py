@@ -382,20 +382,37 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     # 10a-ws: Broadcast scored tickers to live WS feed — non-fatal
     try:
         from scalp_ws_client import broadcast_scalp_update
+        _fv_backfilled = 0
         for t in scored:
             if t.get("decision") in ("GO", "WAIT"):
+                # RVOL is stored under 'relative_volume' (set from finviz enrich at line ~231); read that first.
+                _rv = t.get("relative_volume") or t.get("rvol") or 0
+                _chg = t.get("change_pct") or t.get("change_percent") or t.get("change") or ""
+                # Backfill from finviz quote.ashx (live) when the screener didn't supply RVOL — scalp's
+                # 5x+ RVOL gate is unverifiable otherwise. Only for GO/WAIT candidates (small set).
+                if not _rv and _fv_backfilled < 25:
+                    try:
+                        from external_market_data_ingest import _finviz_quote
+                        _fq = _finviz_quote(t.get("symbol", ""))
+                        if _fq.get("rvol"):
+                            _rv = float(_fq["rvol"]); _fv_backfilled += 1
+                            if not _chg and _fq.get("price") and _fq.get("prev"):
+                                _chg = round((float(_fq["price"]) - float(_fq["prev"])) / float(_fq["prev"]) * 100, 2)
+                    except Exception:
+                        pass
                 broadcast_scalp_update({
                     "symbol": t.get("symbol", ""),
                     "grade": t.get("grade", ""),
                     "score": t.get("score", 0),
                     "decision": t.get("decision", ""),
-                    "change_percent": str(t.get("change_pct") or t.get("change_percent") or t.get("change") or ""),
-                    # RVOL is stored under 'relative_volume' (set from finviz enrich at line ~231); read that first
-                    "rvol": float(t.get("relative_volume") or t.get("rvol") or 0),
+                    "change_percent": str(_chg),
+                    "rvol": float(_rv or 0),
                     "catalyst_verified": bool(t.get("catalyst_verified")),
                     "critic_verdict": t.get("critic_verdict", ""),
                     "source": "screener",
                 })
+        if _fv_backfilled:
+            print(f"  [ws] finviz RVOL backfill: {_fv_backfilled} signals")
     except Exception as e:
         print(f"  [ws] WS broadcast from orchestrator failed (non-fatal): {e}")
 
