@@ -75,13 +75,13 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* SUMMARY HEADER */}
       <div style={{ ...card, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div><div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{visible.length}<span style={{ fontSize: 11, color: 'var(--text3)' }}> / {summary.total_positions} positions</span></div></div>
-        <Stat label="Unrealized P&L" v={fmt$(summary.total_unrealized_pnl ?? 0)} c={(summary.total_unrealized_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} />
-        <Stat label="Near stop" v={summary.risk_counts?.near_stop ?? 0} c={summary.risk_counts?.near_stop ? '#ef4444' : 'var(--text2)'} />
-        <Stat label="TP missing" v={summary.risk_counts?.tp_missing ?? 0} c="#f59e0b" />
-        <Stat label="Below entry" v={summary.risk_counts?.below_entry ?? 0} c="#f59e0b" />
-        <Stat label="Big gain unprot." v={summary.risk_counts?.large_gain_unprotected ?? 0} c="#f59e0b" />
-        <Stat label="Hermes findings" v={summary.risk_counts?.hermes_findings ?? 0} c="#a855f7" />
+        <div title="Positions shown (after filters) / total positions across all accounts (holdings + paper trades)." style={{ cursor: 'help' }}><div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{visible.length}<span style={{ fontSize: 11, color: 'var(--text3)' }}> / {summary.total_positions} positions ⓘ</span></div></div>
+        <Stat label="Unrealized P&L" v={fmt$(summary.total_unrealized_pnl ?? 0)} c={(summary.total_unrealized_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} tip="Total mark-to-market gain/loss across the shown positions (current value − cost basis). Not yet realized." />
+        <Stat label="Near stop" v={summary.risk_counts?.near_stop ?? 0} c={summary.risk_counts?.near_stop ? '#ef4444' : 'var(--text2)'} tip="Positions trading close to their stop-loss — at risk of being stopped out soon." />
+        <Stat label="TP missing" v={summary.risk_counts?.tp_missing ?? 0} c="#f59e0b" tip="Open positions with no take-profit target set — gains aren't being locked in on the way up." />
+        <Stat label="Below entry" v={summary.risk_counts?.below_entry ?? 0} c="#f59e0b" tip="Positions currently priced below their entry (sitting at an unrealized loss)." />
+        <Stat label="Big gain unprot." v={summary.risk_counts?.large_gain_unprotected ?? 0} c="#f59e0b" tip="Positions up significantly but with no profit protection (stop still below entry) — the gain could give back." />
+        <Stat label="Hermes findings" v={summary.risk_counts?.hermes_findings ?? 0} c="#a855f7" tip="Count of advisory research findings from the Hermes fleet relevant to these positions." />
         <div style={{ marginLeft: 'auto', fontSize: 8, color: 'var(--text3)', textAlign: 'right' }}>
           {Object.entries(summary.by_account ?? {}).map(([k, n]: any) => <div key={k}>{k}: {n}</div>)}
           <div style={{ marginTop: 3 }}>source: {summary.source_of_truth ?? '—'}</div>
@@ -228,6 +228,6 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
   )
 }
 
-function Stat({ label, v, c }: any) {
-  return <div><div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div><div style={{ fontSize: 8, color: 'var(--text3)' }}>{label}</div></div>
+function Stat({ label, v, c, tip }: any) {
+  return <div title={tip} style={tip ? { cursor: 'help' } : undefined}><div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div><div style={{ fontSize: 8, color: 'var(--text3)' }}>{label}{tip ? ' ⓘ' : ''}</div></div>
 }
