@@ -72,6 +72,7 @@ export default function HermesPanel() {
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
   const { data: smat } = useApi<any>('/api/v2/hermes/source-maturity', 300_000)
+  const { data: ccal } = useApi<any>('/api/v2/hermes/catalyst-calibration', 300_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
   const [openLoop, setOpenLoop] = useState<string | null>(null)
 
@@ -189,6 +190,34 @@ export default function HermesPanel() {
             </tbody>
           </table>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {smat.note}</div>
+        </div>
+      )}
+
+      {/* Catalyst Calibration (read-only, sharpening trend) */}
+      {ccal?.by_type && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Catalyst Calibration</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            {ccal.credible_samples} credible samples · {ccal.trusted_type_count} trusted types · settle {ccal.settle_days}d
+            {(ccal.recent_transitions || []).length > 0 && <span style={{ color: '#22c55e' }}> · {ccal.recent_transitions.length} recent move(s)</span>}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+              {['Catalyst type', 'Samples', 'Hit-rate', 'Multiplier', 'Trusted'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {ccal.by_type.slice(0, 10).map((t: any) => (
+                <tr key={t.catalyst_type} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>{t.catalyst_type}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{t.samples}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{t.hit_rate != null ? (t.hit_rate * 100).toFixed(0) + '%' : '—'}</td>
+                  <td style={{ padding: '3px 6px', fontWeight: 600, color: t.weight_multiplier >= 1.05 ? '#22c55e' : t.weight_multiplier <= 0.85 ? '#ef4444' : 'var(--text2)' }}>{t.weight_multiplier?.toFixed(2)}×</td>
+                  <td style={{ padding: '3px 6px', color: t.trusted ? '#22c55e' : 'var(--text3)' }}>{t.trusted ? '✓' : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {ccal.note}</div>
         </div>
       )}
 
