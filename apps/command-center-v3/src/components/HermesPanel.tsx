@@ -71,6 +71,7 @@ export default function HermesPanel() {
   const { data: sll } = useApi<any>('/api/v2/hermes/self-learning-loops', 300_000)
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
+  const { data: smat } = useApi<any>('/api/v2/hermes/source-maturity', 300_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
   const [openLoop, setOpenLoop] = useState<string | null>(null)
 
@@ -143,6 +144,35 @@ export default function HermesPanel() {
             </div>
           )}
           <div style={{ fontSize: 10, color: '#60a5fa', marginTop: 6 }}>🔐 {auth.google_sso_note}</div>
+        </div>
+      )}
+
+      {/* Source Maturity board (Gate 1-5, read-only) */}
+      {smat?.top_sources && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Source Maturity</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            tiers: {Object.entries(smat.tier_counts || {}).map(([t, n]: any) => `${t}:${n}`).join(' · ')} · {smat.source_count} sources
+            {smat.operator_actions?.length > 0 && <span style={{ color: '#f59e0b' }}> · {smat.operator_actions.length} operator action(s)</span>}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+              {['Source', 'Tier', 'Score', 'Go-rate', 'Signals', 'Trades'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {smat.top_sources.slice(0, 12).map((s: any) => (
+                <tr key={s.source} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>{s.source.slice(0, 26)}</td>
+                  <td style={{ padding: '3px 6px', fontWeight: 600, color: s.tier === 'core' ? '#22c55e' : s.tier === 'trusted' ? '#14b8a6' : s.tier === 'demoted' ? '#ef4444' : 'var(--text3)' }}>{s.tier}</td>
+                  <td style={{ padding: '3px 6px' }}>{s.maturity_score}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{(s.go_rate * 100).toFixed(1)}%</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{s.total_signals}</td>
+                  <td style={{ padding: '3px 6px', color: s.outcome_proven ? '#22c55e' : 'var(--text3)' }}>{s.trades_matched || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {smat.note}</div>
         </div>
       )}
 

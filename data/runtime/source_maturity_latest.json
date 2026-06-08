@@ -1,0 +1,2514 @@
+{
+  "updated_at": "2026-06-08T14:14:25.651322+00:00",
+  "min_trades": 5,
+  "tier_counts": {
+    "trusted": 1,
+    "candidate": 133,
+    "demoted": 5
+  },
+  "source_count": 139,
+  "sources": [
+    {
+      "source": "hermes",
+      "maturity_score": 50.0,
+      "tier": "trusted",
+      "total_signals": 76,
+      "go_signals": 34,
+      "go_rate": 0.4474,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 50.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Zacks Investment Research",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 20,
+      "go_signals": 2,
+      "go_rate": 0.1,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CNBC",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 15,
+      "go_signals": 2,
+      "go_rate": 0.1333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CNN",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 12,
+      "go_signals": 2,
+      "go_rate": 0.1667,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "morningstar",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 14,
+      "go_signals": 2,
+      "go_rate": 0.1429,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:foreignpolicyjournal.com",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 10,
+      "go_signals": 2,
+      "go_rate": 0.2,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "barrons",
+      "maturity_score": 20.0,
+      "tier": "candidate",
+      "total_signals": 19,
+      "go_signals": 2,
+      "go_rate": 0.1053,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 20.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TIKR.com",
+      "maturity_score": 17.5,
+      "tier": "candidate",
+      "total_signals": 7,
+      "go_signals": 2,
+      "go_rate": 0.2857,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 17.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TechStock\u00b2",
+      "maturity_score": 17.5,
+      "tier": "candidate",
+      "total_signals": 7,
+      "go_signals": 2,
+      "go_rate": 0.2857,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 17.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "marketwatch",
+      "maturity_score": 15.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 2,
+      "go_rate": 0.3333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 15.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Globe and Mail",
+      "maturity_score": 13.0,
+      "tier": "candidate",
+      "total_signals": 46,
+      "go_signals": 3,
+      "go_rate": 0.0652,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 13.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:24/7 Wall St.",
+      "maturity_score": 13.0,
+      "tier": "candidate",
+      "total_signals": 46,
+      "go_signals": 3,
+      "go_rate": 0.0652,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 13.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Trefis",
+      "maturity_score": 11.4,
+      "tier": "candidate",
+      "total_signals": 35,
+      "go_signals": 2,
+      "go_rate": 0.0571,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 11.4,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investor's Business Daily",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 14,
+      "go_signals": 1,
+      "go_rate": 0.0714,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Yahoo Finance Singapore",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 1,
+      "go_rate": 0.2,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Invezz",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 4,
+      "go_signals": 1,
+      "go_rate": 0.25,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:thestreet.com",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 8,
+      "go_signals": 1,
+      "go_rate": 0.125,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Reuters",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 1,
+      "go_rate": 0.1667,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Yahoo Finance Australia",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 1,
+      "go_rate": 0.2,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Financial Times",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 1,
+      "go_rate": 0.2,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Barchart.com",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 7,
+      "go_signals": 1,
+      "go_rate": 0.1429,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:PR Newswire",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 4,
+      "go_signals": 1,
+      "go_rate": 0.25,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Yahoo Finance UK",
+      "maturity_score": 10.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 1,
+      "go_rate": 0.2,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 10.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TradingView",
+      "maturity_score": 8.7,
+      "tier": "candidate",
+      "total_signals": 46,
+      "go_signals": 2,
+      "go_rate": 0.0435,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 8.7,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:ChartMill",
+      "maturity_score": 8.0,
+      "tier": "candidate",
+      "total_signals": 50,
+      "go_signals": 2,
+      "go_rate": 0.04,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 8.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Moomoo",
+      "maturity_score": 8.0,
+      "tier": "candidate",
+      "total_signals": 25,
+      "go_signals": 1,
+      "go_rate": 0.04,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 8.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TipRanks",
+      "maturity_score": 8.0,
+      "tier": "candidate",
+      "total_signals": 50,
+      "go_signals": 2,
+      "go_rate": 0.04,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 8.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Business Wire",
+      "maturity_score": 7.5,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 1,
+      "go_rate": 0.3333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 7.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:AD HOC NEWS",
+      "maturity_score": 7.5,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 1,
+      "go_rate": 0.3333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 7.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:WSJ",
+      "maturity_score": 7.5,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 1,
+      "go_rate": 0.3333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 7.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "motley_fool",
+      "maturity_score": 7.1,
+      "tier": "candidate",
+      "total_signals": 85,
+      "go_signals": 3,
+      "go_rate": 0.0353,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 7.1,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:MSN",
+      "maturity_score": 6.7,
+      "tier": "candidate",
+      "total_signals": 90,
+      "go_signals": 3,
+      "go_rate": 0.0333,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 6.7,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Stocktwits",
+      "maturity_score": 5.6,
+      "tier": "candidate",
+      "total_signals": 36,
+      "go_signals": 1,
+      "go_rate": 0.0278,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 5.6,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Blockonomi",
+      "maturity_score": 5.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 1,
+      "go_rate": 0.5,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 5.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com UK",
+      "maturity_score": 5.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 1,
+      "go_rate": 0.5,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 5.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The New York Times",
+      "maturity_score": 5.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 1,
+      "go_rate": 0.5,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 5.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com",
+      "maturity_score": 4.9,
+      "tier": "candidate",
+      "total_signals": 82,
+      "go_signals": 2,
+      "go_rate": 0.0244,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 4.9,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "seeking_alpha",
+      "maturity_score": 4.9,
+      "tier": "candidate",
+      "total_signals": 122,
+      "go_signals": 3,
+      "go_rate": 0.0246,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 4.9,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Quiver Quantitative",
+      "maturity_score": 4.9,
+      "tier": "candidate",
+      "total_signals": 41,
+      "go_signals": 1,
+      "go_rate": 0.0244,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 4.9,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Stock Traders Daily",
+      "maturity_score": 3.0,
+      "tier": "candidate",
+      "total_signals": 66,
+      "go_signals": 1,
+      "go_rate": 0.0152,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 3.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:simplywall.st",
+      "maturity_score": 2.6,
+      "tier": "candidate",
+      "total_signals": 152,
+      "go_signals": 2,
+      "go_rate": 0.0132,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.6,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Stock Titan",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 158,
+      "go_signals": 2,
+      "go_rate": 0.0127,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:RTX",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Fortune",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Dominion Energy",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TradingKey",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:NYSE",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:investingLive",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Business Insider",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:NextEra Energy Newsroom",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Utility Dive",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Cryptonomist",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Realtor.com",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Al Jazeera",
+      "maturity_score": 2.5,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:MarketBeat",
+      "maturity_score": 2.4,
+      "tier": "candidate",
+      "total_signals": 247,
+      "go_signals": 3,
+      "go_rate": 0.0121,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.4,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Yahoo Finance",
+      "maturity_score": 2.4,
+      "tier": "candidate",
+      "total_signals": 246,
+      "go_signals": 3,
+      "go_rate": 0.0122,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.4,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "finnhub",
+      "maturity_score": 1.0,
+      "tier": "demoted",
+      "total_signals": 616,
+      "go_signals": 3,
+      "go_rate": 0.0049,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 1.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "yahoo_rss",
+      "maturity_score": 0.3,
+      "tier": "demoted",
+      "total_signals": 2366,
+      "go_signals": 3,
+      "go_rate": 0.0013,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.3,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:Stock Titan",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com South Africa",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:\u5bcc\u9014\u725b\u725b",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "benzinga_rss",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 34,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Block",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 4,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:StockStory",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 43,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Kavout",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "topic_google_news_rss",
+      "maturity_score": 0.0,
+      "tier": "demoted",
+      "total_signals": 491,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "topic_youtube_api",
+      "maturity_score": 0.0,
+      "tier": "demoted",
+      "total_signals": 440,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:GuruFocus",
+      "maturity_score": 0.0,
+      "tier": "demoted",
+      "total_signals": 106,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:AOL.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 29,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:TheStreet Pro",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:FinancialContent",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 8,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:YCharts",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Pluang",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 9,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Southwest Voices",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:U.S. News - Money",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Fathom Journal",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Sahm",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CoinMarketCap",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Insider Monkey",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 12,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CME Group",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Yahoo! Finance Canada",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 9,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Quartr",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Mshale",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 9,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:C\u1ed5ng th\u00f4ng tin \u0111i\u1ec7n t\u1eed T\u1ec9nh S\u01a1",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:fathomjournal.org",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Kalkine Media",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:MarketBeat",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:timothysykes.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Barchart",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:IndexBox",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:U.S. News Money",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 5,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:GlobeNewswire",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:StocksToTrade",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Kiplinger",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Forbes",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CoinDesk",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:ledgerinsights.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CryptoRank",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:marketscreener.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Gotrade",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Detroit News",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Caledonian Record",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Sure Dividend",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 10,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:qz.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:Simply Wall Street",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:sharewise.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Rolling Out",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:UBND th\u00e0nh ph\u1ed1 H\u1ea3i Ph\u00f2ng",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com Nigeria",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:MEXC",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Stock Investor",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com India",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Chronicle-Journal",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:BeInCrypto",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:NerdWallet",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 4,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CoinCentral",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:C\u1ed5ng th\u00f4ng tin \u0111i\u1ec7n t\u1eed t\u1ec9nh T\u00e2",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:X\u00e3 Thanh H\u00e0",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:The Globe and Mail",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CACI",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Intellectia AI",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Clearance Jobs",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:vocal.media",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Goldman Sachs",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Finviz",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com Canada",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 3,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:Insider Monkey",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:KING5.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:ETF.com",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:J.P. Morgan",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:The Manila Times",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:KIRO 7 News Seattle",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Investing.com Australia",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:U.S. Bank",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 2,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:MEXC Exchange",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Watcher Guru",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:Fresno Bee",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "telegram_article",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 6,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "av:Sahm",
+      "maturity_score": 0.0,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 0,
+      "go_rate": 0.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 0.0,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.0
+      },
+      "outcome_proven": false
+    }
+  ]
+}

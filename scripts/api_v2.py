@@ -15637,6 +15637,29 @@ def _hermes_workflow_matrix(query=None):
     }
 
 
+def _hermes_source_maturity(query=None):
+    """GET /api/v2/hermes/source-maturity — read-only source maturity board (Gate 1-5): per-source tier,
+    maturity_score, go-rate, outcome, + the operator vetting-action queue. Reads runtime JSONs."""
+    import json as _jm
+    try:
+        mat = _jm.loads((PROJECT_ROOT / "data" / "runtime" / "source_maturity_latest.json").read_text())
+    except Exception:
+        return {"note": "run scripts/source_maturity.py", "sources": []}
+    actions = []
+    try:
+        actions = _jm.loads((PROJECT_ROOT / "data" / "runtime" / "source_vetting_actions_latest.json").read_text()).get("actions", [])
+    except Exception:
+        pass
+    srcs = mat.get("sources", [])
+    return {"updated_at": mat.get("updated_at"), "tier_counts": mat.get("tier_counts"),
+            "source_count": mat.get("source_count"),
+            "note": "Source maturity = precision(go-rate) + outcome(trade win-rate) + yield + health + credibility. "
+                    "Trade-outcome is sparse until news/trade universe overlap grows; go-rate carries it for now. "
+                    "Advisory; 'core' activation is operator-gated.",
+            "operator_actions": actions,
+            "top_sources": srcs[:25], "demoted": [s for s in srcs if s["tier"] == "demoted"][:15]}
+
+
 def _hermes_llm_auth_status(query=None):
     """GET /api/v2/hermes/llm-auth-status — read-only OAuth/auth status per LLM lane + guided login commands.
     Credentials are never entered or stored here; OAuth (Google SSO) is completed by the operator in a browser."""
@@ -16060,6 +16083,7 @@ ROUTES = {
     "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
     "/api/v2/hermes/loop-detail": _hermes_loop_detail,
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
+    "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/external-research": _hermes_external_research,
