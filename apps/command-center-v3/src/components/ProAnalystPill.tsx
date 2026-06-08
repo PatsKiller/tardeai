@@ -1,0 +1,38 @@
+import { useApi } from '../hooks/useApi'
+
+// Advisory professional-analyst pill (Gate A). One map fetch shared across all rows on a page; looks up by
+// symbol. Shows Street consensus + analyst count + upside, divergence vs internal, or a "no coverage" hint.
+// Read-only — never affects GO/WAIT or scoring.
+
+let _mapCache: any = null
+export function useProAnalystMap() {
+  const { data } = useApi<any>('/api/v2/pro-analyst/pills?map=1', 600_000)
+  if (data?.map) _mapCache = data.map
+  return _mapCache || data?.map || {}
+}
+
+const REC_COLOR: Record<string, string> = {
+  strong_buy: '#16a34a', buy: '#22c55e', hold: '#f59e0b', underperform: '#ef4444', sell: '#ef4444',
+}
+
+export default function ProAnalystPill({ symbol, map, compact }: { symbol?: string; map?: any; compact?: boolean }) {
+  if (!symbol) return null
+  const p = (map || {})[symbol.toUpperCase()]
+  if (!p) return null
+  if (!p.has) {
+    return compact ? null : <span title="no professional analyst coverage (info, not failure)" style={{ fontSize: 9, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>no analyst cov</span>
+  }
+  const rc = REC_COLOR[(p.rec || '').toLowerCase()] || 'var(--text2)'
+  const upColor = (p.upside ?? 0) > 0 ? '#22c55e' : '#ef4444'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9 }}
+      title={`Street: ${p.rec} · ${p.n} analysts · mean target $${p.target} · upside ${p.upside}% · internal ${p.internal || 'n/a'} · divergence ${p.divergence}${p.stale ? ' · STALE >7d' : ''}`}>
+      <span style={{ fontWeight: 700, color: rc, border: `1px solid ${rc}`, borderRadius: 4, padding: '0 4px' }}>
+        {(p.rec || '').replace('_', ' ')}{p.stale ? ' ⚠' : ''}
+      </span>
+      {p.n != null && <span style={{ color: 'var(--text3)' }}>{p.n}an</span>}
+      {p.upside != null && <span style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
+      {p.divergence === 'divergent' && <span style={{ color: '#ef4444', fontWeight: 700 }} title="internal vs Street divergent">⚡</span>}
+    </span>
+  )
+}

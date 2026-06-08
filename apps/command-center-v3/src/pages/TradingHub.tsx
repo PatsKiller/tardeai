@@ -6,6 +6,7 @@ import ProtectionPanel from '../components/ProtectionPanel'
 import ProposalsRich from '../components/ProposalsRich'
 import ATMControlPanel from '../components/ATMControlPanel'
 import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
+import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls'] as const
@@ -18,6 +19,7 @@ export default function TradingHub({ onDrill }: Props) {
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
@@ -222,6 +224,7 @@ export default function TradingHub({ onDrill }: Props) {
                 <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
+                  {' '}<ProAnalystPill symbol={t.symbol} map={paMap} compact />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <div style={{ width: 24, height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>

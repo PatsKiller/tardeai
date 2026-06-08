@@ -15085,15 +15085,21 @@ def _atm_profit_capture():
 def _atm_adjustment_proposals_list():
     """Phase 192E — paper protection adjustment proposals (read-only). Frontend-neutral
     (Command Center v2 + v3). Latest PROPOSED candidates grouped by trade."""
+    # ROOT-CAUSE FILTER: only surface proposals whose underlying trade is still OPEN. The proposals
+    # table accumulates PROPOSED rows that outlive the position; without this JOIN, any closed/sold
+    # position (e.g. MRVL/ANY/CMCSA/SNOW) with a <1-day-old proposal still appears. Joining
+    # paper_trades.status='open' excludes EVERY closed position generically — not specific tickers.
     rows = _db_query("""
-        SELECT id, trade_id, symbol, action, current_stop, proposed_stop,
-               current_take_profit, proposed_take_profit, current_risk, proposed_risk,
-               profit_locked_before, profit_locked_after, giveback_before, giveback_after,
-               downside_protection_improvement, upside_limitation, tradeai_reason, hermes_reason,
-               evidence_refs, quote_price, alpaca_supported, expected_api, status, created_at
-        FROM paper_protection_adjustment_proposals
-        WHERE status = 'PROPOSED' AND created_at > now() - interval '1 day'
-        ORDER BY symbol, id""") or []
+        SELECT p.id, p.trade_id, p.symbol, p.action, p.current_stop, p.proposed_stop,
+               p.current_take_profit, p.proposed_take_profit, p.current_risk, p.proposed_risk,
+               p.profit_locked_before, p.profit_locked_after, p.giveback_before, p.giveback_after,
+               p.downside_protection_improvement, p.upside_limitation, p.tradeai_reason, p.hermes_reason,
+               p.evidence_refs, p.quote_price, p.alpaca_supported, p.expected_api, p.status, p.created_at
+        FROM paper_protection_adjustment_proposals p
+        JOIN paper_trades t ON t.id = p.trade_id
+        WHERE p.status = 'PROPOSED' AND p.created_at > now() - interval '1 day'
+          AND t.status = 'open'
+        ORDER BY p.symbol, p.id""") or []
     by_trade = {}
     for r in rows:
         key = r["trade_id"]
@@ -15646,7 +15652,17 @@ def _pro_analyst_pills(query=None):
         d = _jp.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
     except Exception:
         return {"note": "run scripts/build_pro_analyst_read_model.py", "pills": []}
-    sym = (query or {}).get("symbol")
+    q = query or {}
+    if q.get("map"):
+        # compact symbol→pill map for per-page pills (one fetch covers all rows, incl. no-coverage)
+        m = {p["symbol"]: {"rec": p.get("recommendation_key"), "n": p.get("number_of_analyst_opinions"),
+                           "target": p.get("target_mean_price"), "upside": p.get("upside_to_mean_target_pct"),
+                           "street": p.get("street_direction"), "internal": p.get("internal_direction"),
+                           "divergence": p.get("divergence"), "stale": p.get("stale"),
+                           "has": p.get("has_professional_coverage"), "event": p.get("latest_event_type")}
+             for p in d.get("pills", [])}
+        return {"updated_at": d.get("updated_at"), "count": len(m), "map": m}
+    sym = q.get("symbol")
     if isinstance(sym, list):
         sym = sym[0] if sym else None
     if sym:

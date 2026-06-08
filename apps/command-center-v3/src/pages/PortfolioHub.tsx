@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
+import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
@@ -28,6 +29,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
+  const paMap = useProAnalystMap()
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
@@ -129,7 +131,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
                 style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.85fr 1.25fr 0.85fr 0.6fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol} <ProAnalystPill symbol={h.symbol} map={paMap} compact /></div>
                   <div style={{ fontSize: 8, color: 'var(--text3)' }}>{h.account}</div>
                 </div>
                 <span style={{ color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
@@ -235,7 +237,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Top Dividend Payers</div>
                 {payers.slice(0, 10).map((p: any, i: number) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 10, alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{p.symbol}</span>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{p.symbol} <ProAnalystPill symbol={p.symbol} map={paMap} compact /></span>
                     <span style={{ color: '#22c55e' }}>{Number(p.yield_pct ?? 0).toFixed(1)}%</span>
                     <span style={{ color: 'var(--text2)' }}>{fmt$(p.annual_income ?? 0, 0)}/y</span>
                   </div>
