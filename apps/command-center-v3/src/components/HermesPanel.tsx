@@ -71,6 +71,7 @@ export default function HermesPanel() {
   const { data: sll } = useApi<any>('/api/v2/hermes/self-learning-loops', 300_000)
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
+  const { data: retry } = useApi<any>('/api/v2/system/llm-retry-health', 300_000)
   const { data: smat } = useApi<any>('/api/v2/hermes/source-maturity', 300_000)
   const { data: ccal } = useApi<any>('/api/v2/hermes/catalyst-calibration', 300_000)
   const { data: pa } = useApi<any>('/api/v2/pro-analyst/pills', 300_000)
@@ -146,6 +147,13 @@ export default function HermesPanel() {
             </div>
           )}
           <div style={{ fontSize: 10, color: '#60a5fa', marginTop: 6 }}>🔐 {auth.google_sso_note}</div>
+          {retry?.last_24h && (
+            <div style={{ fontSize: 10, marginTop: 5, color: 'var(--text3)' }}>
+              LLM resilience (24h): <b style={{ color: retry.status === 'DEGRADED' ? '#ef4444' : retry.status === 'ELEVATED' ? '#f59e0b' : '#22c55e' }}>{retry.status}</b>
+              {' '}· {retry.last_24h.incidents} transient retries · {retry.last_24h.recovered} recovered · <span style={{ color: retry.last_24h.gave_up > 0 ? '#ef4444' : 'var(--text3)' }}>{retry.last_24h.gave_up} gave up</span>
+              {(retry.notes || []).length > 0 && <span style={{ color: '#f59e0b' }}> · {retry.notes.join('; ')}</span>}
+            </div>
+          )}
         </div>
       )}
 
