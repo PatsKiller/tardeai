@@ -15873,6 +15873,23 @@ def _watch_directive_promote(body):
         return 500, {"ok": False, "error": str(e)[:200]}
 
 
+def _watchpool_list(query=None):
+    """GET /api/v2/watchpool — unified watchpool: strategy_watchpool rows with origin + directive link.
+    Read-only. Powers the /v3/watchpool page (screener candidates + directive-sourced, same pill row)."""
+    rows = _db_query("""SELECT sp.id, sp.strategy_id, sp.symbol, sp.screener_id, sp.bucket, sp.current_status,
+                          sp.entered_at, sp.expires_at, sp.origin_system, sp.directive_id, d.label AS directive_label
+                        FROM strategy_watchpool sp LEFT JOIN watch_directives d ON d.id = sp.directive_id
+                        ORDER BY sp.entered_at DESC LIMIT 200""") or []
+    by_status, by_origin = {}, {}
+    for r in rows:
+        st = r.get("current_status") or "?"
+        by_status[st] = by_status.get(st, 0) + 1
+        o = r.get("origin_system") or "screener"
+        by_origin[o] = by_origin.get(o, 0) + 1
+    return {"count": len(rows), "by_status": by_status, "by_origin": by_origin,
+            "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+
+
 def _llm_retry_health(query=None):
     """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
     import json as _jr
@@ -16308,6 +16325,7 @@ ROUTES = {
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/watch-directives": _watch_directives,
+    "/api/v2/watchpool": _watchpool_list,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,

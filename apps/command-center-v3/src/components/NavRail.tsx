@@ -12,6 +12,7 @@ const HUBS = [
   { to: '/retirement', label: 'Retirement' },
   { to: '/journal', label: 'Journal' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/watchpool', label: 'Watchpool' },
   { to: '/system', label: 'System' },
 ]
 
