@@ -1,0 +1,3554 @@
+{
+  "updated_at": "2026-06-08T15:10:32.476096+00:00",
+  "stale_days": 7,
+  "symbol_count": 121,
+  "coverage_by_tier": {
+    "held": {
+      "symbols": 41,
+      "with_consensus": 12,
+      "pct": 29.3
+    },
+    "open_paper": {
+      "symbols": 19,
+      "with_consensus": 0,
+      "pct": 0.0
+    },
+    "open_proposal": {
+      "symbols": 0,
+      "with_consensus": 0,
+      "pct": 0.0
+    },
+    "scalp": {
+      "symbols": 41,
+      "with_consensus": 2,
+      "pct": 4.9
+    },
+    "watchlist": {
+      "symbols": 30,
+      "with_consensus": 0,
+      "pct": 0.0
+    }
+  },
+  "note": "Yahoo = authoritative consensus (1-5 mean/key/targets). Finviz rating is target-distance (NOT used as rating; target only). Upgrade/downgrade headlines are EVENT pills. Advisory; no scoring/trade change.",
+  "pills": [
+    {
+      "symbol": "ARQQ",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "none",
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": 1,
+      "target_mean_price": 60.0,
+      "target_high_price": 60.0,
+      "target_low_price": 60.0,
+      "current_price": 12.14,
+      "upside_to_mean_target_pct": 394.2,
+      "latest_event_headline": "Arqit Quantum: ARQQ Stock's 10x Upside To $270? - Forbes",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Forbes",
+      "latest_event_at": "2026-06-08 11:00:01.983217-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "low",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AVAV",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.632,
+      "number_of_analyst_opinions": 17,
+      "target_mean_price": 309.88,
+      "target_high_price": 450.0,
+      "target_low_price": 235.0,
+      "current_price": 185.92,
+      "upside_to_mean_target_pct": 66.7,
+      "latest_event_headline": "AeroVironment (NASDAQ:AVAV) Stock Rating Upgraded by Clear Str - MarketBeat",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:MarketBeat",
+      "latest_event_at": "2026-06-04 18:45:01.960472-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BAH",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "hold",
+      "recommendation_mean": 2.867,
+      "number_of_analyst_opinions": 13,
+      "target_mean_price": 93.77,
+      "target_high_price": 160.0,
+      "target_low_price": 74.0,
+      "current_price": 79.48,
+      "upside_to_mean_target_pct": 18.0,
+      "latest_event_headline": "William Blair reiterates Outperform on Booz Allen stock after contract wins - Investing.com",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Investing.com",
+      "latest_event_at": "2026-06-05 04:10:01.209918-04:00",
+      "internal_direction": "",
+      "street_direction": "neutral",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CACI",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.563,
+      "number_of_analyst_opinions": 14,
+      "target_mean_price": 680.64,
+      "target_high_price": 800.0,
+      "target_low_price": 550.0,
+      "current_price": 531.41,
+      "upside_to_mean_target_pct": 28.1,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CSWC",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "none",
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": 5,
+      "target_mean_price": 24.9,
+      "target_high_price": 29.0,
+      "target_low_price": 21.0,
+      "current_price": 23.21,
+      "upside_to_mean_target_pct": 7.3,
+      "latest_event_headline": "Trinity Capital: True Definition Of A BDC Income Compounder",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "finnhub",
+      "latest_event_at": "2026-06-04 12:16:00.652830-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "IRDM",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 2.1,
+      "number_of_analyst_opinions": 8,
+      "target_mean_price": 37.88,
+      "target_high_price": 60.0,
+      "target_low_price": 16.0,
+      "current_price": 47.36,
+      "upside_to_mean_target_pct": -20.0,
+      "latest_event_headline": "Is Iridium (IRDM) Pricing In Too Much Satellite Optimism After Oppenheimer\u2019s Upgrade And Insider Moves? - simplywall.st",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:simplywall.st",
+      "latest_event_at": "2026-06-06 18:45:01.206138-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "KBR",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "none",
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": 7,
+      "target_mean_price": 46.57,
+      "target_high_price": 60.0,
+      "target_low_price": 36.0,
+      "current_price": 35.56,
+      "upside_to_mean_target_pct": 31.0,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LHX",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.619,
+      "number_of_analyst_opinions": 19,
+      "target_mean_price": 381.95,
+      "target_high_price": 443.0,
+      "target_low_price": 300.0,
+      "current_price": 307.83,
+      "upside_to_mean_target_pct": 24.1,
+      "latest_event_headline": "Bernstein Maintains Outperform on L3Harris Technologies, Lowers Price Target to $405",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "finnhub",
+      "latest_event_at": "2026-06-04 12:45:02.060120-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NOC",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.957,
+      "number_of_analyst_opinions": 21,
+      "target_mean_price": 696.95,
+      "target_high_price": 815.0,
+      "target_low_price": 603.0,
+      "current_price": 544.4,
+      "upside_to_mean_target_pct": 28.0,
+      "latest_event_headline": "NOC Outperforms Industry in the Past Year: Should You Buy the Stock? - Yahoo Finance",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Yahoo Finance",
+      "latest_event_at": "2026-06-04 12:16:00.652830-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "PFE",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 2.448,
+      "number_of_analyst_opinions": 27,
+      "target_mean_price": 29.19,
+      "target_high_price": 36.0,
+      "target_low_price": 24.0,
+      "current_price": 26.04,
+      "upside_to_mean_target_pct": 12.1,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "PFLT",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "none",
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": 6,
+      "target_mean_price": 10.08,
+      "target_high_price": 11.0,
+      "target_low_price": 9.0,
+      "current_price": 8.09,
+      "upside_to_mean_target_pct": 24.6,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "RKLB",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.611,
+      "number_of_analyst_opinions": 16,
+      "target_mean_price": 105.28,
+      "target_high_price": 150.0,
+      "target_low_price": 60.0,
+      "current_price": 110.08,
+      "upside_to_mean_target_pct": -4.4,
+      "latest_event_headline": "Rocket Lab Stock Is Up 30% Today: Is It Outperforming Other Space Stocks Like Intuitive Machines and Planet Labs?",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-04 11:50:01.167633-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "RTX",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "buy",
+      "recommendation_mean": 1.826,
+      "number_of_analyst_opinions": 22,
+      "target_mean_price": 215.73,
+      "target_high_price": 242.0,
+      "target_low_price": 180.0,
+      "current_price": 180.99,
+      "upside_to_mean_target_pct": 19.2,
+      "latest_event_headline": "Jefferies Upgrades RTX Stock to Buy With a $220 Target: Here\u2019s What Investors Need to Know - TIKR.com",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:TIKR.com",
+      "latest_event_at": "2026-06-08 10:30:01.732252-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "V",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "yahoo",
+      "recommendation_key": "strong_buy",
+      "recommendation_mean": 1.333,
+      "number_of_analyst_opinions": 36,
+      "target_mean_price": 398.64,
+      "target_high_price": 450.0,
+      "target_low_price": 323.0,
+      "current_price": 323.57,
+      "upside_to_mean_target_pct": 23.2,
+      "latest_event_headline": "Oppenheimer Raises Visa (V) Target After Strong Q2 and Higher FY26 Outlook",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-04 12:45:02.060120-04:00",
+      "internal_direction": "",
+      "street_direction": "bullish",
+      "divergence": "unavailable",
+      "confidence": "high",
+      "stale": false,
+      "has_professional_coverage": true,
+      "provenance": {
+        "yahoo_at": "2026-06-08 07:29:13.868674-04:00",
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AB-DISC-Z",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ABAT",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AGNC",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ALOY",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "REalloys Reports Progress on Commercial Agreements with the Saskatchewan Research Council; Exclusive Heavy Rare Earth Supply Chain on Track Ahead of 2027 Statutory Deadline",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:40:01.278765-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AMANX",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AMPG",
+      "tiers": [
+        "scalp",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ANY",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Sphere 3D (ANY) Upgraded to Buy: What Does It Mean for the Stock?",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 11:00:01.983217-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "APPS",
+      "tiers": [
+        "open_paper",
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ARKG",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ARKQ",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "ARKQ: AI's Renaissance Lifting Cathie Wood's Autonomous Tech & Robotics ETF (Rating Upgrade) - Seeking Alpha",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "seeking_alpha",
+      "latest_event_at": "2026-06-05 04:00:01.197874-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ASPN",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Aspen Aerogels price target lowered to $4 from $10 at B. Riley",
+      "latest_event_type": "analyst_downgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "AVGO",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Nvidia\u2019s Huang calls chip sell-off a buying opportunity",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:30:01.732252-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BDSX",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Canaccord Lifts PT on Biodesix (BDSX) on Raised Revenue Assumptions",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:26:51.533228-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BGMS",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BLBD",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "1 Industrials Stock to Target This Week and 2 We Ignore",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:40:01.278765-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BLMN",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BLZE",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Backblaze (BLZE) Valuation Check As Q1 Beat And Higher Guidance Fuel AI Storage Optimism",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:26:51.533228-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BND",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Vanguard\u2019s 0.07% BND Bond ETF Is Outperforming Active Pimco at One Tenth the Cost",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-04 11:20:01.693568-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BNKK",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BTGO",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "BWEN",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": null,
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CMCSA",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CNTN",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CNXU",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "CODX",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "DIV",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "DRS",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "All you need to know about Leonardo DRS, Inc. (DRS) rating upgrade to buy - MSN",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:MSN",
+      "latest_event_at": "2026-06-04 11:50:01.167633-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ELOG",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ENHA",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "EVC",
+      "tiers": [
+        "open_paper",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FCNTX",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FID-CONTRA-F",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FID-DIVINTL",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FLYW",
+      "tiers": [
+        "open_paper",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "1 Profitable Stock Worth Your Attention and 2 We Find Risky",
+      "latest_event_type": "analyst_downgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:40:01.278765-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FNKO",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FOFO",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "FTRE",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Evercore Adjusts Fortrea Holdings Inc. (FTRE) Valuation Following Updated Near-Term Assumptions",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "GCTS",
+      "tiers": [
+        "open_paper",
+        "scalp",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "GLXG",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "GOVX",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "All You Need to Know About GeoVax Labs (GOVX) Rating Upgrade to Buy",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:40:01.278765-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "GRAN",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "IEF",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "INFQ",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "INFU",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "IQST",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "JEPI",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Beyond JEPI: 2 Next-Gen Income ETFs That Are Quietly Outperforming JPMorgan\u2019s Crown Jewel in 2026 - Yahoo Finance",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Yahoo Finance",
+      "latest_event_at": "2026-06-05 04:10:01.209918-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "JPM-LGCG",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "KORU",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "KTOS",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Truist Financial Upgrades Kratos Defense & Security Solutions (NASDAQ:KTOS) to \"Strong-Buy\" - MarketBeat",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:MarketBeat",
+      "latest_event_at": "2026-06-04 18:45:01.960472-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "KVHI",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LASE",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LDOS",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Leidos SATCOM Upgrade Raises Questions On Undervalued Shares And Debt Risks",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-06 02:45:02.572569-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LIFE",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LMT",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Lockheed Martin: Time To Pull The Trigger (Upgrade) - Seeking Alpha",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "seeking_alpha",
+      "latest_event_at": "2026-06-06 18:45:01.206138-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LPIH",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "LQD",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "MLGO",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "MicroAlgo Inc. Stock (MLGO) Opinions on Share Capital Reduction | MLGO Stock News - Quiver Quantitative",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Quiver Quantitative",
+      "latest_event_at": "2026-06-08 11:00:01.983217-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "MNKD",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "MRLN",
+      "tiers": [
+        "scalp",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "MRVL",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Marvell: Why Jensen Huang Wants A $1T Competitor (NASDAQ:MRVL) - Seeking Alpha",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "seeking_alpha",
+      "latest_event_at": "2026-06-08 10:30:01.732252-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "MTVA",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NEE",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Analyst Upgrades Dominion Energy (D) Following NextEra Deal Announcement",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-05 06:40:01.851394-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NEXR",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NNE",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NRIX",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Is Nurix Therapeutics (NRIX) Stock\u2019s Premium P/S Multiple Fair After Recent Mixed Share Price Performance",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NVDA",
+      "tiers": [
+        "open_paper",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Buy, Sell, or Hold: CoreWeave at $100",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:30:01.732252-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NVO",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "NWG",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "NatWest Group (NWG) Upgraded To Outperform at BNP Paribas",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:26:51.533228-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "OCC",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ONDS",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "OSS",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "All You Need to Know About One Stop Systems (OSS) Rating Upgrade to Strong Buy",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "PDYN",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Disney upgraded, Nike downgraded: Wall Street's top analyst calls",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "QTEX",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ROLR",
+      "tiers": [
+        "scalp",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SCHD",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "DGRO outperforms SCHD over 10 years with tech growth, but SCHD offers higher current yield for retirees. - Pluang",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Pluang",
+      "latest_event_at": "2026-06-07 18:45:01.732115-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SCHG",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SGOV",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SHV",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SHY",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SKYQ",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "analyst: SKYQ",
+      "latest_event_type": "analyst",
+      "latest_event_source": "hermes",
+      "latest_event_at": "2026-06-08 09:44:42.758957-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SNOW",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SP500-D",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Prediction: This Beaten-Down Tech Stock Will Outperform the S&P 500 by 2027 - Yahoo Finance",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Yahoo Finance",
+      "latest_event_at": "2026-06-04 11:30:01.479820-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SPRC",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SRNE",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SS-GACEQ",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SS-SMMD",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "STTK",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "SUNE",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TDG",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "3 Quality Compounders to Research Further",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-08 10:50:01.413674-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TLT",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TMHC",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TOPS",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TRP-LVAL",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "TWAV",
+      "tiers": [
+        "scalp",
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "USFR",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "VANG-FTSE-SOC",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "VLN",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "VTIP",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "VTIX",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "WEST",
+      "tiers": [
+        "watchlist"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "WM-BLAIR",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "William Blair initiates Fervo Energy stock with Outperform rating By Investing.com - Investing.com South Africa",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:Investing.com South Africa",
+      "latest_event_at": "2026-06-08 10:30:01.732252-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "XLB",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "Materials Select Sector SPDR Fund (XLB) - Positioned for Near-Term Outperformance Following Citi\u2019s Global Materials Sector Overweight Upgrade - Expert Stock Picks - UBND th\u00e0nh ph\u1ed1 H\u1ea3i Ph\u00f2ng",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "google_news:UBND th\u00e0nh ph\u1ed1 H\u1ea3i Ph\u00f2ng",
+      "latest_event_at": "2026-06-05 04:00:01.197874-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "XLI",
+      "tiers": [
+        "held"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": "What Are Wall Street Analysts' Target Price for CSX Corporation Stock?",
+      "latest_event_type": "analyst_upgrade",
+      "latest_event_source": "yahoo_rss",
+      "latest_event_at": "2026-06-04 12:45:02.060120-04:00",
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "XMTR",
+      "tiers": [
+        "open_paper"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "XOS",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ZENA",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    },
+    {
+      "symbol": "ZNB",
+      "tiers": [
+        "scalp"
+      ],
+      "analyst_rating_source": "none",
+      "recommendation_key": null,
+      "recommendation_mean": null,
+      "number_of_analyst_opinions": null,
+      "target_mean_price": null,
+      "target_high_price": null,
+      "target_low_price": null,
+      "current_price": null,
+      "upside_to_mean_target_pct": null,
+      "latest_event_headline": null,
+      "latest_event_type": null,
+      "latest_event_source": null,
+      "latest_event_at": null,
+      "internal_direction": "",
+      "street_direction": null,
+      "divergence": "unavailable",
+      "confidence": "none",
+      "stale": false,
+      "has_professional_coverage": false,
+      "provenance": {
+        "yahoo_at": null,
+        "finviz_at": null
+      }
+    }
+  ]
+}

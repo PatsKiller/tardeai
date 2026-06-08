@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""pro_analyst_fetch.py — Gate A: fetch Yahoo professional-analyst consensus for the ACTIONABLE universe.
+
+ADVISORY/READ-ONLY (external Yahoo fetch). Yahoo analyst targets are the authoritative consensus
+(recommendation_mean 1-5 + key + analyst count + targets), but were only fetched for held-portfolio symbols
+(~36) — leaving scalp/watchlist/proposals uncovered (2/80). This fetches them for held + open trades + open
+proposals + today GO/WAIT scalp + active watchlist, persisting via the existing
+save_yahoo_analyst_targets_history. Skips ETF/fund-like symbols (no analyst coverage). No trades/scoring change.
+
+  python3 scripts/pro_analyst_fetch.py [--max 80]
+"""
+import os, sys, json
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+for ln in (ROOT / ".env").read_text().splitlines():
+    if "=" in ln and not ln.strip().startswith("#"):
+        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+import psycopg2
+
+_FIDELITY_PFX = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-", "CASH", "FCNTX")
+
+
+def main():
+    mx = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 80
+    c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
+                         dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                         password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+    cur.execute("""
+        SELECT DISTINCT symbol FROM (
+            SELECT symbol FROM paper_trades WHERE entry_time>now()-interval '30 days' AND symbol IS NOT NULL
+            UNION SELECT symbol FROM paper_trade_proposals WHERE status IN('PENDING','APPROVED') AND symbol IS NOT NULL
+            UNION SELECT symbol FROM trade_ai_scans WHERE run_date>=current_date AND decision IN('GO','WAIT') AND symbol IS NOT NULL
+            UNION SELECT symbol FROM watchlist_items WHERE status='active' AND symbol IS NOT NULL
+        ) u WHERE symbol ~ '^[A-Z]{1,5}$'""")
+    syms = [r[0] for r in cur.fetchall() if not r[0].startswith(_FIDELITY_PFX)]
+    c.close()
+    print(f"actionable symbols to fetch: {len(syms)} (cap {mx})")
+
+    try:
+        import yfinance as yf
+        from db_adapter import save_yahoo_analyst_targets_history
+    except Exception as e:
+        print(f"ABORT: deps unavailable ({e})"); sys.exit(1)
+
+    import time as _t
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    payload, no_cov, errors = [], [], 0
+    for s in syms[:mx]:
+        _t.sleep(1.5)  # politeness — yfinance rate-limits bulk requests
+        try:
+            info = yf.Ticker(s).info
+            tm = info.get("targetMeanPrice")
+            nop = info.get("numberOfAnalystOpinions")
+            if tm is None and not nop:
+                no_cov.append(s); continue
+            payload.append({"symbol": s, "current_price": info.get("currentPrice"),
+                            "target_mean_price": tm, "target_high_price": info.get("targetHighPrice"),
+                            "target_low_price": info.get("targetLowPrice"), "target_median_price": info.get("targetMedianPrice"),
+                            "recommendation_mean": info.get("recommendationMean"),
+                            "recommendation_key": info.get("recommendationKey"),
+                            "number_of_analyst_opinions": nop})
+        except Exception:
+            no_cov.append(s)
+    if payload:
+        save_yahoo_analyst_targets_history(date_str, payload)
+    print(json.dumps({"fetched_with_coverage": len(payload), "no_analyst_coverage": len(no_cov),
+                      "no_coverage_sample": no_cov[:10]}, indent=2))
+
+
+if __name__ == "__main__":
+    main()
