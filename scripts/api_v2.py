@@ -15768,6 +15768,23 @@ def _hermes_catalyst_calibration(query=None):
             "by_type": types[:20], "trend": trend, "recent_transitions": transitions[:10]}
 
 
+def _watch_directives(query=None):
+    """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
+    directives = _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
+                              last_serviced_at, created_at FROM watch_directives ORDER BY created_at DESC""") or []
+    hits = _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
+                        h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
+                        ORDER BY h.surfaced_at DESC LIMIT 40""") or []
+    staging = _db_query("SELECT count(*) c, count(*) FILTER (WHERE NOT drained) undrained FROM hermes_directive_hits_staging", fetch="one") or {}
+    promoted = _db_query("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
+    return {"note": "Operator-owned watch directives honored by Trade AI + Hermes (firewall: Hermes proposes via "
+                    "staging only). Advisory; no GO/WAIT or scoring change.",
+            "directive_count": len(directives), "directives": [{k: _json_clean(v) for k, v in r.items()} for r in directives],
+            "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
+            "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
+            "promoted_to_watchlist": promoted.get("c")}
+
+
 def _llm_retry_health(query=None):
     """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
     import json as _jr
@@ -16202,6 +16219,7 @@ ROUTES = {
     "/api/v2/hermes/loop-detail": _hermes_loop_detail,
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/system/llm-retry-health": _llm_retry_health,
+    "/api/v2/watch-directives": _watch_directives,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
