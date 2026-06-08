@@ -15677,7 +15677,10 @@ def _pro_analyst_pills(query=None):
             coverage_health = {"status": latest.get("status"), "coverage_pct": latest.get("coverage_pct"),
                                "with_consensus": latest.get("with_consensus"), "stale": latest.get("stale"),
                                "notes": latest.get("notes", []),
-                               "trend": [{"date": s["date"], "coverage_pct": s["coverage_pct"], "with_consensus": s["with_consensus"]} for s in h[-14:]]}
+                               "divergence_counts": latest.get("divergence_counts"), "comparable": latest.get("comparable"),
+                               "divergent_symbols": latest.get("divergent_symbols"), "newly_divergent": latest.get("newly_divergent"),
+                               "trend": [{"date": s["date"], "coverage_pct": s["coverage_pct"], "with_consensus": s["with_consensus"],
+                                          "divergent": s.get("divergent"), "comparable": s.get("comparable")} for s in h[-14:]]}
     except Exception:
         pass
     return {"updated_at": d.get("updated_at"), "symbol_count": d.get("symbol_count"),

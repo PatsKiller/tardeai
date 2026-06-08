@@ -209,6 +209,14 @@ export default function HermesPanel() {
               {(pa.coverage_health.notes || []).length > 0 && <span style={{ color: '#22c55e' }}> · {pa.coverage_health.notes.join('; ')}</span>}
             </div>
           )}
+          {pa.coverage_health?.comparable != null && (
+            <div style={{ fontSize: 10, marginBottom: 6, color: 'var(--text3)' }}>
+              divergence (internal vs Street): {pa.coverage_health.comparable} comparable ·
+              {' '}<span style={{ color: '#22c55e' }}>{pa.coverage_health.divergence_counts?.aligned || 0} aligned</span> ·
+              {' '}<span style={{ color: '#ef4444' }}>{pa.coverage_health.divergent || pa.coverage_health.divergence_counts?.divergent || 0} divergent</span>
+              {Object.keys(pa.coverage_health.divergent_symbols || {}).length > 0 && <span style={{ color: '#ef4444' }}> ⚡ {Object.entries(pa.coverage_health.divergent_symbols).map(([s, v]: any) => `${s} (${v.internal}↔${v.street})`).join(', ')} — review</span>}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
               {['Symbol', 'Street', 'Analysts', 'Mean target', 'Upside', 'Internal', 'Divergence'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}

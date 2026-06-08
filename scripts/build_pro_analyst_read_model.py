@@ -64,9 +64,19 @@ def main():
         return cur.fetchone()
 
     def internal_dir(sym):
-        cur.execute("SELECT direction FROM fused_signals WHERE symbol=%s ORDER BY created_at DESC LIMIT 1", (sym,))
+        # Prefer fused_signals.direction; it's currently unpopulated upstream, so fall back to the catalyst
+        # classifier's directional consensus (majority of recent catalyst_events directions) — a real internal
+        # directional view that can be compared to Street consensus.
+        cur.execute("SELECT direction FROM fused_signals WHERE symbol=%s AND direction IS NOT NULL AND direction<>'' ORDER BY created_at DESC LIMIT 1", (sym,))
         r = cur.fetchone()
-        return (r["direction"] or "").lower() if r else None
+        if r and r["direction"]:
+            return r["direction"].lower()
+        cur.execute("""SELECT raw_payload->>'direction' dir, count(*) FROM catalyst_events
+                       WHERE symbol=%s AND created_at>now()-interval '14 days'
+                         AND raw_payload->>'direction' IN ('bullish','bearish')
+                       GROUP BY 1 ORDER BY 2 DESC LIMIT 1""", (sym,))
+        r = cur.fetchone()
+        return r["dir"] if r else None
 
     now = datetime.now(timezone.utc)
     pills, cov = [], {"held": [0, 0], "open_paper": [0, 0], "open_proposal": [0, 0], "scalp": [0, 0], "watchlist": [0, 0]}
