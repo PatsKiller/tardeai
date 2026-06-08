@@ -22,15 +22,21 @@ export default function ProAnalystPill({ symbol, map, compact }: { symbol?: stri
   if (!p.has) {
     return compact ? null : <span title="no professional analyst coverage (info, not failure)" style={{ fontSize: 9, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>no analyst cov</span>
   }
-  const rc = REC_COLOR[(p.rec || '').toLowerCase()] || 'var(--text2)'
+  const hasRating = p.rec && String(p.rec).toLowerCase() !== 'none'
+  const rc = REC_COLOR[String(p.rec || '').toLowerCase()] || 'var(--text2)'
   const upColor = (p.upside ?? 0) > 0 ? '#22c55e' : '#ef4444'
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9 }}
-      title={`Street: ${p.rec} · ${p.n} analysts · mean target $${p.target} · upside ${p.upside}% · internal ${p.internal || 'n/a'} · divergence ${p.divergence}${p.stale ? ' · STALE >7d' : ''}`}>
-      <span title={`Professional analyst consensus rating (Yahoo): ${p.rec}${p.stale ? ' — STALE, last updated >7 days ago' : ''}`}
-        style={{ fontWeight: 700, color: rc, border: `1px solid ${rc}`, borderRadius: 4, padding: '0 4px' }}>
-        {(p.rec || '').replace('_', ' ')}{p.stale ? ' ⚠' : ''}
-      </span>
+      title={`Street: ${hasRating ? p.rec : 'targets only (no aggregated rating)'} · ${p.n} analysts · mean target $${p.target} · upside ${p.upside}% · internal ${p.internal || 'n/a'} · divergence ${p.divergence}${p.stale ? ' · STALE >7d' : ''}`}>
+      {hasRating
+        ? <span title={`Professional analyst consensus rating (Yahoo): ${p.rec}${p.stale ? ' — STALE, last updated >7 days ago' : ''}`}
+            style={{ fontWeight: 700, color: rc, border: `1px solid ${rc}`, borderRadius: 4, padding: '0 4px' }}>
+            {String(p.rec).replace('_', ' ')}{p.stale ? ' ⚠' : ''}
+          </span>
+        : <span title={`Analyst price targets only — no aggregated buy/hold/sell rating${p.stale ? ' — STALE >7d' : ''}`}
+            style={{ fontWeight: 600, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>
+            tgt{p.stale ? ' ⚠' : ''}
+          </span>}
       {p.n != null && <span title={`${p.n} professional analysts covering · mean target $${p.target}`} style={{ color: 'var(--text3)' }}>{p.n}an</span>}
       {p.upside != null && <span title={`Upside to mean analyst target ($${p.target} vs current)`} style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
       {p.divergence === 'divergent' && <span style={{ color: '#ef4444', fontWeight: 700 }} title={`Divergence: internal signal is ${p.internal || 'n/a'} but Street consensus is ${p.street || 'n/a'} — review`}>⚡</span>}
