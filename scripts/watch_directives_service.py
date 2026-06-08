@@ -39,8 +39,24 @@ def _pills():
         return {}
 
 
-def _resolve(d):
-    """Directive → candidate symbols. ticker: explicit. sector/trend: spec universe/seed_symbols (operator-listed)."""
+# Reused sector ETF map (continuous_runner.py:368 / market_context) — the single taxonomy, not a new one.
+SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
+              "Consumer Cyclical": "XLY", "Consumer Disc.": "XLY", "Industrials": "XLI",
+              "Consumer Defensive": "XLP", "Consumer Stapl.": "XLP", "Utilities": "XLU",
+              "Real Estate": "XLRE", "Basic Materials": "XLB", "Materials": "XLB",
+              "Communication Services": "XLC", "Comm. Services": "XLC"}
+SECTOR_CONSTITUENT_CAP = 25  # bound staged hits per sector run; cap is LOGGED (no silent truncation)
+
+COLD_CONFIRM_DAYS = 7
+COLD_PAUSE_DAYS = 14
+
+
+def _resolve(d, conn=None):
+    """Directive → candidate symbols.
+    ticker: explicit symbol.
+    sector: operator universe + sector ETF + Finviz-sector constituents from incubator_universe (capped, logged).
+    trend:  operator seed_symbols (Hermes-discovered symbols arrive via hermes_directive_hits_staging drain).
+    """
     spec = d["spec"] if isinstance(d["spec"], dict) else json.loads(d["spec"])
     if d["kind"] == "ticker":
         s = spec.get("symbol")
@@ -48,7 +64,72 @@ def _resolve(d):
     out = []
     for key in ("universe", "seed_symbols"):
         out += [str(x).upper() for x in (spec.get(key) or [])]
+    if d["kind"] == "sector" and conn is not None:
+        sec = spec.get("finviz_sector") or spec.get("gics_sector") or ""
+        etf = spec.get("etf") or SECTOR_ETF.get(sec)
+        if etf:
+            out.append(etf.upper())
+        if sec:
+            cur = conn.cursor()
+            # DISTINCT: incubator_universe has multiple rows per symbol; LIMIT must apply to distinct symbols.
+            cur.execute("""SELECT DISTINCT symbol FROM incubator_universe WHERE sector=%s AND symbol IS NOT NULL
+                           ORDER BY symbol LIMIT %s""", (sec, SECTOR_CONSTITUENT_CAP))
+            out += [r["symbol"].upper() for r in cur.fetchall() if r.get("symbol")]
+            cur.execute("SELECT count(DISTINCT symbol) AS n FROM incubator_universe WHERE sector=%s", (sec,))
+            total = (cur.fetchone() or {}).get("n", 0)
+            if total > SECTOR_CONSTITUENT_CAP:
+                print(f"  [resolve] sector '{sec}': capped to {SECTOR_CONSTITUENT_CAP} of {total} constituents")
     return sorted(set(out))
+
+
+def _notify(msg):
+    """Best-effort Telegram to BOTH operator chat IDs (advisory; never raises)."""
+    try:
+        import requests
+        tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not tok:
+            return
+        for cid in ("6993102664", "8797974247"):
+            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                          json={"chat_id": cid, "text": msg}, timeout=8)
+    except Exception:
+        pass
+
+
+def pause_cold_trends(c, cur, dry, report):
+    """Trend cold-detector (advisory, trend-only). 7-day confirm cadence:
+      new credible hits since last_confirmed_at  -> reconfirm (last_confirmed_at=now, clear cold_since)
+      none + cold_since NULL                      -> start the clock (cold_since=now)
+      none + cold for >= 14 days                  -> status='paused' (NOT archived) + notify operator
+    Operator-only un-pause. Hermes pauses and reports; never archives the mandate."""
+    cur.execute("SELECT * FROM watch_directives WHERE status='active' AND kind='trend'")
+    for d in cur.fetchall():
+        did = d["id"]
+        cur.execute("""SELECT count(*) AS n FROM watch_directive_hits
+                       WHERE directive_id=%s
+                         AND surfaced_at > COALESCE(%s, %s, now()-interval '7 days')""",
+                    (did, d.get("last_confirmed_at"), d.get("created_at")))
+        new_hits = cur.fetchone()["n"]
+        if new_hits > 0:
+            if not dry:
+                cur.execute("UPDATE watch_directives SET last_confirmed_at=now(), cold_since=NULL, updated_at=now() WHERE id=%s", (did,))
+            continue
+        if d.get("cold_since") is None:
+            if not dry:
+                cur.execute("UPDATE watch_directives SET cold_since=now(), updated_at=now() WHERE id=%s", (did,))
+            report.setdefault("cold_started", 0)
+            report["cold_started"] += 1
+            continue
+        cur.execute("SELECT EXTRACT(EPOCH FROM (now()-cold_since))/86400.0 AS days FROM watch_directives WHERE id=%s", (did,))
+        cold_days = (cur.fetchone() or {}).get("days") or 0
+        if cold_days >= COLD_PAUSE_DAYS:
+            if not dry:
+                cur.execute("UPDATE watch_directives SET status='paused', updated_at=now() WHERE id=%s", (did,))
+                _notify(f"⏸ Watch directive auto-PAUSED (cold): '{d['label']}' — no credible new hits in {int(cold_days)}d. "
+                        f"Advisory only; the mandate is preserved. Operator un-pause when ready.")
+            report.setdefault("paused_cold", 0)
+            report["paused_cold"] += 1
+            report["detail"].append({"directive": d["label"], "event": "auto_paused_cold", "cold_days": int(cold_days)})
 
 
 def main():
@@ -83,7 +164,7 @@ def main():
             # sector/trend surfaced symbols → governor decides (typically STAGE for one-tap).
             is_ticker = d["kind"] == "ticker"
             src = "operator" if is_ticker else "trade_ai"  # surfaced_by my engine will record
-            for sym in _resolve(d):
+            for sym in _resolve(d, conn=c):
                 if recent_hit(did, sym, src):   # dedup on the same surfaced_by (was 'trade_ai' only — bug)
                     continue
                 if not dry:
@@ -117,6 +198,8 @@ def main():
                 report["hermes_drained"] += 1
         if not dry:
             cur.execute("UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s", (did,))
+    # Trend cold-detector (advisory): reconfirm / start-clock / auto-pause-on-cold
+    pause_cold_trends(c, cur, dry, report)
     if not dry:
         c.commit()
     c.close()
