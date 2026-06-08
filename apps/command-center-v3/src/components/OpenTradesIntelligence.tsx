@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
+import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 
 // v3 Open Trades — actionable position intelligence (READ-ONLY). Consumes the aggregate
 // /api/v2/open-trades/intelligence endpoint (all accounts) with client-side filter/sort.
@@ -21,6 +22,7 @@ const srcBadge = (s: string) => {
 
 export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: DrillContext) => void }) {
   const { data, loading, error } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
+  const paMap = useProAnalystMap()
   const [f, setF] = useState<any>({ account: 'all', broker: 'all', strategy: 'all', sector: 'all', rsi: 'all', protection: 'all', pnl: 'all', sort: 'risk' })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const set = (k: string, v: string) => setF({ ...f, [k]: v })
@@ -137,7 +139,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
               {/* header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{p.symbol}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{p.symbol}</span> <ProAnalystPill symbol={p.symbol} map={paMap} compact />
                   <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{p.shares} sh · {p.hold_duration ?? '—'}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
