@@ -15683,6 +15683,37 @@ def _hermes_source_maturity(query=None):
             "top_sources": srcs[:25], "demoted": [s for s in srcs if s["tier"] == "demoted"][:15]}
 
 
+def _hermes_catalyst_calibration(query=None):
+    """GET /api/v2/hermes/catalyst-calibration — read-only catalyst-calibration multipliers + sharpening trend."""
+    import json as _jc
+    try:
+        cal = _jc.loads((PROJECT_ROOT / "data" / "runtime" / "catalyst_calibration.json").read_text())
+    except Exception:
+        return {"note": "run scripts/catalyst_calibration.py", "by_type": {}}
+    bt = cal.get("by_type", {})
+    types = sorted([{"catalyst_type": t, **v} for t, v in bt.items()], key=lambda x: -x.get("samples", 0))
+    trend, transitions = [], []
+    try:
+        h = _jc.loads((PROJECT_ROOT / "data" / "runtime" / "catalyst_calibration_history.json").read_text()).get("snapshots", [])
+        trend = [{"date": s["date"], "credible_samples": s.get("credible_samples"), "trusted_type_count": s.get("trusted_type_count")} for s in h[-14:]]
+        for s in reversed(h):
+            for x in (s.get("newly_trusted") or []):
+                transitions.append({"date": s["date"], "event": "newly_trusted", **x})
+            for x in (s.get("multiplier_shifts") or []):
+                transitions.append({"date": s["date"], "event": "shift", **x})
+            if len(transitions) >= 10:
+                break
+    except Exception:
+        pass
+    return {"updated_at": cal.get("updated_at"), "total_settled": cal.get("total_settled_catalysts"),
+            "credible_samples": cal.get("credible_samples"), "dropped_as_data_error": cal.get("dropped_as_data_error"),
+            "min_samples": cal.get("min_samples"), "settle_days": cal.get("settle_days"),
+            "trusted_type_count": sum(1 for v in bt.values() if v.get("trusted")),
+            "note": "weight_multiplier (0.5-1.5) scales catalyst impact by realized 2-day move; trusted = samples>=min. "
+                    "Sharpens as classifier-labeled catalysts settle on news-covered symbols.",
+            "by_type": types[:20], "trend": trend, "recent_transitions": transitions[:10]}
+
+
 def _hermes_llm_auth_status(query=None):
     """GET /api/v2/hermes/llm-auth-status — read-only OAuth/auth status per LLM lane + guided login commands.
     Credentials are never entered or stored here; OAuth (Google SSO) is completed by the operator in a browser."""
@@ -16107,6 +16138,7 @@ ROUTES = {
     "/api/v2/hermes/loop-detail": _hermes_loop_detail,
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
+    "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/external-research": _hermes_external_research,
