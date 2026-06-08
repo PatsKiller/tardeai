@@ -164,6 +164,13 @@ export default function HermesPanel() {
               {(smat.attribution_health.notes || []).length > 0 && <span style={{ color: '#f59e0b' }}> — {smat.attribution_health.notes.join('; ')}</span>}
             </div>
           )}
+          {(smat.attribution_health?.recent_tier_transitions || []).length > 0 && (
+            <div style={{ fontSize: 10, marginBottom: 6, color: 'var(--text3)' }}>
+              recent tier moves: {smat.attribution_health.recent_tier_transitions.slice(0, 5).map((t: any, i: number) => (
+                <span key={i} style={{ color: t.direction === 'promotion' ? '#22c55e' : '#ef4444' }}>{i > 0 ? ' · ' : ''}{t.direction === 'promotion' ? '↑' : '↓'}{t.source.slice(0, 16)} {t.from}→{t.to}</span>
+              ))}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
               {['Source', 'Tier', 'Score', 'Go-rate', 'Signals', 'Trades'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
