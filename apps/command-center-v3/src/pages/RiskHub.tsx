@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
+import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -16,6 +17,7 @@ export default function RiskHub({ onDrill }: Props) {
   const { data: history } = useApi<any>('/api/v2/risk-regime/history', 120_000)
   const { data: latest } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: recovery } = useApi<any>('/api/v2/recovery', 120_000)
+  const paMap = useProAnalystMap()
 
   const heat = risk?.portfolio_heat_pct ?? 0
   const overThreshold = heat > HEAT_THRESHOLD
@@ -253,7 +255,7 @@ export default function RiskHub({ onDrill }: Props) {
               onClick={() => onDrill({ title: `${item.symbol} Recovery`, subtitle: item.analyst_verdict, endpoint: '/api/v2/recovery', rows: [item] })}
               style={{ padding: '10px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{item.symbol}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{item.symbol}</span> <ProAnalystPill symbol={item.symbol} map={paMap} compact />
                 <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4,
                   background: item.analyst_verdict === 'reentry_candidate' ? 'rgba(34,197,94,.1)' : 'rgba(245,158,11,.1)',
                   color: item.analyst_verdict === 'reentry_candidate' ? '#22c55e' : '#f59e0b',
