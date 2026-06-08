@@ -15913,6 +15913,50 @@ def _watch_sectors(query=None):
     return {"sectors": [{"sector": r["sector"], "count": r["n"], "sample": r.get("sample") or []} for r in rows]}
 
 
+# GICS top-level sector → ETF (reuse the continuous_runner / market_context map; not a new taxonomy)
+_SECTOR_ETF_MAP = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
+                   "Consumer Cyclical": "XLY", "Industrials": "XLI", "Consumer Defensive": "XLP",
+                   "Utilities": "XLU", "Real Estate": "XLRE", "Basic Materials": "XLB",
+                   "Communication Services": "XLC"}
+
+
+def _sectors_monitor(query=None):
+    """GET /api/v2/sectors/monitor — per-sector: ETF, momentum (leading/lagging/neutral vs SPY from
+    market_quotes), constituent count, # flagging setups, sample watch candidates, is_watched.
+    Advisory; no fabrication (unknown when no ETF data). Watched sectors sort to top."""
+    import json as _j
+    spy = _db_query("SELECT day_change_pct FROM market_quotes WHERE symbol='SPY' ORDER BY fetched_at DESC LIMIT 1", fetch="one") or {}
+    spy_chg = float(spy.get("day_change_pct") or 0)
+    watched = {}
+    for d in (_db_query("SELECT id, label, spec FROM watch_directives WHERE kind='sector' AND status='active'") or []):
+        spec = d["spec"] if isinstance(d["spec"], dict) else _j.loads(d["spec"])
+        key = spec.get("finviz_sector") or spec.get("gics_sector") or ""
+        if key:
+            watched[key] = {"id": d["id"], "label": d["label"]}
+    out = []
+    for sec, etf in _SECTOR_ETF_MAP.items():
+        q = _db_query("SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (etf,), fetch="one") or {}
+        etf_chg = q.get("day_change_pct")
+        if etf_chg is None:
+            momentum, rel = "unknown", None
+        else:
+            rel = round(float(etf_chg) - spy_chg, 2)
+            momentum = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
+        cons = _db_query("SELECT count(DISTINCT symbol) AS n FROM incubator_universe WHERE sector=%s", (sec,), fetch="one") or {}
+        cands = _db_query("""SELECT DISTINCT wi.symbol, wi.rsi, wi.trend, wi.score, wi.origin_system,
+                                wi.setup_advisory, wi.watch_score_kind
+                             FROM watchlist_items wi
+                             WHERE wi.status='active' AND wi.score IS NOT NULL
+                               AND wi.symbol IN (SELECT DISTINCT symbol FROM incubator_universe WHERE sector=%s)
+                             ORDER BY wi.score DESC NULLS LAST LIMIT 8""", (sec,)) or []
+        out.append({"sector": sec, "etf": etf, "etf_change_pct": _json_clean(etf_chg), "spy_change_pct": spy_chg,
+                    "rel_strength": rel, "momentum": momentum, "constituent_count": cons.get("n", 0),
+                    "setup_count": len(cands), "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
+                    "is_watched": sec in watched, "directive": watched.get(sec)})
+    out.sort(key=lambda s: (not s["is_watched"], {"leading": 0, "neutral": 1, "lagging": 2, "unknown": 3}[s["momentum"]]))
+    return {"spy_change_pct": spy_chg, "sectors": out}
+
+
 def _llm_retry_health(query=None):
     """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
     import json as _jr
@@ -16350,6 +16394,7 @@ ROUTES = {
     "/api/v2/watch-directives": _watch_directives,
     "/api/v2/watchpool": _watchpool_list,
     "/api/v2/watch/sectors": _watch_sectors,
+    "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,

@@ -8,6 +8,7 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 const trendColor = (t?: string) => (t || '').toLowerCase().includes('up') ? '#22c55e' : (t || '').toLowerCase().includes('down') ? '#ef4444' : 'var(--text2)'
+const trendBadge = (t?: string) => (({ bullish: '#22c55e', bearish: '#ef4444', neutral: '#f59e0b', unknown: 'var(--text3)' } as any)[(t || '').toLowerCase()] || 'var(--text3)')
 
 // ── provenance pill palette (origin=violet for directives; reuse across the page) ──
 const originColor = (o?: string) => {
@@ -132,46 +133,62 @@ export default function WatchlistHub({ onDrill }: Props) {
         ⚠ {adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}
       </div>
 
-      {/* table with provenance pills */}
+      {/* holdings-style card grid (E-2) — enriched data + provenance pills */}
       <div style={card}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Watchlist ({visible.length})</div>
         {visible.length === 0 ? (
           <div style={{ color: 'var(--text3)', fontSize: 12, padding: 16 }}>No items match the filters.</div>
         ) : (
-          <div style={{ maxHeight: 540, overflowY: 'auto' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.9fr 0.6fr 0.7fr 1.3fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
-              <span>Symbol</span><span>Provenance</span><span>Score</span><span>Trend</span><span>Setup advisory</span>
-            </div>
-            {visible.slice(0, 250).map((it: any) => {
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12, maxHeight: 640, overflowY: 'auto' }}>
+            {visible.slice(0, 200).map((it: any) => {
               const a = advMap[it.symbol]
               const fr = freshness(it)
+              const enriched = !!it.last_enriched_at
+              const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 2 * 3600 * 1000
+              const rsi = it.rsi != null ? Number(it.rsi) : null
+              const tcol = trendBadge(it.trend)
               return (
                 <div key={it.id}
                   onClick={() => onDrill({ title: it.symbol, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.bucket ?? ''} · ${it.status}`, endpoint: `/api/v2/watch/provenance/${it.symbol}`,
-                    rows: [a ? { ...it, setup_advisory: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
-                  style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.9fr 0.6fr 0.7fr 1.3fr', padding: '7px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{it.symbol} <ProAnalystPill symbol={it.symbol} map={paMap} compact /></span>
-                  <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                    rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
+                  style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${it.directive_id ? '#a855f7' : originColor(it.origin_system)}`, borderRadius: 9, padding: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {/* header: symbol + price */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace', fontSize: 13 }}>{it.symbol} <ProAnalystPill symbol={it.symbol} map={paMap} compact /></span>
+                    <span style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text1)' }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</span>
+                      {it.change_pct != null && <span style={{ fontSize: 10, marginLeft: 5, color: Number(it.change_pct) >= 0 ? '#22c55e' : '#ef4444' }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</span>}
+                    </span>
+                  </div>
+                  {/* provenance pills */}
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Pill text={originLabel(it.origin_system)} color={originColor(it.origin_system)} tip={it.provenance_reason || it.source} />
                     {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
                     {fr && <Pill text={fr} color="#60a5fa" tip="bucket / TTL" />}
-                    {it.directive_id && <Pill text="◆ directive" color="#a855f7" tip="from an operator watch directive" />}
-                  </span>
-                  <span style={{ color: 'var(--text2)' }}>{it.score != null ? Number(it.score).toFixed(0) : '—'}</span>
-                  <span style={{ color: trendColor(it.trend), fontSize: 10 }}>{it.trend ?? '—'}</span>
-                  <span>
-                    {a ? (
-                      <span title={a.note} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'var(--bg2)', color: advColor(a.advisory_flag), border: `1px solid ${advColor(a.advisory_flag)}33` }}>
-                        {a.advisory_flag === 'caution' ? '⚠ ' : ''}RSI {Number(a.rsi).toFixed(0)} ({a.band})
-                      </span>
-                    ) : <span style={{ color: 'var(--text3)', fontSize: 9 }}>—</span>}
-                  </span>
+                    {it.directive_id && <Pill text="◆ directive" color="#a855f7" tip={it.provenance_reason || 'from an operator watch directive'} />}
+                  </div>
+                  {/* enriched badges OR awaiting state */}
+                  {!enriched ? (
+                    <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>awaiting enrichment…</div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {rsi != null && <Pill text={`RSI ${rsi.toFixed(0)}`} color={rsi >= 70 ? '#ef4444' : rsi < 40 ? '#22c55e' : '#60a5fa'} tip={it.setup_advisory} />}
+                      <Pill text={it.trend || 'unknown'} color={tcol} />
+                      {it.score != null && <Pill text={`score ${Number(it.score).toFixed(0)}`} color={it.watch_score_kind === 'strategy_qualified' ? '#22c55e' : 'var(--text3)'} tip={it.watch_score_kind === 'strategy_qualified' ? 'qualifies for a Bucket-2/3 strategy' : 'technical posture score (not a proposal score)'} />}
+                      {a && <Pill text={`${a.advisory_flag === 'caution' ? '⚠ ' : ''}${a.band}`} color={advColor(a.advisory_flag)} tip={a.note} />}
+                      {stale && <Pill text="technicals stale" color="#f59e0b" tip="last enriched > 2h ago" />}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9, color: 'var(--text3)' }}>
+                    <span>{it.origin_system === 'agent_discovery' ? 'AI-discovered' : originLabel(it.origin_system)}</span>
+                    <span style={{ color: '#60a5fa' }}>more intelligence →</span>
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
-        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a row → full provenance (origin · tier · Street consensus · divergence). Advisory-only — read-only, never gates.</div>
+        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a card → full provenance + intelligence. Enriched by the standing sweep (rsi/trend/score/advisory). Advisory-only — read-only, never gates.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} />}
