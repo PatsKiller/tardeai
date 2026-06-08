@@ -1,10 +1,25 @@
 {
-  "updated_at": "2026-06-08T14:17:23.871855+00:00",
+  "updated_at": "2026-06-08T14:39:36.300132+00:00",
   "actions": [
     {
       "source": "hermes",
       "action": "REVIEW_FOR_ACTIVATION",
-      "score": 50.0
+      "score": 57.5
+    },
+    {
+      "source": "google_news:Stocktwits",
+      "action": "REVIEW_FOR_ACTIVATION",
+      "score": 50.8
+    },
+    {
+      "source": "google_news:Quiver Quantitative",
+      "action": "REVIEW_FOR_ACTIVATION",
+      "score": 50.7
+    },
+    {
+      "source": "google_news:CNBC",
+      "action": "REVIEW_FOR_ACTIVATION",
+      "score": 50.5
     }
   ]
 }
