@@ -15464,9 +15464,11 @@ def _openclaw_status(query=None):
         ident = a.get("identity") or {}
         soul = _openclaw_agent_soul_path(aid)
         idf = OPENCLAW_HOME / "agents" / str(aid) / "agent" / "IDENTITY.md"
+        am = a.get("model")
+        am = (am.get("primary") if isinstance(am, dict) else am) or model_primary  # normalize to a string
         rows.append({"id": aid, "name": a.get("name") or aid,
                      "identity_name": ident.get("name"), "emoji": ident.get("emoji"),
-                     "model": a.get("model") or model_primary,
+                     "model": am,
                      "workspace": str(a.get("workspace") or "").replace(str(Path.home()), "~"),
                      "soul_exists": soul.exists(), "identity_md_exists": idf.exists(),
                      "skills": a.get("skills") or [], "registered": True})
@@ -21695,8 +21697,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/paper-trade-readiness":
         try:
             stats_path = PROJECT_ROOT / "data" / "paper_trading" / "paper_trade_statistics_latest.json"
+            # Self-healing freshness guard: recompute if missing or older than 3h (no scheduled job otherwise).
+            import time as _tfresh
+            _stale = (not stats_path.exists()) or (_tfresh.time() - stats_path.stat().st_mtime > 3 * 3600)
+            if _stale:
+                try:
+                    import sys as _sf
+                    _sf.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                    from paper_trade_statistics import compute_statistics as _cs
+                    _fresh = _cs()
+                    stats_path.parent.mkdir(parents=True, exist_ok=True)
+                    stats_path.write_text(json.dumps(_fresh, default=str))
+                except Exception:
+                    pass
             if stats_path.exists():
                 stats = json.loads(stats_path.read_text())
+                _age_min = round((_tfresh.time() - stats_path.stat().st_mtime) / 60, 1)
                 # Compact summary for dashboard
                 r = stats.get("readiness", {})
                 p = stats.get("performance", {})
@@ -21730,6 +21746,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "live_trading_prohibited": True,
                     "level_7_prohibited": True,
                     "timestamp": stats.get("timestamp"),
+                    "data_age_min": _age_min,
                 }}
             # If no stats file, run live
             import sys as _sysptr
