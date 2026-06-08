@@ -75,6 +75,7 @@ export default function HermesPanel() {
   const { data: smat } = useApi<any>('/api/v2/hermes/source-maturity', 300_000)
   const { data: ccal } = useApi<any>('/api/v2/hermes/catalyst-calibration', 300_000)
   const { data: pa } = useApi<any>('/api/v2/pro-analyst/pills', 300_000)
+  const { data: wd } = useApi<any>('/api/v2/watch-directives', 120_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
   const [openLoop, setOpenLoop] = useState<string | null>(null)
 
@@ -199,6 +200,36 @@ export default function HermesPanel() {
             </tbody>
           </table>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {smat.note}</div>
+        </div>
+      )}
+
+      {/* Operator Watch Directives (advisory; Trade AI + Hermes honor, firewall) */}
+      {wd && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Operator Watch Directives</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            {wd.directive_count} active · promoted to watched universe: {wd.promoted_to_watchlist} · Hermes staging: {wd.hermes_staging?.undrained || 0} undrained
+          </div>
+          {wd.directive_count === 0 ? (
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>No directives yet. Operator adds ticker/sector/trend directives → Trade AI + Hermes honor them (Hermes proposes via staging only).</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>{['Directive', 'Kind', 'TA', 'Hermes', 'Last serviced'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}</tr></thead>
+              <tbody>{wd.directives.slice(0, 8).map((d: any) => (
+                <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '3px 6px', fontWeight: 600 }}>{d.label}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{d.kind}</td>
+                  <td style={{ padding: '3px 6px', color: d.trade_ai_enabled ? '#22c55e' : 'var(--text3)' }}>{d.trade_ai_enabled ? '✓' : '—'}</td>
+                  <td style={{ padding: '3px 6px', color: d.hermes_enabled ? '#22c55e' : 'var(--text3)' }}>{d.hermes_enabled ? '✓' : '—'}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)', fontSize: 10 }}>{(d.last_serviced_at || '—').slice(0, 16)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+          {(wd.recent_hits || []).length > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 5 }}>recent hits: {wd.recent_hits.slice(0, 6).map((h: any) => `${h.symbol}(${h.surfaced_by})`).join(' · ')}</div>
+          )}
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {wd.note}</div>
         </div>
       )}
 
