@@ -158,22 +158,80 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
     return {"source": "alpaca", "fetched": fetched, "total": len(symbols), "missing": missing}
 
 
+# ── Finviz (2nd-tier fallback: live quote.ashx, per-symbol incl. RVOL) ────────────────
+
+_FINVIZ_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
+
+
+def _finviz_quote(sym: str) -> dict:
+    """Parse finviz.com/quote.ashx?t=SYM snapshot table -> {price, prev, rvol, volume}. Live values."""
+    import requests, re
+    r = requests.get(f"https://finviz.com/quote.ashx?t={sym}", headers=_FINVIZ_UA, timeout=15)
+    if r.status_code != 200:
+        return {}
+    h = r.text
+
+    def grab(label):
+        m = re.search(r'snapshot-td-label">' + re.escape(label) +
+                      r'</div></td><td[^>]*><div class="snapshot-td-content">(?:<b>)?\$?([\-\d.,]+)', h)
+        return m.group(1).replace(",", "") if m else None
+    return {"price": grab("Price"), "prev": grab("Prev Close"), "rvol": grab("Rel Volume"), "volume": grab("Volume")}
+
+
+def ingest_finviz_quotes(symbols: list = None) -> dict:
+    """Per-symbol live quotes from finviz quote.ashx (price/prev/rvol/volume). Used as a FALLBACK for
+    the handful Alpaca can't price — finviz is one HTTP request per symbol (rate-limited if hammered),
+    so it's not for the full universe, only the gap."""
+    import time
+    if not symbols:
+        symbols = _get_symbols()
+    conn = _get_conn(); cur = conn.cursor()
+    fetched = 0; got = set()
+    for sym in symbols:
+        try:
+            q = _finviz_quote(sym)
+            if not q.get("price"):
+                continue
+            price = float(q["price"]); prev = float(q["prev"]) if q.get("prev") else None
+            chg = round((price - prev) / prev * 100, 4) if prev else None
+            vol = int(float(q["volume"])) if q.get("volume") else None
+            cur.execute("""INSERT INTO market_quotes (symbol, source, price, prev_close, day_change_pct, volume)
+                           VALUES (%s, 'finviz', %s, %s, %s, %s)""", (sym, price, prev, chg, vol))
+            fetched += 1; got.add(sym)
+            time.sleep(0.3)  # politeness — finviz is per-symbol
+        except Exception:
+            pass
+    conn.commit(); conn.close()
+    missing = [s for s in symbols if s not in got]
+    print(f"[finviz] Fetched {fetched}/{len(symbols)} quotes ({len(missing)} missing)")
+    return {"source": "finviz", "fetched": fetched, "total": len(symbols), "missing": missing}
+
+
 def ingest_quotes(symbols: list = None) -> dict:
-    """Quote ingest: Alpaca live intraday PRIMARY → yfinance fallback for any symbols Alpaca didn't
-    price (delisted/OTC/non-IEX). Live, no rate-limit dependence on yfinance."""
+    """Quote ingest with tiered fallback: Alpaca live-intraday PRIMARY (batched, no rate limit) →
+    finviz quote.ashx (live, per-symbol) for what Alpaca misses → yfinance last resort. Each tier only
+    runs on the symbols the prior tier couldn't price."""
     if not symbols:
         symbols = _get_symbols()
     a = ingest_alpaca_quotes(symbols)
-    missing = a.get("missing", [])
-    fb = {"fetched": 0}
-    if missing:
+    miss1 = a.get("missing", [])
+    fv = {"fetched": 0, "missing": miss1}
+    if miss1:
         try:
-            fb = ingest_yfinance_quotes(missing)
+            fv = ingest_finviz_quotes(miss1)
+        except Exception as e:
+            print(f"  [fallback] finviz failed (non-fatal): {e}")
+    miss2 = fv.get("missing", [])
+    yf = {"fetched": 0}
+    if miss2:
+        try:
+            yf = ingest_yfinance_quotes(miss2)
         except Exception as e:
             print(f"  [fallback] yfinance failed (non-fatal): {e}")
-    total = a.get("fetched", 0) + fb.get("fetched", 0)
-    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} live + yfinance fallback {fb.get('fetched', 0)})")
-    return {"alpaca": a.get("fetched", 0), "fallback": fb.get("fetched", 0), "fetched": total, "total": len(symbols)}
+    total = a.get("fetched", 0) + fv.get("fetched", 0) + yf.get("fetched", 0)
+    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})")
+    return {"alpaca": a.get("fetched", 0), "finviz": fv.get("fetched", 0), "yfinance": yf.get("fetched", 0),
+            "fetched": total, "total": len(symbols)}
 
 
 # ── Alpha Vantage ────────────────────────────────────────────────────
