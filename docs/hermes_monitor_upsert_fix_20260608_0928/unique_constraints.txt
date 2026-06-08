@@ -1,0 +1,2 @@
+alert_events_alert_uid_key|UNIQUE (alert_uid)
+alert_events_alert_uid_key|CREATE UNIQUE INDEX alert_events_alert_uid_key ON public.alert_events USING btree (alert_uid)

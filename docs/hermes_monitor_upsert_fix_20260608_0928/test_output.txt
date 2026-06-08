@@ -1,0 +1,6 @@
+1) first insert -> id=1089  (expect a number)
+2) immediate re-call -> None  (expect None = deduped, no crash)
+3) post-window re-call -> id=1089  (expect SAME id, ON CONFLICT UPDATE, no crash)
+4) rows for uid=1 (expect 1)  severity=critical  raw_text='regression test detail v2 (post-window)'
+ALL ASSERTIONS PASSED — idempotent, no crash, single row updated in place
+transaction ROLLED BACK (alert_events unchanged)

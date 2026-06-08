@@ -1,0 +1,10 @@
+ scripts/system_freshness_monitor.py | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+  +    # constraint and crash. ON CONFLICT updates the existing row in place (no updated_at column exists; we
+  +        ON CONFLICT (alert_uid) DO UPDATE SET
+  +            severity = EXCLUDED.severity,
+  +            raw_text = EXCLUDED.raw_text,
+  +            parsed_payload = EXCLUDED.parsed_payload,
+  +            requires_agent_review = EXCLUDED.requires_agent_review,
+  +            data_quality_status = EXCLUDED.data_quality_status,
+  +            created_at = EXCLUDED.created_at
