@@ -389,8 +389,9 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     "grade": t.get("grade", ""),
                     "score": t.get("score", 0),
                     "decision": t.get("decision", ""),
-                    "change_percent": str(t.get("change_pct", "")),
-                    "rvol": float(t.get("rvol") or 0),
+                    "change_percent": str(t.get("change_pct") or t.get("change_percent") or t.get("change") or ""),
+                    # RVOL is stored under 'relative_volume' (set from finviz enrich at line ~231); read that first
+                    "rvol": float(t.get("relative_volume") or t.get("rvol") or 0),
                     "catalyst_verified": bool(t.get("catalyst_verified")),
                     "critic_verdict": t.get("critic_verdict", ""),
                     "source": "screener",
