@@ -15417,6 +15417,145 @@ def _hermes_validate_identity(profile, model, provider):
     return errs
 
 
+# ===== OpenClaw ecosystem (read-only inventory + editable agent SOUL) =====
+OPENCLAW_HOME = Path.home() / ".openclaw"
+
+
+def _openclaw_load_config():
+    import json as _j
+    p = OPENCLAW_HOME / "openclaw.json"
+    try:
+        return _j.load(open(p)) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def _openclaw_agent_soul_path(agent_id):
+    return OPENCLAW_HOME / "agents" / str(agent_id) / "agent" / "SOUL.md"
+
+
+def _openclaw_svc(action):
+    import subprocess as _sp, os as _os
+    e = dict(_os.environ); e["XDG_RUNTIME_DIR"] = f"/run/user/{_os.getuid()}"
+    try:
+        return _sp.run(["systemctl", "--user", action, "openclaw-gateway.service"],
+                       capture_output=True, text=True, timeout=6, env=e).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _openclaw_agent_ids():
+    return [a.get("id") for a in ((_openclaw_load_config().get("agents") or {}).get("list") or []) if a.get("id")]
+
+
+def _openclaw_status(query=None):
+    """GET /api/v2/openclaw/status — read-only inventory of the OpenClaw ecosystem
+    (agents + skills + channels + gateway). No control, no secrets."""
+    cfg = _openclaw_load_config()
+    agdef = cfg.get("agents") or {}
+    defaults = agdef.get("defaults") or {}
+    mp = (defaults.get("model") or {})
+    model_primary = mp.get("primary")
+    rows = []
+    for a in (agdef.get("list") or []):
+        aid = a.get("id")
+        ident = a.get("identity") or {}
+        soul = _openclaw_agent_soul_path(aid)
+        idf = OPENCLAW_HOME / "agents" / str(aid) / "agent" / "IDENTITY.md"
+        rows.append({"id": aid, "name": a.get("name") or aid,
+                     "identity_name": ident.get("name"), "emoji": ident.get("emoji"),
+                     "model": a.get("model") or model_primary,
+                     "workspace": str(a.get("workspace") or "").replace(str(Path.home()), "~"),
+                     "soul_exists": soul.exists(), "identity_md_exists": idf.exists(),
+                     "skills": a.get("skills") or []})
+    skills = sorted([p.name for p in (OPENCLAW_HOME / "skills").glob("*") if p.is_dir()]) \
+        if (OPENCLAW_HOME / "skills").exists() else []
+    ch = cfg.get("channels") or {}
+    channels = [{"name": k, "enabled": bool(v.get("enabled") if isinstance(v, dict) else v)}
+                for k, v in (ch.items() if isinstance(ch, dict) else [])]
+    return {"ok": True, "read_only": True,
+            "version": (cfg.get("meta") or {}).get("version"),
+            "home": str(OPENCLAW_HOME).replace(str(Path.home()), "~"),
+            "gateway_active": _openclaw_svc("is-active"), "gateway_enabled": _openclaw_svc("is-enabled"),
+            "model_primary": model_primary, "model_fallbacks": mp.get("fallbacks") or [],
+            "models": list((defaults.get("models") or {}).keys()),
+            "agents": rows, "skills_catalog": skills, "channels": channels,
+            "warning": "Read-only inventory. OpenClaw gateway state is shown but not controlled here."}
+
+
+def _agent_soul_validate(text):
+    """Fail-closed safety check for agent SOUL edits (advisory personas). Returns errors list."""
+    import re as _rv
+    errs = []
+    low = (text or "").lower()
+    negations = ("do not", "does not", "never", "cannot", "won't", "will not", "n't", "no ", "without")
+    unsafe = ("execute trade", "place order", "submit order", "bypass approval", "disable safety",
+              "read .env", "read secrets", "enable live trading", "move stop", "without approval")
+    for ph in unsafe:
+        for m in _rv.finditer(_rv.escape(ph), low):
+            j = m.start()
+            seg_start = max(low.rfind(".", 0, j), low.rfind("\n", 0, j), low.rfind(";", 0, j), low.rfind(":", 0, j))
+            if not any(neg in low[seg_start + 1:j] for neg in negations):
+                errs.append(f"unsafe phrase without negation: '{ph}'"); break
+    return errs
+
+
+def _openclaw_agent_soul(query=None):
+    """GET /api/v2/openclaw/agent-soul?agent=NAME — read an OpenClaw agent's SOUL.md (+IDENTITY.md)."""
+    agent = (query or {}).get("agent")
+    if isinstance(agent, list):
+        agent = agent[0] if agent else None
+    if agent not in _openclaw_agent_ids():
+        return {"ok": False, "error": "unknown agent"}
+    sp = _openclaw_agent_soul_path(agent)
+    idf = OPENCLAW_HOME / "agents" / str(agent) / "agent" / "IDENTITY.md"
+    return {"ok": True, "agent": agent, "path": str(sp).replace(str(Path.home()), "~"),
+            "exists": sp.exists(), "content": (sp.read_text() if sp.exists() else ""),
+            "identity_md": (idf.read_text() if idf.exists() else None)}
+
+
+# TradeAI agent fleet (advisory personas share OpenClaw SOULs; algorithmic agents are config-only).
+TRADEAI_ROLES = {
+    "alex": "CIO / escalation arbiter", "cio_engine": "CIO decision engine",
+    "maria": "Research analyst / catalyst", "maria_research": "Deep RAG research",
+    "steph": "Income guardian / allocation", "risk_agent": "Risk / stops / portfolio heat",
+    "tax_agent": "Tax / Roth / harvest", "aegis": "Surveillance / briefs",
+    "iris": "Librarian / RAG coverage", "social_scalp": "Social mention scanner",
+    "scalp_critic": "Scalp critic / validation",
+}
+# advisory personas that have an editable OpenClaw SOUL; map TradeAI name -> OpenClaw agent id
+TRADEAI_SOUL_AGENT = {"alex": "alex", "aegis": "aegis", "steph": "steph", "maria": "maria",
+                      "maria_research": "maria", "iris": "iris"}
+
+
+def _tradeai_fleet(query=None):
+    """GET /api/v2/tradeai/fleet — read-only TradeAI agent fleet (roles/model/calibration). Advisory
+    personas expose an editable SOUL (shared with OpenClaw); algorithmic agents are read-only (their
+    operational config in config/agents.yaml is safety-locked and never edited here)."""
+    cal = {}
+    try:
+        cs = _agent_calibration()  # accuracy/trust per agent if available
+        for a in (cs.get("agents") or cs.get("data", {}).get("agents") or []) if isinstance(cs, dict) else []:
+            if isinstance(a, dict) and a.get("agent_name"):
+                cal[a["agent_name"]] = a
+    except Exception:
+        pass
+    oc_ids = set(_openclaw_agent_ids())
+    rows = []
+    for name, role in TRADEAI_ROLES.items():
+        soul_agent = TRADEAI_SOUL_AGENT.get(name)
+        editable = bool(soul_agent and soul_agent in oc_ids and _openclaw_agent_soul_path(soul_agent).exists())
+        rows.append({"agent": name, "role": role, "runtime_model": "gemma3:12b",
+                     "type": "advisory" if soul_agent else "algorithmic",
+                     "soul_agent": soul_agent if editable else None, "soul_editable": editable,
+                     "calibration": (cal.get(name) or {}).get("status") or (cal.get(name) or {}).get("recommendation")})
+    return {"ok": True, "read_only_fleet": True, "runtime_model": "gemma3:12b",
+            "agents": rows,
+            "note": "Advisory personas (alex/aegis/steph/maria/iris) have editable SOULs (shared with "
+                    "OpenClaw). Algorithmic agents (risk/tax/scalp/social) are config-driven; their "
+                    "operational config (config/agents.yaml: thresholds/routing) is NOT editable here."}
+
+
 def _hermes_codex_dev_status(query=None):
     """GET /api/v2/hermes/codex-dev-status — read-only readiness of the dev/Codex profile.
     Current route: provider openai-codex via `hermes auth add openai-codex --type oauth` (hermes login removed v0.16.0)."""
@@ -15895,6 +16034,9 @@ ROUTES = {
     "/api/v2/system/applications": lambda: _system_applications(),
     "/api/v2/hermes/profiles-status": _hermes_profiles_status,
     "/api/v2/hermes/legacy-agents": _hermes_legacy_agents,
+    "/api/v2/openclaw/status": _openclaw_status,
+    "/api/v2/openclaw/agent-soul": _openclaw_agent_soul,
+    "/api/v2/tradeai/fleet": _tradeai_fleet,
     "/api/v2/hermes/soul": _hermes_soul_read,
     "/api/v2/hermes/identity": _hermes_identity_detail,
     "/api/v2/hermes/codex-dev-status": _hermes_codex_dev_status,
@@ -16025,6 +16167,37 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sp.parent.mkdir(parents=True, exist_ok=True)
                 sp.write_text(content)
                 return 200, {"ok": True, "profile": profile,
+                             "saved": str(sp).replace(str(Path.home()), "~"),
+                             "backup": (str(backup).replace(str(Path.home()), "~") if backup else None),
+                             "bytes": len(content)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/openclaw/agent-soul":
+            # Save an OpenClaw agent SOUL.md — backup first, fail-closed validation, write only the
+            # selected SOUL under ~/.openclaw/agents/<id>/agent/. Never touches .env/secrets/broker/trading.
+            try:
+                import shutil as _shoc, time as _toc
+                b = body or {}
+                agent = b.get("agent"); content = b.get("content")
+                if agent not in _openclaw_agent_ids():
+                    return 400, {"ok": False, "error": "unknown agent"}
+                if not isinstance(content, str) or not content.strip():
+                    return 400, {"ok": False, "error": "content required"}
+                errs = _agent_soul_validate(content)
+                if errs:
+                    return 400, {"ok": False, "errors": errs}
+                sp = _openclaw_agent_soul_path(agent)
+                if not str(sp.resolve()).startswith(str(OPENCLAW_HOME.resolve())):
+                    return 400, {"ok": False, "error": "path outside OpenClaw home rejected"}
+                bdir = OPENCLAW_HOME / "agent_soul_backups" / str(agent)
+                bdir.mkdir(parents=True, exist_ok=True)
+                backup = None
+                if sp.exists():
+                    backup = bdir / f"SOUL.md.bak_{int(_toc.time())}"
+                    _shoc.copy(str(sp), str(backup))  # backup before overwrite
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                sp.write_text(content)
+                return 200, {"ok": True, "agent": agent,
                              "saved": str(sp).replace(str(Path.home()), "~"),
                              "backup": (str(backup).replace(str(Path.home()), "~") if backup else None),
                              "bytes": len(content)}
