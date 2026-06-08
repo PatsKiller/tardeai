@@ -5,9 +5,11 @@ import AdminConfirmModal, { type PendingAction } from '../components/AdminConfir
 import { getOperator, setOperator, getToken, setToken } from '../lib/adminWrite'
 import PipelineControlTower from '../components/PipelineControlTower'
 import HermesPanel from '../components/HermesPanel'
+import OpenClawPanel from '../components/OpenClawPanel'
+import TradeAIPanel from '../components/TradeAIPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Control Plane', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes'] as const
+const TABS = ['Pipeline', 'Control Plane', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -157,6 +159,10 @@ export default function SystemHub({ onDrill }: Props) {
       {tab === 'Control Plane' && <PipelineControlTower />}
 
       {tab === 'Hermes' && <HermesPanel />}
+
+      {tab === 'OpenClaw' && <OpenClawPanel />}
+
+      {tab === 'TradeAI' && <TradeAIPanel />}
 
       {tab === 'Queue' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
