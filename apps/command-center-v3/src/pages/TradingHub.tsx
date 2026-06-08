@@ -312,22 +312,111 @@ export default function TradingHub({ onDrill }: Props) {
 
       {tab === 'Proposals' && <ProposalsRich />}
 
-      {tab === 'Execution' && execQual && (
+      {tab === 'Execution' && execQual && (() => {
+        // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──
+        const QC = (q?: string) => { const u = (q || '').toUpperCase(); return u === 'EXCELLENT' ? '#22c55e' : u === 'GOOD' ? '#4ade80' : u === 'ACCEPTABLE' ? '#f59e0b' : u === 'POOR' ? '#ef4444' : 'var(--text3)' }
+        const ex = execList
+        const n = ex.length
+        const q = { EXCELLENT: 0, GOOD: 0, ACCEPTABLE: 0, POOR: 0, OTHER: 0 } as Record<string, number>
+        ex.forEach((e: any) => { const u = (e.fill_quality || '').toUpperCase(); if (q[u] != null) q[u]++; else q.OTHER++ })
+        const slips = ex.map((e: any) => e.slippage_pct).filter((v: any) => v != null)
+        const avgSlip = slips.length ? slips.reduce((a: number, b: number) => a + Math.abs(b), 0) / slips.length : null
+        const totSlipD = ex.reduce((a: number, e: any) => a + (e.slippage_dollars || 0), 0)
+        const ttf = ex.map((e: any) => e.time_to_fill_seconds).filter((v: any) => v != null)
+        const avgTtf = ttf.length ? ttf.reduce((a: number, b: number) => a + b, 0) / ttf.length : null
+        const partials = ex.filter((e: any) => e.partial_fill).length
+        const improved = ex.filter((e: any) => (e.price_improvement_pct || 0) > 0).length
+        const poor = ex.filter((e: any) => (e.fill_quality || '').toUpperCase() === 'POOR')
+          .sort((a: any, b: any) => Math.abs(b.slippage_pct || 0) - Math.abs(a.slippage_pct || 0))
+        const ordered = [...ex].sort((a: any, b: any) => {
+          const pa = (a.fill_quality || '').toUpperCase() === 'POOR' ? 1 : 0, pb = (b.fill_quality || '').toUpperCase() === 'POOR' ? 1 : 0
+          if (pa !== pb) return pb - pa
+          return Math.abs(b.slippage_pct || 0) - Math.abs(a.slippage_pct || 0)
+        })
+        const Tip = ({ t, children }: { t: string; children: any }) => (
+          <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
+        )
+        const Metric = ({ label, value, color, tip }: { label: string; value: any; color?: string; tip: string }) => (
+          <div title={tip} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', cursor: 'help', minWidth: 110, flex: '1 1 110px' }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: color || 'var(--text0)', marginTop: 2 }}>{value}</div>
+          </div>
+        )
+        return (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Execution Quality ({execList.length} records)</div>
-          {execList.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data</div> :
-          execList.slice(0, 15).map((e: any) => (
-            <div key={e.id} onClick={() => onDrill({ title: `${e.symbol} TCA`, subtitle: `fill_quality: ${e.fill_quality ?? '—'}`, endpoint: '/api/v2/execution-quality', rows: [e] })}
-              style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-              <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{e.symbol}</span>
-              <span style={{ color: 'var(--text2)' }}>slip: {e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : '—'}</span>
-              <span style={{ color: 'var(--text2)' }}>fill: {e.fill_quality ?? '—'}</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{e.market_session ?? '—'}</span>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Execution Quality — Transaction Cost Analysis</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>How well orders filled vs. intended. Clean execution (low slippage, tight fills) is part of the live-readiness case.</div>
+
+          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data yet.</div> : (<>
+
+          {/* POOR-fill alert */}
+          {poor.length > 0 && (
+            <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>⚠ {poor.length} POOR fill{poor.length > 1 ? 's' : ''} — investigate</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {poor.slice(0, 6).map((e: any) => (
+                  <span key={e.id} onClick={() => onDrill({ title: `${e.symbol} TCA`, subtitle: `POOR · slip ${e.slippage_pct?.toFixed(2)}%`, endpoint: '/api/v2/execution-quality', rows: [e] })} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
+                    <b style={{ fontFamily: 'monospace' }}>{e.symbol}</b> {e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : ''} {e.market_session ? `(${e.market_session})` : ''}
+                  </span>
+                ))}
+              </div>
             </div>
-          ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality</div>
+          )}
+
+          {/* Summary band */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <Metric label="Fills" value={n} tip="Total recorded fills in this window." />
+            <Metric label="Avg Slippage" value={avgSlip != null ? `${avgSlip.toFixed(3)}%` : '—'} color={avgSlip == null ? undefined : avgSlip < 0.1 ? '#22c55e' : avgSlip < 0.3 ? '#f59e0b' : '#ef4444'} tip="Average absolute difference between intended and actual fill price, as % of price. Lower is better; under ~0.1% is excellent." />
+            <Metric label="Total Slip $" value={fmt$(totSlipD)} color={totSlipD <= 0 ? '#22c55e' : '#ef4444'} tip="Net dollar cost (or gain) from slippage across all fills. Negative/zero = you paid no cost; positive = slippage ate into returns." />
+            <Metric label="Avg Time-to-Fill" value={avgTtf != null ? `${avgTtf.toFixed(1)}s` : '—'} tip="Average seconds from order submit to fill. Faster reduces adverse price drift." />
+            <Metric label="Partial Fills" value={`${partials}/${n}`} color={partials === 0 ? '#22c55e' : '#f59e0b'} tip="Orders that filled only partially. Frequent partials suggest thin liquidity or sizing too large." />
+            <Metric label="Price Improved" value={`${improved}/${n}`} color={improved > 0 ? '#22c55e' : undefined} tip="Fills that executed BETTER than intended (positive price improvement)." />
+          </div>
+
+          {/* Graphical quality distribution bar */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="Distribution of fill-quality grades. Aim for mostly EXCELLENT/GOOD; any POOR is worth a look.">FILL QUALITY DISTRIBUTION ⓘ</Tip></div>
+            <div style={{ display: 'flex', height: 22, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
+              {(['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'POOR', 'OTHER'] as const).map(k => q[k] > 0 && (
+                <div key={k} title={`${k}: ${q[k]} (${((q[k] / n) * 100).toFixed(0)}%)`} style={{ width: `${(q[k] / n) * 100}%`, background: QC(k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>
+                  {(q[k] / n) > 0.08 ? q[k] : ''}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 9, color: 'var(--text2)', flexWrap: 'wrap' }}>
+              {(['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'POOR'] as const).map(k => q[k] > 0 && (
+                <span key={k}><span style={{ color: QC(k) }}>■</span> {k} {q[k]}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Fills table — poor first, color-coded */}
+          <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            <span style={{ flex: '0 0 64px' }}>Symbol</span>
+            <span style={{ flex: '0 0 90px' }}><Tip t="Fill-quality grade for this order.">Quality</Tip></span>
+            <span style={{ flex: '0 0 80px' }}><Tip t="Slippage: intended vs actual fill price as %.">Slip %</Tip></span>
+            <span style={{ flex: '0 0 80px' }}><Tip t="Bid-ask spread at submit, as %. Wider spreads make good fills harder.">Spread</Tip></span>
+            <span style={{ flex: '0 0 70px' }}><Tip t="Seconds from submit to fill.">Fill (s)</Tip></span>
+            <span style={{ flex: '1 1 auto' }}>Session · Strategy</span>
+          </div>
+          {ordered.slice(0, 30).map((e: any) => {
+            const isPoor = (e.fill_quality || '').toUpperCase() === 'POOR'
+            return (
+            <div key={e.id} onClick={() => onDrill({ title: `${e.symbol} — Transaction Cost Analysis`, subtitle: `${e.fill_quality ?? '—'} · slip ${e.slippage_pct != null ? e.slippage_pct.toFixed(2) + '%' : '—'} · intended ${e.intended_entry ?? '—'} → fill ${e.fill_price ?? '—'}`, endpoint: '/api/v2/execution-quality', rows: [e] })}
+              style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isPoor ? 'rgba(239,68,68,.06)' : undefined }}>
+              <span style={{ flex: '0 0 64px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{e.symbol}</span>
+              <span style={{ flex: '0 0 90px' }}><span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: QC(e.fill_quality), color: '#0a0a0a' }}>{e.fill_quality ?? '—'}</span></span>
+              <span style={{ flex: '0 0 80px', color: e.slippage_pct == null ? 'var(--text3)' : Math.abs(e.slippage_pct) < 0.1 ? '#22c55e' : Math.abs(e.slippage_pct) < 0.5 ? '#f59e0b' : '#ef4444' }}>{e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : '—'}</span>
+              <span style={{ flex: '0 0 80px', color: 'var(--text2)' }}>{e.spread_pct != null ? `${e.spread_pct.toFixed(2)}%` : '—'}</span>
+              <span style={{ flex: '0 0 70px', color: 'var(--text2)' }}>{e.time_to_fill_seconds != null ? `${e.time_to_fill_seconds.toFixed(0)}s` : '—'}</span>
+              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)' }}>{e.market_session ?? '—'}{e.strategy_id ? ` · ${e.strategy_id}` : ''}</span>
+            </div>
+          )})}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality · click any row for full TCA (intended → arrival → fill, spread, shares, data-quality). Hover ⓘ for definitions.</div>
+          </>)}
         </div>
-      )}
+        )
+      })()}
 
       {tab === 'Broker Recon' && (() => {
         const r = recon?.data ?? recon ?? {}
