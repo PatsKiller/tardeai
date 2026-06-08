@@ -8,13 +8,50 @@ and flags growth/regression. Lets you watch the analyst layer's coverage expand.
   python3 scripts/pro_analyst_monitor.py            # snapshot + append + status
   python3 scripts/pro_analyst_monitor.py --dry-run
 """
-import sys, json
+import os, sys, json, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 HIST = ROOT / "data" / "runtime" / "pro_analyst_coverage_history.json"
+for _ln in (ROOT / ".env").read_text().splitlines():
+    if "=" in _ln and not _ln.strip().startswith("#"):
+        _k, _, _v = _ln.partition("="); os.environ.setdefault(_k.strip(), _v.strip().strip("'\""))
+
+
+def _siem_alert(symbol, internal, street):
+    """Idempotent SIEM alert for a newly-divergent symbol (ON CONFLICT alert_uid DO UPDATE — no re-spam)."""
+    try:
+        import psycopg2
+        c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
+                             dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                             password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+        txt = f"Analyst divergence: {symbol} internal={internal} vs Street={street} — review"
+        cur.execute("""INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text,
+                       data_quality_status, requires_agent_review, created_at)
+                       VALUES (%s,'analyst_alert',%s,'warning','pro_analyst_monitor.py',%s,'valid',true,now())
+                       ON CONFLICT (alert_uid) DO UPDATE SET raw_text=EXCLUDED.raw_text, severity=EXCLUDED.severity,
+                       created_at=now() RETURNING id""",
+                    (f"pro_analyst_divergence:{symbol}", symbol, txt))
+        rid = cur.fetchone()[0]; c.commit(); c.close()
+        return rid
+    except Exception as e:
+        print(f"  [alert] SIEM write failed for {symbol}: {str(e)[:80]}"); return None
+
+
+def _telegram(msg):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return
+    for cid in [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]:
+        try:
+            data = json.dumps({"chat_id": cid, "text": msg}).encode()
+            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data,
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=15)
+        except Exception:
+            pass
 
 
 def main():
@@ -75,6 +112,20 @@ def main():
     if snap["stale"] > 0:
         notes.append(f"{snap['stale']} stale (>7d) — re-fetch needed")
     snap["status"], snap["notes"] = status, notes
+
+    # Alert on NEW divergences (idempotent SIEM always; Telegram only with --send). Fires once per symbol
+    # when it first becomes divergent (newly_div diff), so no re-spam while it stays divergent.
+    alerted = []
+    if newly_div and not dry:
+        for s in newly_div:
+            dd = divergent.get(s, {})
+            rid = _siem_alert(s, dd.get("internal"), dd.get("street"))
+            if rid:
+                alerted.append(s)
+        if alerted and "--send" in sys.argv:
+            _telegram("⚡ Analyst divergence (internal vs Street) — review:\n" +
+                      "\n".join(f"  {s}: internal {divergent[s]['internal']} vs Street {divergent[s]['street']}" for s in alerted))
+    snap["alerted"] = alerted
 
     if not dry:
         hist.append(snap); hist = hist[-90:]
