@@ -270,19 +270,23 @@ export default function JournalHub({ onDrill }: Props) {
       {/* ════════ TRADES TAB ════════ */}
       {tab === 'Trades' && (
         <>
-          {/* KPIs */}
+          {/* KPIs — hover ⓘ for definitions; click count tiles to drill the matching trades */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 14 }}>
             {[
-              { l: 'Open', v: kpis.open, c: '#60a5fa' }, { l: 'Closed', v: kpis.closed, c: 'var(--text0)' },
-              { l: 'Wins', v: kpis.wins, c: '#22c55e' }, { l: 'Losses', v: kpis.losses, c: '#ef4444' },
-              { l: 'Win Rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b' },
-              { l: 'P. Factor', v: kpis.pf.toFixed(2), c: 'var(--text0)' },
-              { l: 'Expectancy', v: fmt$(kpis.expectancy, 0), c: kpis.expectancy >= 0 ? '#22c55e' : '#ef4444' },
-              { l: 'Total P&L', v: fmt$(kpis.totalPnl, 0), c: kpis.totalPnl >= 0 ? '#22c55e' : '#ef4444' },
+              { l: 'Open', v: kpis.open, c: '#60a5fa', tip: 'Currently-open positions in this view (no exit yet).', rows: open },
+              { l: 'Closed', v: kpis.closed, c: 'var(--text0)', tip: 'Trades closed within the selected time range.', rows: closed },
+              { l: 'Wins', v: kpis.wins, c: '#22c55e', tip: 'Closed trades with positive realized P&L.', rows: closed.filter(t => t.pnl > 0) },
+              { l: 'Losses', v: kpis.losses, c: '#ef4444', tip: 'Closed trades with negative realized P&L.', rows: closed.filter(t => t.pnl < 0) },
+              { l: 'Win Rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b', tip: 'Wins ÷ resolved trades (excludes $0 scratches). 55%+ is the target.' },
+              { l: 'P. Factor', v: kpis.pf.toFixed(2), c: 'var(--text0)', tip: 'Profit factor = gross wins ÷ gross losses. >1 profitable, >2 strong.' },
+              { l: 'Expectancy', v: fmt$(kpis.expectancy, 0), c: kpis.expectancy >= 0 ? '#22c55e' : '#ef4444', tip: 'Average realized $ per closed trade — your edge per trade (total P&L ÷ closed count).' },
+              { l: 'Total P&L', v: fmt$(kpis.totalPnl, 0), c: kpis.totalPnl >= 0 ? '#22c55e' : '#ef4444', tip: 'Sum of realized P&L across closed trades in range.', rows: closed },
             ].map(k => (
-              <div key={k.l} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 8px', textAlign: 'center' }}>
+              <div key={k.l} title={k.tip}
+                onClick={k.rows ? () => onDrill({ title: k.l, subtitle: `${k.rows.length} trade${k.rows.length === 1 ? '' : 's'}`, endpoint: 'derived', rows: k.rows }) : undefined}
+                style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 8px', textAlign: 'center', cursor: k.rows ? 'pointer' : 'help' }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: k.c, fontFamily: 'monospace' }}>{k.v}</div>
-                <div style={{ fontSize: 8, color: 'var(--text3)' }}>{k.l}</div>
+                <div style={{ fontSize: 8, color: 'var(--text3)' }}>{k.l} ⓘ</div>
               </div>
             ))}
           </div>
@@ -395,7 +399,9 @@ export default function JournalHub({ onDrill }: Props) {
                   const byM: Record<string, { pnl: number; t: number; w: number; l: number }> = {}
                   for (const t of closed) { if (!t.exitDate) continue; const m = t.exitDate.slice(0,7); if (!byM[m]) byM[m]={pnl:0,t:0,w:0,l:0}; byM[m].pnl+=t.pnl; byM[m].t+=1; if(t.pnl>0)byM[m].w+=1; else if(t.pnl<0)byM[m].l+=1 }
                   return Object.entries(byM).sort(([a],[b])=>a.localeCompare(b)).map(([m,v])=>(
-                    <div key={m} style={{ display:'flex',justifyContent:'space-between',padding:'4px 6px',borderBottom:'1px solid var(--border)',fontSize:10 }}>
+                    <div key={m} title={`${m}: ${v.t} trades · ${v.w}W ${v.l}L · ${fmt$(Math.round(v.pnl),0)} — click to view`}
+                      onClick={() => onDrill({ title: `${m} — Monthly`, subtitle: `${v.t} trades · ${fmt$(Math.round(v.pnl),0)}`, endpoint: 'derived', rows: closed.filter(t => (t.exitDate ?? '').slice(0,7) === m) })}
+                      style={{ display:'flex',justifyContent:'space-between',padding:'4px 6px',borderBottom:'1px solid var(--border)',fontSize:10, cursor:'pointer' }}>
                       <span style={{color:'var(--text0)',fontFamily:'monospace'}}>{m}</span>
                       <div style={{display:'flex',gap:10}}>
                         <span style={{color:'var(--text3)'}}>{v.t}t</span>
@@ -413,7 +419,15 @@ export default function JournalHub({ onDrill }: Props) {
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Trade Log ({filtered.length})</div>
             <div style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span></span><span>Symbol</span><span>Account</span><span>Entry</span><span>Exit</span><span>P&L</span><span>Grade</span><span>Strategy</span><span>Hold</span>
+              <span title="Account color (dot matches the account legend).">●</span>
+              <span title="Ticker symbol and share count. Click any row for full trade detail.">Symbol ⓘ</span>
+              <span title="Brokerage account the trade was booked in.">Account</span>
+              <span title="Entry date.">Entry</span>
+              <span title="Exit date (— if still open).">Exit</span>
+              <span title="Realized profit/loss. $0.00 = scratch/no-fill or open.">P&L</span>
+              <span title="Entry grade / exit grade, from backtest-replay grading (A best → F). '/' separates entry and exit quality.">Grade ⓘ</span>
+              <span title="Strategy that generated the trade.">Strategy</span>
+              <span title="Hold duration (m=minutes, h=hours).">Hold</span>
             </div>
             {filtered.map((t, i) => (
               <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }] })}
