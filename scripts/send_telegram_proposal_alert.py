@@ -149,7 +149,6 @@ def main():
         _created = pr.get("created_at")
         if "BLOCKED" in _action_state.upper() and _created:
             try:
-                from datetime import datetime, timezone
                 _age_min = 30
                 if hasattr(_created, 'timestamp'):
                     _age_min = (datetime.now(timezone.utc) - _created).total_seconds() / 60
@@ -172,7 +171,6 @@ def main():
         _last_alert = pr.get("last_alert_at")
         if _last_alert:
             try:
-                from datetime import datetime, timezone
                 if hasattr(_last_alert, 'timestamp'):
                     _since_alert = (datetime.now(timezone.utc) - _last_alert).total_seconds() / 60
                 elif isinstance(_last_alert, str):
