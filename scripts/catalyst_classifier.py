@@ -15,8 +15,14 @@ Design (operator-approved): HYBRID + outcome-calibrated.
 No schema change (direction/confidence/method are returned for storage in raw_payload). Feeds fusion
 catalyst_score → advisory; never changes GO/WAIT or strategy scoring.
 """
-import os, re, json, urllib.request
+import os, re, json, sys, urllib.request
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from llm_net import urlopen_retry
+except Exception:
+    def urlopen_retry(req, timeout=120, **_):  # fallback: no retry if helper missing
+        return urllib.request.urlopen(req, timeout=timeout).read()
 
 ROOT = Path(__file__).resolve().parent.parent
 CALIB = ROOT / "data" / "runtime" / "catalyst_calibration.json"
@@ -130,7 +136,7 @@ def _llm(title, summary, model="gemma3:4b", timeout=25):
                            "messages": [{"role": "user", "content": _LLM_PROMPT.format(title=title, summary=(summary or "")[:400])}],
                            "options": {"num_ctx": 4096, "num_predict": 160, "temperature": 0.1}}).encode()
         req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
-        content = json.loads(urllib.request.urlopen(req, timeout=timeout).read()).get("message", {}).get("content", "")
+        content = json.loads(urlopen_retry(req, timeout=timeout, attempts=2, base=0.5)).get("message", {}).get("content", "")
         d = json.loads(content[content.find("{"):content.rfind("}") + 1])
         ct = str(d.get("catalyst_type", "other")).strip().lower()
         return {"catalyst_type": ct, "direction": str(d.get("direction", "neutral")).lower(),

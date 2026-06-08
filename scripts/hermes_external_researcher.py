@@ -14,6 +14,8 @@ long digit runs — and only a whitelisted, high-level context is ever assembled
 import os, sys, re, json, argparse, urllib.request
 from pathlib import Path
 from datetime import date
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from llm_net import urlopen_retry  # retry transient network/DNS/5xx; surfaces 4xx (e.g. credit) immediately
 
 ROOT = Path(__file__).resolve().parent.parent
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -161,7 +163,7 @@ def call_xai_proxy(url, model, prompt, max_tokens=1500):
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(url, data=body, headers={
         "Authorization": "Bearer hermes-proxy", "content-type": "application/json"})
-    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    resp = json.loads(urlopen_retry(req, timeout=120))
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
@@ -177,14 +179,14 @@ def call_external(lane, model, prompt, max_tokens=1500):
                            "messages": [{"role": "user", "content": prompt}]}).encode()
         req = urllib.request.Request(cfg["url"], data=body, headers={
             "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-        resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+        resp = json.loads(urlopen_retry(req, timeout=120))
         return "".join(p.get("text", "") for p in resp.get("content", []) if p.get("type") == "text")
     # openai-compatible (chatgpt + grok)
     body = json.dumps({"model": model, "max_tokens": max_tokens,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(cfg["url"], data=body, headers={
         "Authorization": f"Bearer {key}", "content-type": "application/json"})
-    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    resp = json.loads(urlopen_retry(req, timeout=120))
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
