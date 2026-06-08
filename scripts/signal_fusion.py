@@ -205,6 +205,32 @@ def fuse_all(priority_only: bool = False) -> list:
     return results
 
 
+def fuse_active() -> list:
+    """Intraday cadence (audit gate): fuse only the active DECISION set — today's GO/WAIT scalp candidates,
+    open proposals, open paper trades, and active watchlist — so those names have fresh fusion before
+    proposal/alert decisions, without re-fusing the full ~2700-symbol universe. Fast (~tens of symbols)."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT DISTINCT symbol FROM (
+            SELECT symbol FROM trade_ai_scans WHERE run_date >= CURRENT_DATE AND decision IN ('GO','WAIT')
+            UNION SELECT symbol FROM paper_trade_proposals WHERE status IN ('PENDING','APPROVED')
+            UNION SELECT symbol FROM paper_trades WHERE lower(status) = 'open'
+            UNION SELECT symbol FROM watchlist_items WHERE status = 'active'
+        ) u WHERE symbol IS NOT NULL
+    """)
+    symbols = [r["symbol"] for r in cur.fetchall()]
+    conn.close()
+    results = []
+    for sym in symbols:
+        try:
+            results.append(fuse_signals(sym))
+        except Exception as e:
+            print(f"  [fusion] {sym}: error — {e}")
+    return results
+
+
 if __name__ == "__main__":
     if "--symbol" in sys.argv:
         sym = sys.argv[sys.argv.index("--symbol") + 1].upper()
@@ -213,6 +239,14 @@ if __name__ == "__main__":
             print(json.dumps(r, indent=2, default=str))
         else:
             print(f"  {r['symbol']}: fused={r['fused_score']:.3f} cat={r['catalyst_score']:.2f} news={r['news_score']:.2f} social={r['social_score']:.2f} sent={r['sentiment_score']:.2f} [{r['severity']}]")
+    elif "--active" in sys.argv:
+        results = fuse_active()
+        print(f"[fusion] Fused {len(results)} active-set symbols (intraday cadence)")
+        high = [r for r in results if r["severity"] in ("high", "critical")]
+        if high:
+            print(f"  High/critical signals: {[r['symbol'] for r in high]}")
+        if "--json" in sys.argv:
+            print(json.dumps(results, indent=2, default=str))
     elif "--full" in sys.argv:
         results = fuse_all()
         print(f"[fusion] Fused {len(results)} symbols")
@@ -222,4 +256,4 @@ if __name__ == "__main__":
         if "--json" in sys.argv:
             print(json.dumps(results, indent=2, default=str))
     else:
-        print("Usage: --symbol SCHD [--json] | --full [--json]")
+        print("Usage: --symbol SCHD [--json] | --active [--json] | --full [--json]")
