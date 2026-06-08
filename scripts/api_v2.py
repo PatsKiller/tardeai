@@ -15903,6 +15903,16 @@ def _watchpool_list(query=None):
             "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
+def _watch_sectors(query=None):
+    """GET /api/v2/watch/sectors — Finviz sector list with DISTINCT constituent counts + sample
+    symbols, for the Add-Watch sector dropdown + constituent preview. Read-only."""
+    rows = _db_query("""SELECT sector, count(DISTINCT symbol) AS n,
+                          (array_agg(DISTINCT symbol ORDER BY symbol))[1:10] AS sample
+                        FROM incubator_universe WHERE sector IS NOT NULL AND sector <> ''
+                        GROUP BY sector ORDER BY count(DISTINCT symbol) DESC""") or []
+    return {"sectors": [{"sector": r["sector"], "count": r["n"], "sample": r.get("sample") or []} for r in rows]}
+
+
 def _llm_retry_health(query=None):
     """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
     import json as _jr
@@ -16339,6 +16349,7 @@ ROUTES = {
     "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/watch-directives": _watch_directives,
     "/api/v2/watchpool": _watchpool_list,
+    "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
