@@ -29,12 +29,10 @@ export default function StrategyHub({ onDrill }: Props) {
   const btData = btResults ?? []
 
   // Merge real paper trade win rates with strategy intelligence
-  const paperWrMap: Record<string, { win_rate: number; closed: number; pnl: number; profit_factor?: number }> = {}
+  const paperWrMap: Record<string, { win_rate: number; closed: number; pnl: number; profit_factor?: number; rr?: number | null; avg_r?: number | null }> = {}
   for (const s of topStrats) {
     if (s.closed > 0) {
-      const losses = s.closed - (s.wins ?? 0)
-      const grossProfit = s.net_pnl > 0 ? s.net_pnl : Math.max(0, (s.wins ?? 0) * Math.abs(s.avg_pnl ?? 0))
-      paperWrMap[s.strategy] = { win_rate: s.win_rate, closed: s.closed, pnl: s.net_pnl }
+      paperWrMap[s.strategy] = { win_rate: s.win_rate, closed: s.closed, pnl: s.net_pnl, rr: s.rr ?? null, avg_r: s.avg_r ?? null }
     }
   }
 
@@ -87,6 +85,8 @@ export default function StrategyHub({ onDrill }: Props) {
         win_rate: paper?.win_rate ?? s.win_rate,
         closed: paper?.closed ?? s.trade_count ?? 0,
         pnl: paper?.pnl ?? 0,
+        rr: paper?.rr ?? null,
+        avg_r: paper?.avg_r ?? s.avg_r ?? null,
         timeframe_class: cfg?.timeframe_class ?? '—',
         eligible: s.governance_state === 'VALIDATED' || (paper?.win_rate ?? 0) >= 55,
       }
@@ -174,8 +174,8 @@ export default function StrategyHub({ onDrill }: Props) {
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Scoreboard</div>
             <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Click a row to drill into strategy detail</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 0, fontSize: 9, color: 'var(--text3)', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-              <span>Strategy</span><span>Win Rate</span><span>Profit Factor</span><span>Trades</span><span>Status</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: 0, fontSize: 9, color: 'var(--text3)', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+              <span>Strategy</span><span>Win Rate</span><span>Profit Factor</span><span>R:R</span><span>Trades</span><span>Status</span>
             </div>
             {scoreboard.map((s: any) => (
               <div key={s.strategy_id}
@@ -191,7 +191,7 @@ export default function StrategyHub({ onDrill }: Props) {
                   }],
                 })}
                 style={{
-                  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 0,
+                  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: 0,
                   padding: '8px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer',
                   opacity: s.closed === 0 ? 0.4 : 1,
                 }}
@@ -201,6 +201,7 @@ export default function StrategyHub({ onDrill }: Props) {
                   {s.win_rate != null ? `${s.win_rate}%` : '—'}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text2)' }}>{s.profit_factor != null ? s.profit_factor.toFixed(2) : '—'}</span>
+                <span style={{ fontSize: 11, color: s.rr != null ? (s.rr >= 2 ? '#22c55e' : s.rr >= 1 ? '#f59e0b' : '#ef4444') : 'var(--text3)' }} title="realized payoff R:R = avg win / avg loss">{s.rr != null ? `${s.rr.toFixed(2)}:1` : '—'}</span>
                 <span style={{ fontSize: 11, color: s.closed === 0 ? 'var(--text3)' : 'var(--text0)' }}>{s.closed || 'no trades'}</span>
                 <span style={{
                   fontSize: 10, fontWeight: 600,

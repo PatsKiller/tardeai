@@ -100,6 +100,8 @@ def compute_statistics():
             sum(pnl)::numeric(10,2) as net_pnl,
             avg(pnl)::numeric(10,2) as avg_pnl,
             avg(r_multiple)::numeric(10,3) as avg_r,
+            avg(pnl) FILTER (WHERE pnl > 0)::numeric(10,2) as avg_win,
+            avg(pnl) FILTER (WHERE pnl < 0)::numeric(10,2) as avg_loss,
             avg(dollar_size)::numeric(10,2) as avg_size,
             avg(hold_time_min)::numeric(10,1) as avg_hold_min
         FROM paper_trades
@@ -110,6 +112,10 @@ def compute_statistics():
         cl = float(r["closed"] or 0)
         w = float(r["wins"] or 0)
         l = float(r["losses"] or 0)
+        avg_win = float(r["avg_win"]) if r["avg_win"] is not None else None
+        avg_loss = float(r["avg_loss"]) if r["avg_loss"] is not None else None
+        # realized payoff R:R = avg winning pnl / avg losing pnl (absolute)
+        rr = round(avg_win / abs(avg_loss), 2) if (avg_win and avg_loss) else None
         strategies.append({
             "strategy": r["strategy_id"],
             "total": r["total"],
@@ -120,6 +126,9 @@ def compute_statistics():
             "net_pnl": float(r["net_pnl"] or 0),
             "avg_pnl": float(r["avg_pnl"] or 0),
             "avg_r": float(r["avg_r"]) if r["avg_r"] else None,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "rr": rr,
             "avg_size": float(r["avg_size"] or 0),
             "avg_hold_min": float(r["avg_hold_min"]) if r["avg_hold_min"] else None,
         })
