@@ -1,5 +1,6 @@
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -11,6 +12,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: wl } = useApi<any>('/api/v2/watchlist/items?status=active', 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
+  const paMap = useProAnalystMap()
 
   const items: any[] = wl?.items ?? []
   const advMap: Record<string, any> = {}
@@ -64,7 +66,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                   onClick={() => onDrill({ title: it.symbol, subtitle: `${it.source ?? ''} · ${it.bucket ?? ''} · ${it.status}`, endpoint: '/api/v2/watchlist/items',
                     rows: [a ? { ...it, setup_advisory: a.note, setup_advisory_flag: a.advisory_flag, setup_prior_score: a.prior_score, current_rsi: a.rsi, rsi_band: a.band } : it] })}
                   style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 0.8fr 0.8fr 1.4fr', padding: '7px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{it.symbol}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{it.symbol} <ProAnalystPill symbol={it.symbol} map={paMap} compact /></span>
                   <span style={{ color: 'var(--text3)', fontSize: 9 }}>{it.source ?? '—'}{it.bucket ? ` · ${it.bucket}` : ''}</span>
                   <span style={{ color: 'var(--text2)' }}>{it.score != null ? Number(it.score).toFixed(0) : '—'}</span>
                   <span style={{ color: trendColor(it.trend), fontSize: 10 }}>{it.trend ?? '—'}</span>
