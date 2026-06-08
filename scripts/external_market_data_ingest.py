@@ -41,7 +41,15 @@ def _get_symbols() -> list:
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
+    # Universe = strategy-classified symbols PLUS every currently-open position. Open paper trades
+    # aren't always in ticker_strategy_classifications (e.g. TMHC, a swing_breakout entry), and without
+    # this UNION they'd never get a quote -> no current price on the Open Trades page. Generic: any open
+    # position is always quoted, regardless of classification.
+    cur.execute("""
+        SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
+        UNION
+        SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+    """)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
     return [s for s in symbols if "-" not in s and len(s) <= 5]
