@@ -69,6 +69,10 @@ _COMMANDS = {
     "add video <urls>": "Add YouTube videos to ingestion (paste 1+ URLs)",
     "add article <urls>": "Add article URLs to ingestion (paste 1+ URLs)",
     "backup docs": "Sync latest documentation to Google Drive",
+    "watch ticker SYM [because …]": "Watch a ticker (operator directive)",
+    "watch sector NAME": "Watch a sector (ETF + Finviz constituents)",
+    "watch trend KEYWORDS": "Watch a narrative/trend (Hermes discovers)",
+    "promote SYM": "One-tap promote a staged directive hit",
     "help": "List available commands",
 }
 
@@ -339,6 +343,12 @@ def parse_command(text: str) -> dict:
         return {"command": "add_article", "args": text.split(None, 2)[-1] if len(text.split(None, 2)) > 2 else ""}
     if re.search(r'https?://\S+', lower) and "youtube.com" not in lower and "youtu.be" not in lower:
         return {"command": "add_article", "args": text}
+
+    # Watch Directives (operator add-path) — watch ticker/sector/trend …, promote SYM
+    if lower.startswith("watch "):
+        return {"command": "watch", "args": text[6:].strip()}
+    if lower.startswith("promote "):
+        return {"command": "promote", "args": text[8:].strip()}
 
     return {"command": "unknown", "args": text}
 
@@ -691,10 +701,99 @@ def _handle_add_article(args: str) -> str:
     return "\n".join(lines)
 
 
+def _notify_both(msg: str):
+    """Broadcast a one-line directive event to BOTH operator chat IDs (best-effort)."""
+    try:
+        import requests
+        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not tok:
+            return
+        for cid in ("6993102664", "8797974247"):
+            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                          json={"chat_id": cid, "text": msg}, timeout=8)
+    except Exception:
+        pass
+
+
+def _handle_watch(args: str) -> str:
+    """watch ticker RKLB [because <thesis>] | watch sector Semiconductors | watch trend AI datacenter.
+    Creates an operator directive under the app role (firewall: Hermes can never write this)."""
+    import json as _j
+    parts = args.split(None, 1)
+    if not parts:
+        return "Usage: watch ticker SYM [because …] | watch sector NAME | watch trend KEYWORDS"
+    kind = parts[0].lower()
+    rest = (parts[1].strip() if len(parts) > 1 else "")
+    if kind not in ("ticker", "sector", "trend"):
+        # bareword → treat as a ticker symbol ("watch RKLB")
+        kind, rest = "ticker", args.strip()
+    rationale = None
+    low = rest.lower()
+    if " because " in low:
+        i = low.index(" because ")
+        rest, rationale = rest[:i].strip(), rest[i + 9:].strip()
+    if kind == "ticker":
+        sym = (rest.split()[0].upper() if rest.split() else "")
+        if not sym:
+            return "Need a symbol: watch ticker RKLB"
+        spec, label = {"symbol": sym}, f"watch {sym}"
+    elif kind == "sector":
+        if not rest:
+            return "Need a sector: watch sector Semiconductors"
+        spec, label = {"finviz_sector": rest}, f"sector {rest}"
+    else:
+        kws = [k.strip() for k in (rest.split(",") if "," in rest else rest.split())]
+        spec, label = {"keywords": [k for k in kws if k]}, f"trend {rest[:40]}"
+    try:
+        conn = _get_conn(); cur = conn.cursor()
+        cur.execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by)
+                       VALUES (%s, %s, %s::jsonb, %s, 'operator') RETURNING id""",
+                    (kind, label, _j.dumps(spec), rationale))
+        did = cur.fetchone()[0]; conn.commit()
+        msg = (f"✓ Watch directive #{did}: {kind} — {label}"
+               + (f"\nthesis: {rationale}" if rationale else "")
+               + "\nTrade AI + Hermes will honor it (Hermes proposes via staging only).")
+        _notify_both(f"📌 New watch directive #{did}: {kind} — {label}")
+        return msg
+    except Exception as e:
+        return f"watch error: {e}"
+
+
+def _handle_promote(args: str) -> str:
+    """promote SYM — operator one-tap promote the latest STAGED hit for SYM through the real engine."""
+    sym = (args.split()[0].upper() if args.split() else "")
+    if not sym:
+        return "Usage: promote SYM"
+    try:
+        conn = _get_conn(); cur = conn.cursor()
+        cur.execute("""SELECT directive_id FROM watch_directive_hits
+                       WHERE symbol=%s AND promotion_status='STAGED_FOR_REVIEW'
+                       ORDER BY surfaced_at DESC LIMIT 1""", (sym,))
+        row = cur.fetchone()
+        if not row:
+            return f"No staged hit for {sym} to promote (nothing awaiting one-tap)."
+        did = row[0]
+        import directive_promotion as _dp
+        res = _dp.promote_directive_lead(sym, did, "telegram operator one-tap", "operator",
+                                         auto=True, actor="operator")
+        st = res.get("status")
+        qual = res.get("qualified_strategies") or []
+        out = f"{sym}: {st}" + (f" → {', '.join(qual)}" if qual else "")
+        _notify_both(f"✅ Operator promoted {sym} → {st}")
+        return out
+    except Exception as e:
+        return f"promote error: {e}"
+
+
 def process_command(cmd: dict) -> str:
     """Process a parsed command and return response text."""
     command = cmd["command"]
     args = cmd["args"]
+
+    if command == "watch":
+        return _handle_watch(args)
+    if command == "promote":
+        return _handle_promote(args)
 
     if command == "help":
         lines = ["*Trade AI Commands:*", ""]
