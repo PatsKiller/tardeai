@@ -48,8 +48,15 @@ def main():
         y["dup"] += r["duplicates"] or 0; y["stale"] += r["stale_items"] or 0; y["false"] += r["false_catalysts"] or 0
     cur.execute("SELECT source_key, status, degraded FROM data_source_health")
     health = {r["source_key"]: r for r in cur.fetchall()}
-    cur.execute("SELECT source_name, credibility_score FROM research_sources WHERE credibility_score IS NOT NULL")
-    cred = {r["source_name"]: float(r["credibility_score"]) for r in cur.fetchall()}
+    cur.execute("SELECT source_name, credibility_score, notes FROM research_sources WHERE credibility_score IS NOT NULL")
+    cred, core_approved = {}, set()
+    for r in cur.fetchall():
+        cred[r["source_name"]] = float(r["credibility_score"])
+        try:
+            if r["notes"] and json.loads(r["notes"]).get("operator_core_approved"):
+                core_approved.add(r["source_name"])
+        except Exception:
+            pass
     c.close()
 
     def health_for(src):
@@ -84,8 +91,11 @@ def main():
         score = round(precision + outcome + yield_pts + health_pts + cred_pts, 1)
         score = max(0.0, min(100.0, score))
 
-        # tiering (core is computed but Gate-4 operator-gated for activation)
-        if total >= 100 and go_rate < 0.01:
+        # tiering (core is operator-gated: auto-core needs score+outcome/credibility; or an explicit
+        # operator core-approval override pins it core regardless of formula).
+        if src in core_approved:
+            tier = "core"  # operator-approved override
+        elif total >= 100 and go_rate < 0.01:
             tier = "demoted"  # high volume, ~zero precision = noise
         elif health_pts < 0:
             tier = "demoted"

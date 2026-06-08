@@ -1,8 +1,9 @@
 {
-  "updated_at": "2026-06-08T14:39:36.247233+00:00",
+  "updated_at": "2026-06-08T14:43:17.780140+00:00",
   "min_trades": 5,
   "tier_counts": {
-    "trusted": 4,
+    "core": 1,
+    "trusted": 3,
     "probationary": 6,
     "candidate": 135,
     "demoted": 3
@@ -11,8 +12,8 @@
   "sources": [
     {
       "source": "hermes",
-      "maturity_score": 57.5,
-      "tier": "trusted",
+      "maturity_score": 62.8,
+      "tier": "core",
       "total_signals": 76,
       "go_signals": 34,
       "go_rate": 0.4474,
@@ -23,7 +24,7 @@
         "outcome": 0.0,
         "yield": 0.0,
         "health": 0.0,
-        "credibility": 7.5
+        "credibility": 12.8
       },
       "outcome_proven": false
     },
@@ -1198,7 +1199,61 @@
       "outcome_proven": false
     },
     {
+      "source": "google_news:TMX Newsfile",
+      "maturity_score": 2.9,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.4
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:constellationenergy.com",
+      "maturity_score": 2.9,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 3,
+      "win_rate": 100.0,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.4
+      },
+      "outcome_proven": false
+    },
+    {
       "source": "google_news:Utility Dive",
+      "maturity_score": 2.9,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.4
+      },
+      "outcome_proven": false
+    },
+    {
+      "source": "google_news:CoinGecko",
       "maturity_score": 2.9,
       "tier": "candidate",
       "total_signals": 1,
@@ -1306,6 +1361,24 @@
       "outcome_proven": false
     },
     {
+      "source": "google_news:SwimSwam",
+      "maturity_score": 2.9,
+      "tier": "candidate",
+      "total_signals": 1,
+      "go_signals": 1,
+      "go_rate": 1.0,
+      "trades_matched": 0,
+      "win_rate": null,
+      "components": {
+        "precision": 2.5,
+        "outcome": 0.0,
+        "yield": 0.0,
+        "health": 0.0,
+        "credibility": 0.4
+      },
+      "outcome_proven": false
+    },
+    {
       "source": "google_news:RTX",
       "maturity_score": 2.9,
       "tier": "candidate",
@@ -1324,80 +1397,8 @@
       "outcome_proven": false
     },
     {
-      "source": "google_news:TMX Newsfile",
-      "maturity_score": 2.5,
-      "tier": "candidate",
-      "total_signals": 1,
-      "go_signals": 1,
-      "go_rate": 1.0,
-      "trades_matched": 0,
-      "win_rate": null,
-      "components": {
-        "precision": 2.5,
-        "outcome": 0.0,
-        "yield": 0.0,
-        "health": 0.0,
-        "credibility": 0.0
-      },
-      "outcome_proven": false
-    },
-    {
-      "source": "google_news:constellationenergy.com",
-      "maturity_score": 2.5,
-      "tier": "candidate",
-      "total_signals": 1,
-      "go_signals": 1,
-      "go_rate": 1.0,
-      "trades_matched": 3,
-      "win_rate": 100.0,
-      "components": {
-        "precision": 2.5,
-        "outcome": 0.0,
-        "yield": 0.0,
-        "health": 0.0,
-        "credibility": 0.0
-      },
-      "outcome_proven": false
-    },
-    {
-      "source": "google_news:CoinGecko",
-      "maturity_score": 2.5,
-      "tier": "candidate",
-      "total_signals": 1,
-      "go_signals": 1,
-      "go_rate": 1.0,
-      "trades_matched": 0,
-      "win_rate": null,
-      "components": {
-        "precision": 2.5,
-        "outcome": 0.0,
-        "yield": 0.0,
-        "health": 0.0,
-        "credibility": 0.0
-      },
-      "outcome_proven": false
-    },
-    {
-      "source": "google_news:SwimSwam",
-      "maturity_score": 2.5,
-      "tier": "candidate",
-      "total_signals": 1,
-      "go_signals": 1,
-      "go_rate": 1.0,
-      "trades_matched": 0,
-      "win_rate": null,
-      "components": {
-        "precision": 2.5,
-        "outcome": 0.0,
-        "yield": 0.0,
-        "health": 0.0,
-        "credibility": 0.0
-      },
-      "outcome_proven": false
-    },
-    {
       "source": "google_news:USDA (.gov)",
-      "maturity_score": 2.5,
+      "maturity_score": 2.9,
       "tier": "candidate",
       "total_signals": 1,
       "go_signals": 1,
@@ -1409,7 +1410,7 @@
         "outcome": 0.0,
         "yield": 0.0,
         "health": 0.0,
-        "credibility": 0.0
+        "credibility": 0.4
       },
       "outcome_proven": false
     },
