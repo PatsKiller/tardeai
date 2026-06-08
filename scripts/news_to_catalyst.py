@@ -72,6 +72,26 @@ def _classify(title: str, summary: str) -> str:
     return "other"
 
 
+# Hermes-bridged (and similar) titles carry an explicit "<category>: SYMBOL" prefix (e.g. "earnings: NRIX",
+# "news_momentum: QTEX"). These bare categories don't match the directional keyword phrases above, so they
+# used to fall through to 'other'/0.3 (flat impact 3.0). Map the prefix to a typed, NON-directional category
+# + a moderate in-code weight (no schema change; no beat/miss or upgrade/downgrade assumption injected).
+HERMES_PREFIX_WEIGHTS = {
+    "regulatory": 0.75, "fda": 0.85, "merger": 0.75, "contract": 0.70, "partnership": 0.65,
+    "guidance": 0.65, "earnings": 0.60, "dividend": 0.55, "insider": 0.55, "buyback": 0.50,
+    "analyst": 0.50, "product": 0.50, "news_momentum": 0.40, "sentiment": 0.35,
+}
+
+
+def _prefix_type(title: str):
+    """If the title is a bare '<category>: SYMBOL' Hermes-style catalyst, return (category, weight); else (None,None)."""
+    if title and ":" in title:
+        pfx = title.split(":", 1)[0].strip().lower().replace(" ", "_")
+        if pfx in HERMES_PREFIX_WEIGHTS:
+            return pfx, HERMES_PREFIX_WEIGHTS[pfx]
+    return None, None
+
+
 def _severity_from_weight(weight: float) -> str:
     if weight >= 0.85:
         return "high"
@@ -103,8 +123,14 @@ def run(as_json: bool = False):
 
     created = []
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
-        ctype = _classify(title, summary)
-        weight = weights.get(ctype, 0.3)
+        # Prefer the explicit Hermes-style "<category>:" prefix; else fall back to keyword classification.
+        ptype, pweight = _prefix_type(title)
+        if ptype:
+            ctype, weight, classifier = ptype, pweight, "prefix_v1"
+        else:
+            ctype = _classify(title, summary)
+            weight = weights.get(ctype, 0.3)
+            classifier = "keyword_v1"
         severity = _severity_from_weight(weight)
 
         cur.execute("""
@@ -119,7 +145,7 @@ def run(as_json: bool = False):
             symbol, strategy_type, ctype, title, summary,
             severity, round(weight, 2), round(weight * 10, 1),
             source or "news_to_catalyst", source_url, published_at,
-            json.dumps({"news_article_id": nid, "classifier": "keyword_v1"})
+            json.dumps({"news_article_id": nid, "classifier": classifier})
         ))
         _row = cur.fetchone()
         if _row is None:
