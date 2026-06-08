@@ -1,3 +1,4 @@
+| `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Scoreboard R:R + Expectancy columns, ∞ for no-loss, expectancy-aware status (display), self-healing freshness |
 ## Portfolio Lookthrough Cadence Migration — ALL CADENCES COMPLETE (Phase 210, 2026-06-07)
 | Document | Purpose |
 |----------|---------|
