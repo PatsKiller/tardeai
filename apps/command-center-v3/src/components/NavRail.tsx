@@ -13,6 +13,7 @@ const HUBS = [
   { to: '/journal', label: 'Journal' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/watchpool', label: 'Watchpool' },
+  { to: '/sectors', label: 'Sectors' },
   { to: '/system', label: 'System' },
 ]
 
