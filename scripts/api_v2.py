@@ -15768,6 +15768,16 @@ def _hermes_catalyst_calibration(query=None):
             "by_type": types[:20], "trend": trend, "recent_transitions": transitions[:10]}
 
 
+def _llm_retry_health(query=None):
+    """GET /api/v2/system/llm-retry-health — read-only LLM transient-failure/retry rates over time."""
+    import json as _jr
+    try:
+        return _jr.loads((PROJECT_ROOT / "data" / "runtime" / "llm_retry_health.json").read_text())
+    except Exception:
+        return {"status": "NO_DATA", "note": "no transient incidents recorded yet (run scripts/llm_retry_monitor.py)",
+                "last_24h": {"incidents": 0, "recovered": 0, "gave_up": 0}}
+
+
 def _hermes_llm_auth_status(query=None):
     """GET /api/v2/hermes/llm-auth-status — read-only OAuth/auth status per LLM lane + guided login commands.
     Credentials are never entered or stored here; OAuth (Google SSO) is completed by the operator in a browser."""
@@ -16191,6 +16201,7 @@ ROUTES = {
     "/api/v2/hermes/self-learning-loops": _hermes_self_learning_loops,
     "/api/v2/hermes/loop-detail": _hermes_loop_detail,
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
+    "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
