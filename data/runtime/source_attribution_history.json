@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-08T14:33:29.943987+00:00",
+  "updated_at": "2026-06-08T14:39:36.347075+00:00",
   "snapshots": [
     {
       "date": "2026-06-08",
@@ -14,6 +14,44 @@
       "status": "HEALTHY",
       "notes": [],
       "healthy_overlap_streak_days": 1
+    },
+    {
+      "date": "2026-06-08",
+      "ts": "2026-06-08T14:38:48.276936+00:00",
+      "traded_30d": 19,
+      "traded_with_news_7d": 16,
+      "overlap_pct": 84.2,
+      "source_rows": 148,
+      "sources_with_trades": 9,
+      "sources_outcome_proven": 5,
+      "total_attributions": 38,
+      "delta": {
+        "overlap_pct": 0.0,
+        "total_attributions": 38,
+        "sources_with_trades": 9
+      },
+      "status": "HEALTHY",
+      "notes": [],
+      "healthy_overlap_streak_days": 2
+    },
+    {
+      "date": "2026-06-08",
+      "ts": "2026-06-08T14:39:36.347075+00:00",
+      "traded_30d": 19,
+      "traded_with_news_7d": 16,
+      "overlap_pct": 84.2,
+      "source_rows": 148,
+      "sources_with_trades": 9,
+      "sources_outcome_proven": 5,
+      "total_attributions": 38,
+      "delta": {
+        "overlap_pct": 0.0,
+        "total_attributions": 0,
+        "sources_with_trades": 0
+      },
+      "status": "HEALTHY",
+      "notes": [],
+      "healthy_overlap_streak_days": 3
     }
   ]
 }

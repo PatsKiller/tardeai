@@ -67,7 +67,7 @@ def main():
         precision = min(50.0, go_rate * 200) * vol_factor          # 0-50
 
         tm = p["trades_matched"] or 0
-        wr = p["win_rate"]
+        wr = float(p["win_rate"]) if p["win_rate"] is not None else None  # numeric col → cast to float
         outcome = 0.0
         if tm >= MIN_TRADES and wr is not None:
             outcome = max(-20.0, min(20.0, (wr - 50) * 0.8))       # -20..+20
