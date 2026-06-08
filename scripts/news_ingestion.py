@@ -65,6 +65,25 @@ def _get_symbols(priority_only: bool = False) -> list:
     except Exception:
         pass  # non-fatal — incubator table may not exist
 
+    # Actionable/traded universe — ALWAYS cover symbols we actually trade/hold/watch so source attribution +
+    # catalyst calibration have data (closes the news↔trade overlap gap). Prepended (priority-first) so the
+    # per-run cap can never truncate them.
+    try:
+        conn.rollback()  # clear any aborted-transaction state from the optional incubator query above
+        cur.execute("""
+            SELECT DISTINCT u.symbol, COALESCE(tsc.strategy_type, 'traded') AS strategy_type FROM (
+                SELECT symbol FROM paper_trades WHERE entry_time > now() - interval '30 days' AND symbol IS NOT NULL
+                UNION SELECT symbol FROM paper_trade_proposals WHERE status IN ('PENDING','APPROVED') AND symbol IS NOT NULL
+                UNION SELECT symbol FROM trade_ai_scans WHERE run_date >= CURRENT_DATE AND decision IN ('GO','WAIT') AND symbol IS NOT NULL
+                UNION SELECT symbol FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
+            ) u LEFT JOIN ticker_strategy_classifications tsc ON tsc.symbol = u.symbol
+        """)
+        actionable = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]
+        act_syms = {a[0] for a in actionable}
+        symbols = actionable + [s for s in symbols if s[0] not in act_syms]
+    except Exception:
+        pass  # non-fatal — fall back to base universe
+
     conn.close()
     return symbols
 
@@ -269,7 +288,8 @@ def ingest(priority_only: bool = False) -> dict:
     total_scanned = 0
     source_counts = {"yahoo_rss": 0, "finnhub": 0, "benzinga_rss": 0, "benzinga_api": 0}
 
-    for sym, strategy_type in symbols[:30]:  # Limit to avoid rate limits
+    _news_max = int(os.environ.get("NEWS_INGEST_MAX", "60"))  # actionable-first; raised from 30 to cover traded universe
+    for sym, strategy_type in symbols[:_news_max]:  # Limit to avoid rate limits
         articles = _fetch_yahoo_rss(sym)
         if finnhub_key:
             articles.extend(_fetch_finnhub(sym, finnhub_key))
