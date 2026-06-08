@@ -1,0 +1,139 @@
+{
+  "updated_at": "2026-06-08T13:57:41.630786+00:00",
+  "settle_days": 2,
+  "lookback_days": 120,
+  "min_samples": 10,
+  "total_settled_catalysts": 4529,
+  "dropped_as_data_error": 219,
+  "credible_samples": 4310,
+  "by_type": {
+    "other": {
+      "samples": 3945,
+      "hit_rate": 0.26,
+      "avg_abs_move_pct": 2.68,
+      "avg_move_pct": 0.02,
+      "weight_multiplier": 0.76,
+      "trusted": true
+    },
+    "analyst_upgrade": {
+      "samples": 134,
+      "hit_rate": 0.239,
+      "avg_abs_move_pct": 2.45,
+      "avg_move_pct": 0.7,
+      "weight_multiplier": 0.739,
+      "trusted": true
+    },
+    "merger_acquisition": {
+      "samples": 73,
+      "hit_rate": 0.26,
+      "avg_abs_move_pct": 3.47,
+      "avg_move_pct": 1.4,
+      "weight_multiplier": 0.76,
+      "trusted": true
+    },
+    "earnings_beat": {
+      "samples": 60,
+      "hit_rate": 0.367,
+      "avg_abs_move_pct": 5.13,
+      "avg_move_pct": 2.66,
+      "weight_multiplier": 0.867,
+      "trusted": true
+    },
+    "geopolitical": {
+      "samples": 29,
+      "hit_rate": 0.069,
+      "avg_abs_move_pct": 1.61,
+      "avg_move_pct": -0.14,
+      "weight_multiplier": 0.569,
+      "trusted": true
+    },
+    "earnings_miss": {
+      "samples": 19,
+      "hit_rate": 0.526,
+      "avg_abs_move_pct": 4.4,
+      "avg_move_pct": -3.69,
+      "weight_multiplier": 1.026,
+      "trusted": true
+    },
+    "buyback": {
+      "samples": 13,
+      "hit_rate": 0.231,
+      "avg_abs_move_pct": 2.49,
+      "avg_move_pct": 0.36,
+      "weight_multiplier": 0.731,
+      "trusted": true
+    },
+    "ceo_change": {
+      "samples": 9,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.96,
+      "avg_move_pct": 0.4,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "guidance_raise": {
+      "samples": 6,
+      "hit_rate": 0.5,
+      "avg_abs_move_pct": 3.22,
+      "avg_move_pct": -0.17,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "contract_win": {
+      "samples": 5,
+      "hit_rate": 0.2,
+      "avg_abs_move_pct": 1.35,
+      "avg_move_pct": -0.09,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "insider_buy": {
+      "samples": 5,
+      "hit_rate": 0.2,
+      "avg_abs_move_pct": 2.13,
+      "avg_move_pct": 1.1,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "short_squeeze": {
+      "samples": 4,
+      "hit_rate": 0.25,
+      "avg_abs_move_pct": 2.28,
+      "avg_move_pct": -2.28,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "stock_split": {
+      "samples": 3,
+      "hit_rate": 0.333,
+      "avg_abs_move_pct": 1.43,
+      "avg_move_pct": 1.39,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "sector_rotation": {
+      "samples": 2,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.16,
+      "avg_move_pct": -0.06,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "dividend_increase": {
+      "samples": 2,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.99,
+      "avg_move_pct": -0.99,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "dividend_cut": {
+      "samples": 1,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.21,
+      "avg_move_pct": -0.21,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    }
+  }
+}

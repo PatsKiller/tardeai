@@ -1,0 +1,3 @@
+418a419,420
+> # ── catalyst classifier calibration (outcome self-learning, advisory): daily realized-move recompute of per-type weight multipliers (data/runtime/catalyst_calibration.json). Read-only on prices. ──
+> 30 5 * * * cd $PROJ && flock -n /tmp/catalyst_calibration.lock $PY scripts/catalyst_calibration.py >> logs/catalyst_calibration.log 2>&1

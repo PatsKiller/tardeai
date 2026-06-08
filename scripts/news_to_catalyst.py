@@ -121,17 +121,31 @@ def run(as_json: bool = False):
     """)
     rows = cur.fetchall()
 
+    # World-class hybrid classifier (deterministic + local-LLM residual, outcome-calibrated). LLM is budgeted
+    # per run so the 10-min cron stays safe; deterministic handles the bulk, LLM only the hardest residual.
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from catalyst_classifier import classify as _cc
+    except Exception:
+        _cc = None
+    LLM_BUDGET = int(os.environ.get("CATALYST_LLM_BUDGET", "25"))
     created = []
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
-        # Prefer the explicit Hermes-style "<category>:" prefix; else fall back to keyword classification.
-        ptype, pweight = _prefix_type(title)
-        if ptype:
-            ctype, weight, classifier = ptype, pweight, "prefix_v1"
-        else:
-            ctype = _classify(title, summary)
-            weight = weights.get(ctype, 0.3)
-            classifier = "keyword_v1"
-        severity = _severity_from_weight(weight)
+        if _cc:
+            cls = _cc(title, summary, symbol, allow_llm=(LLM_BUDGET > 0))
+            if cls.get("method") == "llm":
+                LLM_BUDGET -= 1
+            ctype, severity = cls["catalyst_type"], cls["severity"]
+            confidence, impact = cls["confidence"], cls["impact_score"]
+            payload = {"news_article_id": nid, "classifier": cls["method"], "direction": cls["direction"],
+                       "confidence": confidence, "calibration_mult": cls.get("calibration_mult", 1.0),
+                       "rationale": cls.get("rationale", "")}
+        else:  # fallback to legacy prefix/keyword if module import fails
+            ptype, pweight = _prefix_type(title)
+            ctype, weight = (ptype, pweight) if ptype else (_classify(title, summary), weights.get(_classify(title, summary), 0.3))
+            severity, confidence, impact = _severity_from_weight(weight), round(weight, 2), round(weight * 10, 1)
+            payload = {"news_article_id": nid, "classifier": "legacy"}
 
         cur.execute("""
             INSERT INTO catalyst_events
@@ -143,21 +157,17 @@ def run(as_json: bool = False):
             RETURNING id
         """, (
             symbol, strategy_type, ctype, title, summary,
-            severity, round(weight, 2), round(weight * 10, 1),
+            severity, confidence, impact,
             source or "news_to_catalyst", source_url, published_at,
-            json.dumps({"news_article_id": nid, "classifier": classifier})
+            json.dumps(payload)
         ))
         _row = cur.fetchone()
         if _row is None:
             continue  # (symbol, headline) already present (race with news_ingestion inline) — skip
         new_id = _row[0]
         created.append({
-            "catalyst_id": new_id,
-            "news_id": nid,
-            "symbol": symbol,
-            "catalyst_type": ctype,
-            "severity": severity,
-            "impact_score": round(weight * 10, 1),
+            "catalyst_id": new_id, "news_id": nid, "symbol": symbol,
+            "catalyst_type": ctype, "severity": severity, "impact_score": impact,
         })
 
     conn.commit()
