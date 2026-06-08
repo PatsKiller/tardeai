@@ -15637,6 +15637,29 @@ def _hermes_workflow_matrix(query=None):
     }
 
 
+def _pro_analyst_pills(query=None):
+    """GET /api/v2/pro-analyst/pills [?symbol=AAPL] — advisory professional-analyst layer: per-symbol Yahoo
+    consensus + targets + upgrade/downgrade events + internal-vs-Street divergence + coverage by tier.
+    Read-only; never affects GO/WAIT or scoring."""
+    import json as _jp
+    try:
+        d = _jp.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
+    except Exception:
+        return {"note": "run scripts/build_pro_analyst_read_model.py", "pills": []}
+    sym = (query or {}).get("symbol")
+    if isinstance(sym, list):
+        sym = sym[0] if sym else None
+    if sym:
+        p = next((x for x in d.get("pills", []) if x["symbol"] == sym.upper()), None)
+        return {"updated_at": d.get("updated_at"), "symbol": sym.upper(), "pill": p,
+                "found": p is not None, "note": d.get("note")}
+    return {"updated_at": d.get("updated_at"), "symbol_count": d.get("symbol_count"),
+            "coverage_by_tier": d.get("coverage_by_tier"), "note": d.get("note"),
+            "with_consensus": sum(1 for p in d.get("pills", []) if p.get("has_professional_coverage")),
+            "divergent": [p["symbol"] for p in d.get("pills", []) if p.get("divergence") == "divergent"],
+            "pills": [p for p in d.get("pills", []) if p.get("has_professional_coverage")][:50]}
+
+
 def _hermes_source_maturity(query=None):
     """GET /api/v2/hermes/source-maturity — read-only source maturity board (Gate 1-5): per-source tier,
     maturity_score, go-rate, outcome, + the operator vetting-action queue. Reads runtime JSONs."""
@@ -16139,6 +16162,7 @@ ROUTES = {
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
+    "/api/v2/pro-analyst/pills": _pro_analyst_pills,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/external-research": _hermes_external_research,

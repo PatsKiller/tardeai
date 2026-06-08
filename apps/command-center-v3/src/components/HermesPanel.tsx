@@ -73,6 +73,7 @@ export default function HermesPanel() {
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
   const { data: smat } = useApi<any>('/api/v2/hermes/source-maturity', 300_000)
   const { data: ccal } = useApi<any>('/api/v2/hermes/catalyst-calibration', 300_000)
+  const { data: pa } = useApi<any>('/api/v2/pro-analyst/pills', 300_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
   const [openLoop, setOpenLoop] = useState<string | null>(null)
 
@@ -190,6 +191,36 @@ export default function HermesPanel() {
             </tbody>
           </table>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {smat.note}</div>
+        </div>
+      )}
+
+      {/* Professional Analyst Layer (Gate A, advisory) */}
+      {pa?.pills && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Professional Analyst Consensus <span style={{ fontSize: 9, color: 'var(--text3)' }}>(advisory · Yahoo)</span></div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            {pa.with_consensus} symbols with Street consensus · coverage: {Object.entries(pa.coverage_by_tier || {}).map(([t, v]: any) => `${t} ${v.pct}%`).join(' · ')}
+            {(pa.divergent || []).length > 0 && <span style={{ color: '#f59e0b' }}> · divergent: {pa.divergent.join(', ')}</span>}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+              {['Symbol', 'Street', 'Analysts', 'Mean target', 'Upside', 'Internal', 'Divergence'].map(h => <th key={h} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {pa.pills.slice(0, 12).map((p: any) => (
+                <tr key={p.symbol} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '3px 6px', fontFamily: 'monospace', fontWeight: 600 }}>{p.symbol}{p.stale && <span title="stale >7d" style={{ color: '#f59e0b' }}> ⚠</span>}</td>
+                  <td style={{ padding: '3px 6px', fontWeight: 600, color: (p.recommendation_key || '').includes('buy') ? '#22c55e' : (p.recommendation_key || '').includes('sell') ? '#ef4444' : 'var(--text2)' }}>{p.recommendation_key || '—'}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{p.number_of_analyst_opinions || '—'}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{p.target_mean_price != null ? '$' + p.target_mean_price : '—'}</td>
+                  <td style={{ padding: '3px 6px', color: (p.upside_to_mean_target_pct ?? 0) > 0 ? '#22c55e' : '#ef4444' }}>{p.upside_to_mean_target_pct != null ? p.upside_to_mean_target_pct + '%' : '—'}</td>
+                  <td style={{ padding: '3px 6px', color: 'var(--text3)' }}>{p.internal_direction || '—'}</td>
+                  <td style={{ padding: '3px 6px', color: p.divergence === 'divergent' ? '#ef4444' : p.divergence === 'aligned' ? '#22c55e' : 'var(--text3)' }}>{p.divergence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>ℹ {pa.note} Microcaps/ETFs without coverage show as "no professional coverage" (info, not failure).</div>
         </div>
       )}
 
