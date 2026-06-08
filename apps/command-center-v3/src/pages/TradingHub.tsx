@@ -456,19 +456,117 @@ export default function TradingHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Scalp' && scalpData && (
+      {tab === 'Scalp' && scalpData && (() => {
+        // ── Live scalp signals: unwrap {timestamp,data:{...}} and present clearly + actionably ──
+        const GC = (g?: string) => { const u = (g || '').toUpperCase(); return u === 'A' ? '#22c55e' : u === 'B' ? '#84cc16' : u === 'C' ? '#f59e0b' : u === 'D' || u === 'F' ? '#ef4444' : 'var(--text3)' }
+        const raw: any[] = scalpData.signals ?? []
+        const sigs = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
+        const n = sigs.length
+        const byG: Record<string, number> = {}; sigs.forEach((d: any) => { const g = (d.grade || '?').toUpperCase(); byG[g] = (byG[g] || 0) + 1 })
+        const byD = { GO: 0, WAIT: 0, 'NO-GO': 0 } as Record<string, number>
+        sigs.forEach((d: any) => { const k = (d.decision || '').toUpperCase().replace('_', '-'); if (byD[k] != null) byD[k]++ })
+        const catalyst = sigs.filter((d: any) => d.catalyst_verified).length
+        const avgScore = n ? Math.round(sigs.reduce((a: number, d: any) => a + (d.score || 0), 0) / n) : 0
+        // "prime" actionable scalp = GO + grade A + catalyst verified (the criteria that actually matter)
+        const prime = sigs.filter((d: any) => (d.decision || '').toUpperCase() === 'GO' && (d.grade || '').toUpperCase() === 'A' && d.catalyst_verified)
+        const gradeRank: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 }
+        const ordered = [...sigs].sort((a: any, b: any) => {
+          const da = (a.decision || '').toUpperCase() === 'GO' ? 1 : 0, db = (b.decision || '').toUpperCase() === 'GO' ? 1 : 0
+          if (da !== db) return db - da
+          const ga = gradeRank[(a.grade || '').toUpperCase()] ?? -1, gb = gradeRank[(b.grade || '').toUpperCase()] ?? -1
+          if (ga !== gb) return gb - ga
+          return (b.score || 0) - (a.score || 0)
+        })
+        const Tip = ({ t, children }: { t: string; children: any }) => (
+          <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
+        )
+        const Metric = ({ label, value, color, tip }: { label: string; value: any; color?: string; tip: string }) => (
+          <div title={tip} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', cursor: 'help', minWidth: 100, flex: '1 1 100px' }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: color || 'var(--text0)', marginTop: 2 }}>{value}</div>
+          </div>
+        )
+        return (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Scalp Live ({scalpData.count ?? 0} signals)</div>
-          {(scalpData.signals ?? []).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No live scalp signals</div> :
-          (scalpData.signals ?? []).slice(0, 10).map((s: any, i: number) => (
-            <div key={i} onClick={() => onDrill({ title: s.symbol ?? `Signal ${i}`, subtitle: 'Scalp', endpoint: '/api/v2/scalp/live', rows: [s] })}
-              style={{ padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
-              {s.symbol ?? JSON.stringify(s).slice(0, 80)}
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Scalp Live — Signal Screen</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>Live scalp candidates, graded. Prime setups = GO · grade A · catalyst-verified (with high RVOL). These are advisory — execution is gated.</div>
+
+          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No live scalp signals.</div> : (<>
+
+          {/* Prime-setup alert */}
+          <div style={{ background: prime.length ? 'rgba(34,197,94,.1)' : 'var(--bg2)', border: `1px solid ${prime.length ? 'rgba(34,197,94,.4)' : 'var(--border)'}`, borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+            {prime.length ? (<>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>✦ {prime.length} prime setup{prime.length > 1 ? 's' : ''} — GO · A · catalyst</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {prime.slice(0, 8).map((d: any, i: number) => (
+                  <span key={i} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `GO · A · score ${d.score} · RVOL ${d.rvol}`, endpoint: '/api/v2/scalp/live', rows: [d] })} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
+                    <b style={{ fontFamily: 'monospace' }}>{d.symbol}</b> {d.change_percent ? `${d.change_percent}` : ''} {d.rvol ? `RVOL ${d.rvol}` : ''}
+                  </span>
+                ))}
+              </div>
+            </>) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No prime setups right now (need GO + grade A + verified catalyst). Watching {n} candidates.</div>}
+          </div>
+
+          {/* Summary band */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <Metric label="Signals" value={n} tip="Live scalp candidates on the screen." />
+            <Metric label="GO" value={byD.GO} color={byD.GO > 0 ? '#22c55e' : undefined} tip="Candidates graded GO — passed the scalp decision gate." />
+            <Metric label="Grade A" value={byG['A'] || 0} color={(byG['A'] || 0) > 0 ? '#22c55e' : undefined} tip="Top-grade setups. Grade reflects setup quality (float/RVOL/catalyst/structure)." />
+            <Metric label="Catalyst ✓" value={`${catalyst}/${n}`} tip="Signals with a verified catalyst. A real catalyst is required for a prime scalp." />
+            <Metric label="Avg Score" value={avgScore} tip="Mean composite score across candidates (higher = stronger setup)." />
+          </div>
+
+          {/* Decision + grade distribution bars */}
+          <div style={{ marginBottom: 14, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 240px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="GO = actionable, WAIT = watch, NO-GO = rejected.">DECISION ⓘ</Tip></div>
+              <div style={{ display: 'flex', height: 20, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                {(['GO', 'WAIT', 'NO-GO'] as const).map(k => byD[k] > 0 && (
+                  <div key={k} title={`${k}: ${byD[k]}`} style={{ width: `${(byD[k] / n) * 100}%`, background: decisionColor(k === 'NO-GO' ? 'NO' : k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>{(byD[k] / n) > 0.08 ? byD[k] : ''}</div>
+                ))}
+              </div>
             </div>
-          ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live</div>
+            <div style={{ flex: '1 1 240px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="Setup-quality grade distribution. A is best.">GRADE ⓘ</Tip></div>
+              <div style={{ display: 'flex', height: 20, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                {['A', 'B', 'C', 'D', 'F', '?'].map(k => (byG[k] || 0) > 0 && (
+                  <div key={k} title={`${k}: ${byG[k]}`} style={{ width: `${(byG[k] / n) * 100}%`, background: GC(k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>{(byG[k] / n) > 0.08 ? `${k}:${byG[k]}` : ''}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Signals table — GO + best grade first */}
+          <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            <span style={{ flex: '0 0 66px' }}>Symbol</span>
+            <span style={{ flex: '0 0 48px' }}>Grade</span>
+            <span style={{ flex: '0 0 56px' }}>Decision</span>
+            <span style={{ flex: '0 0 50px' }}>Score</span>
+            <span style={{ flex: '0 0 60px' }}><Tip t="Relative volume vs average. Scalps want high RVOL (5x+).">RVOL</Tip></span>
+            <span style={{ flex: '0 0 60px' }}>Chg %</span>
+            <span style={{ flex: '0 0 54px' }}><Tip t="Catalyst verified?">Catalyst</Tip></span>
+            <span style={{ flex: '1 1 auto' }}>Source</span>
+          </div>
+          {ordered.slice(0, 30).map((d: any, i: number) => {
+            const isGo = (d.decision || '').toUpperCase() === 'GO'
+            return (
+            <div key={i} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d] })}
+              style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isGo ? 'rgba(34,197,94,.05)' : undefined }}>
+              <span style={{ flex: '0 0 66px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.symbol}</span>
+              <span style={{ flex: '0 0 48px' }}><span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: GC(d.grade), color: '#0a0a0a' }}>{d.grade ?? '—'}</span></span>
+              <span style={{ flex: '0 0 56px', fontWeight: 600, color: decisionColor((d.decision || '').toUpperCase().startsWith('NO') ? 'NO' : (d.decision || '').toUpperCase()), fontSize: 10 }}>{d.decision ?? '—'}</span>
+              <span style={{ flex: '0 0 50px', color: 'var(--text2)' }}>{d.score ?? '—'}</span>
+              <span style={{ flex: '0 0 60px', color: (d.rvol || 0) >= 5 ? '#22c55e' : (d.rvol || 0) >= 2 ? '#f59e0b' : 'var(--text3)' }}>{d.rvol != null ? `${d.rvol}x` : '—'}</span>
+              <span style={{ flex: '0 0 60px', color: 'var(--text2)' }}>{d.change_percent || '—'}</span>
+              <span style={{ flex: '0 0 54px', textAlign: 'center' }}>{d.catalyst_verified ? <span style={{ color: '#22c55e' }}>✓</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</span>
+              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)' }}>{d.source ?? '—'}</span>
+            </div>
+          )})}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.</div>
+          </>)}
         </div>
-      )}
+        )
+      })()}
       {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )

@@ -1,0 +1,16 @@
+  id  | symbol | source |      published_at      |        title        
+------+--------+--------+------------------------+---------------------
+ 8184 | QTEX   | hermes | 2026-06-08 00:00:00-04 | news_momentum: QTEX
+ 8175 | GRAN   | hermes | 2026-06-08 00:00:00-04 | regulatory: GRAN
+ 8174 | NEXR   | hermes | 2026-06-08 00:00:00-04 | news_momentum: NEXR
+ 8173 | ELOG   | hermes | 2026-06-08 00:00:00-04 | news_momentum: ELOG
+ 8172 | NRIX   | hermes | 2026-06-08 00:00:00-04 | earnings: NRIX
+ 8171 | NRIX   | hermes | 2026-06-08 00:00:00-04 | contract: NRIX
+ 8170 | NEXR   | hermes | 2026-06-08 00:00:00-04 | earnings: NEXR
+ 8169 | NRIX   | hermes | 2026-06-08 00:00:00-04 | analyst: NRIX
+ 8137 | ELOG   | hermes | 2026-06-08 00:00:00-04 | earnings: ELOG
+ 8136 | GLXG   | hermes | 2026-06-08 00:00:00-04 | news_momentum: GLXG
+ 8135 | GRAN   | hermes | 2026-06-08 00:00:00-04 | news_momentum: GRAN
+ 8134 | BGMS   | hermes | 2026-06-08 00:00:00-04 | news_momentum: BGMS
+(12 rows)
+

@@ -1,0 +1,8 @@
+table | total | rows_24h | newest
+news_articles|6497|49|2026-06-08 06:12:44-04
+news_articles_hermes|73|12|2026-06-08 00:00:00-04
+catalyst_events|6626|343|2026-06-08 09:20:01.569223-04
+catalyst_events_hermes|73|12|2026-06-08 09:20:01.569223-04
+fused_signals|13267|2728|2026-06-08 07:00:36.587322-04
+hermes_research_intelligence|2298|369|2026-06-08 09:18:27.314408-04
+sentiment_observations|3454|104|2026-06-08 06:30:04.223934-04
