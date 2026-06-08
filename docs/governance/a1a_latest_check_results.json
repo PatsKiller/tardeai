@@ -1,10 +1,11 @@
 {
-  "generated_at": "2026-06-05T14:07:06.264924+00:00",
-  "git_head": "cfdcaae",
-  "files_checked": 1,
-  "findings_count": 1,
+  "generated_at": "2026-06-08T11:40:00.418914+00:00",
+  "git_head": "8292072f",
+  "files_checked": 3,
+  "findings_count": 2,
   "by_severity": {
-    "P0": 1
+    "P0": 1,
+    "P2": 1
   },
   "status": "attention_required",
   "findings": [
@@ -13,6 +14,11 @@
       "check": "missing_required_doc",
       "file": "docs/v4_1_deployment_log.md",
       "message": "Required doc missing: docs/v4_1_deployment_log.md"
+    },
+    {
+      "severity": "P2",
+      "check": "deployment_log_stale",
+      "message": "Code changed but deployment log not updated"
     }
   ]
 }
