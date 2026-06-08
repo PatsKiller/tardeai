@@ -116,6 +116,10 @@ def compute_statistics():
         avg_loss = float(r["avg_loss"]) if r["avg_loss"] is not None else None
         # realized payoff R:R = avg winning pnl / avg losing pnl (absolute)
         rr = round(avg_win / abs(avg_loss), 2) if (avg_win and avg_loss) else None
+        net = float(r["net_pnl"] or 0)
+        # per-trade $ expectancy = net pnl / closed trades; no_losses flag → R:R/PF are ∞ (good), not missing
+        expectancy = round(net / cl, 2) if cl > 0 else None
+        no_losses = (l == 0 and w > 0)
         strategies.append({
             "strategy": r["strategy_id"],
             "total": r["total"],
@@ -123,12 +127,14 @@ def compute_statistics():
             "wins": r["wins"],
             "losses": r["losses"],
             "win_rate": round(w / cl * 100, 1) if cl > 0 else None,
-            "net_pnl": float(r["net_pnl"] or 0),
+            "net_pnl": net,
             "avg_pnl": float(r["avg_pnl"] or 0),
             "avg_r": float(r["avg_r"]) if r["avg_r"] else None,
             "avg_win": avg_win,
             "avg_loss": avg_loss,
             "rr": rr,
+            "expectancy": expectancy,
+            "no_losses": no_losses,
             "avg_size": float(r["avg_size"] or 0),
             "avg_hold_min": float(r["avg_hold_min"]) if r["avg_hold_min"] else None,
         })

@@ -29,10 +29,12 @@ export default function StrategyHub({ onDrill }: Props) {
   const btData = btResults ?? []
 
   // Merge real paper trade win rates with strategy intelligence
-  const paperWrMap: Record<string, { win_rate: number; closed: number; pnl: number; profit_factor?: number; rr?: number | null; avg_r?: number | null }> = {}
+  const paperWrMap: Record<string, any> = {}
   for (const s of topStrats) {
     if (s.closed > 0) {
-      paperWrMap[s.strategy] = { win_rate: s.win_rate, closed: s.closed, pnl: s.net_pnl, rr: s.rr ?? null, avg_r: s.avg_r ?? null }
+      paperWrMap[s.strategy] = { win_rate: s.win_rate, closed: s.closed, pnl: s.net_pnl, rr: s.rr ?? null,
+        avg_r: s.avg_r ?? null, expectancy: s.expectancy ?? null, no_losses: s.no_losses ?? false,
+        wins: s.wins ?? 0, losses: s.losses ?? 0 }
     }
   }
 
@@ -87,6 +89,8 @@ export default function StrategyHub({ onDrill }: Props) {
         pnl: paper?.pnl ?? 0,
         rr: paper?.rr ?? null,
         avg_r: paper?.avg_r ?? s.avg_r ?? null,
+        expectancy: paper?.expectancy ?? null,
+        no_losses: paper?.no_losses ?? false,
         timeframe_class: cfg?.timeframe_class ?? '—',
         eligible: s.governance_state === 'VALIDATED' || (paper?.win_rate ?? 0) >= 55,
       }
@@ -174,8 +178,8 @@ export default function StrategyHub({ onDrill }: Props) {
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Scoreboard</div>
             <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Click a row to drill into strategy detail</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: 0, fontSize: 9, color: 'var(--text3)', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-              <span>Strategy</span><span>Win Rate</span><span>Profit Factor</span><span>R:R</span><span>Trades</span><span>Status</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1.3fr', gap: 0, fontSize: 9, color: 'var(--text3)', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+              <span>Strategy</span><span>Win Rate</span><span>Profit Factor</span><span>R:R</span><span>Expectancy</span><span>Trades</span><span>Status</span>
             </div>
             {scoreboard.map((s: any) => (
               <div key={s.strategy_id}
@@ -191,7 +195,7 @@ export default function StrategyHub({ onDrill }: Props) {
                   }],
                 })}
                 style={{
-                  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: 0,
+                  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1.3fr', gap: 0,
                   padding: '8px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer',
                   opacity: s.closed === 0 ? 0.4 : 1,
                 }}
@@ -200,13 +204,22 @@ export default function StrategyHub({ onDrill }: Props) {
                 <span style={{ fontSize: 11, color: s.win_rate != null ? ((s.win_rate ?? 0) >= 55 ? '#22c55e' : (s.win_rate ?? 0) >= 45 ? '#f59e0b' : '#ef4444') : 'var(--text3)' }}>
                   {s.win_rate != null ? `${s.win_rate}%` : '—'}
                 </span>
-                <span style={{ fontSize: 11, color: 'var(--text2)' }}>{s.profit_factor != null ? s.profit_factor.toFixed(2) : '—'}</span>
-                <span style={{ fontSize: 11, color: s.rr != null ? (s.rr >= 2 ? '#22c55e' : s.rr >= 1 ? '#f59e0b' : '#ef4444') : 'var(--text3)' }} title="realized payoff R:R = avg win / avg loss">{s.rr != null ? `${s.rr.toFixed(2)}:1` : '—'}</span>
-                <span style={{ fontSize: 11, color: s.closed === 0 ? 'var(--text3)' : 'var(--text0)' }}>{s.closed || 'no trades'}</span>
-                <span style={{
-                  fontSize: 10, fontWeight: 600,
-                  color: s.eligible ? '#22c55e' : s.closed === 0 ? 'var(--text3)' : '#f59e0b',
-                }}>{s.closed === 0 ? 'no data' : s.eligible ? 'eligible' : 'below gate'}</span>
+                <span style={{ fontSize: 11, color: 'var(--text2)' }} title={s.no_losses ? 'no losing trades → undefined (∞)' : ''}>{s.profit_factor != null && s.profit_factor > 0 ? s.profit_factor.toFixed(2) : (s.no_losses ? '∞' : '—')}</span>
+                <span style={{ fontSize: 11, color: s.rr != null ? (s.rr >= 2 ? '#22c55e' : s.rr >= 1 ? '#f59e0b' : '#ef4444') : (s.no_losses ? '#22c55e' : 'var(--text3)') }} title={s.no_losses ? 'no losing trades → R:R undefined (∞)' : 'realized payoff R:R = avg win / avg loss'}>{s.rr != null ? `${s.rr.toFixed(2)}:1` : (s.no_losses ? '∞' : '—')}</span>
+                <span style={{ fontSize: 11, color: s.expectancy != null ? (s.expectancy > 0 ? '#22c55e' : '#ef4444') : 'var(--text3)' }} title="per-trade $ expectancy = net P&L / closed trades">{s.expectancy != null ? `${s.expectancy > 0 ? '+' : ''}$${s.expectancy.toFixed(0)}` : '—'}</span>
+                <span style={{ fontSize: 11, color: s.closed === 0 ? 'var(--text3)' : 'var(--text0)' }}>{s.closed || 'no trades'}{s.closed > 0 && s.closed < 10 ? ' ⚠' : ''}</span>
+                {(() => {
+                  // display-only status (real governance_state untouched): reward profitable low-WR strategies
+                  const profitable = (s.expectancy ?? 0) > 0 && ((s.rr ?? 0) >= 2 || (s.profit_factor ?? 0) >= 1.5 || s.no_losses)
+                  const thin = s.closed > 0 && s.closed < 10
+                  let label = 'no data', color = 'var(--text3)'
+                  if (s.closed > 0) {
+                    if (s.eligible) { label = 'eligible'; color = '#22c55e' }
+                    else if (profitable) { label = `profitable · low WR${thin ? ' (thin)' : ''}`; color = '#14b8a6' }
+                    else { label = 'below gate'; color = '#f59e0b' }
+                  }
+                  return <span style={{ fontSize: 10, fontWeight: 600, color }} title={profitable && !s.eligible ? 'win-rate below 55% gate but positive expectancy / strong R:R — display only; governance gate unchanged' : ''}>{label}</span>
+                })()}
               </div>
             ))}
           </div>
