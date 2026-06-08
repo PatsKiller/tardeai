@@ -31,3 +31,22 @@ def urlopen_retry(req, timeout=120, attempts=3, base=1.0):
             raise
     if last:
         raise last
+
+
+def post_retry(url, json_payload, timeout=120, attempts=3, base=1.0, headers=None):
+    """requests.post with retry-on-transient (for callers using `requests`). Returns the Response.
+    Retries connection/timeout + 429/5xx; surfaces 4xx via the returned Response (caller checks)."""
+    import requests
+    last = None
+    for i in range(attempts):
+        try:
+            r = requests.post(url, json=json_payload, timeout=timeout, headers=headers or {})
+            if r.status_code in _TRANSIENT_HTTP and i < attempts - 1:
+                last = r; time.sleep(base * (2 ** i)); continue
+            return r
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, OSError) as e:
+            last = e
+            if i < attempts - 1:
+                time.sleep(base * (2 ** i)); continue
+            raise
+    return last

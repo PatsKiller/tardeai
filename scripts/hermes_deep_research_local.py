@@ -93,7 +93,8 @@ def run_one(conn, sym, model, apply):
                           "options": {"num_ctx": 16384, "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
     try:
         req = urllib.request.Request(OLLAMA, data=payload, headers={"Content-Type": "application/json"})
-        content = json.loads(urllib.request.urlopen(req, timeout=600).read()).get("message", {}).get("content", "")
+        from llm_net import urlopen_retry
+        content = json.loads(urlopen_retry(req, timeout=600, attempts=2, base=2.0)).get("message", {}).get("content", "")
         out = json.loads(content)
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
