@@ -84,6 +84,26 @@ Reconciled to route ALL promotion through the D-1 engine (was a flat watchlist-a
 - Health monitor (`scripts/watch_directives_monitor.py`, read-only): servicing snapshots →
   `data/runtime/watch_directives_history.json`; surfaced via `/api/v2/watch-directives → health`.
 
+## E-1/E-2/E-3 — Watchlist enrichment + cards + sector monitor (2026-06-08)
+Root cause fixed: enrichment only ran on-demand at promotion, so broad `ai_discovered` watchlist names
+rendered blank. Three additive surfaces:
+- **E-1 — standing enrichment sweep** (`scripts/watchlist_enrichment_sweep.py`): sweeps all ACTIVE
+  `watchlist_items`, REUSING existing computations (no new indicators) — `finviz_enrichment.get_enriched`
+  (rsi/float/rvol/sma), `market_quotes` (price), `open_trades_intelligence._trend_label`,
+  `setup_quality_prior.rsi_band`, and `directive_promotion.classify_tradeable` (**Bucket-2/3 only, scalp
+  hard-excluded**). Writes `rsi/trend/score/setup_advisory/price/last_enriched_at` + `watch_score_kind`
+  (`strategy_qualified`|`technical` — never a fabricated 50). Additive cols:
+  `migrations/2026-06-08_watchlist_enrichment_cols.sql`. Fail-closed, idempotent. **Cron** (flock):
+  `*/30 9-15 * * 1-5` (intraday) + `15 16 * * 1-5` (post-close).
+- **E-2 — `/v3/watchlist` cards**: flat table → holdings-style card grid (price/today%, RSI/trend/score/
+  setup-advisory badges, provenance pills, `technicals stale` + `awaiting enrichment` states). Filter bar,
+  Watch Directives section, and Add-Watch modal preserved.
+- **E-3 — `/v3/sectors` monitor** (`SectorsHub.tsx`, new nav; `GET /api/v2/sectors/monitor`): per GICS
+  sector — ETF (reused map) + **momentum vs SPY** (from `market_quotes`: leading/lagging/neutral) +
+  constituent/setup counts + watch candidates + `is_watched`. Watched sectors pinned; expand → candidates;
+  **+ Watch this sector** creates a sector directive (governed — constituents stage for one-tap).
+
 ## Operator quickstart
-- UI: `/v3/watchpool` → Add Watch Directive. Or Telegram: `watch ticker RKLB because launch cadence`.
+- UI: `/v3/watchlist` (cards + "+ Add Watch") or `/v3/watchpool` → Add Watch Directive. Telegram:
+  `watch ticker RKLB because launch cadence`. Sectors: `/v3/sectors` → "+ Watch this sector".
 - Sector/trend hits **stage**; tap **Promote** (UI) or `promote SYM` (Telegram) to evaluate them.
