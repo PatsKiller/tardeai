@@ -26,7 +26,7 @@ LANE_CFG = {
     # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
-    "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5-codex",
+    "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5.4",
                 "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
     "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
                 "default_model": "grok-3-mini",
@@ -132,18 +132,19 @@ def call_codex_cli(model, prompt):
     if not _codex_authed():
         raise RuntimeError("AUTH_PENDING: openai-codex not logged in. Operator must run: "
                            "hermes auth add openai-codex --type oauth (free under ChatGPT subscription).")
-    cmd = [HERMES_CLI, "-z", prompt, "--provider", "openai-codex"]
+    # Hermes v0.16 codex one-shot only finalizes with a real terminal; the bare `hermes -z` returns
+    # "no final response" headless. Attaching a pseudo-TTY via util-linux `script` fixes it — still the
+    # FREE openai-codex OAuth, no API key, no metered billing.
+    import shlex, re
+    inner = f"{shlex.quote(HERMES_CLI)} -z {shlex.quote(prompt)} --provider openai-codex"
     if model:
-        cmd += ["-m", model]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+        inner += f" -m {shlex.quote(model)}"
+    r = subprocess.run(["script", "-qec", inner, "/dev/null"], capture_output=True, text=True, timeout=240,
                        env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"})
-    out = (r.stdout or "").strip() or (r.stderr or "").strip()
+    out = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", r.stdout or "").replace("\r", "").strip()
     if (not out) or out.lower().startswith("hermes -z:") or "no final response" in out.lower() or "treating the run as failed" in out.lower():
-        # Hermes v0.16.0: the codex/ChatGPT agent backend doesn't finalize a response via the headless `-z`
-        # one-shot (works interactively in `hermes -p dev chat`). Surface clearly rather than as garbage.
-        raise RuntimeError("CODEX_HEADLESS_UNAVAILABLE: openai-codex is authed but the headless one-shot "
-                           "(hermes -z) returns no final response in v0.16.0. Use interactive `hermes -p dev chat`; "
-                           "the automated ChatGPT researcher lane is pending a Hermes fix.")
+        raise RuntimeError("CODEX_HEADLESS_UNAVAILABLE: openai-codex is authed but did not finalize a "
+                           "response even under a pseudo-TTY. Try interactive `hermes -p dev chat`.")
     return out
 
 

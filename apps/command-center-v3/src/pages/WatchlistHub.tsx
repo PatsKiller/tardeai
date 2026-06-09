@@ -38,8 +38,17 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
-  const { data: ext } = useApi<any>('/api/v2/hermes/external-intel-map', 300_000)
+  const { data: ext, refetch: refetchExt } = useApi<any>('/api/v2/hermes/external-intel-map', 60_000)
   const extMap: Record<string, any[]> = ext?.map ?? {}
+  const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
+  const curateRunning = !!curateStatus?.running
+  const runChatgptTop20 = async () => {
+    if (curateRunning) return
+    try {
+      await fetch('/api/v2/hermes/curate-top20', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lanes: 'chatgpt' }) })
+      setTimeout(() => { refetchCurate(); refetchExt() }, 1500)
+    } catch { /* advisory */ }
+  }
   const paMap = useProAnalystMap()
 
   const [fOrigin, setFOrigin] = useState('all')
@@ -89,7 +98,13 @@ export default function WatchlistHub({ onDrill }: Props) {
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watchlist</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{byStatus.active ?? items.length} active · {byStatus.researched ?? 0} researched · {byStatus.removed ?? 0} removed</div>
         </div>
-        <button onClick={() => setShowAdd(true)} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: 'none', cursor: 'pointer', background: '#a855f7', color: '#fff' }}>+ Add Watch</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run the free ChatGPT (codex OAuth) curation on the top-20 ranked names. Grok runs automatically every 2h; this is the optional manual ChatGPT pass."
+            style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: '1px solid #10a37f', cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16,163,127,.15)' : 'rgba(16,163,127,.12)', color: '#10a37f', opacity: curateRunning ? 0.7 : 1 }}>
+            {curateRunning ? `✦ ChatGPT running… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ Run ChatGPT on Top 20'}
+          </button>
+          <button onClick={() => setShowAdd(true)} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: 'none', cursor: 'pointer', background: '#a855f7', color: '#fff' }}>+ Add Watch</button>
+        </div>
       </div>
 
       {/* advisory strip */}
