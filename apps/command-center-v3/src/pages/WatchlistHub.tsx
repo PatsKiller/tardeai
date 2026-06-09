@@ -31,9 +31,8 @@ const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_
 const SEL: React.CSSProperties = { fontSize: 11, padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)' }
 
 export default function WatchlistHub({ onDrill }: Props) {
-  // Show the real watchlist (active + researched, scored-first) — the research pipeline moves items
-  // active→researched within hours, so a status='active'-only filter renders the list nearly empty.
-  const { data: wl, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=score', 60_000)
+  // Show the real watchlist (active + researched), ranked by the Hermes composite score (highest first).
+  const { data: wl, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -57,20 +56,25 @@ export default function WatchlistHub({ onDrill }: Props) {
   const directives: any[] = wd?.directives ?? []
   const sectorTrendDirs = directives.filter(d => d.kind === 'sector' || d.kind === 'trend')
 
-  const visible = useMemo(() => items.filter(it => {
-    if (fStatus !== 'all' && it.status !== fStatus) return false
-    // "Operator-directive" matches directive-linked items too (a symbol AI-discovered first then put under
-    // an operator directive keeps origin_system=agent_discovery, but it IS operator-directed via directive_id).
-    if (fOrigin !== 'all') {
-      if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
-      else if (it.origin_system !== fOrigin) return false
-    }
-    if (fKind === 'directive' && !it.directive_id) return false
-    if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
-    if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
-    if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
-    return true
-  }), [items, fOrigin, fKind, fDir, fBand, fStatus, search])
+  const visible = useMemo(() => {
+    const seen = new Set<string>()
+    return items.filter(it => {
+      if (seen.has(it.symbol)) return false   // dedup: watchlist_items can hold multiple rows per symbol
+      if (fStatus !== 'all' && it.status !== fStatus) return false
+      // "Operator-directive" matches directive-linked items too (AI-discovered first then put under a
+      // directive keeps origin_system=agent_discovery, but it IS operator-directed via directive_id).
+      if (fOrigin !== 'all') {
+        if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
+        else if (it.origin_system !== fOrigin) return false
+      }
+      if (fKind === 'directive' && !it.directive_id) return false
+      if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
+      if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
+      if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
+      seen.add(it.symbol)
+      return true
+    })
+  }, [items, fOrigin, fKind, fDir, fBand, fStatus, search])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -160,12 +164,15 @@ export default function WatchlistHub({ onDrill }: Props) {
               const tcol = trendBadge(it.trend)
               return (
                 <div key={it.id}
-                  onClick={() => onDrill({ title: it.symbol, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.bucket ?? ''} · ${it.status}`, endpoint: `/api/v2/watch/provenance/${it.symbol}`,
+                  onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`,
                     rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
                   style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${it.directive_id ? '#a855f7' : originColor(it.origin_system)}`, borderRadius: 9, padding: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
                   {/* header: symbol + price */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace', fontSize: 13 }}>{it.symbol} <ProAnalystPill symbol={it.symbol} map={paMap} compact /></span>
+                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace', fontSize: 13 }}>
+                      {it.hermes_rank != null && <span title={`Hermes composite ${it.hermes_composite_score} · confidence ${it.hermes_score_components?._confidence ?? '—'} · coverage ${it.hermes_score_components?._coverage ?? '—'}`}
+                        style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: 'rgba(168,85,247,.18)', color: '#c084fc', marginRight: 6, cursor: 'help' }}>★#{it.hermes_rank} · {Number(it.hermes_composite_score).toFixed(0)}</span>}
+                      {it.symbol} <ProAnalystPill symbol={it.symbol} map={paMap} compact /></span>
                     <span style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text1)' }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</span>
                       {it.change_pct != null && <span style={{ fontSize: 10, marginLeft: 5, color: Number(it.change_pct) >= 0 ? '#22c55e' : '#ef4444' }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</span>}
