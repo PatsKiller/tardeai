@@ -27,7 +27,7 @@ HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 MIN_TOTAL = 1_000_000          # canonical sanity floor (the portfolio is ~$1.24M)
 BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis by > this %
 CATASTROPHIC_DROP_FRACTION = 0.5  # reject a write whose total < this fraction of the last-good total
-TG_CHAT_IDS = ("6993102664", "8797974247")
+from tg_chat_ids import chat_ids  # no hardcoded chat IDs
 
 
 def _conn():
@@ -137,7 +137,7 @@ def _alert(msg, source=""):
                     tok = l.split("=", 1)[1].strip()
         if not tok:
             return
-        for cid in TG_CHAT_IDS:
+        for cid in chat_ids():
             requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
     except Exception:
         pass

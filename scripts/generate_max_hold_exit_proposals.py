@@ -40,6 +40,86 @@ def _strategy_max_hold(strategy):
     return val
 
 
+from tg_chat_ids import chat_ids  # no hardcoded chat IDs
+
+
+def _tg_token():
+    import os
+    tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not tok:
+        for l in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if l.startswith("TELEGRAM_BOT_TOKEN="):
+                tok = l.split("=", 1)[1].strip()
+    return tok
+
+
+def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdue_by, upnl):
+    """Telegram alert with one-tap inline approve/reject (handled by telegram_callback_handler)."""
+    try:
+        import requests
+        tok = _tg_token()
+        if not tok:
+            return
+        txt = (f"⏳ *Time-exit proposal: {symbol}*\n"
+               f"Strategy: {strategy} — held {hold_days}d > max {max_hold_days}d (+{overdue_by})\n"
+               + (f"Unrealized: {upnl}%\n" if upnl is not None else "")
+               + "Past strategy max-hold. *Close now* (paper, gated) or *Dismiss*.")
+        markup = {"inline_keyboard": [[{"text": "✅ Close now", "callback_data": f"texitapprove:{pid}"},
+                                       {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"}]]}
+        for cid in chat_ids():
+            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                          json={"chat_id": cid, "text": txt, "parse_mode": "Markdown", "reply_markup": markup}, timeout=8)
+    except Exception:
+        pass
+
+
+def decide(proposal_id, action, operator="operator"):
+    """Shared, HARD-GUARDED decision used by the API endpoint AND the Telegram one-tap handler. Broker/
+    account agnostic. APPROVE: live_trading_interlock on the TRADE's own account (paper passes, live/
+    unknown refused) + the account-appropriate closer's self-guard. No auto-close; no assumed broker."""
+    import importlib, json as _j
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT trade_id, symbol, status FROM paper_time_exit_proposals WHERE id=%s", (int(proposal_id),))
+    row = cur.fetchone()
+    if not row:
+        return {"ok": False, "error": "proposal not found"}
+    trade_id, symbol, status = row
+    if status != "pending_review":
+        return {"ok": False, "error": f"already {status}", "symbol": symbol}
+    if action == "reject":
+        cur.execute("UPDATE paper_time_exit_proposals SET status='rejected', decided_by=%s, decided_at=NOW() WHERE id=%s",
+                    (operator, int(proposal_id))); conn.commit()
+        return {"ok": True, "status": "rejected", "symbol": symbol}
+    if action != "approve":
+        return {"ok": False, "error": "action must be approve|reject"}
+    cur.execute("SELECT account FROM paper_trades WHERE id=%s", (trade_id,))
+    ar = cur.fetchone()
+    # Broker/account AGNOSTIC: use the TRADE's own account (no assumed broker). Normalize case to the
+    # interlock's accounts-table keys. A trade with no account fails closed. The gate is the broker-agnostic
+    # interlock (account_mode must be paper, else refused) + the account-appropriate closer's own self-guard.
+    acct = ar[0].strip().lower() if ar and ar[0] else None
+    if not acct:
+        return {"ok": False, "error": "trade has no account — refused (fail closed)", "symbol": symbol}
+    try:
+        lti = importlib.import_module("live_trading_interlock")
+        closer = importlib.import_module("paper_trade_closer")
+        cconn = closer.get_db()
+        try:
+            # interlock uses positional cursors (r[0]); use the db_adapter conn, NOT the closer's dict-cursor conn
+            lti.assert_writable(conn, acct, action="close")
+        except Exception as e:
+            cur.execute("UPDATE paper_time_exit_proposals SET status='apply_failed', apply_result=%s, decided_by=%s, decided_at=NOW() WHERE id=%s",
+                        (f"interlock refused ({acct}): {str(e)[:100]}", operator, int(proposal_id))); conn.commit()
+            return {"ok": False, "error": f"interlock refused for {acct}", "symbol": symbol}
+        result = closer.close_paper_trade(cconn, paper_trade_id=trade_id, reason="time_exit_max_hold")
+        ok = bool(result and (result.get("success") or result.get("status") in ("closed", "ok")))
+        cur.execute("UPDATE paper_time_exit_proposals SET status=%s, apply_result=%s, decided_by=%s, decided_at=NOW() WHERE id=%s",
+                    ("applied" if ok else "apply_failed", _j.dumps(result, default=str)[:400], operator, int(proposal_id))); conn.commit()
+        return {"ok": ok, "status": "applied" if ok else "apply_failed", "symbol": symbol, "result": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160], "symbol": symbol}
+
+
 def run(apply=False):
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT id, symbol, strategy_id, entry_price, current_price, entry_time,
@@ -69,10 +149,11 @@ def run(apply=False):
             cur.execute("""INSERT INTO paper_time_exit_proposals
                              (trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
                               entry_price, current_price, unrealized_pnl_pct)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                         (r["id"], r["symbol"], r.get("strategy_id"), hd, mh, hd - mh,
                          r.get("entry_price"), r.get("current_price"), upnl))
-            conn.commit()
+            _pid = cur.fetchone()[0]; conn.commit()
+            _send_proposal_alert(_pid, r["symbol"], r.get("strategy_id"), hd, mh, hd - mh, upnl)
         report["proposed"] += 1
         report["detail"].append({"trade_id": r["id"], "symbol": r["symbol"], "strategy": r.get("strategy_id"),
                                  "hold_days": hd, "max_hold_days": mh, "overdue_by": hd - mh, "upnl_pct": upnl})

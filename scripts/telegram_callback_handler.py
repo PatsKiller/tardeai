@@ -139,6 +139,30 @@ def handle_callback_query(cb):
             answer_callback(cb_id, "Details posted")
         return
 
+    # ── Time-exit proposal buttons (texitapprove:PID, texitreject:PID) — one-tap, paper-gated close ──
+    if action in ("texitapprove", "texitreject"):
+        try:
+            pid = int(parts[1])
+        except (ValueError, IndexError):
+            answer_callback(cb_id, "Bad proposal ID")
+            return
+        try:
+            import generate_max_hold_exit_proposals as gen
+            r = gen.decide(pid, "approve" if action == "texitapprove" else "reject", operator=user_name)
+        except Exception as e:
+            answer_callback(cb_id, f"Failed: {str(e)[:80]}")
+            return
+        sym = r.get("symbol", "?")
+        if action == "texitreject":
+            _post_confirmation(chat_id, message_id, {"success": r.get("ok")}, f"Time-exit DISMISSED -- {sym} by {user_name} at {now_short}")
+            answer_callback(cb_id, f"{sym}: dismissed")
+        else:
+            label = (f"Time-exit CLOSED -- {sym} by {user_name} at {now_short}" if r.get("ok")
+                     else f"Time-exit FAILED -- {sym}: {str(r.get('error') or r.get('status'))[:50]}")
+            _post_confirmation(chat_id, message_id, {"success": r.get("ok")}, label)
+            answer_callback(cb_id, f"{sym}: closed" if r.get("ok") else f"Failed: {str(r.get('error') or r.get('status'))[:70]}")
+        return
+
     # ── Stop decision buttons (stopexit:RTX, stophold:RTX, etc.) ──
     sym = parts[1] if len(parts) > 1 else ""
 
