@@ -43,6 +43,29 @@ def _env_values():
     return vals
 
 
+# ── HARD RULE: no hardcoded values — chat IDs + broker-name fallbacks (use a config source) ──
+CHAT_ID_KEYS = ("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "TELEGRAM_CHAT_ID")
+# a broker name used as a FALLBACK/DEFAULT at end of expression: or "alpaca_paper"  /  or 'schwab_x')
+# (excludes membership tests like  or "fidelity" in source  by requiring an expression terminator)
+BROKER_FALLBACK_RE = re.compile(
+    r"""\bor\s+(['"])(alpaca|schwab|fidelity|tos|etrade|ibkr|tradier)[a-z0-9_]*\1\s*(?:\)|,|;|\]|$)""", re.I)
+
+
+def _chat_id_values():
+    vals = set()
+    env = ROOT / ".env"
+    if env.exists():
+        for l in env.read_text().splitlines():
+            if "=" in l and not l.lstrip().startswith("#"):
+                k, _, v = l.partition("=")
+                if k.strip() in CHAT_ID_KEYS:
+                    for c in v.strip().strip('"').strip("'").split(","):
+                        c = c.strip()
+                        if re.fullmatch(r"-?\d{5,}", c):
+                            vals.add(c)
+    return sorted(vals)
+
+
 def _staged_files():
     out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
                          cwd=ROOT, capture_output=True, text=True).stdout
@@ -67,29 +90,46 @@ def main():
     staged = "--tree" not in sys.argv
     files = _staged_files() if staged else _tree_files()
     env_vals = _env_values()
-    violations = []
+    chat_vals = _chat_id_values()
+    secrets, hardcodes = [], []
     for f in files:
         if ALLOW_FILE_RE.search(f):
             continue
         if SECRET_FILE_RE.search(f):
-            violations.append((f, "secret FILE must never be committed"))
+            secrets.append((f, "secret FILE must never be committed"))
             continue
         txt = _content(f, staged)
         if not txt:
             continue
         for pat, label in PATTERNS:
             if pat.search(txt):
-                violations.append((f, f"{label} pattern"))
+                secrets.append((f, f"{label} pattern"))
         for k, v in env_vals:
             if v in txt:
-                violations.append((f, f"value of {k} from .env"))
-    if violations:
-        print("\n  ✋ COMMIT BLOCKED — credentials must never reach git (hard rule):", file=sys.stderr)
-        for f, why in violations:
+                secrets.append((f, f"value of {k} from .env"))
+        # no-hardcoded-values (chat IDs + broker fallbacks) — .py only, line-aware, '# hardcode-ok' opt-out
+        if f.endswith(".py") and "tg_chat_ids.py" not in f:
+            for cv in chat_vals:
+                if cv in txt:
+                    hardcodes.append((f, f"hardcoded chat ID {cv} — use tg_chat_ids.chat_ids()"))
+            for i, line in enumerate(txt.splitlines(), 1):
+                if "# hardcode-ok" in line or line.lstrip().startswith("#"):
+                    continue
+                if BROKER_FALLBACK_RE.search(line):
+                    hardcodes.append((f, f"hardcoded broker fallback (line {i}) — derive from the record's account/config, or add '# hardcode-ok' if intentional"))
+    if secrets:
+        print("\n  ✋ BLOCKED — credentials must never reach git (hard rule):", file=sys.stderr)
+        for f, why in secrets:
             print(f"     • {f}: {why}", file=sys.stderr)
-        print("  Remove the secret, put it in .env (gitignored), and reference it via os.environ.\n", file=sys.stderr)
+        print("  Put it in .env (gitignored) and reference via os.environ.", file=sys.stderr)
+    if hardcodes:
+        print("\n  ✋ BLOCKED — no hardcoded values (hard rule: config comes from a source):", file=sys.stderr)
+        for f, why in hardcodes:
+            print(f"     • {f}: {why}", file=sys.stderr)
+        print("  Chat IDs -> tg_chat_ids.chat_ids(); broker/account -> the record's own account / env / DB.\n", file=sys.stderr)
+    if secrets or hardcodes:
         sys.exit(1)
-    print(f"  ✓ no secrets in {'staged change' if staged else 'tree'} ({len(files)} files scanned)")
+    print(f"  ✓ no secrets or hardcoded values in {'staged change' if staged else 'tree'} ({len(files)} files scanned)")
     sys.exit(0)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-09 — No-hardcoded-values rule now ENFORCED by the git hook
+
+check_no_secrets.py (pre-commit/pre-push) now also BLOCKS hardcoded chat IDs and broker-name fallbacks,
+making the "nothing hardcoded" rule mechanical:
+- Chat IDs: flags any TELEGRAM_CHAT_ID / TRADEAI_PROPOSAL_ALERT_CHAT_ID value (read from .env) appearing
+  as a literal in tracked .py — use tg_chat_ids.chat_ids().
+- Broker names: flags the fallback/default anti-pattern (or "alpaca_paper" / or "schwab_x")) at end of
+  expression — excludes membership tests (or "fidelity" in source); `# hardcode-ok` opts out a legit case.
+Fixed the 2 pre-existing instances it caught (api_v2 proposal routing + atm_position_reconciler) to source
+the default from DEFAULT_PAPER_ACCOUNT (.env / .env.example), so no broker name lives in code. Verified:
+blocks a staged chat-ID + broker fallback; opt-out works; tree clean (3827 files).
+
 ## 2026-06-09 — Max-hold time-exit proposals (advisory, approval-gated)
 
 Turns the previously-unenforced `auto_exit_at_max_hold` config into an ACTIONABLE, gated time-exit —
