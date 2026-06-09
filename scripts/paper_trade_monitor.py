@@ -34,6 +34,11 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
+# A just-submitted/just-filled order may not yet appear as an Alpaca position — don't void a trade as a
+# phantom until it has been open past this grace window (prevents false phantoms from fill-settlement
+# timing). A genuinely never-filled / never-submitted trade is still voided once it ages past the window.
+PHANTOM_GRACE_MIN = 15
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -158,6 +163,11 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                     _hold_min = round((_now - _et).total_seconds() / 60, 1)
                 except Exception:
                     pass
+            # GRACE: skip voiding a freshly-opened trade — an in-flight fill may not show as an Alpaca
+            # position yet. It is re-checked next cycle and voided then if it still isn't on Alpaca.
+            if _hold_min is not None and _hold_min < PHANTOM_GRACE_MIN:
+                log.info(f"[integrity] {sym} id={tid} not on Alpaca but only {_hold_min}min old — grace, recheck next cycle")
+                continue
             # PHANTOM: not on Alpaca and never a real broker round-trip. It must carry NO P&L —
             # computing (current-entry)*shares records a FAKE win/loss that pollutes the journal
             # (e.g. MRVL +$126, SNOW +$131 booked as bogus 'wins'). Void it: zero P&L, verdict PHANTOM,
@@ -442,6 +452,10 @@ def monitor(dry_run=False):
                     _hold_min = round((_now - _ett).total_seconds() / 60, 1)
                 except Exception:
                     pass
+            # GRACE: an in-flight fill may not show as an Alpaca position yet — recheck next cycle.
+            if _hold_min is not None and _hold_min < PHANTOM_GRACE_MIN:
+                log.info(f"[{dbt['symbol']}] not on Alpaca but only {_hold_min}min old — grace, recheck next cycle")
+                continue
             cur.execute("""
                 UPDATE paper_trades
                 SET status = 'closed', lifecycle_state = 'closed',
