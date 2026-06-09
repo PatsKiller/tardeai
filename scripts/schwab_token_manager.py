@@ -305,16 +305,58 @@ def _refresh_access_token(account_key, broker, environment):
 
 
 def reauth_url(account_key):
-    """One-command re-auth: print the Schwab authorize URL the operator opens in a browser. The callback
-    handler then exchanges the code and calls seed_token(...rotated=True) atomically."""
+    """One-command re-auth: build the Schwab authorize URL the operator opens in a browser. Manual-paste
+    flow (works with a 127.0.0.1 callback behind Tailscale — no listening server): log in, copy the full
+    redirect URL from the address bar, then `exchange_code(account_key, redirect_url)` seeds the token."""
     import broker_secrets; broker_secrets.load_into_env()
     appkey = os.environ.get("SCHWAB_APP_KEY"); cb = os.environ.get("SCHWAB_CALLBACK_URL")
     if not (appkey and cb):
         return {"ok": False, "reason": "SCHWAB_APP_KEY/SCHWAB_CALLBACK_URL not set (architect open-item: portal app + callback)."}
     from urllib.parse import quote
-    url = f"https://api.schwabapi.com/v1/oauth/authorize?client_id={appkey}&redirect_uri={quote(cb)}"
+    url = (f"https://api.schwabapi.com/v1/oauth/authorize?client_id={appkey}"
+           f"&redirect_uri={quote(cb)}&response_type=code")
     return {"ok": True, "account_key": account_key, "authorize_url": url,
-            "note": "Open in a browser, log in, then the oauth-callback endpoint exchanges the code and persists the new refresh token atomically."}
+            "note": "Open in a browser, log in. The browser redirects to the callback with ?code=... (page may not load — "
+                    "that's fine). Copy the FULL redirect URL and run exchange_code(account_key, redirect_url)."}
+
+
+def exchange_code(account_key, redirect_url, broker="schwab", environment="live"):
+    """Complete the OAuth bootstrap: take the full browser redirect URL (contains ?code=...), exchange the
+    authorization code at Schwab for the first access+refresh token, and persist ATOMICALLY via seed_token
+    (encrypted system-of-record — no wrapper token file). LIVE call; runs only with real creds + a real code.
+    The code/redirect are never logged. Schwab access tokens last ~30 min; refresh tokens ~7 days (Gate A)."""
+    import broker_secrets, base64, requests
+    from urllib.parse import urlparse, parse_qs
+    broker_secrets.load_into_env()
+    appkey = os.environ.get("SCHWAB_APP_KEY"); secret = os.environ.get("SCHWAB_APP_SECRET")
+    cb = os.environ.get("SCHWAB_CALLBACK_URL")
+    if not (appkey and secret and cb):
+        return {"ok": False, "reason": "SCHWAB_APP_KEY/SECRET/CALLBACK_URL not set"}
+    code = (redirect_url or "").strip()
+    if "code=" in code:
+        code = (parse_qs(urlparse(code).query).get("code") or [""])[0]
+    if not code:
+        return {"ok": False, "reason": "no authorization code found in the redirect URL"}
+    RATE.acquire()
+    auth = base64.b64encode(f"{appkey}:{secret}".encode()).decode()
+    try:
+        resp = requests.post("https://api.schwabapi.com/v1/oauth/token",
+                             headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"},
+                             data={"grant_type": "authorization_code", "code": code, "redirect_uri": cb}, timeout=20)
+    except Exception as e:
+        return {"ok": False, "reason": f"token endpoint unreachable: {str(e)[:120]}"}
+    if resp.status_code != 200:
+        return {"ok": False, "reason": f"Schwab token exchange failed: HTTP {resp.status_code} {resp.text[:140]}"}
+    tok = resp.json()
+    rt = tok.get("refresh_token"); at = tok.get("access_token"); exp = tok.get("expires_in")
+    if not rt:
+        return {"ok": False, "reason": "Schwab response had no refresh_token"}
+    a_exp = _now() + timedelta(seconds=int(exp)) if exp else None
+    res = seed_token(account_key, refresh_token=rt, access_token=at, access_expires_at=a_exp,
+                     broker=broker, environment=environment, rotated=False)
+    return {"ok": True, "account_key": account_key, "refresh_expires_at": res["refresh_expires_at"],
+            "next_reauth_due_at": res["next_reauth_due_at"], "scope": tok.get("scope"),
+            "note": "First token seeded via the manager (Fernet-encrypted, atomic). No wrapper token file."}
 
 
 def main():

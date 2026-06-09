@@ -137,6 +137,53 @@ def normalize_quote(raw):
     return out
 
 
+# ── ACCOUNT-HASH RESOLVER — map account_key → real Schwab hash; REFUSE ambiguity, never blind-select ──
+def resolve_account_hashes(account_key, expected_last4=None):
+    """Match account_key → a real Schwab account hash via get_account_numbers, by account-number last-4.
+    With no expected_last4, returns the live accounts' masked last-4 only (operator supplies the mapping) —
+    never blind-selects accounts[0]. On a UNIQUE last-4 match, stores the ENCRYPTED hash + masked last-4 in
+    schwab_account_links (verified). Ambiguous (0 or >1 match) ⇒ refused."""
+    client, err = build_client(account_key)
+    if err:
+        return err
+    _rate_acquire()
+    try:
+        resp = client.get_account_numbers()
+        rows = resp.json() if hasattr(resp, "json") else resp
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:160]}
+    accts = [{"last4": (r.get("accountNumber") or "")[-4:], "hash": r.get("hashValue")} for r in (rows or [])]
+    if not expected_last4:
+        return {"status": "needs_mapping", "accounts": [{"last4": a["last4"]} for a in accts],
+                "note": "Re-run resolve_account_hashes(account_key, expected_last4=...) — never blind-selected."}
+    want = str(expected_last4)[-4:]
+    matches = [a for a in accts if a["last4"] == want]
+    if len(matches) != 1:
+        return {"status": "ambiguous_refused", "expected_last4": want, "match_count": len(matches),
+                "note": "Refused — exactly one account must match the last-4."}
+    import schwab_token_manager as tm
+    from db_adapter import _get_conn
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM schwab_account_links WHERE account_key=%s", (account_key,))
+    cur.execute("""INSERT INTO schwab_account_links (account_key, schwab_hash_enc, masked_last4, verified, last_verified_at)
+                   VALUES (%s,%s,%s,TRUE,NOW())""", (account_key, tm._enc(matches[0]["hash"]), want))
+    conn.commit()
+    return {"ok": True, "account_key": account_key, "masked_last4": want, "note": "Hash stored encrypted + verified."}
+
+
+def _get_hash(account_key):
+    """Decrypt the verified Schwab account hash for read calls (None if unresolved)."""
+    try:
+        import schwab_token_manager as tm
+        from db_adapter import _get_conn
+        conn = _get_conn(); cur = conn.cursor()
+        cur.execute("SELECT schwab_hash_enc FROM schwab_account_links WHERE account_key=%s AND verified=TRUE", (account_key,))
+        r = cur.fetchone()
+        return tm._dec(r[0]) if r and r[0] else None
+    except Exception:
+        return None
+
+
 # ── READ METHODS — degraded/NOT_PROVEN without a live client; live reads NOT_PROVEN until cred-in ──
 def _read(account_key, fn_name, normalize, *args):
     client, err = build_client(account_key)
@@ -151,21 +198,33 @@ def _read(account_key, fn_name, normalize, *args):
         return {"status": "error", "error": str(e)[:160]}
 
 
-def get_account(account_key, account_hash):
-    return _read(account_key, "get_account", normalize_account, account_hash)
+def get_account(account_key, account_hash=None):
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
+    return _read(account_key, "get_account", normalize_account, h)
 
 
-def get_positions(account_key, account_hash):
+def get_positions(account_key, account_hash=None):
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
     from schwab.client import Client
-    return _read(account_key, "get_account", normalize_positions, account_hash, Client.Account.Fields.POSITIONS)
+    return _read(account_key, "get_account", normalize_positions, h, Client.Account.Fields.POSITIONS)
 
 
-def get_orders(account_key, account_hash):
-    return _read(account_key, "get_orders_for_account", normalize_orders, account_hash)
+def get_orders(account_key, account_hash=None):
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
+    return _read(account_key, "get_orders_for_account", normalize_orders, h)
 
 
-def get_transactions(account_key, account_hash):
-    return _read(account_key, "get_transactions", normalize_transactions, account_hash)
+def get_transactions(account_key, account_hash=None):
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
+    return _read(account_key, "get_transactions", normalize_transactions, h)
 
 
 def get_quote(account_key, symbol):
