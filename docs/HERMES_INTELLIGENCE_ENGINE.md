@@ -80,6 +80,26 @@ Skips a (symbol, lane) pair curated in the last 12h. **Surfacing:**
   thesis**: recommendation, evidence bullets, counter-view, risk flags, confidence, timestamp — alongside
   the Hermes trade-setup recommendation + competition peers.
 
+## H-7 — Site-wide subject enhancement (free Grok/ChatGPT everywhere)
+`scripts/hermes_subject_enhance.py` — one generic engine enhances ANY subject with the free OAuth lanes
+(reuses `hermes_external_researcher`: OAuth-only, $/secret redaction, advisory). `$`-free context +
+subject-specific question per item; per-type freshness (scalp 4h, rest 12h); stored in
+`hermes_external_research` with `trigger_reason='enh_<type>'`. Grok-auto crons per type; ChatGPT manual.
+
+| Type | Question | Surface |
+|---|---|---|
+| `scalp` | gap-and-go/momentum: go/wait/avoid + trap risk + entry/stop | Trading → **Scalp** tab (READ-ONLY — screeners untouched) |
+| `proposal` | pre-approval challenge: bear case, R:R, invalidation | **Proposals** card (`ProposalCard`) |
+| `position` | hold/trim/exit + risks | **Open Trades** + **Protection** cards |
+| `closed_trade` | post-mortem + one lesson | **Journal** closed-trade rows |
+| `sector` | tailwind/headwind narrative | **Sectors** hub card badge |
+| `report` | second read / focus | **Home → Morning Command** ("Hermes second read" panel) |
+
+**Generic surfacing:** `GET /api/v2/hermes/subject-intel?type=&key=` (full theses) + `subject-intel-map?type=`
+(badges). `DetailDrawer` fetches subject-intel whenever a drill passes `subjectType`/`subjectKey`, so each
+surface is a one-line wire showing the **✦ Grok / ✦ ChatGPT** badge (tooltip = verdict + date) + the full
+thesis (recommendation, evidence, counter-view, risks, confidence) in the drawer.
+
 ## Schema (additive)
 - `migrations/2026-06-09_hermes_composite_score.sql` — score/rank/components/scored_at on watchlist_items.
 - `migrations/2026-06-09_hermes_score_history.sql` — `hermes_score_history` (append-only) +
