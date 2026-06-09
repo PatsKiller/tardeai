@@ -15,12 +15,21 @@ Retention tiers:
 Safe: never touches config/reference tables (agent_skills, strategy_registry, etc.)
 """
 import argparse
+
+# --- .env autoload (no hardcoded secrets) ---
+import os as _os
+if not _os.getenv("DB_PASSWORD"):
+    try:
+        from pathlib import Path as _P
+        for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+            if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
+    except Exception: pass
 import os
 import sys
 from datetime import datetime
 
 # ── DB connection ────────────────────────────────────────────────
-DB_DSN = os.getenv("TRADE_AI_DSN", "host=localhost port=5432 dbname=trade_ai user=trade_ai password=1AHC_w9F-zvOrGAcTmi7")
+DB_DSN = os.getenv("TRADE_AI_DSN", f"host=localhost port=5432 dbname=trade_ai user=trade_ai password={_os.getenv('DB_PASSWORD','')}")
 
 def _connect():
     import psycopg2

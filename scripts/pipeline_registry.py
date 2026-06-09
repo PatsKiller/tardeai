@@ -9,13 +9,22 @@ Usage:
         run.rows(len(articles))
 """
 import logging, os
+
+# --- .env autoload (no hardcoded secrets) ---
+import os as _os
+if not _os.getenv("DB_PASSWORD"):
+    try:
+        from pathlib import Path as _P
+        for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+            if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
+    except Exception: pass
 from contextlib import contextmanager
 from typing import Optional
 
 log = logging.getLogger(__name__)
 
 _DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai',
-                  password=os.getenv('DB_PASSWORD', '1AHC_w9F-zvOrGAcTmi7'))
+                  password=os.getenv('DB_PASSWORD', ''))
 
 
 def _get_conn():
