@@ -1,5 +1,11 @@
 # Schwab API — Phase 1 Read-Only Foundation (canonical)
 
+> **Correction to commit `23f17865`.** That commit's title says "(PROVEN)" — read it as
+> **"guards proven by SIMULATION; live Schwab integration NOT_PROVEN."** There is **no live Schwab
+> connection** in this phase. The `validate_schwab_no_writes.py` "7/7 green" is a *no-writes / isolation*
+> guard, not a connectivity claim. This doc is the authoritative framing.
+
+
 **Status (2026-06-09):** Safety **guards proven by simulation**. **Live Schwab integration is NOT_PROVEN**
 and architecturally fenced off — there is **no working Schwab connection** in this phase. No live trading
 authorization. Schwab accounts stay MANUAL_REVIEW / read-only / `api_write_enabled=false`.
