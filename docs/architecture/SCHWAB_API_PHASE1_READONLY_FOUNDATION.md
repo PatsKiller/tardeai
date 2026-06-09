@@ -89,11 +89,32 @@ files. Rollback = revert the routing commit (writers fall back to their prior di
 - `scripts/schwab_adapter.py`: `submit_entry`, `cancel_order`, `_api_post` now return **`NOT_PROVEN`**
   (real finding: `cancel_order` previously made a live `requests.delete`). Read methods (`get_account`,
   `get_positions`, `get_open_orders`, `get_status`) remain for the read-only refactor.
-- `scripts/validate_schwab_no_writes.py`: **7/7 guards green** — no write path, all write methods
+- `scripts/validate_schwab_no_writes.py`: **12/12 guards green** — no write path, all write methods
   NOT_PROVEN, position-sync routes through the protected writer, all 3 Schwab accounts
-  `api_write_enabled=false`, `live_trading_interlock` refuses them (live + master flag off), and **Level
+  `api_write_enabled=false`, `live_trading_interlock` refuses them (live + master flag off), **Level
   II / volume-sweep / Schwab data isolated** from the screeners (`prime_setups`/`watchlist_setups`),
-  match-minimums, GO/WAIT, and ATM routing (Rule 9).
+  match-minimums, GO/WAIT, and ATM routing (Rule 9), plus the 5 Stage-1 wrapper-surface guards below.
+
+## Stage 1 — read-only transport via `schwab-py` (2026-06-09; live NOT_PROVEN)
+Adopted **`schwab-py` 1.5.1 (MIT)** as the read-only request/response transport beneath the token manager.
+Step 0 cleared both flag-back conditions before any build: auth decouples via
+`client_from_access_functions(token_read_func, token_write_func)`, and the wrapper's writes are fenceable at
+the boundary.
+- **`scripts/schwab_transport.py`** — the only place the `schwab-py` library is imported (boundary-only).
+  `build_client()` wires `token_read_func`/`token_write_func` to the manager's **`read_oauth_token` /
+  `write_oauth_token`**, so a refresh persists THROUGH the manager (encrypted, rotation-counted) — the
+  wrapper never owns token storage. Without portal creds `build_client()` returns **NOT_PROVEN** (fail closed).
+- **Pure normalizers** (`normalize_account/positions/orders/transactions/quote`) parse recorded fixtures
+  (`tests/fixtures/schwab/*.json`) into the existing `schwab_adapter` shapes. `# TODO(cred-in)`: reconcile
+  real payload schemas when credentials land. Watchlists are **NOT_AVAILABLE** in 1.5.1 (not fabricated).
+- **WRITE FENCE** (the point): `place_order`/`cancel_order`/`replace_order` **raise `NotProvenWrite`**; the
+  wrapper client's write methods are never called or exposed; a shared token-bucket rate limiter (manager's
+  one `RATE`) sits in the transport.
+- **5 new validator guards**: fence-raises-static, no-wrapper-write-calls, schwab-py-imported-only-at-
+  boundary, runtime-fence (3/3 raise + `build_client` NOT_PROVEN), and Rule-9 transport isolation.
+- **Proven now (fixtures):** normalizers, token refresh-hook (rotation through the manager), write-fence,
+  fail-closed client. **NOT_PROVEN until cred-in:** live OAuth/reads, account-hash mapping, real rate
+  numbers, Gate A weekly re-auth, payload-schema reconciliation.
 
 ## Schema (additive — `migrations/2026-06-09_schwab_oauth_foundation.sql`)
 `broker_oauth_tokens` (encrypted, no plaintext), `broker_oauth_token_audit` (append-only, fingerprints
@@ -102,10 +123,11 @@ Existing `broker_accounts`/`account_automation_policies`/`broker_capability_chec
 registry**.
 
 ## NOT built this phase (sequenced / out of scope)
-Live OAuth exchange, the read-only adapter read-routing through the token manager, account-hash live
-mapping, the `/api/v2/admin/broker-account/schwab/*` endpoints, `broker_capability_checks` population
-(stays NOT_PROVEN), `broker_confirm_schwab.py` (deliberately absent), Level II / streaming, CSV-import
-retirement (gated behind a 10-day clean dual-run).
+Live OAuth exchange, account-hash live mapping, the `/api/v2/admin/broker-account/schwab/*` endpoints,
+`broker_capability_checks` population (stays NOT_PROVEN), `broker_confirm_schwab.py` (deliberately absent),
+Level II / streaming, CSV-import retirement (gated behind a 10-day clean dual-run). _(The read-only
+transport that read-routes through the token manager is now built — see "Stage 1" above — but stays
+NOT_PROVEN against live until the credential-in proof pass.)_
 
 ## Architect open-items (NOT for Claude Code to guess)
 Schwab Portal: callback URL, scopes, token TTLs, refresh roll-forward behavior, rate-limit numbers,
