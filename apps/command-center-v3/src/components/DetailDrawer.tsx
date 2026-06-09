@@ -115,9 +115,31 @@ function Field({ k, v }: { k: string; v: any }) {
   )
 }
 
+const LLM_META: Record<string, { label: string; color: string }> = {
+  grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' },
+}
+function fmtBlob(v: any): string[] {
+  if (v == null) return []
+  let x = v
+  if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return [x] } }
+  if (Array.isArray(x)) return x.map((e: any) => typeof e === 'object' ? JSON.stringify(e) : String(e))
+  if (typeof x === 'object') return Object.values(x).map(String)
+  return [String(x)]
+}
+
 export default function DetailDrawer({ ctx, onClose }: Props) {
   const [bt, setBt] = useState<any>(null)
   const [btState, setBtState] = useState<'idle' | 'loading' | 'none'>('idle')
+  const [intel, setIntel] = useState<any>(null)
+
+  useEffect(() => {
+    setIntel(null)
+    if (!ctx?.endpoint?.startsWith('/api/v2/hermes/intel/')) return
+    let cancelled = false
+    fetch(ctx.endpoint).then(r => r.ok ? r.json() : null)
+      .then(j => { if (!cancelled && j?.data) setIntel(j.data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [ctx])
 
   useEffect(() => {
     setBt(null); setBtState('idle')
@@ -199,6 +221,43 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             </div>
           )}
           {isHolding && <HoldingAnalysis h={h0} />}
+          {/* Hermes trade-setup recommendation */}
+          {intel?.setup && (
+            <div style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.22)', borderRadius: 6 }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Hermes setup · {intel.setup.conviction} conviction</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#c084fc' }}>{intel.setup.type}</div>
+              <div style={{ fontSize: 10, color: 'var(--text1)', marginTop: 3 }}>Entry: {intel.setup.entry}</div>
+              <div style={{ fontSize: 10, color: 'var(--text1)' }}>Invalidation: {intel.setup.invalidation}</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{intel.setup.why}</div>
+              {intel.competition && (intel.competition.relative_rank || intel.competition.vs_peers) && (
+                <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 5 }}>Competition: {intel.competition.relative_rank || intel.competition.peer_group} · {intel.competition.vs_peers}
+                  {intel.competition.peers?.length > 0 && <span style={{ color: 'var(--text3)' }}> ({intel.competition.peers.map((p: any) => p.symbol).join(', ')})</span>}</div>
+              )}
+            </div>
+          )}
+          {/* External LLM intelligence — full theses */}
+          {intel?.external_intel?.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>External LLM intelligence ({intel.external_intel.length})</div>
+              {intel.external_intel.map((e: any, i: number) => {
+                const m = LLM_META[e.lane] || { label: e.lane, color: 'var(--text2)' }
+                const ev = fmtBlob(e.evidence), rf = fmtBlob(e.risk_flags)
+                return (
+                  <div key={i} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6, borderLeft: `3px solid ${m.color}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: m.color }}>✦ {m.label}<span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 9, marginLeft: 6 }}>{e.model}</span></span>
+                      <span style={{ fontSize: 9, color: 'var(--text3)' }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span>
+                    </div>
+                    {e.recommendation && <div style={{ fontSize: 11, color: 'var(--text0)', marginBottom: ev.length ? 4 : 0 }}>{e.recommendation}</div>}
+                    {ev.length > 0 && <ul style={{ margin: '2px 0', paddingLeft: 16 }}>{ev.map((x, j) => <li key={j} style={{ fontSize: 10, color: 'var(--text2)' }}>{x}</li>)}</ul>}
+                    {e.dissent && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 3 }}>⚠ Counter-view: {e.dissent}</div>}
+                    {rf.length > 0 && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2 }}>Risks: {rf.join('; ')}</div>}
+                    {e.confidence != null && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>confidence {e.confidence}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
           {btState === 'loading' && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Looking up backtest entry grade…</div>}
           {ctx.rows.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>No data rows</div>}
           {ctx.rows.map((row, i) => (
