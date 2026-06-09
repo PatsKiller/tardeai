@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import SecretsManager from '../components/SecretsManager'
 import type { DrillContext } from '../components/DetailDrawer'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
 import { getOperator, setOperator, getToken, setToken } from '../lib/adminWrite'
@@ -448,6 +449,7 @@ export default function SystemHub({ onDrill }: Props) {
         const HEAT_THRESHOLD = 5
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <SecretsManager />
             {/* READ-ONLY banner */}
             <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
               <b>READ-ONLY AUDIT.</b> Every setting's current value, for due diligence — no controls, no toggles, no save. Changing any setting (ATM enable, risk-per-trade, account config) happens in a separate <b>guarded flow</b> (Telegram approval for ATM enable/risk; admin path for the rest), never from this dashboard. Level 7 prohibited.

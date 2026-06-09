@@ -168,6 +168,7 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
 
     # Step 4: Strategy-aware trailing recommendations (V2.3)
     trailing_recs = []
+    _tc = None
     try:
         from strategy_trailing_policy import recommend_stop, get_strategy_family
         from db_adapter import get_connection as _gc_trail
@@ -194,8 +195,18 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
                 trailing_recs.append(rec)
                 if verbose and rec.get("action") != "hold":
                     log.info(f"  #{_t['id']} {_t['symbol']}: {rec['action']} — {rec.get('reason','')}")
+            _tcur.close()
     except Exception as e:
         log.warning(f"Trailing policy check failed: {e}")
+    finally:
+        # End the read-only transaction so the SHARED db_adapter connection is never left
+        # idle-in-transaction (root cause of the 2026-06-09 connection-slot/lock pile-up that took the
+        # whole DB to its slot limit). Rollback (not close) — the connection is a module-level singleton.
+        if _tc is not None:
+            try:
+                _tc.rollback()
+            except Exception:
+                pass
 
     report["trailing_recommendations"] = trailing_recs
     report["trailing_summary"] = {

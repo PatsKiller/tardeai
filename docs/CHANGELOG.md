@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-09 — Secrets hard-rule + Command Center secrets modal + DB stability
+
+**HARD RULE — no credential hardcoded anywhere, ever synced to git (enforced):**
+`scripts/check_no_secrets.py` + git **pre-commit/pre-push hooks** (`scripts/install_git_hooks.sh`) BLOCK
+any commit/push containing an API-key pattern, a secret file (.env/*.key/*.pem/credentials), or any
+literal value from `.env`. Verified: blocks a staged Anthropic key; tree clean (3819 files). `.env` +
+`config/broker_credentials.env` + `secrets_admin_audit.jsonl` gitignored; Drive sync already excludes
+`.env`/keys/credentials.
+
+**Leaked-key response:** a now-DEACTIVATED Anthropic key was found in git *history* only
+(`reports/portfolio_live.html`, repeated commits) — current tree clean, `reports/` gitignored, repo
+private. (History scrub offered separately.)
+
+**Command Center secrets modal:** System → Admin → "API Keys & Secrets" (`SecretsManager.tsx` +
+`scripts/secrets_admin.py`, `GET/POST /api/v2/admin/secrets`). Write-only: lists key names + masked
+`••••1234` only, never returns/logs/displays a full value; atomic `.env` (0600) write; audited (key
+name only). For rotating ANTHROPIC_API_KEY etc.
+
+**DB stability:** fixed a transaction leak in `unified_stop_supervisor.py` (a SELECT on the shared
+db_adapter connection never rolled back → idle-in-transaction → ACCESS-EXCLUSIVE lock pile-up that hit
+the connection-slot limit). Added `finally: rollback()`. Backstop: `ALTER ROLE trade_ai SET
+idle_in_transaction_session_timeout='5min'` so any future leak self-terminates.
+
 ## 2026-06-09 — Holdings wipe-guard made mandatory (behavior change)
 
 `protected_holdings_write()` is now mandatory for all 7 holdings/current-state writers (db_adapter,

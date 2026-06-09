@@ -16715,6 +16715,7 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
+    "/api/v2/admin/secrets": lambda: __import__("secrets_admin").list_secrets(),
     "/api/v2/admin/strategy-enablement": lambda: {"rows": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT strategy_id, account, enabled, updated_at, updated_by FROM strategy_enablement ORDER BY strategy_id, account") or [])]},
     "/api/v2/admin/cron-retryable": lambda: {"jobs": sorted(__import__("admin_write_guard").NON_TRADING_CRON_ALLOWLIST)},
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
@@ -17721,6 +17722,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _hermes_curate_top20_trigger(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/admin/secrets":
+        # write-only secret rotation. NEVER log the value; return masked confirmation only.
+        try:
+            import secrets_admin
+            b = body or {}
+            return 200, {"ok": True, "data": secrets_admin.set_secret(b.get("key", ""), b.get("value", ""),
+                                                                       actor=b.get("actor", "operator"))}
+        except Exception as e:
+            return 400, {"ok": False, "error": str(e)[:160]}
     if method == "POST" and base_path == "/api/v2/discovery/run":
         return _discovery_run(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/add-to-watchlist":
