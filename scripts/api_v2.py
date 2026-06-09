@@ -16012,7 +16012,18 @@ def _hermes_intel(symbol):
         pass
     factors = [{"factor": k, **v} for k, v in comp.items() if not k.startswith("_")]
     factors.sort(key=lambda f: -(f.get("score", 0) * f.get("weight", 0)))
+    # H-6: external-LLM full theses (latest per lane) for the intel-card drawer
+    ext_rows = _db_query("""SELECT DISTINCT ON (lane) lane, model, recommendation, evidence_json, dissent,
+                              confidence, risk_flags, created_at
+                            FROM hermes_external_research
+                            WHERE symbol=%s AND status IN ('sent','ok','complete','success')
+                            ORDER BY lane, created_at DESC""", (symbol,)) or []
+    external_intel = [{"lane": e["lane"], "model": e.get("model"), "recommendation": e.get("recommendation"),
+                       "evidence": e.get("evidence_json"), "dissent": e.get("dissent"),
+                       "confidence": _json_clean(e.get("confidence")), "risk_flags": e.get("risk_flags"),
+                       "at": _json_clean(e.get("created_at"))} for e in ext_rows]
     return {"symbol": symbol, "composite_score": _json_clean(wi.get("hermes_composite_score")),
+            "external_intel": external_intel,
             "rank": wi.get("hermes_rank"), "confidence": comp.get("_confidence"), "coverage": comp.get("_coverage"),
             "raw_score": comp.get("_raw_score"), "scored_at": _json_clean(wi.get("hermes_scored_at")),
             "factors": factors, "analyst": analyst,
