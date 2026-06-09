@@ -26,6 +26,8 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 MIN_TOTAL = 1_000_000          # canonical sanity floor (the portfolio is ~$1.24M)
 BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis by > this %
+CATASTROPHIC_DROP_FRACTION = 0.5  # reject a write whose total < this fraction of the last-good total
+TG_CHAT_IDS = ("6993102664", "8797974247")
 
 
 def _conn():
@@ -111,21 +113,67 @@ def check_basis_divergence(new_holdings, account_key="schwab"):
     return flagged
 
 
-def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab"):
-    """GATE B universal protected writer. Returns a status dict. NEVER overwrites a good snapshot with a
-    bad payload; restores on post-write failure."""
+def _last_good_total(path=None):
+    try:
+        p = path or HOLDINGS_PATH
+        if p.exists():
+            return _total_of(json.load(open(p)))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _alert(msg):
+    """Loud alert on a blocked/restored holdings write (existing Telegram path, both chat IDs)."""
+    try:
+        import requests
+        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not tok:
+            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if l.startswith("TELEGRAM_BOT_TOKEN="):
+                    tok = l.split("=", 1)[1].strip()
+        if not tok:
+            return
+        for cid in TG_CHAT_IDS:
+            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+    except Exception:
+        pass
+
+
+def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
+                            target_path=None):
+    """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
+    fails closed instead of zeroing holdings.json. NEVER overwrites a good snapshot with empty/zeroed/
+    catastrophically-low data; backs up + writes atomically + post-asserts + restores on failure.
+
+    protect_basis=True (Schwab sync only) additionally preserves manually-repaired tax-grade cost basis
+    (flag-not-overwrite). General writers pass protect_basis=False so legitimate basis edits (e.g.
+    patch_holdings_cost_basis) are NOT reverted. target_path defaults to the canonical holdings.json;
+    a caller may pass its own resolved path (the guard operates entirely on that path).
+    """
+    HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
     ok, reason = sane_payload(new_holdings)
     if not ok:
-        _record(account_key, "rejected_sanity", reason)
+        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).")
         return {"wrote": False, "status": "rejected_sanity", "reason": reason}
 
-    # preserve manually-repaired tax-grade basis: flag divergences, and KEEP the stored basis values
-    flagged = check_basis_divergence(new_holdings, account_key)
-    if flagged and HOLDINGS_PATH.exists():
+    # catastrophic-drop guard vs last-good snapshot
+    prior = _last_good_total(HP)
+    new_total = _total_of(new_holdings)
+    if prior > 0 and new_total < CATASTROPHIC_DROP_FRACTION * prior:
+        rsn = f"total {new_total:,.0f} < {CATASTROPHIC_DROP_FRACTION:.0%} of last-good {prior:,.0f}"
+        _record(account_key, "rejected_drop", f"[{source}] {rsn}", len(_positions_of(new_holdings)), new_total)
+        _alert(f"🛑 holdings write REJECTED ({source}): catastrophic drop — {rsn}. Prior snapshot kept.")
+        return {"wrote": False, "status": "rejected_drop", "reason": rsn}
+
+    # preserve manually-repaired tax-grade basis — Schwab sync only (opt-in), never for general writers
+    flagged = check_basis_divergence(new_holdings, account_key) if protect_basis else []
+    if protect_basis and flagged and HP.exists():
         try:
             stored = {(_p.get("symbol") or _p.get("ticker") or "").upper():
                       (_p.get("cost_basis") or _p.get("avg_cost") or _p.get("average_price") or _p.get("basis"))
-                      for _p in _positions_of(json.load(open(HOLDINGS_PATH)))}
+                      for _p in _positions_of(json.load(open(HP)))}
             for p in _positions_of(new_holdings):
                 s = (p.get("symbol") or p.get("ticker") or "").upper()
                 if s in stored and stored[s] and any(f["symbol"] == s for f in flagged):
@@ -135,29 +183,31 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             pass
 
     backup = None
-    if HOLDINGS_PATH.exists():
-        backup = HOLDINGS_PATH.read_bytes()
+    if HP.exists():
+        backup = HP.read_bytes()
 
     # atomic write
     try:
-        HOLDINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(HOLDINGS_PATH.parent), suffix=".tmp")
+        HP.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
         with os.fdopen(fd, "w") as f:
             json.dump(new_holdings, f, indent=2, default=str)
-        os.replace(tmp, HOLDINGS_PATH)
+        os.replace(tmp, HP)
     except Exception as e:
         if backup is not None:
-            HOLDINGS_PATH.write_bytes(backup)
-        _record(account_key, "rejected_postwrite", f"write error, restored backup: {str(e)[:120]}")
+            HP.write_bytes(backup)
+        _record(account_key, "rejected_postwrite", f"[{source}] write error, restored backup: {str(e)[:120]}")
+        _alert(f"🛑 holdings write FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}")
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
 
     # post-write verification — restore on failure
     try:
-        v, n = canonical_assert()
+        v, n = canonical_assert(HP)
     except Exception as e:
         if backup is not None:
-            HOLDINGS_PATH.write_bytes(backup)
-        _record(account_key, "rejected_postwrite", f"post-write assert failed, restored backup: {str(e)[:120]}")
+            HP.write_bytes(backup)
+        _record(account_key, "rejected_postwrite", f"[{source}] post-write assert failed, restored backup: {str(e)[:120]}")
+        _alert(f"🛑 holdings post-write assert FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}")
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
 
     _record(account_key, "ok", f"wrote {n} positions / ${v:,.0f}; basis_flags={len(flagged)}", n, v, True)

@@ -328,10 +328,9 @@ def save_state(portfolio: Dict, project_root_str: str) -> None:
     state_dir = project_root / "data" / "portfolios" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     holdings_path = state_dir / "holdings.json"
-    holdings_path.write_text(
-        json.dumps(portfolio, indent=2, default=str),
-        encoding="utf-8"
-    )
+    # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
+    from holdings_guard import protected_holdings_write
+    protected_holdings_write(portfolio, source="portfolio_loader.save_state", target_path=str(holdings_path))
     print(f"  [loader] State saved → "
           f"{holdings_path.relative_to(project_root)}")
 

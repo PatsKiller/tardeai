@@ -113,8 +113,8 @@ def main():
 
     # Write resolved_sectors into holdings.json
     holdings["resolved_sectors"] = resolved_sectors
-    holdings_path.write_text(
-        json.dumps(holdings, indent=2, default=str), encoding="utf-8")
+    from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
+    protected_holdings_write(holdings, source="phase2_sector_resolver", target_path=str(holdings_path))
 
     # Write updated snapshot
     data["_meta"]["phase2_sectors_resolved_at"] = \

@@ -225,8 +225,8 @@ def main():
     holdings_data["resolved_sectors"] = resolved_sectors
     holdings_data["overlap_analysis"] = overlap_analysis
     holdings_data["lookthrough_as_of"] = date.today().isoformat()
-    holdings_path.write_text(
-        json.dumps(holdings_data, indent=2, default=str), encoding="utf-8")
+    from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
+    protected_holdings_write(holdings_data, source="phase3_lookthrough_resolver", target_path=str(holdings_path))
 
     # Write logs
     (log_dir / "phase3_resolution_log.json").write_text(

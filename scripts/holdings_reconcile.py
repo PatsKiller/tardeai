@@ -87,7 +87,8 @@ def main():
         total = sum(h.get("market_value") or 0 for h in port["holdings"])
         port["portfolio_totals"]["total_value"] = round(total, 2)
         port["reconciled_at"] = ref_as_of = json.loads(REF.read_text()).get("as_of")
-        HJ.write_text(json.dumps(port, indent=2, default=str))
+        from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
+        protected_holdings_write(port, source="holdings_reconcile", target_path=str(HJ))
 
     # ── Follow-up A: outlier reconciliation — flag held EQUITY/ETF names whose live price diverges >1.5%
     # from the broker reference (the authoritative second source). Feed-less funds are snapped above, so

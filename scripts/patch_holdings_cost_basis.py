@@ -136,7 +136,10 @@ def main():
     tot_cb = round(sum(h.get("cost_basis") or 0 for h in d["holdings"] if h.get("cost_basis")), 2)
     d.setdefault("portfolio_totals", {})["total_value"] = tot_val
     d["portfolio_totals"]["total_cost_basis"] = tot_cb
-    json.dump(d, open(HJ, "w"), indent=2, default=str)
+    # MANDATORY wipe-guard. protect_basis=False: this script LEGITIMATELY rewrites cost basis.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from holdings_guard import protected_holdings_write
+    protected_holdings_write(d, source="patch_holdings_cost_basis", protect_basis=False, target_path=HJ)
 
     ledger = build_income_ledger(selected)
     json.dump(ledger, open(os.path.join(STATE, "income_ledger.json"), "w"), indent=2)
