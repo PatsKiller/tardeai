@@ -15953,6 +15953,35 @@ def _hermes_risks(comp, divergence, advisory):
     return out
 
 
+def _hermes_competition(symbol, sector, industry):
+    """H-3: peer group from same industry (fallback sector) + relative strength by Hermes score.
+    Limited to peers with intelligence coverage; honest 'no peers' when none. Advisory."""
+    key, val = ("industry", industry) if industry else ("sector", sector)
+    if not val:
+        return None
+    peers = _db_query(f"""SELECT e.display_name AS symbol, wi.hermes_composite_score AS score,
+                            e.change_pct, wi.trend
+                          FROM intelligence_entities e
+                          LEFT JOIN watchlist_items wi ON wi.symbol = e.display_name
+                          WHERE e.{key} = %s AND e.display_name ~ '^[A-Z]{{1,5}}$' AND e.display_name <> %s
+                          ORDER BY wi.hermes_composite_score DESC NULLS LAST LIMIT 12""", (val, symbol)) or []
+    if not peers:
+        return {"peer_group": val, "peer_count": 0, "peers": [], "vs_peers": "no peers with intelligence coverage"}
+    scores = [float(p["score"]) for p in peers if p.get("score") is not None]
+    me = _db_query("""SELECT hermes_composite_score FROM watchlist_items WHERE symbol=%s
+                      ORDER BY hermes_composite_score DESC NULLS LAST LIMIT 1""", (symbol,), fetch="one") or {}
+    my = me.get("hermes_composite_score")
+    rel_rank, vs = None, "unknown"
+    if my is not None and scores:
+        my = float(my)
+        rel_rank = f"#{sum(1 for s in scores if s > my) + 1} of {len(scores) + 1} in {val}"
+        med = sorted(scores)[len(scores) // 2]
+        vs = "leading peers" if my > med else "lagging peers"
+    return {"peer_group": val, "peer_count": len(peers),
+            "peers": [{"symbol": p["symbol"], "score": _json_clean(p.get("score")), "trend": p.get("trend")} for p in peers[:6]],
+            "relative_rank": rel_rank, "vs_peers": vs}
+
+
 def _hermes_intel(symbol):
     """GET /api/v2/hermes/intel/{symbol} — structured Hermes intelligence card (spec §9): composite
     score + rank + confidence, factor breakdown, analyst / sector / social views, trade-setup
@@ -15988,6 +16017,7 @@ def _hermes_intel(symbol):
             "raw_score": comp.get("_raw_score"), "scored_at": _json_clean(wi.get("hermes_scored_at")),
             "factors": factors, "analyst": analyst,
             "sector": {"sector": ie.get("sector"), "industry": ie.get("industry")} if ie.get("sector") else None,
+            "competition": _hermes_competition(symbol, ie.get("sector"), ie.get("industry")),
             "social": {"sentiment": ie.get("social_sentiment"), "score": _json_clean(ie.get("social_score"))} if (ie.get("social_sentiment") or ie.get("social_score")) else None,
             "setup": _hermes_setup(wi.get("rsi"), wi.get("trend")),
             "catalysts": [str(ie["catalyst"])[:160]] if ie.get("catalyst") else [],
