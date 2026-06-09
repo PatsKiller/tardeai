@@ -204,20 +204,24 @@ def run(limit=None):
         ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
         comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
         if comp is not None:
-            scored.append((r["symbol"], comp, components))
+            scored.append((r["symbol"], comp, components, r.get("price")))
     scored.sort(key=lambda x: -x[1])
     # dedup by symbol (watchlist_items can hold multiple rows per symbol) — clean 1-per-symbol ranks
     _seen, _dedup = set(), []
-    for s, c, comp in scored:
+    for s, c, comp, px in scored:
         if s in _seen:
             continue
-        _seen.add(s); _dedup.append((s, c, comp))
+        _seen.add(s); _dedup.append((s, c, comp, px))
     scored = _dedup
-    for rank, (sym, comp, components) in enumerate(scored, 1):
+    for rank, (sym, comp, components, px) in enumerate(scored, 1):
         cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
                          hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
                        WHERE symbol=%s AND status IN ('active','researched')""",
                     (comp, rank, json.dumps(components), sym))
+        # append-only snapshot for calibration (H-4) + alerting (H-5)
+        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
+                    (sym, comp, rank, json.dumps(components), px))
     conn.commit()
     print(f"[hermes-scorer] scored {len(scored)} watchlist names (top: " +
           ", ".join(f"{s}={c}" for s, c, _ in scored[:5]) + ")")
