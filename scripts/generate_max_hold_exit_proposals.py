@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""generate_max_hold_exit_proposals.py — turn the unenforced `auto_exit_at_max_hold` config into an
+ACTIONABLE, approval-gated time-exit. For each open paper position held past its strategy's
+max_hold_days, create an advisory CLOSE PROPOSAL (paper_time_exit_proposals, status=pending_review).
+
+ADVISORY ONLY — this NEVER closes a position. The operator approves via the API/UI; approval routes
+through the paper-only interlock + the existing close_paper_trade path (see api_v2 time-exit-proposals
+approve handler). No silent auto-close.
+
+  python3 scripts/generate_max_hold_exit_proposals.py [--apply]
+"""
+from __future__ import annotations
+import argparse, json, re, sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+_MAX_HOLD_CACHE = {}
+
+
+def _conn():
+    from db_adapter import _get_conn
+    return _get_conn()
+
+
+def _strategy_max_hold(strategy):
+    if not strategy:
+        return None
+    if strategy in _MAX_HOLD_CACHE:
+        return _MAX_HOLD_CACHE[strategy]
+    val = None
+    try:
+        p = PROJECT_ROOT / "config" / "strategies" / f"{strategy}.yaml"
+        if p.exists():
+            m = re.search(r"max_hold_days:\s*(\d+)", p.read_text())
+            val = int(m.group(1)) if m else None
+    except Exception:
+        val = None
+    _MAX_HOLD_CACHE[strategy] = val
+    return val
+
+
+def run(apply=False):
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT id, symbol, strategy_id, entry_price, current_price, entry_time,
+                     GREATEST(0, DATE_PART('day', now() - entry_time))::int AS hold_days
+                   FROM paper_trades WHERE status='open' AND entry_time IS NOT NULL""")
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    report = {"open": len(rows), "overdue": 0, "proposed": 0, "detail": []}
+    for r in rows:
+        mh = _strategy_max_hold(r.get("strategy_id"))
+        hd = r.get("hold_days") or 0
+        if not mh or hd <= mh:
+            continue
+        report["overdue"] += 1
+        # one open proposal per trade — don't duplicate
+        cur.execute("""SELECT 1 FROM paper_time_exit_proposals
+                       WHERE trade_id=%s AND status IN ('pending_review','approved') LIMIT 1""", (r["id"],))
+        if cur.fetchone():
+            continue
+        upnl = None
+        try:
+            if r.get("entry_price") and r.get("current_price"):
+                upnl = round((float(r["current_price"]) - float(r["entry_price"])) / float(r["entry_price"]) * 100, 2)
+        except Exception:
+            pass
+        if apply:
+            cur.execute("""INSERT INTO paper_time_exit_proposals
+                             (trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
+                              entry_price, current_price, unrealized_pnl_pct)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (r["id"], r["symbol"], r.get("strategy_id"), hd, mh, hd - mh,
+                         r.get("entry_price"), r.get("current_price"), upnl))
+            conn.commit()
+        report["proposed"] += 1
+        report["detail"].append({"trade_id": r["id"], "symbol": r["symbol"], "strategy": r.get("strategy_id"),
+                                 "hold_days": hd, "max_hold_days": mh, "overdue_by": hd - mh, "upnl_pct": upnl})
+    print(json.dumps(report, indent=2))
+    return report
+
+
+def main():
+    ap = argparse.ArgumentParser(); ap.add_argument("--apply", action="store_true")
+    run(apply=ap.parse_args().apply)
+
+
+if __name__ == "__main__":
+    main()

@@ -4,6 +4,7 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
 import ProposalsRich from '../components/ProposalsRich'
+import TimeExitProposals from '../components/TimeExitProposals'
 import ATMControlPanel from '../components/ATMControlPanel'
 import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
@@ -307,6 +308,7 @@ export default function TradingHub({ onDrill }: Props) {
 
       {tab === 'Open Trades' && (
         <>
+          <TimeExitProposals />
           <OpenTradesIntelligence onDrill={onDrill} />
           <details style={{ marginTop: 14 }}>
             <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', cursor: 'pointer' }}>Protection Advisory (all proposals)</summary>

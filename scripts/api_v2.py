@@ -16172,6 +16172,60 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _time_exit_proposals_list(query=None):
+    """GET /api/v2/time-exit-proposals — pending max-hold close proposals (advisory). Approval-gated."""
+    rows = _db_query("""SELECT id, trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
+                          entry_price, current_price, unrealized_pnl_pct, status, created_at
+                        FROM paper_time_exit_proposals WHERE status='pending_review'
+                        ORDER BY overdue_by_days DESC, created_at DESC LIMIT 100""") or []
+    return {"proposals": [{**r, "created_at": _json_clean(r["created_at"]), "entry_price": _json_clean(r["entry_price"]),
+                           "current_price": _json_clean(r["current_price"]), "unrealized_pnl_pct": _json_clean(r["unrealized_pnl_pct"])}
+                          for r in rows], "count": len(rows),
+            "note": "Advisory time-exits (held past strategy max_hold_days). Approval closes via the paper-only interlock + close_paper_trade — no silent auto-close."}
+
+
+def _time_exit_proposal_decide(body):
+    """POST /api/v2/time-exit-proposals/decide {proposal_id, action: approve|reject}. APPROVE is HARD-
+    GUARDED: ALPACA_MODE==paper, the trade's account passes live_trading_interlock, then the existing
+    close_paper_trade path runs. No auto-close anywhere — only on this explicit operator approval."""
+    import os, importlib
+    b = body or {}
+    pid, action = b.get("proposal_id"), (b.get("action") or "").lower()
+    operator = b.get("operator", "operator")
+    if not pid or action not in ("approve", "reject"):
+        return 400, {"ok": False, "error": "proposal_id + action(approve|reject) required"}
+    prop = _db_query("SELECT * FROM paper_time_exit_proposals WHERE id=%s", (int(pid),), fetch="one")
+    if not prop:
+        return 404, {"ok": False, "error": "proposal not found"}
+    if prop["status"] != "pending_review":
+        return 400, {"ok": False, "error": f"proposal already {prop['status']}"}
+    if action == "reject":
+        _db_query("UPDATE paper_time_exit_proposals SET status='rejected', decided_by=%s, decided_at=NOW() WHERE id=%s",
+                  (operator, int(pid)), fetch="none")
+        return 200, {"ok": True, "status": "rejected"}
+    # ── APPROVE → hard-guarded close ──
+    if os.environ.get("ALPACA_MODE") != "paper":
+        return 403, {"ok": False, "error": "GUARD: ALPACA_MODE must be paper"}
+    acct = (_db_query("SELECT account FROM paper_trades WHERE id=%s", (prop["trade_id"],), fetch="one") or {}).get("account") or "alpaca_paper"
+    try:
+        lti = importlib.import_module("live_trading_interlock")
+        closer = importlib.import_module("paper_trade_closer")
+        conn = closer.get_db()
+        try:
+            lti.assert_writable(conn, acct, action="close")   # paper passes fast; live/unknown refused
+        except Exception as e:
+            _db_query("UPDATE paper_time_exit_proposals SET status='apply_failed', apply_result=%s, decided_by=%s, decided_at=NOW() WHERE id=%s",
+                      (f"interlock refused ({acct}): {str(e)[:100]}", operator, int(pid)), fetch="none")
+            return 403, {"ok": False, "error": f"interlock refused for {acct}: {str(e)[:100]}"}
+        result = closer.close_paper_trade(conn, paper_trade_id=prop["trade_id"], reason="time_exit_max_hold")
+        ok = bool(result and (result.get("success") or result.get("status") in ("closed", "ok")))
+        _db_query("UPDATE paper_time_exit_proposals SET status=%s, apply_result=%s, decided_by=%s, decided_at=NOW() WHERE id=%s",
+                  ("applied" if ok else "apply_failed", json.dumps(result, default=str)[:400], operator, int(pid)), fetch="none")
+        return 200, {"ok": ok, "status": "applied" if ok else "apply_failed", "result": result}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_curate_running():
     import subprocess
     try:
@@ -16693,6 +16747,7 @@ ROUTES = {
     "/api/v2/hermes/subject-intel": _hermes_subject_intel,
     "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
     "/api/v2/discovery/results": _discovery_results,
+    "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
@@ -17731,6 +17786,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                                        actor=b.get("actor", "operator"))}
         except Exception as e:
             return 400, {"ok": False, "error": str(e)[:160]}
+    if method == "POST" and base_path == "/api/v2/time-exit-proposals/decide":
+        return _time_exit_proposal_decide(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/run":
         return _discovery_run(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/add-to-watchlist":
