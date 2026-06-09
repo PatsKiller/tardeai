@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-09 — Schwab Stage 1: read-only transport via schwab-py (writes fenced; live NOT_PROVEN)
+
+Adopted schwab-py 1.5.1 (MIT) as the READ-ONLY transport beneath schwab_token_manager.py (which stays the
+encrypted system-of-record). Step-0 confirmed both flag-back conditions clear: auth decouples via
+client_from_access_functions(token_read_func, token_write_func), and the wrapper writes are fenceable at
+the boundary. New scripts/schwab_transport.py: token hooks wired to the manager (read_oauth_token/
+write_oauth_token), pure normalizers (account/positions/orders/transactions/quote) proven vs recorded
+fixtures, shared rate bucket, build_client fails closed (NOT_PROVEN) without portal creds. WRITE FENCE:
+place_order/cancel_order/replace_order RAISE NotProvenWrite and the wrapper client's writes are never
+called/exposed; schwab-py imported only at the transport boundary. validate_schwab_no_writes.py now 12/12
+(added fence-static, no-wrapper-write-calls, boundary-only-import, runtime-fence, Rule-9). Watchlists
+NOT_AVAILABLE in 1.5.1 (not fabricated). Everything Schwab-LIVE stays NOT_PROVEN until a separate
+credential-in proof pass; payload schemas to reconcile then.
+
 ## 2026-06-09 — No-hardcoded-values rule now ENFORCED by the git hook
 
 check_no_secrets.py (pre-commit/pre-push) now also BLOCKS hardcoded chat IDs and broker-name fallbacks,

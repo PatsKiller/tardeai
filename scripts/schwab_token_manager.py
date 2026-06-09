@@ -146,6 +146,40 @@ def seed_token(account_key, refresh_token, refresh_expires_at=None, access_token
     return {"account_key": account_key, "refresh_expires_at": rexp.isoformat(), "next_reauth_due_at": reauth_due.isoformat()}
 
 
+def read_oauth_token(account_key, broker="schwab", environment="live"):
+    """schwab-py token_read_func target. Return the authlib-shaped OAuth token dict (decrypted in-memory)
+    or None. The manager stays system-of-record; the wrapper only borrows the live token, never stores it."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at
+                   FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
+                (account_key, broker, environment))
+    row = cur.fetchone()
+    if not row or not row[1]:
+        return None
+    tok = {"token_type": "Bearer", "refresh_token": _dec(row[1])}
+    if row[0]:
+        tok["access_token"] = _dec(row[0])
+    if row[2]:
+        tok["expires_at"] = int(row[2].timestamp())
+    return tok
+
+
+def write_oauth_token(token, account_key, broker="schwab", environment="live"):
+    """schwab-py token_write_func target. Persist a refreshed token THROUGH the manager (atomic, encrypted,
+    rotation-counted, alerts/health intact) — NEVER the wrapper's own store. Preserves the existing refresh
+    token if the refresh response omits it."""
+    if not isinstance(token, dict):
+        return
+    rt = token.get("refresh_token")
+    if not rt:
+        prior = read_oauth_token(account_key, broker, environment) or {}
+        rt = prior.get("refresh_token")
+    aexp = token.get("expires_at")
+    a_exp_dt = datetime.fromtimestamp(int(aexp), tz=timezone.utc) if aexp else None
+    return seed_token(account_key, refresh_token=rt, access_token=token.get("access_token"),
+                      access_expires_at=a_exp_dt, broker=broker, environment=environment, rotated=True)
+
+
 def health(account_key, broker="schwab", environment="live"):
     """Fail-closed freshness/expiry health for one account. Never raises — returns degraded on any doubt."""
     base = {"account_key": account_key, "broker": broker, "has_token": False, "access_fresh": False,

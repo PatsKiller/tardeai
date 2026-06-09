@@ -1,0 +1,6 @@
+{"securitiesAccount": {"type": "MARGIN", "accountNumber": "XXXX1234",
+  "currentBalances": {"liquidationValue": 248500.25, "cashBalance": 50250.10, "buyingPower": 100500.20},
+  "positions": [
+    {"instrument": {"symbol": "AAPL", "assetType": "EQUITY"}, "longQuantity": 100, "averagePrice": 180.50, "marketValue": 19550.00, "longOpenProfitLoss": 1500.00},
+    {"instrument": {"symbol": "MSFT", "assetType": "EQUITY"}, "longQuantity": 50, "averagePrice": 400.00, "marketValue": 21000.00, "longOpenProfitLoss": 1000.00}
+  ]}}
