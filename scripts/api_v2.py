@@ -3212,7 +3212,8 @@ def _wl_items(query: dict = None):
     sort = "updated_at DESC"
     if q.get("sort"):
         s = (q["sort"][0] if isinstance(q["sort"], list) else q["sort"])
-        sort_map = {"score": "score DESC NULLS LAST", "symbol": "symbol", "updated": "updated_at DESC"}
+        sort_map = {"score": "score DESC NULLS LAST", "symbol": "symbol", "updated": "updated_at DESC",
+                    "hermes": "hermes_rank ASC NULLS LAST, hermes_composite_score DESC NULLS LAST"}
         sort = sort_map.get(s, sort)
 
     rows = _db_query(f"""
@@ -15913,6 +15914,92 @@ def _watch_sectors(query=None):
     return {"sectors": [{"sector": r["sector"], "count": r["n"], "sample": r.get("sample") or []} for r in rows]}
 
 
+def _hermes_setup(rsi, trend):
+    """Classify a trade setup (spec §8) from posture. Advisory — entry/invalidation/conviction."""
+    r = float(rsi) if rsi is not None else None
+    t = (trend or "").lower()
+    if r is None or t in ("", "unknown"):
+        return {"type": "no-trade / low-conviction", "entry": "insufficient signal", "invalidation": "—",
+                "conviction": "low", "why": "awaiting enrichment / no clear posture"}
+    if t == "bullish" and r < 45:
+        return {"type": "pullback entry", "entry": "buy strength off the pullback", "invalidation": "loss of the recent higher-low",
+                "conviction": "medium", "why": "uptrend with RSI cooled into a buy zone"}
+    if t == "bullish" and r < 65:
+        return {"type": "trend continuation", "entry": "join on continuation / minor pullback", "invalidation": "break below trend support",
+                "conviction": "medium-high", "why": "uptrend intact, RSI constructive"}
+    if t == "bullish":
+        return {"type": "momentum continuation (extended)", "entry": "only on a controlled pullback", "invalidation": "momentum stall + RSI roll-over",
+                "conviction": "medium", "why": "strong momentum but RSI extended — chase risk"}
+    if t == "bearish" and r < 38:
+        return {"type": "reversal / mean-reversion watch", "entry": "wait for a reversal trigger", "invalidation": "new lows",
+                "conviction": "low-medium", "why": "downtrend but oversold — bounce possible, not confirmed"}
+    if t == "bearish":
+        return {"type": "no-trade (downtrend)", "entry": "stand aside / short bias only", "invalidation": "reclaim of trend",
+                "conviction": "low", "why": "downtrend without an oversold edge"}
+    return {"type": "range / mean-reversion", "entry": "fade the edges of the range", "invalidation": "range break",
+            "conviction": "low", "why": "neutral trend — range conditions"}
+
+
+def _hermes_risks(comp, divergence, advisory):
+    out = []
+    if (comp.get("_coverage") or 1) < 0.45:
+        out.append("thin intelligence coverage — score from few factors")
+    if divergence == "divergent":
+        out.append("internal view diverges from Street (analyst) consensus")
+    if advisory and "caution" in str(advisory).lower():
+        out.append("RSI band historically weak (setup-advisory caution)")
+    if comp.get("social_sentiment") and not comp.get("setup_quality"):
+        out.append("attention-driven (social) without a qualified strategy setup")
+    return out
+
+
+def _hermes_intel(symbol):
+    """GET /api/v2/hermes/intel/{symbol} — structured Hermes intelligence card (spec §9): composite
+    score + rank + confidence, factor breakdown, analyst / sector / social views, trade-setup
+    recommendation, catalysts, risks. Read-only; advisory."""
+    symbol = (symbol or "").upper().strip()
+    wi = _db_query("""SELECT symbol, hermes_composite_score, hermes_rank, hermes_score_components,
+                        hermes_scored_at, rsi, trend, price, change_pct, setup_advisory,
+                        origin_system, source_tier, directive_id
+                      FROM watchlist_items WHERE symbol=%s AND status <> 'removed'
+                      ORDER BY hermes_composite_score DESC NULLS LAST LIMIT 1""", (symbol,), fetch="one")
+    if not wi:
+        return {"symbol": symbol, "note": "not on the watchlist or not yet scored"}
+    comp = wi.get("hermes_score_components") or {}
+    ie = _db_query("""SELECT sector, industry, social_sentiment, social_score, catalyst, catalyst_verified, rvol
+                      FROM intelligence_entities WHERE display_name=%s LIMIT 1""", (symbol,), fetch="one") or {}
+    analyst, divergence = None, None
+    try:
+        import json as _j
+        pills = {p["symbol"].upper(): p for p in _j.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text()).get("pills", [])}
+        p = pills.get(symbol)
+        if p and p.get("has_professional_coverage"):
+            divergence = p.get("divergence")
+            analyst = {"recommendation": p.get("recommendation_key"), "rec_mean": p.get("recommendation_mean"),
+                       "target_mean": p.get("target_mean_price"), "upside_pct": p.get("upside_to_mean_target_pct"),
+                       "analysts": p.get("number_of_analyst_opinions"), "divergence": divergence,
+                       "latest_event": p.get("latest_event_headline")}
+    except Exception:
+        pass
+    factors = [{"factor": k, **v} for k, v in comp.items() if not k.startswith("_")]
+    factors.sort(key=lambda f: -(f.get("score", 0) * f.get("weight", 0)))
+    return {"symbol": symbol, "composite_score": _json_clean(wi.get("hermes_composite_score")),
+            "rank": wi.get("hermes_rank"), "confidence": comp.get("_confidence"), "coverage": comp.get("_coverage"),
+            "raw_score": comp.get("_raw_score"), "scored_at": _json_clean(wi.get("hermes_scored_at")),
+            "factors": factors, "analyst": analyst,
+            "sector": {"sector": ie.get("sector"), "industry": ie.get("industry")} if ie.get("sector") else None,
+            "social": {"sentiment": ie.get("social_sentiment"), "score": _json_clean(ie.get("social_score"))} if (ie.get("social_sentiment") or ie.get("social_score")) else None,
+            "setup": _hermes_setup(wi.get("rsi"), wi.get("trend")),
+            "catalysts": [str(ie["catalyst"])[:160]] if ie.get("catalyst") else [],
+            "risks": _hermes_risks(comp, divergence, wi.get("setup_advisory")),
+            "technical": {"rsi": _json_clean(wi.get("rsi")), "trend": wi.get("trend"),
+                          "rvol": _json_clean(ie.get("rvol")), "price": _json_clean(wi.get("price")),
+                          "change_pct": _json_clean(wi.get("change_pct"))},
+            "provenance": {"origin": wi.get("origin_system"), "tier": wi.get("source_tier"),
+                           "directive_id": wi.get("directive_id")},
+            "note": "Advisory composite of news/social, analyst, sector, momentum, setup, R:R. Never gates execution."}
+
+
 # GICS top-level sector → ETF (reuse the continuous_runner / market_context map; not a new taxonomy)
 _SECTOR_ETF_MAP = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
                    "Consumer Cyclical": "XLY", "Industrials": "XLI", "Consumer Defensive": "XLP",
@@ -18136,6 +18223,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if symbol:
             try:
                 return 200, {"ok": True, "data": _watch_provenance(symbol)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/hermes/intel/"):
+        symbol = base_path[len("/api/v2/hermes/intel/"):].strip("/").upper()
+        if symbol:
+            try:
+                return 200, {"ok": True, "data": _hermes_intel(symbol)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
