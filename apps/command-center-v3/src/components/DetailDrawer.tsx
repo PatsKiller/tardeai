@@ -8,6 +8,9 @@ export interface DrillContext {
   rows: Record<string, any>[]
   // Optional navigation links (read-only — no mutation). Rendered as a button row.
   links?: { label: string; href: string; note?: string }[]
+  // Optional: surface external-LLM theses for this subject (proposal/position/closed_trade/sector/scalp).
+  subjectType?: string
+  subjectKey?: string
 }
 
 interface Props {
@@ -134,9 +137,16 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
 
   useEffect(() => {
     setIntel(null)
-    if (!ctx?.endpoint?.startsWith('/api/v2/hermes/intel/')) return
+    if (!ctx) return
     let cancelled = false
-    fetch(ctx.endpoint).then(r => r.ok ? r.json() : null)
+    // Watchlist intel card (full Hermes intel), or generic subject-intel (external LLM theses) for any
+    // other surface that passes subjectType/subjectKey.
+    const url = ctx.endpoint?.startsWith('/api/v2/hermes/intel/') ? ctx.endpoint
+      : (ctx.subjectType && ctx.subjectKey)
+        ? `/api/v2/hermes/subject-intel?type=${encodeURIComponent(ctx.subjectType)}&key=${encodeURIComponent(ctx.subjectKey)}`
+        : null
+    if (!url) return
+    fetch(url).then(r => r.ok ? r.json() : null)
       .then(j => { if (!cancelled && j?.data) setIntel(j.data) }).catch(() => {})
     return () => { cancelled = true }
   }, [ctx])
