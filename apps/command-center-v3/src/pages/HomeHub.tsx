@@ -32,6 +32,11 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: briefData } = useApi<any>('/api/v2/morning-brief', 300_000)
+  const { data: repExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=report', 300_000)
+  // latest report synthesis across lanes (most recent first)
+  const repIntel: any[] = Object.entries(repExt?.map ?? {})
+    .flatMap(([key, arr]: any) => (arr as any[]).map((e: any) => ({ ...e, key })))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
   const { data: command } = useApi<any>('/api/v2/command', 60_000)
   const { data: hermesHealth } = useApi<any>('/api/v2/hermes/health', 120_000)
   const cmd = command?.data ?? command ?? {}
@@ -305,6 +310,19 @@ export default function HomeHub({ onDrill }: Props) {
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Morning Brief</div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>Generated: {briefData.generated_at ?? '—'}</div>
+          {repIntel.length > 0 && (
+            <div style={{ marginBottom: 14, padding: '10px 12px', background: 'rgba(29,155,240,.06)', border: '1px solid rgba(29,155,240,.25)', borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Hermes second read · free external LLM</div>
+              {repIntel.slice(0, 2).map((e: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: 'Report — Hermes second read', subtitle: `${e.lane === 'grok' ? 'Grok' : 'ChatGPT'} · ${e.key?.replace('REPORT:', '')}`, endpoint: 'derived', rows: [e], subjectType: 'report', subjectKey: e.key })}
+                  style={{ cursor: 'pointer', marginBottom: i === 0 && repIntel.length > 1 ? 8 : 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>
+                  <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 6 }}>{e.at ? new Date(e.at).toLocaleDateString() : ''}</span>
+                  <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, marginTop: 2 }}>{e.recommendation}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {briefData.action_items && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Action Items</div>
