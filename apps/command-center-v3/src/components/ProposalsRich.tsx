@@ -178,6 +178,8 @@ function PipelineChevron({ stages }: { stages: any[] }) {
 
 // -- Proposal card --
 function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
+  const { data: extIntel } = useApi<any>(`/api/v2/hermes/subject-intel?type=proposal&key=${p.symbol}`, 120_000)
+  const extOpinions: any[] = extIntel?.external_intel ?? []
   const [shares] = useState(p.proposed_shares || 0)
   const [entry] = useState(p.proposed_entry || 0)
   const [stop] = useState(p.proposed_stop || 0)
@@ -343,6 +345,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <StatusBadge status={actionStateToStatus[effectiveActionState] || 'warning'} label={(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')} />
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
+          {extOpinions.map((e: any, i: number) => <span key={i} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ fontSize: 9, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>)}
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
           {(p.sector || p.industry) && <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{[p.sector, p.industry].filter(Boolean).join(' / ')}</span>}
           {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}

@@ -430,7 +430,7 @@ export default function JournalHub({ onDrill }: Props) {
               <span title="Hold duration (m=minutes, h=hours).">Hold</span>
             </div>
             {filtered.map((t, i) => (
-              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }] })}
+              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
                 style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${acctColor(t.na)}`, cursor: 'pointer', fontSize: 10, background: `${acctColor(t.na)}06` }}>
                 <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(t.na), marginTop: 4 }} />
                 <div>
