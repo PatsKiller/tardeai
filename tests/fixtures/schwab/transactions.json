@@ -1,0 +1,2 @@
+[{"activityId": 5500001, "type": "TRADE", "tradeDate": "2026-06-01T14:30:00+0000", "netAmount": -18050.00,
+  "transferItems": [{"instrument": {"symbol": "AAPL", "assetType": "EQUITY"}, "amount": 100}]}]

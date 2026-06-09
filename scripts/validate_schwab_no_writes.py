@@ -24,6 +24,17 @@ def ok(name, passed, detail=""):
     print(f"  [{'PASS' if passed else 'FAIL'}] {name}{' — ' + detail if detail else ''}")
 
 
+def _raises_notproven(mod, name):
+    """True iff calling mod.name() raises NotProvenWrite (the write fence held)."""
+    try:
+        getattr(mod, name)()
+        return False
+    except mod.NotProvenWrite:
+        return True
+    except Exception:
+        return False
+
+
 # 1. broker_confirm_schwab.py must NOT exist (the write blocker stays unbuilt)
 ok("broker_confirm_schwab.py absent (no write path)", not (SCRIPTS / "broker_confirm_schwab.py").exists())
 
@@ -81,6 +92,40 @@ for stem in SCREENER_FILES:
         if re.search(r"level\s*2|level_ii|levelii|volume_sweep|depth_of_book|nasdaq_book|nyse_book|schwab_position_sync|schwab_adapter", txt, re.I):
             leak.append(f.name)
 ok("Level II / volume / Schwab data isolated from screeners+routing (Rule 9)", not leak, f"leak: {leak}" if leak else "no references")
+
+# 6. schwab-py WRAPPER write surface is fenced at the transport boundary (static)
+trans = (SCRIPTS / "schwab_transport.py").read_text() if (SCRIPTS / "schwab_transport.py").exists() else ""
+fenced = all(re.search(rf"def {m}\b[^\n]*\n\s+raise NotProvenWrite", trans) for m in ("place_order", "cancel_order", "replace_order"))
+ok("schwab_transport order surface raises NotProvenWrite (fenced)", bool(trans) and fenced)
+ok("schwab_transport never calls a wrapper client write", bool(trans) and not re.search(r"\.(place_order|cancel_order|replace_order)\s*\(", trans))
+
+# 7. schwab-py library imported ONLY at the transport boundary (not app/endpoint/agent code)
+schwab_importers = []
+for f in SCRIPTS.glob("*.py"):
+    if f.name in ("schwab_transport.py", "validate_schwab_no_writes.py"):
+        continue
+    if re.search(r"\bfrom\s+schwab\.\w|\bimport\s+schwab\b", f.read_text()):
+        schwab_importers.append(f.name)
+ok("schwab-py imported only at transport boundary", not schwab_importers, f"leak: {schwab_importers}" if schwab_importers else "boundary-only")
+
+# 8. RUNTIME: the fenced writes actually raise; build_client fails closed without creds
+try:
+    import schwab_transport as _st
+    raised = sum(1 for m in ("place_order", "cancel_order", "replace_order")
+                 if _raises_notproven(_st, m))
+    _, err = _st.build_client("schwab_taxable")
+    ok("runtime: transport writes raise NotProvenWrite + build_client NOT_PROVEN w/o creds",
+       raised == 3 and (err or {}).get("status") in ("NOT_PROVEN", "degraded"), f"{raised}/3 raised")
+except Exception as e:
+    ok("runtime transport check", False, str(e)[:60])
+
+# 9. Rule-9 isolation extends to the transport (screeners/routing must not import schwab_transport)
+leak2 = []
+for stem in SCREENER_FILES:
+    for f in SCRIPTS.glob(f"*{stem}*.py"):
+        if "schwab_transport" in f.read_text():
+            leak2.append(f.name)
+ok("schwab_transport isolated from screeners+routing (Rule 9)", not leak2, f"leak: {leak2}" if leak2 else "no references")
 
 passed = sum(1 for _, p, _ in checks if p)
 print(f"\n  {passed}/{len(checks)} guards green")
