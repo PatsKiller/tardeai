@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 SCORE_DELTA = 8.0
 RANK_JUMP = 20
 FACTOR_DELTA = 20.0
-CHAT_IDS = ("6993102664", "8797974247")
+from tg_chat_ids import chat_ids  # no hardcoded chat IDs
 
 
 def _conn():
@@ -46,7 +46,7 @@ def _telegram(msg):
                     tok = line.split("=", 1)[1].strip()
         if not tok:
             return
-        for cid in CHAT_IDS:
+        for cid in chat_ids():
             requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
     except Exception:
         pass

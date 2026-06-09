@@ -34,7 +34,7 @@ REFRESH_TTL_DAYS = 7          # GATE A worst case: assume 7d, no roll-forward, u
 REAUTH_LEAD_DAYS = 1         # re-auth should happen at least 1 day before expiry
 ACCESS_REFRESH_MARGIN_S = 300  # refresh the ~29-min access token when <5 min remain
 ALERT_DAYS = {5, 6}          # day-5 and day-6 of the 7-day window (i.e. 2 and 1 days remaining)
-CHAT_IDS = ("6993102664", "8797974247")
+from tg_chat_ids import chat_ids  # no hardcoded chat IDs
 RATE_PER_MIN = 100           # conservative shared cap; exact Schwab per-minute number is an architect open-item
 
 
@@ -190,7 +190,7 @@ def _telegram(msg):
                     tok = l.split("=", 1)[1].strip()
         if not tok:
             return
-        for cid in CHAT_IDS:
+        for cid in chat_ids():
             requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
     except Exception:
         pass
