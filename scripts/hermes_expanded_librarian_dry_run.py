@@ -8,11 +8,20 @@ Safety:
 """
 
 import json, os, psycopg2
+
+# --- .env autoload (no hardcoded secrets) ---
+import os as _os
+if not _os.getenv("DB_PASSWORD"):
+    try:
+        from pathlib import Path as _P
+        for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+            if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
+    except Exception: pass
 from pathlib import Path
 from datetime import datetime, timezone
 
 DB = {"host": "localhost", "dbname": "trade_ai", "user": "trade_ai",
-      "password": os.environ.get("DB_PASSWORD", "***REMOVED***")}
+      "password": os.environ.get("DB_PASSWORD", "")}
 OUT = Path(__file__).resolve().parent.parent / "docs" / "hermes" / "phase30_expanded_librarian_dryrun"
 OUT.mkdir(parents=True, exist_ok=True)
 

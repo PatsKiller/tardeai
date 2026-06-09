@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """session26_validate_proposal_enrichment.py — Validate Session 26 deliverables."""
 import json
+
+# --- .env autoload (no hardcoded secrets) ---
+import os as _os
+if not _os.getenv("DB_PASSWORD"):
+    try:
+        from pathlib import Path as _P
+        for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+            if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
+    except Exception: pass
 import os
 import sys
 from pathlib import Path
@@ -44,7 +53,7 @@ except Exception as e:
 # 3-5. Schema
 import psycopg2
 conn = psycopg2.connect(host='localhost', dbname='trade_ai', user='trade_ai',
-                        password=os.getenv('DB_PASSWORD', '***REMOVED***'))
+                        password=os.getenv('DB_PASSWORD', ''))
 cur = conn.cursor()
 
 cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='paper_trade_proposals' AND column_name LIKE 'packet_%'")
