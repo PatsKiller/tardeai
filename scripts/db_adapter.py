@@ -156,8 +156,9 @@ def save_holdings(portfolio: Dict, state_dir: Path) -> None:
     # JSON (always write on Windows; fallback on Linux)
     path = Path(state_dir) / "holdings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(portfolio, f, indent=2, default=str)
+    # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
+    from holdings_guard import protected_holdings_write
+    protected_holdings_write(portfolio, source="db_adapter.save_holdings", target_path=str(path))
 
 
 # ── PRICE CACHE ───────────────────────────────────────────────────────────────

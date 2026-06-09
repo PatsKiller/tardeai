@@ -55,6 +55,36 @@ cannot be renewed programmatically. Therefore:
 unchanged; a fabricated good payload (temp file) → post-assert passed; a fabricated divergent average
 price → flagged, stored basis preserved.
 
+## Mandatory holdings wipe-guard (2026-06-09 — behavior change)
+`protected_holdings_write()` is no longer opt-in. **Every** code path that writes the holdings/current-
+state file now routes through it (the implementation is reused as-is; neutral import home
+`scripts/holdings_guard.py`). The guard now also rejects a **catastrophic drop** (new total < 50% of the
+last-good snapshot) and **alerts** (Telegram both chat IDs) on every block/restore. The A/B split: the
+**wipe-guard** is mandatory for all; **basis-preservation** is opt-in (`protect_basis=True`, Schwab sync
+only) so legitimate basis edits (e.g. `patch_holdings_cost_basis`) are not reverted.
+
+| # | Writer (before: unprotected) | after |
+|---|---|---|
+| 1 | `db_adapter.save_holdings` | → guard |
+| 2 | `portfolio_loader.save_state` | → guard |
+| 3 | `portfolio_server.write_holdings` (×3 callers) | → guard |
+| 4 | `holdings_reconcile.py` | → guard |
+| 5 | `phase2_sector_resolver.py` | → guard |
+| 6 | `phase3_lookthrough_resolver.py` | → guard |
+| 7 | `patch_holdings_cost_basis.py` | → guard (`protect_basis=False`) |
+
+**Closes:** programmatic wipes — empty/zeroed/failed/catastrophically-low writes from any script can no
+longer overwrite a good `holdings.json`; the prior snapshot is kept + a loud alert fires.
+**Does NOT close:** the **deploy/zip-extraction vector** (a deploy zip or cleanup step zeroing state files
+bypasses Python entirely) — that needs a separate **pre-deploy state-guard** and is a **tracked
+follow-up**, intentionally out of scope here.
+
+**Proven:** empty payload via the real-path guard → `rejected_sanity`, file untouched; catastrophic drop
+(2.5M→1.1M) → `rejected_drop`; forced post-write failure → prior snapshot restored byte-identical; a
+normal full write → OK, `total $1.24M / 48 positions`, `assert v>1M` passes (no false positive); live
+`holdings.json` byte-unchanged throughout; changeset touches zero screener/classifier/GO-WAIT/ATM/agent
+files. Rollback = revert the routing commit (writers fall back to their prior direct write).
+
 ## Write lockdown + regression guard
 - `scripts/schwab_adapter.py`: `submit_entry`, `cancel_order`, `_api_post` now return **`NOT_PROVEN`**
   (real finding: `cancel_order` previously made a live `requests.delete`). Read methods (`get_account`,

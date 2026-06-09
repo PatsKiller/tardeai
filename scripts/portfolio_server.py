@@ -530,9 +530,9 @@ def read_holdings() -> dict:
 
 def write_holdings(data: dict) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    HOLDINGS_PATH.write_text(
-        json.dumps(data, indent=2, default=str), encoding="utf-8"
-    )
+    # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
+    from holdings_guard import protected_holdings_write
+    protected_holdings_write(data, source="portfolio_server.write_holdings", target_path=str(HOLDINGS_PATH))
 
 
 def _nan_safe(obj):
