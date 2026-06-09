@@ -3,6 +3,30 @@
 
 Pure functions. No DB writes. No trades. No strategy changes.
 """
+import re
+from pathlib import Path
+
+_MAX_HOLD_CACHE = {}
+
+
+def _strategy_max_hold(strategy):
+    """Return the strategy's configured max_hold_days (or None) — so a stale-close lesson doesn't
+    recommend adding a rule that already exists. Read-only config lookup, cached."""
+    if not strategy:
+        return None
+    if strategy in _MAX_HOLD_CACHE:
+        return _MAX_HOLD_CACHE[strategy]
+    val = None
+    try:
+        p = Path(__file__).resolve().parent.parent / "config" / "strategies" / f"{strategy}.yaml"
+        if p.exists():
+            m = re.search(r"max_hold_days:\s*(\d+)", p.read_text())
+            val = int(m.group(1)) if m else None
+    except Exception:
+        val = None
+    _MAX_HOLD_CACHE[strategy] = val
+    return val
+
 
 EXIT_TYPE_MAP = {
     "target_hit": "target_hit",
@@ -15,6 +39,7 @@ EXIT_TYPE_MAP = {
     "position_closed_in_alpaca": "broker_position_closed",
     "phantom_no_alpaca_position": "broker_position_closed",
     "order_never_filled_on_alpaca": "broker_position_closed",
+    "closed_on_different_trade_id": "duplicate_trade_record",
 }
 
 
@@ -36,7 +61,8 @@ def classify_exit_quality(trade: dict) -> str:
         return "NEEDS_REVIEW"
     if "phantom" in exit_reason or "never_filled" in exit_reason:
         return "NEEDS_REVIEW"
-    if "position_closed" in exit_reason:
+    # closed under a different trade record for the same symbol — a bookkeeping artifact, not a trade outcome
+    if "position_closed" in exit_reason or "different_trade" in exit_reason:
         return "NEEDS_REVIEW"
     return "NEEDS_REVIEW"
 
@@ -68,7 +94,8 @@ def classify_dashboard_verdict(trade: dict) -> str:
         return "EARLY_EXIT" if pnl < 0 else "ACCEPTABLE_LOSS" if pnl == 0 else "GOOD_EXIT"
     if "manual" in exit_reason or "stale" in exit_reason:
         return "LATE_EXIT"
-    if "phantom" in exit_reason or "never_filled" in exit_reason or "position_closed" in exit_reason:
+    if ("phantom" in exit_reason or "never_filled" in exit_reason or "position_closed" in exit_reason
+            or "different_trade" in exit_reason):
         return "DATA_OR_BROKER_REVIEW"
     return "NEEDS_REVIEW"
 
@@ -92,7 +119,7 @@ def classify_mistake_type(trade: dict) -> str:
         return "stale_manual_exit"
     if "phantom" in exit_reason or "never_filled" in exit_reason:
         return "broker_sync_issue"
-    if "position_closed" in exit_reason:
+    if "position_closed" in exit_reason or "different_trade" in exit_reason:
         return "broker_sync_issue"
     if r < -0.5:
         return "chased_entry"
@@ -158,6 +185,22 @@ def generate_improved_lesson(trade: dict) -> dict:
             "post_exit_review_needed": not protected,
         }
     if "manual" in exit_reason or "stale" in exit_reason:
+        mh = _strategy_max_hold(strategy)
+        held = trade.get("_held_days")
+        if mh:
+            # strategy ALREADY has a max-hold auto-exit — don't recommend adding one that exists.
+            return {
+                "category": "exit_enforcement",
+                "lesson": f"{symbol} ({strategy}): Closed manual/stale though {strategy} already defines max_hold_days={mh} with auto-exit"
+                          + (f" (held only ~{held}d)" if held is not None else "") + " — the stale close fired before/instead of the configured time-exit. The gap is ENFORCEMENT/timing, not a missing rule",
+                "rule_feedback": f"{strategy} HAS a {mh}-day max-hold auto-exit; verify the time-exit executor actually fires and that stale-detection is not closing positions prematurely (well inside the {mh}-day window)",
+                "action": "verify_exit_enforcement",
+                "action_priority": "medium",
+                "action_owner": "strategy_review",
+                "next_operator_action": f"Confirm {strategy}'s max_hold_days={mh} auto-exit drives exits; investigate why {symbol} was flagged stale early instead",
+                "better_exit_possible": "yes",
+                "post_exit_review_needed": True,
+            }
         return {
             "category": "manual_intervention",
             "lesson": f"{symbol} ({strategy}): Closed manually/stale — no explicit exit rule fired, position was closed by operator discretion. This indicates the strategy lacks a clear exit condition for this scenario",
@@ -191,6 +234,18 @@ def generate_improved_lesson(trade: dict) -> dict:
             "action_owner": "broker_sync",
             "next_operator_action": f"Check Alpaca activity log for {symbol} — determine if this was a manual close, margin event, or sync error",
             "better_exit_possible": "unknown",
+            "post_exit_review_needed": True,
+        }
+    if "different_trade" in exit_reason:
+        return {
+            "category": "data_quality",
+            "lesson": f"{symbol} ({strategy}): Position closed under a DIFFERENT trade record for the same symbol — two overlapping records existed for one Alpaca position and the other record's close cascaded here. A bookkeeping artifact, not a trading outcome",
+            "rule_feedback": "Dedupe overlapping open trades per symbol: block/merge a second open record for an already-open symbol so one record maps to one live position",
+            "action": "investigate_data_gap",
+            "action_priority": "medium",
+            "action_owner": "data_pipeline",
+            "next_operator_action": f"Check for duplicate open trades on {symbol}; enforce one trade record per live Alpaca position (entry-dedup guard)",
+            "better_exit_possible": "n/a",
             "post_exit_review_needed": True,
         }
     return {
