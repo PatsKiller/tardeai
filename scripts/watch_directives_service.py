@@ -89,7 +89,7 @@ def _notify(msg):
         tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
         if not tok:
             return
-        for cid in ("6993102664", "8797974247"):
+        for cid in __import__("tg_chat_ids").chat_ids():
             requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
                           json={"chat_id": cid, "text": msg}, timeout=8)
     except Exception:

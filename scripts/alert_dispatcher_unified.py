@@ -23,7 +23,7 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 DISPATCH_LOG = PROJECT_ROOT / "logs" / "alert_dispatcher.log"
 
 # Recipients
-TELEGRAM_CHAT_IDS = ["6993102664", "8797974247"]
+TELEGRAM_CHAT_IDS = __import__("tg_chat_ids").chat_ids()  # env-sourced, no hardcoded IDs
 EMAIL_TO = "john@jwwhiting.com"
 GOG_ACCOUNT = "john@jwwhiting.com"
 

@@ -668,7 +668,7 @@ def send_journal_reminder():
             )
             import requests
             token = os.getenv('TELEGRAM_BOT_TOKEN','')
-            for chat_id in ['6993102664', '8797974247']:
+            for chat_id in __import__("tg_chat_ids").chat_ids():
                 try:
                     requests.post(
                         f'https://api.telegram.org/bot{token}/sendMessage',
