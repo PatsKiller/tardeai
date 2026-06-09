@@ -22,7 +22,12 @@ SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
 # Always offered (so the operator can add even if currently absent)
 KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "FINNHUB_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
-         "FINVIZ_API_TOKEN", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD"]
+         "FINVIZ_API_TOKEN", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD",
+         "SCHWAB_APP_KEY", "SCHWAB_APP_SECRET"]
+# Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
+# masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
+# OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
+KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL"]
 
 
 def _read_env():
@@ -46,8 +51,11 @@ def list_secrets():
     """Names + presence + masked hint. NEVER full values."""
     _, d = _read_env()
     keys = sorted(set(KNOWN) | {k for k in d if k.endswith(SECRET_SUFFIXES)})
-    return {"secrets": [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k))} for k in keys],
-            "note": "Values are write-only — the UI never shows or returns a secret. .env is 0600 + gitignored."}
+    out = [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False} for k in keys]
+    # config values are NOT secrets → shown in full (still editable here)
+    out += [{"key": k, "present": bool(d.get(k)), "masked": d.get(k) or None, "is_config": True} for k in KNOWN_CONFIG]
+    return {"secrets": out,
+            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. .env is 0600 + gitignored."}
 
 
 def _audit(key, actor):
@@ -65,8 +73,9 @@ def set_secret(key, value, actor="operator"):
     key = (key or "").strip()
     if not KEY_RE.match(key):
         raise ValueError("invalid key name (must be UPPER_SNAKE_CASE)")
-    if not key.endswith(SECRET_SUFFIXES):
-        raise ValueError(f"key must end with one of {SECRET_SUFFIXES} (secret keys only)")
+    is_config = key in KNOWN_CONFIG
+    if not is_config and not key.endswith(SECRET_SUFFIXES):
+        raise ValueError(f"key must end with one of {SECRET_SUFFIXES} (secret keys only) or be a known config key")
     value = (value or "").strip()
     if len(value) < 4:
         raise ValueError("value too short")
@@ -87,7 +96,7 @@ def set_secret(key, value, actor="operator"):
     os.replace(tmp, ENV_PATH)
     os.environ[key] = value           # current process picks it up immediately
     _audit(key, actor)
-    return {"ok": True, "key": key, "masked": _mask(value), "rotated": replaced,
+    return {"ok": True, "key": key, "masked": (value if is_config else _mask(value)), "is_config": is_config, "rotated": replaced,
             "note": "Written to .env (0600). Long-running services apply it on next restart; cron jobs on next run."}
 
 
