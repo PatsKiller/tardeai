@@ -6,7 +6,7 @@ Calls /api/v2/morning-brief, formats for Telegram, sends to configured chat IDs.
 Usage:
     .venv/bin/python scripts/send_morning_brief.py
     .venv/bin/python scripts/send_morning_brief.py --dry-run
-    .venv/bin/python scripts/send_morning_brief.py --chat-id 8797974247
+    .venv/bin/python scripts/send_morning_brief.py --chat-id <chat_id>
 """
 import argparse
 import json
