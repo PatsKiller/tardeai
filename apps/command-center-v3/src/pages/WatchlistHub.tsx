@@ -59,7 +59,12 @@ export default function WatchlistHub({ onDrill }: Props) {
 
   const visible = useMemo(() => items.filter(it => {
     if (fStatus !== 'all' && it.status !== fStatus) return false
-    if (fOrigin !== 'all' && it.origin_system !== fOrigin) return false
+    // "Operator-directive" matches directive-linked items too (a symbol AI-discovered first then put under
+    // an operator directive keeps origin_system=agent_discovery, but it IS operator-directed via directive_id).
+    if (fOrigin !== 'all') {
+      if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
+      else if (it.origin_system !== fOrigin) return false
+    }
     if (fKind === 'directive' && !it.directive_id) return false
     if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
     if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
