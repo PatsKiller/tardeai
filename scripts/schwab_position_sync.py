@@ -123,8 +123,11 @@ def _last_good_total(path=None):
     return 0.0
 
 
-def _alert(msg):
-    """Loud alert on a blocked/restored holdings write (existing Telegram path, both chat IDs)."""
+def _alert(msg, source=""):
+    """Loud alert on a blocked/restored holdings write (existing Telegram path, both chat IDs).
+    Suppressed for test/proof sources so verification runs never spam the operator's Telegram."""
+    if "test" in (source or "").lower() or "proof" in (source or "").lower():
+        return
     try:
         import requests
         tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -155,7 +158,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     ok, reason = sane_payload(new_holdings)
     if not ok:
         _record(account_key, "rejected_sanity", f"[{source}] {reason}")
-        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
         return {"wrote": False, "status": "rejected_sanity", "reason": reason}
 
     # catastrophic-drop guard vs last-good snapshot
@@ -164,7 +167,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     if prior > 0 and new_total < CATASTROPHIC_DROP_FRACTION * prior:
         rsn = f"total {new_total:,.0f} < {CATASTROPHIC_DROP_FRACTION:.0%} of last-good {prior:,.0f}"
         _record(account_key, "rejected_drop", f"[{source}] {rsn}", len(_positions_of(new_holdings)), new_total)
-        _alert(f"🛑 holdings write REJECTED ({source}): catastrophic drop — {rsn}. Prior snapshot kept.")
+        _alert(f"🛑 holdings write REJECTED ({source}): catastrophic drop — {rsn}. Prior snapshot kept.", source)
         return {"wrote": False, "status": "rejected_drop", "reason": rsn}
 
     # preserve manually-repaired tax-grade basis — Schwab sync only (opt-in), never for general writers
@@ -197,7 +200,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         if backup is not None:
             HP.write_bytes(backup)
         _record(account_key, "rejected_postwrite", f"[{source}] write error, restored backup: {str(e)[:120]}")
-        _alert(f"🛑 holdings write FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}")
+        _alert(f"🛑 holdings write FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}", source)
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
 
     # post-write verification — restore on failure
@@ -207,7 +210,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         if backup is not None:
             HP.write_bytes(backup)
         _record(account_key, "rejected_postwrite", f"[{source}] post-write assert failed, restored backup: {str(e)[:120]}")
-        _alert(f"🛑 holdings post-write assert FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}")
+        _alert(f"🛑 holdings post-write assert FAILED ({source}) — prior snapshot RESTORED: {str(e)[:80]}", source)
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
 
     _record(account_key, "ok", f"wrote {n} positions / ${v:,.0f}; basis_flags={len(flagged)}", n, v, True)
