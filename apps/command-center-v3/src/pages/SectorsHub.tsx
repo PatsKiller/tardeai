@@ -16,6 +16,8 @@ const Pill = ({ text, color, tip }: any) => (
 
 export default function SectorsHub({ onDrill }: Props) {
   const { data, refetch } = useApi<any>('/api/v2/sectors/monitor', 120_000)
+  const { data: secExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=sector', 120_000)
+  const secExtMap: Record<string, any[]> = secExt?.map ?? {}
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -58,6 +60,11 @@ export default function SectorsHub({ onDrill }: Props) {
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', display: 'flex', gap: 6, alignItems: 'center' }}>
                     {s.sector}
                     {s.is_watched && <Pill text="watching" color="#a855f7" tip={s.directive?.label} />}
+                    {(secExtMap[`SECTOR:${s.sector}`] || []).map((e: any, i: number) => (
+                      <span key={i} onClick={(ev) => { ev.stopPropagation(); onDrill({ title: `${s.sector} — LLM narrative`, subtitle: `${e.lane === 'grok' ? 'Grok' : 'ChatGPT'} · ${s.momentum}`, endpoint: 'derived', rows: [s], subjectType: 'sector', subjectKey: `SECTOR:${s.sector}` }) }}
+                        title={`${e.lane === 'grok' ? 'Grok' : 'ChatGPT'}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`}
+                        style={{ fontSize: 9, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'pointer' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>
+                    ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
                     <Pill text={s.etf} color="#60a5fa" tip="sector ETF" />

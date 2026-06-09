@@ -192,7 +192,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
                 <div style={{ display: 'flex', gap: 8 }}>
                   {pr.option_count > 0 && <span style={{ fontSize: 9, color: '#60a5fa' }}>{pr.option_count} protection opt</span>}
                   <span onClick={() => setExpanded({ ...expanded, [key]: !exp })} style={{ fontSize: 9, color: 'var(--text3)', cursor: 'pointer', textDecoration: 'underline' }}>{exp ? 'less' : 'more intelligence'}</span>
-                  <span onClick={() => onDrill({ title: `${p.symbol} — ${p.account}`, subtitle: `${p.strategy ?? ''} · ${p.broker}/${p.environment}`, endpoint: '/api/v2/open-trades/intelligence', rows: [p] } as any)} style={{ fontSize: 9, color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline' }}>drill</span>
+                  <span onClick={() => onDrill({ title: `${p.symbol} — ${p.account}`, subtitle: `${p.strategy ?? ''} · ${p.broker}/${p.environment}`, endpoint: '/api/v2/open-trades/intelligence', rows: [p], subjectType: 'position', subjectKey: p.symbol } as any)} style={{ fontSize: 9, color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline' }}>drill</span>
                 </div>
               </div>
 

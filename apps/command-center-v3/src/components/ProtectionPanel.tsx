@@ -91,6 +91,7 @@ export default function ProtectionPanel({ onDrill }: Props) {
                         subtitle: `Proposal #${c.id}`,
                         endpoint: '/api/v2/atm/protection-adjustment-proposals',
                         rows: [c],
+                        subjectType: 'position', subjectKey: c.symbol,
                       })}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
