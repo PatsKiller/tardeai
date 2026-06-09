@@ -11,6 +11,7 @@ export default function SecretsManager() {
   const [val, setVal] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const selectedConfig = !!secrets.find((s: any) => s.key === key)?.is_config  // config value (not a masked secret)
 
   const save = async () => {
     if (!key.trim() || val.trim().length < 4 || busy) return
@@ -38,7 +39,7 @@ export default function SecretsManager() {
         {secrets.map((s: any) => (
           <div key={s.key} onClick={() => { setKey(s.key); setOpen(true); setMsg('') }} title="rotate this secret"
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 7, cursor: 'pointer', background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}</span>
+            <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}{s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}</span>
             <span style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{s.present ? s.masked : 'not set'}</span>
           </div>
         ))}
@@ -53,8 +54,8 @@ export default function SecretsManager() {
             <input list="secret-keys" value={key} onChange={e => setKey(e.target.value.toUpperCase())} placeholder="ANTHROPIC_API_KEY"
               style={{ width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 12px' }} />
             <datalist id="secret-keys">{secrets.map((s: any) => <option key={s.key} value={s.key} />)}</datalist>
-            <label style={{ fontSize: 10, color: 'var(--text3)' }}>New value</label>
-            <input type="password" value={val} onChange={e => setVal(e.target.value)} placeholder="paste the new key/secret" autoComplete="new-password"
+            <label style={{ fontSize: 10, color: 'var(--text3)' }}>{selectedConfig ? 'Value (config — not masked)' : 'New value'}</label>
+            <input type={selectedConfig ? 'text' : 'password'} value={val} onChange={e => setVal(e.target.value)} placeholder={selectedConfig ? 'https://…/oauth/callback' : 'paste the new key/secret'} autoComplete="new-password"
               style={{ width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 14px' }} />
             {msg && <div style={{ fontSize: 11, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', marginBottom: 12 }}>{msg}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

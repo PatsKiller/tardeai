@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-09 — Schwab app creds in the Command Center secrets modal (credential-entry path ready)
+
+System → Admin → API Keys & Secrets now manages SCHWAB_APP_KEY + SCHWAB_APP_SECRET (masked, write-only,
+audited like every other secret) and SCHWAB_CALLBACK_URL (editable config, shown in full, `cfg` tag).
+Reuses the existing modal mechanics exactly (secrets_admin.py KNOWN + new KNOWN_CONFIG; atomic .env 0600
+write; audit by key name only). DELIBERATELY excluded: SCHWAB_REFRESH_TOKEN (OAuth-flow-owned by
+schwab_token_manager) and SCHWAB_TOKEN_ENC_KEY (rotating it orphans every stored token). The token manager
+already reads these from .env (_have_app_creds); no live Schwab call. Lets the app key/secret be entered
+the moment the Developer Portal app is approved.
+
 ## 2026-06-09 — Schwab Stage 1: read-only transport via schwab-py (writes fenced; live NOT_PROVEN)
 
 Adopted schwab-py 1.5.1 (MIT) as the READ-ONLY transport beneath schwab_token_manager.py (which stays the
