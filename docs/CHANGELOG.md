@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-09 — Max-hold time-exit proposals (advisory, approval-gated)
+
+Turns the previously-unenforced `auto_exit_at_max_hold` config into an ACTIONABLE, gated time-exit —
+no silent auto-close. `generate_max_hold_exit_proposals.py` (cron 10:20 weekdays) creates a
+paper_time_exit_proposal for each open position held past its strategy's max_hold_days. The operator
+approves via System/Open-Trades UI or `POST /api/v2/time-exit-proposals/decide`; APPROVE is hard-guarded
+(ALPACA_MODE==paper + live_trading_interlock on the trade's account + the existing close_paper_trade
+path). Verified: guard chain passes for paper, refuses non-paper, reject path works. `GET
+/api/v2/time-exit-proposals` + TimeExitProposals.tsx (Trading → Open Trades). Migration additive
+(paper_time_exit_proposals).
+
 ## 2026-06-09 — Secrets hard-rule + Command Center secrets modal + DB stability
 
 **HARD RULE — no credential hardcoded anywhere, ever synced to git (enforced):**
