@@ -31,16 +31,20 @@ def _conn():
 
 
 def _terms(keywords):
-    """Keyword phrases + their significant words (>2 chars, non-stop), deduped."""
+    """Precise match terms: full multi-word PHRASES (e.g. 'AI datacenter', 'data center') matched as
+    phrases, and distinctive single words (e.g. 'colocation', 'hyperscale'). We deliberately do NOT
+    split multi-word keywords into generic components ('data', 'center', 'infrastructure') — that
+    matched mutual funds / Visa / ETFs incidentally. Phrase-precise keeps Hermes leads on-theme."""
     out = []
     for kw in (keywords or []):
         kw = (kw or "").strip()
         if not kw:
             continue
-        out.append(kw)
-        for w in kw.split():
-            if len(w) > 2 and w.lower() not in STOP:
-                out.append(w)
+        if len(kw.split()) == 1:
+            if len(kw) > 3 and kw.lower() not in STOP:   # colocation, datacenter, hyperscale, semiconductor
+                out.append(kw)
+        else:
+            out.append(kw)   # 'AI datacenter', 'data center', 'AI infrastructure' — phrase only
     return list(dict.fromkeys(out))
 
 
