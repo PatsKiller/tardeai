@@ -31,7 +31,9 @@ const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_
 const SEL: React.CSSProperties = { fontSize: 11, padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)' }
 
 export default function WatchlistHub({ onDrill }: Props) {
-  const { data: wl, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?status=active', 60_000)
+  // Show the real watchlist (active + researched, scored-first) — the research pipeline moves items
+  // active→researched within hours, so a status='active'-only filter renders the list nearly empty.
+  const { data: wl, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=score', 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -41,6 +43,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fBand, setFBand] = useState('all')
   const [fKind, setFKind] = useState('all')   // all | directive
   const [fDir, setFDir] = useState('all')
+  const [fStatus, setFStatus] = useState('all')   // all (active+researched) | active | researched
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
 
@@ -55,13 +58,14 @@ export default function WatchlistHub({ onDrill }: Props) {
   const sectorTrendDirs = directives.filter(d => d.kind === 'sector' || d.kind === 'trend')
 
   const visible = useMemo(() => items.filter(it => {
+    if (fStatus !== 'all' && it.status !== fStatus) return false
     if (fOrigin !== 'all' && it.origin_system !== fOrigin) return false
     if (fKind === 'directive' && !it.directive_id) return false
     if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
     if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
     if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
     return true
-  }), [items, fOrigin, fKind, fDir, fBand, search])
+  }), [items, fOrigin, fKind, fDir, fBand, fStatus, search])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -78,7 +82,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       {/* advisory strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Active items', value: items.length, color: 'var(--text0)' },
+          { label: 'Watchlist items', value: items.length, color: 'var(--text0)' },
           { label: 'With setup advisory', value: advisories.length, color: '#60a5fa' },
           { label: '⚠ Caution band', value: cautionN, color: '#ef4444' },
           { label: 'Favorable band', value: favorableN, color: '#22c55e' },
@@ -116,6 +120,8 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       {/* Filter bar */}
       <div style={{ ...card, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Status
+          <select style={SEL} value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Active + Researched</option><option value="active">Active only</option><option value="researched">Researched only</option></select></label>
         <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Origin
           <select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Advisory band

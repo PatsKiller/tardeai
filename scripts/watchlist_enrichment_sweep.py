@@ -56,9 +56,16 @@ def sweep(limit=None, dry=False):
     import directive_promotion as dp
 
     conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT symbol FROM watchlist_items WHERE status='active'
-                   ORDER BY last_enriched_at ASC NULLS FIRST""" + (f" LIMIT {int(limit)}" if limit else ""))
-    symbols = [r[0] for r in cur.fetchall() if r[0]]
+    # The research pipeline moves items active→researched within hours; the watchlist UI shows both, so
+    # enrich both. Bounded cap (stalest/never-enriched first) so a run never hammers Finviz on all rows;
+    # */30 intraday runs rotate through the set. directive-linked + active surface first.
+    cap = int(limit) if limit else 150
+    cur.execute("""SELECT symbol FROM watchlist_items
+                   WHERE status IN ('active','researched') AND symbol IS NOT NULL
+                   ORDER BY (directive_id IS NULL), (status <> 'active'),
+                            last_enriched_at ASC NULLS FIRST, updated_at DESC
+                   LIMIT %s""", (cap,))
+    symbols = list(dict.fromkeys([r[0] for r in cur.fetchall() if r[0]]))  # dedup, preserve order
     if not symbols:
         print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}
 
@@ -107,7 +114,7 @@ def sweep(limit=None, dry=False):
                                  rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
                                  price=%s, change_pct=%s, float_m=%s, rvol=%s,
                                  watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
-                               WHERE symbol=%s AND status='active'""",
+                               WHERE symbol=%s AND status IN ('active','researched')""",
                             (rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind, sym))
                 enriched += 1
             except Exception as e:
