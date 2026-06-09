@@ -153,9 +153,12 @@ def fetch_alpaca_snapshot(symbol: str) -> dict:
             "APCA-API-KEY-ID": api_key,
             "APCA-API-SECRET-KEY": secret_key,
         }
+        # feed=iex: the free Alpaca tier blocks the default SIP feed, so without this the snapshot
+        # returns nothing and get_best_quote falls through to the day-stale finviz cache (the
+        # "quote is 1022min old" approval block). IEX is the same free feed the intraday cron uses.
         resp = requests.get(
             f"{data_url}/v2/stocks/{symbol}/snapshot",
-            headers=headers, timeout=10)
+            headers=headers, params={"feed": "iex"}, timeout=10)
         if resp.status_code != 200:
             log.debug(f"Alpaca snapshot {symbol}: HTTP {resp.status_code}")
             return None
