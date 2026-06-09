@@ -59,17 +59,26 @@ Compares each symbol's two latest snapshots and flags: composite **spike/drop** 
 (≥20), **analyst divergence flip**, **sector/setup factor regime shift** → `alert_events` (idempotent
 `alert_uid`, no re-spam) + Telegram to both chat IDs (`6993102664`, `8797974247`).
 
-## H-6 — Top-N external-LLM curation + per-LLM badges
-`scripts/hermes_top20_external_intel.py` (cron `5 */2 * * *`) curates the **top-20 Hermes-ranked**
-names into a well-formatted context (rank, composite, factor reads, RSI/trend) and sends each to the
-**free external LLM lanes** via `hermes_external_researcher.py`, storing the verdict in
-`hermes_external_research`:
-- **Grok** (xAI proxy) — works headless; this is the **automated** lane.
-- **ChatGPT** (openai-codex OAuth) — **interactive-only in Hermes 0.16** (`hermes -p dev chat`), so it
-  runs **manually** via `--lanes chatgpt`; it badges if/when curated.
-Skips a (symbol, lane) pair curated in the last 12h. `GET /api/v2/hermes/external-intel-map` returns
-per-symbol `{lane, model, recommendation, at}` (14d); `/v3/watchlist` renders a **`✦ Grok` / `✦ ChatGPT`
-badge** per curating LLM, tooltip = verdict + curation date.
+## H-6 — Top-N external-LLM curation, badges, full theses
+`scripts/hermes_top20_external_intel.py` curates the **top-20 Hermes-ranked** names into a well-formatted
+context (rank, composite, factor reads, RSI/trend) and sends each to the **FREE external LLM lanes** via
+`hermes_external_researcher.py`, storing the verdict in `hermes_external_research`. **No API keys — OAuth only.**
+
+- **Grok** (free xAI OAuth, xai proxy) — headless; the **automated** lane, cron `5 */2 * * *` (`--lanes grok`).
+- **ChatGPT** (free **openai-codex OAuth** — your ChatGPT subscription, NOT the metered OpenAI API). The
+  v0.16 codex one-shot returns "no final response" headless because it needs a real terminal; wrapping it
+  in a **pseudo-TTY** (`script -qec 'hermes -z … --provider openai-codex -m gpt-5.4' /dev/null`) makes it
+  finalize. So ChatGPT is **manual/optional** via the **`✦ Run ChatGPT on Top 20`** button on
+  `/v3/watchlist` → `POST /api/v2/hermes/curate-top20` (launches the run in the background, lockfile-guarded;
+  `GET` returns `running` + `N/20`). Codex headless-readiness is tracked in
+  `data/runtime/hermes_llm_capabilities.json`.
+
+Skips a (symbol, lane) pair curated in the last 12h. **Surfacing:**
+- `GET /api/v2/hermes/external-intel-map` → per-symbol `{lane, model, recommendation, at}` (14d) → `/v3/watchlist`
+  renders a **`✦ Grok` / `✦ ChatGPT` badge** per curating LLM (tooltip = verdict + curation date).
+- The **intel-card drawer** (`/api/v2/hermes/intel/{symbol}` → `external_intel`) shows each LLM's **full
+  thesis**: recommendation, evidence bullets, counter-view, risk flags, confidence, timestamp — alongside
+  the Hermes trade-setup recommendation + competition peers.
 
 ## Schema (additive)
 - `migrations/2026-06-09_hermes_composite_score.sql` — score/rank/components/scored_at on watchlist_items.
