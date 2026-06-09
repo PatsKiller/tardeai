@@ -59,6 +59,18 @@ Compares each symbol's two latest snapshots and flags: composite **spike/drop** 
 (≥20), **analyst divergence flip**, **sector/setup factor regime shift** → `alert_events` (idempotent
 `alert_uid`, no re-spam) + Telegram to both chat IDs (`6993102664`, `8797974247`).
 
+## H-6 — Top-N external-LLM curation + per-LLM badges
+`scripts/hermes_top20_external_intel.py` (cron `5 */2 * * *`) curates the **top-20 Hermes-ranked**
+names into a well-formatted context (rank, composite, factor reads, RSI/trend) and sends each to the
+**free external LLM lanes** via `hermes_external_researcher.py`, storing the verdict in
+`hermes_external_research`:
+- **Grok** (xAI proxy) — works headless; this is the **automated** lane.
+- **ChatGPT** (openai-codex OAuth) — **interactive-only in Hermes 0.16** (`hermes -p dev chat`), so it
+  runs **manually** via `--lanes chatgpt`; it badges if/when curated.
+Skips a (symbol, lane) pair curated in the last 12h. `GET /api/v2/hermes/external-intel-map` returns
+per-symbol `{lane, model, recommendation, at}` (14d); `/v3/watchlist` renders a **`✦ Grok` / `✦ ChatGPT`
+badge** per curating LLM, tooltip = verdict + curation date.
+
 ## Schema (additive)
 - `migrations/2026-06-09_hermes_composite_score.sql` — score/rank/components/scored_at on watchlist_items.
 - `migrations/2026-06-09_hermes_score_history.sql` — `hermes_score_history` (append-only) +
