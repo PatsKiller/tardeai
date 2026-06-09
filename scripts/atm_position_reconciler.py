@@ -266,7 +266,7 @@ def record_from_journal(row: Dict[str, Any]) -> PositionRecord:
     return PositionRecord(
         source="journal_open",
         symbol=row.get("symbol") or row.get("ticker"),
-        account=row.get("account") or row.get("broker") or row.get("account_name") or "ALPACA_PAPER",
+        account=row.get("account") or row.get("broker") or row.get("account_name") or os.environ.get("DEFAULT_PAPER_ACCOUNT"),
         strategy_id=row.get("strategy_id") or row.get("strategy") or row.get("strategy_name") or "",
         paper_trade_id=to_int(row.get("paper_trade_id") or row.get("trade_id") or row.get("id")),
         lifecycle_id=str(row.get("lifecycle_id") or ""),

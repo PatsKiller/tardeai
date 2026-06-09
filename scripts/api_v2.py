@@ -18293,7 +18293,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                              "FROM paper_trade_proposals WHERE id=%s", (pid,), fetch="one")
             if not prop:
                 return 404, {"ok": False, "error": f"proposal {pid} not found"}
-            acct = prop.get("target_account") or prop.get("proposed_account") or "alpaca_paper"
+            acct = prop.get("target_account") or prop.get("proposed_account") or os.environ.get("DEFAULT_PAPER_ACCOUNT")
             kind = base_path.rsplit("/", 1)[-1]
             # ── HARD INTERLOCK (before guard/confirm/apply) ──
             _ic = _il_conn()
