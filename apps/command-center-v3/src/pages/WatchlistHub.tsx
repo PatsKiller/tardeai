@@ -9,6 +9,8 @@ const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid
 const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 const trendColor = (t?: string) => (t || '').toLowerCase().includes('up') ? '#22c55e' : (t || '').toLowerCase().includes('down') ? '#ef4444' : 'var(--text2)'
 const trendBadge = (t?: string) => (({ bullish: '#22c55e', bearish: '#ef4444', neutral: '#f59e0b', unknown: 'var(--text3)' } as any)[(t || '').toLowerCase()] || 'var(--text3)')
+// external-LLM curation badge meta (which LLM enhanced this name)
+const llmMeta = (lane?: string) => (({ grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' } } as any)[lane || ''] || { label: lane || 'LLM', color: 'var(--text3)' })
 
 // ── provenance pill palette (origin=violet for directives; reuse across the page) ──
 const originColor = (o?: string) => {
@@ -36,6 +38,8 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
+  const { data: ext } = useApi<any>('/api/v2/hermes/external-intel-map', 300_000)
+  const extMap: Record<string, any[]> = ext?.map ?? {}
   const paMap = useProAnalystMap()
 
   const [fOrigin, setFOrigin] = useState('all')
@@ -184,6 +188,11 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
                     {fr && <Pill text={fr} color="#60a5fa" tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color="#a855f7" tip={it.provenance_reason || 'from an operator watch directive'} />}
+                    {(extMap[it.symbol] || []).map((e: any, i: number) => {
+                      const m = llmMeta(e.lane)
+                      return <Pill key={`llm${i}`} text={`✦ ${m.label}`} color={m.color}
+                        tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} />
+                    })}
                   </div>
                   {/* enriched badges OR awaiting state */}
                   {!enriched ? (

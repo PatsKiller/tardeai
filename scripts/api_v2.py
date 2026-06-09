@@ -16030,6 +16030,23 @@ def _hermes_intel(symbol):
             "note": "Advisory composite of news/social, analyst, sector, momentum, setup, R:R. Never gates execution."}
 
 
+def _hermes_external_intel_map(query=None):
+    """GET /api/v2/hermes/external-intel-map — per-symbol external-LLM curation (which lane curated it +
+    when + verdict) from hermes_external_research (last 14d). Powers the watchlist 'curated by
+    ChatGPT/Grok' badges + tooltip dates. Read-only; advisory."""
+    rows = _db_query("""SELECT DISTINCT ON (symbol, lane) symbol, lane, model, created_at, recommendation, confidence
+                        FROM hermes_external_research
+                        WHERE status IN ('sent','ok','complete','success') AND symbol IS NOT NULL
+                          AND created_at > now() - interval '14 days'
+                        ORDER BY symbol, lane, created_at DESC""") or []
+    out = {}
+    for r in rows:
+        out.setdefault(r["symbol"], []).append({
+            "lane": r["lane"], "model": r.get("model"), "at": _json_clean(r["created_at"]),
+            "recommendation": r.get("recommendation"), "confidence": _json_clean(r.get("confidence"))})
+    return {"map": out, "symbols": len(out)}
+
+
 # GICS top-level sector → ETF (reuse the continuous_runner / market_context map; not a new taxonomy)
 _SECTOR_ETF_MAP = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
                    "Consumer Cyclical": "XLY", "Industrials": "XLI", "Consumer Defensive": "XLP",
@@ -16512,6 +16529,7 @@ ROUTES = {
     "/api/v2/watchpool": _watchpool_list,
     "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/sectors/monitor": _sectors_monitor,
+    "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
