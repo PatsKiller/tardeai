@@ -16058,6 +16058,42 @@ def _hermes_external_intel_map(query=None):
     return {"map": out, "symbols": len(out)}
 
 
+def _hermes_subject_intel(query=None):
+    """GET /api/v2/hermes/subject-intel?type=&key= — external-LLM full theses for ANY subject
+    (proposal/position/closed_trade/sector/report), latest per lane. Powers the per-surface drawers."""
+    q = query or {}
+    ttype, key = q.get("type", ""), q.get("key", "")
+    if not ttype or not key:
+        return {"external_intel": []}
+    rows = _db_query("""SELECT DISTINCT ON (lane) lane, model, recommendation, evidence_json, dissent,
+                          confidence, risk_flags, created_at
+                        FROM hermes_external_research
+                        WHERE symbol=%s AND trigger_reason=%s AND status IN ('sent','ok','complete','success')
+                        ORDER BY lane, created_at DESC""", (key, f"enh_{ttype}")) or []
+    return {"type": ttype, "key": key, "external_intel": [
+        {"lane": r["lane"], "model": r.get("model"), "recommendation": r.get("recommendation"),
+         "evidence": r.get("evidence_json"), "dissent": r.get("dissent"),
+         "confidence": _json_clean(r.get("confidence")), "risk_flags": r.get("risk_flags"),
+         "at": _json_clean(r.get("created_at"))} for r in rows]}
+
+
+def _hermes_subject_intel_map(query=None):
+    """GET /api/v2/hermes/subject-intel-map?type= — per-key {lane, recommendation, at} for a subject type
+    (last 14d). Powers the per-surface ✦ Grok / ✦ ChatGPT badges."""
+    ttype = (query or {}).get("type", "")
+    if not ttype:
+        return {"map": {}, "keys": 0}
+    rows = _db_query("""SELECT DISTINCT ON (symbol, lane) symbol, lane, model, recommendation, created_at
+                        FROM hermes_external_research WHERE trigger_reason=%s
+                          AND status IN ('sent','ok','complete','success') AND created_at > now()-interval '14 days'
+                        ORDER BY symbol, lane, created_at DESC""", (f"enh_{ttype}",)) or []
+    out = {}
+    for r in rows:
+        out.setdefault(r["symbol"], []).append({"lane": r["lane"], "model": r.get("model"),
+            "recommendation": r.get("recommendation"), "at": _json_clean(r["created_at"])})
+    return {"type": ttype, "map": out, "keys": len(out)}
+
+
 def _hermes_curate_running():
     import subprocess
     try:
@@ -16576,6 +16612,8 @@ ROUTES = {
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
+    "/api/v2/hermes/subject-intel": _hermes_subject_intel,
+    "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
