@@ -16094,6 +16094,84 @@ def _hermes_subject_intel_map(query=None):
     return {"type": ttype, "map": out, "keys": len(out)}
 
 
+def _discovery_run(body):
+    """POST /api/v2/discovery/run {query, lane?} — discover relevant public companies for a query via the
+    free Grok/ChatGPT OAuth lane (D-1). Returns structured {ticker, relevance_score, relationship_type,
+    exposure_strength, reason, verified}."""
+    import hermes_discovery as hd
+    q = ((body or {}).get("query") or "").strip()
+    if not q:
+        return 400, {"ok": False, "error": "query required"}
+    lane = (body or {}).get("lane", "grok")
+    lane = lane if lane in ("grok", "chatgpt") else "grok"
+    try:
+        return 200, {"ok": True, "data": hd.run(q, lane=lane, apply=True)}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:200]}
+
+
+def _discovery_results(query=None):
+    """GET /api/v2/discovery/results?query_id= — results for a query (or recent queries if omitted)."""
+    qid = (query or {}).get("query_id")
+    if qid:
+        rows = _db_query("""SELECT ticker, company_name, relevance_score, relationship_type, exposure_strength,
+                              reason, verified, added_to_watchlist FROM discovery_results
+                            WHERE query_id=%s ORDER BY relevance_score DESC""", (int(qid),)) or []
+        meta = _db_query("SELECT query, mode, lane, status, result_count, created_at FROM discovery_queries WHERE id=%s",
+                         (int(qid),), fetch="one") or {}
+        return {"query_id": int(qid), "meta": {**meta, "created_at": _json_clean(meta.get("created_at"))},
+                "results": [{**r, "relevance_score": _json_clean(r["relevance_score"])} for r in rows]}
+    qs = _db_query("""SELECT id, query, mode, status, result_count, created_at FROM discovery_queries
+                      ORDER BY created_at DESC LIMIT 20""") or []
+    return {"queries": [{**x, "created_at": _json_clean(x["created_at"])} for x in qs]}
+
+
+def _discovery_add(body):
+    """POST /api/v2/discovery/add-to-watchlist {query_id, tickers?[], top_n?} — add discovered names to the
+    watchlist with discovery provenance; the enrichment sweep + Hermes scorer then take over (D-4)."""
+    b = body or {}
+    qid = b.get("query_id")
+    if not qid:
+        return 400, {"ok": False, "error": "query_id required"}
+    rows = _db_query("SELECT ticker, relationship_type FROM discovery_results WHERE query_id=%s ORDER BY relevance_score DESC",
+                     (int(qid),)) or []
+    if b.get("tickers"):
+        tset = {str(t).upper() for t in b["tickers"]}
+        rows = [r for r in rows if r["ticker"] in tset]
+    elif b.get("top_n"):
+        rows = rows[:int(b["top_n"])]
+    qry = (_db_query("SELECT query FROM discovery_queries WHERE id=%s", (int(qid),), fetch="one") or {}).get("query", "")
+    prov = f"discovery: {qry}"[:200]
+    added = []
+    for r in rows:
+        if _db_query("SELECT 1 FROM watchlist_items WHERE symbol=%s AND status<>'removed' LIMIT 1", (r["ticker"],), fetch="one"):
+            _db_query("""UPDATE watchlist_items SET discovery_query_id=%s, discovery_relationship=%s,
+                          provenance_reason=COALESCE(provenance_reason,%s), updated_at=NOW()
+                         WHERE symbol=%s AND status<>'removed'""",
+                      (int(qid), r["relationship_type"], prov, r["ticker"]), fetch="none")
+        else:
+            _db_query("""INSERT INTO watchlist_items (symbol, source, status, origin_system, asset_type,
+                          discovery_query_id, discovery_relationship, provenance_reason)
+                         VALUES (%s,'discovery','active','discovery','equity',%s,%s,%s)""",
+                      (r["ticker"], int(qid), r["relationship_type"], prov), fetch="none")
+        added.append(r["ticker"])
+    if added:
+        _db_query("UPDATE discovery_results SET added_to_watchlist=TRUE WHERE query_id=%s AND ticker = ANY(%s)",
+                  (int(qid), added), fetch="none")
+        # kick off enrichment + scoring now so the names get composite scores within a couple minutes
+        try:
+            import subprocess
+            subprocess.Popen(["nohup", "bash", "-c",
+                f"cd {PROJECT_ROOT} && {sys.executable} scripts/watchlist_enrichment_sweep.py --once --limit 40 "
+                f">> logs/discovery_enrich.log 2>&1 && {sys.executable} scripts/hermes_watchlist_scorer.py --once "
+                f">> logs/discovery_enrich.log 2>&1"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+        except Exception:
+            pass
+    return 200, {"ok": True, "added": added, "count": len(added),
+                 "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
+
+
 def _hermes_curate_running():
     import subprocess
     try:
@@ -16614,6 +16692,7 @@ ROUTES = {
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
     "/api/v2/hermes/subject-intel": _hermes_subject_intel,
     "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
+    "/api/v2/discovery/results": _discovery_results,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
@@ -17642,6 +17721,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _hermes_curate_top20_trigger(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/discovery/run":
+        return _discovery_run(body or {})
+    if method == "POST" and base_path == "/api/v2/discovery/add-to-watchlist":
+        return _discovery_add(body or {})
     if method == "POST" and base_path == "/api/v2/watch/directives/promote":
         try:
             return _watch_directive_promote(body or {})
