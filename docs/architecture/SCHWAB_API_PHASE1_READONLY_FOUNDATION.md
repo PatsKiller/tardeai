@@ -10,6 +10,10 @@
 and architecturally fenced off — there is **no working Schwab connection** in this phase. No live trading
 authorization. Schwab accounts stay MANUAL_REVIEW / read-only / `api_write_enabled=false`.
 
+> **Scope clarification.** Phase 1 proves safety guards under simulated Schwab failures. It does not prove
+> live Schwab connectivity. Live OAuth, real reads, account-hash mapping, true rate limits, token
+> roll-forward behavior, and Schwab API payloads remain NOT_PROVEN pending Developer Portal credentials.
+
 > **What "green" means here.** The proofs validate that the *safety machinery fails closed and protects
 > holdings when fed simulated Schwab failure* — they do **not** assert a live connection. Per the spec,
 > proof artifacts simulate empty/401/timeout responses and near-expiry tokens (you can't get a real
