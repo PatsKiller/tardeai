@@ -16058,6 +16058,40 @@ def _hermes_external_intel_map(query=None):
     return {"map": out, "symbols": len(out)}
 
 
+def _hermes_curate_running():
+    import subprocess
+    try:
+        return subprocess.run(["pgrep", "-f", "hermes_top20_external_intel"], capture_output=True).returncode == 0
+    except Exception:
+        return False
+
+
+def _hermes_curate_top20_status(query=None):
+    """GET /api/v2/hermes/curate-top20 — is a manual top-20 curation running + ChatGPT coverage of the top 20."""
+    done = _db_query("""SELECT count(DISTINCT h.symbol) n FROM hermes_external_research h
+                        JOIN watchlist_items wi ON wi.symbol=h.symbol AND wi.hermes_rank <= 20
+                        WHERE h.lane='chatgpt' AND h.status IN ('sent','ok','complete','success')
+                          AND h.created_at > now() - interval '8 hours'""", fetch="one") or {}
+    return {"running": _hermes_curate_running(), "chatgpt_curated_top20": (done.get("n") or 0), "of": 20}
+
+
+def _hermes_curate_top20_trigger(body=None):
+    """POST /api/v2/hermes/curate-top20 — launch the manual ChatGPT (free codex OAuth) curation on the
+    top-20 in the background. Non-blocking; badges + drawer theses fill in as each name completes."""
+    import subprocess
+    if _hermes_curate_running():
+        return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
+    lanes = (body or {}).get("lanes", "chatgpt")
+    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("chatgpt", "grok", "claude")) or "chatgpt"
+    cmd = (f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_top20_manual.lock "
+           f"{sys.executable} scripts/hermes_top20_external_intel.py --top 20 --lanes {lanes} --apply "
+           f">> logs/hermes_top20_manual.log 2>&1")
+    subprocess.Popen(["nohup", "bash", "-c", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     stdin=subprocess.DEVNULL, start_new_session=True)
+    return {"ok": True, "status": "started", "lanes": lanes,
+            "message": f"{lanes} curation started on the top 20 — badges appear as each name finishes (~20-40 min)."}
+
+
 # GICS top-level sector → ETF (reuse the continuous_runner / market_context map; not a new taxonomy)
 _SECTOR_ETF_MAP = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
                    "Consumer Cyclical": "XLY", "Industrials": "XLI", "Consumer Defensive": "XLP",
@@ -16541,6 +16575,7 @@ ROUTES = {
     "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
+    "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
@@ -17562,6 +17597,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/watch/directives":
         try:
             return _watch_directive_create(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/hermes/curate-top20":
+        try:
+            return 200, _hermes_curate_top20_trigger(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if method == "POST" and base_path == "/api/v2/watch/directives/promote":
