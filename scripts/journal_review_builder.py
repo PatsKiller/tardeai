@@ -15,15 +15,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 GRADE_TO_SCORE = {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}
 
-PROMPT = """You are a trading-journal coach. Review this CLOSED trade and reply ONLY with JSON.
+PROMPT = """You are a sharp trading-journal coach. Review this CLOSED trade. Reply ONLY with JSON.
 
 Symbol {symbol} | account {account} | strategy {strategy_id}
 Entry ${entry_price} -> Exit ${exit_price} | shares {shares} | P&L ${pnl} | exit: {exit_reason}
 
+LESSON RULES (strict — generic advice is rejected):
+- Tie it to THIS trade's actual numbers and exit reason.
+- Do NOT mention "stop-loss"/"tighten stops" UNLESS the loss clearly came from a stop set too wide or absent.
+- A winner: name the specific thing to REPEAT. A loser: name the specific decision that caused it.
+One concrete sentence, no boilerplate.
+
 Return JSON exactly:
 {{"setup": "<short setup name>", "entry_grade": "<A|B|C|D|F>", "exit_grade": "<A|B|C|D|F>",
- "lesson": "<one specific sentence: repeat or fix>",
- "strengths": ["<short tag>"], "mistakes": ["<short tag>"]}}"""
+ "lesson": "<specific sentence>", "strengths": ["<short tag>"], "mistakes": ["<short tag>"]}}"""
 
 
 def _conn():
@@ -45,8 +50,10 @@ def _parse(raw):
         return None
 
 
-def run(limit=None):
-    import local_llm
+def run(limit=None, lane="grok"):
+    import llm_lane
+    if not llm_lane.available(lane):
+        lane = "local"
     conn = _conn(); cur = conn.cursor()
     cur.execute(f"""SELECT symbol, account, exit_date::date AS cd, strategy_id, entry_price, exit_price,
                       shares, pnl, exit_reason
@@ -62,7 +69,7 @@ def run(limit=None):
         if cur.fetchone():
             skip += 1; continue
         try:
-            p = _parse(local_llm.generate(PROMPT.format(**r), timeout=90))
+            p = _parse(llm_lane.generate(PROMPT.format(**r), lane=lane, timeout=90))
         except Exception:
             p = None
         if not p:
@@ -70,16 +77,17 @@ def run(limit=None):
         cur.execute("""INSERT INTO journal_trade_reviews
                          (trade_key, symbol, account, closed_date, setup_name, execution_quality_score,
                           risk_management_score, lesson_learned, strength_tags, mistake_tags, coach_notes)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'llm_review')""",
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (tk, r["symbol"], r["account"], r["cd"], p["setup"], GRADE_TO_SCORE.get(p["entry_grade"], 3),
-                     GRADE_TO_SCORE.get(p["exit_grade"], 3), p["lesson"], p["strengths"], p["mistakes"]))
+                     GRADE_TO_SCORE.get(p["exit_grade"], 3), p["lesson"], p["strengths"], p["mistakes"], f"{lane}_review"))
         conn.commit(); done += 1
     print(json.dumps({"reviewed": done, "skipped_existing": skip, "failed": fail, "candidates": len(rows)}, indent=2))
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--limit", type=int, default=None)
-    run(limit=ap.parse_args().limit)
+    ap.add_argument("--lane", default="grok", choices=["grok", "local"])
+    a = ap.parse_args(); run(limit=a.limit, lane=a.lane)
 
 
 if __name__ == "__main__":
