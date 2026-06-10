@@ -8,6 +8,10 @@
 # (scripts/ingest_schwab_gainloss.py --apply) the reconcile pass elevates/corrects these; Schwab wins.
 # Format:  "SYMBOL|account": basis_per_share
 overrides:
-  # UNVERIFIED (pending Schwab Gain/Loss export): the SOLD 575 sh may be the $10.75 IPO lot OR higher-basis
-  # in-kind-transferred shares — Schwab's tax-lot assignment decides. If higher, the +$168K gain is overstated.
-  "V|schwab_roth_ira": 10.75   # 100 sh 2008 IPO @ ~$43 -> 4:1 split (2015) -> 400 sh @ ~$10.75; long-term winner
+  # V: documented IPO lot ONLY = 400 sh @ $10.75 (100 sh 2008 IPO @ ~$43 -> 4:1 split 2015). The override
+  # basis is now CAPPED at documented_qty: shares sold beyond 400 underflow to basis_unknown (their true
+  # basis needs the Schwab Realized Gain/Loss export). Confirmed by the 2026-04-21 Roth Positions export:
+  # the 130 V shares still HELD carry cost basis $307.32/sh (NOT $10.75) — so the non-IPO V is high-basis.
+  "V|schwab_roth_ira":
+    basis: 10.75
+    documented_qty: 400

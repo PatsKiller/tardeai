@@ -134,9 +134,15 @@ def run(apply=False, gap_min=5):
         ov = overrides.get(f"{sym}|{acct}")
         if ov is None:
             continue
+        # override may be a bare float (basis) or {basis, documented_qty}. documented_qty CAPS how many
+        # pre-window shares get the operator basis; sells beyond it underflow FIFO -> basis_unknown (their
+        # true basis needs Schwab's authoritative Gain/Loss export, never an extended hand override).
+        ov_basis = float(ov["basis"]) if isinstance(ov, dict) else float(ov)
+        doc_qty = ov.get("documented_qty") if isinstance(ov, dict) else None
         net = sum(f["qty"] for f in fills if f["side"] == "Buy") - sum(f["qty"] for f in fills if f["side"] == "Sell")
         if net < -0.01:
-            fills.append({"side": "Buy", "qty": abs(net), "price": float(ov), "fees": 0.0,
+            inject = min(abs(net), float(doc_qty)) if doc_qty else abs(net)
+            fills.append({"side": "Buy", "qty": inject, "price": ov_basis, "fees": 0.0,
                           "t": _dt.datetime(2008, 1, 1, tzinfo=_dt.timezone.utc), "pre_window": True, "source": "operator"})
     all_trips = []
     for (acct, sym), fills in bykey.items():
@@ -153,6 +159,10 @@ def run(apply=False, gap_min=5):
                            ON CONFLICT (dedupe_key) DO UPDATE SET net_pnl=EXCLUDED.net_pnl, fees=EXCLUDED.fees,
                              basis_status=EXCLUDED.basis_status, basis_source=EXCLUDED.basis_source""", tp)
             ins += 1
+        # purge orphans: rows whose dedupe_key is no longer produced this run (e.g. a trip's classification
+        # flipped long_term_trim -> basis_unknown when an override was capped, changing its dedupe_key).
+        keys = tuple(tp["dedupe_key"] for tp in all_trips) or ("",)
+        cur.execute("DELETE FROM schwab_round_trips WHERE dedupe_key NOT IN %s", (keys,))
         # ── CONSOLIDATION: schwab_round_trips is the single Schwab source of truth. Refresh trade_closed
         # (the /api/v2/journal "Trades" tab Schwab source) from it so the journal shows correct + current
         # data — fixes the stale/wrong V and the missing recent trades. basis_unknown excluded (no P&L).
