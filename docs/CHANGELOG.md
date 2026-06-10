@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-10 — Execution quality: Grok coaching (D) + journal badges/overlay (F)
+
+Part D: grok_execution_review.py feeds the COMPUTED metrics to Grok (free OAuth) -> strict JSON coaching
+(execution_label, primary/secondary mistake, what-happened, what-to-do-next, backtest_hypotheses,
+normalized_tags) stored in trade_execution_grok_reviews, SEPARATE from numbers; parse-strict (parse_failed,
+no fabrication). 7/7 reviewed cleanly (NUWE premature_exit_before_runner, GXAI left 3.36% unrealized). Part F:
+/api/v2/journal/execution-quality + v_trade_execution_quality_latest view; SchwabJournal shows an execution
+badge per round-trip (grade + capture% + severe-runner ⚠, Grok lesson tooltip); replay modal shows
+outcome/execution + capture. Read-only, validator 12/12. Remaining: paper source + Part E hypothesis backtests.
+
 ## 2026-06-10 — Replay-aware execution quality (foundation: schema + compute)
 
 Separates OUTCOME from EXECUTION so profitable trades can be graded poorly. Part A: trade_execution_quality +
