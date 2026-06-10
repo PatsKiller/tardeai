@@ -6,9 +6,11 @@
 > guard, not a connectivity claim. This doc is the authoritative framing.
 
 
-**Status (2026-06-09):** Safety **guards proven by simulation**. **Live Schwab integration is NOT_PROVEN**
-and architecturally fenced off — there is **no working Schwab connection** in this phase. No live trading
-authorization. Schwab accounts stay MANUAL_REVIEW / read-only / `api_write_enabled=false`.
+**Status (2026-06-09): UPDATED — Schwab READS are now LIVE and proven** (Developer Portal app approved,
+credential-in pass complete — see **"Stage 1 LIVE"** below). The early sections that say "no live connection
+/ NOT_PROVEN" describe the *fixture build phase* and are superseded for READS only. **WRITES remain
+NOT_PROVEN and fenced** — no live trading authorization; Schwab accounts stay MANUAL_REVIEW /
+`api_write_enabled=false`; `validate_schwab_no_writes.py` 12/12.
 
 > **Scope clarification.** Phase 1 proves safety guards under simulated Schwab failures. It does not prove
 > live Schwab connectivity. Live OAuth, real reads, account-hash mapping, true rate limits, token
