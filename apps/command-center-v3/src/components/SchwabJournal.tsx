@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
+import TradeReplayChart from './TradeReplayChart'
 
 // Real-account (Schwab) round-trips — API-authoritative ledger, 5-min fill aggregation, FIFO pairing,
 // LLM strategy/grade/lesson. Separate from paper trades (the live-trading gate stays paper-only).
@@ -12,6 +13,7 @@ export default function SchwabJournal() {
   const trips: any[] = d.round_trips ?? []
   const [acct, setAcct] = useState('all')
   const [cls, setCls] = useState('all')
+  const [chartTrade, setChartTrade] = useState<any>(null)
   if (!trips.length) return <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12 }}>No Schwab round-trips yet — the ledger ingest + journal builder populate this (read-only).</div>
 
   const accts = ['all', ...Array.from(new Set(trips.map(t => t.account)))]
@@ -70,9 +72,12 @@ export default function SchwabJournal() {
             {t.entry_grade && <span style={{ flex: '0 0 80px', fontSize: 9 }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b></span>}
             <span style={{ flex: '0 0 80px', textAlign: 'right', fontWeight: 700, color: (t.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(t.net_pnl)}</span>
             <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.lesson}>{t.lesson || ''}</span>
+            <button title="Replay chart with entry/exit" onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entry_time, exit_date: t.exit_time, entry_price: t.entry_price, exit_price: t.exit_price })}
+              style={{ flex: '0 0 auto', fontSize: 11, padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈</button>
           </div>
         ))}
       </div>
+      {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
     </div>
   )
 }
