@@ -23,11 +23,11 @@ function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <MetricStrip onDrill={setDrill} />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="app-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <NavRail />
-        <main style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+        <main className="app-main" style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
           <Routes>
             <Route index element={<HomeHub onDrill={setDrill} />} />
             <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />

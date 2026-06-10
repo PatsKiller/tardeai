@@ -54,7 +54,7 @@ export default function MetricStrip({ onDrill }: Props) {
   ]
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    <div className="metric-strip" style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: '#60a5fa', marginRight: 24, whiteSpace: 'nowrap' }}>Command Center v3</div>
       {tiles.map(t => (
         <div key={t.label}

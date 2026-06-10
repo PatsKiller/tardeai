@@ -19,7 +19,7 @@ const HUBS = [
 
 export default function NavRail() {
   return (
-    <nav style={{
+    <nav className="nav-rail" style={{
       width: 140, flexShrink: 0, padding: '16px 0', display: 'flex', flexDirection: 'column', gap: 2,
       borderRight: '1px solid var(--border)', background: 'var(--bg0)',
     }}>
