@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-10 — Journal consolidation + Drive-sync dedup fix
+
+(1) JOURNAL: consolidated three divergent Schwab journal sources to ONE truth (schwab_round_trips). The
+"Trades" tab (trade_closed) was stale (wrong V, missing 6/9 RGNT) and the backtester's paired_trade_
+transactions was a stale MATERIALIZED view frozen 2026-04-30 (crude pairing). Now the builder refreshes
+trade_closed from schwab_round_trips, and paired_trade_transactions is a LIVE VIEW over it (migration
+2026-06-10). Both Trades tab + backtester show RGNT 6/9, V=+$168K long-term (not the phantoms), current.
+(2) DRIVE SYNC: fixed the duplicate proliferation — sync-docs-to-drive.sh now finds the existing Doc by
+name and uploads with --replace (update in place) + a name->id manifest (drive-sync-ids.txt), instead of
+minting a new Google Doc every run. Existing duplicates archived separately (recoverable, not deleted).
+
 ## 2026-06-10 — Schwab API capability map (design doc, no code)
 
 docs/architecture/SCHWAB_API_CAPABILITY_MAP.md — maps the full Schwab Trader API capability inventory to the
