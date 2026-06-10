@@ -238,6 +238,36 @@ def get_option_chain(account_key, symbol):
     return _read(account_key, "get_option_chain", lambda d: d, symbol)  # passthrough; reconcile at cred-in
 
 
+def normalize_watchlists(raw):
+    out = []
+    for w in (raw or []):
+        items = w.get("watchlistItems") or []
+        out.append({"name": w.get("name"), "watchlist_id": w.get("watchlistId"),
+                    "account": w.get("accountNumber"),
+                    "symbols": [s for s in ((i.get("instrument") or {}).get("symbol") for i in items) if s]})
+    return out
+
+
 def get_watchlists(account_key):
-    """schwab-py 1.5.1 has no watchlist method — NOT_AVAILABLE (never fabricate)."""
-    return {"status": "NOT_AVAILABLE", "reason": f"schwab-py {SCHWAB_PY_VERSION} exposes no watchlist read"}
+    """Read all Schwab watchlists for the linked accounts. schwab-py 1.5.1 exposes NO watchlist method, so
+    we call the Trader API watchlist endpoint (/trader/v1/watchlists) through the wrapper's authenticated
+    session via its private _get_request (token refresh handled). READ-ONLY — no write surface touched."""
+    client, err = build_client(account_key)
+    if err:
+        return err
+    _rate_acquire()
+    try:
+        resp = client._get_request("/trader/v1/watchlists", {})
+        sc = getattr(resp, "status_code", 200)
+        if sc == 404:
+            # CONFIRMED 2026-06-10 against a live approved app: the Schwab Trader API has NO watchlist
+            # endpoint (not migrated from the legacy TDA API; userPreference carries no watchlists either).
+            # Fall back to the thinkorswim (ToS) export ingestion path — never fabricate.
+            return {"status": "NOT_AVAILABLE", "reason": "Schwab Trader API exposes no watchlist endpoint "
+                    "(confirmed live; not migrated from legacy TDA). Use ToS export ingestion: exports/tos_watchlists/."}
+        if sc >= 400:
+            return {"status": "error", "http": sc, "body": resp.text[:160]}
+        data = resp.json() if hasattr(resp, "json") else resp
+        return normalize_watchlists(data)
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:160]}
