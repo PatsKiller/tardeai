@@ -108,7 +108,7 @@ def format_proposal_alert(proposal, alert_type, current_price):
     if tailscale_host and rows:
         rows.append([
             {"text": "\U0001f4ca Open in Dashboard",
-             "url": f"https://{tailscale_host}/v2/paper-proposals?id={pid}"},
+             "url": f"https://{tailscale_host}/v3/trading?id={pid}"},
         ])
 
     keyboard = {"inline_keyboard": rows} if rows else None
@@ -380,7 +380,7 @@ def format_stop_alert(data):
     ]
     tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
     if tailscale_host:
-        rows.append([{"text": "\U0001f4ca Open in Dashboard", "url": f"https://{tailscale_host}/v2/risk"}])
+        rows.append([{"text": "\U0001f4ca Open in Dashboard", "url": f"https://{tailscale_host}/v3/risk"}])
 
     return msg, {"inline_keyboard": rows}
 
@@ -398,7 +398,7 @@ def send_stop_alert(symbol, account=""):
     if not data:
         try:
             from telegram_alert import send_telegram
-            send_telegram(f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v2/risk")
+            send_telegram(f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v3/risk")
         except Exception:
             pass
         return

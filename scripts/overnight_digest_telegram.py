@@ -116,7 +116,7 @@ def compose_message(d: dict) -> str:
             lines.append("")
 
     # Link
-    lines.append(f"Full: https://ms01-openclaw.tail163d14.ts.net/v2/overnight")
+    lines.append(f"Full: https://ms01-openclaw.tail163d14.ts.net/v3/intelligence")
 
     return "\n".join(lines)
 

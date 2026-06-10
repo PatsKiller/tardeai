@@ -279,17 +279,17 @@ def route_alert(message: str) -> dict:
     # Determine dashboard destination
     dest = "log"
     if re.search(r"propos|approv", message, re.IGNORECASE):
-        dest = destinations.get("proposals", "/v2/approvals")
+        dest = destinations.get("proposals", "/v3/trading")
     elif re.search(r"stop|risk|position", message, re.IGNORECASE):
-        dest = destinations.get("risk", "/v2/risk")
+        dest = destinations.get("risk", "/v3/risk")
     elif re.search(r"journal|lesson|closed trade", message, re.IGNORECASE):
-        dest = destinations.get("journal", "/v2/paper-journal")
+        dest = destinations.get("journal", "/v3/journal")
     elif re.search(r"Iris|library|content gap", message, re.IGNORECASE):
-        dest = destinations.get("iris_library", "/v2/intelligence-sources")
+        dest = destinations.get("iris_library", "/v3/intelligence")
     elif re.search(r"scanner|GO|WAIT|AVOID|Trade AI", message, re.IGNORECASE):
-        dest = destinations.get("trade_ai_scanner", "/v2/trade-ai")
+        dest = destinations.get("trade_ai_scanner", "/v3/trading")
     elif re.search(r"governance|system|health", message, re.IGNORECASE):
-        dest = destinations.get("system_health", "/v2/paper-governance")
+        dest = destinations.get("system_health", "/v3/system")
 
     return {
         "level": level,
