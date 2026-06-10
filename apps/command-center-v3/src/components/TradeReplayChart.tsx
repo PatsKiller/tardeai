@@ -20,6 +20,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   const [n, setN] = useState(0)            // replay cursor (#bars revealed); 0 = all
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)    // replay speed multiplier
+  const [fvImg, setFvImg] = useState('')   // Finviz fallback image (base64 data URI)
   const priceRef = useRef<HTMLDivElement>(null)
   const macdRef = useRef<HTMLDivElement>(null)
   const rsiRef = useRef<HTMLDivElement>(null)
@@ -34,6 +35,9 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     fetch(`/api/v2/trade-chart?${qs}`).then(r => r.json()).then(j => {
       const d = j?.data ?? j
       if (d?.error) setErr(d.error); else setData(d)
+      if (d?.fallback === 'finviz' && d?.fallback_image) {
+        fetch(d.fallback_image).then(r => r.json()).then(jj => { const dd = jj?.data ?? jj; if (dd?.image) setFvImg(dd.image); else setErr(dd?.error || 'finviz image unavailable') })
+      }
     }).catch(e => setErr(String(e)))
   }, [trade.symbol, trade.entry_date])
 
@@ -103,7 +107,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         </div>
 
         {err && <div style={{ fontSize: 12, color: '#ef4444', padding: 20 }}>Chart unavailable: {err}</div>}
-        {data?.fallback === 'finviz' && <div style={{ padding: 8 }}><div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>No Alpaca/Schwab bars — Finviz Elite chart image:</div><img src={data.fallback_image} alt={trade.symbol} style={{ width: '100%', borderRadius: 6 }} onError={(e: any) => e.target.style.display = 'none'} /></div>}
+        {data?.fallback === 'finviz' && fvImg && <div style={{ padding: 8 }}><div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>No Alpaca/Schwab bars — Finviz Elite chart image:</div><img src={fvImg} alt={trade.symbol} style={{ width: '100%', borderRadius: 6 }} /></div>}
         {!err && data?.bars?.length > 0 && <>
           <div ref={priceRef} style={{ width: '100%' }} />
           {show.macd && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>MACD</div>}

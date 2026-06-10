@@ -16197,15 +16197,19 @@ def _finviz_chart(query=None):
     p = g("p") or "d"
     if not sym.isalnum():
         return 400, {"ok": False, "error": "bad symbol"}
-    ck = _os.environ.get("FINVIZ_COOKIE", ""); ua = _os.environ.get("FINVIZ_USER_AGENT", "Mozilla/5.0")
+    import base64 as _b64
+    ck = _os.environ.get("FINVIZ_COOKIE", "").strip().strip('"\'')
+    ua = _os.environ.get("FINVIZ_USER_AGENT", "Mozilla/5.0").strip().strip('"\'')
     url = f"https://elite.finviz.com/chart.ashx?t={sym}&ty=c&ta=1&p={p}&s=l"
     try:
         req = urllib.request.Request(url, headers={"Cookie": ck, "User-Agent": ua})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = r.read()
-        if data[:8].startswith(b"\x89PNG"):
-            return {"__raw__": data, "__content_type__": "image/png"}
-        return 502, {"ok": False, "error": "finviz returned non-image (cookie likely expired — refresh FINVIZ_COOKIE)"}
+        if data[:8].startswith(b"\x89PNG") or data[:3] == b"\xff\xd8\xff":  # PNG or JPEG
+            mime = "image/png" if data[:8].startswith(b"\x89PNG") else "image/jpeg"
+            # base64 data URI — the server JSON-serializes, so we can't stream raw bytes
+            return {"ok": True, "symbol": sym, "image": f"data:{mime};base64," + _b64.b64encode(data).decode()}
+        return 502, {"ok": False, "error": "finviz returned non-image (cookie expired — refresh FINVIZ_COOKIE in System > secrets)"}
     except Exception as e:
         return 502, {"ok": False, "error": str(e)[:120]}
 

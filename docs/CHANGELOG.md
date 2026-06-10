@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-10 — Chart audit fix: tight intraday window + ET times + Finviz cookie in modal
+
+Audit found scalp charts showed the whole session (279 1-min bars for a 1-min hold) and dropped the fill
+time. Fixed ohlc_charts: same-day trades now use a TIGHT window around the actual fills (pad = max(10min,
+hold), capped 60min) — RGNT scalp 279 -> 21 bars; intraday timestamps converted to US/Eastern (DST-aware via
+zoneinfo) so charts show market time; entry/exit markers land on the real fill timestamps (parsed from the
+tz-aware stored times). Finviz: FINVIZ_COOKIE added to the Command Center secrets modal (refresh when it
+expires); /api/v2/finviz-chart now returns a base64 data URI (server can't stream raw bytes) — tier-3
+fallback image works (cookie verified VALID, the chart.ashx 302 just needed redirect-following + proper
+serving). Validator 12/12.
+
 ## 2026-06-10 — Replay speed control + Schwab tier-2 OHLCV fallback wired
 
 Replay charts gained a speed selector (0.5x/1x/2x/4x/8x). Schwab is now a REAL tier-2 data fallback:
