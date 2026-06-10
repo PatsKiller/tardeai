@@ -8,6 +8,23 @@ import os, json, urllib.request, urllib.error, datetime as dt
 
 ALPACA_DATA = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
 
+try:
+    from zoneinfo import ZoneInfo
+    _ET = ZoneInfo("America/New_York")
+except Exception:
+    _ET = None
+
+
+def _et_ts(iso):
+    """UTC ISO -> a unix timestamp whose UTC wall-clock equals US/Eastern wall-clock (DST-aware), so
+    Lightweight Charts (renders in UTC) shows ET market time. e.g. 12:08Z -> displays 08:08 (EDT)."""
+    d = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    if _ET is not None:
+        d = d.astimezone(_ET)
+    else:  # fallback: rough EDT(Mar-Nov)/EST offset
+        d = d - dt.timedelta(hours=4 if 3 <= d.month <= 11 else 5)
+    return int(d.replace(tzinfo=dt.timezone.utc).timestamp())
+
 
 def _keys():
     return (os.environ.get("ALPACA_API_KEY") or os.environ.get("APCA_API_KEY_ID"),
@@ -94,23 +111,52 @@ def _rsi(closes, p=14):
     return [round(x, 2) if x is not None else None for x in out]
 
 
+def _parse_ts(s):
+    """Parse a date or full timestamp -> aware UTC datetime (normalizes space + short '-04' offset)."""
+    import re as _re
+    if not s:
+        return None
+    x = str(s).strip().replace(" ", "T").replace("Z", "+00:00")
+    if "T" in x:                                 # only normalize a tz offset on a timestamp, NOT a bare date
+        x = _re.sub(r"(T.*[+-]\d{2})$", r"\1:00", x)   # ...-04 -> ...-04:00
+    try:
+        d = dt.datetime.fromisoformat(x)
+        return (d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)).astimezone(dt.timezone.utc)
+    except Exception:
+        try:
+            return dt.datetime.fromisoformat(x[:10]).replace(tzinfo=dt.timezone.utc)
+        except Exception:
+            return None
+
+
 def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None,
                 entry_time=None, exit_time=None):
-    """Return OHLCV + VWAP/MACD/RSI + entry/exit markers for a trade window.
-
-    Same-day trade → 1-min intraday bars (scalp replay); multi-day → daily bars with padding."""
+    """OHLCV + VWAP/MACD/RSI + entry/exit markers. Same-day -> 1-min bars in a TIGHT window around the
+    actual fill times (NOT the whole session); multi-day -> daily. Times shown in US/Eastern."""
     symbol = (symbol or "").upper().strip()
-    try:
-        ed = dt.date.fromisoformat(str(entry_date)[:10])
-        xd = dt.date.fromisoformat(str(exit_date)[:10]) if exit_date else ed
-    except Exception:
+    ent = _parse_ts(entry_time or entry_date)
+    ext = _parse_ts(exit_time or exit_date) or ent
+    if not ent:
         return {"error": "bad dates", "symbol": symbol}
-
+    if ext < ent:
+        ext = ent
+    ed, xd = ent.date(), ext.date()
     same_day = ed == xd
-    if same_day:
+    has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
+    win = None
+
+    if same_day and has_time:
         timeframe = "1Min"
-        start = f"{ed.isoformat()}T00:00:00Z"
-        end = (xd + dt.timedelta(days=1)).isoformat() + "T00:00:00Z"
+        # pad each side by max(10 min, the hold), capped at 60 min -> a tight, relevant window
+        hold = ext - ent
+        pad = max(dt.timedelta(minutes=10), min(hold, dt.timedelta(minutes=60)))
+        s_dt, e_dt = ent - pad, ext + pad
+        start, end, win = s_dt.isoformat(), e_dt.isoformat(), (s_dt, e_dt)
+    elif same_day:
+        timeframe = "1Min"   # same-day, no fill time -> regular session (≈9:30–16:00 ET)
+        s_dt = dt.datetime.combine(ed, dt.time(13, 30), tzinfo=dt.timezone.utc)
+        e_dt = s_dt + dt.timedelta(hours=7)
+        start, end, win = s_dt.isoformat(), e_dt.isoformat(), (s_dt, e_dt)
     else:
         timeframe = "1Day"
         pad = max(5, (xd - ed).days // 5)
@@ -131,50 +177,50 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
                 "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
                 "reason": err or "no Alpaca bars for this symbol/window"}
 
+    # defensive window filter (source may over-return for intraday)
+    if win is not None:
+        s_dt, e_dt = win
+        bars = [b for b in bars if s_dt <= dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00")) <= e_dt]
+    if not bars:
+        return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
+                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
+                "reason": "no bars in trade window"}
+
     closes = [b["c"] for b in bars]
     macd, rsi = _macd(closes), _rsi(closes)
     out_bars, vol, vwap = [], [], []
-    cum_pv = cum_v = 0.0  # for VWAP when the source has no per-bar vw (e.g. Schwab) -> compute cumulative
-    for i, b in enumerate(bars):
-        t = b["t"]
-        # Lightweight Charts: daily uses 'YYYY-MM-DD'; intraday uses unix seconds
-        if timeframe == "1Day":
-            tkey = t[:10]
-        else:
-            tkey = int(dt.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp())
+    cum_pv = cum_v = 0.0  # VWAP when the source has no per-bar vw (e.g. Schwab) -> cumulative
+    for b in bars:
+        # daily uses 'YYYY-MM-DD'; intraday uses an ET-wall-clock unix ts so charts show market time
+        tkey = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
         out_bars.append({"time": tkey, "open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"]})
         vol.append({"time": tkey, "value": b.get("v", 0),
                     "color": "rgba(34,197,94,.5)" if b["c"] >= b["o"] else "rgba(239,68,68,.5)"})
-        if b.get("vw"):                                   # Alpaca per-bar VWAP
+        if b.get("vw"):
             vwap.append({"time": tkey, "value": round(b["vw"], 4)})
-        else:                                            # Schwab/other: compute cumulative VWAP
+        else:
             tp = (b["h"] + b["l"] + b["c"]) / 3.0
             cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
             vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})
 
-    def _markseries(ind):
-        return [{"time": out_bars[i]["time"], **ind[i]} for i in range(len(ind)) if ind[i] is not None]
-
-    def _bar_at(target_date, default_idx):
-        """closest bar time to a YYYY-MM-DD (daily) — so the marker lands on the real entry/exit bar."""
-        try:
-            td = str(target_date)[:10]
-            if timeframe == "1Day":
-                cands = [b["time"] for b in out_bars if b["time"] <= td]
-                return cands[-1] if cands else out_bars[default_idx]["time"]
-        except Exception:
-            pass
-        return out_bars[default_idx]["time"]
+    def _mark_time(ts, default_idx):
+        """bar 'time' nearest the real fill timestamp (daily: by date; intraday: nearest ET-bar)."""
+        if timeframe == "1Day":
+            td = ts.date().isoformat()
+            cands = [b["time"] for b in out_bars if b["time"] <= td]
+            return cands[-1] if cands else out_bars[default_idx]["time"]
+        tgt = _et_ts(ts.astimezone(dt.timezone.utc).isoformat())
+        return min(out_bars, key=lambda b: abs(b["time"] - tgt))["time"]
 
     markers = []
     if entry_price:
-        markers.append({"time": _bar_at(entry_date, 0), "price": float(entry_price), "type": "entry",
-                        "label": f"BUY {entry_price}"})
+        markers.append({"time": _mark_time(ent, 0), "price": float(entry_price), "type": "entry", "label": f"BUY {entry_price}"})
     if exit_price:
-        markers.append({"time": _bar_at(exit_date, -1), "price": float(exit_price), "type": "exit",
-                        "label": f"SELL {exit_price}"})
+        markers.append({"time": _mark_time(ext, -1), "price": float(exit_price), "type": "exit", "label": f"SELL {exit_price}"})
 
-    return {"symbol": symbol, "timeframe": timeframe, "source": source, "bars": out_bars, "volume": vol, "vwap": vwap,
+    et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
+    return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
+            "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
             "macd": [{"time": out_bars[i]["time"], **macd[i]} for i in range(len(macd)) if macd[i] is not None],
             "rsi": [{"time": out_bars[i]["time"], "value": rsi[i]} for i in range(len(rsi)) if rsi[i] is not None],
             "markers": markers, "bar_count": len(out_bars)}

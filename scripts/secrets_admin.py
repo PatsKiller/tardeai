@@ -22,7 +22,7 @@ SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
 # Always offered (so the operator can add even if currently absent)
 KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "FINNHUB_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
-         "FINVIZ_API_TOKEN", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD",
+         "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD",
          "SCHWAB_APP_KEY", "SCHWAB_APP_SECRET"]
 # Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
