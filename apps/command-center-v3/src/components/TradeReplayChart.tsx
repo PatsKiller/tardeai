@@ -57,6 +57,14 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
 
     // entry/exit price lines on the candle series
     for (const m of data.markers || []) candle.createPriceLine({ price: m.price, color: m.type === 'entry' ? '#22c55e' : '#ef4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: m.type === 'entry' ? 'BUY' : 'SELL' })
+    // execution overlay: MFE (max opportunity), MAE, post-exit high — from the execution-quality record
+    const ex: any = (trade as any).exec
+    if (ex) {
+      const ep = Number(ex.entry_price) || 0
+      if (ex.mfe_after_entry != null && ep) candle.createPriceLine({ price: ep + Number(ex.mfe_after_entry), color: '#3b82f6', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'MFE (max opp)' })
+      if (ex.mae_after_entry != null && ep) candle.createPriceLine({ price: ep - Number(ex.mae_after_entry), color: '#9333ea', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: 'MAE' })
+      if (ex.post_exit_high != null) candle.createPriceLine({ price: Number(ex.post_exit_high), color: '#f59e0b', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'max after exit' })
+    }
     paint(data.bars.length)
     const onResize = () => charts.current.forEach(c => c.timeScale().fitContent())
     window.addEventListener('resize', onResize)

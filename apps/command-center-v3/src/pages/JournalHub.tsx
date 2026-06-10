@@ -6,6 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import TradeReplayChart from '../components/TradeReplayChart'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 import BacktestPanel from '../components/BacktestPanel'
+import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
 import SchwabJournal from '../components/SchwabJournal'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
@@ -591,7 +592,7 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Protection' && <ProtectionOutcomesPanel onDrill={onDrill} />}
 
       {/* ════════ BACKTESTING TAB (v2 port via shared v3 BacktestPanel) — driven by the shared account + time-range filters ════════ */}
-      {tab === 'Backtesting' && <BacktestPanel onDrill={onDrill} sharedAccount={acctFilter} sharedDateFrom={cutoff} />}
+      {tab === 'Backtesting' && <><ExecutionHypothesesPanel /><BacktestPanel onDrill={onDrill} sharedAccount={acctFilter} sharedDateFrom={cutoff} /></>}
 
       {/* ════════ REAL ACCOUNTS (Schwab) — API-authoritative round-trips, separate from paper ════════ */}
       {tab === 'Real Accounts' && <SchwabJournal />}
