@@ -63,6 +63,15 @@ def _map_rows(account_key, txns):
             leg = _security_leg(x)
             if not leg:
                 continue
+            # net-$0 TRADE = shares moved WITHOUT cash (in-kind transfer / re-registration disguised as a
+            # trade) — NOT a discretionary buy/sell. Label it a transfer so the round-trip builder skips it
+            # (else a transferred-in position's later liquidation looks like a losing "swing trade").
+            if abs(net) < 1.0:
+                amt = leg.get("amount", 0) or 0
+                rows.append(_row(date, "Transfer In" if amt > 0 else "Transfer Out",
+                                 (leg["instrument"] or {}).get("symbol", ""), abs(amt), 0.0, net, 0.0,
+                                 desc or "in-kind transfer", account_key, uid, x.get("time")))
+                continue
             orders[(x.get("orderId"), (leg["instrument"] or {}).get("symbol"))].append((x, leg))
         elif typ == "DIVIDEND_OR_INTEREST":
             up = desc.upper()
