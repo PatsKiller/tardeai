@@ -16172,6 +16172,34 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _upload_csv(body):
+    """POST /api/v2/upload-csv {dest, filename, content} — save an operator CSV to a whitelisted import dir.
+
+    For remote (Tailscale) operators who can't drop files on the box. Whitelisted dirs only; filename is
+    sanitized to a basename (no traversal); .csv/.txt only; size-capped. Read-only data intake, no exec."""
+    import os as _os, re as _re
+    b = body or {}
+    dest = (b.get("dest") or "").strip()
+    fn = (b.get("filename") or "").strip()
+    content = b.get("content") or ""
+    ALLOWED = {"schwab_history", "schwab_gainloss", "tos_watchlists"}
+    if dest not in ALLOWED:
+        return 400, {"ok": False, "error": f"dest must be one of {sorted(ALLOWED)}"}
+    fn = _re.sub(r"[^A-Za-z0-9._-]", "_", _os.path.basename(fn))
+    if not fn or not _re.search(r"\.(csv|txt)$", fn, _re.I):
+        return 400, {"ok": False, "error": "filename must end in .csv or .txt"}
+    if not isinstance(content, str) or len(content) > 12_000_000:
+        return 400, {"ok": False, "error": "content missing or too large (>12MB)"}
+    base = (PROJECT_ROOT / "imports" / dest).resolve()
+    base.mkdir(parents=True, exist_ok=True)
+    path = (base / fn).resolve()
+    if _os.path.commonpath([str(base), str(path)]) != str(base):
+        return 400, {"ok": False, "error": "invalid path"}
+    path.write_text(content)
+    return 200, {"ok": True, "saved": f"imports/{dest}/{fn}", "bytes": len(content),
+                 "rows": content.count(chr(10))}
+
+
 def _tos_watchlists_list(query=None):
     """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
     wls = _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
@@ -17871,6 +17899,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                                        actor=b.get("actor", "operator"))}
         except Exception as e:
             return 400, {"ok": False, "error": str(e)[:160]}
+    if method == "POST" and base_path == "/api/v2/upload-csv":
+        return _upload_csv(body or {})
     if method == "POST" and base_path == "/api/v2/tos-watchlists/manage":
         return _tos_watchlist_manage(body or {})
     if method == "POST" and base_path == "/api/v2/time-exit-proposals/decide":
