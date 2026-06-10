@@ -16172,6 +16172,26 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _schwab_round_trips(query=None):
+    """GET /api/v2/journal/schwab-round-trips — real-account round-trips (5-min agg + FIFO from the
+    API-authoritative ledger). Read-only."""
+    rows = _db_query("""SELECT account, symbol, entry_time, exit_time, hold_minutes, qty, entry_price,
+                          exit_price, gross_pnl, fees, net_pnl, pnl_pct, classification
+                        FROM schwab_round_trips ORDER BY exit_time DESC LIMIT 500""") or []
+    trips = [{**r, "entry_time": _json_clean(r["entry_time"]), "exit_time": _json_clean(r["exit_time"]),
+              **{k: _json_clean(r[k]) for k in ("qty", "entry_price", "exit_price", "gross_pnl", "fees", "net_pnl", "pnl_pct")}}
+             for r in rows]
+    wins = sum(1 for t in trips if (t["net_pnl"] or 0) > 0)
+    by_acct = {}
+    for t in trips:
+        a = by_acct.setdefault(t["account"], {"count": 0, "net": 0.0})
+        a["count"] += 1; a["net"] = round(a["net"] + (t["net_pnl"] or 0), 2)
+    return {"round_trips": trips, "count": len(trips), "wins": wins, "losses": len(trips) - wins,
+            "win_rate": round(wins / len(trips) * 100, 1) if trips else 0,
+            "net_pnl": round(sum(t["net_pnl"] or 0 for t in trips), 2), "by_account": by_acct,
+            "note": "Real Schwab round-trips — API-authoritative ledger, 5-min fill aggregation, FIFO pairing. Separate from paper_trades (the live-trading gate stays paper-only)."}
+
+
 def _schwab_status(query=None):
     """GET /api/v2/system/schwab-status — Schwab read-only integration monitor: Gate-A token health,
     account-hash links, capability checks, recent sync. Read-only; never exposes token material."""
@@ -16771,6 +16791,7 @@ ROUTES = {
     "/api/v2/discovery/results": _discovery_results,
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
+    "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,

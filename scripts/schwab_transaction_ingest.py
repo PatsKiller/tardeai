@@ -37,9 +37,10 @@ def _fees(txn):
     return round(sum(abs(i.get("cost", 0) or 0) for i in txn.get("transferItems", []) if i.get("feeType")), 2)
 
 
-def _row(date, action, sym, qty, price, amount, fees, desc, account, uid):
+def _row(date, action, sym, qty, price, amount, fees, desc, account, uid, ttime=None):
     return {"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 3), "price": price,
-            "amount": round(amount, 2), "fees": fees, "description": desc[:120], "account": account, "uid": uid}
+            "amount": round(amount, 2), "fees": fees, "description": desc[:120], "account": account, "uid": uid,
+            "trade_time": ttime}
 
 
 def _sec(x):
@@ -72,18 +73,18 @@ def _map_rows(account_key, txns):
             else:
                 action = "Dividend"
             sym, _ = _sec(x)
-            rows.append(_row(date, action, sym, 0.0, 0.0, net, _fees(x), desc, account_key, uid))
+            rows.append(_row(date, action, sym, 0.0, 0.0, net, _fees(x), desc, account_key, uid, x.get("time")))
         elif typ == "JOURNAL":
             up = desc.upper()
             if any(k in up for k in ("SWEEP", "TRF FDS", "TRF FUNDS", "TYPE 1", "TYPE 2")):
                 continue  # internal cash sweep / margin type reclassification — noise, not a real transfer
             sym, qty = _sec(x)
-            rows.append(_row(date, "Journaled Shares" if sym != "CASH" else "Journal", sym, qty, 0.0, net, 0.0, desc, account_key, uid))
+            rows.append(_row(date, "Journaled Shares" if sym != "CASH" else "Journal", sym, qty, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
         elif typ == "RECEIVE_AND_DELIVER":
             sym, qty = _sec(x)
-            rows.append(_row(date, "Security Transfer", sym, qty, 0.0, net, 0.0, desc, account_key, uid))
+            rows.append(_row(date, "Security Transfer", sym, qty, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
         elif typ == "CASH_RECEIPT":
-            rows.append(_row(date, "Cash Receipt", "CASH", 0.0, 0.0, net, 0.0, desc, account_key, uid))
+            rows.append(_row(date, "Cash Receipt", "CASH", 0.0, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
         # SMA_ADJUSTMENT intentionally skipped (internal margin accounting; not a cash/trade event)
     # aggregate trade fills per (order, symbol)
     for (oid, sym), fills in orders.items():
@@ -96,10 +97,11 @@ def _map_rows(account_key, txns):
         wprice = round(abs(gross) / qty, 4) if qty else 0
         fees = round(sum(_fees(x) for x, _ in fills), 2)
         amount = round(sum(x.get("netAmount", 0) or 0 for x, _ in fills), 2)
+        ttime = min((x.get("time") or x.get("tradeDate") or "") for x, _ in fills)
         date = (fills[0][0].get("tradeDate") or fills[0][0].get("time") or "")[:10]
         rows.append({"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 3),
                      "price": wprice, "amount": amount, "fees": fees,
-                     "description": f"order {oid}", "account": account_key, "uid": f"ord:{oid}"})
+                     "description": f"order {oid}", "account": account_key, "uid": f"ord:{oid}", "trade_time": ttime})
     return rows
 
 
@@ -145,12 +147,13 @@ def run(apply=False, days=365):
         for r in all_rows:
             cur.execute("""INSERT INTO trade_transactions
                              (trade_date, action, symbol, quantity, price, amount, fees, description,
-                              account, import_source, dedupe_key)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'schwab_api',%s)
+                              account, import_source, dedupe_key, trade_time)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'schwab_api',%s,%s)
                            ON CONFLICT (dedupe_key) DO UPDATE SET price=EXCLUDED.price, quantity=EXCLUDED.quantity,
-                             amount=EXCLUDED.amount, fees=EXCLUDED.fees, description=EXCLUDED.description""",
+                             amount=EXCLUDED.amount, fees=EXCLUDED.fees, description=EXCLUDED.description,
+                             trade_time=EXCLUDED.trade_time""",
                         (r["trade_date"], r["action"], r["symbol"], r["quantity"], r["price"], r["amount"],
-                         r["fees"], r["description"], r["account"], _dedupe_key(r)))
+                         r["fees"], r["description"], r["account"], _dedupe_key(r), r.get("trade_time")))
         report["inserted"] = len(all_rows)
         conn.commit()
     report["mode"] = "APPLIED" if apply else "DRY-RUN (no writes)"
