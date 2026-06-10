@@ -184,6 +184,18 @@ def write_oauth_token(token, account_key, broker="schwab", environment="live"):
                       access_expires_at=a_exp_dt, broker=broker, environment=environment, rotated=True)
 
 
+def canonical_token_key(broker="schwab", environment="live"):
+    """Schwab issues ONE OAuth token per login covering ALL the user's accounts. Return the account_key that
+    holds that live (non-degraded) token, so every account's reads share it (the account HASH distinguishes
+    accounts). Avoids refresh-token-rotation conflicts from per-account token copies."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT account_key FROM broker_oauth_tokens
+                   WHERE broker=%s AND environment=%s AND refresh_token_enc IS NOT NULL AND NOT degraded
+                   ORDER BY updated_at DESC LIMIT 1""", (broker, environment))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+
 def health(account_key, broker="schwab", environment="live"):
     """Fail-closed freshness/expiry health for one account. Never raises — returns degraded on any doubt."""
     base = {"account_key": account_key, "broker": broker, "has_token": False, "access_fresh": False,
