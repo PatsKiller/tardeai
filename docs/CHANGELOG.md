@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-09 — Fix: in-kind transfers no longer counted as trades (Schwab journal correction)
+
+A TRADE with netAmount~$0 = shares moved WITHOUT cash (in-kind transfer / re-registration disguised as a
+trade), not a discretionary buy/sell. schwab_transaction_ingest.py now labels these Transfer In/Out so the
+round-trip builder skips them. Real finding: 1,000 V (Visa) shares TRANSFERRED into the Roth ($349 carried
+basis) were treated as a "Buy entry", so the later partial liquidation (575 sh @ $304-312) manufactured
+three -$8K phantom "swing trade" losses (-$24K) that distorted the record. After fix + rebuild: 131->116
+round-trips, win rate 48.9%->52.6%, net P&L +$17.4K -> +$37.0K; V drops from 3x-$8K to 1x-$176. The real
+realized loss stays visible in the ledger as a transfer (tax-correct), not as trading skill. Permanent —
+the daily cron applies it going forward; grok re-graded the corrected set.
+
 ## 2026-06-09 — Free Grok OAuth review lane + tightened journal prompts + lane badge
 
 Journal reviewers (Schwab round-trips + paper trades) now default to the FREE Grok OAuth lane (xAI proxy
