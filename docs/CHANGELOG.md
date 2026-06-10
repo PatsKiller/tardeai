@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-09 — Schwab Stage 1 LIVE: reads proven, ledger reconciled, journal round-trips (writes still locked)
+
+Credential-in proof pass complete. OAuth bootstrapped (manual-paste, token through the manager, encrypted);
+one login covers all accounts (canonical_token_key + per-account hash); 3 accounts hash-mapped by last-4
+(ambiguity refused). Live reads proven (account/positions/orders/transactions/quotes; normalizers match
+fixtures). schwab_transaction_ingest.py reconciled the ledger API-authoritative (replace-in-window): 508
+lossy CSV -> 416 API rows (granular slippage fills, qualified/ordinary dividends, transfers; sweep/margin
+noise filtered; $10,553 dividend income; backup taken). schwab_journal_builder.py built 131 round-trips
+(5-min fill aggregation + FIFO): 48.9% win, +$17,410.96 net (RGNT scalp +$59.91). schwab_journal_classifier.py
+adds LLM strategy/grade/lesson per trip. Surfaces: System->Brokers SchwabMonitor, Journal->Real Accounts
+SchwabJournal. Daily cron ingest->build->classify. Separate from paper_trades (gate stays paper-only).
+Schwab WRITES still NOT_PROVEN/fenced (validator 12/12, api_write_enabled=false). Deferred: Gate-A 7-day
+roll-forward observation, real rate limits, CSV retirement (10-day dual-run), watchlists.
+
 ## 2026-06-09 — Schwab app creds in the Command Center secrets modal (credential-entry path ready)
 
 System → Admin → API Keys & Secrets now manages SCHWAB_APP_KEY + SCHWAB_APP_SECRET (masked, write-only,

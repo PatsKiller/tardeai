@@ -95,7 +95,7 @@ files. Rollback = revert the routing commit (writers fall back to their prior di
   II / volume-sweep / Schwab data isolated** from the screeners (`prime_setups`/`watchlist_setups`),
   match-minimums, GO/WAIT, and ATM routing (Rule 9), plus the 5 Stage-1 wrapper-surface guards below.
 
-## Stage 1 — read-only transport via `schwab-py` (2026-06-09; live NOT_PROVEN)
+## Stage 1 — read-only transport via `schwab-py` (2026-06-09; reads now LIVE — see "Stage 1 LIVE" below)
 Adopted **`schwab-py` 1.5.1 (MIT)** as the read-only request/response transport beneath the token manager.
 Step 0 cleared both flag-back conditions before any build: auth decouples via
 `client_from_access_functions(token_read_func, token_write_func)`, and the wrapper's writes are fenceable at
@@ -113,8 +113,35 @@ the boundary.
 - **5 new validator guards**: fence-raises-static, no-wrapper-write-calls, schwab-py-imported-only-at-
   boundary, runtime-fence (3/3 raise + `build_client` NOT_PROVEN), and Rule-9 transport isolation.
 - **Proven now (fixtures):** normalizers, token refresh-hook (rotation through the manager), write-fence,
-  fail-closed client. **NOT_PROVEN until cred-in:** live OAuth/reads, account-hash mapping, real rate
-  numbers, Gate A weekly re-auth, payload-schema reconciliation.
+  fail-closed client.
+
+## Stage 1 LIVE — credential-in proof pass COMPLETE (2026-06-09; reads live, writes still locked)
+Developer Portal app approved; creds entered via the Command Center secrets modal. Reads are now **live and
+proven**; **writes stay NOT_PROVEN/fenced** (validator 12/12, `api_write_enabled=false`, MANUAL_REVIEW).
+- **OAuth bootstrap** — manual-paste flow (`reauth_url` → browser login → `exchange_code(redirect_url)`)
+  seeds the first token THROUGH the manager (Fernet-encrypted, atomic, no wrapper file). 127.0.0.1 callback
+  behind Tailscale, no listening server. schwab-py token shape = TokenMetadata `{creation_timestamp, token}`.
+- **One login covers all accounts** — `canonical_token_key`; the account HASH distinguishes accounts.
+- **Account-hash resolver** — `resolve_account_hashes(account_key, expected_last4)` matches by last-4,
+  REFUSES ambiguity (never blind-selects), stores the encrypted hash in `schwab_account_links`. 3 accounts
+  linked (taxable ..9469 / roth ..0258 / rollover ..9415).
+- **Live reads** — account/positions/orders/transactions/quotes; normalizers match the fixtures unchanged.
+  Interlock gotcha: pass `account_mode` a positional-cursor conn (`r[0]`), not a dict-cursor conn.
+- **Transaction ledger reconciliation** — `schwab_transaction_ingest.py`: API is authoritative; replaces the
+  lossy CSV rows in-window (older pre-window CSV kept), granular per-order TRADE rows (slippage fills
+  preserved, not collapsed), dividends with qualified/ordinary subtype, interest, real transfers; internal
+  bank-sweep + margin type-journals filtered. 508 CSV → 416 API rows; `$10,553` dividend income. Backup
+  before apply. `trade_transactions.trade_time` added.
+- **Journal round-trips** — `schwab_journal_builder.py`: 5-minute same-side fill aggregation + FIFO pairing
+  → `schwab_round_trips` (131 trips, 48.9% win, **+$17,410.96** net; RGNT scalp +$59.91/1min). Separate from
+  `paper_trades` — the live-trading gate stays paper-only.
+- **LLM classification + review** — `schwab_journal_classifier.py`: strategy tag + entry/exit letter grade +
+  lesson per round-trip (local LLM, idempotent).
+- **Surfaces** — System→Brokers `SchwabMonitor` (Gate-A token health, links, capabilities, sync);
+  Journal→Real Accounts `SchwabJournal` (round-trips + grades/lessons). Daily cron: ingest → build → classify.
+- **Still NOT_PROVEN / deferred:** Gate-A real 7-day roll-forward behaviour (observe over the week), real
+  rate-limit numbers, CSV-import retirement (10-day dual-run), watchlists (absent in schwab-py 1.5.1).
+- **Architect/Stage-2 (still locked):** any trading write, order endpoints, `broker_confirm_schwab.py`.
 
 ## Schema (additive — `migrations/2026-06-09_schwab_oauth_foundation.sql`)
 `broker_oauth_tokens` (encrypted, no plaintext), `broker_oauth_token_audit` (append-only, fingerprints
