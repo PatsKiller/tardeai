@@ -1,0 +1,45 @@
+# Execution-quality thresholds by strategy family (read-only analytics; never alters live strategy configs).
+# entry_volume_ratio = entry-bar volume / avg of the prior N bars. capture_ratio = realized move / best
+# available move post-entry. premature: exit captured < min_capture AND post-exit MFE > runner_mult * realized.
+defaults: &defaults
+  rvol_window: 10                 # bars of prior volume to average for the entry RVOL
+  min_entry_rvol: 1.5             # below this at entry -> no_volume_entry_flag
+  require_above_vwap: false
+  min_capture_ratio: 0.40         # captured/available below this -> exit graded down
+  premature_capture: 0.25         # below this + a big post-exit runner -> premature_exit
+  runner_mult: 2.0                # post-exit MFE > this * realized -> missed_runner
+  post_exit_review_min: 60        # minutes after exit to scan for the missed runner
+  early_entry_rvol: 1.2           # entry below this RVOL AND price still building -> early_entry
+
+strategies:
+  momentum_scalp:
+    <<: *defaults
+    min_entry_rvol: 2.0
+    require_above_vwap: true
+    min_capture_ratio: 0.50
+    post_exit_review_min: 45
+  gap_and_go:
+    <<: *defaults
+    min_entry_rvol: 2.5
+    require_above_vwap: true
+  orb:
+    <<: *defaults
+    min_entry_rvol: 2.0
+    require_above_vwap: true
+  day_trade:
+    <<: *defaults
+    min_entry_rvol: 1.8
+  swing:
+    <<: *defaults
+    rvol_window: 20
+    min_entry_rvol: 1.2
+    require_above_vwap: false
+    min_capture_ratio: 0.30
+    runner_mult: 3.0
+    post_exit_review_min: 1440   # a day-plus for swings
+  dividend:
+    <<: *defaults
+    min_entry_rvol: 0.0          # not volume-driven
+    min_capture_ratio: 0.0
+  unknown:
+    <<: *defaults
