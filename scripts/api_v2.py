@@ -16242,6 +16242,23 @@ def _upload_csv(body):
                  "rows": content.count(chr(10))}
 
 
+def _execution_hypotheses(query=None):
+    """GET /api/v2/backtesting/execution-hypotheses?strategy=&symbol= — evidence-only rule-variant aggregates."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    where, params = ["applicable"], []
+    if g("strategy"):
+        where.append("strategy_id=%s"); params.append(g("strategy"))
+    if g("symbol"):
+        where.append("symbol=%s"); params.append(g("symbol").upper())
+    agg = _db_query(f"""SELECT hypothesis, count(*) AS sample,
+                          round(100.0*count(*) FILTER(WHERE improved)/count(*)) AS improved_pct,
+                          round(avg(delta_ps),4) AS avg_delta_ps, (count(*) < 5) AS do_not_graft
+                        FROM trade_execution_hypothesis_results WHERE {' AND '.join(where)}
+                        GROUP BY hypothesis ORDER BY avg(delta_ps) DESC""", tuple(params)) or []
+    return {"aggregate": [_json_clean(r) for r in agg], "note": "Evidence only — never auto-applied to live strategy configs."}
+
+
 def _execution_quality(query=None):
     """GET /api/v2/journal/execution-quality?source=&symbol=&limit= — computed execution grades + Grok review."""
     q = query or {}
@@ -16924,6 +16941,7 @@ ROUTES = {
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,
+    "/api/v2/backtesting/execution-hypotheses": _execution_hypotheses,
     "/api/v2/trade-chart": _trade_chart,
     "/api/v2/finviz-chart": _finviz_chart,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,

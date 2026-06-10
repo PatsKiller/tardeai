@@ -197,6 +197,19 @@ def _rows(source, limit, trade_key):
                    "symbol": r[2], "ent": r[3], "ext": r[4], "entry_price": float(r[5]) if r[5] else None,
                    "exit_price": float(r[6]) if r[6] else None, "qty": float(r[7]) if r[7] else None,
                    "realized_pnl": float(r[8]) if r[8] is not None else None, "strategy": r[9], "classification": r[10]}
+    elif source == "paper":
+        q = """SELECT 'pt:'||id, symbol, entry_time, COALESCE(exit_time, closed_at), entry_price, exit_price,
+                      shares, pnl, strategy_id
+               FROM paper_trades WHERE status='closed' AND exit_price IS NOT NULL AND entry_time IS NOT NULL"""
+        if trade_key:
+            q += f" AND 'pt:'||id = '{trade_key}'"
+        q += f" ORDER BY COALESCE(exit_time, closed_at) DESC NULLS LAST LIMIT {int(limit)}"
+        cur.execute(q)
+        for r in cur.fetchall():
+            yield {"trade_key": r[0], "source": "paper_trade", "broker": "alpaca", "account": "alpaca_paper",
+                   "symbol": r[1], "ent": r[2], "ext": r[3], "entry_price": float(r[4]) if r[4] else None,
+                   "exit_price": float(r[5]) if r[5] else None, "qty": float(r[6]) if r[6] else None,
+                   "realized_pnl": float(r[7]) if r[7] is not None else None, "strategy": r[8], "classification": r[8]}
 
 
 def run(source="schwab", limit=20, trade_key=None, apply=False):

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-10 — Execution quality: paper source + hypothesis backtest engine (E)
+
+Paper-trade source added to build_trade_execution_quality.py (17 paper trades graded). Part E:
+backtest_execution_hypotheses.py replays intraday bars and simulates rule variants vs actual fills
+(volume_confirmed_entry, hold_above_vwap, macd_rollover_exit) -> trade_execution_hypothesis_results +
+/api/v2/backtesting/execution-hypotheses. Evidence-only, never alters live configs; do_not_graft when sample
+< 5. 46 trades x 3 variants: honest finding = avg deltas NEGATIVE (blindly applying would have hurt;
+volume-delay -2.64/sh). Read-only, validator 12/12.
+
 ## 2026-06-10 — Execution quality: Grok coaching (D) + journal badges/overlay (F)
 
 Part D: grok_execution_review.py feeds the COMPUTED metrics to Grok (free OAuth) -> strict JSON coaching
