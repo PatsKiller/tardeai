@@ -16242,6 +16242,26 @@ def _upload_csv(body):
                  "rows": content.count(chr(10))}
 
 
+def _execution_quality(query=None):
+    """GET /api/v2/journal/execution-quality?source=&symbol=&limit= — computed execution grades + Grok review."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    where, params = ["path_status='OK'"], []
+    if g("source"):
+        where.append("source=%s"); params.append(g("source"))
+    if g("symbol"):
+        where.append("symbol=%s"); params.append(g("symbol").upper())
+    limit = min(int(g("limit") or 200), 500)
+    rows = _db_query(f"""SELECT trade_key, source, symbol, account, entry_time, exit_time, strategy_id, outcome_grade, execution_grade,
+                          entry_timing_grade, exit_timing_grade, capture_ratio, entry_volume_ratio,
+                          entry_above_vwap, mfe_after_exit_pct, missed_opportunity_grade, computed_summary,
+                          strategy_rule_violations, grok_execution_label, grok_what_to_do_next_time,
+                          grok_strategy_backtest_hypotheses, normalized_tags
+                         FROM v_trade_execution_quality_latest WHERE {' AND '.join(where)}
+                         ORDER BY exit_time DESC LIMIT {limit}""", tuple(params)) or []
+    return {"trades": [_json_clean(r) for r in rows], "count": len(rows)}
+
+
 def _tos_watchlists_list(query=None):
     """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
     wls = _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
@@ -16903,6 +16923,7 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
+    "/api/v2/journal/execution-quality": _execution_quality,
     "/api/v2/trade-chart": _trade_chart,
     "/api/v2/finviz-chart": _finviz_chart,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
