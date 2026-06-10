@@ -16177,20 +16177,26 @@ def _schwab_round_trips(query=None):
     API-authoritative ledger). Read-only."""
     rows = _db_query("""SELECT account, symbol, entry_time, exit_time, hold_minutes, qty, entry_price,
                           exit_price, gross_pnl, fees, net_pnl, pnl_pct, classification,
-                          strategy_tag, entry_grade, exit_grade, lesson, review_lane
-                        FROM schwab_round_trips ORDER BY exit_time DESC LIMIT 500""") or []
+                          strategy_tag, entry_grade, exit_grade, lesson, review_lane, basis_status, basis_source
+                        FROM schwab_round_trips ORDER BY exit_time DESC LIMIT 600""") or []
     trips = [{**r, "entry_time": _json_clean(r["entry_time"]), "exit_time": _json_clean(r["exit_time"]),
               **{k: _json_clean(r[k]) for k in ("qty", "entry_price", "exit_price", "gross_pnl", "fees", "net_pnl", "pnl_pct")}}
              for r in rows]
-    wins = sum(1 for t in trips if (t["net_pnl"] or 0) > 0)
+    # ACTIVE trading stats EXCLUDE long-term trims (pre-window lots) + basis_unknown — they aren't trading
+    active = [t for t in trips if not t.get("basis_status")]
+    lt = [t for t in trips if t.get("basis_status") == "long_term_trim"]
+    unk = [t for t in trips if t.get("basis_status") == "basis_unknown"]
+    wins = sum(1 for t in active if (t["net_pnl"] or 0) > 0)
     by_acct = {}
-    for t in trips:
+    for t in active:
         a = by_acct.setdefault(t["account"], {"count": 0, "net": 0.0})
         a["count"] += 1; a["net"] = round(a["net"] + (t["net_pnl"] or 0), 2)
-    return {"round_trips": trips, "count": len(trips), "wins": wins, "losses": len(trips) - wins,
-            "win_rate": round(wins / len(trips) * 100, 1) if trips else 0,
-            "net_pnl": round(sum(t["net_pnl"] or 0 for t in trips), 2), "by_account": by_acct,
-            "note": "Real Schwab round-trips — API-authoritative ledger, 5-min fill aggregation, FIFO pairing. Separate from paper_trades (the live-trading gate stays paper-only)."}
+    return {"round_trips": trips, "count": len(active), "wins": wins, "losses": len(active) - wins,
+            "win_rate": round(wins / len(active) * 100, 1) if active else 0,
+            "net_pnl": round(sum(t["net_pnl"] or 0 for t in active), 2), "by_account": by_acct,
+            "long_term_trims": {"count": len(lt), "realized": round(sum(t["net_pnl"] or 0 for t in lt), 2)},
+            "basis_unknown": {"count": len(unk), "symbols": sorted(set(t["symbol"] for t in unk))},
+            "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis) and basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses). Real-account, separate from the paper-only live-trading gate."}
 
 
 def _schwab_status(query=None):

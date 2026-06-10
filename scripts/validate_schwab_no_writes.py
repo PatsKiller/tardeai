@@ -108,14 +108,18 @@ for f in SCRIPTS.glob("*.py"):
         schwab_importers.append(f.name)
 ok("schwab-py imported only at transport boundary", not schwab_importers, f"leak: {schwab_importers}" if schwab_importers else "boundary-only")
 
-# 8. RUNTIME: the fenced writes actually raise; build_client fails closed without creds
+# 8. RUNTIME: the fenced writes actually raise (the safety-critical invariant — must ALWAYS hold, whether
+#    creds are present or not). build_client may legitimately succeed now that reads are live (cred-in done);
+#    what must never change is that the order surface is unreachable.
 try:
     import schwab_transport as _st
     raised = sum(1 for m in ("place_order", "cancel_order", "replace_order")
                  if _raises_notproven(_st, m))
-    _, err = _st.build_client("schwab_taxable")
-    ok("runtime: transport writes raise NotProvenWrite + build_client NOT_PROVEN w/o creds",
-       raised == 3 and (err or {}).get("status") in ("NOT_PROVEN", "degraded"), f"{raised}/3 raised")
+    client, err = _st.build_client("schwab_taxable")
+    # acceptable: a live client (reads proven) OR a fail-closed status; NEVER a reachable write.
+    build_ok = (client is not None) or (err or {}).get("status") in ("NOT_PROVEN", "degraded")
+    ok("runtime: transport write surface raises NotProvenWrite (fence holds live)",
+       raised == 3 and build_ok, f"{raised}/3 raised, build={'live-client' if client else (err or {}).get('status')}")
 except Exception as e:
     ok("runtime transport check", False, str(e)[:60])
 
