@@ -34,3 +34,38 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg0); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Mobile responsiveness ──────────────────────────────────────────────────
+   The layout uses inline styles; these media queries override with !important
+   on small screens: nav becomes a top horizontal scroll bar, content goes
+   full-width, the metric strip + wide content scroll instead of overflowing. */
+@media (max-width: 820px) {
+  .app-shell { height: 100dvh; }
+  /* stack nav above content */
+  .app-body { flex-direction: column !important; overflow: auto !important; }
+  /* nav rail -> horizontal scrolling top bar */
+  .nav-rail {
+    width: 100% !important;
+    flex-direction: row !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 0 !important;
+    padding: 4px 0 !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    flex-shrink: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-rail a { white-space: nowrap; padding: 8px 12px !important; font-size: 12px !important; border-left: none !important; }
+  /* content full width, tighter padding */
+  .app-main { padding: 10px !important; }
+  /* metric strip wraps / scrolls instead of overflowing */
+  .metric-strip { flex-wrap: wrap; gap: 4px 12px !important; padding: 8px 10px !important; }
+  /* any direct wide child of main scrolls horizontally rather than blowing out the viewport */
+  .app-main table, .app-main pre { display: block; overflow-x: auto; max-width: 100%; }
+}
+@media (max-width: 480px) {
+  .app-main { padding: 6px !important; }
+  .nav-rail a { padding: 7px 9px !important; font-size: 11px !important; }
+  .metric-strip { font-size: 11px; }
+}
