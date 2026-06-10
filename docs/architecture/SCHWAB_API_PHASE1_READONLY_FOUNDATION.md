@@ -134,6 +134,7 @@ proven**; **writes stay NOT_PROVEN/fenced** (validator 12/12, `api_write_enabled
   preserved, not collapsed), dividends with qualified/ordinary subtype, interest, real transfers; internal
   bank-sweep + margin type-journals filtered. 508 CSV → 416 API rows; `$10,553` dividend income. Backup
   before apply. `trade_transactions.trade_time` added.
+- **Pre-window basis correction** — opening lots predating the API window (2025-07-19) no longer fabricate swing/day losses: FIFO seeds from operator basis (config/journal_basis_overrides.yaml, e.g. V ~$10.75 IPO) + old CSV buys; no-lot sells flagged `basis_unknown` (never a fabricated loss); pre-window lots = `long_term_trim` (realized but excluded from active stats). V: -$24K phantom -> +$168K long-term gain; active trading +$37K/52.6%.
 - **Journal round-trips** — `schwab_journal_builder.py`: 5-minute same-side fill aggregation + FIFO pairing
   → `schwab_round_trips` (131 trips, 48.9% win, **+$17,410.96** net; RGNT scalp +$59.91/1min). Separate from
   `paper_trades` — the live-trading gate stays paper-only.
