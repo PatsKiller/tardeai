@@ -132,3 +132,5 @@ hermes_sidecar/**/auth.lock
 hermes_sidecar/**/sessions/request_dump_*.json
 imports/schwab_gainloss/
 imports/schwab_history/
+data/state_guard_audit.jsonl
+data/backups/state_snapshots/
