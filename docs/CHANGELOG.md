@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-10 — Schwab API capability map (design doc, no code)
+
+docs/architecture/SCHWAB_API_CAPABILITY_MAP.md — maps the full Schwab Trader API capability inventory to the
+Trade AI v12 system design: BUILT (account/positions/transactions/orders/quotes reads, OAuth/Gate-A, ledger,
+journal/round-trips, ToS watchlist fallback) · READY-but-not-wired (batch quotes, historical price, option
+chains, fundamentals/instruments, market hours, real rate-limit numbers + split buckets, streamerInfo
+streaming) · FENCED (every order type/management — Stage 2, api_write_enabled=false, NotProvenWrite) · N/A
+(watchlists via API, paper-trading via API, streaming deferred by policy). Surfaces the "capable but not
+wired" gap backlog (all read-only wires). Documentation only — no functions implemented.
+
 ## 2026-06-10 — Fix: pre-window long-held lots (V) — authoritative basis + FIFO-underflow guard
 
 The journal was fabricating swing/day losses for positions whose opening lot predates the Schwab API window
