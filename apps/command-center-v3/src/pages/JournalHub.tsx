@@ -5,9 +5,10 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, A
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 import BacktestPanel from '../components/BacktestPanel'
+import SchwabJournal from '../components/SchwabJournal'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting'] as const
+const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -586,6 +587,9 @@ export default function JournalHub({ onDrill }: Props) {
 
       {/* ════════ BACKTESTING TAB (v2 port via shared v3 BacktestPanel) — driven by the shared account + time-range filters ════════ */}
       {tab === 'Backtesting' && <BacktestPanel onDrill={onDrill} sharedAccount={acctFilter} sharedDateFrom={cutoff} />}
+
+      {/* ════════ REAL ACCOUNTS (Schwab) — API-authoritative round-trips, separate from paper ════════ */}
+      {tab === 'Real Accounts' && <SchwabJournal />}
     </div>
   )
 }
