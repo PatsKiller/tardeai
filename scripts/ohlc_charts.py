@@ -151,20 +151,26 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             return dt.datetime.combine(d, dt.time(9, 30), tzinfo=_ET).astimezone(dt.timezone.utc)
         return dt.datetime.combine(d, dt.time(13, 30), tzinfo=dt.timezone.utc)
 
+    sess_open = None
     if same_day and has_time:
         timeframe = "1Min"
+        sess_open = _session_open(ed)
         # DISPLAY window: pad each side by max(10 min, the hold), capped 60 min.
         hold = ext - ent
         pad = max(dt.timedelta(minutes=10), min(hold, dt.timedelta(minutes=60)))
         s_dt, e_dt = ent - pad, ext + pad
+        # morning trade (entry within 90 min of the open) -> show ~30 min PREMARKET + the open for context
+        if ent <= sess_open + dt.timedelta(minutes=90):
+            s_dt = min(s_dt, sess_open - dt.timedelta(minutes=30))
         win = (s_dt, e_dt)
-        # FETCH from the session open so VWAP resets at 9:30 ET and indicators have context.
-        start, end = min(_session_open(ed), s_dt).isoformat(), e_dt.isoformat()
+        # FETCH from premarket open (4:00 ET) so premarket bars exist + VWAP/indicators have context.
+        start, end = min(_session_open(ed) - dt.timedelta(hours=5, minutes=30), s_dt).isoformat(), e_dt.isoformat()
     elif same_day:
-        timeframe = "1Min"   # same-day, no fill time -> regular session (≈9:30–16:00 ET)
-        s_dt = _session_open(ed)
-        e_dt = s_dt + dt.timedelta(hours=7)
-        start, end, win = s_dt.isoformat(), e_dt.isoformat(), (s_dt, e_dt)
+        timeframe = "1Min"   # same-day, no fill time -> premarket + regular session
+        sess_open = _session_open(ed)
+        s_dt = sess_open - dt.timedelta(minutes=30)
+        e_dt = sess_open + dt.timedelta(hours=6, minutes=30)
+        start, end, win = (sess_open - dt.timedelta(hours=5, minutes=30)).isoformat(), e_dt.isoformat(), (s_dt, e_dt)
     else:
         timeframe = "1Day"
         pad = max(5, (xd - ed).days // 5)
@@ -192,18 +198,24 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     out_bars, vol, vwap, out_macd, out_rsi = [], [], [], [], []
     cum_pv = cum_v = 0.0
     s_dt, e_dt = win if win else (None, None)
+    session_open_time = None
     for i, b in enumerate(bars):
-        tp = (b["h"] + b["l"] + b["c"]) / 3.0           # accumulate session VWAP across EVERY fetched bar
-        cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
-        if win is not None:                              # ...but only DISPLAY bars inside the window
-            bt = dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00"))
-            if not (s_dt <= bt <= e_dt):
-                continue
+        bt = dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00"))
+        in_session = sess_open is None or bt >= sess_open    # session VWAP excludes premarket (standard)
+        if in_session:
+            tp = (b["h"] + b["l"] + b["c"]) / 3.0
+            cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
+        if win is not None and not (s_dt <= bt <= e_dt):     # only DISPLAY bars inside the window
+            continue
         tkey = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
+        if (sess_open is not None and session_open_time is None and bt >= sess_open
+                and (bt - sess_open) < dt.timedelta(minutes=2)):   # only the actual 9:30 bar (not a midday first-bar)
+            session_open_time = tkey
         out_bars.append({"time": tkey, "open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"]})
         vol.append({"time": tkey, "value": b.get("v", 0),
                     "color": "rgba(34,197,94,.5)" if b["c"] >= b["o"] else "rgba(239,68,68,.5)"})
-        vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})  # session VWAP
+        if in_session:                                        # premarket bars show price/volume but no VWAP
+            vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})
         if macd[i] is not None:
             out_macd.append({"time": tkey, **macd[i]})
         if rsi[i] is not None:
@@ -231,7 +243,8 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
             "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
-            "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars)}
+            "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
+            "session_open_time": session_open_time}
 
 
 if __name__ == "__main__":

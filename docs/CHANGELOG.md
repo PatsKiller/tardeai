@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-10 — Premarket bars + 9:30 session-open marker
+
+Intraday charts now include premarket bars (fetched from 4:00 ET) and a yellow 9:30 open marker. Morning
+trades (entry within 90 min of the open) display ~30 min premarket -> the open -> the trade; premarket bars
+show price+volume but NO VWAP (session VWAP standardly resets at 9:30). The open marker only renders when the
+real 9:30 bar is in the window (midday trades correctly show none). Verified: GSIT 09:47 scalp shows 4
+premarket bars + 9:30 marker; RGNT 11:16 midday shows neither. Read-only.
+
 ## 2026-06-10 — True session VWAP (reset at 9:30 ET open)
 
 Intraday charts now compute a TRUE session VWAP: bars are fetched from the 9:30 ET session open (not the tiny
