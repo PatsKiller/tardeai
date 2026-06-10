@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-10 — V basis corrected to Schwab authoritative + cost-basis intake + CSV upload tile
+
+Operator uploaded Schwab Positions exports. The Roth Positions file proved the 130 V shares still HELD carry
+cost basis $307.32/sh (NOT the $10.75 IPO override) — so V is not all IPO-basis stock. The override applied
+$10.75 to 569 sold sh vs only 400 documented IPO sh. Fix: override format gained documented_qty (V capped at
+400); the 169 excess sold sh underflow FIFO -> basis_unknown (true basis needs Schwab Realized Gain/Loss
+export, never an extended hand override). V realized: +$168,160 -> +$117,356. Builder purges orphan rows on
+classification flips. Authoritative basis infra: schwab_cost_basis_lots table + ingest_schwab_gainloss.py
+(--apply ingests imports/schwab_gainloss/ realized+unrealized lots, --reconcile flags journal-vs-Schwab
+divergences, Schwab wins); 24 held lots ingested. CSV upload tile (/api/v2/upload-csv + CsvUpload in
+System>Brokers) for remote operators — whitelisted dirs, sanitized filename, traversal-blocked. Aggregates:
+active 116 +$37,046 (52.6%), long-term trims 5 +$114,938, basis_unknown 13 (pending realized export).
+Validator 12/12, no writes. imports/schwab_* gitignored. TAX NOTE: held V ~$307 basis suggests the in-kind
+Roth transfer carried market-era basis — operator to verify with Schwab/tax advisor.
+
 ## 2026-06-10 — Journal consolidation + Drive-sync dedup fix
 
 (1) JOURNAL: consolidated three divergent Schwab journal sources to ONE truth (schwab_round_trips). The
