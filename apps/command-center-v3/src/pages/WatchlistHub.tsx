@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
+import ToSWatchlists from '../components/ToSWatchlists'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -125,6 +126,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       {/* Discovery & Watchlist Builder */}
       <DiscoveryPanel onAdded={refetchWl} />
+      <ToSWatchlists />
 
       {/* Sectors / Directives (first-class) */}
       {directives.length > 0 && (
