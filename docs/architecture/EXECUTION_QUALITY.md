@@ -25,6 +25,9 @@ missed runner). Advisory/evidence-only — never alters live trading decisions.
 fine). GOVX/FATN = WIN/poor (early entry + premature exit, ~30% capture). NUWE = WIN/poor (12% capture). 48
 Schwab trades graded (7 full intraday, 41 NO_INTRADAY_PATH). Validator 12/12.
 
+## Completed (2026-06-10)
+- **Part B paper** — paper_trades graded (17 OK). **Part D** — grok_execution_review.py (7/7 clean JSON). **Part E** — backtest_execution_hypotheses.py + trade_execution_hypothesis_results + /api/v2/backtesting/execution-hypotheses (46 trades x 3 variants; honest negative avg deltas = do-not-blindly-graft). **Part F** — endpoints + journal badges + replay overlay.
+
 ## Deferred (named follow-ups)
 - **Part B (paper)** — extend `_rows` to paper closed trades (same compute).
 - **Part D — Grok normalization** (`scripts/grok_execution_review.py`): feed the COMPUTED metrics to Grok →
