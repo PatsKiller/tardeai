@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-09 — LLM grade+lesson on real closed trades (Schwab + paper); backtest sims excluded
+
+Journal review parity across real accounts. schwab_journal_classifier.py tagged all 131 Schwab round-trips
+(strategy + entry/exit letter grade + lesson, in schwab_round_trips → Journal Real Accounts). New
+journal_review_builder.py reviews real PAPER closed trades (trades view, source=paper_trades) into the
+canonical journal_trade_reviews (setup, entry/exit grade→1-5 exec/risk score, lesson, strength/mistake tags),
+idempotent by trade_key. Backtest SIMULATIONS (strategy_backtest_trades, 18,966 — synthetic per-strategy
+replays, already strategy-scored, ~31h to grade, known false-positive labels) are EXCLUDED by design — only
+the 201 real closed trades (48 paper + 153 Schwab) are graded. Daily cron: 18:15 Schwab ingest→build→classify,
+18:30 paper journal review (both idempotent, flock-guarded, read-only vs Schwab).
+
 ## 2026-06-09 — Schwab Stage 1 LIVE: reads proven, ledger reconciled, journal round-trips (writes still locked)
 
 Credential-in proof pass complete. OAuth bootstrapped (manual-paste, token through the manager, encrypted);
