@@ -15,7 +15,7 @@ export default function SchwabJournal() {
   if (!trips.length) return <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12 }}>No Schwab round-trips yet — the ledger ingest + journal builder populate this (read-only).</div>
 
   const accts = ['all', ...Array.from(new Set(trips.map(t => t.account)))]
-  const view = trips.filter(t => (acct === 'all' || t.account === acct) && (cls === 'all' || t.classification === cls))
+  const view = trips.filter(t => !t.basis_status && (acct === 'all' || t.account === acct) && (cls === 'all' || t.classification === cls))
 
   return (
     <div>
@@ -24,6 +24,7 @@ export default function SchwabJournal() {
           <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px' }}>
             <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k}</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: k === 'Net P&L' ? ((d.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444') : 'var(--text0)' }}>{v}</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>active trading</div>
           </div>
         ))}
         {Object.entries(d.by_account ?? {}).map(([a, v]: any) => (
@@ -33,7 +34,21 @@ export default function SchwabJournal() {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Real Schwab trades · API-authoritative · 5-min fill aggregation · FIFO · LLM grade/lesson. Read-only — separate from the paper-only live-trading gate.</div>
+      {(d.long_term_trims?.count > 0 || d.basis_unknown?.count > 0) && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          {d.long_term_trims?.count > 0 && (
+            <div style={{ background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 8, padding: '6px 12px', fontSize: 11 }}>
+              <b style={{ color: '#22c55e' }}>Long-term trims: {fmt$(d.long_term_trims.realized)}</b> realized ({d.long_term_trims.count}) — pre-window lots at authoritative basis (e.g. V at ~$10.75 IPO). <span style={{ color: 'var(--text3)' }}>Not trading P&L.</span>
+            </div>
+          )}
+          {d.basis_unknown?.count > 0 && (
+            <div title={(d.basis_unknown.symbols || []).join(', ')} style={{ background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '6px 12px', fontSize: 11 }}>
+              <b style={{ color: '#f59e0b' }}>basis_unknown: {d.basis_unknown.count}</b> sells — opening lot predates the data; <span style={{ color: 'var(--text3)' }}>flagged, excluded from P&L (never fabricated as losses).</span>
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Active trading stats only · API-authoritative · 5-min fill aggregation · FIFO · long-term trims &amp; basis_unknown excluded · LLM grade/lesson. Read-only — separate from the paper-only live-trading gate.</div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         {accts.map(a => <button key={a} onClick={() => setAcct(a)} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', background: acct === a ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acct === a ? '#60a5fa' : 'var(--text2)' }}>{a.replace('schwab_', '') || a}</button>)}
