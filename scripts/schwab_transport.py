@@ -70,14 +70,17 @@ def build_client(account_key, broker="schwab", environment="live"):
     if not (api_key and app_secret):
         return None, {"status": "NOT_PROVEN", "reason": "SCHWAB_APP_KEY/SECRET absent — live transport NOT_PROVEN"}
     import schwab_token_manager as tm
-    if tm.read_oauth_token(account_key, broker, environment) is None:
-        return None, {"status": "degraded", "reason": "no token for account (manager is system-of-record)"}
+    # ONE Schwab login token covers all the user's accounts — share it via the canonical key (the account
+    # HASH distinguishes accounts). Refresh writes back to the canonical key (no rotation conflict).
+    tkey = tm.canonical_token_key(broker, environment) or account_key
+    if tm.read_oauth_token(tkey, broker, environment) is None:
+        return None, {"status": "degraded", "reason": "no Schwab login token (manager is system-of-record)"}
     try:
         from schwab.auth import client_from_access_functions
         client = client_from_access_functions(
             api_key, app_secret,
-            token_read_func=lambda: tm.read_oauth_token(account_key, broker, environment),
-            token_write_func=lambda token, *a, **k: tm.write_oauth_token(token, account_key, broker, environment),
+            token_read_func=lambda: tm.read_oauth_token(tkey, broker, environment),
+            token_write_func=lambda token, *a, **k: tm.write_oauth_token(token, tkey, broker, environment),
             enforce_enums=False,
         )
         return client, None
@@ -185,13 +188,13 @@ def _get_hash(account_key):
 
 
 # ── READ METHODS — degraded/NOT_PROVEN without a live client; live reads NOT_PROVEN until cred-in ──
-def _read(account_key, fn_name, normalize, *args):
+def _read(account_key, fn_name, normalize, *args, **kwargs):
     client, err = build_client(account_key)
     if err:
         return err
     _rate_acquire()
     try:
-        resp = getattr(client, fn_name)(*args)
+        resp = getattr(client, fn_name)(*args, **kwargs)
         data = resp.json() if hasattr(resp, "json") else resp
         return normalize(data)
     except Exception as e:
@@ -210,7 +213,7 @@ def get_positions(account_key, account_hash=None):
     if not h:
         return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
     from schwab.client import Client
-    return _read(account_key, "get_account", normalize_positions, h, Client.Account.Fields.POSITIONS)
+    return _read(account_key, "get_account", normalize_positions, h, fields=Client.Account.Fields.POSITIONS)
 
 
 def get_orders(account_key, account_hash=None):
