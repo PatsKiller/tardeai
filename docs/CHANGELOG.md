@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-10 — Replay speed control + Schwab tier-2 OHLCV fallback wired
+
+Replay charts gained a speed selector (0.5x/1x/2x/4x/8x). Schwab is now a REAL tier-2 data fallback:
+schwab_transport.get_price_history (read-only market data, daily + 1-min) returns OHLCV; Schwab's payload has
+no per-bar VWAP so the chart layer computes cumulative VWAP (typical-price x volume). Verified: Schwab
+returned 21 live AAPL daily candles; VWAP computes for the Schwab path; validator still 12/12 (read-only, no
+write surface). Hierarchy now fully live: Alpaca (OHLCV+VWAP) -> Schwab (OHLCV, VWAP computed) -> Finviz image.
+
 ## 2026-06-10 — Per-trade replay charts (TradingView Lightweight Charts, free)
 
 Interactive per-trade charts in the journal: candlesticks + volume + VWAP + MACD + RSI panes, entry ↑ / exit
