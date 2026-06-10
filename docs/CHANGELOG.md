@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-10 — Fix: pre-window long-held lots (V) — authoritative basis + FIFO-underflow guard
+
+The journal was fabricating swing/day losses for positions whose opening lot predates the Schwab API window
+(2025-07-19). schwab_journal_builder now seeds opening lots from operator-documented basis
+(config/journal_basis_overrides.yaml — V at ~$10.75 split-adjusted IPO basis) + the old pre-window CSV buys,
+in FIFO order; a sell with NO opening lot anywhere is flagged basis_unknown (entry/P&L null) — NEVER a
+fabricated loss. New columns basis_status/basis_source; long-term trims (pre-window lots) are realized P&L
+but EXCLUDED from active trading stats. Result: V flips from -$24K phantom "swing losses" to +$168K long-term
+realized GAIN (a 16-year IPO hold trimmed at ~$307 vs $10.75); active trading +$37,046 / 52.6% win; 12
+symbols flagged basis_unknown (ADBE/AMAGX/AMC/BRO/BUG/EKSO/FSELX/FSPTX/IPM/SCLX/TSLA/UBER). Endpoint splits
+active vs long-term-trim vs basis_unknown; Real Accounts tab shows banners + active-only table. Schwab
+read-only throughout; validate_schwab_no_writes 12/12 (guard 8 updated for the live cred-in read state).
+
 ## 2026-06-09 — Fix: in-kind transfers no longer counted as trades (Schwab journal correction)
 
 A TRADE with netAmount~$0 = shares moved WITHOUT cash (in-kind transfer / re-registration disguised as a
