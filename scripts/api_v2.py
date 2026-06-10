@@ -16172,6 +16172,39 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _tos_watchlists_list(query=None):
+    """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
+    wls = _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
+                         created_at FROM tos_watchlists ORDER BY COALESCE(display_name, name)""") or []
+    out = []
+    for w in wls:
+        mems = _db_query("""SELECT symbol, added_at, removed_at, notes FROM tos_watchlist_members
+                            WHERE watchlist_id=%s ORDER BY (removed_at IS NOT NULL), symbol""", (w["id"],)) or []
+        out.append({**w, "last_imported_at": _json_clean(w["last_imported_at"]), "created_at": _json_clean(w["created_at"]),
+                    "active": [{"symbol": m["symbol"], "added_at": _json_clean(m["added_at"]), "notes": m["notes"]}
+                               for m in mems if not m["removed_at"]],
+                    "removed": [{"symbol": m["symbol"], "added_at": _json_clean(m["added_at"]),
+                                 "removed_at": _json_clean(m["removed_at"])} for m in mems if m["removed_at"]]})
+    return {"watchlists": out, "count": len(out),
+            "note": "ToS (thinkorswim) watchlists — Schwab Trader API has no watchlist endpoint, so these import from imports/tos_watchlists/. Add/remove dates tracked."}
+
+
+def _tos_watchlist_manage(body):
+    """POST /api/v2/tos-watchlists/manage {watchlist_id, action: rename|strategy|notes|member_note, value, symbol?}."""
+    b = body or {}
+    wid, action, value = b.get("watchlist_id"), (b.get("action") or "").lower(), b.get("value")
+    if not wid or action not in ("rename", "strategy", "notes", "member_note"):
+        return 400, {"ok": False, "error": "watchlist_id + action(rename|strategy|notes|member_note) required"}
+    col = {"rename": "display_name", "strategy": "strategy_match", "notes": "notes"}.get(action)
+    if col:
+        _db_query(f"UPDATE tos_watchlists SET {col}=%s, updated_at=NOW() WHERE id=%s", (value, int(wid)), fetch="none")
+        return 200, {"ok": True, "watchlist_id": wid, "action": action, "value": value}
+    # member_note: per-symbol note
+    _db_query("UPDATE tos_watchlist_members SET notes=%s WHERE watchlist_id=%s AND symbol=%s",
+              (value, int(wid), b.get("symbol")), fetch="none")
+    return 200, {"ok": True, "watchlist_id": wid, "action": "member_note", "symbol": b.get("symbol")}
+
+
 def _schwab_round_trips(query=None):
     """GET /api/v2/journal/schwab-round-trips — real-account round-trips (5-min agg + FIFO from the
     API-authoritative ledger). Read-only."""
@@ -16799,6 +16832,7 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
+    "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
@@ -17837,6 +17871,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                                        actor=b.get("actor", "operator"))}
         except Exception as e:
             return 400, {"ok": False, "error": str(e)[:160]}
+    if method == "POST" and base_path == "/api/v2/tos-watchlists/manage":
+        return _tos_watchlist_manage(body or {})
     if method == "POST" and base_path == "/api/v2/time-exit-proposals/decide":
         return _time_exit_proposal_decide(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/run":
