@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-09 — Free Grok OAuth review lane + tightened journal prompts + lane badge
+
+Journal reviewers (Schwab round-trips + paper trades) now default to the FREE Grok OAuth lane (xAI proxy
+:8645) via shared scripts/llm_lane.py (grok|local, auto-fallback; no metered APIs). Prompts tightened:
+lessons must be trade-specific (real numbers/hold/exit) and the generic "tighten stops" boilerplate is
+banned unless the loss truly came from a stop — Grok output is far sharper (V loss -> "thesis was invalid
+months earlier, demanded exit discipline" vs prior boilerplate). review_lane tracked (schwab_round_trips) /
+coach_notes (paper); /api/v2/journal/schwab-round-trips returns it; Journal->Real Accounts shows a
+grok/local badge + tooltip per row. Daily crons use grok by default (fallback local if proxy down).
+
 ## 2026-06-09 — LLM grade+lesson on real closed trades (Schwab + paper); backtest sims excluded
 
 Journal review parity across real accounts. schwab_journal_classifier.py tagged all 131 Schwab round-trips
