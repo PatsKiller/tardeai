@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-10 — True session VWAP (reset at 9:30 ET open)
+
+Intraday charts now compute a TRUE session VWAP: bars are fetched from the 9:30 ET session open (not the tiny
+display window), VWAP accumulates cumulative typical-price x volume from the open, and MACD/RSI get full
+session context — then only the tight trade window is RENDERED. RGNT scalp: entry $3.35 shows below the ~$3.75
+session VWAP (real context). Stopped using Alpaca per-bar vw (that is per-bar, not session). Read-only.
+
 ## 2026-06-10 — Chart audit fix: tight intraday window + ET times + Finviz cookie in modal
 
 Audit found scalp charts showed the whole session (279 1-min bars for a 1-min hold) and dropped the fill

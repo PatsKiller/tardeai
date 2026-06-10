@@ -145,16 +145,24 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
     win = None
 
+    def _session_open(d):
+        """09:30 ET of date d as aware UTC — for true session VWAP + indicator context."""
+        if _ET:
+            return dt.datetime.combine(d, dt.time(9, 30), tzinfo=_ET).astimezone(dt.timezone.utc)
+        return dt.datetime.combine(d, dt.time(13, 30), tzinfo=dt.timezone.utc)
+
     if same_day and has_time:
         timeframe = "1Min"
-        # pad each side by max(10 min, the hold), capped at 60 min -> a tight, relevant window
+        # DISPLAY window: pad each side by max(10 min, the hold), capped 60 min.
         hold = ext - ent
         pad = max(dt.timedelta(minutes=10), min(hold, dt.timedelta(minutes=60)))
         s_dt, e_dt = ent - pad, ext + pad
-        start, end, win = s_dt.isoformat(), e_dt.isoformat(), (s_dt, e_dt)
+        win = (s_dt, e_dt)
+        # FETCH from the session open so VWAP resets at 9:30 ET and indicators have context.
+        start, end = min(_session_open(ed), s_dt).isoformat(), e_dt.isoformat()
     elif same_day:
         timeframe = "1Min"   # same-day, no fill time -> regular session (≈9:30–16:00 ET)
-        s_dt = dt.datetime.combine(ed, dt.time(13, 30), tzinfo=dt.timezone.utc)
+        s_dt = _session_open(ed)
         e_dt = s_dt + dt.timedelta(hours=7)
         start, end, win = s_dt.isoformat(), e_dt.isoformat(), (s_dt, e_dt)
     else:
@@ -177,31 +185,33 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
                 "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
                 "reason": err or "no Alpaca bars for this symbol/window"}
 
-    # defensive window filter (source may over-return for intraday)
-    if win is not None:
-        s_dt, e_dt = win
-        bars = [b for b in bars if s_dt <= dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00")) <= e_dt]
-    if not bars:
-        return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
-                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
-                "reason": "no bars in trade window"}
-
+    # Indicators + VWAP accumulate over the FULL fetch (intraday: from the 9:30 session open) so VWAP is a
+    # true session VWAP reset at the open and MACD/RSI have context; we then RENDER only the display window.
     closes = [b["c"] for b in bars]
     macd, rsi = _macd(closes), _rsi(closes)
-    out_bars, vol, vwap = [], [], []
-    cum_pv = cum_v = 0.0  # VWAP when the source has no per-bar vw (e.g. Schwab) -> cumulative
-    for b in bars:
-        # daily uses 'YYYY-MM-DD'; intraday uses an ET-wall-clock unix ts so charts show market time
+    out_bars, vol, vwap, out_macd, out_rsi = [], [], [], [], []
+    cum_pv = cum_v = 0.0
+    s_dt, e_dt = win if win else (None, None)
+    for i, b in enumerate(bars):
+        tp = (b["h"] + b["l"] + b["c"]) / 3.0           # accumulate session VWAP across EVERY fetched bar
+        cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
+        if win is not None:                              # ...but only DISPLAY bars inside the window
+            bt = dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00"))
+            if not (s_dt <= bt <= e_dt):
+                continue
         tkey = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
         out_bars.append({"time": tkey, "open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"]})
         vol.append({"time": tkey, "value": b.get("v", 0),
                     "color": "rgba(34,197,94,.5)" if b["c"] >= b["o"] else "rgba(239,68,68,.5)"})
-        if b.get("vw"):
-            vwap.append({"time": tkey, "value": round(b["vw"], 4)})
-        else:
-            tp = (b["h"] + b["l"] + b["c"]) / 3.0
-            cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
-            vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})
+        vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})  # session VWAP
+        if macd[i] is not None:
+            out_macd.append({"time": tkey, **macd[i]})
+        if rsi[i] is not None:
+            out_rsi.append({"time": tkey, "value": rsi[i]})
+    if not out_bars:
+        return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
+                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
+                "reason": "no bars in trade window"}
 
     def _mark_time(ts, default_idx):
         """bar 'time' nearest the real fill timestamp (daily: by date; intraday: nearest ET-bar)."""
@@ -221,9 +231,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
             "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
-            "macd": [{"time": out_bars[i]["time"], **macd[i]} for i in range(len(macd)) if macd[i] is not None],
-            "rsi": [{"time": out_bars[i]["time"], "value": rsi[i]} for i in range(len(rsi)) if rsi[i] is not None],
-            "markers": markers, "bar_count": len(out_bars)}
+            "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars)}
 
 
 if __name__ == "__main__":
