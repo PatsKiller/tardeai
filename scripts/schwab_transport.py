@@ -234,6 +234,51 @@ def get_quote(account_key, symbol):
     return _read(account_key, "get_quote", normalize_quote, symbol)
 
 
+def get_price_history(symbol, start, end, timeframe="1Day", account_key=None):
+    """READ-ONLY market-data price history (OHLCV) — tier-2 chart fallback when Alpaca has no bars. Returns
+    [{open,high,low,close,volume,datetime}] or [] on any failure (caller falls through). Schwab payload has
+    no per-bar VWAP — the chart layer computes VWAP from these candles. No write surface."""
+    import datetime as _dt
+    if account_key is None:
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn(); cur = conn.cursor()
+            cur.execute("SELECT account_key FROM schwab_account_links WHERE verified=TRUE LIMIT 1")
+            r = cur.fetchone(); account_key = r[0] if r else None
+        except Exception:
+            return []
+    if not account_key:
+        return []
+    client, err = build_client(account_key)
+    if err or not client:
+        return []
+
+    def _pd(s):
+        s = str(s)
+        try:
+            return _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            return _dt.datetime.fromisoformat(s[:10])
+
+    _rate_acquire()
+    try:
+        sym = symbol.upper()
+        if timeframe == "1Min":
+            resp = client.get_price_history_every_minute(sym, start_datetime=_pd(start), end_datetime=_pd(end))
+        else:
+            resp = client.get_price_history_every_day(sym, start_datetime=_pd(start), end_datetime=_pd(end))
+        data = resp.json() if hasattr(resp, "json") else resp
+        out = []
+        for c in (data.get("candles") or []):
+            ts = c.get("datetime")
+            out.append({"open": c.get("open"), "high": c.get("high"), "low": c.get("low"),
+                        "close": c.get("close"), "volume": c.get("volume", 0),
+                        "datetime": (_dt.datetime.utcfromtimestamp(ts / 1000).isoformat() + "Z") if ts else None})
+        return out
+    except Exception:
+        return []
+
+
 def get_option_chain(account_key, symbol):
     return _read(account_key, "get_option_chain", lambda d: d, symbol)  # passthrough; reconcile at cred-in
 

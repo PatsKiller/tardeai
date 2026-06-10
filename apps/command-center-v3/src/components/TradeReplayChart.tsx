@@ -19,6 +19,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   const [show, setShow] = useState({ vol: true, vwap: true, macd: true, rsi: true })
   const [n, setN] = useState(0)            // replay cursor (#bars revealed); 0 = all
   const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState(1)    // replay speed multiplier
   const priceRef = useRef<HTMLDivElement>(null)
   const macdRef = useRef<HTMLDivElement>(null)
   const rsiRef = useRef<HTMLDivElement>(null)
@@ -78,13 +79,14 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   }
   useEffect(() => { paint(n) }, [n])
 
-  // play animation
+  // play animation — interval scales with speed (0.5x..8x)
   useEffect(() => {
     if (!playing || !data?.bars) return
     if (n === 0) setN(1)
-    const id = setInterval(() => setN(v => { const nx = (v || 1) + Math.max(1, Math.floor(data.bars.length / 60)); if (nx >= data.bars.length) { setPlaying(false); return 0 } return nx }), 120)
+    const step = Math.max(1, Math.floor(data.bars.length / 90))
+    const id = setInterval(() => setN(v => { const nx = (v || 1) + step; if (nx >= data.bars.length) { setPlaying(false); return 0 } return nx }), Math.round(120 / speed))
     return () => clearInterval(id)
-  }, [playing, data])
+  }, [playing, data, speed])
 
   const pnl = data?.markers?.length === 2 ? (Number(data.markers[1].price) - Number(data.markers[0].price)) : null
 
@@ -110,6 +112,9 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
           <div ref={rsiRef} style={{ width: '100%', display: show.rsi ? 'block' : 'none' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
             <button onClick={() => setPlaying(p => !p)} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: playing ? '#ef4444' : '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{playing ? '❚❚ pause' : '▶ replay'}</button>
+            <div style={{ display: 'flex', gap: 2 }} title="Replay speed">
+              {[0.5, 1, 2, 4, 8].map(s => <button key={s} onClick={() => setSpeed(s)} style={{ fontSize: 9, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', background: speed === s ? '#1d4ed8' : 'var(--bg2)', color: speed === s ? '#fff' : 'var(--text3)', cursor: 'pointer' }}>{s}×</button>)}
+            </div>
             <input type="range" min={1} max={data.bars.length} value={n === 0 ? data.bars.length : n} onChange={e => { setPlaying(false); setN(Number(e.target.value)) }} style={{ flex: 1 }} />
             <span style={{ fontSize: 10, color: 'var(--text3)', minWidth: 70, textAlign: 'right' }}>{n === 0 ? data.bars.length : n}/{data.bars.length} bars</span>
           </div>

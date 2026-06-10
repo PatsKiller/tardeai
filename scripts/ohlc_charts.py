@@ -134,6 +134,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     closes = [b["c"] for b in bars]
     macd, rsi = _macd(closes), _rsi(closes)
     out_bars, vol, vwap = [], [], []
+    cum_pv = cum_v = 0.0  # for VWAP when the source has no per-bar vw (e.g. Schwab) -> compute cumulative
     for i, b in enumerate(bars):
         t = b["t"]
         # Lightweight Charts: daily uses 'YYYY-MM-DD'; intraday uses unix seconds
@@ -144,8 +145,12 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         out_bars.append({"time": tkey, "open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"]})
         vol.append({"time": tkey, "value": b.get("v", 0),
                     "color": "rgba(34,197,94,.5)" if b["c"] >= b["o"] else "rgba(239,68,68,.5)"})
-        if b.get("vw"):
+        if b.get("vw"):                                   # Alpaca per-bar VWAP
             vwap.append({"time": tkey, "value": round(b["vw"], 4)})
+        else:                                            # Schwab/other: compute cumulative VWAP
+            tp = (b["h"] + b["l"] + b["c"]) / 3.0
+            cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
+            vwap.append({"time": tkey, "value": round(cum_pv / cum_v if cum_v else b["c"], 4)})
 
     def _markseries(ind):
         return [{"time": out_bars[i]["time"], **ind[i]} for i in range(len(ind)) if ind[i] is not None]
