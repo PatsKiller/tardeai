@@ -75,11 +75,15 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.signal?.setData(cut(data.macd).map((x: any) => ({ time: x.time, value: x.signal })))
     series.current.hist?.setData(cut(data.macd).map((x: any) => ({ time: x.time, value: x.hist, color: x.hist >= 0 ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)' })))
     series.current.rsi?.setData(cut(data.rsi))
-    // markers only show once their bar is revealed
+    // markers only show once their bar is revealed; include the 9:30 session-open marker
     const shown = new Set(cut(data.bars).map((b: any) => String(b.time)))
-    series.current.candle?.setMarkers((data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
+    const mks = (data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
-      color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label })))
+      color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
+    if (data.session_open_time && shown.has(String(data.session_open_time)))
+      mks.push({ time: data.session_open_time, position: 'aboveBar', color: '#eab308', shape: 'circle', text: '9:30 open' })
+    mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
+    series.current.candle?.setMarkers(mks)
   }
   useEffect(() => { paint(n) }, [n])
 
