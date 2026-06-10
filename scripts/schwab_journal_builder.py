@@ -153,6 +153,20 @@ def run(apply=False, gap_min=5):
                            ON CONFLICT (dedupe_key) DO UPDATE SET net_pnl=EXCLUDED.net_pnl, fees=EXCLUDED.fees,
                              basis_status=EXCLUDED.basis_status, basis_source=EXCLUDED.basis_source""", tp)
             ins += 1
+        # ── CONSOLIDATION: schwab_round_trips is the single Schwab source of truth. Refresh trade_closed
+        # (the /api/v2/journal "Trades" tab Schwab source) from it so the journal shows correct + current
+        # data — fixes the stale/wrong V and the missing recent trades. basis_unknown excluded (no P&L).
+        cur.execute("DELETE FROM trade_closed WHERE account LIKE 'schwab%'")
+        cur.execute("""INSERT INTO trade_closed
+                         (symbol, account, open_date, close_date, trade_type, shares, buy_price, sell_price,
+                          cost_basis, proceeds, pnl, pnl_pct, hold_days, strategy_id, dedupe_key, created_at)
+                       SELECT symbol, account, entry_time::date, exit_time::date, classification, qty,
+                         entry_price, exit_price, round(entry_price*qty, 2), round(exit_price*qty, 2),
+                         net_pnl, pnl_pct, round(hold_minutes/1440.0)::int, strategy_tag, 'srt:'||id, NOW()
+                       FROM schwab_round_trips
+                       WHERE basis_status IS DISTINCT FROM 'basis_unknown' AND entry_time IS NOT NULL
+                       ON CONFLICT (dedupe_key) DO UPDATE SET pnl=EXCLUDED.pnl, close_date=EXCLUDED.close_date""")
+        ins_tc = cur.rowcount
         conn.commit()
     # ACTIVE trading stats exclude long-term trims + basis_unknown
     active = [t for t in all_trips if t["basis_status"] is None]
