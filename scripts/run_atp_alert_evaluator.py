@@ -102,7 +102,7 @@ Approval: BLOCKED
 
 {alert['reason']}
 
-Action: Review /v2/paper-proposals
+Action: Review /v3/trading
 Paper mode. No order submitted."""
     return msg
 
