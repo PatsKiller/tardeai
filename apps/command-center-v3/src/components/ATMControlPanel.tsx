@@ -20,7 +20,7 @@ function ManageApiModal({ enums, initial, onClose, onSubmit }: any) {
   const liveWrite = f.environment === 'live' && f.api_write_enabled
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 460, maxHeight: '88vh', overflow: 'auto' }}>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 460, maxWidth: 'min(460px, 95vw)', maxHeight: '88vh', overflow: 'auto' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>{initial ? 'Edit broker API' : 'Add broker API'}</div>
         <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>Secrets (keys) live in .env/keyring — this records the connection + capabilities only.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11 }}>
@@ -69,7 +69,7 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
   const modeOpts = (enums?.automation_modes ?? PAPER_MODES.concat(['AUTO_LIVE']))
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 440 }}>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 440, maxWidth: 'min(440px, 95vw)' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>Edit Automation — {account.display_name}</div>
         <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>{account.broker} · {account.environment} · source {policy.source ?? '—'}. {account.environment === 'live' ? 'AUTO_LIVE is gate-interlocked on live accounts (refused until the live-trading gate passes).' : 'Paper account — modes route to the paper endpoint (no real-money risk).'}</div>
         <label style={{ fontSize: 11, display: 'block', marginBottom: 10 }}>name (this section)
