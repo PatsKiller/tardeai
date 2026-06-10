@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-10 — 16:00 close marker + after-hours bars
+
+Symmetric to premarket/open: afternoon trades (exit within 90 min of the close) now show the 16:00 ET close
+marker (orange) + ~30 min after-hours bars. After-hours bars show price/volume but NO VWAP (session VWAP =
+regular hours only, 9:30-16:00). Close marker renders only when the real 16:00 bar is in the window. Verified
+AAPL 15:40 trade (30 after-hours bars + 16:00 marker) vs RGNT midday (none). Read-only.
+
 ## 2026-06-10 — Premarket bars + 9:30 session-open marker
 
 Intraday charts now include premarket bars (fetched from 4:00 ET) and a yellow 9:30 open marker. Morning

@@ -82,6 +82,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
     if (data.session_open_time && shown.has(String(data.session_open_time)))
       mks.push({ time: data.session_open_time, position: 'aboveBar', color: '#eab308', shape: 'circle', text: '9:30 open' })
+    if (data.session_close_time && shown.has(String(data.session_close_time)))
+      mks.push({ time: data.session_close_time, position: 'aboveBar', color: '#f97316', shape: 'circle', text: '16:00 close' })
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
     series.current.candle?.setMarkers(mks)
   }
