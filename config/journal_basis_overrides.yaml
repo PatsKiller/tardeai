@@ -1,6 +1,13 @@
-# Operator-documented authoritative cost basis for long-held lots whose opening predates the Schwab API
-# transaction window (2025-07-19). Used by schwab_journal_builder when no in-window or CSV opening lot
-# exists. NEVER reconstructed from the truncated API window. Split-adjusted per-share basis.
+# Operator-documented cost basis for long-held lots whose opening predates the Schwab API transaction
+# window (2025-07-19). Used by schwab_journal_builder when no in-window or CSV opening lot exists. NEVER
+# reconstructed from the truncated API window. Split-adjusted per-share basis.
+#
+# BASIS HIERARCHY (authoritative first): schwab_cost_basis_lots (Schwab Gain/Loss export) > THIS file
+# (operator-documented) > basis_unknown. These entries are TIER 2 — operator-documented but NOT yet
+# validated against Schwab's actual tax-lot assignment. Once a Schwab Realized Gain/Loss CSV is ingested
+# (scripts/ingest_schwab_gainloss.py --apply) the reconcile pass elevates/corrects these; Schwab wins.
 # Format:  "SYMBOL|account": basis_per_share
 overrides:
+  # UNVERIFIED (pending Schwab Gain/Loss export): the SOLD 575 sh may be the $10.75 IPO lot OR higher-basis
+  # in-kind-transferred shares — Schwab's tax-lot assignment decides. If higher, the +$168K gain is overstated.
   "V|schwab_roth_ira": 10.75   # 100 sh 2008 IPO @ ~$43 -> 4:1 split (2015) -> 400 sh @ ~$10.75; long-term winner
