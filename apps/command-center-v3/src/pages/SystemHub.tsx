@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
+import SchwabMonitor from '../components/SchwabMonitor'
 import type { DrillContext } from '../components/DetailDrawer'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
 import { getOperator, setOperator, getToken, setToken } from '../lib/adminWrite'
@@ -700,6 +701,8 @@ export default function SystemHub({ onDrill }: Props) {
               })}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Click a row for validation detail. Source: /api/v2/system/broker-connectors</div>
             </div>
+
+            <SchwabMonitor />
 
             {/* trade integrity audit summary */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>

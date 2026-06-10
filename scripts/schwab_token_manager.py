@@ -147,36 +147,40 @@ def seed_token(account_key, refresh_token, refresh_expires_at=None, access_token
 
 
 def read_oauth_token(account_key, broker="schwab", environment="live"):
-    """schwab-py token_read_func target. Return the authlib-shaped OAuth token dict (decrypted in-memory)
-    or None. The manager stays system-of-record; the wrapper only borrows the live token, never stores it."""
+    """schwab-py token_read_func target. Returns the token in schwab-py's TokenMetadata-wrapped shape
+    {creation_timestamp, token:{...}} (decrypted in-memory) or None. The manager stays system-of-record;
+    the wrapper only borrows the live token, never stores it."""
     conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at
+    cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, updated_at
                    FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
                 (account_key, broker, environment))
     row = cur.fetchone()
     if not row or not row[1]:
         return None
-    tok = {"token_type": "Bearer", "refresh_token": _dec(row[1])}
+    inner = {"token_type": "Bearer", "refresh_token": _dec(row[1])}
     if row[0]:
-        tok["access_token"] = _dec(row[0])
+        inner["access_token"] = _dec(row[0])
     if row[2]:
-        tok["expires_at"] = int(row[2].timestamp())
-    return tok
+        inner["expires_at"] = int(row[2].timestamp())
+    creation = int(row[3].timestamp()) if row[3] else int(_now().timestamp())
+    return {"creation_timestamp": creation, "token": inner}
 
 
 def write_oauth_token(token, account_key, broker="schwab", environment="live"):
-    """schwab-py token_write_func target. Persist a refreshed token THROUGH the manager (atomic, encrypted,
+    """schwab-py token_write_func target. schwab-py passes the metadata-wrapped token
+    {creation_timestamp, token:{...}}; persist the inner token THROUGH the manager (atomic, encrypted,
     rotation-counted, alerts/health intact) — NEVER the wrapper's own store. Preserves the existing refresh
     token if the refresh response omits it."""
     if not isinstance(token, dict):
         return
-    rt = token.get("refresh_token")
+    inner = token["token"] if ("token" in token and "creation_timestamp" in token) else token
+    rt = inner.get("refresh_token")
     if not rt:
         prior = read_oauth_token(account_key, broker, environment) or {}
-        rt = prior.get("refresh_token")
-    aexp = token.get("expires_at")
+        rt = (prior.get("token") or {}).get("refresh_token")
+    aexp = inner.get("expires_at")
     a_exp_dt = datetime.fromtimestamp(int(aexp), tz=timezone.utc) if aexp else None
-    return seed_token(account_key, refresh_token=rt, access_token=token.get("access_token"),
+    return seed_token(account_key, refresh_token=rt, access_token=inner.get("access_token"),
                       access_expires_at=a_exp_dt, broker=broker, environment=environment, rotated=True)
 
 
