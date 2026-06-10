@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-10 — Execution-quality UI: hypothesis panel + chart MFE/MAE overlay
+
+Backtesting tab now shows an Execution-Rule Hypotheses panel (sample, improved %, avg delta/sh, helps/hurts/
+too-few verdict) from /api/v2/backtesting/execution-hypotheses — evidence only. Replay chart draws MFE (max
+opportunity, blue), MAE (purple), and post-exit high (max-after-exit, orange) price lines from the
+execution-quality record, so you see how much of the move you captured vs left behind. Endpoint extended with
+entry_price/mfe_after_entry/mae_after_entry/post_exit_high. Read-only.
+
 ## 2026-06-10 — Execution quality: paper source + hypothesis backtest engine (E)
 
 Paper-trade source added to build_trade_execution_quality.py (17 paper trades graded). Part E:
