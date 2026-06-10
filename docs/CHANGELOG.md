@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-10 — Per-trade replay charts (TradingView Lightweight Charts, free)
+
+Interactive per-trade charts in the journal: candlesticks + volume + VWAP + MACD + RSI panes, entry ↑ / exit
+↓ markers + price lines, and a ▶ replay scrubber (TradingView-style bar replay). TradingView Lightweight
+Charts (MIT, no account/data feed). Data hierarchy (all free/read-only): Alpaca historical OHLCV+VWAP
+(daily + 1-min intraday for scalps) -> Schwab get_price_history (best-effort tier-2) -> Finviz Elite chart
+image (tier-3, server-proxied cookie). scripts/ohlc_charts.py (fetch + EMA/MACD/RSI compute) +
+/api/v2/trade-chart + /api/v2/finviz-chart. TradeReplayChart.tsx wired into Journal>Real Accounts (📈 per
+round-trip) and the main Journal Trade Log (📈 per row). Verified live: AXTI swing 63 daily bars all
+indicators + markers; RGNT scalp 279 1-min bars; delisted symbol falls back cleanly.
+
 ## 2026-06-10 — V basis corrected to Schwab authoritative + cost-basis intake + CSV upload tile
 
 Operator uploaded Schwab Positions exports. The Roth Positions file proved the 130 V shares still HELD carry

@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
+import TradeReplayChart from '../components/TradeReplayChart'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 import BacktestPanel from '../components/BacktestPanel'
 import SchwabJournal from '../components/SchwabJournal'
@@ -61,6 +62,7 @@ function getTimeRangeCutoff(range: string): string {
 }
 
 export default function JournalHub({ onDrill }: Props) {
+  const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
   const [acctFilter, setAcctFilter] = useState('')
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('6M')
@@ -437,6 +439,8 @@ export default function JournalHub({ onDrill }: Props) {
                 <div>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.shares}sh</span>
+                  <span title="Replay chart with entry/exit" onClick={e => { e.stopPropagation(); setChartTrade({ symbol: t.symbol, entry_date: t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp }) }}
+                    style={{ fontSize: 9, marginLeft: 5, cursor: 'pointer', opacity: 0.7 }}>📈</span>
                 </div>
                 <span style={{ color: acctColor(t.na), fontSize: 9 }}>{ACCT_LABEL[t.na] ?? t.na}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
@@ -459,6 +463,7 @@ export default function JournalHub({ onDrill }: Props) {
           </div>
         </>
       )}
+      {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
 
       {/* ════════ ANALYTICS TAB ════════ */}
       {tab === 'Analytics' && (

@@ -16172,6 +16172,44 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _trade_chart(query=None):
+    """GET /api/v2/trade-chart?symbol=&entry_date=&exit_date=&entry_price=&exit_price= — OHLCV + VWAP/MACD/RSI
+    + entry/exit markers for a per-trade replay chart. Source hierarchy: Alpaca -> Schwab -> Finviz image."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        import ohlc_charts
+        q = query or {}
+        g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+        return ohlc_charts.trade_chart(g("symbol"), g("entry_date"), g("exit_date"),
+                                       g("entry_price"), g("exit_price"), g("entry_time"), g("exit_time"))
+    except Exception as e:
+        return {"error": str(e)[:160]}
+
+
+def _finviz_chart(query=None):
+    """GET /api/v2/finviz-chart?symbol=&p= — proxy the Finviz Elite chart IMAGE (attaches the Elite cookie
+    server-side; the browser can't). Returns the PNG bytes. Tier-3 fallback when Alpaca/Schwab have no bars."""
+    import os as _os, urllib.request
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    sym = (g("symbol") or "").upper()[:8]
+    p = g("p") or "d"
+    if not sym.isalnum():
+        return 400, {"ok": False, "error": "bad symbol"}
+    ck = _os.environ.get("FINVIZ_COOKIE", ""); ua = _os.environ.get("FINVIZ_USER_AGENT", "Mozilla/5.0")
+    url = f"https://elite.finviz.com/chart.ashx?t={sym}&ty=c&ta=1&p={p}&s=l"
+    try:
+        req = urllib.request.Request(url, headers={"Cookie": ck, "User-Agent": ua})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            data = r.read()
+        if data[:8].startswith(b"\x89PNG"):
+            return {"__raw__": data, "__content_type__": "image/png"}
+        return 502, {"ok": False, "error": "finviz returned non-image (cookie likely expired — refresh FINVIZ_COOKIE)"}
+    except Exception as e:
+        return 502, {"ok": False, "error": str(e)[:120]}
+
+
 def _upload_csv(body):
     """POST /api/v2/upload-csv {dest, filename, content} — save an operator CSV to a whitelisted import dir.
 
@@ -16861,6 +16899,8 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
+    "/api/v2/trade-chart": _trade_chart,
+    "/api/v2/finviz-chart": _finviz_chart,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
