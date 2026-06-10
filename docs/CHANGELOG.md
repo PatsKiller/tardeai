@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-10 — Replay-aware execution quality (foundation: schema + compute)
+
+Separates OUTCOME from EXECUTION so profitable trades can be graded poorly. Part A: trade_execution_quality +
+trade_execution_grok_reviews tables. Part C: config/execution_quality_rules.yaml (thresholds by strategy
+family). Part B: build_trade_execution_quality.py computes entry RVOL/volume-confirmation, session-VWAP
+relation, RSI/MACD, MFE/MAE, capture ratio, intraday + multi-day missed-runner, then deterministic grades +
+flags (reuses Alpaca->Schwab bars). 48 Schwab trades graded (7 full intraday, 41 NO_INTRADAY_PATH honest);
+RGNT=win/weak(early entry), GOVX/FATN/NUWE=win/poor(early entry+premature exit, 12-32% capture). Read-only,
+validator 12/12. Deferred: paper source, Grok normalization (Part D), hypothesis backtests (Part E), UI (Part F).
+
 ## 2026-06-10 — 16:00 close marker + after-hours bars
 
 Symmetric to premarket/open: afternoon trades (exit within 90 min of the close) now show the 16:00 ET close

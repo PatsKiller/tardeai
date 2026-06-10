@@ -15,6 +15,13 @@ except Exception:
     _ET = None
 
 
+def _sess(d, h, m):
+    """h:m ET of date d as aware UTC (module-level for reuse by execution-quality analytics)."""
+    if _ET:
+        return dt.datetime.combine(d, dt.time(h, m), tzinfo=_ET).astimezone(dt.timezone.utc)
+    return dt.datetime.combine(d, dt.time(h + 4, m), tzinfo=dt.timezone.utc)
+
+
 def _et_ts(iso):
     """UTC ISO -> a unix timestamp whose UTC wall-clock equals US/Eastern wall-clock (DST-aware), so
     Lightweight Charts (renders in UTC) shows ET market time. e.g. 12:08Z -> displays 08:08 (EDT)."""
