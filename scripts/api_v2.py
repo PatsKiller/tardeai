@@ -16176,7 +16176,8 @@ def _schwab_round_trips(query=None):
     """GET /api/v2/journal/schwab-round-trips — real-account round-trips (5-min agg + FIFO from the
     API-authoritative ledger). Read-only."""
     rows = _db_query("""SELECT account, symbol, entry_time, exit_time, hold_minutes, qty, entry_price,
-                          exit_price, gross_pnl, fees, net_pnl, pnl_pct, classification
+                          exit_price, gross_pnl, fees, net_pnl, pnl_pct, classification,
+                          strategy_tag, entry_grade, exit_grade, lesson
                         FROM schwab_round_trips ORDER BY exit_time DESC LIMIT 500""") or []
     trips = [{**r, "entry_time": _json_clean(r["entry_time"]), "exit_time": _json_clean(r["exit_time"]),
               **{k: _json_clean(r[k]) for k in ("qty", "entry_price", "exit_price", "gross_pnl", "fees", "net_pnl", "pnl_pct")}}
