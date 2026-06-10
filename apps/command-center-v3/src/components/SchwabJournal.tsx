@@ -46,7 +46,11 @@ export default function SchwabJournal() {
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', borderRadius: 7, border: '1px solid var(--border)', fontSize: 11 }}>
             <span style={{ flex: '0 0 56px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</span>
             <span style={{ flex: '0 0 64px', fontSize: 9, color: 'var(--text3)' }}>{t.account?.replace('schwab_', '')}</span>
-            <span style={{ flex: '0 0 90px', fontSize: 9, color: 'var(--text2)' }}>{t.strategy_tag || t.classification}</span>
+            <span style={{ flex: '0 0 96px', fontSize: 9, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 3 }}>
+              {t.strategy_tag || t.classification}
+              {t.review_lane === 'grok' && <span title="Reviewed by Grok (xAI) via free OAuth — tighter, trade-specific lesson" style={{ fontSize: 7, fontWeight: 700, color: '#a855f7', border: '1px solid rgba(168,85,247,.5)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>grok</span>}
+              {t.review_lane === 'local' && <span title="Reviewed by local gemma" style={{ fontSize: 7, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>local</span>}
+            </span>
             <span style={{ flex: '0 0 70px', fontSize: 9, color: 'var(--text3)' }}>{t.hold_minutes < 390 ? `${t.hold_minutes}m` : `${Math.round(t.hold_minutes / 1440)}d`}</span>
             {t.entry_grade && <span style={{ flex: '0 0 80px', fontSize: 9 }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b></span>}
             <span style={{ flex: '0 0 80px', textAlign: 'right', fontWeight: 700, color: (t.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(t.net_pnl)}</span>
