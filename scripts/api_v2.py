@@ -16172,6 +16172,54 @@ def _discovery_add(body):
                  "note": "Added to the watchlist — enrichment + Hermes scoring kicked off (scores appear shortly)."}
 
 
+def _schwab_status(query=None):
+    """GET /api/v2/system/schwab-status — Schwab read-only integration monitor: Gate-A token health,
+    account-hash links, capability checks, recent sync. Read-only; never exposes token material."""
+    import datetime as _dt
+    toks = _db_query("""SELECT account_key, refresh_expires_at, next_reauth_due_at, access_expires_at,
+                          degraded, last_error, rotation_count, updated_at
+                        FROM broker_oauth_tokens WHERE broker='schwab' ORDER BY account_key""") or []
+    links = {r["account_key"]: r for r in (_db_query(
+        "SELECT account_key, masked_last4, verified, last_verified_at FROM schwab_account_links") or [])}
+    sync = _db_query("""SELECT account_key, status, reason, position_count, total_value, wrote_holdings, created_at
+                        FROM schwab_sync_history ORDER BY created_at DESC LIMIT 10""") or []
+    now = _dt.datetime.now(_dt.timezone.utc)
+    tokens = []
+    for t in toks:
+        rexp = t.get("refresh_expires_at")
+        days = round((rexp - now).total_seconds() / 86400, 1) if rexp else None
+        if t.get("degraded"):
+            state = "degraded"
+        elif days is None:
+            state = "no_token"
+        elif days <= 0:
+            state = "expired"
+        elif days <= 1:
+            state = "reauth_due_day6"
+        elif days <= 2:
+            state = "reauth_due_day5"
+        else:
+            state = "ok"
+        lk = links.get(t["account_key"], {})
+        tokens.append({"account_key": t["account_key"], "state": state, "days_remaining": days,
+                       "refresh_expires_at": _json_clean(t.get("refresh_expires_at")),
+                       "next_reauth_due_at": _json_clean(t.get("next_reauth_due_at")),
+                       "access_expires_at": _json_clean(t.get("access_expires_at")),
+                       "degraded": t.get("degraded"), "last_error": t.get("last_error"),
+                       "rotation_count": t.get("rotation_count"), "updated_at": _json_clean(t.get("updated_at")),
+                       "account_linked": bool(lk.get("verified")), "masked_last4": lk.get("masked_last4")})
+    caps = _db_query("""SELECT capability_name, status FROM broker_capability_checks
+                        WHERE broker ILIKE '%schwab%' ORDER BY capability_name""") or []
+    return {"tokens": tokens,
+            "account_links": [{"account_key": k, "masked_last4": v.get("masked_last4"), "verified": v.get("verified"),
+                               "last_verified_at": _json_clean(v.get("last_verified_at"))} for k, v in links.items()],
+            "capabilities": [{"name": c.get("capability_name"), "status": c.get("status")} for c in caps],
+            "recent_sync": [{**s, "created_at": _json_clean(s.get("created_at")),
+                             "total_value": _json_clean(s.get("total_value"))} for s in sync],
+            "write_locked": True, "api_write_enabled": False,
+            "note": "Read-only Schwab integration. Writes fenced (NotProvenWrite); api_write_enabled=false; MANUAL_REVIEW."}
+
+
 def _time_exit_proposals_list(query=None):
     """GET /api/v2/time-exit-proposals — pending max-hold close proposals (advisory). Approval-gated."""
     rows = _db_query("""SELECT id, trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
@@ -16722,6 +16770,7 @@ ROUTES = {
     "/api/v2/hermes/subject-intel-map": _hermes_subject_intel_map,
     "/api/v2/discovery/results": _discovery_results,
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
+    "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
