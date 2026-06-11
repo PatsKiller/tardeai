@@ -168,9 +168,15 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             # Fall back to cached tickers from last successful run
             _cache = root / "data" / "scored_tickers_latest.json"
             if _cache.exists():
-                import json
-                tickers = json.loads(_cache.read_text())
-                _ok("finviz_ingestion", f"Using {len(tickers)} cached tickers from last run")
+                import json, time as _t
+                _age_h = (_t.time() - _cache.stat().st_mtime) / 3600
+                if _age_h > 2.5:
+                    # Stale-cache guard (2026-06-11): a failed run silently fed the NEXT run hours-old data.
+                    _err("finviz_ingestion", f"cache is {_age_h:.1f}h old (>2.5h) — refusing stale fallback")
+                    tickers = []
+                else:
+                    tickers = json.loads(_cache.read_text())
+                    _ok("finviz_ingestion", f"Using {len(tickers)} cached tickers from last run ({_age_h:.1f}h old)")
             else:
                 _err("finviz_ingestion", "No cache available — skipping scoring")
                 tickers = []

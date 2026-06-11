@@ -69,7 +69,14 @@ def _now_utc() -> datetime:
 def _cutoff_utc(hours: int) -> datetime:
     return _now_utc() - timedelta(hours=hours)
 
-def _fingerprint(title: str) -> str:
+def _fingerprint(title: str, symbol: str = "", day: str = "") -> str:
+    """De-collision (2026-06-11): the 10-word MD5 collapsed DISTINCT catalysts ("FDA approves drug X" vs
+    "...drug Y" share prefixes). Symbol+day now salt the print so only true same-story dupes collapse."""
+    title = f"{symbol}|{day}|{title}"
+    return __fingerprint_inner(title)
+
+
+def __fingerprint_inner(title: str) -> str:
     words = title.lower().split()[:10]
     return hashlib.md5(" ".join(words).encode()).hexdigest()
 
@@ -154,6 +161,12 @@ def _recency_multiplier(tier: str) -> float:
 # ── Per-API fetchers ─────────────────────────────────────────────────────────
 
 def _fetch_finnhub(symbol: str, from_dt: datetime, to_dt: datetime) -> List[Dict]:
+    try:
+        from api_budget import spend as _ab_spend
+        if not _ab_spend("finnhub"):
+            return []
+    except Exception:
+        pass
     key = _env("FINNHUB_API_KEY")
     if not key:
         return []
@@ -190,6 +203,12 @@ def _fetch_finnhub(symbol: str, from_dt: datetime, to_dt: datetime) -> List[Dict
         return []
 
 def _fetch_newsapi(symbol: str, company: str, from_dt: datetime) -> List[Dict]:
+    try:
+        from api_budget import spend as _ab_spend
+        if not _ab_spend("newsapi"):
+            return []
+    except Exception:
+        pass
     key = _env("NEWSAPI_KEY")
     if not key:
         return []
@@ -222,6 +241,12 @@ def _fetch_newsapi(symbol: str, company: str, from_dt: datetime) -> List[Dict]:
         return []
 
 def _fetch_polygon(symbol: str, from_dt: datetime) -> List[Dict]:
+    try:
+        from api_budget import spend as _ab_spend
+        if not _ab_spend("polygon"):
+            return []
+    except Exception:
+        pass
     key = _env("POLYGON_API_KEY")
     if not key:
         return []
@@ -252,6 +277,12 @@ def _fetch_polygon(symbol: str, from_dt: datetime) -> List[Dict]:
         return []
 
 def _fetch_fmp(symbol: str, limit: int = 20) -> List[Dict]:
+    try:
+        from api_budget import spend as _ab_spend
+        if not _ab_spend("fmp"):
+            return []
+    except Exception:
+        pass
     key = _env("FMP_API_KEY")
     if not key:
         return []
@@ -300,6 +331,12 @@ def _fetch_fmp(symbol: str, limit: int = 20) -> List[Dict]:
         return []
 
 def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
+    try:
+        from api_budget import spend as _ab_spend
+        if not _ab_spend("alphavantage"):
+            return []
+    except Exception:
+        pass
     # Alpha Vantage free tier = 5 calls/min, 100/day — disabled for bulk catalyst runs
     # Enable only for single-ticker deep dives: ENABLE_ALPHA_VANTAGE_CATALYST=true in .env
     if _env("ENABLE_ALPHA_VANTAGE_CATALYST", "false").lower() != "true":
@@ -587,11 +624,11 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
             continue
         if _is_generic_roundup(title):
             continue
-        fp = _fingerprint(title)
+        published_at = article.get("published_at", "")
+        fp = _fingerprint(title, symbol=symbol, day=str(published_at)[:10])
         if fp in seen_fingerprints:
             continue
         seen_fingerprints.add(fp)
-        published_at = article.get("published_at", "")
         dt    = _parse_iso(published_at)
         hours = _hours_old(dt)
         if hours > LOOKBACK_MAX_HOURS:
