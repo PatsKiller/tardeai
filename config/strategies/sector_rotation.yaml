@@ -1,7 +1,8 @@
+consolidation_note: "Parked 2026-06-11: portfolio overlay, not a proposal generator; insufficient evidence"
 strategy_id: sector_rotation
 display_name: Sector Rotation
 version: 1.0.0
-status: TESTING
+status: PARKED
 purpose: Trade leading sector ETF surges and lagging sector weakness. Weekly rebalance.
 eligible_accounts:
   - taxable
@@ -172,15 +173,15 @@ technical_indicators_required:
     - opening_range
     - rsi_5
 performance_context:
-  last_updated: '2026-06-08T06:30:02+00:00'
-  closed_paper_trades: 0
-  win_rate:
-  avg_r_realized:
+  last_updated: '2026-06-11T15:36:52+00:00'
+  closed_paper_trades: 1
+  win_rate: 0.0
+  avg_r_realized: 0.0
   profit_factor:
   max_drawdown_pct:
   expectancy_per_trade:
-  best_trade_r:
-  worst_trade_r:
+  best_trade_r: 0.0
+  worst_trade_r: 0.0
   current_streak:
   ready_for_review: false
   review_thresholds:

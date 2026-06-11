@@ -1,7 +1,8 @@
+consolidation_note: "Reclassified 2026-06-11 (conviction sleeve): portfolio policy, not a proposal-generating trading strategy"
 strategy_id: defense_thesis
 display_name: Defense Thesis
 version: 1.0.0
-status: UNVALIDATED
+status: ALLOCATION_POLICY
 purpose: Defense and aerospace conviction positions based on AI + WWIII geopolitical thesis. Long-term strategic allocation to defense contractors and adjacent technologies.
 eligible_accounts:
   - taxable
@@ -135,7 +136,7 @@ technical_indicators_required:
     - opening_range
   note: "Thematic/fundamental entry — technicals inform timing only."
 performance_context:
-  last_updated: '2026-06-08T06:30:01+00:00'
+  last_updated: '2026-06-11T15:36:51+00:00'
   closed_paper_trades: 0
   win_rate:
   avg_r_realized:
