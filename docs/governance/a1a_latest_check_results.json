@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-08T11:40:00.418914+00:00",
-  "git_head": "8292072f",
-  "files_checked": 3,
+  "generated_at": "2026-06-11T11:40:42.873277+00:00",
+  "git_head": "962f9ade",
+  "files_checked": 8,
   "findings_count": 2,
   "by_severity": {
     "P0": 1,
