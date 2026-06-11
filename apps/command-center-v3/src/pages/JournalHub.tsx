@@ -37,8 +37,9 @@ interface UT {
   pnl: number; pnlPct: number | null; holdDays: number | null; holdMin: number | null
   exitReason: string | null; strat: string | null; status: string
   entryDate: string | null; exitDate: string | null; source: 'paper' | 'schwab'
-  eg: string | null; xg: string | null
+  eg: string | null; xg: string | null; entryTimeFull: string | null
 }
+const EXEC_C: Record<string, string> = { good: '#22c55e', ok: '#84cc16', weak: '#f59e0b', poor: '#ef4444' }
 
 // Entry/exit letter-grade → color
 function gradeColor(g: string | null | undefined): string {
@@ -71,6 +72,8 @@ export default function JournalHub({ onDrill }: Props) {
   const { data: schwabJournal } = useApi<any>('/api/v2/journal', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: rawLessonsResp } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
+  const { data: eqResp } = useApi<any>('/api/v2/journal/execution-quality?limit=500', 120_000)
+  const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[`${e.symbol}|${String(e.entry_time).slice(0, 19)}`] = e; return m }, [eqResp])
   // Handle double-wrapped { ok, data: { ok, lessons, count } }
   const lessonsData = rawLessonsResp?.data ?? rawLessonsResp
 
@@ -89,7 +92,7 @@ export default function JournalHub({ onDrill }: Props) {
         holdMin: t.hold_time_min, exitReason: t.exit_reason, strat: t.strategy_id,
         status: t.status ?? 'closed', entryDate: t.entry_time?.slice(0, 10) ?? t.created_at?.slice(0, 10),
         exitDate: t.closed_at?.slice(0, 10), source: 'paper',
-        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
+        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.entry_time ?? null,
       })
     }
     for (const t of (schwabJournal?.trades ?? [])) {
@@ -100,7 +103,7 @@ export default function JournalHub({ onDrill }: Props) {
         pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: t.hold_days,
         holdMin: null, exitReason: null, strat: null,
         status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
-        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
+        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.open_date ?? null,
       })
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
@@ -440,8 +443,12 @@ export default function JournalHub({ onDrill }: Props) {
                 <div>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.shares}sh</span>
-                  <span title="Replay chart with entry/exit" onClick={e => { e.stopPropagation(); setChartTrade({ symbol: t.symbol, entry_date: t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp }) }}
-                    style={{ fontSize: 9, marginLeft: 5, cursor: 'pointer', opacity: 0.7 }}>📈</span>
+                  {(() => { const eq = t.entryTimeFull ? eqMap[`${t.symbol}|${String(t.entryTimeFull).slice(0, 19)}`] : null
+                    return <span title="Replay chart with entry/exit" onClick={e => { e.stopPropagation(); setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eq }) }}
+                      style={{ fontSize: 9, marginLeft: 5, cursor: 'pointer', opacity: 0.7 }}>📈</span> })()}
+                  {(() => { const eq = t.entryTimeFull ? eqMap[`${t.symbol}|${String(t.entryTimeFull).slice(0, 19)}`] : null
+                    return eq ? <span title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade} · capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}
+                      style={{ fontSize: 7, fontWeight: 700, marginLeft: 5, padding: '0 3px', borderRadius: 3, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} {Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span> : null })()}
                 </div>
                 <span style={{ color: acctColor(t.na), fontSize: 9 }}>{ACCT_LABEL[t.na] ?? t.na}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
