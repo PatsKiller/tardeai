@@ -180,6 +180,7 @@ function PipelineChevron({ stages }: { stages: any[] }) {
 function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
   const { data: extIntel } = useApi<any>(`/api/v2/hermes/subject-intel?type=proposal&key=${p.symbol}`, 120_000)
   const extOpinions: any[] = extIntel?.external_intel ?? []
+  const hermes = extIntel?.hermes
   // Level-2 book pressure (read-only advisory evidence from the Schwab stream capture — never a trigger)
   const { data: l2raw } = useApi<any>(`/api/v2/schwab/stream/book?symbol=${p.symbol}`, 60_000)
   const l2 = l2raw?.data ?? l2raw
@@ -349,6 +350,14 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <StatusBadge status={actionStateToStatus[effectiveActionState] || 'warning'} label={(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')} />
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
+          {hermes?.rank != null && (
+            <span title={`Hermes watchlist intelligence (advisory)\ncomposite ${hermes.composite} · rank #${hermes.rank}\nregime: ${hermes.regime ?? '—'}`}
+              style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'help',
+                background: hermes.rank <= 20 ? 'rgba(167,139,250,.15)' : 'var(--bg2)',
+                color: hermes.rank <= 20 ? '#A78BFA' : 'var(--text3)' }}>
+              H#{hermes.rank}
+            </span>
+          )}
           {extOpinions.map((e: any, i: number) => <span key={i} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ fontSize: 9, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>)}
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
           {(p.sector || p.industry) && <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{[p.sector, p.industry].filter(Boolean).join(' / ')}</span>}

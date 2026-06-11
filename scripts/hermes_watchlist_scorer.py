@@ -185,9 +185,54 @@ def score_symbol(wi, ie, pill, secmap, weights):
     return round(_clamp(composite), 1), components
 
 
+def _vix(conn):
+    """VIX from the local trade-ai snapshot API (same value the header shows); DB fallback."""
+    try:
+        import urllib.request, json as _j, os as _os
+        base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
+        with urllib.request.urlopen(f"{base}/api/v2/trade-ai", timeout=6) as r:
+            d = _j.load(r); d = d.get("data", d)
+            v = d.get("vix")
+            if v is not None:
+                return float(v)
+    except Exception:
+        pass
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT price FROM market_quotes WHERE symbol IN ('^VIX','VIX') ORDER BY fetched_at DESC LIMIT 1")
+        r = cur.fetchone()
+        return float(r[0]) if r and r[0] else None
+    except Exception:
+        return None
+
+
+def _regime_weights(weights, vix):
+    """VIX-conditioned weights (2026-06-11): in fear regimes (VIX>25) lean into sector strength / risk-reward
+    and dampen social/catalyst chase; in complacency (<15) modest inverse. Bounded ±25%, renormalized."""
+    if vix is None:
+        return weights, "no_vix"
+    w = dict(weights)
+    if vix > 25:
+        for k, m in (("sector_strength", 1.25), ("risk_reward", 1.25), ("social_sentiment", 0.75), ("news_catalyst", 0.85)):
+            if k in w:
+                w[k] = w[k] * m
+        regime = "risk_off"
+    elif vix < 15:
+        for k, m in (("technical_momentum", 1.15), ("news_catalyst", 1.1), ("sector_strength", 0.9)):
+            if k in w:
+                w[k] = w[k] * m
+        regime = "risk_on"
+    else:
+        return weights, "neutral"
+    tot = sum(w.values()) or 1.0
+    return {k: v / tot for k, v in w.items()}, regime
+
+
 def run(limit=None):
     conn = _conn(); cur = conn.cursor()
     pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
+    vix = _vix(conn)
+    weights, _regime = _regime_weights(weights, vix)
     cur.execute("""SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
@@ -204,6 +249,8 @@ def run(limit=None):
         ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
         comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
         if comp is not None:
+            components = {**components, "_regime": _regime, "_vix": vix}
+        if comp is not None:
             scored.append((r["symbol"], comp, components, r.get("price")))
     scored.sort(key=lambda x: -x[1])
     # dedup by symbol (watchlist_items can hold multiple rows per symbol) — clean 1-per-symbol ranks
@@ -213,6 +260,23 @@ def run(limit=None):
             continue
         _seen.add(s); _dedup.append((s, c, comp, px))
     scored = _dedup
+    # Sector-diversity soft cap (2026-06-11): within the top 20, a sector above 25% (5 slots) takes a
+    # compounding composite penalty so one hot sector can't monopolize the rank. Re-sorted after penalty.
+    sec_of = {}
+    for r in rows:
+        if r.get("sector"):
+            sec_of.setdefault(r["symbol"], r["sector"])
+    counts, penalized = {}, []
+    for s_, c_, comp_, px_ in scored:
+        sec = sec_of.get(s_) or "unknown"
+        n = counts.get(sec, 0)
+        if n >= 5 and sec != "unknown":
+            c_ = c_ * (0.92 ** (n - 4))      # 8% compounding penalty per slot beyond 5
+            comp_ = {**comp_, "_sector_diversity_penalty": round(1 - 0.92 ** (n - 4), 3)}
+        counts[sec] = n + 1
+        penalized.append((s_, c_, comp_, px_))
+    penalized.sort(key=lambda x: -x[1])
+    scored = penalized
     for rank, (sym, comp, components, px) in enumerate(scored, 1):
         cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
                          hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
@@ -224,8 +288,8 @@ def run(limit=None):
                     (sym, comp, rank, json.dumps(components), px))
     conn.commit()
     print(f"[hermes-scorer] scored {len(scored)} watchlist names (top: " +
-          ", ".join(f"{s}={c}" for s, c, _ in scored[:5]) + ")")
-    return {"scored": len(scored), "top": [(s, c) for s, c, _ in scored[:10]]}
+          ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")")
+    return {"scored": len(scored), "top": [(s, round(c, 1)) for s, c, *_ in scored[:10]]}
 
 
 def main():
