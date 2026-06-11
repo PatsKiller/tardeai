@@ -28,10 +28,10 @@ CHECKS = [
     ("proposals_stuck_pending_72h",
      "SELECT count(*) FROM paper_trade_proposals WHERE status='PENDING' AND created_at < NOW()-INTERVAL '72 hours'"),
     ("trades_with_nonexec_proposal_status",
-     """SELECT count(*) FROM paper_trades t JOIN paper_trade_proposals p ON p.id = COALESCE(t.proposal_id, t.source_proposal_id)
+     """SELECT count(*) FROM paper_trades t JOIN paper_trade_proposals p ON p.id::text = COALESCE(t.proposal_id::text, t.source_proposal_id::text)
         WHERE t.created_at > NOW()-INTERVAL '7 days' AND p.status IN ('REJECTED','RISK_BLOCKED')"""),
-    ("watchlist_visible_dupes",
-     "SELECT count(*) FROM (SELECT symbol FROM watchlist_items WHERE status<>'removed' GROUP BY symbol HAVING count(*)>1) z"),
+    ("watchlist_same_source_dupes",
+     "SELECT count(*) FROM (SELECT symbol, source FROM watchlist_items WHERE status<>'removed' GROUP BY symbol, source HAVING count(*)>1) z"),
     ("paper_pending_but_filled",
      "SELECT count(*) FROM paper_trades WHERE status='pending' AND broker_status='filled' AND created_at < NOW()-INTERVAL '1 hour'"),
     ("hermes_backlog_over_cap_today",
@@ -45,7 +45,8 @@ CHECKS = [
 
 def run(telegram=False):
     from db_adapter import _get_conn
-    cur = _get_conn().cursor()
+    conn = _get_conn()
+    cur = conn.cursor()
     findings, report = [], []
     for name, q in CHECKS:
         try:
@@ -55,6 +56,7 @@ def run(telegram=False):
             if n > 0:
                 findings.append(f"🟠 {name}: {n}")
         except Exception as e:
+            conn.rollback()   # one bad check must not poison the rest of the transaction
             report.append({"check": name, "status": "check-error", "error": str(e)[:80]})
     out = {"status": "FLAGS" if findings else "ok", "findings": findings, "checks": report}
     print(json.dumps(out, indent=2))
