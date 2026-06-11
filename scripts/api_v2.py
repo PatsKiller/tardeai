@@ -3233,7 +3233,8 @@ def _wl_items(query: dict = None):
         LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
         LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
         LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
-        WHERE {where} ORDER BY {sort} LIMIT 200
+        WHERE {where}
+        ORDER BY (COALESCE(wi.in_directive_watch, false) = false), {sort} LIMIT 200
     """, params) or []
     return {"count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
