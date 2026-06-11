@@ -37,7 +37,7 @@ interface UT {
   pnl: number; pnlPct: number | null; holdDays: number | null; holdMin: number | null
   exitReason: string | null; strat: string | null; status: string
   entryDate: string | null; exitDate: string | null; source: 'paper' | 'schwab'
-  eg: string | null; xg: string | null; entryTimeFull: string | null
+  eg: string | null; xg: string | null; entryTimeFull: string | null; r: number | null
 }
 const EXEC_C: Record<string, string> = { good: '#22c55e', ok: '#84cc16', weak: '#f59e0b', poor: '#ef4444' }
 
@@ -75,6 +75,14 @@ export default function JournalHub({ onDrill }: Props) {
   const { data: eqResp } = useApi<any>('/api/v2/journal/execution-quality?limit=500', 120_000)
   const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
   const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
+  // R-multiple: paper = real (planned stop); schwab = PROXY (reward / max adverse excursion), flagged ~
+  const getR = (t: UT): { r: number | null; proxy: boolean } => {
+    if (t.r != null) return { r: t.r, proxy: false }
+    const e = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
+    const ep = Number(e?.entry_price), xp = Number(e?.exit_price), mae = Number(e?.mae_after_entry)
+    if (e && mae > 0 && isFinite(ep) && isFinite(xp)) return { r: (xp - ep) / mae, proxy: true }
+    return { r: null, proxy: false }
+  }
   // Handle double-wrapped { ok, data: { ok, lessons, count } }
   const lessonsData = rawLessonsResp?.data ?? rawLessonsResp
 
@@ -94,6 +102,7 @@ export default function JournalHub({ onDrill }: Props) {
         status: t.status ?? 'closed', entryDate: t.entry_time?.slice(0, 10) ?? t.created_at?.slice(0, 10),
         exitDate: t.closed_at?.slice(0, 10), source: 'paper',
         eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.entry_time ?? null,
+        r: t.r_multiple != null ? Number(t.r_multiple) : null,   // paper: real planned-R
       })
     }
     for (const t of (schwabJournal?.trades ?? [])) {
@@ -105,6 +114,7 @@ export default function JournalHub({ onDrill }: Props) {
         holdMin: null, exitReason: null, strat: null,
         status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
         eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.open_date ?? null,
+        r: null,   // schwab: no planned stop — proxy R computed from MAE at render time
       })
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
@@ -288,6 +298,7 @@ export default function JournalHub({ onDrill }: Props) {
               { l: 'Win Rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b', tip: 'Wins ÷ resolved trades (excludes $0 scratches). 55%+ is the target.' },
               { l: 'P. Factor', v: kpis.pf.toFixed(2), c: 'var(--text0)', tip: 'Profit factor = gross wins ÷ gross losses. >1 profitable, >2 strong.' },
               { l: 'Expectancy', v: fmt$(kpis.expectancy, 0), c: kpis.expectancy >= 0 ? '#22c55e' : '#ef4444', tip: 'Average realized $ per closed trade — your edge per trade (total P&L ÷ closed count).' },
+              (() => { const rs = closed.map(getR).filter(x => x.r != null).map(x => x.r as number); const a = rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null; return { l: 'Avg R', v: a != null ? `${a.toFixed(2)}R` : '—', c: a == null ? 'var(--text3)' : a >= 0 ? '#22c55e' : '#ef4444', tip: `Average R-multiple over ${rs.length} closed trades with risk data. Paper = real planned-stop R; Schwab = ~proxy (reward ÷ max adverse excursion). Risk-adjusted edge.` } })(),
               { l: 'Total P&L', v: fmt$(kpis.totalPnl, 0), c: kpis.totalPnl >= 0 ? '#22c55e' : '#ef4444', tip: 'Sum of realized P&L across closed trades in range.', rows: closed },
             ].map(k => (
               <div key={k.l} title={k.tip}
@@ -393,6 +404,7 @@ export default function JournalHub({ onDrill }: Props) {
                     <div style={{ display: 'flex', gap: 12 }}>
                       <span style={{ color: 'var(--text3)' }}>{s.trades}t</span>
                       <span style={{ color: s.wr >= 55 ? '#22c55e' : '#f59e0b', width: 35 }}>{s.wr}%</span>
+                      <span style={{ color: 'var(--text2)', width: 40, textAlign: 'right' }} title="Avg R-multiple (paper = real, ~ = Schwab proxy)">{(() => { const rs = closed.filter(t => (t.strat ?? '(unclassified)') === s.strategy).map(getR).filter(x => x.r != null).map(x => x.r as number); return rs.length ? `${(rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(1)}R` : '—' })()}</span>
                       <span style={{ color: s.pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600, width: 60, textAlign: 'right' }}>{fmt$(s.pnl, 0)}</span>
                     </div>
                   </div>
@@ -454,7 +466,7 @@ export default function JournalHub({ onDrill }: Props) {
                 <span style={{ color: acctColor(t.na), fontSize: 9 }}>{ACCT_LABEL[t.na] ?? t.na}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.exitDate ?? (t.status==='open'?'—':'—')}</span>
-                <span style={{ color: t.status==='open'?'#60a5fa':t.pnl>=0?'#22c55e':'#ef4444', fontWeight: 600 }}>{t.status==='open'?'OPEN':fmt$(t.pnl,2)}</span>
+                <span style={{ color: t.status==='open'?'#60a5fa':t.pnl>=0?'#22c55e':'#ef4444', fontWeight: 600 }}>{t.status==='open'?'OPEN':fmt$(t.pnl,2)}{(() => { const { r, proxy } = getR(t); return r != null ? <span style={{ fontSize: 8, marginLeft: 4, color: r >= 0 ? '#86efac' : '#fca5a5' }} title={proxy ? 'Proxy R = reward ÷ max adverse excursion (Schwab has no planned stop)' : 'R-multiple from planned stop'}>{proxy ? '~' : ''}{r.toFixed(1)}R</span> : null })()}</span>
                 <span style={{ fontSize: 9, fontFamily: 'monospace', display: 'flex', gap: 2, alignItems: 'center' }}>
                   {(t.eg || t.xg)
                     ? <><span title="Entry grade" style={{ color: gradeColor(t.eg), fontWeight: 700 }}>{t.eg ?? '·'}</span>
