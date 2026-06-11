@@ -326,35 +326,37 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
 
 
 def check_duplicate(conn, signal_id: int, symbol: str, strategy_id: str) -> dict | None:
-    """Check for existing active proposal. Returns proposal dict if duplicate."""
+    """Check for existing active proposal — SYMBOL-WIDE across ALL strategies (Gate 4.5).
+
+    One screener hit must yield at most one live proposal per symbol. The old per-(symbol, strategy)
+    check let the same hit spawn proposals under multiple strategies (BWEN x3 on 2026-06-04 across
+    sector_rotation/speculative_growth/swing_breakout, all 0-min scratches). Window: 48h, any strategy."""
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, status FROM paper_trade_proposals
+        SELECT id, status, strategy_id FROM paper_trade_proposals
         WHERE (
             source_signal_id = %s
             OR (
-                symbol = %s AND strategy_id = %s
-                AND created_at::date = CURRENT_DATE
-                AND status IN ('PENDING','APPROVED','MODIFIED','BROKER_SUBMITTED')
+                symbol = %s
+                AND created_at > NOW() - INTERVAL '48 hours'
             )
         )
         AND status IN ('PENDING','APPROVED','MODIFIED','BROKER_SUBMITTED')
         LIMIT 1
-    """, [signal_id, symbol, strategy_id])
+    """, [signal_id, symbol])
     row = cur.fetchone()
-    return {"id": row[0], "status": row[1]} if row else None
+    return {"id": row[0], "status": row[1], "existing_strategy": row[2]} if row else None
 
 
 def check_open_paper_trade(conn, symbol: str, strategy_id: str) -> dict | None:
-    """Check for existing open paper trade."""
+    """Check for existing open paper trade — SYMBOL-WIDE (one symbol = one position, any strategy)."""
     cur = conn.cursor()
     cur.execute("""
         SELECT id, status FROM paper_trades
         WHERE symbol = %s
-        AND COALESCE(strategy_id, '') = COALESCE(%s, '')
         AND status IN ('open','pending','submitted')
         LIMIT 1
-    """, [symbol, strategy_id])
+    """, [symbol])
     row = cur.fetchone()
     return {"id": row[0], "status": row[1]} if row else None
 
