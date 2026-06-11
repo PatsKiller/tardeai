@@ -184,7 +184,7 @@ def upsert_ticker(conn, tick, multi_source_map, strategy_id=None, match_info=Non
     score = float(tick.get("score") or 0)
     rvol = float(tick.get("rvol") or 0)
     gap_pct = float(tick.get("gap_pct") or 0)
-    source = tick.get("run_type") or "trade_ai_scans"
+    source = tick.get("screener_label") or tick.get("run_type") or "trade_ai_scans"
     run_label = tick.get("run_label")
     evidence = build_evidence(tick, multi_source_map)
     if match_info:
