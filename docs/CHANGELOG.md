@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 - Edit-before-approval modal + 2-share fixtures + master test plan
+
+All Broker Orders drafts regenerated at canary size (2 sh, named purposes; the "100 sh" was harness default,
+never a plan). Edit modal: full order editing -> re-preview translation -> inline 2FA stepper.
+docs/brokers/master-test-plan.md for external developer review: safety invariants matrix, 4 test levels w/
+per-case hypotheses and UNVERIFIED traceability, entry/exit criteria. Screenshot-verified end-to-end.
+
+
 ## 2026-06-11 - Broker Orders tab humanized after operator feedback
 
 "not functional makes no human sense" -> rebuilt for operators: order sentences ("BUY 100 sh MRVL limit
