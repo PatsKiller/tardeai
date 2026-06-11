@@ -119,3 +119,25 @@ candidate flow; Trade AI = enrichment/decision; Hermes = research/context) — b
 
 **Unmeasurable today (explicit):** per-list signal counts and hit-rates (attribution dropped); per-channel
 YouTube efficacy; what fraction of GO tech-tilt is catalyst-keyword bias vs market reality (needs #1+#4 first).
+
+
+---
+
+## Implementation status (same day, operator: "fix 1-4 now, investigate 5-6")
+
+- **#1 Attribution ✓** (c4836c8e): orchestrator INSERT now writes screener_label + source_detail; incubator
+  prefers screener_label. Per-list hit-rates measurable from the next run forward.
+- **#2 Outcome feedback ✓** (dfa5f44a): scoring.py strategy-family scar from live 30d paper WR (bounded
+  0.85-1.10, min n=5 — correctly neutral today); hermes calibration consumes realized-trade P&L pairs at 2x
+  weight (advisory output unchanged; weekly-cron runtime note: pairing query is heavy).
+- **#4 Sector ✓** (6d696ecf): insert-time self-heal from latest known sector + one-time backfill of 2,744
+  rows (44% -> 33% empty; remainder = symbols never seen with a sector).
+- **#5 Backlog loop: INVESTIGATED -> FIXED ✓** (dfa5f44a): loop purpose legitimate (stale-research
+  housekeeping) but had no dedup and a per-invocation cap invoked repeatedly by the coordinator. Now dedups
+  vs 14-day topic history + true daily cap; 2,474 junk rows archived (reversible); double-apply test inserts 0.
+- **#6 Tech-tilt: EXPERIMENT RUN — verdict:** at matched RVOL>=3, Healthcare's GO lead (16.3%) is
+  structurally justified (highest RVOL 87.7, 59% small float, big gaps). **Technology's is NOT** — 12.3% GO
+  rate with the WEAKEST measurable inputs (RVOL 16.8, floats 371M, 28% sweet-price, gaps 8.9) vs Industrials
+  9.6% with better inputs. The residual driver is the unstored catalyst-tier pillar (keyword/LLM impact tiers
+  favor tech narratives). **Recommended next:** persist per-scan pillar breakdown (one column) to prove it
+  conclusively, then sector-neutralize catalyst tiering (score impact by price-reaction, not topic keywords).
