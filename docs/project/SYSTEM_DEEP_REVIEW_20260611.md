@@ -232,6 +232,12 @@ replay (<5% deviation). ≈1 week engineering + 3–6 months of focused paper fl
 
 ---
 
+## Implementation status (same day, operator-approved "fix all 5")
+P0-1 ✓ c5450b0e · P0-2 ✓ ab3aff8a · P0-3 ✓ 290c7fdc · consolidation ✓ 7251b1f2 (core-4 active, risk-gate
+enforced) · free-lane migration ✓ 910f0120 · cadence ✓ (0900/1000 crons retired, backup saved) · Schwab READY
+✓ adeddcdc (batch quotes + market hours live). Remaining open from section H: P1-4 look-ahead regrade, P1-5
+entry-criteria evaluator, P1-7 cost model, P2 intake hygiene/feedback loop, P3 docs re-proliferation.
+
 ## Open questions for the operator
 1. Fix **P0-1/P0-2/P0-3 now**, or hold all changes pending your read of this review?
 2. Approve the **4-strategy core consolidation** (momentum_scalp, swing_breakout, fib_retracement_bounce,

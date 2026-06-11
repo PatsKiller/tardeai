@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-11 - Deep-review fixes implemented (all 5 approved items)
+
+(1) P0 fixes: populate_performance_context column bug (strategy YAMLs now carry real performance; second
+latent Decimal bug fixed); proposal dedup now symbol-wide across ALL strategies (BWEN x4 class blocked);
+journal strategy labels honest (manual_scalp/manual_swing via schwab_round_trips join, 121/121 - unclassified
+eliminated). (2) Strategy consolidation 23->4 trading core (momentum_scalp absorbs gap_and_go, swing_breakout
+absorbs swing_trade, fib_retracement_bounce promoted TESTING, earnings_post_momentum) + 7 archived to
+_archive/ + 2 PARKED + 10 reclassified ALLOCATION_POLICY; strategy_registry only core-4 active (risk gate
+enforces: gap_and_go -> STRATEGY_KILLED; backup CSV saved). (3) Free-OAuth-only: catalyst-rescore fallback,
+GO narratives, and stage-14 trade plans migrated off metered Claude to Grok lane + local fallback
+(live-tested). (4) Cadence: redundant 0900/1000 orchestrator crons retired (continuous_runner owns
+04:00-11:00; crontab backup saved). (5) Schwab READY wired read-only: batch quotes + market hours in
+schwab_transport + /api/v2/schwab/quotes + /market-hours (live-tested: V 319.5, equity open). Validator
+12/12 throughout.
+
+
 ## 2026-06-11 - System deep review (intake / integrations / proposals / strategies / backtesting)
 
 docs/project/SYSTEM_DEEP_REVIEW_20260611.md - full read-only audit: 4 parallel code-tracing audits + DB
