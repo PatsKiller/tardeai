@@ -101,8 +101,22 @@ def main():
     for sid, sym, fd in stale_sources[:2]:
         findings.append({"type": "stale_source_discovery", "detail": f"id={sid} {sym} freshness={fd}", "priority": "low"})
 
-    # Cap findings
-    findings = findings[:args.max_rows]
+    # Dedup (2026-06-11): the loop re-detected the same stale items every invocation and re-filed them
+    # forever (2,475 duplicate NULL-symbol rows/30d). Skip findings already filed as backlog rows, and
+    # enforce a TRUE daily cap (the old cap was per-invocation; the coordinator invokes this repeatedly).
+    try:
+        cur.execute("""SELECT COALESCE(topic,'') FROM hermes_research_intelligence
+                       WHERE research_type='research_backlog' AND created_at > NOW() - INTERVAL '14 days'""")
+        _already = {r[0] for r in cur.fetchall()}
+        findings = [f for f in findings
+                    if (f"{f.get('type','')}: {f.get('detail','')}"[:200]) not in _already]
+        cur.execute("""SELECT count(*) FROM hermes_research_intelligence
+                       WHERE research_type='research_backlog' AND created_at::date = CURRENT_DATE""")
+        _today = cur.fetchone()[0] or 0
+        _room = max(0, args.max_rows - _today)
+    except Exception:
+        _room = args.max_rows
+    findings = findings[:_room]
 
     # Write dry-run report
     report = {
