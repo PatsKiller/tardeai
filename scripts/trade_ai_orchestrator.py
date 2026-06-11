@@ -586,6 +586,22 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         from db_adapter import _execute
         _run_id = f"{date_str}_{run_label}"
         _inserted = 0
+        # sector defense (2026-06-11): degraded runs (429 storms -> cached-ticker fallback) inserted
+        # empty sectors (68% of some days). Resolve empties from the DB's latest known sector per symbol.
+        _sector_map = {}
+        try:
+            _empty_syms = [t.get("symbol") for t in scored if not (t.get("sector") or "").strip()]
+            if _empty_syms:
+                cur2 = conn.cursor()
+                cur2.execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
+                                WHERE symbol = ANY(%s) AND COALESCE(sector,'') <> ''
+                                ORDER BY symbol, scanned_at DESC""", (_empty_syms,))
+                _sector_map = dict(cur2.fetchall())
+                for t in scored:
+                    if not (t.get("sector") or "").strip() and t.get("symbol") in _sector_map:
+                        t["sector"] = _sector_map[t.get("symbol")]
+        except Exception:
+            pass
         for t in scored:
             sym = t.get("symbol", "")
             soc = social_data.get(sym, {}) if social_data else {}
