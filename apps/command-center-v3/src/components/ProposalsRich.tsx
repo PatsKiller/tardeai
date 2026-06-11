@@ -350,6 +350,12 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <StatusBadge status={actionStateToStatus[effectiveActionState] || 'warning'} label={(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')} />
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
+          {p.signal_evidence?.screener && (
+            <span title={`Why this signal won (arbitration evidence)\nlist: ${p.signal_evidence.screener}${p.signal_evidence.source_weight ? ` · source weight ${p.signal_evidence.source_weight}` : ''}${p.signal_evidence.source_hit_rate ? ` · hit ${(p.signal_evidence.source_hit_rate * 100).toFixed(0)}%` : ''}\ntop pillars: ${(p.signal_evidence.top_pillars || []).map((t: any) => `${t.pillar} ${t.pts}`).join(', ') || '—'}${p.signal_evidence.outcome_scar && p.signal_evidence.outcome_scar !== 1 ? `\noutcome scar ${p.signal_evidence.outcome_scar}` : ''}`}
+              style={{ fontSize: 8, fontWeight: 600, padding: '1px 5px', borderRadius: 3, cursor: 'help', background: 'var(--bg2)', color: 'var(--text2)' }}>
+              ⛏ {p.signal_evidence.screener}
+            </span>
+          )}
           {hermes?.rank != null && (
             <span title={`Hermes watchlist intelligence (advisory)\ncomposite ${hermes.composite} · rank #${hermes.rank}\nregime: ${hermes.regime ?? '—'}`}
               style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'help',

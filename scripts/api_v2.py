@@ -7949,6 +7949,7 @@ def _paper_proposals_enriched():
                    scan.ticker_perf_1m, scan.sector_perf_1m, scan.vs_sector_pct,
                    scan.intelligence_readiness as scan_intel,
                    scan.source as scan_source, scan.screener_label as scan_screener,
+                   scan.pillar_breakdown as scan_pillars,
                    -- Indicator data
                    ind.atr as ind_atr, ind.confluence_score, ind.confluence_tier,
                    ind.adx_regime, ind.entry_quality,
@@ -7998,9 +7999,34 @@ def _paper_proposals_enriched():
             LIMIT 50
         """) or []
 
+        # source weights for evidence (one query, arbitration layer)
+        _srcw = {}
+        try:
+            _w = _db_query("SELECT source_key, weight, hit_rate, trades FROM source_weights WHERE window_days=30") or []
+            _srcw = {w["source_key"]: w for w in _w}
+        except Exception:
+            pass
         proposals = []
         for r in rows:
             p = {k: _json_clean(v) for k, v in r.items()}
+            # "Why this signal won" (2026-06-11): the arbitration evidence packet on every proposal
+            try:
+                _pil = p.get("scan_pillars") or {}
+                if isinstance(_pil, str):
+                    _pil = json.loads(_pil)
+                _top = sorted(((k, v) for k, v in _pil.items() if isinstance(v, (int, float))
+                               and not k.startswith("_") and k != "outcome_scar"),
+                              key=lambda x: -x[1])[:3]
+                _sw = _srcw.get(p.get("scan_screener") or "")
+                p["signal_evidence"] = {
+                    "screener": p.get("scan_screener"),
+                    "top_pillars": [{"pillar": k, "pts": v} for k, v in _top],
+                    "outcome_scar": _pil.get("outcome_scar"),
+                    "source_weight": _json_clean((_sw or {}).get("weight")),
+                    "source_hit_rate": _json_clean((_sw or {}).get("hit_rate")),
+                }
+            except Exception:
+                p["signal_evidence"] = None
 
             # Merge scan data into proposal where proposal is empty
             rvol = p.get('rvol') or p.get('scan_rvol')
