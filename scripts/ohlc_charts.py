@@ -45,6 +45,9 @@ def _fetch(symbol, start, end, timeframe):
     key, sec = _keys()
     if not key or not sec:
         return [], "no Alpaca keys"
+    # isoformat() yields '+00:00' for UTC; in a URL query the '+' decodes to a SPACE -> Alpaca 400. Use 'Z'.
+    start = str(start).replace("+00:00", "Z")
+    end = str(end).replace("+00:00", "Z")
     bars, token = [], None
     for _ in range(6):  # page
         q = (f"?timeframe={timeframe}&start={start}&end={end}&limit=10000&feed={ALPACA_FEED}&adjustment=split"
