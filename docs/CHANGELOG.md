@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 - Finviz 429s: global cross-process rate limiter (cause-level fix)
+
+finviz_throttle.py: flock-based shared min-interval (2.5s, env-tunable) + global cooldown broadcast on any
+429 (Retry-After honored), wired into ingestion/enrichment/news. Root cause was N independent processes each
+self-throttling with no shared limit. Tested: 3 concurrent processes serialize 0/2.5/5.0s; fail-open 300s so
+it can never deadlock. Complements the earlier handling fix (no version-hopping while limited, accurate
+RATE-LIMITED alert).
+
+
 ## 2026-06-11 - L2 stream scheduled + proposal chip + three root-cause fixes
 
 Stream: cron market-hours schedule (9:31 + flock-guarded 11/13/15 safety restarts; self-terminates at close;
