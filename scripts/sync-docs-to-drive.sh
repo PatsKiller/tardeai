@@ -183,55 +183,32 @@ while IFS= read -r filepath; do
   else
     log "LARGE (${fsize}B): $relpath — uploading raw (no Doc conversion)"
   fi
-  # ── UPDATE IN PLACE (no duplicate proliferation) ──
-  # Find the existing Doc (newest, if old dupes exist) by name in the target folder and --replace its
-  # content. Only create a NEW Doc when the name is genuinely absent. This is the fix for the bug where
-  # every sync minted a new Google Doc (6+ copies of each name). Cache the resolved id in $IDMAP.
+  # ── DELETE-BEFORE-UPLOAD (no duplicate proliferation) ──
+  # Google Workspace Docs CANNOT be content-replaced (gog --replace errors: "cannot replace content for
+  # Google Workspace files"), and a plain re-upload mints a NEW Doc each run. So: find EVERY existing copy
+  # by name in the target folder, trash them, then create one fresh converted Doc. Net result = exactly one
+  # current Doc per name. All gog calls are timeout-bounded so a hung call can't stall the whole sync.
   filename=$(basename "$relpath")
-  existing_id=$(grep -F "${relpath}|" "$IDMAP" 2>/dev/null | head -1 | cut -d'|' -f2)
-  if [ -z "$existing_id" ]; then
-    existing_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --max=1000 --json --no-input 2>/dev/null \
-      | python3 -c "
+  old_ids=$(timeout 45 gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --max=1000 --json --no-input 2>/dev/null \
+    | python3 -c "
 import sys,json
-files=[f for f in json.load(sys.stdin).get('files',[]) if f.get('name')=='$filename' and 'folder' not in f.get('mimeType','')]
-files.sort(key=lambda f:f.get('modifiedTime',''), reverse=True)
-print(files[0]['id'] if files else '')
+try: print('\n'.join(f['id'] for f in json.load(sys.stdin).get('files',[]) if f.get('name')=='$filename' and 'folder' not in f.get('mimeType','')))
+except: pass
 " 2>/dev/null || echo "")
-  fi
+  for oid in $old_ids; do
+    timeout 45 gog drive delete "$oid" --account "$GOG_ACCOUNT" --force --no-input >/dev/null 2>>"$LOG" || true
+  done
 
-  upload_ok=0
-  if [ -n "$existing_id" ]; then
-    if gog drive upload "$filepath" --account "$GOG_ACCOUNT" --replace="$existing_id" $CONVERT_FLAG --no-input 2>>"$LOG"; then
-      upload_ok=1; log "UPDATED in place: $relpath ($existing_id)"
-    fi
-  else
-    if gog drive upload "$filepath" --account "$GOG_ACCOUNT" --parent "$target_parent" $CONVERT_FLAG --no-input 2>>"$LOG"; then
-      upload_ok=1
-      # resolve the new file's id so future runs update it in place
-      existing_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$target_parent" --max=1000 --json --no-input 2>/dev/null \
-        | python3 -c "
-import sys,json
-files=[f for f in json.load(sys.stdin).get('files',[]) if f.get('name')=='$filename' and 'folder' not in f.get('mimeType','')]
-files.sort(key=lambda f:f.get('modifiedTime',''), reverse=True)
-print(files[0]['id'] if files else '')
-" 2>/dev/null || echo "")
-      log "CREATED new Doc: $relpath ($existing_id)"
-    fi
-  fi
-
-  if [ "$upload_ok" -eq 1 ]; then
+  if timeout 120 gog drive upload "$filepath" --account "$GOG_ACCOUNT" --parent "$target_parent" $CONVERT_FLAG --no-input 2>>"$LOG"; then
     grep -v "^${relpath}|" "$MANIFEST" > "${MANIFEST}.new" 2>/dev/null || touch "${MANIFEST}.new"
     echo "${relpath}|${hash}" >> "${MANIFEST}.new"; mv "${MANIFEST}.new" "$MANIFEST"
-    if [ -n "$existing_id" ]; then
-      grep -v "^${relpath}|" "$IDMAP" > "${IDMAP}.new" 2>/dev/null || touch "${IDMAP}.new"
-      echo "${relpath}|${existing_id}" >> "${IDMAP}.new"; mv "${IDMAP}.new" "$IDMAP"
-    fi
     UPLOADED=$((UPLOADED + 1))
+    log "SYNCED (delete+create): $relpath"
   else
     log "FAILED: $relpath"
   fi
 
-  sleep 0.5
+  sleep 0.3
 done < "$CANDIDATES"
 
 rm -f "$CANDIDATES"
