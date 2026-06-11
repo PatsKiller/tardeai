@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 - Maturity: code-only paths to 7 documented
+
+Per operator question: 6 of 8 areas at 5-6 CAN reach 7 by code alone (docs hygiene, integrity sweep, hermes
+diversity/regime, sector-neutral catalyst scoring, ingestion budget/dedup, backtest sim coverage+fill
+reconciliation); arbitration + strategy framework reach 7 on mechanism but their differentiated/validated
+claims need 2-4 weeks of samples. Code-only ceiling ~7.0-7.2 overall; beyond that evidence-driven.
+
+
 ## 2026-06-11 - Priority arc 1-5 complete; all maturity areas raised to >=6
 
 Arc-1 pillar_breakdown persisted (both scan inserts). Arc-2 entry-criteria evaluator (deterministic, 5/5

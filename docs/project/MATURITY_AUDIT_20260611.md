@@ -184,3 +184,25 @@ strategy to reach 30 closed trades → reconcile 10–20 real Schwab fills vs re
 **Overall: ≈5.4 -> ≈6.3/10.** No area below 6. The honest caveat everywhere: mechanisms are live and proven;
 *differentiated* results (weights that move, validated strategies) require sample accumulation that only
 calendar time provides.
+
+
+---
+
+## Code-only paths to 7 (operator question: "none of these can get to 7 by code?")
+
+Honest split: **6 of 8 areas at 5-6 CAN reach 7 by code alone**; only the *validated/differentiated* claims
+(strategy validation, weight differentiation) intrinsically require sample accumulation.
+
+| Area | 7 by code? | The code path | Est. effort |
+|---|---|---|---|
+| #12 Documentation (6) | **YES — purely code** | Route generated snapshots/dryruns to _generated/ (sync-excluded); retention caps; consolidation pass | ~2-3h |
+| #15 Data integrity (5) | **YES** | Nightly integrity sweep (scans/proposals/watchlist, extending the journal pattern); event-sourced proposal statuses; write-time metadata enforcement; synthetic rows excluded from all default aggregates | ~1d |
+| #14 Hermes (5) | **YES** | Sector-diversity cap on top-N; VIX/regime-conditioned weights; non-circular discovery lane; hermes evidence chip on proposal cards | ~1d |
+| #8 Signal scoring (6) | **YES** | Sector-neutral catalyst tiering (price-reaction impact, not topic keywords); smooth percentile sector pillar; regime-aware GO thresholds; pillar-breakdown surfaced in alerts/UI | ~1d |
+| #13 Ingestion (5) | **YES (to 6-7)** | Unified API budget ledger (all news sources); symbol+day+source dedup; implement-or-delete dead paths (hermes_rss, Alpha Vantage); fallback-cache TTL | ~1d |
+| #10 Backtesting (6) | **MOSTLY** | Implement momentum_scalp (intraday) + fib + earnings_momentum in the simulator; Schwab fill-reconciliation vs replay (<5% deviation check); longer bar history. Code gets the *infrastructure* to 7; a *validated* strategy still needs live samples | ~2d |
+| #11 Arbitration (6) | **PARTIALLY** | Evidence panel on proposals ("why this signal won": list, pillars, hermes, L2); per-source P&L attribution views. Mechanism completeness = 7 by code; weights that *differentiate* need 2-4 wks of attributed flow | ~0.5-1d |
+| #9 Strategy framework (6) | **PARTIALLY** | Full YAML schema normalization; simulator coverage for all core-4; lifecycle automation. But "validated strategy" (the heart of 7) requires 30 closed trades each — calendar time | ~1d |
+
+**Code-only ceiling: overall ≈7.0-7.2** (from 6.3). Beyond that, every further point is earned by evidence:
+validated strategies, differentiated weights, demonstrated regime adaptation — sample-driven by nature.
