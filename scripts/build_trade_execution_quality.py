@@ -122,7 +122,7 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
         out["entry_macd_state"] = None
 
     # ── post-entry path (MFE/MAE) up to the review cutoff ──
-    cutoff = min(len(bars), xi + (15 if is_daily else review_min))   # daily: ~15 trading days post-exit
+    cutoff = min(len(bars) - 1, xi + (15 if is_daily else review_min))   # daily: ~15 trading days; cap to last index
     seg = bars[ei:cutoff + 1]
     hi = max(b["h"] for b in seg); lo = min(b["l"] for b in seg)
     out["mfe_after_entry"] = round(hi - entry_price, 4)
