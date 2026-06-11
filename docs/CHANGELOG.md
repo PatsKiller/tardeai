@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-11 - System deep review (intake / integrations / proposals / strategies / backtesting)
+
+docs/project/SYSTEM_DEEP_REVIEW_20260611.md - full read-only audit: 4 parallel code-tracing audits + DB
+evidence + all 23 strategy YAMLs reviewed individually. Headline findings: (P0) populate_performance_context
+queries non-existent columns and nightly writes closed_paper_trades:0 into every strategy YAML (governance
+blind to real performance); cross-strategy proposal dedup hole (BWEN x3); strategy-label noise (63/102
+unclassified); look-ahead bug in trade_backtest_engine entry grading (<= vs <); no signal-generation
+simulator / walk-forward => edge claims not yet provable; 96% of backtest rows synthetic champion rows;
+"Codex" = ChatGPT free OAuth (openai-codex Hermes lane); metered Claude (Haiku rescore + Sonnet trade plans)
+inside the orchestrator flagged vs free-OAuth rule; Schwab READY capabilities unwired. Recommendation:
+consolidate 23 strategies -> 4 trading core (momentum_scalp, swing_breakout, fib_retracement_bounce,
+earnings_momentum) + income-sleeve/allocation policies; minimal credible backtest path defined. No code
+changed in this review.
+
+
 ## 2026-06-11 - Real Accounts grade tooltip (entry/exit + why)
 
 Applied the same E/X grade tooltip to the Real Accounts (SchwabJournal) rows: the E:A X:A pill now shows ⓘ and
