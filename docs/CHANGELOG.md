@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - 2FA trade approvals (telegram buttons -> proposals chat) + Broker Orders tab + v3 mobile
+
+Per-trade two-factor approvals live (testable; execution still BROKER_DISABLED): web confirm + Telegram
+ONE-TAP Approve/Reject inline buttons routed to the proposals chat (operator clarification; env
+TELEGRAM_APPROVAL_CHAT_ID overrides), single-use, 10-min TTL, fail-closed; guard 4th lock denies unapproved
+intents even with all standing locks open; bkapprove/bkreject callbacks (poller restarted); the operator-
+spotted "100" was a labeled scaffold TEST fixture (now tagged in messages; real canary plan = 2sh ITUB,
+PARKED awaiting plan approval). Command Center Trading->Broker Orders tab: execution-disabled banner,
+canonical-vs-Schwab payload side-by-side, live 2FA panel, guard audit trail. v3 mobile responsiveness:
+attribute-selector CSS layer collapses inline grids/flex at <=820px; 390px audit = zero overflow across
+Home/Trading/Broker Orders/Journal - approvals fully operable from a phone. Tests 46/46, validator 12/12,
+ZERO orders placed.
+
+
 ## 2026-06-11 - Stage 2a canary protocol: ITUB selected (live-screened), 2-share battery defined
 
 paperMoney confirmed not API-visible -> tests are tiny REAL manual orders. Live screen via our batch-quotes
