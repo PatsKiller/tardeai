@@ -69,3 +69,32 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .nav-rail a { padding: 7px 9px !important; font-size: 11px !important; }
   .metric-strip { font-size: 11px; }
 }
+
+/* ── Mobile content responsiveness (2026-06-11): pages use inline styles, so attribute-substring
+   selectors + !important are the lever — they collapse inline grids/flex to phone-friendly layouts
+   without touching every component. ── */
+@media (max-width: 820px) {
+  /* any inline multi-column grid collapses to a single column */
+  .app-main div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+  /* inline flex rows are allowed to wrap instead of overflowing */
+  .app-main div[style*="display: flex"] { flex-wrap: wrap !important; }
+  /* fixed/min widths on inline-styled blocks yield to the viewport */
+  .app-main div[style*="width: min("] { width: 100% !important; }
+  .app-main div[style*="min-width"] { min-width: 0 !important; }
+  /* JSON/code blocks never define page width */
+  .app-main pre { white-space: pre-wrap !important; word-break: break-word; font-size: 8px !important; }
+  /* touch targets */
+  .app-main button { min-height: 30px; }
+  .app-main select, .app-main input { max-width: 46vw; }
+  /* modals (replay etc.) fit the phone */
+  div[style*="position: fixed"][style*="inset"] { padding: 1vh 1vw !important; }
+  div[style*="position: fixed"] > div { width: 98vw !important; max-width: 98vw !important; padding: 8px !important; }
+  /* charts shrink with container */
+  .app-main canvas { max-width: 100% !important; }
+  /* drill drawers full-screen on phones */
+  div[style*="position: fixed"][style*="right: 0"] { width: 100vw !important; }
+}
+@media (max-width: 480px) {
+  .app-main div[style*="font-size: 15"] { font-size: 13px !important; }
+  .metric-strip > div { padding: 2px 6px !important; }
+}
