@@ -223,11 +223,15 @@ def run(strategy_id="swing_breakout", apply=False):
                     (run_id, strategy_id, days[0], days[-1]))
         for t in trades:
             cur.execute("""INSERT INTO strategy_backtest_trades
-                (run_id, strategy_id, symbol, entry_date, entry_price, exit_date, exit_price, pnl, pnl_pct,
-                 r_multiple, exit_reason)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                        (run_id, strategy_id, t["symbol"], t["entry_date"], t["entry"], t["exit_date"],
-                         t["exit"], round((t["exit"] - t["entry"]), 4), t["pnl_pct"], t["r_multiple"], t["reason"]))
+                (simulated_trade_id, run_id, strategy_id, symbol, signal_time, entry_time, exit_time,
+                 direction, entry_price, stop_price, target_price, exit_price, pnl, pnl_pct, r_multiple,
+                 exit_reason, execution_assumptions)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'long',%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (f"{run_id}_{t['symbol']}_{t['entry_date']}", run_id, strategy_id, t["symbol"],
+                         t["entry_date"], t["entry_date"], t["exit_date"], t["entry"], t["stop"], t["target"],
+                         t["exit"], round((t["exit"] - t["entry"]), 4), t["pnl_pct"], t["r_multiple"],
+                         t["reason"], json.dumps({"cost_bps": COST_BPS, "entry": "next_open",
+                                                  "same_bar_rule": "stop_first", "pit": True})))
         a = report["all"]
         cur.execute("""INSERT INTO strategy_backtest_results
             (run_id, strategy_id, run_type, total_trades, wins, losses, win_rate, profit_factor, expectancy_r,
