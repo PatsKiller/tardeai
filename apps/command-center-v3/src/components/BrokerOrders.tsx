@@ -53,6 +53,114 @@ function groupEvents(events: any[]): { text: string; n: number; block: boolean; 
   return out.slice(0, 25)
 }
 
+// Edit-before-approval modal (operator requirement): change the order, re-preview the translation,
+// THEN walk the two-factor approval. Saves under the SAME intent_id (draft updates in place).
+function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => void; onSaved: () => void }) {
+  const it = draft.intent_json ?? {}
+  const [qty, setQty] = useState(String(it.quantity?.qty ?? 2))
+  const [method, setMethod] = useState(it.entry?.method ?? 'LIMIT')
+  const [limit, setLimit] = useState(String(it.entry?.limit_price ?? ''))
+  const [entryStop, setEntryStop] = useState(String(it.entry?.stop_price ?? ''))
+  const [stop, setStop] = useState(String(it.exit_policy?.stop?.price ?? ''))
+  const [target, setTarget] = useState(String(it.exit_policy?.targets?.[0]?.price ?? ''))
+  const [trailOn, setTrailOn] = useState(!!it.exit_policy?.stop?.trail)
+  const [trailOff, setTrailOff] = useState(String(it.exit_policy?.stop?.trail?.offset ?? '3'))
+  const [trailType, setTrailType] = useState(it.exit_policy?.stop?.trail?.type ?? 'PERCENT')
+  const [tif, setTif] = useState(it.tif ?? 'DAY')
+  const [session, setSession] = useState(it.session ?? 'NORMAL')
+  const [dir, setDir] = useState(it.direction ?? 'LONG')
+  const [result, setResult] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
+
+  const buildIntent = () => ({
+    ...it,
+    direction: dir, tif, session,
+    quantity: { qty: Number(qty) || null, notional: null, contracts: null },
+    entry: { ...it.entry, method, limit_price: limit ? Number(limit) : null,
+             stop_price: entryStop ? Number(entryStop) : null },
+    exit_policy: {
+      ...it.exit_policy, oco: true,
+      stop: (stop || trailOn) ? { price: stop ? Number(stop) : null,
+        trail: trailOn ? { basis: it.exit_policy?.stop?.trail?.basis ?? 'LAST', type: trailType, offset: Number(trailOff) || 0 } : null } : null,
+      targets: target ? [{ price: Number(target), qty_pct: 100 }] : [],
+    },
+    meta: { ...it.meta, thesis: (it.meta?.thesis ?? '') + ' [edited by operator]' },
+    state: 'DRAFT',
+  })
+
+  const repreview = async () => {
+    setBusy(true)
+    const r = await fetch('/api/v2/broker-orders/preview', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildIntent()) })
+    const j = await r.json(); setResult(j?.data ?? j); setBusy(false); onSaved()
+  }
+
+  const F = ({ label, children }: any) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 9, color: 'var(--text3)' }}>
+      {label}{children}
+    </label>)
+  const inp = { fontSize: 11, padding: '4px 7px', borderRadius: 4, border: '1px solid var(--border)',
+    background: 'var(--bg2)', color: 'var(--text0)', width: 90 } as const
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 60, display: 'flex',
+      justifyContent: 'center', alignItems: 'flex-start', padding: '5vh 2vw', overflow: 'auto' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg1)', border: '1px solid var(--border)',
+        borderRadius: 12, padding: 16, width: 'min(680px, 96vw)' }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 2 }}>
+          Edit order — {it.instrument?.symbol}</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+          Step 1: adjust the order · Step 2: re-preview the Schwab translation · Step 3: request + confirm
+          two-factor approval. Nothing executes this phase regardless.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <F label="direction"><select value={dir} onChange={e => setDir(e.target.value)} style={inp}>
+            <option>LONG</option><option>SHORT</option></select></F>
+          <F label="shares"><input value={qty} onChange={e => setQty(e.target.value)} style={inp} /></F>
+          <F label="entry"><select value={method} onChange={e => setMethod(e.target.value)} style={inp}>
+            {['MARKET','LIMIT','STOP','STOP_LIMIT'].map(m => <option key={m}>{m}</option>)}</select></F>
+          <F label="limit $"><input value={limit} onChange={e => setLimit(e.target.value)} style={inp} /></F>
+          <F label="entry stop $"><input value={entryStop} onChange={e => setEntryStop(e.target.value)} style={inp} /></F>
+          <F label="stop-loss $"><input value={stop} onChange={e => setStop(e.target.value)} style={inp} /></F>
+          <F label="target $"><input value={target} onChange={e => setTarget(e.target.value)} style={inp} /></F>
+          <F label="trailing stop"><span style={{ display: 'flex', gap: 4 }}>
+            <input type="checkbox" checked={trailOn} onChange={e => setTrailOn(e.target.checked)} />
+            <input value={trailOff} onChange={e => setTrailOff(e.target.value)} style={{ ...inp, width: 46 }} disabled={!trailOn} />
+            <select value={trailType} onChange={e => setTrailType(e.target.value)} style={{ ...inp, width: 78 }} disabled={!trailOn}>
+              <option>PERCENT</option><option>VALUE</option><option>TICK</option></select></span></F>
+          <F label="time in force"><select value={tif} onChange={e => setTif(e.target.value)} style={inp}>
+            {['DAY','GTC','FOK','IOC'].map(m => <option key={m}>{m}</option>)}</select></F>
+          <F label="session"><select value={session} onChange={e => setSession(e.target.value)} style={inp}>
+            {['NORMAL','AM','PM','SEAMLESS'].map(m => <option key={m}>{m}</option>)}</select></F>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+          <button onClick={repreview} disabled={busy} style={{ ...btn('#1d4ed8'), fontSize: 11, padding: '6px 14px' }}>
+            {busy ? 'translating…' : '② Re-preview Schwab translation'}</button>
+          <button onClick={onClose} style={{ ...btn('#374151'), fontSize: 11, padding: '6px 14px' }}>close</button>
+        </div>
+        {result && (
+          <div style={{ marginTop: 10 }}>
+            {result.validation?.errors?.length > 0 ? (
+              <div style={{ fontSize: 10, color: '#ef4444' }}>
+                ❌ Not valid: {result.validation.errors.join(' · ')}</div>
+            ) : (
+              <div style={{ fontSize: 10, color: '#22c55e' }}>
+                ✅ Translates cleanly — Schwab would receive {(result.translation_preview?.orders ?? []).length} order(s)
+                {result.translation_preview?.orders?.[0]?.orderStrategyType === 'TRIGGER' ? ' (bracket: entry triggers exits)' : ''}.
+                Execution: <b>{result.execution?.mode}</b> (blocked — correct this phase).</div>
+            )}
+            {result.validation?.warnings?.length > 0 &&
+              <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 3 }}>⚠ {result.validation.warnings.join(' · ')}</div>}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text1)' }}>③ Two-factor approval</div>
+              <ApprovalPanel intentId={it.intent_id} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ApprovalPanel({ intentId }: { intentId: string }) {
   const { data: st, refetch } = useApi<any>(`/api/v2/broker-orders/approval-status?intent_id=${intentId}`, 15_000)
   const [code, setCode] = useState('')
@@ -103,6 +211,7 @@ export default function BrokerOrders() {
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: eventsR } = useApi<any>('/api/v2/broker-orders/events', 30_000)
   const [open, setOpen] = useState<string | null>(null)
+  const [editing, setEditing] = useState<any>(null)
   const caps = capsR?.data ?? capsR
   const drafts: any[] = (draftsR?.data ?? draftsR)?.drafts ?? []
   const events: any[] = (eventsR?.data ?? eventsR)?.events ?? []
@@ -146,6 +255,7 @@ export default function BrokerOrders() {
                 title="translates cleanly = converts to Schwab format with no errors">
                 {d.state === 'TRANSLATED' ? 'translates cleanly' : d.state.toLowerCase()}</span>
               <span style={{ flex: 1 }} />
+              <button onClick={() => setEditing(d)} style={btn('#1d4ed8')}>✏ edit & approve</button>
               <button onClick={() => setOpen(open === d.intent_id ? null : d.intent_id)} style={btn('#374151')}>
                 {open === d.intent_id ? 'close' : 'details'}
               </button>
@@ -202,6 +312,7 @@ export default function BrokerOrders() {
           </div>
         ))}
       </div>
+      {editing && <EditModal draft={editing} onClose={() => setEditing(null)} onSaved={() => refetch()} />}
       <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 8 }}>
         Source: /api/v2/broker-orders/* · every guard decision (grant or block) is audited · no execution path exists from this surface
       </div>

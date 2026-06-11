@@ -59,12 +59,13 @@ def build_suite() -> list[tuple[str, OrderIntent, dict]]:
     S = []
 
     def case(name, intent, **expect):
+        intent.meta.thesis = f"Stage-1 translation fixture: {name} (qty=2 canary size; never executed)"
         S.append((name, intent, expect))
 
     def mk(sym, e, st, tg, **over):
         base = dict(instrument=Instrument(sym), direction=Direction.LONG,
                     entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=e),
-                    quantity=Quantity(qty=100), broker="schwab",
+                    quantity=Quantity(qty=2), broker="schwab",   # canary size (operator: fixtures must mirror the 2-share plan)
                     exit_policy=ExitPolicy(stop=StopSpec(price=st), targets=[TargetSpec(tg)], oco=True))
         base.update(over)
         return OrderIntent(**base)
