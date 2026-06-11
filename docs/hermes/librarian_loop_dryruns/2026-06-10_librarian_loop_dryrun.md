@@ -1,8 +1,8 @@
-# Librarian Loop Apply — 2026-06-08
+# Librarian Loop Apply — 2026-06-10
 
 Findings: 3
 Mode: APPLY
-Runtime: 0.1s
+Runtime: 0.2s
 
 - [high] backtest_weak_strategy: WR=27.59% PF=0.3153 n=29
 - [high] backtest_weak_strategy: WR=28.57% PF=2.6398 n=7
