@@ -227,3 +227,13 @@ validated strategies, differentiated weights, demonstrated regime adaptation —
 **Overall: ≈6.3 → ≈7.3/10.** Honest residuals documented per area: weight differentiation, strategy
 validation, and longer sim history are sample-gated (2-4+ weeks); ingestion semantic dedup at the storage
 layer and a second grok proxy remain code follow-ups. Validator 12/12 throughout.
+
+
+---
+
+## Post-replay-backlog re-score (UI/replay)
+
+Replay now carries: plan stop/target lines, runner-type lessons, MFE/MAE %, grade-why flags, news-event pins
+(verified live: ELVN's real catalyst pinned), L2 pressure strip, SPY relative-strength overlay, honest
+truncation handling, Schwab chunked fallback. Open-trade cards carry analyst consensus/targets, L2, H#rank,
+short float, earnings. **UI/dashboards 7 -> 8.** Overall ≈7.3 -> **≈7.4**.

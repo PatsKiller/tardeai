@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-11 - Replay backlog complete (news pins / L2 strip / SPY overlay / error hints / chunking)
+
+All five audit-backlog items shipped + live-verified (ELVN catalyst headline pinned on today's chart at
+10:36; 7 L2 snapshots; SPY rebased overlay). UI maturity 7 -> 8; overall ~7.4. Validator 12/12.
+
+
 ## 2026-06-11 - Open-trade card enrichment + replay audit & upgrades
 
 Operator Qs answered: news was never missing (6-7 items per position; renders on card expand); analyst data
