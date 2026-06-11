@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - Trade cards redesigned into actionable position decision cards
+
+Open Trades cards rebuilt as decision cards. Backend (read-only, derived): open_trades_intelligence.py now
+emits operator_priority/operator_decision/decision_reason/risk_flags/opportunity_flags/data_freshness/
+news_freshness/protection_state/basis_quality/watchlist_state/directive_state/last_hermes_review_at/
+latest_news_age_hours/primary_next_review/recommended_manual_actions + strategy_rationale (the WHY, from each
+strategy config purpose) + sector fallback. Frontend: new PositionDecisionCard (6 zones: identity+priority,
+decision banner, economics, evidence chips incl strategy WHY + sector, catalyst news with stale labeling,
+manual-action buttons) + 10 quick filters + 11 sorts (priority default). Addresses operator feedback: sector
+now shows, strategy + WHY shown. Playwright audit (5 shots, 0 console errors) + review doc. AXTI: present as
+researched (no dupe) but below the watchlist 200-item display cap - pre-existing, not card-related. Read-only,
+validator 12/12.
+
+
 ## 2026-06-11 - v3 header v2-parity + actionable approvals badge
 
 v3 MetricStrip now matches the v2 header: added TODAY, JOURNAL P&L, VIX, LAST RUN tiles + a clickable
