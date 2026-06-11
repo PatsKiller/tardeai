@@ -615,7 +615,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     sector, industry, country, sector_etf,
                     ticker_perf_1m, sector_perf_1m, vs_sector_pct,
                     social_sentiment, social_score, social_reddit, social_stocktwits,
-                    social_bullish_pct, social_wsb, source, screener_label, source_detail
+                    social_bullish_pct, social_wsb, source, screener_label, source_detail, pillar_breakdown
                 ) VALUES (
                     %s, %s, %s, 'full', %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
@@ -625,7 +625,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s
                 )
             """, (
                 _run_id, date_str, run_label, sym,
@@ -650,6 +650,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                 # ingestion and dropped here — made per-list efficacy unmeasurable)
                 t.get("screener_name") or t.get("primary_source_list"),
                 t.get("source_lists"),
+                json.dumps(t.get("pillar_breakdown") or {}),
             ))
             _inserted += 1
         _ok("db_persist", f"{_inserted} rows → trade_ai_scans")
