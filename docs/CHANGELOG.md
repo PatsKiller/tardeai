@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 — Execution coaching: worked-example walkthrough documented
+
+Added a worked example to EXECUTION_COACHING_QUEUE_20260611.md: a read-only replay walkthrough of three
+trades the queue surfaced — CTXR scalp (entry leak: RVOL 0.26 into a dead tape, capture 48%), AXTI #255
+(during-hold exit leak: rode $26.66 peak back to $18.83 exit on a 6.5x winner), AXTI #257 (post-exit leak:
+sold $17.74, missed the run to $28.65 = +62%). Together they map both edge leaks (early entries, imprecise
+exits) on net-positive trades. Directive remains study-the-replays, not change-the-rules. Read-only, no code
+or live-behavior changes.
+
 ## 2026-06-11 — Daily Execution Coaching Queue (read-only; advisory)
 
 Converts the execution-quality system into a ranked daily 'what to fix next' queue. Additive schema
