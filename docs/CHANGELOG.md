@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-11 - Priority arc 1-5 complete; all maturity areas raised to >=6
+
+Arc-1 pillar_breakdown persisted (both scan inserts). Arc-2 entry-criteria evaluator (deterministic, 5/5
+self-tests, Gate-2 wired, criterion-ID rejections). Arc-3 freshness SLOs (baseline-relative, 7 sources, cron
+2h, 7/7 green). Arc-4 arbitration: source_weights schema+job+cron, scoring consumes bounded weights,
+source_tier backfilled 10,375. Arc-5 backtesting: PIT look-ahead fixed, 30bps cost model, real-vs-synthetic
+split surfaced, and the POINT-IN-TIME SIGNAL SIMULATOR (criteria-driven entries over the screeners' own
+historical universe, walk-forward 70/30, sample gates) - first falsifiable verdict: swing_breakout
+no_edge_oos (32 signals, -0.18R with costs), persisted as pit_simulated. Alpaca free-SIP 403 handled +
+Schwab read-only daily-bar fallback (operator request). hermes_score_history pairing index (calibration ran
+48min unindexed). Maturity re-score: 5.4 -> 6.3 overall; backtesting 2->6, arbitration 2->6. Validator 12/12.
+
+
 ## 2026-06-11 - System maturity audit (15 areas scored /10)
 
 docs/project/MATURITY_AUDIT_20260611.md - evidence-based scores from the day's six audits + fixes. Overall
