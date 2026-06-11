@@ -226,11 +226,22 @@ def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
             continue
 
         try:
+            try:
+                from finviz_throttle import acquire as _fv_acquire, cooldown as _fv_cd
+            except Exception:
+                _fv_acquire = lambda: None
+                _fv_cd = lambda *_a: None
+            _fv_acquire()
             resp = requests.get(url, headers=headers, timeout=20)
             if resp.status_code == 429:
-                print(f"  [finviz-enrich] Rate limit v={view} — waiting 30s")
+                # propagate the global cooldown so every Finviz caller backs off, then retry once
+                _fv_cd(float(resp.headers.get('Retry-After') or 60))
+                print(f"  [finviz-enrich] Rate limit v={view} — global cooldown, waiting 30s")
                 time.sleep(30)
+                _fv_acquire()
                 resp = requests.get(url, headers=headers, timeout=20)
+                if resp.status_code == 429:
+                    _fv_cd(float(resp.headers.get('Retry-After') or 60))
             if not resp.ok:
                 print(f"  [finviz-enrich] v={view} HTTP {resp.status_code}")
                 continue

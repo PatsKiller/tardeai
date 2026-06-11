@@ -228,8 +228,13 @@ def download_screener_csvs(
         export_url = finviz_export_url(entry["finviz_url"])
         # Delay between requests to avoid Finviz 429 rate-limit
         # First request fires immediately; subsequent ones wait 1.5 seconds
-        if i > 0:
-            time.sleep(3.5)   # Finviz Elite export rate-limit headroom (5-screener runs were tripping 429s)
+        # GLOBAL cross-process throttle (replaces per-process sleep): all Finviz callers share one limiter
+        try:
+            from finviz_throttle import acquire as _fv_acquire
+            _fv_acquire()
+        except Exception:
+            if i > 0:
+                time.sleep(3.5)
         # Try Elite v=152 first, fallback through versions on failure
         resp = None
         used_version = "v=152"
@@ -244,6 +249,11 @@ def download_screener_csvs(
                     # set with no float -> the misleading 'all-zero float_shares' alert. Back off properly.
                     rate_limited = True
                     wait = (10, 30, 60)[attempt]
+                    try:                      # propagate to ALL processes (honor Retry-After when present)
+                        from finviz_throttle import cooldown as _fv_cd
+                        _fv_cd(float(resp.headers.get('Retry-After') or wait))
+                    except Exception:
+                        pass
                     print(f"  [finviz] 429 on {name} ({version}) — backing off {wait}s (attempt {attempt+1}/3)")
                     time.sleep(wait)
                     continue
