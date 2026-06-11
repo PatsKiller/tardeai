@@ -121,16 +121,18 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
     else:
         out["entry_macd_state"] = None
 
-    # ── post-entry path (MFE/MAE) up to the review cutoff ──
-    cutoff = min(len(bars) - 1, xi + (15 if is_daily else review_min))   # daily: ~15 trading days; cap to last index
-    seg = bars[ei:cutoff + 1]
-    hi = max(b["h"] for b in seg); lo = min(b["l"] for b in seg)
-    out["mfe_after_entry"] = round(hi - entry_price, 4)
+    # ── capture = of the move available DURING THE HOLD (entry->exit), how much did you get? ──
+    # MFE/MAE and 'available' are measured over the hold ONLY; the post-exit run is a SEPARATE concern
+    # (missed-runner, below) — including it here wrongly penalized well-timed exits as 'poor'.
+    cutoff = min(len(bars) - 1, xi + (15 if is_daily else review_min))   # daily: ~15 trading days post-exit (for missed-runner)
+    hold = bars[ei:xi + 1] or bars[ei:ei + 1]
+    hi = max(b["h"] for b in hold); lo = min(b["l"] for b in hold)
+    out["mfe_after_entry"] = round(hi - entry_price, 4)      # best price reached WHILE IN the trade
     out["mae_after_entry"] = round(entry_price - lo, 4)
     available = max(hi - entry_price, 0.0001)
     captured = exit_price - entry_price
     out["available_profit"] = round(available, 4); out["captured_profit"] = round(captured, 4)
-    out["capture_ratio"] = round(max(0.0, captured / available), 3)
+    out["capture_ratio"] = round(max(0.0, min(1.0, captured / available)), 3)
 
     # ── post-exit path (missed runner) ──
     post = bars[xi:cutoff + 1]
