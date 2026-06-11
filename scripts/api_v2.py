@@ -16087,7 +16087,20 @@ def _hermes_subject_intel(query=None):
                         FROM hermes_external_research
                         WHERE symbol=%s AND trigger_reason=%s AND status IN ('sent','ok','complete','success')
                         ORDER BY lane, created_at DESC""", (key, f"enh_{ttype}")) or []
-    return {"type": ttype, "key": key, "external_intel": [
+    # Hermes composite (2026-06-11): the watchlist intelligence rank surfaces wherever decisions happen
+    hermes = None
+    try:
+        h = _db_query("""SELECT hermes_composite_score, hermes_rank,
+                                hermes_score_components->>'_regime' AS regime
+                         FROM watchlist_items
+                         WHERE symbol=%s AND hermes_rank IS NOT NULL
+                         ORDER BY hermes_rank LIMIT 1""", (key,), fetch="one")
+        if h:
+            hermes = {"composite": _json_clean(h.get("hermes_composite_score")),
+                      "rank": h.get("hermes_rank"), "regime": h.get("regime")}
+    except Exception:
+        pass
+    return {"type": ttype, "key": key, "hermes": hermes, "external_intel": [
         {"lane": r["lane"], "model": r.get("model"), "recommendation": r.get("recommendation"),
          "evidence": r.get("evidence_json"), "dissent": r.get("dissent"),
          "confidence": _json_clean(r.get("confidence")), "risk_flags": r.get("risk_flags"),

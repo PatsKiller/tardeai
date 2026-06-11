@@ -51,11 +51,38 @@ def searx_youtube(query, n=3):
 
 
 def get_targets(limit):
+    """Non-circular discovery (2026-06-11): the loop previously only researched symbols ALREADY on the
+    watchlist — it could never surface anything new. Now ~40% of each run's slots go to FRESH symbols:
+    Schwab index movers (read-only) that are NOT on the watchlist yet."""
     from db_adapter import _execute
     rows = _execute(
         "SELECT DISTINCT symbol FROM watchlist_items WHERE status='active' AND symbol IS NOT NULL ORDER BY symbol LIMIT %s",
         (limit,), fetch="all")
-    return [r["symbol"] for r in (rows or [])]
+    targets = [r["symbol"] for r in (rows or [])]
+    fresh_slots = max(1, int(limit * 0.4))
+    try:
+        import schwab_transport
+        wl = {t for t in targets}
+        try:
+            wl_all = _execute("SELECT DISTINCT symbol FROM watchlist_items WHERE status<>'removed'", fetch="all")
+            wl = {r["symbol"] for r in (wl_all or [])}
+        except Exception:
+            pass
+        fresh = []
+        for idx in ("$SPX", "NASDAQ"):
+            m = schwab_transport.get_movers(idx)
+            for mv in (m.get("movers") or []):
+                sym = (mv.get("symbol") or "").upper()
+                if sym and sym.isalpha() and sym not in wl and sym not in fresh:
+                    fresh.append(sym)
+            if len(fresh) >= fresh_slots:
+                break
+        if fresh:
+            targets = targets[: limit - len(fresh[:fresh_slots])] + fresh[:fresh_slots]
+            print(f"[yt-discovery] fresh (non-watchlist) movers added: {fresh[:fresh_slots]}")
+    except Exception:
+        pass
+    return targets
 
 
 def main():
