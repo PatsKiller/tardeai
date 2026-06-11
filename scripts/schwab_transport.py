@@ -316,3 +316,93 @@ def get_watchlists(account_key):
         return normalize_watchlists(data)
     except Exception as e:
         return {"status": "error", "error": str(e)[:160]}
+
+
+# ── READY capabilities wired 2026-06-11 (read-only; see SCHWAB_API_CAPABILITY_MAP) ──────────────────────────
+
+def _default_account_key():
+    """First verified linked account — used for market-data reads that aren't account-specific."""
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn(); cur = conn.cursor()
+        cur.execute("SELECT account_key FROM schwab_account_links WHERE verified=TRUE LIMIT 1")
+        r = cur.fetchone()
+        return r[0] if r else None
+    except Exception:
+        return None
+
+
+def normalize_quotes(raw):
+    """Batch-quote payload -> {symbol: {last, bid, ask, volume, updated}}. Conservative: unknown shapes pass
+    through under 'raw' so wire-time differences are visible, never silently zeroed."""
+    out = {}
+    if not isinstance(raw, dict):
+        return {"status": "error", "error": "unexpected quotes payload type"}
+    for sym, q in raw.items():
+        if not isinstance(q, dict):
+            continue
+        quote = q.get("quote") or q
+        out[sym] = {
+            "last": quote.get("lastPrice"),
+            "bid": quote.get("bidPrice"),
+            "ask": quote.get("askPrice"),
+            "volume": quote.get("totalVolume"),
+            "close": quote.get("closePrice"),
+            "updated": quote.get("quoteTime") or quote.get("tradeTime"),
+        }
+        if out[sym]["last"] is None and "raw_keys" not in out[sym]:
+            out[sym]["raw_keys"] = sorted(quote.keys())[:10]
+    return {"status": "ok", "quotes": out, "count": len(out)}
+
+
+def get_quotes(symbols, account_key=None):
+    """READ-ONLY batch quotes — one API call for many symbols (vs per-symbol get_quote). No write surface."""
+    if not symbols:
+        return {"status": "error", "error": "no symbols"}
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    return _read(account_key, "get_quotes", normalize_quotes, list(symbols))
+
+
+def normalize_market_hours(raw):
+    """Market-hours payload -> per-market {is_open, session windows}."""
+    out = {}
+    if not isinstance(raw, dict):
+        return {"status": "error", "error": "unexpected market-hours payload type"}
+    for market, products in raw.items():
+        if not isinstance(products, dict):
+            continue
+        for _pid, info in products.items():
+            if not isinstance(info, dict):
+                continue
+            sess = info.get("sessionHours") or {}
+            reg = (sess.get("regularMarket") or [{}])[0] if sess.get("regularMarket") else {}
+            out[market] = {
+                "is_open": info.get("isOpen"),
+                "regular_start": reg.get("start"),
+                "regular_end": reg.get("end"),
+                "pre": (sess.get("preMarket") or [{}])[0] if sess.get("preMarket") else None,
+                "post": (sess.get("postMarket") or [{}])[0] if sess.get("postMarket") else None,
+            }
+    return {"status": "ok", "markets": out}
+
+
+def get_market_hours(markets=None, account_key=None):
+    """READ-ONLY market hours/calendar — authoritative is-the-market-open signal. No write surface."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    client, err = build_client(account_key)
+    if err:
+        return err
+    _rate_acquire()
+    try:
+        from schwab.client import Client
+        mk = markets or [Client.MarketHours.Market.EQUITY]
+        mk = [getattr(Client.MarketHours.Market, str(m).upper(), m) if isinstance(m, str) else m for m in mk]
+        resp = client.get_market_hours(mk)
+        data = resp.json() if hasattr(resp, "json") else resp
+        return normalize_market_hours(data)
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:160]}

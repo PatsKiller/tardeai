@@ -16374,6 +16374,24 @@ def _schwab_round_trips(query=None):
             "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis) and basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses). Real-account, separate from the paper-only live-trading gate."}
 
 
+def _schwab_batch_quotes(query=None):
+    """GET /api/v2/schwab/quotes?symbols=A,B,C — READ-ONLY batch quotes (one Schwab call for many symbols)."""
+    q = query or {}
+    raw = q.get("symbols")
+    raw = (raw[0] if isinstance(raw, list) else raw) or ""
+    syms = [s.strip().upper() for s in raw.split(",") if s.strip()][:50]
+    if not syms:
+        return {"status": "error", "error": "symbols required (comma-separated, max 50)"}
+    import schwab_transport
+    return _json_clean(schwab_transport.get_quotes(syms))
+
+
+def _schwab_market_hours(query=None):
+    """GET /api/v2/schwab/market-hours — READ-ONLY authoritative equity market hours/is-open."""
+    import schwab_transport
+    return _json_clean(schwab_transport.get_market_hours())
+
+
 def _schwab_status(query=None):
     """GET /api/v2/system/schwab-status — Schwab read-only integration monitor: Gate-A token health,
     account-hash links, capability checks, recent sync. Read-only; never exposes token material."""
@@ -16973,6 +16991,8 @@ ROUTES = {
     "/api/v2/discovery/results": _discovery_results,
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
+    "/api/v2/schwab/quotes": _schwab_batch_quotes,
+    "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,
