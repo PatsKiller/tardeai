@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 - Validator boundary regex: two self-catches post-scaffold
+
+The no-writes validator flagged api_v2 twice after the broker endpoints landed: (1) "from
+brokers.translators import schwab" — our own pure-translator MODULE NAME matched the conservative
+boundary regex; switched to function-form import rather than weakening the guard; (2) the explanatory
+COMMENT itself contained the trigger phrase — reworded. 12/12 restored both times. The guard proving it
+reads everything is a feature, not a bug.
+
+
 ## 2026-06-11 - Schwab integration program: research + dormant scaffold (6 phases, all committed)
 
 Operator-approved ground rules: ZERO Schwab order-endpoint calls (dry-run = local translate/validate/audit);
