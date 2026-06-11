@@ -31,7 +31,10 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     const qs = new URLSearchParams({ symbol: trade.symbol, entry_date: String(trade.entry_date).slice(0, 10),
       exit_date: String(trade.exit_date || trade.entry_date).slice(0, 10),
       ...(trade.entry_price ? { entry_price: String(trade.entry_price) } : {}),
-      ...(trade.exit_price ? { exit_price: String(trade.exit_price) } : {}) })
+      ...(trade.exit_price ? { exit_price: String(trade.exit_price) } : {}),
+      // pass full timestamps when known: fixes same-day detection for overnight intraday holds (audit bug)
+      ...((trade as any).entry_time || (trade as any).entryTimeFull ? { entry_time: String((trade as any).entry_time || (trade as any).entryTimeFull) } : {}),
+      ...((trade as any).exit_time || (trade as any).exitTimeFull ? { exit_time: String((trade as any).exit_time || (trade as any).exitTimeFull) } : {}) })
     fetch(`/api/v2/trade-chart?${qs}`).then(r => r.json()).then(j => {
       const d = j?.data ?? j
       if (d?.error) setErr(d.error); else setData(d)
@@ -57,13 +60,29 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
 
     // entry/exit price lines on the candle series
     for (const m of data.markers || []) candle.createPriceLine({ price: m.price, color: m.type === 'entry' ? '#22c55e' : '#ef4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: m.type === 'entry' ? 'BUY' : 'SELL' })
-    // execution overlay: MFE (max opportunity), MAE, post-exit high — from the execution-quality record
+    // planned STOP/TARGET lines (replay audit #1): did price stop you out or did you hit plan?
+    const t0: any = trade as any
+    const plannedStop = Number(t0.stop ?? t0.stop_loss ?? t0.planned_stop) || null
+    const plannedTgt = Number(t0.target ?? t0.target_1 ?? t0.target_price) || null
+    if (plannedStop) candle.createPriceLine({ price: plannedStop, color: '#ef4444', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'STOP (plan)' })
+    if (plannedTgt) candle.createPriceLine({ price: plannedTgt, color: '#22c55e', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'TARGET (plan)' })
+    // execution overlay: MFE (max opportunity), MAE, post-exit high — with % badges (audit #3)
     const ex: any = (trade as any).exec
     if (ex) {
       const ep = Number(ex.entry_price) || 0
-      if (ex.mfe_after_entry != null && ep) candle.createPriceLine({ price: ep + Number(ex.mfe_after_entry), color: '#3b82f6', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'MFE (max opp)' })
-      if (ex.mae_after_entry != null && ep) candle.createPriceLine({ price: ep - Number(ex.mae_after_entry), color: '#9333ea', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: 'MAE' })
-      if (ex.post_exit_high != null) candle.createPriceLine({ price: Number(ex.post_exit_high), color: '#f59e0b', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'max after exit' })
+      if (ex.mfe_after_entry != null && ep) candle.createPriceLine({ price: ep + Number(ex.mfe_after_entry), color: '#3b82f6', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `MFE +${(100 * Number(ex.mfe_after_entry) / ep).toFixed(1)}%` })
+      if (ex.mae_after_entry != null && ep) candle.createPriceLine({ price: ep - Number(ex.mae_after_entry), color: '#9333ea', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `MAE -${(100 * Number(ex.mae_after_entry) / ep).toFixed(1)}%` })
+      if (ex.post_exit_high != null) {
+        // runner annotation (audit #2): name the post-exit move so the lesson is on the chart
+        const rt = ex.runner_type as string | undefined
+        const gb = ex.post_exit_gave_back_ratio != null ? ` · gave back ${Math.round(100 * Number(ex.post_exit_gave_back_ratio))}%` : ''
+        const rtLabel = rt === 'parabolic_pump' ? `⚡ pump — exit was right${gb}`
+          : rt === 'sustained_trend' ? '↗ real runner — scale-out lesson'
+          : rt === 'trend_top' ? '⛰ trend top after exit'
+          : rt === 'faded' ? 'faded after exit'
+          : 'max after exit'
+        candle.createPriceLine({ price: Number(ex.post_exit_high), color: rt === 'sustained_trend' ? '#22c55e' : '#f59e0b', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: rtLabel })
+      }
     }
     paint(data.bars.length)
     const onResize = () => charts.current.forEach(c => c.timeScale().fitContent())
@@ -116,7 +135,12 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
           {data && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{data.timeframe} · {data.bar_count} bars · src:{data.source}</span>}
           {pnl != null && <span style={{ fontSize: 12, fontWeight: 700, color: pnl >= 0 ? '#22c55e' : '#ef4444' }}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}/sh</span>}
           {(trade as any).exec && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: ((trade as any).exec.execution_grade === 'poor' ? '#ef4444' : (trade as any).exec.execution_grade === 'weak' ? '#f59e0b' : '#22c55e') + '22', color: (trade as any).exec.execution_grade === 'poor' ? '#ef4444' : (trade as any).exec.execution_grade === 'weak' ? '#f59e0b' : '#22c55e' }}
-            title={(trade as any).exec.grok_what_to_do_next_time || (trade as any).exec.computed_summary}>{(trade as any).exec.outcome_grade}/{(trade as any).exec.execution_grade} · cap {Math.round(((trade as any).exec.capture_ratio ?? 0) * 100)}%</span>}
+            title={[
+              ...[['no_volume_entry_flag', 'entered without volume confirmation'], ['premature_exit_flag', 'exited prematurely'],
+                   ['early_entry_flag', 'entry early vs setup'], ['late_entry_flag', 'entry late/chased']]
+                .filter(([k]) => (trade as any).exec[k]).map(([, label]) => `• ${label}`),
+              (trade as any).exec.grok_what_to_do_next_time ? `Coach: ${(trade as any).exec.grok_what_to_do_next_time}` : ((trade as any).exec.computed_summary || ''),
+            ].filter(Boolean).join('\n')}>{(trade as any).exec.outcome_grade}/{(trade as any).exec.execution_grade} · cap {Math.round(((trade as any).exec.capture_ratio ?? 0) * 100)}%</span>}
           <span style={{ flex: 1 }} />
           {(['vol', 'vwap', 'macd', 'rsi'] as const).map(k => <button key={k} onClick={() => setShow(s => ({ ...s, [k]: !s[k] }))} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: show[k] ? '#1d4ed8' : 'var(--bg2)', color: show[k] ? '#fff' : 'var(--text3)', cursor: 'pointer' }}>{k.toUpperCase()}</button>)}
           <button onClick={onClose} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>✕</button>
