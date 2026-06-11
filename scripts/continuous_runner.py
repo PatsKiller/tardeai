@@ -292,7 +292,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         _existing_syms = {t.get("symbol","") for t in tickers}
         _social = _execute("""
             SELECT DISTINCT ON (symbol)
-                symbol, score, rvol, price, change_pct, gap_pct, float_m,
+                symbol, score, rvol, price, change_pct, gap_pct, float_mm AS float_m,
                 sector, industry, country, sources
             FROM scalp_scan_results
             WHERE scanned_at > NOW() - INTERVAL '4 hours'
@@ -311,7 +311,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 "gap_percent": float(sr.get("gap_pct") or 0),
                 "relative_volume": float(sr.get("rvol") or 0),
                 "float_m": float(sr.get("float_m") or 0),
-                "float_shares": 0,
+                "float_shares": float(sr.get("float_m") or 0),
                 "sector": sr.get("sector") or "",
                 "industry": sr.get("industry") or "",
                 "country": sr.get("country") or "",

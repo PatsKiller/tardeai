@@ -180,6 +180,10 @@ function PipelineChevron({ stages }: { stages: any[] }) {
 function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
   const { data: extIntel } = useApi<any>(`/api/v2/hermes/subject-intel?type=proposal&key=${p.symbol}`, 120_000)
   const extOpinions: any[] = extIntel?.external_intel ?? []
+  // Level-2 book pressure (read-only advisory evidence from the Schwab stream capture — never a trigger)
+  const { data: l2raw } = useApi<any>(`/api/v2/schwab/stream/book?symbol=${p.symbol}`, 60_000)
+  const l2 = l2raw?.data ?? l2raw
+  const l2p = l2?.pressure_15m
   const [shares] = useState(p.proposed_shares || 0)
   const [entry] = useState(p.proposed_entry || 0)
   const [stop] = useState(p.proposed_stop || 0)
@@ -351,6 +355,14 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}
           {p.signal_grade && <StatusBadge status={p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'ready' : p.signal_grade === 'B' ? 'warning' : 'blocked'} label={`${p.signal_grade} ${p.signal_score}pts`} />}
           {p.strategy_trade_count > 0 && <span style={{ fontSize: 9, color: (p.strategy_win_rate ?? 0) >= 50 ? '#22C55E' : '#F59E0B', fontWeight: 600 }}>{p.strategy_win_rate}% WR</span>}
+          {l2?.imbalance != null && (
+            <span title={`Level-2 book pressure (advisory evidence, never a trigger)\n15m avg imbalance: ${l2p?.avg_imbalance ?? '—'} (${l2p?.read ?? ''})\nbid depth ${l2.bid_depth} / ask depth ${l2.ask_depth}\nbest ${l2.best_bid} × ${l2.best_ask} · ${String(l2.captured_at).slice(11, 19)}`}
+              style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'help',
+                background: (l2p?.avg_imbalance ?? l2.imbalance) > 0.2 ? 'rgba(34,197,94,.15)' : (l2p?.avg_imbalance ?? l2.imbalance) < -0.2 ? 'rgba(239,68,68,.15)' : 'var(--bg2)',
+                color: (l2p?.avg_imbalance ?? l2.imbalance) > 0.2 ? '#22C55E' : (l2p?.avg_imbalance ?? l2.imbalance) < -0.2 ? '#EF4444' : 'var(--text2)' }}>
+              L2 {(l2p?.avg_imbalance ?? l2.imbalance) > 0 ? '+' : ''}{Number(l2p?.avg_imbalance ?? l2.imbalance).toFixed(2)}
+            </span>
+          )}
           {p.strategy_timeframe_class && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { bg: 'rgba(148,163,184,0.12)' }).bg, color: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { text: '#94A3B8' }).text, fontWeight: 600 }}>{(p.strategy_timeframe_class || '').replace(/_/g, ' ')}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

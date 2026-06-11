@@ -151,11 +151,17 @@ async def run(max_seconds=None):
     conn = _conn()
     started = dt.datetime.now(dt.timezone.utc)
     last_flush = started
+    last_mh_check = started
     while True:
         try:
             await asyncio.wait_for(sc.handle_message(), timeout=10)
         except asyncio.TimeoutError:
             pass
+        except Exception as e:
+            # websocket drop / decode error: exit non-zero so systemd Restart=on-failure reconnects us
+            print(f"[stream] stream error ({e}) — exiting for supervisor restart")
+            cap.flush(conn)
+            return 1
         now = dt.datetime.now(dt.timezone.utc)
         if (now - last_flush).total_seconds() >= FLUSH_EVERY:
             cap.flush(conn); last_flush = now
@@ -163,8 +169,10 @@ async def run(max_seconds=None):
             print("[stream] kill switch — stopping"); break
         if max_seconds and (now - started).total_seconds() > max_seconds:
             print("[stream] max runtime reached — stopping"); break
-        if (now - started).total_seconds() % 600 < 1 and not _market_open():
-            print("[stream] market closed — stopping"); break
+        if (now - last_mh_check).total_seconds() >= 600:   # reliable every-10-min close check
+            last_mh_check = now
+            if not _market_open():
+                print("[stream] market closed — stopping"); break
     cap.flush(conn)
     print(json.dumps({"messages": cap.msgs, "quote_rows": cap.q_writes, "book_rows": cap.b_writes,
                       "symbols": syms, "ran_seconds": round((dt.datetime.now(dt.timezone.utc)-started).total_seconds())}))

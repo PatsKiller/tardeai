@@ -33,7 +33,11 @@ BEGIN
          SET broker_order_id = NEW.broker_order_id,
              filled_at       = COALESCE(filled_at, NEW.filled_at),
              entry_price     = NEW.entry_price,
-             broker_status   = COALESCE(NEW.broker_status, broker_status)
+             entry_time      = COALESCE(entry_time, NEW.entry_time, NEW.filled_at),
+             broker_status   = COALESCE(NEW.broker_status, broker_status),
+             -- the incoming row is the authoritative post-submit record: promote pending -> its status
+             status          = CASE WHEN status = 'pending' THEN COALESCE(NEW.status, status) ELSE status END,
+             lifecycle_state = CASE WHEN lifecycle_state = 'open' THEN COALESCE(NEW.lifecycle_state, lifecycle_state) ELSE lifecycle_state END
        WHERE id = existing_id AND COALESCE(broker_order_id, '') = '';
     END IF;
     RETURN NULL;   -- suppress the duplicate insert

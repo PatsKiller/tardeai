@@ -1,0 +1,10 @@
+[Unit]
+Description=Start Schwab L2 stream at 09:30 on weekdays (daemon self-terminates at close)
+
+[Timer]
+OnCalendar=Mon..Fri 09:30
+Persistent=false
+Unit=tradeai-schwab-stream.service
+
+[Install]
+WantedBy=timers.target

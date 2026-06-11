@@ -1,0 +1,14 @@
+[Unit]
+Description=TradeAI Schwab Level-2 stream capture (read-only, Rule-9 isolated)
+After=network-online.target
+
+[Service]
+Type=simple
+User=johnclaw
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/schwab_stream_daemon.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
