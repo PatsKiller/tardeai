@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 — Execution quality backfilled for swings + all trades grok-reviewed
+
+Swing trades now graded via a DAILY-bars path (multi-day holds previously fetched ~95k 1-min bars and
+failed): entry context + ~15 trading-day post-exit review, session-VWAP skipped where not meaningful,
+bar_interval stored from the computed value. OK-path 30->119 (34 swing + 85 scalp; 6 truly-illiquid OTC stay
+NO_INTRADAY_PATH). Grok reviews 98 total, 0 parse_failed. Real Accounts tab now badges 106/116 round-trips
+(scalps + swings). Pattern surfaced: big PFE/GERN winners are weak execution (~50-63% capture, sold early);
+swing losers (V/CSWC/PFLT/WRD/ARKG) are poor (held dead entries to the loss); AXTI multi-baggers win/ok with
+severe missed-runner. Read-only, validator 12/12.
+
 ## 2026-06-11 — Alpaca SIP feed + intraday URL fix (OTC scalps get charts + badges)
 
 Two fixes so OTC/microcap scalps get intraday bars: (1) Alpaca data feed iex->sip (full consolidated tape;
