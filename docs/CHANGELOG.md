@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 — Runner classification: parabolic_pump vs sustained_trend (opposite coaching)
+
+Added runner_type to execution quality so the coaching queue separates REAL missed runners (hold/scale lesson)
+from intraday PARABOLIC PUMPS (spike-then-collapse traps where selling was CORRECT). Detection: swing
+post-exit retrace = trend_top (slow), intraday big spike + >=60% same-session give-back = parabolic_pump.
+Verified: AGMH/ELBM/FUSE/GSIT -> parabolic_pump (selling right, do not chase); AXTI/ANY/SLDP -> trend_top
+(real, scale-out lesson). Intraday fetch extended to session close so the fade is visible; bounded
+missed-runner window unchanged. Surfaced in coaching-queue missed_runner items (pumps aggregated, low
+severity), execution-quality API, and SchwabJournal badge tooltip. Read-only, validator 12/12.
+
 ## 2026-06-11 — Execution coaching: worked-example walkthrough documented
 
 Added a worked example to EXECUTION_COACHING_QUEUE_20260611.md: a read-only replay walkthrough of three

@@ -74,6 +74,12 @@ or too late. This is precisely why the queue ranks *entry-without-volume ×45* (
 winners* (#2), while flagging that the backtested fixes do NOT yet pass evidence — so the directive is *replay
 and study*, not *change the rules*. The walkthrough was read-only; no live behavior changed.
 
+## Runner classification (added 2026-06-11)
+Missed-runner items are split by runner_type so the queue gives the RIGHT lesson:
+- **sustained_trend / trend_top** — the post-exit move HELD; a genuine hold/scale-out opportunity (e.g. AXTI, ANY, SLDP).
+- **parabolic_pump** — an intraday spike that collapsed same-session (AGMH, ELBM, FUSE, GSIT); selling was CORRECT, do NOT chase — the fix is the ENTRY, not the exit. Aggregated as one low-severity item.
+Detection is timeframe-aware (swing retrace = trend top over weeks; scalp spike+collapse = pump). Microcap split/data artifacts (>150% post-exit) remain filtered.
+
 ## Cross-references
 - [`../architecture/EXECUTION_QUALITY.md`](../architecture/EXECUTION_QUALITY.md) — the grading engine feeding this queue.
 - [`../architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md`](../architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md) — read-only foundation + write fence.

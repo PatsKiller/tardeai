@@ -16274,7 +16274,8 @@ def _execution_quality(query=None):
                           entry_above_vwap, mfe_after_exit_pct, missed_opportunity_grade, computed_summary,
                           strategy_rule_violations, grok_execution_label, grok_what_to_do_next_time,
                           grok_strategy_backtest_hypotheses, normalized_tags,
-                          entry_price, exit_price, mfe_after_entry, mae_after_entry, post_exit_high
+                          entry_price, exit_price, mfe_after_entry, mae_after_entry, post_exit_high,
+                          runner_type, post_exit_gave_back_ratio
                          FROM v_trade_execution_quality_latest WHERE {' AND '.join(where)}
                          ORDER BY exit_time DESC LIMIT {limit}""", tuple(params)) or []
     return {"trades": [_json_clean(r) for r in rows], "count": len(rows)}
