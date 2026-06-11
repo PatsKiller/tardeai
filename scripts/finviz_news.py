@@ -147,6 +147,15 @@ def fetch_finviz_news(
     }
 
     try:
+        try:
+
+            from finviz_throttle import acquire as _fv_acquire
+
+            _fv_acquire()
+
+        except Exception:
+
+            pass
         r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         time.sleep(REQUEST_DELAY)
 
