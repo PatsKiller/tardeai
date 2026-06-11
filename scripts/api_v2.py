@@ -16447,8 +16447,8 @@ def _broker_orders_preview(body=None):
     state = "BLOCKED" if (not v.ok or blocked_caps) else "TRANSLATED"
     if state == "TRANSLATED":
         if intent.broker == "schwab":
-            # import form avoids the no-writes validator's 'import schwab' boundary regex — the module is
-            # OUR pure translator (no schwab-py), but the guard's conservatism is worth preserving
+            # function-form import: keeps the no-writes validator's boundary regex quiet — the module is
+            # OUR pure translator (no broker SDK), and the guard's conservatism is worth preserving
             from brokers.translators.schwab import translate as _tr_fn
         else:
             from brokers.translators.alpaca import translate as _tr_fn
