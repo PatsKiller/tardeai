@@ -25,14 +25,17 @@ def _load_closed_trades(conn, date_filter):
 
     if date_filter == "today":
         cur.execute(
-            "SELECT * FROM paper_trades WHERE status='closed' AND closed_at::date = CURRENT_DATE"
+            """SELECT * FROM paper_trades WHERE status='closed' AND closed_at::date = CURRENT_DATE
+               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')"""
         )
         rows = cur.fetchall()
         if not rows:
-            cur.execute("SELECT * FROM paper_trades WHERE status='closed'")
+            cur.execute("""SELECT * FROM paper_trades WHERE status='closed'
+               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')""")
             rows = cur.fetchall()
     else:
-        cur.execute("SELECT * FROM paper_trades WHERE status='closed'")
+        cur.execute("""SELECT * FROM paper_trades WHERE status='closed'
+               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')""")
         rows = cur.fetchall()
 
     return [dict(zip(cols, row)) for row in rows]
