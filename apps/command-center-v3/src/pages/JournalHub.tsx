@@ -8,6 +8,7 @@ import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 import BacktestPanel from '../components/BacktestPanel'
 import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
 import SchwabJournal from '../components/SchwabJournal'
+import ExecutionCoachPanel from '../components/ExecutionCoachPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts'] as const
@@ -434,6 +435,9 @@ export default function JournalHub({ onDrill }: Props) {
               </div>
             )}
           </div>
+
+          {/* Daily Execution Coaching Queue (advisory) */}
+          <ExecutionCoachPanel onReplay={(sym) => { const t = closed.find(x => x.symbol === sym); if (t) setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eqMap[tk(t.symbol, t.entryTimeFull ?? '')] }) }} />
 
           {/* Trade Log */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>

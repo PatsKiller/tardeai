@@ -16280,6 +16280,22 @@ def _execution_quality(query=None):
     return {"trades": [_json_clean(r) for r in rows], "count": len(rows)}
 
 
+def _daily_coaching(query=None):
+    """GET /api/v2/journal/daily-execution-coaching[/latest] — latest coaching run + ranked items + Grok digest.
+    Read-only/advisory: no live-strategy/trading state. Hypotheses surface as shadow-research candidates only."""
+    run = _db_query("SELECT * FROM daily_execution_coaching_runs ORDER BY id DESC LIMIT 1")
+    if not run:
+        return {"run": None, "items": [], "digest": None, "advisory": True}
+    run = run[0]
+    items = _db_query("SELECT rank, severity, item_type, symbol, strategy_family, source, sample_size, "
+                      "avg_capture_ratio, avg_missed_pct, avg_delta_ps, lesson, operator_action, status, trade_keys_json "
+                      "FROM daily_execution_coaching_items WHERE run_id=%s ORDER BY rank", (run["id"],)) or []
+    digest = _db_query("SELECT digest_json, review_status, created_at FROM daily_execution_grok_digests "
+                       "WHERE run_id=%s ORDER BY id DESC LIMIT 1", (run["id"],))
+    return {"run": _json_clean(run), "items": [_json_clean(i) for i in items],
+            "digest": _json_clean(digest[0]) if digest else None, "advisory": True}
+
+
 def _tos_watchlists_list(query=None):
     """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
     wls = _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
@@ -16942,6 +16958,8 @@ ROUTES = {
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,
+    "/api/v2/journal/daily-execution-coaching": _daily_coaching,
+    "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
     "/api/v2/backtesting/execution-hypotheses": _execution_hypotheses,
     "/api/v2/trade-chart": _trade_chart,
     "/api/v2/finviz-chart": _finviz_chart,
@@ -17983,6 +18001,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                                        actor=b.get("actor", "operator"))}
         except Exception as e:
             return 400, {"ok": False, "error": str(e)[:160]}
+    if method == "POST" and base_path == "/api/v2/journal/daily-execution-coaching/rebuild":
+        # Read-only analytics rebuild. DRY-RUN by default; only writes coaching tables when apply=true.
+        # No trading/strategy permissions. (Behind Tailscale + reverse-proxy auth.)
+        try:
+            import build_daily_execution_coaching as bdc
+            b = body or {}
+            rep = bdc.run(days=int(b.get("days", 30)), source=str(b.get("source", "all")), apply=bool(b.get("apply")))
+            return 200, {"ok": True, "data": rep}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
     if method == "POST" and base_path == "/api/v2/upload-csv":
         return _upload_csv(body or {})
     if method == "POST" and base_path == "/api/v2/tos-watchlists/manage":
