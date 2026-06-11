@@ -140,7 +140,8 @@ export default function JournalHub({ onDrill }: Props) {
         account: t.account, na: normalizeAcct(t.account),
         ep: t.buy_price, xp: t.sell_price, shares: t.shares ?? 0,
         pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: t.hold_days,
-        holdMin: null, exitReason: null, strat: null,
+        // honest manual-trading labels from Schwab round-trip classification (never fake strategy attribution)
+        holdMin: null, exitReason: null, strat: (t.strategy_tag || t.classification) ? `manual_${t.strategy_tag ?? t.classification}` : null,
         status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
         eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.open_date ?? null,
         r: null,   // schwab: no planned stop — proxy R computed from MAE at render time

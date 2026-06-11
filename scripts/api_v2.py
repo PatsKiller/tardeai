@@ -2698,12 +2698,19 @@ def journal():
     trades = []
     try:
         rows = _db_query(
-            """SELECT symbol, account, open_date::text, close_date::text, trade_type,
-                      shares, buy_price, sell_price, cost_basis, proceeds,
-                      pnl, pnl_pct, hold_days
-               FROM trade_closed
-               WHERE buy_price > 0 OR pnl != 0
-               ORDER BY close_date DESC, symbol
+            """SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
+                      tc.shares, tc.buy_price, tc.sell_price, tc.cost_basis, tc.proceeds,
+                      tc.pnl, tc.pnl_pct, tc.hold_days,
+                      srt.strategy_tag, srt.classification
+               FROM trade_closed tc
+               LEFT JOIN LATERAL (
+                   SELECT s.strategy_tag, s.classification FROM schwab_round_trips s
+                   WHERE s.symbol = tc.symbol AND s.account = tc.account
+                     AND s.exit_time::date = tc.close_date::date
+                   LIMIT 1
+               ) srt ON true
+               WHERE tc.buy_price > 0 OR tc.pnl != 0
+               ORDER BY tc.close_date DESC, tc.symbol
                LIMIT 500""",
             fetch="all"
         )
