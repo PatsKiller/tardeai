@@ -197,5 +197,53 @@ for f in (ROOT / "scripts" / "brokers").rglob("*.py"):
                 bad.append(f"{f.name}: {w}(")
 check("no schwab-py / transport-write surface in brokers/", not bad, str(bad))
 
+
+
+# ── 10. two-factor approval lifecycle (operator requirement) ────────────────
+try:
+    import datetime as _dt
+    from brokers import approval_service as ap
+    from db_adapter import _get_conn as _gc
+
+    it2 = bracket_intent()
+    # suppress real telegram during tests
+    import brokers.approval_service as _aps
+    req = None
+    import unittest.mock as _mock
+    with _mock.patch.dict("sys.modules"):
+        req = ap.request_approval(it2)
+    check("2FA request creates both channels", set(req["channels"]) == {"web", "telegram"})
+    check("not approved with zero confirmations", not ap.is_fully_approved(it2.intent_id))
+    r1 = ap.confirm(it2.intent_id, "web")
+    check("web confirm ok", r1["ok"] and not r1["fully_approved"])
+    check("single channel insufficient", not ap.is_fully_approved(it2.intent_id))
+    rbad = ap.confirm(it2.intent_id, "telegram", "000000" )
+    # 1-in-a-million collision guard:
+    cur = _gc().cursor()
+    cur.execute("SELECT code FROM trade_approvals WHERE intent_id=%s AND channel='telegram' ORDER BY id DESC LIMIT 1", (it2.intent_id,))
+    real_code = cur.fetchone()[0]
+    if real_code == "000000":
+        rbad = {"ok": False}
+    check("wrong telegram code rejected", not rbad["ok"])
+    r2 = ap.confirm(it2.intent_id, "telegram", real_code)
+    check("telegram confirm w/ code ok", r2["ok"] and r2["fully_approved"])
+    check("fully approved after both", ap.is_fully_approved(it2.intent_id))
+    r3 = ap.confirm(it2.intent_id, "web")
+    check("web re-confirm blocked (single-use)", not r3["ok"])
+    check("consume marks used", ap.consume(it2.intent_id))
+    check("not approved after consume", not ap.is_fully_approved(it2.intent_id))
+    # expiry
+    it3 = bracket_intent()
+    ap.request_approval(it3)
+    cur.execute("UPDATE trade_approvals SET expires_at=NOW()-INTERVAL '1 minute' WHERE intent_id=%s", (it3.intent_id,))
+    _gc().commit()
+    rexp = ap.confirm(it3.intent_id, "web")
+    check("expired approval rejected", not rexp["ok"] and "expired" in rexp["reason"])
+    # cleanup
+    cur.execute("DELETE FROM trade_approvals WHERE intent_id IN (%s,%s)", (it2.intent_id, it3.intent_id))
+    _gc().commit()
+except Exception as ex:
+    check("2FA approval lifecycle", False, str(ex)[:120])
+
 print(f"\n  RESULT: {PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

@@ -84,6 +84,11 @@ def send_reply(chat_id, reply_to_message_id, text):
         })
 
 
+def edit_message(chat_id, message_id, text):
+    """Replace a button-message's text after the action (removes the inline keyboard)."""
+    _tg_post("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text})
+
+
 def handle_callback_query(cb):
     """Main callback handler for proposal inline buttons."""
     cb_id = cb["id"]
@@ -105,6 +110,36 @@ def handle_callback_query(cb):
     parts = data.split(":")
     action = parts[0]
     now_short = datetime.now().strftime("%H:%M ET")
+
+    # ── Broker-order 2FA buttons (bkapprove:<intent_uuid>:<code>, bkreject:<intent_uuid>) ──
+    if action in ("bkapprove", "bkreject"):
+        try:
+            import sys as _sys, os as _os
+            _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+            from brokers import approval_service
+            iid = parts[1] if len(parts) > 1 else ""
+            if action == "bkapprove":
+                code = parts[2] if len(parts) > 2 else None
+                r = approval_service.confirm(iid, "telegram", code)
+                if r.get("ok"):
+                    full = r.get("fully_approved")
+                    answer_callback(cb_id, "Telegram channel approved" +
+                                    (" — FULLY APPROVED" if full else " — web channel still required"))
+                    edit_message(chat_id, message_id,
+                                 f"✅ Telegram approval confirmed by {user_name} {now_short}\n"
+                                 f"intent {iid[:8]} · " +
+                                 ("FULLY APPROVED (both channels)" if full else "waiting on web channel") +
+                                 "\n(Execution remains DISABLED this phase)")
+                else:
+                    answer_callback(cb_id, f"Denied: {r.get('reason','')}"[:180], show_alert=True)
+            else:
+                r = approval_service.reject(iid)
+                answer_callback(cb_id, "Approval rejected")
+                edit_message(chat_id, message_id,
+                             f"❌ Approval REJECTED by {user_name} {now_short}\nintent {iid[:8]}")
+        except Exception as e:
+            answer_callback(cb_id, f"error: {str(e)[:120]}", show_alert=True)
+        return
 
     # ── Proposal buttons (ptapprove:123, ptreject:123, ptinfo:123) ──
     if action in ("ptapprove", "ptapprove_half", "ptapprove_2x", "ptreject", "ptinfo"):

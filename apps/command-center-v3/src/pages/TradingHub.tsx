@@ -4,13 +4,14 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
 import ProposalsRich from '../components/ProposalsRich'
+import BrokerOrders from '../components/BrokerOrders'
 import TimeExitProposals from '../components/TimeExitProposals'
 import ATMControlPanel from '../components/ATMControlPanel'
 import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -318,6 +319,7 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Proposals' && <ProposalsRich />}
+      {tab === 'Broker Orders' && <BrokerOrders />}
 
       {tab === 'Execution' && execQual && (() => {
         // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──
