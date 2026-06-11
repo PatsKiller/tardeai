@@ -59,7 +59,10 @@ def _bars_for(symbol, ent, ext, review_min):
         return bars or [], (src or "none"), None, True
     so = oc._sess(ent.date(), 9, 30)                                # SAME-DAY: 1-min intraday
     start = min(so, ent - dt.timedelta(minutes=15)).isoformat()
-    end = (ext + dt.timedelta(minutes=review_min + 5)).isoformat()
+    # extend to session close so the post-spike FADE is visible (runner_type), without changing the bounded
+    # missed-runner window (cutoff stays xi+review_min in compute)
+    sess_close = oc._sess(ext.date(), 16, 0)
+    end = max(ext + dt.timedelta(minutes=review_min + 5), sess_close + dt.timedelta(minutes=5)).isoformat()
     bars, err = oc._fetch(symbol, start, end, "1Min")
     src = "alpaca"
     if not bars:
@@ -144,6 +147,30 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
     out["mfe_after_exit_pct"] = round((p_hi - exit_price) / exit_price * 100, 2) if exit_price else None
     out["missed_profit"] = round(max(0.0, p_hi - exit_price) * (qty or 0), 2)
     out["missed_profit_pct"] = out["mfe_after_exit_pct"]
+
+    # ── runner classification: did the post-exit spike SUSTAIN (trend) or FADE back (parabolic pump)? ──
+    # From the post-exit high forward to the end of the fetched window (extended to session close intraday),
+    # how much of the spike was given back? Trend = holds; parabolic pump = spikes then collapses (a trap).
+    spike = p_hi - exit_price
+    after_hi = bars[p_hi_i:]
+    trough_after = min((b["l"] for b in after_hi), default=p_hi)
+    gave_back = round((p_hi - trough_after) / spike, 3) if spike > 0 else 0.0
+    out["post_exit_gave_back_ratio"] = gave_back
+    mpct = out["mfe_after_exit_pct"] or 0
+    if spike <= 0 or mpct < 15:
+        out["runner_type"] = "none"
+    elif is_daily:
+        # SWING: the post-exit high was reached over days. A retrace here = the trend topped (scale-out
+        # lesson), NOT an intraday pump — holding still captured real upside on the way up.
+        out["runner_type"] = "sustained_trend" if gave_back < 0.5 else "trend_top"
+    else:
+        # SCALP/intraday: a big same-session spike that collapses is a parabolic pump-and-dump (a trap).
+        if mpct >= 40 and gave_back >= 0.6:
+            out["runner_type"] = "parabolic_pump"
+        elif gave_back < 0.4:
+            out["runner_type"] = "sustained_trend"
+        else:
+            out["runner_type"] = "faded"
 
     # ── deterministic flags + grades (OUTCOME separate from EXECUTION) ──
     realized = realized_pnl if realized_pnl is not None else captured * (qty or 0)
@@ -256,7 +283,8 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                 "execution_grade", "outcome_grade", "discipline_grade", "missed_opportunity_grade", "mfe_after_entry",
                 "mae_after_entry", "mfe_after_exit", "mfe_after_exit_pct", "post_exit_high", "post_exit_high_time",
                 "capture_ratio", "available_profit", "captured_profit", "missed_profit", "missed_profit_pct",
-                "premature_exit_flag", "early_entry_flag", "late_entry_flag", "no_volume_entry_flag", "computed_summary")}
+                "premature_exit_flag", "early_entry_flag", "late_entry_flag", "no_volume_entry_flag", "computed_summary",
+                "runner_type", "post_exit_gave_back_ratio")}
             rec = {**_defaults, **rec}
             cur.execute("""INSERT INTO trade_execution_quality
                 (trade_key,source,broker,account,symbol,strategy_id,entry_time,exit_time,entry_price,exit_price,qty,
@@ -266,7 +294,7 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                  discipline_grade,missed_opportunity_grade,mfe_after_entry,mae_after_entry,mfe_after_exit,
                  mfe_after_exit_pct,post_exit_high,post_exit_high_time,capture_ratio,available_profit,captured_profit,
                  missed_profit,missed_profit_pct,premature_exit_flag,early_entry_flag,late_entry_flag,
-                 no_volume_entry_flag,strategy_rule_violations,computed_summary,updated_at)
+                 no_volume_entry_flag,strategy_rule_violations,computed_summary,runner_type,post_exit_gave_back_ratio,updated_at)
                 VALUES (%(trade_key)s,%(source)s,%(broker)s,%(account)s,%(symbol)s,%(strategy)s,%(ent)s,%(ext)s,
                  %(entry_price)s,%(exit_price)s,%(qty)s,%(realized_pnl)s,NULL,%(bar_interval)s,%(bars_source)s,%(bars_count)s,
                  %(path_status)s,%(entry_volume_confirmed)s,%(entry_volume_ratio)s,%(entry_relative_volume_window)s,
@@ -276,9 +304,11 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                  %(mfe_after_exit)s,%(mfe_after_exit_pct)s,%(post_exit_high)s,%(post_exit_high_time)s,
                  %(capture_ratio)s,%(available_profit)s,%(captured_profit)s,%(missed_profit)s,%(missed_profit_pct)s,
                  %(premature_exit_flag)s,%(early_entry_flag)s,%(late_entry_flag)s,%(no_volume_entry_flag)s,
-                 %(violjson)s,%(computed_summary)s,NOW())
+                 %(violjson)s,%(computed_summary)s,%(runner_type)s,%(post_exit_gave_back_ratio)s,NOW())
                 ON CONFLICT (trade_key, source) DO UPDATE SET execution_grade=EXCLUDED.execution_grade,
-                 capture_ratio=EXCLUDED.capture_ratio, computed_summary=EXCLUDED.computed_summary, updated_at=NOW()""",
+                 capture_ratio=EXCLUDED.capture_ratio, computed_summary=EXCLUDED.computed_summary,
+                 runner_type=EXCLUDED.runner_type, post_exit_gave_back_ratio=EXCLUDED.post_exit_gave_back_ratio,
+                 missed_opportunity_grade=EXCLUDED.missed_opportunity_grade, updated_at=NOW()""",
                 {**rec, "violjson": json.dumps(m.get("strategy_rule_violations", []))})
             conn.commit()
     print(json.dumps(report, indent=2, default=str))

@@ -78,7 +78,7 @@ export default function SchwabJournal() {
             {t.entry_grade && <span style={{ flex: '0 0 80px', fontSize: 9 }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b></span>}
             {eq ? (
               <span style={{ flex: '0 0 132px', fontSize: 8, display: 'flex', alignItems: 'center', gap: 3 }}
-                title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade}\nentry ${eq.entry_timing_grade}, exit ${eq.exit_timing_grade}, capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}>
+                title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade}\nentry ${eq.entry_timing_grade}, exit ${eq.exit_timing_grade}, capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%${eq.runner_type === 'parabolic_pump' ? '\n⚡ post-exit move was a PARABOLIC PUMP — selling was correct, do not chase' : eq.runner_type === 'sustained_trend' || eq.runner_type === 'trend_top' ? '\n↗ post-exit move was a REAL runner — scale-out opportunity' : ''}\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}>
                 <span style={{ fontWeight: 700, padding: '0 4px', borderRadius: 3, background: `${EXEC[eq.execution_grade] || 'var(--text3)'}22`, color: EXEC[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade}</span>
                 <span style={{ color: 'var(--text3)' }}>cap {Math.round((eq.capture_ratio ?? 0) * 100)}%</span>
                 {eq.missed_opportunity_grade === 'severe' && <span title="severe missed runner" style={{ color: '#ef4444' }}>⚠</span>}

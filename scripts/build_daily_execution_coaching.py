@@ -85,15 +85,26 @@ def run(days=30, source="all", apply=False):
                       "lesson": f"{len(green_bad)} WINNING trades graded poor/weak execution — profitable but you left money on the table (avg capture {int((avg(green_bad,'capture_ratio') or 0)*100)}% of the in-hold move).",
                       "operator_action": "These won despite execution — the leak is captureable upside, not direction. Replay the highest-P&L ones and study where you exited vs the in-hold high."})
 
-    # 3) SEVERE MISSED RUNNERS — filter implausible % (microcap split/data artifacts, e.g. 900%+ are not real)
+    # 3) SEVERE MISSED RUNNERS — split REAL runners (hold/scale lesson) from PARABOLIC PUMPS (selling was
+    #    correct; the % is a trap). Filter implausible % (microcap split/data artifacts >150%).
     sev = [r for r in rows if r.get("missed_opportunity_grade") == "severe"
            and 25 <= (_f(r.get("mfe_after_exit_pct")) or 0) <= 150]
-    for r in sorted(sev, key=lambda r: -(_f(r.get("mfe_after_exit_pct")) or 0))[:5]:
+    real_runners = [r for r in sev if r.get("runner_type") in ("sustained_trend", "trend_top")]
+    pumps = [r for r in sev if r.get("runner_type") == "parabolic_pump"]
+    for r in sorted(real_runners, key=lambda r: -(_f(r.get("mfe_after_exit_pct")) or 0))[:5]:
+        kind = r.get("runner_type")
         items.append({"item_type": "missed_runner", "symbol": r["symbol"], "strategy_family": None, "source": r["source"],
                       "trade_keys": [r["trade_key"]], "sample_size": 1, "avg_capture_ratio": _f(r.get("capture_ratio")),
                       "avg_missed_pct": _f(r.get("mfe_after_exit_pct")), "severity": "high",
-                      "lesson": f"{r['symbol']}: severe missed runner — price moved another {r.get('mfe_after_exit_pct')}% after you exited.",
-                      "operator_action": "Replay: was there a hold signal (above VWAP / MACD still rising) you ignored at exit?"})
+                      "lesson": f"{r['symbol']}: REAL missed runner ({kind}) — price ran another {r.get('mfe_after_exit_pct')}% and HELD; you could have captured it.",
+                      "operator_action": "Genuine hold/scale-out opportunity — replay: was price above VWAP / MACD still rising at your exit? Scale out instead of full exit on a live trend."})
+    if pumps:   # one aggregated item — the OPPOSITE lesson: do not chase these
+        syms = sorted({r["symbol"] for r in pumps})
+        items.append({"item_type": "missed_runner", "symbol": None, "strategy_family": None, "source": "all",
+                      "trade_keys": [r["trade_key"] for r in pumps[:25]], "sample_size": len(pumps),
+                      "avg_capture_ratio": None, "avg_missed_pct": avg(pumps, "mfe_after_exit_pct"), "severity": "low",
+                      "lesson": f"{len(pumps)} 'missed runners' were intraday PARABOLIC PUMPS ({', '.join(syms[:6])}) — they spiked then collapsed same-session. Selling was CORRECT.",
+                      "operator_action": "Do NOT treat these as hold-longer signals — they round-trip to nothing. The fix is the ENTRY (stop scalping vertical pump-and-dumps), not the exit."})
 
     # 4) SYMBOL REVIEW — symbols traded >=2x with majority poor
     by_sym = collections.defaultdict(list)
