@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - Trade Log redesigned into actionable cards + Execution Coach made drillable
+
+Trade Log (Journal->Trades): replaced the dense 9-column row list with larger cards (WIN/LOSS/SCRATCH +
+account + strategy + grade + execution pills, big P&L + R, Grok lesson), Replay + Details action buttons,
+symbol search, 7 quick filters (Winners/Losers/Open/A-grade/Poor execution/Missed runner), and pagination
+(12/page). Execution Coach panel: was a vague dead-end display; now every ranked coaching item (top 6) is
+clickable to drill into its evidence (full action + affected trade keys + metrics), hypotheses get
+plain-English labels (what each rule change tests) and drill to the backtest detail with a clear unsupported/
+promising verdict. Read-only, validator 12/12.
+
+
 ## 2026-06-11 - Watchlist dedup: one row per symbol (NVDA + 118 others)
 
 The watchlist is seeded from multiple discovery sources (operator personal_watchlist, ai_discovered,

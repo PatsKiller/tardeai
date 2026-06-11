@@ -67,6 +67,11 @@ function getTimeRangeCutoff(range: string): string {
 export default function JournalHub({ onDrill }: Props) {
   const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
+  // Trade Log: search + quick filter + pagination
+  const [logSearch, setLogSearch] = useState('')
+  const [logQuick, setLogQuick] = useState('all')
+  const [logPage, setLogPage] = useState(0)
+  const LOG_PAGE_SIZE = 12
   const [acctFilter, setAcctFilter] = useState('')
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('6M')
   const { data: journal } = useApi<any>('/api/v2/automated-trade-journal', 60_000)
@@ -132,6 +137,25 @@ export default function JournalHub({ onDrill }: Props) {
 
   const closed = filtered.filter(t => t.status === 'closed')
   const open = filtered.filter(t => t.status === 'open')
+
+  // Trade Log: search + quick filter + pagination (computed from the already tab-filtered set)
+  const logFiltered = useMemo(() => {
+    let v = filtered
+    if (logSearch) v = v.filter(t => t.symbol?.toLowerCase().includes(logSearch.toLowerCase()))
+    const eqOf = (t: any) => t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
+    switch (logQuick) {
+      case 'winners': v = v.filter(t => t.pnl > 0); break
+      case 'losers': v = v.filter(t => t.pnl < 0); break
+      case 'open': v = v.filter(t => t.status === 'open'); break
+      case 'poor_exec': v = v.filter(t => eqOf(t)?.execution_grade === 'poor'); break
+      case 'top_grade': v = v.filter(t => t.eg === 'A' || t.xg === 'A'); break
+      case 'missed_runner': v = v.filter(t => eqOf(t)?.missed_opportunity_grade === 'severe'); break
+    }
+    return v
+  }, [filtered, logSearch, logQuick, eqMap])
+  const logPages = Math.max(1, Math.ceil(logFiltered.length / LOG_PAGE_SIZE))
+  const logPageSafe = Math.min(logPage, logPages - 1)
+  const logPaged = logFiltered.slice(logPageSafe * LOG_PAGE_SIZE, (logPageSafe + 1) * LOG_PAGE_SIZE)
 
   // ── Account chips ──
   const accountCounts = useMemo(() => {
@@ -437,51 +461,78 @@ export default function JournalHub({ onDrill }: Props) {
           </div>
 
           {/* Daily Execution Coaching Queue (advisory) */}
-          <ExecutionCoachPanel onReplay={(sym) => { const t = closed.find(x => x.symbol === sym); if (t) setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eqMap[tk(t.symbol, t.entryTimeFull ?? '')] }) }} />
+          <ExecutionCoachPanel onDrill={onDrill} onReplay={(sym) => { const t = closed.find(x => x.symbol === sym); if (t) setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eqMap[tk(t.symbol, t.entryTimeFull ?? '')] }) }} />
 
-          {/* Trade Log */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Trade Log ({filtered.length})</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span title="Account color (dot matches the account legend).">●</span>
-              <span title="Ticker symbol and share count. Click any row for full trade detail.">Symbol ⓘ</span>
-              <span title="Brokerage account the trade was booked in.">Account</span>
-              <span title="Entry date.">Entry</span>
-              <span title="Exit date (— if still open).">Exit</span>
-              <span title="Realized profit/loss. $0.00 = scratch/no-fill or open.">P&L</span>
-              <span title="Entry grade / exit grade, from backtest-replay grading (A best → F). '/' separates entry and exit quality.">Grade ⓘ</span>
-              <span title="Strategy that generated the trade.">Strategy</span>
-              <span title="Hold duration (m=minutes, h=hours).">Hold</span>
+          {/* Trade Log — actionable cards, filterable + paginated */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Trade Log ({logFiltered.length})</div>
+              <input value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(0) }} placeholder="search symbol…"
+                style={{ fontSize: 11, padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)', width: 140 }} />
             </div>
-            {filtered.map((t, i) => (
-              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
-                style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${acctColor(t.na)}`, cursor: 'pointer', fontSize: 10, background: `${acctColor(t.na)}06` }}>
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(t.na), marginTop: 4 }} />
-                <div>
-                  <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
-                  <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.shares}sh</span>
-                  {(() => { const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
-                    return <span title="Replay chart with entry/exit" onClick={e => { e.stopPropagation(); setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eq }) }}
-                      style={{ fontSize: 9, marginLeft: 5, cursor: 'pointer', opacity: 0.7 }}>📈</span> })()}
-                  {(() => { const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
-                    return eq ? <span title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade} · capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}
-                      style={{ fontSize: 7, fontWeight: 700, marginLeft: 5, padding: '0 3px', borderRadius: 3, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} {Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span> : null })()}
-                </div>
-                <span style={{ color: acctColor(t.na), fontSize: 9 }}>{ACCT_LABEL[t.na] ?? t.na}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.exitDate ?? (t.status==='open'?'—':'—')}</span>
-                <span style={{ color: t.status==='open'?'#60a5fa':t.pnl>=0?'#22c55e':'#ef4444', fontWeight: 600 }}>{t.status==='open'?'OPEN':fmt$(t.pnl,2)}{(() => { const { r, proxy } = getR(t); return r != null ? <span style={{ fontSize: 8, marginLeft: 4, color: r >= 0 ? '#86efac' : '#fca5a5' }} title={proxy ? 'Proxy R = reward ÷ max adverse excursion (Schwab has no planned stop)' : 'R-multiple from planned stop'}>{proxy ? '~' : ''}{r.toFixed(1)}R</span> : null })()}</span>
-                <span style={{ fontSize: 9, fontFamily: 'monospace', display: 'flex', gap: 2, alignItems: 'center' }}>
-                  {(t.eg || t.xg)
-                    ? <><span title="Entry grade" style={{ color: gradeColor(t.eg), fontWeight: 700 }}>{t.eg ?? '·'}</span>
-                        <span style={{ color: 'var(--text3)' }}>/</span>
-                        <span title="Exit grade" style={{ color: gradeColor(t.xg), fontWeight: 700 }}>{t.xg ?? '·'}</span></>
-                    : <span style={{ color: 'var(--text3)' }}>—</span>}
-                </span>
-                <span style={{ color: 'var(--text2)', fontSize: 9 }}>{t.strat ?? '—'}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 8 }}>{t.holdMin!=null?(t.holdMin<60?`${Math.round(t.holdMin)}m`:`${Math.round(t.holdMin/60)}h`):t.holdDays!=null?`${t.holdDays}d`:'—'}</span>
+            {/* quick filters */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              {[['all', 'All'], ['winners', 'Winners'], ['losers', 'Losers'], ['open', 'Open'], ['top_grade', 'A-grade'], ['poor_exec', 'Poor execution'], ['missed_runner', 'Missed runner']].map(([k, lbl]) => (
+                <button key={k} onClick={() => { setLogQuick(k); setLogPage(0) }}
+                  style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)', background: logQuick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: logQuick === k ? '#60a5fa' : 'var(--text3)', fontWeight: logQuick === k ? 700 : 400 }}>{lbl}</button>
+              ))}
+            </div>
+            {/* cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 10 }}>
+              {logPaged.map((t, i) => {
+                const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
+                const { r, proxy } = getR(t)
+                const won = t.status !== 'open' && t.pnl > 0, lost = t.status !== 'open' && t.pnl < 0
+                const hold = t.holdMin != null ? (t.holdMin < 60 ? `${Math.round(t.holdMin)}m` : t.holdMin < 1440 ? `${Math.round(t.holdMin / 60)}h` : `${Math.round(t.holdMin / 1440)}d`) : t.holdDays != null ? `${t.holdDays}d` : '—'
+                return (
+                  <div key={`${t.id}-${i}`} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `4px solid ${acctColor(t.na)}`, borderRadius: 9, padding: 11 }}>
+                    {/* header: symbol + pills */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                      <div>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
+                        <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{t.shares} sh · {hold}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: `${acctColor(t.na)}22`, color: acctColor(t.na) }}>{ACCT_LABEL[t.na] ?? t.na}</span>
+                        {t.status === 'open'
+                          ? <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(96,165,250,.18)', color: '#60a5fa' }}>OPEN</span>
+                          : <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: won ? 'rgba(34,197,94,.18)' : lost ? 'rgba(239,68,68,.18)' : 'var(--bg1)', color: won ? '#22c55e' : lost ? '#ef4444' : 'var(--text3)' }}>{won ? 'WIN' : lost ? 'LOSS' : 'SCRATCH'}</span>}
+                      </div>
+                    </div>
+                    {/* P&L + R */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginTop: 7 }}>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: t.status === 'open' ? '#60a5fa' : t.pnl >= 0 ? '#22c55e' : '#ef4444' }}>{t.status === 'open' ? 'OPEN' : fmt$(t.pnl, 0)}</span>
+                      {r != null && <span style={{ fontSize: 12, fontWeight: 700, color: r >= 0 ? '#86efac' : '#fca5a5' }} title={proxy ? 'Proxy R (reward ÷ MAE)' : 'R-multiple'}>{proxy ? '~' : ''}{r.toFixed(1)}R</span>}
+                      <span style={{ fontSize: 9, color: 'var(--text3)' }}>{t.entryDate ?? '—'} → {t.exitDate ?? '—'}</span>
+                    </div>
+                    {/* pills: strategy, grades, execution */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                      <span style={{ fontSize: 8, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text2)' }}>{t.strat ?? 'unclassified'}</span>
+                      {(t.eg || t.xg) && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)' }}><span style={{ color: gradeColor(t.eg) }}>{t.eg ?? '·'}</span><span style={{ color: 'var(--text3)' }}>/</span><span style={{ color: gradeColor(t.xg) }}>{t.xg ?? '·'}</span> grade</span>}
+                      {eq && <span title={eq.grok_what_to_do_next_time || eq.computed_summary || ''} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} cap{Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span>}
+                    </div>
+                    {/* grok lesson */}
+                    {eq?.grok_what_to_do_next_time && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{eq.grok_what_to_do_next_time}</div>}
+                    {/* action buttons */}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
+                      <button onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eq })}
+                        style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
+                      <button onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na] ?? t.account} · ${t.strat ?? t.source}`, endpoint: t.source === 'schwab' ? '/api/v2/journal' : '/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
+                        style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {logFiltered.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', padding: 20 }}>No trades match this filter.</div>}
+            {/* pagination */}
+            {logPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 12 }}>
+                <button disabled={logPageSafe === 0} onClick={() => setLogPage(logPageSafe - 1)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: logPageSafe === 0 ? 'var(--text3)' : 'var(--text1)', cursor: logPageSafe === 0 ? 'default' : 'pointer' }}>‹ Prev</button>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>Page {logPageSafe + 1} of {logPages} · {logFiltered.length} trades</span>
+                <button disabled={logPageSafe >= logPages - 1} onClick={() => setLogPage(logPageSafe + 1)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: logPageSafe >= logPages - 1 ? 'var(--text3)' : 'var(--text1)', cursor: logPageSafe >= logPages - 1 ? 'default' : 'pointer' }}>Next ›</button>
               </div>
-            ))}
+            )}
           </div>
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>
             Sources: /api/v2/automated-trade-journal (paper) + /api/v2/journal (Schwab). Grade = entry/exit grade from backtest replay grading (trade_backtest_results), where available. /journal returns trades from 2024-11 onward; older Schwab history exists in DB (153 closed) but is not returned by this endpoint.
