@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 — NUVL duplicate resolved + paper_trades dedup guard
+
+Resolved the journal integrity warning: NUVL had two open paper_trades rows from a race/retry double-insert
+(0.67s apart). Verified against Alpaca (source of truth): real position 16sh @ $123.43375 == id=57 (Alpaca
+order 16d6bb67); id=56 (no order id, $123.53) was the phantom -> marked cancelled (reversible, backed up to
+backups/nuvl_dedup_20260611.csv, not deleted). Built a DB-level BEFORE INSERT dedup trigger
+(paper_trades_dedup_guard) so the race cannot recur on any insert path: suppresses a second open row with the
+same symbol+account+shares within 15s (backfilling the survivor with the incoming broker_order_id) and
+suppresses any re-insert of an existing broker_order_id. Tested: race-suppressed+backfilled, legit positions
+unaffected, order-id idempotent. No order-pipeline code touched; validator 12/12.
+
 ## 2026-06-11 — Journal UI visual audit (Playwright, all 6 tabs)
 
 scripts/crawl_journal_ui.py — read-only Playwright crawl of Journal -> Trades/Analytics/Lessons/Protection/
