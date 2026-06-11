@@ -445,6 +445,27 @@ _CLASS_ALIAS = {"day_scalp": "momentum_scalp", "swing_trade": "swing_breakout",
 _SCAR_CACHE: dict = {"at": 0.0, "map": {}}
 
 
+_SRCW_CACHE: dict = {"at": 0.0, "map": {}}
+
+
+def _source_weight(screener_name: str) -> float:
+    """Arbitration layer: bounded per-list weight from source_weights (computed daily from attributed
+    candidates->GO->proposal->trade flow). Neutral 1.0 until a list earns >=5 closed trades."""
+    if not screener_name:
+        return 1.0
+    import time as _t
+    if _t.time() - _SRCW_CACHE["at"] > 600:
+        try:
+            from db_adapter import _get_conn
+            cur = _get_conn().cursor()
+            cur.execute("SELECT source_key, weight FROM source_weights WHERE window_days=30")
+            _SRCW_CACHE["map"] = {k: float(w) for k, w in cur.fetchall()}
+        except Exception:
+            pass
+        _SRCW_CACHE["at"] = _t.time()
+    return _SRCW_CACHE["map"].get(screener_name, 1.0)
+
+
 def _strategy_outcome_scar(strategy_class: str) -> float:
     if not strategy_class:
         return 1.0
@@ -534,6 +555,10 @@ def score_ticker(
     if outcome_scar != 1.0:
         total = int(total * outcome_scar)
     _outcome_scar_applied = outcome_scar
+    # arbitration: per-list source weight (bounded 0.9..1.1, evidence-gated)
+    src_w = _source_weight(str(ticker_row.get("screener_name") or ""))
+    if src_w != 1.0:
+        total = int(total * src_w)
 
     # ── 7th pillar: technical confluence (max 10 pts) ─────────────────────
     # Non-fatal — Trade AI pipeline must never fail due to indicator engine issues

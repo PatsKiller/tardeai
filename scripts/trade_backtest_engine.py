@@ -240,7 +240,9 @@ def backtest_trade(trade, df_cache):
             return result
 
         # Entry metrics
-        df_entry = df[df.index <= open_date]
+        # PIT fix (2026-06-11): strictly BEFORE the entry date — the entry day's own (incomplete-at-entry) bar
+        # contaminated entry grades (look-ahead). Grades regraded after this change.
+        df_entry = df[df.index < open_date]
         if len(df_entry) < 20:
             result['error_msg'] = f'Only {len(df_entry)} rows before entry'
             return result

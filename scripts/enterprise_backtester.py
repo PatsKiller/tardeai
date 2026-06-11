@@ -238,6 +238,12 @@ def replay_trade(symbol: str, entry_price: float, entry_date: str,
         exit_reason = "timeout"
 
     pnl = exit_price - entry_price
+    # Cost model (2026-06-11): round-trip slippage+spread, env-tunable (BACKTEST_COST_BPS, default 30bps).
+    # Replays previously assumed perfect fills -> optimistically biased ~0.2-0.5%/RT.
+    import os as _os
+    _cost_bps = float(_os.getenv("BACKTEST_COST_BPS", "30"))
+    _cost = entry_price * (_cost_bps / 10000.0)
+    pnl -= _cost
     pnl_pct = (pnl / entry_price * 100) if entry_price > 0 else 0
     hold_days = len([d for d in all_dates if entry_date < d <= (exit_date or entry_date)])
 

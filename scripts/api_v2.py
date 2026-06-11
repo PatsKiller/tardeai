@@ -24448,6 +24448,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                              ("champion_challenger_results","comparisons")]:
                 r = _db_query(f"SELECT COUNT(*) as c FROM {tbl}", fetch="one")
                 status[f"{lbl}_total"] = r["c"] if r else 0
+            # Honest real-vs-synthetic split (2026-06-11): 96% of backtest rows are champion/simulation
+            # seeds; blended totals misread as real coverage. Surface the split explicitly.
+            try:
+                _split = _db_query("""SELECT COALESCE(r.run_type,'?') rt, COUNT(t.simulated_trade_id) c
+                                      FROM strategy_backtest_trades t
+                                      LEFT JOIN strategy_backtest_runs r ON r.run_id = t.run_id
+                                      GROUP BY 1""") or []
+                status["rows_by_run_type"] = {r["rt"]: r["c"] for r in _split}
+                status["real_replay_rows"] = sum(c for k, c in status["rows_by_run_type"].items()
+                                                 if k and not k.startswith("champion"))
+                status["synthetic_rows"] = status.get("rows_by_run_type", {}).get("champion", 0)
+            except Exception:
+                pass
             # Filtered counts — use JOIN for run_type/broker/account
             _tw, _tp = [], []
             if _bf_strategy:
