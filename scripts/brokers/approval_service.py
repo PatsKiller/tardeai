@@ -42,8 +42,9 @@ def request_approval(intent) -> dict:
 
 
 def _approval_chat() -> str | None:
-    """Approval requests route to a DEDICATED chat (the operator's second account):
-    env TELEGRAM_APPROVAL_CHAT_ID, else the LAST configured alert chat (secondary). Never hardcoded."""
+    """Approval requests route to the PROPOSALS chat (operator clarification 2026-06-11: same account that
+    receives proposal approvals/stop warnings): env TELEGRAM_APPROVAL_CHAT_ID overrides, else the FIRST
+    configured chat (TRADEAI_PROPOSAL_ALERT_CHAT_ID ordering in tg_chat_ids). Never hardcoded."""
     v = os.getenv("TELEGRAM_APPROVAL_CHAT_ID", "").strip()
     if v:
         return v
@@ -53,7 +54,7 @@ def _approval_chat() -> str | None:
         _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
         from tg_chat_ids import chat_ids
         ids = chat_ids()
-        return ids[-1] if ids else None
+        return ids[0] if ids else None
     except Exception:
         return None
 
