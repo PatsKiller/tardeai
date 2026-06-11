@@ -310,13 +310,20 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
                        WHERE symbol=%s AND published_at BETWEEN %s AND %s
                        ORDER BY published_at LIMIT 12""",
                     (symbol, (ent - _pad), (ext + _pad)))
+        _first_bt, _last_bt = out_bars[0]["time"], out_bars[-1]["time"]
         for _pa, _ti, _so in _cu.fetchall():
             if _pa is None:
                 continue
-            _bt = _bar_time_for(_pa if _pa.tzinfo else _pa.replace(tzinfo=dt.timezone.utc))
-            if _bt is not None:
-                news_events.append({"time": _bt, "title": (_ti or "")[:110], "source": _so,
-                                    "at_et": (_pa.astimezone(_ET).strftime("%m-%d %H:%M") if _ET else str(_pa)[:16])})
+            _pdt = _pa if _pa.tzinfo else _pa.replace(tzinfo=dt.timezone.utc)
+            _bt = _bar_time_for(_pdt)
+            _clamped = None
+            if _bt is None:
+                # clamp out-of-window catalysts to the chart edge instead of dropping them — an 08:00
+                # offering pricing IS the story of an 11:00 trade (found via ATOS 2026-06-11)
+                _clamped = "pre" if _pdt <= ent else "post"
+                _bt = _first_bt if _clamped == "pre" else _last_bt
+            news_events.append({"time": _bt, "title": (_ti or "")[:110], "source": _so, "clamped": _clamped,
+                                "at_et": (_pa.astimezone(_ET).strftime("%m-%d %H:%M") if _ET else str(_pa)[:16])})
         _c.close()
     except Exception:
         pass

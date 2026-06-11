@@ -161,6 +161,17 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
           <div ref={macdRef} style={{ width: '100%', display: show.macd ? 'block' : 'none' }} />
           {show.rsi && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>RSI</div>}
           <div ref={rsiRef} style={{ width: '100%', display: show.rsi ? 'block' : 'none' }} />
+        {(data?.news_events?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text3)' }}>
+            <b style={{ color: '#22d3ee' }}>📰 News during trade window:</b>
+            {data.news_events.slice(0, 6).map((ne: any, i: number) => (
+              <div key={i} style={{ marginTop: 2 }}>
+                <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{ne.at_et}</span>{ne.clamped && <span style={{ color: '#f59e0b' }}> ({ne.clamped}-window)</span>} · {ne.title}
+                {ne.source && <span style={{ opacity: .6 }}> ({String(ne.source).slice(0, 24)})</span>}
+              </div>
+            ))}
+          </div>
+        )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
             <button onClick={() => setPlaying(p => !p)} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: playing ? '#ef4444' : '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{playing ? '❚❚ pause' : '▶ replay'}</button>
             <div style={{ display: 'flex', gap: 2 }} title="Replay speed">
