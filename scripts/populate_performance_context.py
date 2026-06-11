@@ -114,12 +114,12 @@ def fetch_governance_stats(conn) -> dict:
                 SELECT
                     strategy_id,
                     COUNT(*) FILTER (WHERE status = 'closed') AS closed_count,
-                    COUNT(*) FILTER (WHERE status = 'closed' AND realized_r > 0) AS wins,
-                    AVG(realized_r) FILTER (WHERE status = 'closed') AS avg_r,
-                    SUM(realized_pnl) FILTER (WHERE realized_pnl > 0) AS gross_profit,
-                    SUM(realized_pnl) FILTER (WHERE realized_pnl < 0) AS gross_loss,
-                    MAX(realized_r) FILTER (WHERE status = 'closed') AS best_r,
-                    MIN(realized_r) FILTER (WHERE status = 'closed') AS worst_r,
+                    COUNT(*) FILTER (WHERE status = 'closed' AND r_multiple > 0) AS wins,
+                    AVG(r_multiple) FILTER (WHERE status = 'closed') AS avg_r,
+                    SUM(pnl) FILTER (WHERE pnl > 0) AS gross_profit,
+                    SUM(pnl) FILTER (WHERE pnl < 0) AS gross_loss,
+                    MAX(r_multiple) FILTER (WHERE status = 'closed') AS best_r,
+                    MIN(r_multiple) FILTER (WHERE status = 'closed') AS worst_r,
                     MAX(updated_at) AS last_trade_at
                 FROM paper_trades
                 WHERE status = 'closed'
@@ -139,7 +139,7 @@ def fetch_governance_stats(conn) -> dict:
                     "avg_r_realized": float(row["avg_r"]) if row["avg_r"] is not None else None,
                     "profit_factor": pf,
                     "max_drawdown_pct": None,  # would need separate calc
-                    "expectancy_per_trade": (wr * (row["avg_r"] or 0)) if wr and row["avg_r"] else None,
+                    "expectancy_per_trade": (wr * float(row["avg_r"] or 0)) if wr and row["avg_r"] else None,
                     "best_trade_r": float(row["best_r"]) if row["best_r"] is not None else None,
                     "worst_trade_r": float(row["worst_r"]) if row["worst_r"] is not None else None,
                     "current_streak": None,
