@@ -362,8 +362,12 @@ def _score_catalyst_keywords(catalyst_tier: str, catalyst_count: int,
         base = 15 if catalyst_count >= 2 else 12
         return min(15, int(base * recency_mult)), False
     if catalyst_tier == "medium_impact":
-        base = 8
-        return min(15, int(base * recency_mult)), True   # ambiguous → LLM review
+        # De-bias (2026-06-11): keyword topic tiers favored tech/biotech narrative density (the GO tech-tilt
+        # experiment: Tech GOed 1.3x Industrials on WEAKER inputs). For the ambiguous middle tier, weight by
+        # the market's ACTUAL reaction (gap+change alignment with the news) instead of the topic.
+        reaction = abs(float((top_catalyst or {}).get("_price_reaction") or 0))
+        base = 6 + min(4, reaction / 5.0)   # 6..10 by |gap+change| up to 20%
+        return min(15, int(base * recency_mult)), True   # still ambiguous → LLM review
     if catalyst_tier == "low_impact":
         base = 4
         return min(15, int(base * recency_mult)), False
@@ -416,6 +420,24 @@ def _score_price_range(price: float) -> int:
     if 0.5 <= price < 1:    return 1
     return 0
 
+_VIX_CACHE = {"at": 0.0, "v": None}
+
+
+def _vix_now():
+    import time as _t
+    if _t.time() - _VIX_CACHE["at"] > 900:
+        try:
+            import urllib.request, json as _j, os as _os
+            base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
+            with urllib.request.urlopen(f"{base}/api/v2/trade-ai", timeout=5) as r:
+                d = _j.load(r); d = d.get("data", d)
+                _VIX_CACHE["v"] = float(d.get("vix")) if d.get("vix") is not None else None
+        except Exception:
+            pass
+        _VIX_CACHE["at"] = _t.time()
+    return _VIX_CACHE["v"]
+
+
 def _grade(score: int, weights: Dict[str, Any]) -> tuple[str, str]:
     bands = weights.get("grade_bands", {})
     rules = weights.get("decision_rules", {})
@@ -425,9 +447,19 @@ def _grade(score: int, weights: Dict[str, Any]) -> tuple[str, str]:
     else:
         grade_name = "D"
     decision = "AVOID"
-    if score >= rules.get("GO", {}).get("min_score", 40):
+    go_min = rules.get("GO", {}).get("min_score", 40)
+    wait_min = rules.get("WAIT", {}).get("min_score", 30)
+    # Regime-aware thresholds (2026-06-11): in fear regimes momentum follow-through degrades — demand more.
+    vix = _vix_now()
+    if vix is not None and vix > 25:
+        go_min += 5
+        wait_min += 3
+    elif vix is not None and vix > 32:
+        go_min += 10
+        wait_min += 5
+    if score >= go_min:
         decision = "GO"
-    elif score >= rules.get("WAIT", {}).get("min_score", 30):
+    elif score >= wait_min:
         decision = "WAIT"
     return grade_name, decision
 
@@ -578,6 +610,11 @@ def score_ticker(
     total = total + confluence_score
     total = max(0, min(65, total))   # new max is 65 (was 55)
 
+    if top_catalyst is not None:
+        try:
+            top_catalyst["_price_reaction"] = abs(gap_pct) + abs(change_pct)
+        except Exception:
+            pass
     pillar_breakdown = {
         "catalyst":          cat_score,
         "relative_volume":   rvol_score,

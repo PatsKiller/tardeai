@@ -106,15 +106,17 @@ def _inject_sector_scores(tickers, sectors):
         "Consumer Stapl.": "XLP", "Utilities": "XLU", "Real Estate": "XLRE",
         "Materials": "XLB", "Comm. Services": "XLC",
     }
+    # Smooth percentile pillar (2026-06-11): the old 5/3/1/0 cliff meant a 4th-ranked sector scored like a
+    # laggard. Now: 0-5 scaled by the sector's percentile rank among the 11 ETFs (top=5.0, median~2.5).
+    etf_rank = {s["symbol"]: idx for idx, s in enumerate(ranked)}
+    n_sec = max(1, len(ranked) - 1)
     for t in tickers:
         etf = sector_name_map.get(t.get("sector", ""), "")
-        if etf in top3:
-            t["sector_momentum_score"] = 5
-        elif etf in top6:
-            t["sector_momentum_score"] = 3
+        if etf in etf_rank:
+            pct = 1.0 - (etf_rank[etf] / n_sec)
+            t["sector_momentum_score"] = round(5 * pct, 1)
         else:
-            s_data = next((s for s in sectors if s["symbol"] == etf), {})
-            t["sector_momentum_score"] = 1 if abs(s_data.get("change_percent", 0)) <= 0.3 else 0
+            t["sector_momentum_score"] = 1   # unknown sector: small neutral credit, not zero
 
 
 def _warmup_ollama():
