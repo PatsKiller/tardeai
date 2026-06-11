@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - Open-trade card enrichment + replay audit & upgrades
+
+Operator Qs answered: news was never missing (6-7 items per position; renders on card expand); analyst data
+existed but rendered as cryptic pills ("hold 8an") and ELVN was uncovered until pills rebuilt (universe DOES
+include 30d paper trades; daily 06:10 cron). Cards now carry: explicit Analysts line (rating+mean+opinions+
+target+upside, range/source/latest-event tooltip), live L2 book-pressure chip, Hermes H#rank (top-100),
+short-float >=5% chip, earnings-date chip - all server-side from existing stores. Replay audited (agent
+report) + immediate items shipped: planned STOP/TARGET lines, runner-type annotation on post-exit line
+("pump - exit was right · gave back N%" vs "real runner - scale-out lesson"), MFE/MAE % badges, grade-why
+tooltip (flags + coach), full-timestamp passthrough fixing same-day detection for overnight intraday holds.
+Replay backlog (documented, not built): news pins, L2 strip, SPY overlay, finviz-error surfacing, Schwab
+fallback pagination.
+
+
 ## 2026-06-11 - All 8 code-path areas raised to 7 (operator directive)
 
 Docs hygiene (sync exclusions+retention) - integrity (9-check nightly sweep + event-sourced proposal
