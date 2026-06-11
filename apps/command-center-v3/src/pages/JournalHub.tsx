@@ -73,7 +73,8 @@ export default function JournalHub({ onDrill }: Props) {
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: rawLessonsResp } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
   const { data: eqResp } = useApi<any>('/api/v2/journal/execution-quality?limit=500', 120_000)
-  const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[`${e.symbol}|${String(e.entry_time).slice(0, 19)}`] = e; return m }, [eqResp])
+  const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
+  const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
   // Handle double-wrapped { ok, data: { ok, lessons, count } }
   const lessonsData = rawLessonsResp?.data ?? rawLessonsResp
 
@@ -443,10 +444,10 @@ export default function JournalHub({ onDrill }: Props) {
                 <div>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.shares}sh</span>
-                  {(() => { const eq = t.entryTimeFull ? eqMap[`${t.symbol}|${String(t.entryTimeFull).slice(0, 19)}`] : null
+                  {(() => { const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
                     return <span title="Replay chart with entry/exit" onClick={e => { e.stopPropagation(); setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eq }) }}
                       style={{ fontSize: 9, marginLeft: 5, cursor: 'pointer', opacity: 0.7 }}>📈</span> })()}
-                  {(() => { const eq = t.entryTimeFull ? eqMap[`${t.symbol}|${String(t.entryTimeFull).slice(0, 19)}`] : null
+                  {(() => { const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
                     return eq ? <span title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade} · capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}
                       style={{ fontSize: 7, fontWeight: 700, marginLeft: 5, padding: '0 3px', borderRadius: 3, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} {Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span> : null })()}
                 </div>
