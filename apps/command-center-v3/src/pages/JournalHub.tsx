@@ -54,6 +54,29 @@ function gradeColor(g: string | null | undefined): string {
   }
 }
 
+// Explain the entry/exit letter grades (A best → F worst, from backtest-replay grading) using the
+// execution-quality signals when available, so the operator sees WHICH is entry/exit and WHY.
+function gradeExplain(t: any, eq: any): string {
+  const lines = ['Letter grades A (best) → F (worst), from backtest-replay grading.', '']
+  const entryWhy: string[] = []
+  if (eq) {
+    if (eq.entry_timing_grade) entryWhy.push(`${eq.entry_timing_grade} timing`)
+    if (eq.entry_volume_ratio != null) entryWhy.push(`RVOL ${eq.entry_volume_ratio}${eq.entry_volume_ratio < 1 ? ' (below avg)' : ''}`)
+    if (eq.entry_above_vwap === false) entryWhy.push('below VWAP')
+    else if (eq.entry_above_vwap === true) entryWhy.push('above VWAP')
+  }
+  lines.push(`ENTRY grade ${t.eg ?? '—'}${entryWhy.length ? ' — ' + entryWhy.join(', ') : ''}`)
+  const exitWhy: string[] = []
+  if (eq) {
+    if (eq.exit_timing_grade) exitWhy.push(`${eq.exit_timing_grade} timing`)
+    if (eq.capture_ratio != null) exitWhy.push(`captured ${Math.round((eq.capture_ratio ?? 0) * 100)}% of the in-hold move`)
+    if (eq.missed_opportunity_grade === 'severe') exitWhy.push('severe missed runner')
+  }
+  lines.push(`EXIT grade ${t.xg ?? '—'}${exitWhy.length ? ' — ' + exitWhy.join(', ') : ''}`)
+  if (eq?.grok_what_to_do_next_time) lines.push('', `Coach: ${eq.grok_what_to_do_next_time}`)
+  return lines.join('\n')
+}
+
 function getTimeRangeCutoff(range: string): string {
   const now = new Date()
   if (range === 'ALL') return '2000-01-01'
@@ -508,7 +531,7 @@ export default function JournalHub({ onDrill }: Props) {
                     {/* pills: strategy, grades, execution */}
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                       <span style={{ fontSize: 8, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text2)' }}>{t.strat ?? 'unclassified'}</span>
-                      {(t.eg || t.xg) && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)' }}><span style={{ color: gradeColor(t.eg) }}>{t.eg ?? '·'}</span><span style={{ color: 'var(--text3)' }}>/</span><span style={{ color: gradeColor(t.xg) }}>{t.xg ?? '·'}</span> grade</span>}
+                      {(t.eg || t.xg) && <span title={gradeExplain(t, eq)} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', cursor: 'help' }}><span style={{ color: 'var(--text3)' }}>E</span><span style={{ color: gradeColor(t.eg) }}>{t.eg ?? '·'}</span> <span style={{ color: 'var(--text3)' }}>X</span><span style={{ color: gradeColor(t.xg) }}>{t.xg ?? '·'}</span> ⓘ</span>}
                       {eq && <span title={eq.grok_what_to_do_next_time || eq.computed_summary || ''} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} cap{Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span>}
                     </div>
                     {/* grok lesson */}

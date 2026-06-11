@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-11 - Trade Log grade pill: label entry/exit + explain why (tooltip)
+
+The grade pill was an ambiguous 'D/B grade'. Now shows 'E D  X B' (E=entry, X=exit) with a hover tooltip that
+explains each grade from the execution-quality signals: entry timing + RVOL + VWAP position, exit timing +
+capture% + missed-runner, plus the Grok coaching line. A=best -> F=worst legend included. Read-only.
+
+
 ## 2026-06-11 - Trade Log redesigned into actionable cards + Execution Coach made drillable
 
 Trade Log (Journal->Trades): replaced the dense 9-column row list with larger cards (WIN/LOSS/SCRATCH +
