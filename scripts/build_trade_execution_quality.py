@@ -47,15 +47,24 @@ def _family(strategy, classification):
 
 
 def _bars_for(symbol, ent, ext, review_min):
-    """1-min bars from the session open through exit + review window (Alpaca -> Schwab)."""
-    so = oc._sess(ent.date(), 9, 30)
+    """Multi-day holds -> DAILY bars (entry-context + exit + review days); same-day -> 1-min intraday.
+    Returns (bars, source, session_open_or_None, is_daily)."""
+    if ext.date() > ent.date():     # SWING / multi-day: daily bars
+        start = (ent.date() - dt.timedelta(days=45)).isoformat()    # ~30 trading days of pre-entry context
+        end = (ext.date() + dt.timedelta(days=25)).isoformat()      # exit + ~15 trading days for missed-runner
+        bars, _ = oc._fetch(symbol, start, end, "1Day")
+        src = "alpaca" if bars else None
+        if not bars:
+            bars = oc._schwab_bars(symbol, start, end, "1Day"); src = "schwab" if bars else None
+        return bars or [], (src or "none"), None, True
+    so = oc._sess(ent.date(), 9, 30)                                # SAME-DAY: 1-min intraday
     start = min(so, ent - dt.timedelta(minutes=15)).isoformat()
     end = (ext + dt.timedelta(minutes=review_min + 5)).isoformat()
     bars, err = oc._fetch(symbol, start, end, "1Min")
     src = "alpaca"
     if not bars:
         bars = oc._schwab_bars(symbol, start, end, "1Min"); src = "schwab" if bars else None
-    return bars or [], (src or "none"), so
+    return bars or [], (src or "none"), so, False
 
 
 def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strategy, classification):
@@ -63,9 +72,9 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
     fam = _family(strategy, classification)
     cfg = R["strategies"].get(fam, R["strategies"]["unknown"])
     review_min = int(cfg.get("post_exit_review_min", 60))
-    bars, src, so = _bars_for(symbol, ent, ext, review_min)
-    out = {"strategy_family": fam, "bars_source": src, "bars_count": len(bars)}
-    if len(bars) < 15:
+    bars, src, so, is_daily = _bars_for(symbol, ent, ext, review_min)
+    out = {"strategy_family": fam, "bars_source": src, "bars_count": len(bars), "bar_interval": "1Day" if is_daily else "1Min"}
+    if len(bars) < (8 if is_daily else 15):
         out["path_status"] = "NO_INTRADAY_PATH" if not bars else "INSUFFICIENT_BARS"
         return out
     # index bars by UTC datetime
@@ -89,15 +98,19 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
     out["entry_relative_volume_window"] = w
     out["entry_volume_confirmed"] = (rvol is not None and rvol >= cfg["min_entry_rvol"]) if has_vol else None
 
-    # ── session VWAP at entry (regular hours, from 9:30) ──
-    cum_pv = cum_v = 0.0
-    for j in range(ei + 1):
-        if bt[j] >= so:
-            tp = (bars[j]["h"] + bars[j]["l"] + bars[j]["c"]) / 3.0
-            cum_pv += tp * (bars[j].get("v") or 0); cum_v += (bars[j].get("v") or 0)
-    vwap_e = (cum_pv / cum_v) if cum_v else bars[ei]["c"]
-    out["entry_above_vwap"] = bool(entry_price >= vwap_e)
-    out["entry_vwap_distance_pct"] = round((entry_price - vwap_e) / vwap_e * 100, 2) if vwap_e else None
+    # ── session VWAP at entry (intraday only; not meaningful for daily swing bars) ──
+    if is_daily:
+        out["entry_above_vwap"] = None
+        out["entry_vwap_distance_pct"] = None
+    else:
+        cum_pv = cum_v = 0.0
+        for j in range(ei + 1):
+            if bt[j] >= so:
+                tp = (bars[j]["h"] + bars[j]["l"] + bars[j]["c"]) / 3.0
+                cum_pv += tp * (bars[j].get("v") or 0); cum_v += (bars[j].get("v") or 0)
+        vwap_e = (cum_pv / cum_v) if cum_v else bars[ei]["c"]
+        out["entry_above_vwap"] = bool(entry_price >= vwap_e)
+        out["entry_vwap_distance_pct"] = round((entry_price - vwap_e) / vwap_e * 100, 2) if vwap_e else None
 
     # ── RSI / MACD at entry ──
     closes = [b["c"] for b in bars]
@@ -109,7 +122,7 @@ def compute(symbol, ent, ext, entry_price, exit_price, qty, realized_pnl, strate
         out["entry_macd_state"] = None
 
     # ── post-entry path (MFE/MAE) up to the review cutoff ──
-    cutoff = min(len(bars), xi + review_min)
+    cutoff = min(len(bars), xi + (15 if is_daily else review_min))   # daily: ~15 trading days post-exit
     seg = bars[ei:cutoff + 1]
     hi = max(b["h"] for b in seg); lo = min(b["l"] for b in seg)
     out["mfe_after_entry"] = round(hi - entry_price, 4)
@@ -253,7 +266,7 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                  missed_profit,missed_profit_pct,premature_exit_flag,early_entry_flag,late_entry_flag,
                  no_volume_entry_flag,strategy_rule_violations,computed_summary,updated_at)
                 VALUES (%(trade_key)s,%(source)s,%(broker)s,%(account)s,%(symbol)s,%(strategy)s,%(ent)s,%(ext)s,
-                 %(entry_price)s,%(exit_price)s,%(qty)s,%(realized_pnl)s,NULL,'1Min',%(bars_source)s,%(bars_count)s,
+                 %(entry_price)s,%(exit_price)s,%(qty)s,%(realized_pnl)s,NULL,%(bar_interval)s,%(bars_source)s,%(bars_count)s,
                  %(path_status)s,%(entry_volume_confirmed)s,%(entry_volume_ratio)s,%(entry_relative_volume_window)s,
                  %(entry_above_vwap)s,%(entry_vwap_distance_pct)s,%(entry_macd_state)s,%(entry_rsi)s,
                  %(entry_timing_grade)s,%(exit_timing_grade)s,%(execution_grade)s,%(outcome_grade)s,
