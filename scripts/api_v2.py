@@ -16421,6 +16421,45 @@ def _schwab_movers(query=None):
     return _json_clean(schwab_transport.get_movers(idx))
 
 
+def _schwab_stream_status(query=None):
+    """GET /api/v2/schwab/stream/status — Level-2 capture daemon status (Rule-9 isolated, read-only)."""
+    rows = _db_query("""SELECT count(*) n, max(captured_at) latest,
+                               count(DISTINCT symbol) syms
+                        FROM schwab_stream_book WHERE captured_at > NOW()-INTERVAL '1 hour'""", fetch="one") or {}
+    kill = (Path(__file__).resolve().parent.parent / "data" / "state" / "STREAM_DISABLED").exists()
+    return _json_clean({"status": "ok", "book_rows_1h": rows.get("n", 0), "symbols_1h": rows.get("syms", 0),
+                        "latest_capture": rows.get("latest"), "kill_switch": kill,
+                        "live": bool(rows.get("latest") and rows.get("n", 0) > 0),
+                        "note": "advisory market-data capture only — never an execution trigger (Rule 9)"})
+
+
+def _schwab_stream_book(query=None):
+    """GET /api/v2/schwab/stream/book?symbol=X — latest Level-2 snapshot + book-pressure (advisory evidence)."""
+    q = query or {}
+    sym = (((q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")) or "").upper()
+    if not sym:
+        # all symbols, latest each
+        rows = _db_query("""SELECT DISTINCT ON (symbol) symbol, venue, bid_depth, ask_depth, imbalance,
+                                   best_bid, best_ask, captured_at
+                            FROM schwab_stream_book ORDER BY symbol, captured_at DESC""") or []
+        return {"books": [_json_clean(r) for r in rows], "advisory": True}
+    row = _db_query("""SELECT symbol, venue, bid_depth, ask_depth, imbalance, best_bid, best_ask,
+                              bid_levels, ask_levels, captured_at
+                       FROM schwab_stream_book WHERE symbol=%s ORDER BY captured_at DESC LIMIT 1""",
+                    (sym,), fetch="one")
+    if not row:
+        return {"status": "no_data", "symbol": sym}
+    # trailing pressure: avg imbalance over the last 15 minutes
+    trail = _db_query("""SELECT round(avg(imbalance),4) avg_imb, count(*) n FROM schwab_stream_book
+                         WHERE symbol=%s AND captured_at > NOW()-INTERVAL '15 minutes'""", (sym,), fetch="one") or {}
+    out = _json_clean(dict(row))
+    out["pressure_15m"] = {"avg_imbalance": _json_clean(trail.get("avg_imb")), "samples": trail.get("n", 0),
+                           "read": ("bid-heavy (buyers stacked)" if (trail.get("avg_imb") or 0) > 0.2
+                                    else "ask-heavy (sellers stacked)" if (trail.get("avg_imb") or 0) < -0.2 else "balanced")}
+    out["advisory"] = True
+    return out
+
+
 def _schwab_status(query=None):
     """GET /api/v2/system/schwab-status — Schwab read-only integration monitor: Gate-A token health,
     account-hash links, capability checks, recent sync. Read-only; never exposes token material."""
@@ -17025,6 +17064,8 @@ ROUTES = {
     "/api/v2/schwab/option-chain": _schwab_option_chain,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
+    "/api/v2/schwab/stream/status": _schwab_stream_status,
+    "/api/v2/schwab/stream/book": _schwab_stream_book,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,

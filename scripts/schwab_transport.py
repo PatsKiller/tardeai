@@ -500,3 +500,17 @@ def get_movers(index="$SPX", account_key=None):
     from schwab.client import Client
     idx = getattr(Client.Movers.Index, index.replace("$", "").upper(), None)
     return _read(account_key, "get_movers", _norm, idx if idx is not None else index)
+
+
+def build_stream_client(account_key=None):
+    """Boundary-only constructor for the READ-ONLY streaming client (market-data subscriptions only).
+    schwab-py is imported HERE so the transport boundary rule holds; callers (the Rule-9-isolated stream
+    daemon) never import schwab-py directly. No order/account streams are exposed by the daemon."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return None, {"status": "needs_account_link"}
+    client, err = build_client(account_key)
+    if err:
+        return None, err
+    from schwab.streaming import StreamClient
+    return StreamClient(client), None
