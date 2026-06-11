@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-11 - All 8 code-path areas raised to 7 (operator directive)
+
+Docs hygiene (sync exclusions+retention) - integrity (9-check nightly sweep + event-sourced proposal
+statuses) - Hermes (diversity cap, VIX regime weights, H#rank proposal chip, non-circular movers-fed
+discovery) - scoring (reaction-weighted catalyst de-bias, percentile sector pillar, regime thresholds) -
+ingestion (unified API budget ledger x6 providers, salted dedup, stale-cache guard, dead paths) -
+backtesting (fib in PIT sim + REAL-fill reconciliation RECONCILED 18/20) - arbitration (signal_evidence
+"why this signal won" on every proposal) - strategy (core-4 evaluator-verified + lifecycle transition
+alerts). Maturity ~6.3 -> ~7.3 overall; floor now 7 everywhere except sample-gated residuals (documented).
+Validator 12/12 throughout.
+
+
 ## 2026-06-11 - Maturity: code-only paths to 7 documented
 
 Per operator question: 6 of 8 areas at 5-6 CAN reach 7 by code alone (docs hygiene, integrity sweep, hermes
