@@ -16413,6 +16413,70 @@ def _schwab_round_trips(query=None):
             "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis) and basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses). Real-account, separate from the paper-only live-trading gate."}
 
 
+def _broker_orders_capabilities(query=None):
+    """GET /api/v2/broker-orders/capabilities?broker= — what the UI may show/save/simulate per broker."""
+    q = query or {}
+    b = ((q.get("broker") or ["schwab"])[0] if isinstance(q.get("broker"), list) else q.get("broker")) or "schwab"  # hardcode-ok: UI query default for the capabilities VIEW only; execution broker always comes from the intent record
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from brokers import capabilities as caps
+    c = caps.get(b)
+    return _json_clean({"broker": b, "execution_mode": c.get("execution_mode_default"),
+                        "environment": c.get("environment"), "features": c.get("features", {}),
+                        "execution_disabled_notice": (None if b == "alpaca" else
+                            "Execution is DISABLED for this broker (BROKER_DISABLED). Drafts and translation "
+                            "previews only. See docs/brokers/execution-safety-guards.md.")})
+
+
+def _broker_orders_preview(body=None):
+    """POST /api/v2/broker-orders/preview — validate + capability-annotate + translate. NO order I/O ever.
+    Body: canonical OrderIntent dict (see docs/brokers/ui-card-contracts-schwab.md)."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from brokers.order_intent import OrderIntent, validate as oi_validate
+    from brokers import capabilities as caps, audit as br_audit
+    from brokers.execution_guard import authorize
+    try:
+        intent = OrderIntent.from_dict(body or {})
+    except Exception as e:
+        return {"ok": False, "errors": [f"intent parse error: {str(e)[:140]}"]}
+    v = oi_validate(intent)
+    ann = caps.annotate_intent(intent.broker, intent)
+    blocked_caps = [a for a in ann if a.get("level") == "blocked"]
+    translation = None
+    state = "BLOCKED" if (not v.ok or blocked_caps) else "TRANSLATED"
+    if state == "TRANSLATED":
+        if intent.broker == "schwab":
+            from brokers.translators import schwab as tr
+        else:
+            from brokers.translators import alpaca as tr
+        translation = tr.translate(intent)
+    guard = authorize(intent, "preview")
+    try:
+        br_audit.save_intent(intent, validation={"ok": v.ok, "errors": v.errors, "warnings": v.warnings},
+                             translation=translation, capability_notes=ann, state=state,
+                             blocked_reason=("; ".join(v.errors[:3]) or
+                                             (blocked_caps[0].get("msg") if blocked_caps else None)))
+    except Exception:
+        pass
+    return _json_clean({"ok": v.ok and not blocked_caps, "intent_id": intent.intent_id,
+                        "correlation_id": intent.correlation_id, "state": state,
+                        "validation": {"errors": v.errors, "warnings": v.warnings},
+                        "capabilities": ann,
+                        "translation_preview": translation,
+                        "execution": {"allowed": False, "mode": guard.mode.value, "reason": guard.reason}})
+
+
+def _broker_orders_drafts(query=None):
+    """GET /api/v2/broker-orders/drafts?broker= — saved intents (drafts/previews/blocked) for the UI."""
+    q = query or {}
+    b = ((q.get("broker") or [None])[0] if isinstance(q.get("broker"), list) else q.get("broker"))
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from brokers import audit as br_audit
+    return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
+
+
 def _schwab_batch_quotes(query=None):
     """GET /api/v2/schwab/quotes?symbols=A,B,C — READ-ONLY batch quotes (one Schwab call for many symbols)."""
     q = query or {}
@@ -17098,6 +17162,8 @@ ROUTES = {
     "/api/v2/discovery/results": _discovery_results,
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
+    "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
+    "/api/v2/broker-orders/drafts": _broker_orders_drafts,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
@@ -19378,6 +19444,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return _paper_proposals_enriched()
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/preview":
+        try:
+            return 200, _broker_orders_preview(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
 
     if method == "POST" and base_path == "/api/v2/paper-proposals/approve":
         audit_id = None

@@ -32,6 +32,8 @@ CHECKS = [
         WHERE t.created_at > NOW()-INTERVAL '7 days' AND p.status IN ('REJECTED','RISK_BLOCKED')"""),
     ("watchlist_same_source_dupes",
      "SELECT count(*) FROM (SELECT symbol, source FROM watchlist_items WHERE status<>'removed' GROUP BY symbol, source HAVING count(*)>1) z"),
+    ("paper_pending_never_submitted_2h",
+     "SELECT count(*) FROM paper_trades WHERE status='pending' AND COALESCE(broker_order_id,'')='' AND created_at < NOW()-INTERVAL '2 hours'"),
     ("paper_pending_but_filled",
      "SELECT count(*) FROM paper_trades WHERE status='pending' AND broker_status='filled' AND created_at < NOW()-INTERVAL '1 hour'"),
     ("hermes_backlog_over_cap_today",

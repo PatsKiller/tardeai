@@ -525,6 +525,23 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             _log_event(conn, proposal_id, p["symbol"],
                        "EXECUTION_REVALIDATION_REQUIRES_REAPPROVAL",
                        {"recheck_status": rck_status, "changes": recheck.get("material_change_reasons")})
+            # ATOS phantom fix (2026-06-11): the approval flow pre-creates a 'pending' paper_trades row;
+            # when revalidation BLOCKS submission, cancel that row immediately instead of leaving it for
+            # phantom detection 16 minutes later (it was polluting closed-trade reviews as $0 'F' trades).
+            try:
+                cur_c = conn.cursor()
+                cur_c.execute("""UPDATE paper_trades
+                                 SET status='cancelled', lifecycle_state='cancelled',
+                                     exit_reason='revalidation_blocked_never_submitted',
+                                     closed_via='revalidation_block', closed_at=NOW()
+                                 WHERE proposal_id=%s AND status='pending'
+                                   AND COALESCE(broker_order_id,'')=''""", (proposal_id,))
+                if cur_c.rowcount:
+                    log.info(f"[revalidation] cancelled {cur_c.rowcount} never-submitted pending row(s) "
+                             f"for proposal {proposal_id}")
+                conn.commit()
+            except Exception as _ce:
+                log.warning(f"[revalidation] pending-row cleanup failed: {_ce}")
             # ── Gap 6: Telegram alert for NEEDS_REVALIDATION ──
             try:
                 from telegram_alert import send_telegram
