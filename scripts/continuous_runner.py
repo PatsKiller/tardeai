@@ -439,12 +439,12 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                     run_id, run_date, run_label, run_type, symbol, score, grade, decision,
                     rvol, price, change_pct, gap_pct, float_m,
                     catalyst, catalyst_verified, catalyst_confidence,
-                    disqualified, sector, industry, country, source
+                    disqualified, sector, industry, country, source, pillar_breakdown
                 ) VALUES (
                     %s, %s, %s, 'live', %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s
                 )
             """, (
                 _run_id, date_str, run_label, t.get("symbol",""),
@@ -456,6 +456,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 t.get("disqualified", False),
                 t.get("sector",""), t.get("industry",""), t.get("country",""),
                 t.get("_source", "screener"),
+                json.dumps(t.get("pillar_breakdown") or {}),
             ))
         if _go_wait:
             print(f"  [live] {len(_go_wait)} tickers → trade_ai_scans")

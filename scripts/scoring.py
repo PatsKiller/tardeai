@@ -533,6 +533,7 @@ def score_ticker(
     outcome_scar = _strategy_outcome_scar(str(ticker_row.get("strategy_class") or ""))
     if outcome_scar != 1.0:
         total = int(total * outcome_scar)
+    _outcome_scar_applied = outcome_scar
 
     # ── 7th pillar: technical confluence (max 10 pts) ─────────────────────
     # Non-fatal — Trade AI pipeline must never fail due to indicator engine issues
@@ -560,6 +561,7 @@ def score_ticker(
         "price_range":       price_score,
         "sector_momentum":   sector_mom_score,
         "confluence":        confluence_score,
+        "outcome_scar":      locals().get("_outcome_scar_applied", 1.0),
     }
 
     grade, decision = _grade(total, weights)
