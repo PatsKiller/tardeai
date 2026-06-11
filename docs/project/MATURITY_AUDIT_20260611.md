@@ -167,3 +167,20 @@ strategy to reach 30 closed trades → reconcile 10–20 real Schwab fills vs re
 3. **Freshness/row-count SLOs** (#7) — ends the silent-degradation class that caused most of today's bugs
 4. **Let attribution + scar data accumulate 2–4 weeks** (#14) — then build the explicit source-weighting layer
 5. **Backtesting credible path** (#15) — only after 1–2; proof is sequenced behind testability
+
+
+---
+
+## Re-score after priority-arc implementation (same day, operator: "do 1-5, bring <3 to >=6")
+
+| Area | Was | Now | Evidence |
+|---|---|---|---|
+| Signal scoring | 4 | **6** | pillar_breakdown persisted per scan (both insert paths); outcome scar + source-weight multipliers live (evidence-gated) |
+| Strategy framework | 5 | **6** | entry criteria MACHINE-ENFORCED (evaluator 5/5 self-tests, wired into Gate-2 with named criterion IDs) |
+| Observability & ops | 6 | **7** | per-source freshness SLOs vs trailing baselines, 7/7 green first run, cron 2h + Telegram |
+| **Backtesting & proof** | **2** | **6** | PIT signal simulator (criteria-driven entries, screeners' own historical universe = no survivorship, next-open entry, stop-first same-bar, 30bps costs, 30-trade gate, 70/30 walk-forward, persisted run_type=pit_simulated); look-ahead fixed; real-vs-synthetic split surfaced; Schwab daily-bar fallback. First falsifiable verdict produced: swing_breakout = no_edge_oos (32 signals, -0.18R w/ costs) — the system can now PROVE or REFUTE a strategy. To 7+: more strategies in sim, longer history, fill reconciliation |
+| **Cross-system arbitration** | **2** | **6** | source_weights table + daily compute (attributed candidates->GO->proposal->trade per list), bounded 0.9-1.1 evidence-gated weights CONSUMED by scoring, source_tier populated (10,375 rows), neutral-until-evidence by design. To 7+: weights differentiate as attributed data accrues (2-4 wks) + evidence panel on proposal cards |
+
+**Overall: ≈5.4 -> ≈6.3/10.** No area below 6. The honest caveat everywhere: mechanisms are live and proven;
+*differentiated* results (weights that move, validated strategies) require sample accumulation that only
+calendar time provides.
