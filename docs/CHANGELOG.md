@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - Stage 2a canary protocol: ITUB selected (live-screened), 2-share battery defined
+
+paperMoney confirmed not API-visible -> tests are tiny REAL manual orders. Live screen via our batch-quotes
+endpoint across 20 candidates: ITUB primary ($7.91, $0.02 spread, 33.9M vol, ZERO footprint in holdings/
+watchlist/paper history - sterile), SNAP backup; NIO/LCID/BBD excluded (watchlist rows), held names excluded.
+Size 2 shares (~$16 max). Nine-order battery (6 never-fill far-limits + 1 real micro-fill + OCO exits +
+close), expected realized cost cents-to-dollars; pre-session requirements: canary_symbols analytics
+exclusion, shadow-reconciliation harness, ACCT_ACTIVITY read-only capture. Stage 2b (API-write canaries)
+remains separately gated. docs/brokers/stage2a-canary-protocol.md.
+
+
 ## 2026-06-11 - Stage 2 restructured: no Schwab sandbox exists -> shadow validation + micro-canary
 
 Operator question: Schwab individuals get no dev/sandbox accounts - how to validate safely? Answer baked
