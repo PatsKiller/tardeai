@@ -102,7 +102,15 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
     _required = ["relative_volume", "gap_percent", "float_shares"]
     if len(df) > 0:
         _missing = [c for c in _required if c not in df.columns]
-        _zero = [c for c in _required if c in df.columns and df[c].sum() == 0]
+        # ETFs/funds legitimately have no float — exclude them from the float_shares all-zero check so
+        # fund/index screeners (core_index_etfs, bond/income) stop tripping false Telegram alerts.
+        _eq = df
+        if "industry" in df.columns:
+            _eq = df[~df["industry"].astype(str).str.contains("Exchange Traded Fund", case=False, na=False)]
+        def _allzero(c):
+            frame = _eq if c == "float_shares" else df
+            return c in frame.columns and len(frame) > 0 and frame[c].sum() == 0
+        _zero = [c for c in _required if _allzero(c)]
         if _missing or _zero:
             _msg = f"⚠️ TRADE AI DATA QUALITY ALERT\nMissing: {_missing}\nAll-zero: {_zero}\n→ Scoring degraded. Check screeners.yaml uses v=152"
             print(f"  [finviz] ⚠️  DATA QUALITY: missing columns {_missing}, all-zero columns {_zero}")
