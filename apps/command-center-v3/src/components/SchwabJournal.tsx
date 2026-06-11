@@ -65,7 +65,7 @@ export default function SchwabJournal() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 600, overflowY: 'auto' }}>
-        {view.map((t, i) => (
+        {view.map((t, i) => { const eq = eqMap[tk(t.symbol, t.entry_time)]; return (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', borderRadius: 7, border: '1px solid var(--border)', fontSize: 11 }}>
             <span style={{ flex: '0 0 56px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</span>
             <span style={{ flex: '0 0 64px', fontSize: 9, color: 'var(--text3)' }}>{t.account?.replace('schwab_', '')}</span>
@@ -76,19 +76,21 @@ export default function SchwabJournal() {
             </span>
             <span style={{ flex: '0 0 70px', fontSize: 9, color: 'var(--text3)' }}>{t.hold_minutes < 390 ? `${t.hold_minutes}m` : `${Math.round(t.hold_minutes / 1440)}d`}</span>
             {t.entry_grade && <span style={{ flex: '0 0 80px', fontSize: 9 }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b></span>}
-            {(() => { const eq = eqMap[tk(t.symbol, t.entry_time)]; return eq ? (
+            {eq ? (
               <span style={{ flex: '0 0 132px', fontSize: 8, display: 'flex', alignItems: 'center', gap: 3 }}
                 title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade}\nentry ${eq.entry_timing_grade}, exit ${eq.exit_timing_grade}, capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}>
                 <span style={{ fontWeight: 700, padding: '0 4px', borderRadius: 3, background: `${EXEC[eq.execution_grade] || 'var(--text3)'}22`, color: EXEC[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade}</span>
                 <span style={{ color: 'var(--text3)' }}>cap {Math.round((eq.capture_ratio ?? 0) * 100)}%</span>
                 {eq.missed_opportunity_grade === 'severe' && <span title="severe missed runner" style={{ color: '#ef4444' }}>⚠</span>}
-              </span>) : <span style={{ flex: '0 0 132px' }} /> })()}
+              </span>) : <span style={{ flex: '0 0 132px' }} />}
             <span style={{ flex: '0 0 80px', textAlign: 'right', fontWeight: 700, color: (t.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(t.net_pnl)}</span>
-            <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.lesson}>{t.lesson || ''}</span>
-            <button title="Replay chart with entry/exit" onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entry_time, exit_date: t.exit_time, entry_price: t.entry_price, exit_price: t.exit_price, exec: eqMap[tk(t.symbol, t.entry_time)] })}
+            <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={eq?.grok_what_to_do_next_time ? `Execution coach: ${eq.grok_what_to_do_next_time}${t.lesson ? `\n\nEntry/exit lesson: ${t.lesson}` : ''}` : t.lesson}>
+              {eq?.grok_what_to_do_next_time || t.lesson || ''}</span>
+            <button title="Replay chart with entry/exit" onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entry_time, exit_date: t.exit_time, entry_price: t.entry_price, exit_price: t.exit_price, exec: eq })}
               style={{ flex: '0 0 auto', fontSize: 11, padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈</button>
           </div>
-        ))}
+        ) })}
       </div>
       {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
     </div>
