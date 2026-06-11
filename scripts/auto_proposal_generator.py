@@ -193,6 +193,22 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
     if not cfg:
         return True, '', None
 
+    # Deterministic machine evaluation of the FULL YAML criteria set (2026-06-11): the same evaluator the
+    # signal simulator uses — repeatable, auditable, no LLM interpretation. Fails only on EVALUABLE criteria
+    # (missing metrics are 'skipped', never auto-fail); evidence requirements handled by the legacy checks
+    # below, which remain as a second layer.
+    try:
+        from strategy_criteria_evaluator import evaluate as _crit_eval
+        _metrics = {k: signal.get(k) for k in ("rvol", "price", "float_m", "gap_pct", "change_pct",
+                                               "catalyst_verified", "score") if signal.get(k) is not None}
+        if not _metrics.get("price"):
+            _metrics["price"] = signal.get("entry_high")
+        _r = _crit_eval(strategy_id, _metrics, cfg=cfg)
+        if _r.get("fail_ids"):
+            return False, f"criteria_evaluator: {','.join(_r['fail_ids'][:4])}", None
+    except Exception:
+        pass  # evaluator is additive; legacy checks below still run
+
     filters = cfg.get('screen_filters', {})
     rvol = float(signal.get('rvol') or 0)
     price = float(signal.get('price') or signal.get('entry_high') or 0)
