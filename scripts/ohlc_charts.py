@@ -7,6 +7,9 @@ Source: Alpaca free historical bars (data.alpaca.markets, IEX feed) — OHLCV + 
 import os, json, urllib.request, urllib.error, datetime as dt
 
 ALPACA_DATA = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
+# Data feed: 'sip' = full consolidated tape (covers OTC/microcaps; historical SIP is free since 2024),
+# 'iex' = IEX-only (free, but misses many OTC names). Configurable, never hardcoded credentials.
+ALPACA_FEED = os.environ.get("ALPACA_DATA_FEED", "sip")
 
 try:
     from zoneinfo import ZoneInfo
@@ -44,7 +47,7 @@ def _fetch(symbol, start, end, timeframe):
         return [], "no Alpaca keys"
     bars, token = [], None
     for _ in range(6):  # page
-        q = (f"?timeframe={timeframe}&start={start}&end={end}&limit=10000&feed=iex&adjustment=split"
+        q = (f"?timeframe={timeframe}&start={start}&end={end}&limit=10000&feed={ALPACA_FEED}&adjustment=split"
              + (f"&page_token={token}" if token else ""))
         req = urllib.request.Request(ALPACA_DATA.format(sym=symbol) + q,
                                      headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec})
