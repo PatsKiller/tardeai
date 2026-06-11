@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 - Replay news pins live-verified + three replay bugs fixed
+
+ATOS demo proved the feature end-to-end: six pre-market offering/dilution headlines pinned + listed on its
+11:02 scratch replay - the trade's full story on one chart. Fixed en route: (1) Journal Replay passed full
+timestamp as entry_date (sliced to date -> midnight-UTC window = wrong bars, 8pm-ET prior evening); now
+passes entry_time/exit_time + plan stop/target; (2) out-of-window catalysts were dropped by the 90-min bar
+guard - now edge-clamp with (pre/post-window) tags; (3) headline-list render anchor had silently no-opped.
+Validator 12/12.
+
+
 ## 2026-06-11 - Replay backlog complete (news pins / L2 strip / SPY overlay / error hints / chunking)
 
 All five audit-backlog items shipped + live-verified (ELVN catalyst headline pinned on today's chart at
