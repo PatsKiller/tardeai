@@ -43,9 +43,9 @@ refactored to use it + the new quick filters and sorts; default sort = priority.
 AXTI is present in `watchlist_items` as **`researched` ×1 (no duplicate)**. However the WatchlistHub endpoint
 `/api/v2/watchlist/items` returns a **200-item cap (all 'researched')** and AXTI ranks below the cap by the
 hermes sort, so it is not currently rendered. **This is a pre-existing watchlist display-limit issue — the
-card redesign does not touch the watchlist** and did not cause it. Recommended follow-up: pin
-directive/promoted symbols (incl. AXTI) above the display cap, or raise/paginate the cap. No duplicate
-rendering observed.
+card redesign does not touch the watchlist** and did not cause it. **RESOLVED (2026-06-11):** the /api/v2/watchlist/items ORDER BY now pins directive-linked items
+(in_directive_watch=true) above the 200-cap. AXTI now renders at position 4 (top 5), once, no duplicate.
+(Note: NVDA shows 3x — a separate pre-existing duplicate-row issue in watchlist_items, not AXTI.)
 
 ## Acceptance
 Materially more actionable ✓ · each card states next review ✓ · large-gain-unprotected = decision state ✓ ·

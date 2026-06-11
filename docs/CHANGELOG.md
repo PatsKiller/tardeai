@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-11 - Pin directive-linked watchlist items above the 200 display cap (AXTI fix)
+
+/api/v2/watchlist/items ORDER BY now sorts in_directive_watch=true items first, so operator
+directive/promoted symbols are always within the 200-item cap. AXTI (directive_id=13, high priority) now
+renders at position 4 (was below the cap and invisible), once, no duplicate. Read-only, validator 12/12.
+
+
 ## 2026-06-11 - Trade cards redesigned into actionable position decision cards
 
 Open Trades cards rebuilt as decision cards. Backend (read-only, derived): open_trades_intelligence.py now
