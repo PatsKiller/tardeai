@@ -16,7 +16,7 @@ const DARK = {
 export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onClose: () => void }) {
   const [data, setData] = useState<any>(null)
   const [err, setErr] = useState('')
-  const [show, setShow] = useState({ vol: true, vwap: true, macd: true, rsi: true })
+  const [show, setShow] = useState({ vol: true, vwap: true, macd: true, rsi: true, spy: false, l2: true })
   const [n, setN] = useState(0)            // replay cursor (#bars revealed); 0 = all
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)    // replay speed multiplier
@@ -39,7 +39,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       const d = j?.data ?? j
       if (d?.error) setErr(d.error); else setData(d)
       if (d?.fallback === 'finviz' && d?.fallback_image) {
-        fetch(d.fallback_image).then(r => r.json()).then(jj => { const dd = jj?.data ?? jj; if (dd?.image) setFvImg(dd.image); else setErr(dd?.error || 'finviz image unavailable') })
+        fetch(d.fallback_image).then(r => r.json()).then(jj => { const dd = jj?.data ?? jj; if (dd?.image) setFvImg(dd.image); else setErr((dd?.error || 'finviz image unavailable') + ' — if persistent, the Finviz Elite cookie may have expired (refresh FINVIZ_COOKIE)') })
       }
     }).catch(e => setErr(String(e)))
   }, [trade.symbol, trade.entry_date])
@@ -55,6 +55,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.candle = candle
     if (show.vol) { const v = pc.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' }); ;(v as any).priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } }); series.current.vol = v }
     if (show.vwap) series.current.vwap = pc.addLineSeries({ color: '#eab308', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+    if (show.spy && data.spy_overlay?.length) series.current.spy = pc.addLineSeries({ color: 'rgba(148,163,184,.8)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: true, title: 'SPY (rebased)' })
+    if (show.l2 && data.l2_strip?.length) { const l2 = pc.addHistogramSeries({ priceScaleId: 'l2' }); pc.priceScale('l2').applyOptions({ scaleMargins: { top: 0.9, bottom: 0 } }); series.current.l2 = l2 }
     if (show.macd && macdRef.current) { const mc = mk(macdRef.current, 110); series.current.macd = mc.addLineSeries({ color: '#60a5fa', lineWidth: 1 }); series.current.signal = mc.addLineSeries({ color: '#f97316', lineWidth: 1 }); series.current.hist = mc.addHistogramSeries({}) }
     if (show.rsi && rsiRef.current) { const rc = mk(rsiRef.current, 90); series.current.rsi = rc.addLineSeries({ color: '#a855f7', lineWidth: 1 }); ;[30, 70].forEach(lv => series.current.rsi.createPriceLine({ price: lv, color: 'rgba(168,85,247,.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false })) }
 
@@ -102,8 +104,11 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.signal?.setData(cut(data.macd).map((x: any) => ({ time: x.time, value: x.signal })))
     series.current.hist?.setData(cut(data.macd).map((x: any) => ({ time: x.time, value: x.hist, color: x.hist >= 0 ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)' })))
     series.current.rsi?.setData(cut(data.rsi))
+    series.current.spy?.setData((data.spy_overlay || []).filter((x: any) => shownTime(x.time)))
+    series.current.l2?.setData((data.l2_strip || []).filter((x: any) => shownTime(x.time)).map((x: any) => ({ time: x.time, value: x.value, color: x.value >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' })))
     // markers only show once their bar is revealed; include the 9:30 session-open marker
     const shown = new Set(cut(data.bars).map((b: any) => String(b.time)))
+    const shownTime = (t: any) => shown.has(String(t))
     const mks = (data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
       color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
@@ -111,6 +116,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       mks.push({ time: data.session_open_time, position: 'aboveBar', color: '#eab308', shape: 'circle', text: '9:30 open' })
     if (data.session_close_time && shown.has(String(data.session_close_time)))
       mks.push({ time: data.session_close_time, position: 'aboveBar', color: '#f97316', shape: 'circle', text: '16:00 close' })
+    for (const ne of (data.news_events || []))
+      if (shown.has(String(ne.time))) mks.push({ time: ne.time, position: 'aboveBar', color: '#22d3ee', shape: 'circle', text: '📰' })
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
     series.current.candle?.setMarkers(mks)
   }
@@ -142,7 +149,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
               (trade as any).exec.grok_what_to_do_next_time ? `Coach: ${(trade as any).exec.grok_what_to_do_next_time}` : ((trade as any).exec.computed_summary || ''),
             ].filter(Boolean).join('\n')}>{(trade as any).exec.outcome_grade}/{(trade as any).exec.execution_grade} · cap {Math.round(((trade as any).exec.capture_ratio ?? 0) * 100)}%</span>}
           <span style={{ flex: 1 }} />
-          {(['vol', 'vwap', 'macd', 'rsi'] as const).map(k => <button key={k} onClick={() => setShow(s => ({ ...s, [k]: !s[k] }))} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: show[k] ? '#1d4ed8' : 'var(--bg2)', color: show[k] ? '#fff' : 'var(--text3)', cursor: 'pointer' }}>{k.toUpperCase()}</button>)}
+          {(['vol', 'vwap', 'macd', 'rsi', 'spy', 'l2'] as const).map(k => <button key={k} onClick={() => setShow(s => ({ ...s, [k]: !s[k] }))} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: show[k] ? '#1d4ed8' : 'var(--bg2)', color: show[k] ? '#fff' : 'var(--text3)', cursor: 'pointer' }}>{k.toUpperCase()}</button>)}
           <button onClick={onClose} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>✕</button>
         </div>
 
