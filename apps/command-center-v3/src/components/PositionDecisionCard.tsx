@@ -78,7 +78,39 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         <span style={chip('var(--bg2)', FRESH_C[p.news_freshness])} title={ageH != null ? `newest headline ${Math.round(ageH)}h old` : 'no recent news'}>news {p.news_freshness}{ageH != null ? ` ${Math.round(ageH)}h` : ''}</span>
         {(p.risk_flags ?? []).map((r: string) => <span key={r} style={chip('rgba(239,68,68,.13)', '#ef4444')}>{r.replace(/_/g, ' ')}</span>)}
         {(p.opportunity_flags ?? []).map((o: string) => <span key={o} style={chip('rgba(34,197,94,.13)', '#22c55e')}>{o.replace(/_/g, ' ')}</span>)}
+        {p.l2_pressure?.imbalance != null && (
+          <span style={chip(p.l2_pressure.imbalance > 0.2 ? 'rgba(34,197,94,.13)' : p.l2_pressure.imbalance < -0.2 ? 'rgba(239,68,68,.13)' : 'var(--bg2)',
+            p.l2_pressure.imbalance > 0.2 ? '#22c55e' : p.l2_pressure.imbalance < -0.2 ? '#ef4444' : 'var(--text2)')}
+            title={`Level-2 book pressure (live stream)\nbid depth ${p.l2_pressure.bid_depth} / ask depth ${p.l2_pressure.ask_depth} · ${p.l2_pressure.at}`}>
+            L2 {p.l2_pressure.imbalance > 0 ? '+' : ''}{Number(p.l2_pressure.imbalance).toFixed(2)}
+          </span>
+        )}
+        {p.hermes_rank != null && p.hermes_rank <= 100 && (
+          <span style={chip('rgba(167,139,250,.13)', '#a78bfa')} title={`Hermes watchlist intelligence rank (composite ${p.hermes_composite != null ? Number(p.hermes_composite).toFixed(1) : '—'})`}>H#{p.hermes_rank}</span>
+        )}
+        {p.short_float_pct != null && p.short_float_pct >= 5 && (
+          <span style={chip('rgba(245,158,11,.13)', '#f59e0b')} title={`Short float ${p.short_float_pct}% — squeeze/volatility context`}>short {num(p.short_float_pct, 1)}%</span>
+        )}
+        {p.earnings_date && (
+          <span style={chip('rgba(96,165,250,.13)', '#60a5fa')} title="Next earnings date (from enrichment)">earnings {p.earnings_date}</span>
+        )}
       </div>
+
+      {/* ── ANALYST LINE (explicit — was cryptic pills) ── */}
+      {p.analyst && (p.analyst.rating || p.analyst.target_mean != null) && (
+        <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 5 }}
+          title={`${p.analyst.source ?? 'analyst consensus'}${p.analyst.latest_event ? `\nlatest: ${p.analyst.latest_event}` : ''}\ntarget range $${p.analyst.target_low ?? '—'} – $${p.analyst.target_high ?? '—'}`}>
+          <b style={{ color: 'var(--text1)' }}>Analysts:</b>{' '}
+          {p.analyst.rating ? `${String(p.analyst.rating).toUpperCase()}${p.analyst.rating_mean != null ? ` (${Number(p.analyst.rating_mean).toFixed(1)})` : ''}` : 'no consensus'}
+          {p.analyst.opinions != null && ` · ${p.analyst.opinions} opinions`}
+          {p.analyst.target_mean != null && ` · target $${num(p.analyst.target_mean, 2)}`}
+          {p.analyst.target_upside_pct != null && (
+            <span style={{ color: p.analyst.target_upside_pct > 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+              {' '}({p.analyst.target_upside_pct > 0 ? '+' : ''}{num(p.analyst.target_upside_pct, 1)}% to target)
+            </span>
+          )}
+        </div>
+      )}
 
       {/* WHY this strategy (operator asked for this) */}
       {p.strategy_rationale && (

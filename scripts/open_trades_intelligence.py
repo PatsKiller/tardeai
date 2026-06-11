@@ -314,6 +314,64 @@ def build_intelligence():
     held_set = {(_norm_acct(p["account"]), p["symbol"]) for p in base}
     syms = sorted({p["symbol"] for p in base if p["symbol"]})
     # watchlist + directive membership (read-only) for the decision enrichment
+    # ── Card enrichment maps (2026-06-11): surface what the system already knows ─────────────────────────
+    _pills_by_sym, _l2_by_sym, _hermes_rank, _enrich_by_sym = {}, {}, {}, {}
+    try:
+        import json as _j
+        _pd = _j.loads(open(os.path.join(PROJ, "data", "runtime", "pro_analyst_pills_latest.json")).read_text() if False else open(os.path.join(PROJ, "data", "runtime", "pro_analyst_pills_latest.json")).read())
+        for _pl in (_pd.get("pills") or (_pd if isinstance(_pd, list) else [])):
+            _pills_by_sym[(_pl.get("symbol") or "").upper()] = _pl
+    except Exception:
+        pass
+    try:
+        _c2 = _conn(); _cur2 = _c2.cursor()
+        _cur2.execute("""SELECT DISTINCT ON (symbol) symbol, imbalance, bid_depth, ask_depth, captured_at
+                         FROM schwab_stream_book ORDER BY symbol, captured_at DESC""")
+        _l2_by_sym = {r[0]: {"symbol": r[0], "imbalance": r[1], "bid_depth": r[2], "ask_depth": r[3],
+                             "captured_at": r[4]} for r in _cur2.fetchall()}
+        _cur2.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_rank, hermes_composite_score
+                         FROM watchlist_items WHERE hermes_rank IS NOT NULL ORDER BY symbol, hermes_rank""")
+        _hermes_rank = {r[0]: {"symbol": r[0], "hermes_rank": r[1], "hermes_composite_score": r[2]}
+                        for r in _cur2.fetchall()}
+        _c2.close()
+    except Exception:
+        pass
+    try:
+        import json as _j
+        _ec = _j.loads(open(os.path.join(PROJ, "data", "state", "ticker_enrichment_cache.json")).read())
+        _enrich_by_sym = {k.upper(): v for k, v in (_ec.get("tickers") or _ec or {}).items() if isinstance(v, dict)}
+    except Exception:
+        pass
+
+    def _card_enrichment(sym):
+        out = {}
+        pl = _pills_by_sym.get(sym)
+        if pl:
+            out["analyst"] = {
+                "rating": pl.get("recommendation_key"), "rating_mean": pl.get("recommendation_mean"),
+                "opinions": pl.get("number_of_analyst_opinions"),
+                "target_mean": pl.get("target_mean_price"), "target_high": pl.get("target_high_price"),
+                "target_low": pl.get("target_low_price"),
+                "target_upside_pct": pl.get("upside_to_mean_target_pct"),
+                "source": pl.get("analyst_rating_source"),
+                "latest_event": pl.get("latest_event_headline"),
+            }
+        l2 = _l2_by_sym.get(sym)
+        if l2:
+            out["l2_pressure"] = {"imbalance": float(l2["imbalance"]) if l2.get("imbalance") is not None else None,
+                                  "bid_depth": float(l2.get("bid_depth") or 0), "ask_depth": float(l2.get("ask_depth") or 0),
+                                  "at": str(l2.get("captured_at"))[11:19]}
+        hr = _hermes_rank.get(sym)
+        if hr:
+            out["hermes_rank"] = hr.get("hermes_rank")
+            out["hermes_composite"] = float(hr["hermes_composite_score"]) if hr.get("hermes_composite_score") is not None else None
+        en = _enrich_by_sym.get(sym) or {}
+        if en.get("earnings_date"):
+            out["earnings_date"] = en.get("earnings_date")
+        if en.get("short_float_pct") is not None:
+            out["short_float_pct"] = en.get("short_float_pct")
+        return out
+
     wl_set, dir_set = set(), set()
     try:
         for r in (_db_query("SELECT DISTINCT symbol FROM watchlist_items WHERE status IN ('active','researched') AND symbol = ANY(%s)", (syms,)) or []):
@@ -551,6 +609,7 @@ def build_intelligence():
                 on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False))
             positions.append({
                 **_decision,
+                **_card_enrichment(sym),
                 "trade_id": None, "symbol": sym, "company_name": p.get("company_name"),
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
