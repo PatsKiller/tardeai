@@ -29,10 +29,11 @@ def _load_closed_trades(conn, date_filter):
                AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')"""
         )
         rows = cur.fetchall()
+        # No silent all-time fallback (2026-06-11): with zero closes today the digest used to report ALL
+        # history as if it were today's review — honest empty beats misleading full.
         if not rows:
-            cur.execute("""SELECT * FROM paper_trades WHERE status='closed'
-               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')""")
-            rows = cur.fetchall()
+            return {"status": "ok", "closed_count": 0,
+                    "message": "Closed Trade Review -- no trades closed today (nothing to review)."}
     else:
         cur.execute("""SELECT * FROM paper_trades WHERE status='closed'
                AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')""")
