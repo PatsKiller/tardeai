@@ -16392,6 +16392,35 @@ def _schwab_market_hours(query=None):
     return _json_clean(schwab_transport.get_market_hours())
 
 
+def _schwab_option_chain(query=None):
+    """GET /api/v2/schwab/option-chain?symbol=V&strikes=8 — READ-ONLY near-the-money chain summary."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    sym = (g("symbol") or "").upper()
+    if not sym:
+        return {"status": "error", "error": "symbol required"}
+    import schwab_transport
+    return _json_clean(schwab_transport.get_option_chain(sym, strike_count=min(int(g("strikes", 8) or 8), 20)))
+
+
+def _schwab_fundamentals(query=None):
+    """GET /api/v2/schwab/fundamentals?symbols=A,B — READ-ONLY instrument fundamentals."""
+    q = query or {}
+    raw = q.get("symbols"); raw = (raw[0] if isinstance(raw, list) else raw) or ""
+    if not raw:
+        return {"status": "error", "error": "symbols required"}
+    import schwab_transport
+    return _json_clean(schwab_transport.get_fundamentals(raw))
+
+
+def _schwab_movers(query=None):
+    """GET /api/v2/schwab/movers?index=$SPX — READ-ONLY index movers."""
+    q = query or {}
+    idx = ((q.get("index") or ["$SPX"])[0] if isinstance(q.get("index"), list) else q.get("index")) or "$SPX"
+    import schwab_transport
+    return _json_clean(schwab_transport.get_movers(idx))
+
+
 def _schwab_status(query=None):
     """GET /api/v2/system/schwab-status — Schwab read-only integration monitor: Gate-A token health,
     account-hash links, capability checks, recent sync. Read-only; never exposes token material."""
@@ -16993,6 +17022,9 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
+    "/api/v2/schwab/option-chain": _schwab_option_chain,
+    "/api/v2/schwab/fundamentals": _schwab_fundamentals,
+    "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,
