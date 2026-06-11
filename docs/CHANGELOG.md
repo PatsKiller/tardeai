@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-10 — Execution badges on main Trades tab + all paper trades Grok-reviewed
+
+All 17 paper trades Grok-reviewed (24 total with the 7 Schwab; 0 parse failures). Execution badge (grade +
+capture% + severe-runner warning + Grok-lesson tooltip) + replay overlay now render on the MAIN Journal
+Trades tab (paper + schwab), not just Real Accounts. Fixed the badge-match bug: journal serializes entry_time
+with T, execution-quality with a space -> normalized both (slice(0,19).replace(T,space)) in JournalHub +
+SchwabJournal. Read-only; validator 12/12.
+
 ## 2026-06-10 — Execution-quality UI: hypothesis panel + chart MFE/MAE overlay
 
 Backtesting tab now shows an Execution-Rule Hypotheses panel (sample, improved %, avg delta/sh, helps/hurts/
