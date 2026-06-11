@@ -16413,6 +16413,28 @@ def _schwab_round_trips(query=None):
             "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis) and basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses). Real-account, separate from the paper-only live-trading gate."}
 
 
+def _broker_orders_approval_status(query=None):
+    """GET /api/v2/broker-orders/approval-status?intent_id= — 2FA lifecycle for the UI."""
+    q = query or {}
+    iid = ((q.get("intent_id") or [None])[0] if isinstance(q.get("intent_id"), list) else q.get("intent_id"))
+    if not iid:
+        return {"ok": False, "error": "intent_id required"}
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from brokers import approval_service
+    return _json_clean(approval_service.status(iid))
+
+
+def _broker_orders_events(query=None):
+    """GET /api/v2/broker-orders/events?intent_id= — guard/state audit trail for the UI."""
+    q = query or {}
+    iid = ((q.get("intent_id") or [None])[0] if isinstance(q.get("intent_id"), list) else q.get("intent_id"))
+    rows = _db_query("""SELECT event, detail, created_at FROM intent_state_events
+                        WHERE (%s::uuid IS NULL OR intent_id=%s::uuid)
+                        ORDER BY created_at DESC LIMIT 100""", (iid, iid)) or []
+    return _json_clean({"events": rows})
+
+
 def _broker_orders_capabilities(query=None):
     """GET /api/v2/broker-orders/capabilities?broker= — what the UI may show/save/simulate per broker."""
     q = query or {}
@@ -17165,6 +17187,8 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
+    "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,
+    "/api/v2/broker-orders/events": _broker_orders_events,
     "/api/v2/broker-orders/drafts": _broker_orders_drafts,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
@@ -19446,6 +19470,32 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return _paper_proposals_enriched()
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/request-approval":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from brokers import approval_service, audit as br_audit
+            from brokers.order_intent import OrderIntent
+            iid = (body or {}).get("intent_id")
+            rows = [r for r in br_audit.load_drafts(None, 200) if r["intent_id"] == iid]
+            if not rows:
+                return 404, {"ok": False, "error": "unknown intent_id (save a preview first)"}
+            intent = OrderIntent.from_dict(rows[0]["intent_json"])
+            return 200, {"ok": True, **approval_service.request_approval(intent)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/approve":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from brokers import approval_service
+            b = body or {}
+            r = approval_service.confirm(b.get("intent_id"), b.get("channel", "web"), b.get("code"))
+            return (200 if r.get("ok") else 400), {"ok": r.get("ok", False), **r}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
 
     if method == "POST" and base_path == "/api/v2/broker-orders/preview":
         try:

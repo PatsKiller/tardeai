@@ -70,9 +70,19 @@ def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
                           "dry-run: local translate/validate/audit only — order-endpoint I/O prohibited "
                           "(operator decision 2026-06-11)", intent.correlation_id)
     elif mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked():
-        # Unreachable this phase by construction; kept explicit so the lock surface is visible/testable.
-        d = GuardDecision(False, mode, "LIVE_ENABLED_FUTURE defined but this phase's adapter blocks "
-                                       "unconditionally; enablement is out of scope", intent.correlation_id)
+        # 4th lock (operator requirement 2026-06-11): per-trade TWO-FACTOR approval — web popup AND
+        # telegram code, both confirmed, unexpired, single-use. Even with all standing locks open,
+        # an unapproved intent is denied. (And this phase's adapter still blocks unconditionally.)
+        try:
+            from .approval_service import is_fully_approved
+            twofa = is_fully_approved(intent.intent_id)
+        except Exception:
+            twofa = False
+        d = GuardDecision(False, mode,
+                          ("2FA approved but LIVE execution is out of scope this phase (adapter blocks "
+                           "unconditionally)" if twofa else
+                           "DENIED: per-trade two-factor approval missing/incomplete (web + telegram both "
+                           "required)"), intent.correlation_id)
     else:
         d = GuardDecision(False, BrokerExecutionMode.BROKER_DISABLED,
                           f"broker '{intent.broker}' execution disabled (fail-closed default)",
