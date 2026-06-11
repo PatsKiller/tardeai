@@ -59,6 +59,21 @@ Repeated behaviors outrank one-off anecdotes by construction (min sample ≥2 fo
 Top behavior: **entry without volume confirmation ×45**; **30 winning trades poorly executed**; **premature
 exit before runner ×13**. Replay targets: AXTI, ANY, FUSE, PFE, ZSL. All hypotheses unsupported by evidence.
 
+## Worked example — the queue in action (2026-06-11 replay walkthrough)
+The queue pointed at three trades that together map John's complete execution profile. Each was opened in the
+replay chart (entry/exit markers + MFE/MAE + post-exit line) to verify the deterministic grade:
+
+| Trade | Type | Leak | Evidence | Lesson |
+|---|---|---|---|---|
+| **CTXR** (srt:320) | scalp | **Entry** | Bought $1.54 at **RVOL 0.26** (¼ avg volume) into a dead tape; 35 min of chop before the real move; capture 48% | Wait for volume to confirm (RVOL >1) BEFORE entering |
+| **AXTI #255** (srt:255) | swing | **Exit / during-hold** | +$15,945 (6.5×) but rode the $26.66 peak back to an $18.83 exit; capture 68%; MAE only $0.14 (clean entry) | Trail the stop once extended |
+| **AXTI #257** (srt:257) | swing | **Exit / post-exit** | Sold $17.74 (+101%) on a pullback; AXTI then ran to $28.65 = **+62% missed** | Keep a runner; don't fully exit a live trend |
+
+Take-away: outcomes are net-positive but edge leaks on **both** ends — entries before volume, exits too soon
+or too late. This is precisely why the queue ranks *entry-without-volume ×45* (#1) and *premature-exit-on-
+winners* (#2), while flagging that the backtested fixes do NOT yet pass evidence — so the directive is *replay
+and study*, not *change the rules*. The walkthrough was read-only; no live behavior changed.
+
 ## Cross-references
 - [`../architecture/EXECUTION_QUALITY.md`](../architecture/EXECUTION_QUALITY.md) — the grading engine feeding this queue.
 - [`../architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md`](../architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md) — read-only foundation + write fence.
