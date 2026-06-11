@@ -406,3 +406,97 @@ def get_market_hours(markets=None, account_key=None):
         return normalize_market_hours(data)
     except Exception as e:
         return {"status": "error", "error": str(e)[:160]}
+
+
+def normalize_option_chain(raw):
+    """Option-chain payload -> compact summary (full chains are huge): underlying, per-expiration strike
+    summaries with mid/IV/delta/OI for calls+puts. Read-only analytics shape."""
+    if not isinstance(raw, dict):
+        return {"status": "error", "error": "unexpected chain payload type"}
+    out = {"status": "ok", "symbol": raw.get("symbol"), "underlying_price": (raw.get("underlyingPrice") or
+           (raw.get("underlying") or {}).get("last")), "expirations": []}
+    def _walk(side_map, side):
+        rows = []
+        for exp, strikes in (side_map or {}).items():
+            for strike, contracts in (strikes or {}).items():
+                c = (contracts or [{}])[0]
+                rows.append({"exp": exp.split(":")[0], "strike": float(strike), "side": side,
+                             "bid": c.get("bid"), "ask": c.get("ask"), "last": c.get("last"),
+                             "iv": c.get("volatility"), "delta": c.get("delta"),
+                             "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
+                             "dte": c.get("daysToExpiration")})
+        return rows
+    rows = _walk(raw.get("callExpDateMap"), "call") + _walk(raw.get("putExpDateMap"), "put")
+    by_exp = {}
+    for r in rows:
+        by_exp.setdefault(r["exp"], []).append(r)
+    for exp in sorted(by_exp):
+        rs = by_exp[exp]
+        out["expirations"].append({"exp": exp, "dte": rs[0].get("dte"), "contracts": len(rs),
+                                   "total_call_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "call"),
+                                   "total_put_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "put"),
+                                   "strikes": sorted(rs, key=lambda r: (r["side"], r["strike"]))})
+    return out
+
+
+def get_option_chain(symbol, strike_count=8, account_key=None):
+    """READ-ONLY option chain (near-the-money by default). No order surface."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    return _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(),
+                 strike_count=strike_count, include_underlying_quote=True)
+
+
+def get_option_expirations(symbol, account_key=None):
+    """READ-ONLY option expiration calendar for a symbol."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    def _norm(raw):
+        xs = (raw or {}).get("expirationList") or []
+        return {"status": "ok", "symbol": symbol.upper(),
+                "expirations": [{"date": x.get("expirationDate"), "dte": x.get("daysToExpiration"),
+                                 "type": x.get("expirationType")} for x in xs]}
+    return _read(account_key, "get_option_expiration_chain", _norm, symbol.upper())
+
+
+def get_fundamentals(symbols, account_key=None):
+    """READ-ONLY instrument fundamentals (P/E, EPS, div yield, market cap, shares) via get_instruments."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    def _norm(raw):
+        out = {}
+        for inst in (raw or {}).get("instruments", []):
+            f = inst.get("fundamental") or {}
+            out[inst.get("symbol")] = {
+                "description": inst.get("description"), "exchange": inst.get("exchange"),
+                "pe": f.get("peRatio"), "eps": f.get("eps"), "div_yield": f.get("divYield"),
+                "div_amount": f.get("divAmount"), "market_cap": f.get("marketCap"),
+                "shares_outstanding": f.get("sharesOutstanding"), "beta": f.get("beta"),
+                "high52": f.get("high52"), "low52": f.get("low52"),
+                "next_div_date": f.get("nextDivExDate") or f.get("divExDate"),
+                "next_earnings": f.get("nextEarningsDate"),
+            }
+        return {"status": "ok", "fundamentals": out, "count": len(out)}
+    from schwab.client import Client
+    syms = [s.strip().upper() for s in (symbols if isinstance(symbols, (list, tuple)) else str(symbols).split(",")) if s.strip()][:25]
+    return _read(account_key, "get_instruments", _norm, syms, Client.Instrument.Projection.FUNDAMENTAL)
+
+
+def get_movers(index="$SPX", account_key=None):
+    """READ-ONLY market movers for an index ($SPX, $DJI, $COMPX, NYSE, NASDAQ, ...)."""
+    account_key = account_key or _default_account_key()
+    if not account_key:
+        return {"status": "needs_account_link"}
+    def _norm(raw):
+        ms = (raw or {}).get("screeners") or (raw or {}).get("movers") or []
+        return {"status": "ok", "index": index,
+                "movers": [{"symbol": m.get("symbol"), "description": (m.get("description") or "")[:60],
+                            "last": m.get("lastPrice"), "change_pct": m.get("netPercentChange") or m.get("changePercent"),
+                            "volume": m.get("volume") or m.get("totalVolume"), "direction": m.get("direction")}
+                           for m in ms][:25]}
+    from schwab.client import Client
+    idx = getattr(Client.Movers.Index, index.replace("$", "").upper(), None)
+    return _read(account_key, "get_movers", _norm, idx if idx is not None else index)
