@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 - ATOS phantom answered end-to-end + digest all-time fallback removed
+
+Operator Q "if not a trade why is it showing": approval pre-creates a pending row; revalidator correctly
+blocked (107% drift, Alpaca shows zero ATOS orders ever); the orphan row got phantom-voided to closed/\$0 and
+review counted it. Fixed at every layer (cancel-on-block, journal/digest exclusion, sweep check, ATOS
+reclassified - verified gone from journal). Verifying exposed a second flaw: digest silently reported ALL
+history as "today" when zero trades closed today - removed; now honest "no trades closed today". Schwab
+scaffold prevents the class by construction (no record before broker truth).
+
+
 ## 2026-06-11 - Validator boundary regex: two self-catches post-scaffold
 
 The no-writes validator flagged api_v2 twice after the broker endpoints landed: (1) "from
