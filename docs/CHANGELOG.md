@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 — Execution-quality calibration: capture during-hold + RVOL tuning (poor is genuine)
+
+Fixed capture_ratio (was measuring through the post-exit window, wrongly grading well-timed exits poor — GOVX
+captured 100% of the during-hold move but scored 32%); now capture = captured/MFE-during-hold, post-exit run
+stays the separate missed-runner. Tuned scalp RVOL 2.0->1.5, day_trade 1.8->1.3 (above-average, not 2x).
+Combined effect: poor 93->84, good 1->3, ok 9->12 (schwab). KEY FINDING: the fix + threshold relaxation barely
+moved it -> the poor grades are GENUINE, not artifacts: 59 of 103 poor trades both entered weak-volume AND
+exited below the hold's high; 48 scalps entered below average volume. Net outcomes +7K/52.6% but execution
+consistently leaves money on both ends. All trades re-grok-reviewed clean. Read-only, validator 12/12.
+
 ## 2026-06-11 — Execution quality: full paper backfill + cutoff index-bug fix
 
 Fixed a cutoff bug (cutoff=min(len(bars),...) let range index bars[len(bars)] -> IndexError) that crashed
