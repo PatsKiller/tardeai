@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - Ingestion & intelligence due-diligence review (Finviz / Trade AI / Hermes)
+
+docs/project/INGESTION_INTELLIGENCE_REVIEW_20260611.md. Headlines: "momentum scout" = prime_setups (6x/day)
+but per-list efficacy UNMEASURABLE - screener_name tagged at ingestion is dropped at orchestrator INSERT
+(line 631), screener_label NULL on all 23,940 scans/30d; intake is sector-diverse but GO layer concentrates
+(Tech 37 + Healthcare 27 of ~111) = scoring-layer tilt, 44% scans missing sector; Hermes is dynamic (30-min
+recompute) but NOT adaptive (zero outcome feedback; calibration uses price pairs, advisory-only), sector
+factor passive 12% w/ no caps/no VIX, YouTube discovery circular + engagement-biased; degenerate librarian
+backlog loop = 2,475 NULL-symbol rows/30d all auto-promoted (inflates "Research staged"); no arbitration
+layer in practice (source_tier NULL 3,167/3,184; scoring.py 0 hermes refs). Ranked fixes: attribution
+end-to-end, outcome feedback into both scorers, kill backlog loop, sector backfill, diversity+regime
+conditioning, hermes chip on proposals. Review only - no code changed.
+
+
 ## 2026-06-11 - Finviz 429s: global cross-process rate limiter (cause-level fix)
 
 finviz_throttle.py: flock-based shared min-interval (2.5s, env-tunable) + global cooldown broadcast on any
