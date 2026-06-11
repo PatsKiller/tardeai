@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - Schwab REST read surface fully wired
+
+Added read-only option chains (near-the-money summary), option expirations, instrument fundamentals (P/E,
+EPS, div yield, mkt cap, 52w), and index movers to schwab_transport + endpoints (/api/v2/schwab/option-chain,
+/fundamentals, /movers; earlier today: /quotes batch + /market-hours). All live-tested (V chain @ 319.69 w/
+18 expirations, P/E 28.16, SPX movers). Every readable Schwab REST capability is now wired. NOT wired by
+design: news (no Schwab news endpoint exists; 7-source news layer remains canonical) and Level-2/streaming
+(WebSocket streamer = Rule-9-fenced future spike, requires its own gated session). Write fence untouched,
+validator 12/12.
+
+
 ## 2026-06-11 - Deep-review fixes implemented (all 5 approved items)
 
 (1) P0 fixes: populate_performance_context column bug (strategy YAMLs now carry real performance; second
