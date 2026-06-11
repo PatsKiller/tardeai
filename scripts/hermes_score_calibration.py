@@ -50,6 +50,24 @@ def run(apply=False):
         ) b ON true
         WHERE a.price > 0""")
     pairs = cur.fetchall()
+    # OUTCOME pairs (2026-06-11): realized trade P&L joined to the latest Hermes snapshot BEFORE entry —
+    # the missing live-edge signal. Weighted 2x vs price-pairs (realized money > mark-to-market drift).
+    cur.execute("""
+        SELECT h.components,
+               CASE WHEN pt.entry_price > 0 AND pt.pnl IS NOT NULL AND pt.shares > 0
+                    THEN pt.pnl / NULLIF(pt.entry_price * pt.shares, 0) ELSE NULL END AS fwd_return
+        FROM paper_trades pt
+        JOIN LATERAL (
+            SELECT components FROM hermes_score_history h
+            WHERE h.symbol = pt.symbol AND h.scored_at <= COALESCE(pt.entry_time, pt.created_at)
+            ORDER BY h.scored_at DESC LIMIT 1
+        ) h ON true
+        WHERE pt.status = 'closed' AND pt.pnl IS NOT NULL AND pt.pnl <> 0
+    """)
+    outcome_pairs = [r for r in cur.fetchall() if r[1] is not None]
+    if outcome_pairs:
+        pairs = list(pairs) + outcome_pairs * 2   # 2x weight for realized outcomes
+        print(f"  [calibration] including {len(outcome_pairs)} realized-trade outcome pairs (2x weight)")
     if len(pairs) < MIN_SAMPLES:
         print(json.dumps({"status": "insufficient_data", "pairs": len(pairs),
                           "note": f"need >= {MIN_SAMPLES} score→forward-return pairs (>= {MIN_HOURS}h apart). "

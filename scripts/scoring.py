@@ -434,6 +434,42 @@ def _grade(score: int, weights: Dict[str, Any]) -> tuple[str, str]:
 
 # ── Public scorer ─────────────────────────────────────────────────────────────
 
+
+
+# ── Outcome feedback (2026-06-11): strategy-family scar from LIVE paper results ──────────────────────────
+# The 65-pt rubric previously never saw realized outcomes. Now: a ticker's screener strategy_class maps to
+# its consolidated strategy family; that family's live 30d paper win-rate scales the score (bounded, gentle).
+# Advisory-grade: bounded 0.85..1.10, min sample 5, cached 10 min. Aliases follow the 2026-06-11 consolidation.
+_CLASS_ALIAS = {"day_scalp": "momentum_scalp", "swing_trade": "swing_breakout",
+                "gap_and_go": "momentum_scalp", "earnings_catalyst": "earnings_post_momentum"}
+_SCAR_CACHE: dict = {"at": 0.0, "map": {}}
+
+
+def _strategy_outcome_scar(strategy_class: str) -> float:
+    if not strategy_class:
+        return 1.0
+    import time as _t
+    if _t.time() - _SCAR_CACHE["at"] > 600:
+        try:
+            from db_adapter import _get_conn
+            cur = _get_conn().cursor()
+            cur.execute("""SELECT strategy_id, count(*) FILTER (WHERE pnl <> 0) n,
+                                  count(*) FILTER (WHERE pnl > 0) wins
+                           FROM paper_trades
+                           WHERE status='closed' AND closed_at > NOW() - INTERVAL '30 days'
+                           GROUP BY strategy_id""")
+            m = {}
+            for sid, n, wins in cur.fetchall():
+                if n and n >= 5:
+                    wr = wins / n
+                    m[sid] = 0.85 if wr < 0.35 else 0.93 if wr < 0.45 else 1.10 if wr > 0.65 else 1.05 if wr > 0.55 else 1.0
+            _SCAR_CACHE["map"] = m
+            _SCAR_CACHE["at"] = _t.time()
+        except Exception:
+            _SCAR_CACHE["at"] = _t.time()   # don't retry every call on DB issues
+    sid = _CLASS_ALIAS.get(strategy_class, strategy_class)
+    return _SCAR_CACHE["map"].get(sid, 1.0)
+
 def score_ticker(
     ticker_row: Dict[str, Any],
     enrichment: Dict[str, Any],
@@ -493,6 +529,10 @@ def score_ticker(
     scar = enrichment.get("scar_factor", 1.0)
     if scar < 1.0:
         total = int(total * scar)
+    # outcome feedback: live strategy-family win-rate scar (bounded; logged in pillar breakdown)
+    outcome_scar = _strategy_outcome_scar(str(ticker_row.get("strategy_class") or ""))
+    if outcome_scar != 1.0:
+        total = int(total * outcome_scar)
 
     # ── 7th pillar: technical confluence (max 10 pts) ─────────────────────
     # Non-fatal — Trade AI pipeline must never fail due to indicator engine issues
