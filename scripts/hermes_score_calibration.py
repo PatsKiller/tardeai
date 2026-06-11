@@ -41,14 +41,26 @@ def _weights():
 def run(apply=False):
     conn = _conn(); cur = conn.cursor()
     # forward-return pairs: each snapshot → the earliest later snapshot >= MIN_HOURS later (same symbol)
+    # Direct-table LATERAL (2026-06-11): the old CTE materialized all 217K snapshots and blocked the
+    # (symbol, scored_at) index (130M cost, 48-min runs). Window bounded to 45 days; anchors sampled to one
+    # snapshot per symbol per 6h bucket — calibration needs coverage, not every 30-min tick.
     cur.execute(f"""
-        WITH s AS (SELECT symbol, price, components, scored_at FROM hermes_score_history WHERE price IS NOT NULL)
         SELECT a.components, (b.price - a.price)/a.price AS fwd_return
-        FROM s a JOIN LATERAL (
-            SELECT price FROM s b WHERE b.symbol=a.symbol AND b.scored_at >= a.scored_at + interval '{MIN_HOURS} hours'
+        FROM (
+            SELECT DISTINCT ON (symbol, date_trunc('hour', scored_at) )
+                   symbol, price, components, scored_at
+            FROM hermes_score_history
+            WHERE price IS NOT NULL AND price > 0
+              AND scored_at > NOW() - INTERVAL '45 days'
+              AND EXTRACT(hour FROM scored_at)::int % 6 = 0
+            ORDER BY symbol, date_trunc('hour', scored_at), scored_at
+        ) a
+        JOIN LATERAL (
+            SELECT price FROM hermes_score_history b
+            WHERE b.symbol = a.symbol AND b.price IS NOT NULL
+              AND b.scored_at >= a.scored_at + interval '{MIN_HOURS} hours'
             ORDER BY b.scored_at ASC LIMIT 1
-        ) b ON true
-        WHERE a.price > 0""")
+        ) b ON true""")
     pairs = cur.fetchall()
     # OUTCOME pairs (2026-06-11): realized trade P&L joined to the latest Hermes snapshot BEFORE entry —
     # the missing live-edge signal. Weighted 2x vs price-pairs (realized money > mark-to-market drift).
