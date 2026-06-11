@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - Stage 2 restructured: no Schwab sandbox exists -> shadow validation + micro-canary
+
+Operator question: Schwab individuals get no dev/sandbox accounts - how to validate safely? Answer baked
+into the migration plan: Stage 2a SHADOW VALIDATION (zero API writes) - operator places tiny test orders
+MANUALLY in thinkorswim (paperMoney for structure questions); our read-only API reads them back and a
+reconciliation harness compares Schwab's actual OTOCO/trailing/multi-target representations + status
+lifecycle + partial-fill child behavior against translator expectations; ACCT_ACTIVITY subscribed read-only
+(manual activity generates the events); rate limits observed from read traffic. Resolves 6-7 of 10
+UNVERIFIED items with the write fence fully intact. Stage 2b (only for API-write semantics: replace,
+priceLink-on-submit, reject taxonomy): attended micro-canary window - far-from-market LIMIT qty=1 on <\$10
+stock, ACK->read-back->CANCEL - requiring its own signed approval + validator canary assertions FIRST;
+explicitly out of scope until approved. Open-questions resolution paths updated per item.
+
+
 ## 2026-06-11 - Schwab migration Stage 1: 30-preview translation review — 30/30 CLEAN
 
 translation_review.py harness (repeatable): 30 intents grounded in real recent symbols/prices covering
