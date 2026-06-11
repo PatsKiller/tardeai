@@ -24,6 +24,128 @@ SECTOR_ETF = {"Technology": "XLK", "Financial": "XLF", "Financials": "XLF", "Hea
               "Energy": "XLE", "Utilities": "XLU", "Real Estate": "XLRE", "Materials": "XLB",
               "Basic Materials": "XLB", "Communication Services": "XLC"}
 
+# Fallback sector for common holdings the sector table lacks (read-only display aid only).
+_SECTOR_FALLBACK = {"AGNC": "Real Estate", "NWG": "Financial", "NUVL": "Healthcare", "TMHC": "Consumer Cyclical",
+                    "AGM": "Financial", "RKLB": "Industrials", "IRDM": "Technology", "SCHD": "Other", "V": "Financial"}
+
+_STRATEGY_PURPOSE_CACHE = None
+
+
+def _strategy_purposes():
+    """Load each strategy's `purpose:` from config/strategies/*.yaml — the 'why this strategy' rationale."""
+    global _STRATEGY_PURPOSE_CACHE
+    if _STRATEGY_PURPOSE_CACHE is not None:
+        return _STRATEGY_PURPOSE_CACHE
+    out = {}
+    d = os.path.join(PROJ, "config", "strategies")
+    try:
+        for fn in os.listdir(d):
+            if not fn.endswith(".yaml"):
+                continue
+            name = fn[:-5]
+            for line in open(os.path.join(d, fn), encoding="utf-8"):
+                if line.startswith("purpose:"):
+                    out[name] = line.split("purpose:", 1)[1].strip().strip('"').strip("'")
+                    break
+    except Exception:
+        pass
+    _STRATEGY_PURPOSE_CACHE = out
+    return out
+
+
+def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, below, stop_near, rsi,
+                     stale_tech, basis_reliable, cost_basis_source, basis_kind, market_value, strategy,
+                     trend_label, sec_label, vs_sec5, latest_news_age_h, last_hermes_at, on_watchlist,
+                     directive, is_fund):
+    """Derive the read-only operator-decision fields. Pure function of already-computed signals — no writes,
+    no source-of-truth changes. Action language is review/consider only, never execute."""
+    high_value = (market_value or 0) >= 50000
+    risk_flags, opp_flags = [], []
+    # risk
+    if big_gain_unprot:
+        risk_flags.append("large_gain_unprotected")
+    if not protected and not stop:
+        risk_flags.append("no_protection")
+    if not basis_reliable:
+        risk_flags.append("basis_unknown")
+    if stale_tech:
+        risk_flags.append("data_stale")
+    if below:
+        risk_flags.append("below_entry")
+    if rsi is not None and rsi > 75:
+        risk_flags.append("overbought")
+    if stop_near:
+        risk_flags.append("stop_near")
+    # opportunity
+    if upnl_pct is not None and upnl_pct > 8 and not stop_near:
+        opp_flags.append("trailing_candidate")
+    if (vs_sec5 or 0) > 1:
+        opp_flags.append("outperforming_sector")
+    if trend_label and "bull" in str(trend_label).lower():
+        opp_flags.append("bullish_trend")
+    # freshness
+    data_freshness = "stale" if stale_tech else "fresh"
+    if latest_news_age_h is None:
+        news_freshness = "none"
+    elif latest_news_age_h <= 24:
+        news_freshness = "fresh"
+    elif latest_news_age_h <= 48:
+        news_freshness = "aging"
+    else:
+        news_freshness = "stale"
+    protection_state = "protected" if (protected and stop) else ("partial" if stop else "unprotected")
+    basis_quality = ("broker" if cost_basis_source in ("broker", "schwab", "alpaca") else
+                     "tax_grade" if cost_basis_source in ("csv", "tax", "documented") else
+                     "owner_provided" if cost_basis_source in ("owner", "owner_provided", "manual") else
+                     "entry" if basis_kind == "entry" else
+                     "verified" if basis_reliable else "unknown")
+    watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
+    # decision (most important text) — priority-ordered
+    if not basis_reliable and high_value:
+        decision, reason, pr = "Cost basis uncertain", "High-value position with unverified cost basis — resolve before any tax/exit decision.", "high"
+        nxt = "Resolve cost basis (CSV/broker reconciliation)"
+    elif big_gain_unprot or (not protected and not stop and (upnl_pct or 0) > 10):
+        decision, reason, pr = "Needs protection review", f"+{round(upnl_pct or 0)}% gain with no active protection{', bullish trend' if 'bullish_trend' in opp_flags else ''}{', trailing candidate' if 'trailing_candidate' in opp_flags else ''}.", "high"
+        nxt = "Review protection / trailing-stop placement"
+    elif stale_tech and high_value:
+        decision, reason, pr = "Data stale — refresh first", "Technicals are stale on a high-value position — refresh intelligence before judging.", "high"
+        nxt = "Refresh intelligence, then re-review"
+    elif below and (upnl_pct or 0) < -5:
+        decision, reason, pr = "Needs exit review", f"Down {round(upnl_pct or 0)}% and below entry — review thesis vs stop.", "medium"
+        nxt = "Review exit / stop vs thesis"
+    elif is_fund or (strategy and ("income" in str(strategy) or "dividend" in str(strategy))):
+        decision, reason, pr = "Income/dividend review", "Held for income/dividend role — monitor distribution + total return, not momentum.", "low"
+        nxt = "Income role — monitor distributions"
+    elif trend_label and "bull" in str(trend_label).lower() and not risk_flags:
+        decision, reason, pr = "Hold thesis intact", "Thesis intact: trend supportive, no protection/data flags.", "low"
+        nxt = "No action — monitored"
+    else:
+        decision, reason, pr = "No action — monitored", "No immediate action — within normal parameters.", "low"
+        nxt = "No action — monitored"
+    # priority escalation by value
+    if pr == "high" and high_value:
+        pr = "critical"
+    actions = []
+    if "Needs protection" in decision:
+        actions.append("Review protection")
+    if "exit" in decision.lower():
+        actions.append("Review exit thesis")
+    if "basis" in decision.lower():
+        actions.append("Reconcile cost basis")
+    if "stale" in decision.lower():
+        actions.append("Refresh intelligence")
+    actions += ["Open replay", "Open journal", "Open news"]
+    return {
+        "operator_priority": pr, "operator_decision": decision, "decision_reason": reason,
+        "risk_flags": risk_flags, "opportunity_flags": opp_flags,
+        "data_freshness": data_freshness, "news_freshness": news_freshness,
+        "protection_state": protection_state, "basis_quality": basis_quality,
+        "watchlist_state": watchlist_state, "directive_state": ("active" if directive else "none"),
+        "last_hermes_review_at": last_hermes_at, "latest_news_age_hours": latest_news_age_h,
+        "primary_next_review": nxt, "recommended_manual_actions": actions[:6],
+        "strategy_rationale": (_strategy_purposes().get(str(strategy), None)),
+    }
+
 
 def _conn():
     import psycopg2
@@ -191,6 +313,16 @@ def build_intelligence():
     base, excluded, excl_counts = _load_base_positions()
     held_set = {(_norm_acct(p["account"]), p["symbol"]) for p in base}
     syms = sorted({p["symbol"] for p in base if p["symbol"]})
+    # watchlist + directive membership (read-only) for the decision enrichment
+    wl_set, dir_set = set(), set()
+    try:
+        for r in (_db_query("SELECT DISTINCT symbol FROM watchlist_items WHERE status IN ('active','researched') AND symbol = ANY(%s)", (syms,)) or []):
+            wl_set.add(r["symbol"])
+        for r in (_db_query("SELECT DISTINCT UPPER(spec->>'symbol') sym FROM watch_directives WHERE status='active' AND spec ? 'symbol'", None) or []):
+            if r.get("sym"):
+                dir_set.add(r["sym"])
+    except Exception:
+        pass
     tickers = [s for s in syms if _is_ticker(s)]
 
     c = _conn()
@@ -361,7 +493,7 @@ def build_intelligence():
             sma50 = float(t["sma50_pct"]) if t.get("sma50_pct") is not None else None
             sma200 = float(t["sma200_pct"]) if t.get("sma200_pct") is not None else None
             stale_tech = not t and not cf
-            sec = sector.get(sym)
+            sec = sector.get(sym) or _SECTOR_FALLBACK.get(sym)
             etf = SECTOR_ETF.get(sec) if sec else None
             et = (tech.get(etf) or {}) if etf else {}
             sym5 = float(t["perf_week_pct"]) if t.get("perf_week_pct") is not None else None
@@ -392,7 +524,33 @@ def build_intelligence():
                 warns.append("overbought")
             level = "alert" if (stop_near or big_gain_unprot) else ("watch" if warns else "ok")
             ent_date = p.get("entry_date") or lot.get("first_entry") or pl.get("ent")
+            # newest-news age (hours) for freshness
+            _news_age_h = None
+            for _n in ((news.get(sym) or []) + herm.get(sym, {}).get("items", [])):
+                _ts = _n.get("published_at") or _n.get("created_at")
+                if _ts:
+                    try:
+                        import datetime as _d
+                        _pt = _d.datetime.fromisoformat(str(_ts).replace("Z", "+00:00"))
+                        if _pt.tzinfo is None:
+                            _pt = _pt.replace(tzinfo=_d.timezone.utc)
+                        _age = (_d.datetime.now(_d.timezone.utc) - _pt).total_seconds() / 3600
+                        _news_age_h = _age if _news_age_h is None else min(_news_age_h, _age)
+                    except Exception:
+                        pass
+            _mv = p.get("market_value") or (cur_px * sh if cur_px else None)
+            _decision = _derive_decision(
+                upnl_pct=upnl_pct, protected=pr["protected"], stop=stop, tp_missing=tp_missing,
+                big_gain_unprot=big_gain_unprot, below=below, stop_near=stop_near, rsi=rsi,
+                stale_tech=stale_tech, basis_reliable=basis_reliable, cost_basis_source=p.get("cost_basis_source"),
+                basis_kind=("entry" if p.get("src") == "paper_trades" else "avg_cost"), market_value=_mv,
+                strategy=(p.get("strategy") or lot.get("strat") or pl.get("strat")),
+                trend_label=_trend_label(sma50, sma200), sec_label=sec_label, vs_sec5=vs_sec5,
+                latest_news_age_h=(round(_news_age_h, 1) if _news_age_h is not None else None),
+                last_hermes_at=herm.get(sym, {}).get("research_at"),
+                on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False))
             positions.append({
+                **_decision,
                 "trade_id": None, "symbol": sym, "company_name": p.get("company_name"),
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
