@@ -66,18 +66,21 @@ def _haiku_score_catalyst(symbol: str, headlines: List[str], summary_blurb: str)
             if nums:
                 return max(0, min(15, int(nums[0])))
     except Exception as e:
-        print(f"  [ollama-catalyst] {symbol} error: {e} — falling back to Haiku")
-        # Fallback to Claude Haiku if Ollama unavailable
+        print(f"  [ollama-catalyst] {symbol} error: {e} — falling back to Grok lane (free OAuth)")
+        # Free-OAuth-only rule (operator, 2026-06-11): fallback is the Grok lane, never metered Anthropic.
         try:
-            model = os.getenv("CLAUDE_CHEAP_MODEL", "claude-haiku-4-5-20251001")
+            import llm_lane
             headlines_str2 = "\n".join(f"- {h}" for h in headlines[:5])
             prompt2 = (
                 f"Score catalyst for {symbol} 0-15. "
                 f"15=FDA/earnings/M&A. 8=upgrade. 4=generic. 0=noise.\n"
                 f"Headlines:\n{headlines_str2}\nReply integer only."
             )
-            result = _anthropic_complete(prompt2, model, max_tokens=10)
-            return max(0, min(15, int(result.strip())))
+            import re as _re
+            result = llm_lane.generate(prompt2, lane="grok", timeout=60)
+            nums = _re.findall(r"\b(\d+)\b", result or "")
+            if nums:
+                return max(0, min(15, int(nums[0])))
         except Exception:
             pass
     return 4  # fallback score
@@ -86,8 +89,8 @@ def _sonnet_narrative(symbol: str, score: int, grade: str, decision: str,
                        pillar_breakdown: Dict[str, int], top_catalyst: Optional[Dict],
                        rvol: float, price: float, float_shares: float,
                        change_pct: float, gap_pct: float) -> str:
-    """Ask Claude Sonnet for a concise scalper-focused narrative for GO/escalated tickers."""
-    model = os.getenv("CLAUDE_ESCALATION_MODEL", "claude-sonnet-4-5-20251015")
+    """Scalper-focused narrative for GO/escalated tickers — Grok lane (free OAuth), local fallback.
+    Migrated off metered Claude Sonnet 2026-06-11 (operator free-OAuth-only rule)."""
     catalyst_headline = (top_catalyst or {}).get("title", "No catalyst identified")
     catalyst_age = (top_catalyst or {}).get("hours_old", "N/A")
     prompt = (
@@ -100,7 +103,17 @@ def _sonnet_narrative(symbol: str, score: int, grade: str, decision: str,
         f"Write 3-4 sentences maximum. Focus on: why it's moving, key risk, ideal entry context, "
         f"and one thing to watch. No generic disclaimers."
     )
-    return _anthropic_complete(prompt, model, max_tokens=200)
+    try:
+        import llm_lane
+        out = llm_lane.generate(prompt, lane="grok", timeout=90)
+        if out and not out.startswith("["):
+            return out.strip()
+    except Exception:
+        pass
+    try:
+        return _ollama_serialized(prompt, num_predict=220, timeout=120).strip()
+    except Exception as e:
+        return f"[narrative unavailable: {e}]"
 
 def _ollama_preplan(symbol: str, score: int, decision: str,
                     top_catalyst: Optional[Dict], rvol: float,

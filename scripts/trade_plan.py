@@ -33,6 +33,28 @@ def _env(k: str) -> str:
 
 
 def _sonnet(prompt: str, max_tokens: int = 400) -> str:
+    """Now routed through the FREE Grok OAuth lane with local-Ollama fallback (operator free-OAuth-only
+    rule, 2026-06-11). Name kept for call-site compatibility; metered Anthropic path removed."""
+    try:
+        import llm_lane
+        out = llm_lane.generate(prompt, lane="grok", timeout=120)
+        if out and not str(out).startswith("["):
+            return str(out).strip()
+    except Exception:
+        pass
+    try:
+        import urllib.request, json as _json, os as _os
+        url = (_os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")) + "/api/generate"
+        payload = _json.dumps({"model": _os.getenv("LOCAL_LLM_MODEL", "gemma3:12b"), "prompt": prompt,
+                               "stream": False, "options": {"num_predict": max_tokens}}).encode()
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return (_json.load(r).get("response") or "").strip()
+    except Exception as e:
+        return f"[LLM error: {e}]"
+
+
+def _sonnet_DISABLED_metered(prompt: str, max_tokens: int = 400) -> str:
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=_env("ANTHROPIC_API_KEY"))
