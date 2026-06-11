@@ -539,7 +539,7 @@ export default function JournalHub({ onDrill }: Props) {
                     {eq?.grok_what_to_do_next_time && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{eq.grok_what_to_do_next_time}</div>}
                     {/* action buttons */}
                     <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
-                      <button onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eq })}
+                      <button onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entryDate, exit_date: t.exitDate, entry_time: t.entryTimeFull, exit_time: (t as any).exitTimeFull, stop: (t as any).stop, target: (t as any).target, entry_price: t.ep, exit_price: t.xp, exec: eq } as any)}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
                       <button onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na] ?? t.account} · ${t.strat ?? t.source}`, endpoint: t.source === 'schwab' ? '/api/v2/journal' : '/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
