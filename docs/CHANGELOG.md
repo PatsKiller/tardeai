@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 - Canary purpose + web-channel location documented (operator questions)
+
+stage2a-canary-protocol.md gains plain-English sections: the 1-2 share orders test Schwab's RUNTIME order
+handling (response JSON shapes, status lifecycle, TRIGGER-cancel semantics, fill events, OCO activation,
+ingestion flow) - everything is currently verified only against the SDK schema and Schwab has no sandbox;
+orders 1-6 never fill (cost \$0), orders 7-9 are one attended ~\$16 fill (cost ~ spread). Web approval
+channel location: Trading -> Broker Orders -> inspect -> 2FA panel (screenshot-verified, mobile-usable).
+
+
 ## 2026-06-11 - 2FA trade approvals (telegram buttons -> proposals chat) + Broker Orders tab + v3 mobile
 
 Per-trade two-factor approvals live (testable; execution still BROKER_DISABLED): web confirm + Telegram

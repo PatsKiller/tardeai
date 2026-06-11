@@ -43,3 +43,32 @@ resolved/remaining UNVERIFIED register updates · ACCT_ACTIVITY payload captures
 
 ## What this CANNOT validate (stays for gated Stage 2b API canaries)
 API-side `replace_order` semantics · priceLink fields on API submission · API reject taxonomy.
+
+## Plain-English: what the 1–2 share orders actually test (operator question, 2026-06-11)
+These orders test NOTHING about making money. They test the ten things we cannot know without watching
+Schwab handle a real order — because everything we built is verified against the SDK's SCHEMA, not against
+Schwab's RUNTIME behavior, and Schwab offers no sandbox to check.
+
+**Orders 1–6 (never fill — limits ~50% below market, then cancelled; realized cost $0):**
+- When Schwab ACCEPTS an OTOCO / trailing-stop / multi-target order, what does its response JSON actually
+  look like? (Field names, nesting, IDs — does it match what our translator predicts? If Schwab renames or
+  restructures anything, our future order-tracking would silently misread it.)
+- What status lifecycle do orders move through (WORKING/QUEUED/...?) — our monitor needs the real enum.
+- Does CANCEL of a TRIGGER parent cancel the children? (We assume yes; assumption ≠ knowledge.)
+- Do AM/PM/GTC variations round-trip faithfully?
+
+**Orders 7–9 (one real ~$16 fill + OCO exits + close; realized cost ≈ spread, cents):**
+- What does a FILL event look like in ACCT_ACTIVITY / order status? (Future fill-verification parity needs
+  the real payload.)
+- Do attached OCO exits actually activate against the live position the way the docs imply?
+- Does the round trip flow into our schwab_round_trips ingestion correctly (tagged canary, excluded from
+  stats)?
+
+Without this, the first live order ever placed by the system WOULD BE the test. $16 attended, watched in
+Command Center, is the cheap version of that lesson.
+
+## Where the WEB approval channel lives (operator question)
+Command Center -> **Trading -> Broker Orders tab** -> "inspect" on any draft -> the "🔐 2FA approval" panel:
+[Request approval (sends Telegram code)] · [**Confirm — web channel**] · [telegram code field] ·
+[Confirm — telegram code]. Mobile-responsive — both factors tappable from a phone. The future popup-on-trade
+will reuse exactly this panel/endpoints.
