@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - L2 stream scheduled + proposal chip + three root-cause fixes
+
+Stream: cron market-hours schedule (9:31 + flock-guarded 11/13/15 safety restarts; self-terminates at close;
+systemd units staged for sudo install); running live today. ProposalsRich: L2 book-pressure chip (15m avg
+imbalance, advisory). Root causes from operator alerts: (a) dedup-guard backfill left survivor status=pending
+after fill (ELVN -> monitor false "no DB record"; trigger now promotes pending->open, row repaired, test
+passes); (b) continuous_runner SELECT used float_m vs column float_mm - social-scalp injection silently dead
+every cycle, now restored (26 rows); (c) float_shares all-zero Telegram spam was ETF/fund screeners (funds
+have no float) - gate now exempts ETF rows, genuine zero still alerts. Validator 12/12.
+
+
 ## 2026-06-11 - Level-2 streaming spike (operator-gated, Rule-9 isolated)
 
 schwab_stream_daemon.py captures read-only L1 quotes + NASDAQ Level-2 book for symbols auto-selected from
