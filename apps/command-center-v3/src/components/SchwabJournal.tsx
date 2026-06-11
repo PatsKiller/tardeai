@@ -7,6 +7,27 @@ import TradeReplayChart from './TradeReplayChart'
 // LLM strategy/grade/lesson. Separate from paper trades (the live-trading gate stays paper-only).
 const GRADE: Record<string, string> = { A: '#22c55e', B: '#84cc16', C: '#f59e0b', D: '#f97316', F: '#ef4444' }
 
+// Explain entry/exit letter grades (A best → F worst, backtest-replay grading) from execution-quality signals.
+function gradeExplain(t: any, eq: any): string {
+  const lines = ['Letter grades A (best) → F (worst), from backtest-replay grading.', '']
+  const ew: string[] = []
+  if (eq) {
+    if (eq.entry_timing_grade) ew.push(`${eq.entry_timing_grade} timing`)
+    if (eq.entry_volume_ratio != null) ew.push(`RVOL ${eq.entry_volume_ratio}${eq.entry_volume_ratio < 1 ? ' (below avg)' : ''}`)
+    if (eq.entry_above_vwap === false) ew.push('below VWAP'); else if (eq.entry_above_vwap === true) ew.push('above VWAP')
+  }
+  lines.push(`ENTRY grade ${t.entry_grade ?? '—'}${ew.length ? ' — ' + ew.join(', ') : ''}`)
+  const xw: string[] = []
+  if (eq) {
+    if (eq.exit_timing_grade) xw.push(`${eq.exit_timing_grade} timing`)
+    if (eq.capture_ratio != null) xw.push(`captured ${Math.round((eq.capture_ratio ?? 0) * 100)}% of the in-hold move`)
+    if (eq.missed_opportunity_grade === 'severe') xw.push('severe missed runner')
+  }
+  lines.push(`EXIT grade ${t.exit_grade ?? '—'}${xw.length ? ' — ' + xw.join(', ') : ''}`)
+  if (eq?.grok_what_to_do_next_time) lines.push('', `Coach: ${eq.grok_what_to_do_next_time}`)
+  return lines.join('\n')
+}
+
 const EXEC: Record<string, string> = { good: '#22c55e', ok: '#84cc16', weak: '#f59e0b', poor: '#ef4444' }
 
 export default function SchwabJournal() {
@@ -75,7 +96,7 @@ export default function SchwabJournal() {
               {t.review_lane === 'local' && <span title="Reviewed by local gemma" style={{ fontSize: 7, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>local</span>}
             </span>
             <span style={{ flex: '0 0 70px', fontSize: 9, color: 'var(--text3)' }}>{t.hold_minutes < 390 ? `${t.hold_minutes}m` : `${Math.round(t.hold_minutes / 1440)}d`}</span>
-            {t.entry_grade && <span style={{ flex: '0 0 80px', fontSize: 9 }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b></span>}
+            {t.entry_grade && <span title={gradeExplain(t, eq)} style={{ flex: '0 0 80px', fontSize: 9, cursor: 'help' }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b> ⓘ</span>}
             {eq ? (
               <span style={{ flex: '0 0 132px', fontSize: 8, display: 'flex', alignItems: 'center', gap: 3 }}
                 title={`Outcome ${eq.outcome_grade} / Execution ${eq.execution_grade}\nentry ${eq.entry_timing_grade}, exit ${eq.exit_timing_grade}, capture ${Math.round((eq.capture_ratio ?? 0) * 100)}%${eq.runner_type === 'parabolic_pump' ? '\n⚡ post-exit move was a PARABOLIC PUMP — selling was correct, do not chase' : eq.runner_type === 'sustained_trend' || eq.runner_type === 'trend_top' ? '\n↗ post-exit move was a REAL runner — scale-out opportunity' : ''}\n${eq.grok_what_to_do_next_time || eq.computed_summary || ''}`}>
