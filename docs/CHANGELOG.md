@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - Level-2 streaming spike (operator-gated, Rule-9 isolated)
+
+schwab_stream_daemon.py captures read-only L1 quotes + NASDAQ Level-2 book for symbols auto-selected from
+open positions/PENDING proposals/directives; computes book-pressure imbalance; own tables; kill switch;
+market-hours aware; manual start only. schwab-py kept behind the transport boundary via build_stream_client
+(the no-writes validator caught the initial direct import - guard proven). Endpoints:
+/api/v2/schwab/stream/status + /stream/book (latest book + 15m pressure read, advisory-only). Live-tested:
+111 book snapshots (NWG bid-heavy +0.40, TMHC ask-heavy -0.57). Never an execution trigger; 0 pipeline
+imports; validator 12/12.
+
+
 ## 2026-06-11 - Schwab REST read surface fully wired
 
 Added read-only option chains (near-the-money summary), option expirations, instrument fundamentals (P/E,
