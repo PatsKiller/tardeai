@@ -90,7 +90,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     const onResize = () => charts.current.forEach(c => c.timeScale().fitContent())
     window.addEventListener('resize', onResize)
     return () => { window.removeEventListener('resize', onResize); charts.current.forEach(c => c.remove()); charts.current = [] }
-  }, [data, show.vol, show.vwap, show.macd, show.rsi])
+  }, [data, show.vol, show.vwap, show.macd, show.rsi, show.spy, show.l2])
 
   // replay paint: reveal the first `count` bars (0 => all)
   const paint = (count: number) => {
