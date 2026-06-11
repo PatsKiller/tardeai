@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 - Schwab migration Stage 1: 30-preview translation review — 30/30 CLEAN
+
+translation_review.py harness (repeatable): 30 intents grounded in real recent symbols/prices covering
+brackets (limit/market entries), stop + stop-limit entries, 4 trailing variants (LAST/BID/MARK/ASK x
+PERCENT/VALUE/TICK), multi-target OCO (UNVERIFIED-flagged), 2/3-leg ladders, shorts, bid-link entry,
+entry-range, AM/PM/SEAMLESS sessions, GTC/FOK/IOC TIFs, MOC, stop-only/target-only, plus 3 negative cases
+(bad geometry rejected; options + notional blocked-as-expected). Field-level assertions on every payload;
+qty conservation; guard granted execution 0 times. Two initial "defects" were the VALIDATOR correctly
+rejecting real MRVL rows whose trailing stops sat above entry (winners past breakeven) fed as fresh LONG
+intents — harness geometry sanitized; translator itself had zero defects. All 30 previews persisted as
+audited drafts. Log: docs/brokers/stage1-translation-review-log.md. Gate now awaits operator sign-off to
+advance to Stage 2 (dev-account validation of UNVERIFIED items).
+
+
 ## 2026-06-11 - ATOS phantom answered end-to-end + digest all-time fallback removed
 
 Operator Q "if not a trade why is it showing": approval pre-creates a pending row; revalidator correctly
