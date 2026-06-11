@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-11 - Real Accounts grade tooltip (entry/exit + why)
+
+Applied the same E/X grade tooltip to the Real Accounts (SchwabJournal) rows: the E:A X:A pill now shows ⓘ and
+hover-explains each grade from execution signals (entry timing + RVOL + VWAP, exit timing + capture% +
+missed-runner) plus the Grok coaching line. Consistent with the Trade Log. Read-only, validator 12/12.
+
+
 ## 2026-06-11 - Trade Log grade pill: label entry/exit + explain why (tooltip)
 
 The grade pill was an ambiguous 'D/B grade'. Now shows 'E D  X B' (E=entry, X=exit) with a hover tooltip that
