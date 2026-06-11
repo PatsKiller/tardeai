@@ -70,6 +70,9 @@ def parse_num(value: Any) -> float:
         return 0.0
 
 
+_RATE_LIMITED_SCREENERS: list = []
+
+
 def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename_map = {
         "Ticker": "symbol", "Company": "company", "Sector": "sector",
@@ -112,9 +115,15 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
             return c in frame.columns and len(frame) > 0 and frame[c].sum() == 0
         _zero = [c for c in _required if _allzero(c)]
         if _missing or _zero:
-            _msg = f"⚠️ TRADE AI DATA QUALITY ALERT\nMissing: {_missing}\nAll-zero: {_zero}\n→ Scoring degraded. Check screeners.yaml uses v=152"
-            print(f"  [finviz] ⚠️  DATA QUALITY: missing columns {_missing}, all-zero columns {_zero}")
-            print(f"  [finviz]    → Scoring will be degraded. Check screeners.yaml uses v=152 (not v=111)")
+            if _RATE_LIMITED_SCREENERS:
+                _msg = (f"⚠️ TRADE AI DATA QUALITY ALERT\nFinviz RATE-LIMITED (429) this run: {_RATE_LIMITED_SCREENERS}\n"
+                        f"Degraded columns: missing {_missing}, all-zero {_zero}\n→ Partial run; next scheduled run should recover.")
+            else:
+                _msg = f"⚠️ TRADE AI DATA QUALITY ALERT\nMissing: {_missing}\nAll-zero: {_zero}\n→ Scoring degraded. Check screeners.yaml uses v=152"
+            print(f"  [finviz] ⚠️  DATA QUALITY: missing columns {_missing}, all-zero columns {_zero}"
+                  + (f" (RATE-LIMITED: {_RATE_LIMITED_SCREENERS})" if _RATE_LIMITED_SCREENERS else ""))
+            print(f"  [finviz]    → " + ("partial run due to Finviz 429s; next run should recover"
+                  if _RATE_LIMITED_SCREENERS else "Scoring will be degraded. Check screeners.yaml uses v=152 (not v=111)"))
             try:
                 from telegram_alert import send_telegram
                 send_telegram(_msg)
@@ -211,6 +220,7 @@ def download_screener_csvs(
     if not optional_env("FINVIZ_COOKIE"):
         raise RuntimeError("FINVIZ_COOKIE is required for live Finviz downloads.")
     import time
+    _RATE_LIMITED_SCREENERS.clear()   # per-run reset (long-lived processes reuse this module)
     session = make_session()
     rows: List[Dict[str, Any]] = []
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -219,25 +229,39 @@ def download_screener_csvs(
         # Delay between requests to avoid Finviz 429 rate-limit
         # First request fires immediately; subsequent ones wait 1.5 seconds
         if i > 0:
-            time.sleep(1.5)
+            time.sleep(3.5)   # Finviz Elite export rate-limit headroom (5-screener runs were tripping 429s)
         # Try Elite v=152 first, fallback through versions on failure
         resp = None
         used_version = "v=152"
+        rate_limited = False
         for version in _FINVIZ_VERSION_FALLBACKS:
             try_url = export_url.replace("v=152", version) if version != "v=152" else export_url
             for attempt in range(3):
                 resp = session.get(try_url, timeout=60)
                 if resp.status_code == 429:
-                    wait = 5 * (attempt + 1)
-                    print(f"  [finviz] 429 on {name} ({version}) — waiting {wait}s (attempt {attempt+1}/3)")
+                    # 429 = SLOW DOWN. It applies to every view version equally — version-hopping while
+                    # rate-limited both hammers harder and (on fallback success) returns a different column
+                    # set with no float -> the misleading 'all-zero float_shares' alert. Back off properly.
+                    rate_limited = True
+                    wait = (10, 30, 60)[attempt]
+                    print(f"  [finviz] 429 on {name} ({version}) — backing off {wait}s (attempt {attempt+1}/3)")
                     time.sleep(wait)
                     continue
+                rate_limited = False
+                break
+            if rate_limited:
+                # persistent 429: do NOT try other versions; skip this screener cleanly
+                print(f"  [finviz] {name}: persistent rate-limit — skipping this screener this run")
+                _RATE_LIMITED_SCREENERS.append(name)
+                resp = None
                 break
             if resp and resp.status_code == 200 and "Ticker" in resp.text[:300]:
                 used_version = version
                 break
             elif version != "v=111":
                 print(f"  [finviz] {name}: {version} failed (HTTP {resp.status_code if resp else '?'}) → trying next version")
+        if rate_limited:
+            continue   # next screener; partial run is better than a poisoned frame
         if not resp or resp.status_code != 200:
             raise RuntimeError(f"Finviz download failed for {name} after all version fallbacks")
         if used_version != "v=152":
