@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 — Drive sync fix: delete-before-upload (the --replace approach was impossible)
+
+Root-caused why the hourly doc sync had been hanging at "sync start" with 0 updates for hours: the prior
+--replace fix-forward was built on a false premise — gog CANNOT content-replace a Google Workspace Doc
+("cannot replace content for Google Workspace files"), so every in-place update silently failed, and those
+gog calls had no timeout so a stall froze the whole run. Reverted to the canonical delete-before-upload
+(trash all copies by name -> create one fresh converted Doc = exactly one current Doc per name) with
+per-call timeouts so a hung call is killed and skipped. Verified: full run completed (5 uploaded, 0 failed,
+reached "sync done") instead of hanging.
+
 ## 2026-06-10 — Execution badges on main Trades tab + all paper trades Grok-reviewed
 
 All 17 paper trades Grok-reviewed (24 total with the 7 Schwab; 0 parse failures). Execution badge (grade +
