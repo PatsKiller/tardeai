@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 - v3 header v2-parity + actionable approvals badge
+
+v3 MetricStrip now matches the v2 header: added TODAY, JOURNAL P&L, VIX, LAST RUN tiles + a clickable
+APPROVALS badge (all from existing /api/v2/overview + /trade-ai). The APPROVALS badge now navigates to Home ->
+Action Inbox (where the stop-triggered + governance items are reviewed / drilled to source) instead of a dead
+count-only drawer. Read-only; review stays drill-to-source (Level 7 prohibited). Noted: overview
+pending_approvals count (13) includes john_decision_queue items that /api/v2/approvals/pending does not list
+- a backend listing gap to reconcile separately.
+
+
 ## 2026-06-11 — Fix: pipeline false-failure flood (SystemExit(0) recorded as failed)
 
 Root cause of the trade_ai_orchestrator pipeline_critical alert flood: PipelineRun.__exit__ treated ANY

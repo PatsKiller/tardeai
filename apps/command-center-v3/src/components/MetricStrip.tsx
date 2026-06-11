@@ -1,4 +1,5 @@
 import { useApi } from '../hooks/useApi'
+import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
 
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function MetricStrip({ onDrill }: Props) {
+  const navigate = useNavigate()
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
@@ -97,10 +99,11 @@ export default function MetricStrip({ onDrill }: Props) {
         </div>
       ))}
       {approvals != null && approvals > 0 && (
-        <div onClick={() => onDrill({ title: 'Pending Approvals', subtitle: 'Stop-triggered + governance', endpoint: '/api/v2/overview', rows: [{ pending_approvals: approvals }] } as any)}
+        <div onClick={() => navigate('/')}
+          title={`${approvals} pending approvals (stop-triggered + governance) — go to Home → Action Inbox to review (read-only drill to source)`}
           style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer',
             background: 'rgba(245,158,11,.15)', color: '#f59e0b', marginRight: 8 }}>
-          ⚑ {approvals} APPROVALS
+          ⚑ {approvals} APPROVALS →
         </div>
       )}
       <div style={{
