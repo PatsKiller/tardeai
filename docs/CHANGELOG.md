@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 — Journal UI visual audit (Playwright, all 6 tabs)
+
+scripts/crawl_journal_ui.py — read-only Playwright crawl of Journal -> Trades/Analytics/Lessons/Protection/
+Backtesting/Real Accounts + interactions (drilldowns, replay charts). 12 compressed JPEGs + REVIEW.md in
+docs/ui_review/journal_audit_20260611/. Confirms live: Avg-R KPI + By-Strategy R column, Real-Accounts
+execution badges + Grok lessons, Backtesting hypotheses (all hurts) + R-distribution, RGNT replay chart
+(VOL/VWAP/MACD/RSI + BUY/SELL/MFE/MAE markers). Flagged: NUVL duplicate open-record integrity warning.
+Screenshots contain real account data -> private repo + own Drive only.
+
 ## 2026-06-11 — Runner classification: parabolic_pump vs sustained_trend (opposite coaching)
 
 Added runner_type to execution quality so the coaching queue separates REAL missed runners (hold/scale lesson)
