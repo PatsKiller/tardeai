@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 — Alpaca SIP feed + intraday URL fix (OTC scalps get charts + badges)
+
+Two fixes so OTC/microcap scalps get intraday bars: (1) Alpaca data feed iex->sip (full consolidated tape;
+historical SIP free since 2024; env ALPACA_DATA_FEED, default sip). (2) _fetch normalizes isoformat +00:00 ->
+Z — the + decoded to a space in the URL query so Alpaca 400d EVERY intraday fetch on the live endpoint (only
+daily date-strings escaped). GCTS now 63 bars live; OTC scalps (GCTS/NUWE/ZSL/SHPH/GXAI) graded + grok-
+reviewed (30 OK-path; 42 truly-illiquid stay NO_INTRADAY_PATH). Read-only, validator 12/12.
+
 ## 2026-06-11 — Drive sync fix: delete-before-upload (the --replace approach was impossible)
 
 Root-caused why the hourly doc sync had been hanging at "sync start" with 0 updates for hours: the prior
