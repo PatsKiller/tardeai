@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - Watchlist dedup: one row per symbol (NVDA + 118 others)
+
+The watchlist is seeded from multiple discovery sources (operator personal_watchlist, ai_discovered,
+paper_proposal), so 119 symbols had duplicate visible rows (167 redundant; NVDA x3, KBR x5, BND/JEPI x4).
+Fixed at the query layer: /api/v2/watchlist/items now DISTINCT ON (symbol), keeping the best row per symbol
+(directive-linked > operator-seeded > oldest), then applies the display sort + directive pin. Result: 200
+distinct symbols, 0 duplicate rendering; NVDA once, AXTI pinned (pos 2). Also data-deduped NVDA's 2 redundant
+rows -> removed (kept operator original id=129, reversible from backups/nvda_watchlist_dedup_20260611.csv).
+Read-only, validator 12/12.
+
+
 ## 2026-06-11 - Pin directive-linked watchlist items above the 200 display cap (AXTI fix)
 
 /api/v2/watchlist/items ORDER BY now sorts in_directive_watch=true items first, so operator

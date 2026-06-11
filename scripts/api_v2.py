@@ -3216,25 +3216,34 @@ def _wl_items(query: dict = None):
                     "hermes": "hermes_rank ASC NULLS LAST, hermes_composite_score DESC NULLS LAST"}
         sort = sort_map.get(s, sort)
 
+    # DISTINCT ON (symbol) — one row per symbol (the watchlist is seeded from multiple discovery sources, so a
+    # symbol can have several rows). Keep the best row: directive-linked first, then operator-seeded, then the
+    # oldest. The outer query then applies the display sort + directive pin. Reversible (pure query shape).
     rows = _db_query(f"""
-        SELECT wi.*,
-               sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
-               sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
-               sc.confidence as strategy_confidence, sc.account_fit,
-               sc.technical_summary, sc.needs_iteration as strategy_needs_iteration,
-               rc.latest_summary as research_summary, rc.latest_recommendation,
-               rc.confidence as research_confidence,
-               am.analysis_stage, am.maria_status, am.steph_status,
-               am.risk_status, am.tax_status, am.full_chain_status,
-               am.final_synthesis_status, am.required_agents, am.completed_agents,
-               am.needs_iteration as maturity_needs_iteration,
-               am.decision_quality_status, am.actionable as decision_actionable
-        FROM watchlist_items wi
-        LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
-        LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
-        LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
-        WHERE {where}
-        ORDER BY (COALESCE(wi.in_directive_watch, false) = false), {sort} LIMIT 200
+        SELECT * FROM (
+            SELECT DISTINCT ON (wi.symbol) wi.*,
+                   sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
+                   sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
+                   sc.confidence as strategy_confidence, sc.account_fit,
+                   sc.technical_summary, sc.needs_iteration as strategy_needs_iteration,
+                   rc.latest_summary as research_summary, rc.latest_recommendation,
+                   rc.confidence as research_confidence,
+                   am.analysis_stage, am.maria_status, am.steph_status,
+                   am.risk_status, am.tax_status, am.full_chain_status,
+                   am.final_synthesis_status, am.required_agents, am.completed_agents,
+                   am.needs_iteration as maturity_needs_iteration,
+                   am.decision_quality_status, am.actionable as decision_actionable
+            FROM watchlist_items wi
+            LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
+            LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+            LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
+            WHERE {where}
+            ORDER BY wi.symbol,
+                     (COALESCE(wi.in_directive_watch, false) = false),
+                     (wi.source = 'personal_watchlist') DESC,
+                     wi.first_seen_at ASC
+        ) dedup
+        ORDER BY (COALESCE(in_directive_watch, false) = false), {sort} LIMIT 200
     """, params) or []
     return {"count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
