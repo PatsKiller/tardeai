@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 - L2 strip live-verified on replay + TDZ render crash fixed
+
+ELVN replay now renders all layers together: L2 imbalance strip (own price scale, +0.21 bid pressure at
+entry), four escalating pre-entry catalyst headlines pinned + listed (trial data 08:55 -> FDA alignment
+09:11 -> "why is it surging" 09:52 -> Phase 1 CML 10:36 -> 12:12 breakout entry), BUY/stop lines. Root cause
+of blank charts: SPY/L2 setData referenced shownTime before its declaration (temporal dead zone ->
+ReferenceError -> zero canvases whenever those layers had data; ATOS worked only because it had no L2 rows).
+Hoisted; 21 canvases verified. Proposal-screenshot watcher expired without a pending proposal today (queue
+empty after ELVN executed).
+
+
 ## 2026-06-11 - Replay news pins live-verified + three replay bugs fixed
 
 ATOS demo proved the feature end-to-end: six pre-market offering/dilution headlines pinned + listed on its
