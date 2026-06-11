@@ -97,6 +97,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     if (!data?.bars) return
     const k = count <= 0 ? data.bars.length : count
     const cut = (arr: any[]) => (arr || []).filter((_: any, i: number) => i < k)
+    const shown = new Set(cut(data.bars).map((b: any) => String(b.time)))
+    const shownTime = (t: any) => shown.has(String(t))
     series.current.candle?.setData(cut(data.bars))
     series.current.vol?.setData(cut(data.volume))
     series.current.vwap?.setData(cut(data.vwap))
@@ -107,8 +109,6 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.spy?.setData((data.spy_overlay || []).filter((x: any) => shownTime(x.time)))
     series.current.l2?.setData((data.l2_strip || []).filter((x: any) => shownTime(x.time)).map((x: any) => ({ time: x.time, value: x.value, color: x.value >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' })))
     // markers only show once their bar is revealed; include the 9:30 session-open marker
-    const shown = new Set(cut(data.bars).map((b: any) => String(b.time)))
-    const shownTime = (t: any) => shown.has(String(t))
     const mks = (data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
       color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
