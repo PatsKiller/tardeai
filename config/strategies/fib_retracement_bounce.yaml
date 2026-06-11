@@ -1,7 +1,8 @@
+consolidation_note: "Promoted 2026-06-11: 4/4 wins, 2.36R avg - best evidence in book; grow its sample"
 strategy_id: fib_retracement_bounce
 display_name: Fibonacci Retracement Bounce
 version: 1.0.0
-status: UNVALIDATED
+status: TESTING
 purpose: Enter pullbacks to 50% or 61.8% Fibonacci retracement of prior advance in confirmed uptrends. Risk-defined to swing low, target prior swing high. Buy weakness in strength.
 eligible_accounts:
   - taxable
@@ -171,15 +172,15 @@ minimum_evidence:
     - earnings_calendar
     - analyst_revisions
 performance_context:
-  last_updated: '2026-06-08T06:30:01+00:00'
-  closed_paper_trades: 0
-  win_rate:
-  avg_r_realized:
+  last_updated: '2026-06-11T15:36:51+00:00'
+  closed_paper_trades: 4
+  win_rate: 1.0
+  avg_r_realized: 2.3565
   profit_factor:
   max_drawdown_pct:
-  expectancy_per_trade:
-  best_trade_r:
-  worst_trade_r:
+  expectancy_per_trade: 2.3565
+  best_trade_r: 3.82
+  worst_trade_r: 1.55
   current_streak:
   ready_for_review: false
   review_thresholds:

@@ -1,7 +1,8 @@
+consolidation_note: "Reclassified 2026-06-11 (income sleeve): portfolio policy, not a proposal-generating trading strategy"
 strategy_id: dividend_growth_compounder
 display_name: Dividend Growth Compounder
 version: 1.0.0
-status: UNVALIDATED
+status: ALLOCATION_POLICY
 purpose: Dividend aristocrats and kings for reliable income growth. Focus on companies with 10+ years of consecutive dividend increases and sustainable payout ratios.
 eligible_accounts:
   - taxable
@@ -121,15 +122,15 @@ technical_indicators_required:
     - bollinger_squeeze
   note: "Fundamental entry — technicals only inform timing, not eligibility."
 performance_context:
-  last_updated: '2026-06-08T06:30:01+00:00'
-  closed_paper_trades: 0
-  win_rate:
-  avg_r_realized:
-  profit_factor:
+  last_updated: '2026-06-11T15:36:51+00:00'
+  closed_paper_trades: 5
+  win_rate: 0.2
+  avg_r_realized: -0.1712
+  profit_factor: 0.1572
   max_drawdown_pct:
-  expectancy_per_trade:
-  best_trade_r:
-  worst_trade_r:
+  expectancy_per_trade: -0.0342
+  best_trade_r: 0.21
+  worst_trade_r: -1.066
   current_streak:
   ready_for_review: false
   review_thresholds:

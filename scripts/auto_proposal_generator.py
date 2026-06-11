@@ -30,8 +30,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 DEFAULT_MAX_DOLLAR_SIZE = 2000
 DEFAULT_MAX_DOLLAR_RISK = 150
 DEFAULT_RISK_PER_TRADE = 150
-STRATEGY_PRIORITY = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst", "sector_rotation",
-                     "speculative_growth", "recovery_watch", "fib_retracement_bounce", "earnings_post_momentum", "swing_trade"]
+# Consolidated 2026-06-11: 4-strategy trading core (gap_and_go->momentum_scalp, swing_trade->swing_breakout;
+# others archived/parked/reclassified — see docs/project/SYSTEM_DEEP_REVIEW_20260611.md section F)
+STRATEGY_PRIORITY = ["momentum_scalp", "swing_breakout", "fib_retracement_bounce", "earnings_post_momentum"]
 
 BASE = str(PROJECT_ROOT)
 PYTHON = str(PROJECT_ROOT / ".venv" / "bin" / "python")
@@ -225,9 +226,7 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
         # Suggest fallback based on strategy type
         fallback = None
         if strategy_id == 'momentum_scalp':
-            fallback = 'gap_and_go'
-        elif strategy_id == 'gap_and_go':
-            fallback = 'swing_breakout'
+            fallback = 'swing_breakout'   # gap_and_go merged into momentum_scalp 2026-06-11
         return False, ' | '.join(reasons), fallback
 
     return True, '', None
