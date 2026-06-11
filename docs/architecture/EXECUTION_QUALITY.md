@@ -26,7 +26,7 @@ fine). GOVX/FATN = WIN/poor (early entry + premature exit, ~30% capture). NUWE =
 Schwab trades graded (7 full intraday, 41 NO_INTRADAY_PATH). Validator 12/12.
 
 ## Completed (2026-06-10)
-- **Part B paper** — paper_trades graded (17 OK). **Part D** — grok_execution_review.py (7/7 clean JSON). **Part E** — backtest_execution_hypotheses.py + trade_execution_hypothesis_results + /api/v2/backtesting/execution-hypotheses (46 trades x 3 variants; honest negative avg deltas = do-not-blindly-graft). **Part F** — endpoints + journal badges (BOTH Real Accounts + main Trades tab, matched on symbol+entry_time) + replay MFE/MAE overlay + Backtesting-tab hypothesis panel. All 24 trades Grok-reviewed (7 schwab + 17 paper).
+- **Part B paper + swings** — paper_trades graded; daily-bars swing path (multi-day holds) added -> 119 OK-path (34 swing + 85 scalp). **Part D** — grok_execution_review.py (7/7 clean JSON). **Part E** — backtest_execution_hypotheses.py + trade_execution_hypothesis_results + /api/v2/backtesting/execution-hypotheses (46 trades x 3 variants; honest negative avg deltas = do-not-blindly-graft). **Part F** — endpoints + journal badges (BOTH Real Accounts + main Trades tab, matched on symbol+entry_time) + replay MFE/MAE overlay + Backtesting-tab hypothesis panel. All 24 trades Grok-reviewed (7 schwab + 17 paper).
 
 ## Deferred (named follow-ups)
 - **Part B (paper)** — extend `_rows` to paper closed trades (same compute).
