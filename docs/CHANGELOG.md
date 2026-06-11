@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-11 - Schwab integration program: research + dormant scaffold (6 phases, all committed)
+
+Operator-approved ground rules: ZERO Schwab order-endpoint calls (dry-run = local translate/validate/audit);
+options model+flags only; new Broker Orders surface; straight-through per-phase commits. Delivered: P1 Alpaca
+current-state map (single submission site adapter:524; existing partial abstraction; coupling list); P2
+21-category capability matrix (VERIFIED-LIVE/VERIFIED-SDK/UNVERIFIED; Schwab OTOCO/native-trailing richer
+than Alpaca; NO Schwab paper env -> ExecutionMode enum is the environment separation); P3 ADR set; P4
+scripts/brokers/ dormant scaffold (canonical OrderIntent, capability registry, pure translators, fail-closed
+guard w/ Schwab=BROKER_DISABLED, adapter stub raising unconditionally, audit tables, 35/35 tests incl.
+boundary rule, validator 12/12 untouched); P5 broker-orders endpoints (capabilities/preview/drafts; preview
+returns exact would-be Schwab payload + blocked execution; live-smoked: TRIGGER->OCO[LIMIT,TRAILING_STOP]);
+P6 ten docs under docs/brokers/. BONUS mid-phase: operator's ATOS \$0 report root-caused — REAL phantom
+record/FALSE trade (revalidator correctly blocked 107% drift but approval-time pending row was never
+cleaned; Alpaca shows zero orders); fixed class-wide (cancel-on-block, digest exclusion, sweep check,
+row reclassified) — and the new scaffold prevents the class by construction. Also: pre-commit hook caught a
+hardcoded broker default (annotated hardcode-ok as UI view default) — and caught that my filtered commit
+pipelines had been swallowing hook rejections; two commits re-landed.
+
+
 ## 2026-06-11 - L2 strip live-verified on replay + TDZ render crash fixed
 
 ELVN replay now renders all layers together: L2 imbalance strip (own price scale, +0.21 bid pressure at
