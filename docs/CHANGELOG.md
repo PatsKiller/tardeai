@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 - System maturity audit (15 areas scored /10)
+
+docs/project/MATURITY_AUDIT_20260611.md - evidence-based scores from the day's six audits + fixes. Overall
+~5.4/10: safety-mature (governance 9, broker integration 8, journal/coaching 8), intelligence-immature
+(backtesting 2, cross-system arbitration 2, Hermes 4, scoring 4). Per-area evidence, gaps, recommendations +
+priority arc: persist pillar breakdown -> entry-criteria evaluator -> freshness SLOs -> source weighting after
+2-4 weeks of attributed data -> backtesting credible path.
+
+
 ## 2026-06-11 - Ingestion fixes 1-4 + investigations 5-6 (operator-approved)
 
 Attribution restored end-to-end (screener_label finally written; per-list efficacy measurable). Outcome
