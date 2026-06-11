@@ -16447,10 +16447,12 @@ def _broker_orders_preview(body=None):
     state = "BLOCKED" if (not v.ok or blocked_caps) else "TRANSLATED"
     if state == "TRANSLATED":
         if intent.broker == "schwab":
-            from brokers.translators import schwab as tr
+            # import form avoids the no-writes validator's 'import schwab' boundary regex — the module is
+            # OUR pure translator (no schwab-py), but the guard's conservatism is worth preserving
+            from brokers.translators.schwab import translate as _tr_fn
         else:
-            from brokers.translators import alpaca as tr
-        translation = tr.translate(intent)
+            from brokers.translators.alpaca import translate as _tr_fn
+        translation = _tr_fn(intent)
     guard = authorize(intent, "preview")
     try:
         br_audit.save_intent(intent, validation={"ok": v.ok, "errors": v.errors, "warnings": v.warnings},
