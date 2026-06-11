@@ -65,12 +65,37 @@ def _fetch(symbol, start, end, timeframe):
         token = d.get("next_page_token")
         if not token:
             break
+    else:
+        # hit the 6-page cap with a token still pending: data truncated — say so (audit: silent truncation)
+        print(f"  [ohlc] WARNING {symbol} {timeframe}: hit 6-page Alpaca cap with more data pending — bars truncated")
     return bars, None
 
 
 def _schwab_bars(symbol, start, end, timeframe):
     """TIER 2 (best-effort): Schwab price history via schwab_transport (read-only). Returns Alpaca-shaped
-    bars or [] if not wired/unavailable — so the caller falls through to the Finviz image."""
+    bars or [] if not wired/unavailable — so the caller falls through to the Finviz image.
+
+    Chunking (2026-06-11 audit): Schwab minute-history has window caps and no pagination — long intraday
+    spans are split into <=10-day chunks and concatenated so the fallback can't silently undersize."""
+    if timeframe != "1Day":
+        import datetime as _dt
+        try:
+            _s = _dt.datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+            _e = _dt.datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+        except Exception:
+            _s = _e = None
+        if _s and _e and (_e - _s).days > 10:
+            out, cur = [], _s
+            while cur < _e:
+                nxt = min(cur + _dt.timedelta(days=10), _e)
+                out += _schwab_bars(symbol, cur.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                    nxt.strftime("%Y-%m-%dT%H:%M:%SZ"), timeframe) or []
+                cur = nxt
+            seen, dedup = set(), []
+            for b in out:
+                if b["t"] not in seen:
+                    seen.add(b["t"]); dedup.append(b)
+            return dedup
     try:
         import sys, os as _os
         sys.path.insert(0, _os.path.dirname(__file__))
@@ -266,11 +291,80 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     if exit_price:
         markers.append({"time": _mark_time(ext, -1), "price": float(exit_price), "type": "exit", "label": f"SELL {exit_price}"})
 
+    # ── Replay backlog (2026-06-11): news pins + L2 pressure strip + SPY overlay ───────────────────────────
+    def _bar_time_for(ts_dt):
+        if timeframe == "1Day":
+            td = ts_dt.date().isoformat()
+            cands = [b["time"] for b in out_bars if b["time"] <= td]
+            return cands[-1] if cands else None
+        tgt = _et_ts(ts_dt.astimezone(dt.timezone.utc).isoformat())
+        near = min(out_bars, key=lambda b: abs(b["time"] - tgt))
+        return near["time"] if abs(near["time"] - tgt) <= (90 if timeframe != "1Day" else 0) * 60 else None
+
+    news_events = []
+    try:
+        from db_adapter import _get_conn as _gc2
+        _c = _gc2(); _cu = _c.cursor()
+        _pad = dt.timedelta(hours=4) if same_day else dt.timedelta(days=2)
+        _cu.execute("""SELECT published_at, title, source FROM news_articles
+                       WHERE symbol=%s AND published_at BETWEEN %s AND %s
+                       ORDER BY published_at LIMIT 12""",
+                    (symbol, (ent - _pad), (ext + _pad)))
+        for _pa, _ti, _so in _cu.fetchall():
+            if _pa is None:
+                continue
+            _bt = _bar_time_for(_pa if _pa.tzinfo else _pa.replace(tzinfo=dt.timezone.utc))
+            if _bt is not None:
+                news_events.append({"time": _bt, "title": (_ti or "")[:110], "source": _so,
+                                    "at_et": (_pa.astimezone(_ET).strftime("%m-%d %H:%M") if _ET else str(_pa)[:16])})
+        _c.close()
+    except Exception:
+        pass
+
+    l2_strip = []
+    try:
+        from db_adapter import _get_conn as _gc3
+        _c = _gc3(); _cu = _c.cursor()
+        _cu.execute("""SELECT captured_at, imbalance FROM schwab_stream_book
+                       WHERE symbol=%s AND captured_at BETWEEN %s AND %s AND imbalance IS NOT NULL
+                       ORDER BY captured_at""", (symbol, ent - dt.timedelta(minutes=30), ext + dt.timedelta(minutes=30)))
+        _seen_t = set()
+        for _ca, _imb in _cu.fetchall():
+            _bt = _bar_time_for(_ca if _ca.tzinfo else _ca.replace(tzinfo=dt.timezone.utc))
+            if _bt is not None and _bt not in _seen_t:
+                _seen_t.add(_bt)
+                l2_strip.append({"time": _bt, "value": float(_imb)})
+        _c.close()
+    except Exception:
+        pass
+
+    spy_overlay = []
+    try:
+        sbars, _serr = _fetch("SPY", start, end, timeframe)
+        if not sbars:
+            sbars = _schwab_bars("SPY", start, end, timeframe)
+        if sbars and out_bars:
+            _smap = {}
+            for b in sbars:
+                k = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
+                _smap[k] = b["c"]
+            _base_sym = out_bars[0]["close"]
+            _base_spy = next((_smap[b["time"]] for b in out_bars if b["time"] in _smap), None)
+            if _base_spy:
+                for b in out_bars:
+                    if b["time"] in _smap:
+                        # SPY rebased to the symbol's first close: same-$ overlay shows relative strength
+                        spy_overlay.append({"time": b["time"],
+                                            "value": round(_base_sym * (_smap[b["time"]] / _base_spy), 4)})
+    except Exception:
+        pass
+
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
             "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
-            "session_open_time": session_open_time, "session_close_time": session_close_time}
+            "session_open_time": session_open_time, "session_close_time": session_close_time,
+            "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay}
 
 
 if __name__ == "__main__":
