@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 — Execution quality: full paper backfill + cutoff index-bug fix
+
+Fixed a cutoff bug (cutoff=min(len(bars),...) let range index bars[len(bars)] -> IndexError) that crashed
+every phantom/0-min trade (BWEN/INFU/BLBD) and silently dropped them via the per-row guard. Result: ALL 35
+paper trades now graded (was 9); also recovered dropped scalps (OK-path 119->149, 155 total). Grok reviews
+149 total, 0 parse_failed (35 paper + 114 schwab). Execution quality now fully backfilled across both brokers
+and all trade types (scalp/swing/phantom). Read-only, validator 12/12.
+
 ## 2026-06-11 — Execution quality backfilled for swings + all trades grok-reviewed
 
 Swing trades now graded via a DAILY-bars path (multi-day holds previously fetched ~95k 1-min bars and
