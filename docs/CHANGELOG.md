@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-11 — Grok execution lesson on Real-Accounts lesson column (swings + scalps)
+
+SchwabJournal rows now surface the Grok execution coaching (grok_what_to_do_next_time) as the visible lesson
+text + tooltip, falling back to the classifier lesson. Fixes swings showing the contradictory classifier
+'repeat this hold' text next to a weak/poor execution grade — they now read the actual coaching (e.g. GERN
+'Wait for RVOL>1.5 + MACD rising before entry'). eq computed once per row (de-duplicated). Read-only.
+
 ## 2026-06-11 — Schwab public-repo intake memo (review only)
 
 docs/project/SCHWAB_PUBLIC_REPO_INTAKE_20260611.md — read-only survey of 9 public Schwab-API repos (live
