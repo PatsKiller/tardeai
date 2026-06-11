@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-11 — Schwab public-repo intake memo (review only)
+
+docs/project/SCHWAB_PUBLIC_REPO_INTAKE_20260611.md — read-only survey of 9 public Schwab-API repos (live
+GitHub metadata). Records license/maintenance/risk (NO-LICENSE jononon + NOASSERTION hedge0 = do-not-copy;
+itsjafer = reverse-engineered scraping anti-pattern), conceptual-reuse vs must-not-copy, and candidate
+references for the deferred streaming/option-chain/batch-quote/market-hours work. Decision: keep schwab-py as
+the REST wrapper; Schwabdev recorded ONLY as a future streaming/Level-II spike reference (not a dependency).
+No code, no dependencies, no spikes. Validator 12/12.
+
 ## 2026-06-11 — Execution-quality calibration: capture during-hold + RVOL tuning (poor is genuine)
 
 Fixed capture_ratio (was measuring through the post-exit window, wrongly grading well-timed exits poor — GOVX
