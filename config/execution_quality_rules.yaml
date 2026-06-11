@@ -14,7 +14,7 @@ defaults: &defaults
 strategies:
   momentum_scalp:
     <<: *defaults
-    min_entry_rvol: 2.0
+    min_entry_rvol: 1.5      # tuned 2.0->1.5: above-average volume, not 2x (operator scalp style)
     require_above_vwap: true
     min_capture_ratio: 0.50
     post_exit_review_min: 45
@@ -28,7 +28,7 @@ strategies:
     require_above_vwap: true
   day_trade:
     <<: *defaults
-    min_entry_rvol: 1.8
+    min_entry_rvol: 1.3
   swing:
     <<: *defaults
     rvol_window: 20
