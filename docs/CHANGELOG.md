@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-11 - Ingestion fixes 1-4 + investigations 5-6 (operator-approved)
+
+Attribution restored end-to-end (screener_label finally written; per-list efficacy measurable). Outcome
+feedback wired into both scorers (strategy-family WR scar in 65-pt scoring, bounded + min-sample;
+realized-P&L pairs in hermes calibration at 2x weight). Sector self-heal at insert + 2,744-row backfill
+(44%->33% empty). Librarian backlog loop investigated->fixed (no dedup + per-invocation cap caused 2,475
+junk NULL-symbol rows/30d; now 14d-topic dedup + true daily cap; 2,474 archived; double-apply inserts 0).
+Tech-tilt experiment: Healthcare GO lead structurally justified; TECH GO lead NOT explained by measurable
+pillars (weakest RVOL/float/price/gap inputs yet 1.3x Industrials GO rate) -> residual = catalyst-tier
+keyword/LLM bias; next step = persist pillar breakdown + sector-neutral catalyst tiering. Validator 12/12.
+
+
 ## 2026-06-11 - Ingestion & intelligence due-diligence review (Finviz / Trade AI / Hermes)
 
 docs/project/INGESTION_INTELLIGENCE_REVIEW_20260611.md. Headlines: "momentum scout" = prime_setups (6x/day)
