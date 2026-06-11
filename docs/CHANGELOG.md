@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 - Broker Orders tab humanized after operator feedback
+
+"not functional makes no human sense" -> rebuilt for operators: order sentences ("BUY 100 sh MRVL limit
+\$284.49") + condition pills + Purpose line (Stage-1 fixtures explicitly labeled "not a real plan") +
+grouped identical fixtures + "If this were live:" consequence sentence + raw JSON behind an engineering
+toggle + 2FA explainer + grouped Safety log (red=blocked-is-correct). Screenshot-verified.
+
+
 ## 2026-06-11 - Canary purpose + web-channel location documented (operator questions)
 
 stage2a-canary-protocol.md gains plain-English sections: the 1-2 share orders test Schwab's RUNTIME order
