@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-11 — Daily Execution Coaching Queue (read-only; advisory)
+
+Converts the execution-quality system into a ranked daily 'what to fix next' queue. Additive schema
+(daily_execution_coaching_runs/items/grok_digests), build_daily_execution_coaching.py (dry-run default,
+--apply to store, --brief manual-only no cron), grok_daily_execution_digest.py (strict JSON advisory),
+read-only API (GET daily-execution-coaching[/latest], POST rebuild dry-run default), ExecutionCoachPanel in
+Journal->Trades. Ranks repeated mistakes > one-offs with sample sizes; hypotheses surface as shadow-research
+candidates ONLY (all 3 currently unsupported by evidence). Governance doc: coaching-only, no live-strategy
+changes, full gate (sample/shadow/operator/A1A/rollback) before any promotion. Validator 12/12. No trading,
+screener, GO/WAIT, ATM, proposal, broker-write, or strategy-YAML changes.
+
+Also: journal R-multiple per trade + Avg-R KPI + By-Strategy R (paper real, Schwab MAE-proxy); SchwabJournal
+swing rows now show Grok execution lesson.
+
 ## 2026-06-11 — Grok execution lesson on Real-Accounts lesson column (swings + scalps)
 
 SchwabJournal rows now surface the Grok execution coaching (grok_what_to_do_next_time) as the visible lesson
