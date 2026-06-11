@@ -153,7 +153,7 @@ def classify_governance(stats, tca_avg_slip, recon_issues):
     window_end = last.date() if last else date.today()
 
     # Governance state classification
-    governance_state = "PAPER_ONLY"
+    governance_state = "PAPER_ONLY"   # transition detection happens in main() against prior run
 
     if closed >= MIN_CLOSED_FOR_WATCHLIST and expectancy_r is not None and expectancy_r > 0:
         governance_state = "WATCHLIST"
@@ -224,6 +224,37 @@ def insert_result(conn, result):
     conn.commit()
 
 
+def _alert_transitions(results):
+    """Lifecycle automation (2026-06-11): when a strategy crosses WATCHLIST/CANDIDATE_FOR_REVIEW, tell the
+    operator ONCE (state change vs last run). Promotion still requires human approval — this only flags."""
+    import json as _json
+    from pathlib import Path as _P
+    state_f = _P(__file__).resolve().parent.parent / "data" / "state" / "governance_states.json"
+    prev = {}
+    try:
+        prev = _json.loads(state_f.read_text())
+    except Exception:
+        pass
+    cur = {r["strategy_id"]: r.get("governance_state") for r in results}
+    transitions = [(sid, prev.get(sid), st) for sid, st in cur.items()
+                   if prev.get(sid) and prev.get(sid) != st]
+    try:
+        state_f.parent.mkdir(parents=True, exist_ok=True)
+        state_f.write_text(_json.dumps(cur, indent=2))
+    except Exception:
+        pass
+    ups = [t for t in transitions if t[2] in ("WATCHLIST", "CANDIDATE_FOR_REVIEW")]
+    if ups:
+        try:
+            from telegram_alert import send_telegram
+            send_telegram("📈 STRATEGY LIFECYCLE\n" + "\n".join(
+                f"{sid}: {old} → {new} (review when ready — promotion needs your approval)"
+                for sid, old, new in ups))
+        except Exception:
+            pass
+    return [{"strategy_id": s_, "from": o, "to": n} for s_, o, n in transitions]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Paper performance governance scorer")
     parser.add_argument("--dry-run", action="store_true", help="Compute but do not write to DB")
@@ -272,11 +303,13 @@ def main():
         for r in results:
             s = r["governance_state"]
             state_counts[s] = state_counts.get(s, 0) + 1
+        transitions = _alert_transitions(results) if not args.dry_run else []
 
         output = {
             "status": "dry_run" if args.dry_run else "applied",
             "strategies_evaluated": len(results),
             "governance_summary": state_counts,
+            "transitions": transitions,
             "all_live_eligible": False,
             "live_block_reason": LIVE_BLOCK_REASON,
             "results": results,
