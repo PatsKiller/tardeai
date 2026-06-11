@@ -103,10 +103,20 @@ class PipelineRun:
         self._rows = count
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # SystemExit(0)/SystemExit(None) is a CLEAN success, not a failure. The idiom
+        # `with PipelineRun(...): raise SystemExit(main())` was recording every exit-0 success as
+        # failed with errors="0", flooding pipeline_critical alerts. Real failures (sys.exit(non-zero)
+        # or a genuine exception) still record as failed. return False so SystemExit still propagates.
+        if exc_type is not None and issubclass(exc_type, SystemExit):
+            code = exc_val.code if exc_val is not None else 0
+            if code in (0, None):
+                run_complete(self.run_id, self._rows)
+                return False
         if exc_type is not None:
             run_fail(self.run_id, str(exc_val))
         else:
             run_complete(self.run_id, self._rows)
+        return False
         return False
 
 

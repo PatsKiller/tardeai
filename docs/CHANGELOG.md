@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-11 — Fix: pipeline false-failure flood (SystemExit(0) recorded as failed)
+
+Root cause of the trade_ai_orchestrator pipeline_critical alert flood: PipelineRun.__exit__ treated ANY
+exception as a failure, but the idiom  raises SystemExit(0)
+on clean success -> recorded status=failed, errors="0" every run (the orchestrator itself succeeded, e.g.
+9:00 logged v12 complete). Fixed __exit__ to treat SystemExit(0/None) as success (run_complete); real
+failures (sys.exit(non-zero) / genuine exceptions) still record failed. Reclassified 28 historical
+false-failures to success; alert dispatcher now finds 0 failures in the 4h window. Applies to every pipeline
+using the PipelineRun idiom, not just the orchestrator. Validator 12/12.
+
 ## 2026-06-11 — NUVL duplicate resolved + paper_trades dedup guard
 
 Resolved the journal integrity warning: NUVL had two open paper_trades rows from a race/retry double-insert
