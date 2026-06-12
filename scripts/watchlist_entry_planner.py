@@ -123,7 +123,10 @@ def _candidates(cur, limit, symbols=None, scope="watchlist"):
                          NULL::int AS hermes_rank, NULL::text AS trend,
                          id AS proposal_id, proposed_entry, proposed_stop, proposed_target1, strategy_id
                        FROM paper_trade_proposals
-                       WHERE status IN ('PENDING','APPROVED') AND symbol ~ '^[A-Z]{1,5}$'
+                       -- live pre-execution statuses (2026-06-12: actual pipeline uses
+                       -- APPROVED_FOR_PAPER_TEST; bare 'APPROVED' never occurs — planner found 0)
+                       WHERE status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST')
+                         AND symbol ~ '^[A-Z]{1,5}$'
                        ORDER BY symbol, created_at DESC""")
     else:
         cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
