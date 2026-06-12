@@ -68,7 +68,7 @@ def main():
     if api_errors:
         try:
             import urllib.request
-            with urllib.request.urlopen("http://localhost:7777/api/v2/schwab/accounts-live", timeout=30) as r:
+            with urllib.request.urlopen("http://localhost:7777/api/v2/schwab/accounts-live", timeout=90) as r:
                 d = json.load(r)
             d = d.get("data", d)
             for a in d.get("accounts", []):
@@ -95,6 +95,18 @@ def main():
                    GROUP BY account, symbol""")
     D = {(a, s.upper()): {"qty": float(q or 0), "cost": float(c or 0)} for a, s, q, c in cur.fetchall()}
 
+    # 2026-06-12 (first cron alarm was noise): if the live API is ENTIRELY unreachable, comparing
+    # against it is meaningless — every holding would scream MISSING_FROM_API. Fail honest instead.
+    if not A:
+        report = {"status": "API_UNREACHABLE — audit skipped (no comparison possible)",
+                  "api_errors": api_errors, "checked": 0, "flagged": 0,
+                  "note": "creds missing in this environment or server fallback timed out; "
+                          "fix the environment, don't trust holdings-vs-API flags from this run"}
+        print(json.dumps(report, indent=1, default=str))
+        if alert:
+            _alert_unreachable(api_errors)
+        return report
+
     rows = []
     for key in sorted(set(H) | set(A)):
         acct, sym = key
@@ -109,7 +121,10 @@ def main():
         h_avg = (ha["basis"] / ha["qty"]) if ha and ha["qty"] else None
         a_avg = aa["avg"] if aa else None
         if ha and not aa:
-            (info if dust else flags).append("MISSING_FROM_API" + (" (delisted/CUSIP-alias dust)" if dust else ""))
+            if acct in api_errors:   # that account's API read failed — absence proves nothing
+                info.append(f"api_unavailable_for_account ({api_errors[acct]}) — not flagged")
+            else:
+                (info if dust else flags).append("MISSING_FROM_API" + (" (delisted/CUSIP-alias dust)" if dust else ""))
         if aa and not ha:
             (info if dust else flags).append("MISSING_FROM_HOLDINGS" + (" (delisted/CUSIP-alias dust)" if dust else ""))
         if ha and aa:
@@ -148,6 +163,36 @@ def main():
     if flagged:
         print(f"\n{len(flagged)} positions need attention. Remediation: scripts/sync_basis_from_broker.py "
               "(hierarchy: csv tax lot > broker API averagePrice; reconstruction is Fidelity-only).")
+
+
+def _alert_unreachable(api_errors):
+    """One honest line when the audit cannot run — never per-symbol noise."""
+    import os
+    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not tok:
+        try:
+            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if l.startswith("TELEGRAM_BOT_TOKEN="):
+                    tok = l.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    try:
+        from tg_chat_ids import chat_ids
+        chat = (chat_ids() or [None])[0]
+    except Exception:
+        chat = None
+    if not (tok and chat):
+        return
+    try:
+        import requests
+        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                      json={"chat_id": chat, "parse_mode": "Markdown",
+                            "text": "⚠️ *BASIS AUDIT SKIPPED* — Schwab API unreachable from the audit "
+                                    f"environment ({', '.join(f'{k}:{v}' for k, v in list(api_errors.items())[:4])}). "
+                                    "No holdings flags issued (absence of API data proves nothing). "
+                                    "Check creds/.env sourcing or server load."}, timeout=10)
+    except Exception:
+        pass
 
 
 def _send_alert(flagged, api_errors):
