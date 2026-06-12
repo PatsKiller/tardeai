@@ -168,8 +168,11 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
 }
 
 // ── ACTIVE TRADER panel (ToS desktop layout; builds DRAFTS only) ────────────────────────────────
+const SCHWAB_ACCOUNTS = ['schwab_taxable', 'schwab_rollover_ira', 'schwab_roth_ira']
+
 function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewed: () => void }) {
   const [symbol, setSymbol] = useState('')
+  const [account, setAccount] = useState('schwab_taxable')   // operator 2026-06-12: account selection
   const [qty, setQty] = useState(2)
   const [strategy, setStrategy] = useState<keyof typeof STRATEGY_TIP>('BRACKET')
   const [method, setMethod] = useState('LIMIT')
@@ -216,7 +219,9 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
   }
   useEffect(() => {
     const t = setTimeout(() => fetchQuote(symbol.trim().toUpperCase()), 600)
-    return () => clearTimeout(t)
+    // live numbers (operator 2026-06-12): while a symbol is set, refresh the quote every 10s
+    const iv = symbol.trim() ? setInterval(() => fetchQuote(symbol.trim().toUpperCase()), 10_000) : undefined
+    return () => { clearTimeout(t); if (iv) clearInterval(iv) }
   }, [symbol])
 
   const buildIntent = (direction: 'LONG' | 'SHORT') => {
@@ -247,7 +252,7 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
       entry: { method, limit_price: limit ? Number(limit) : null, stop_price: entryStop ? Number(entryStop) : null,
                entry_range: null, price_link: null },
       quantity: { qty: Number(qty) || null, notional: null, contracts: null },
-      broker: 'schwab', tif, session, exit_policy: exits, ladder,
+      broker: 'schwab', account_key: account, tif, session, exit_policy: exits, ladder,
       risk: { sizing_basis: 'shares' },
       meta: { thesis: `Active Trader panel draft (${strategy})`, created_by: 'operator' },
       state: 'DRAFT',
@@ -342,7 +347,11 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
           <F label="symbol" tip="US equity only this program. The canary gate allowlist is committed in code at session time.">
             <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
               style={{ ...inp, width: 92, fontSize: 14, fontWeight: 700 }} placeholder="—" /></F>
-          <div style={{ display: 'flex', gap: 12, padding: '0 10px 4px' }}>
+          <F label="account" tip="Which Schwab account this draft (and your manual ToS placement) is for.">
+            <select value={account} onChange={e => setAccount(e.target.value)} style={{ ...inp, width: 130 }}>
+              {SCHWAB_ACCOUNTS.map(a => <option key={a} value={a}>{a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase()}</option>)}
+            </select></F>
+          <div style={{ display: 'flex', gap: 12, padding: '0 10px 4px', alignItems: 'flex-end' }}>
             {(['bid', 'last', 'ask'] as const).map(k => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <div style={lbl}>{k}</div>
@@ -351,6 +360,8 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
                 </div>
               </div>
             ))}
+            <button onClick={() => fetchQuote(symbol.trim().toUpperCase())} title="quotes auto-refresh every 10s while a symbol is typed; this forces it now"
+              style={{ ...btn('#1b1b1b', '#90caf9'), padding: '4px 9px' }}>↻ quote</button>
           </div>
           {/* qty stepper — canary-scaled presets ONLY */}
           <F label="qty (shares)" tip={FIELD_TIP.qty}>
