@@ -284,10 +284,13 @@ def _load_base_positions():
     # ── alpaca paper: paper_trades open (canonical paper ledger), aggregated by symbol ──
     try:
         c = _conn(); cur = c.cursor()
-        cur.execute("""SELECT account, symbol, sum(shares) sh,
+        # UPPER(account): paper_trades carries mixed-case account keys ('ALPACA_PAPER' vs 'alpaca_paper'
+        # on older rows) — without normalization they surface as two phantom accounts in the UI filters
+        # (operator caught this 2026-06-12 via the account badges).
+        cur.execute("""SELECT UPPER(account) account, symbol, sum(shares) sh,
                               sum(entry_price*shares)/NULLIF(sum(shares),0) avg_entry,
                               min(stop_loss) stop, max(target_1) tgt, min(strategy_id) strat, min(entry_time) ent
-                       FROM paper_trades WHERE lower(status)='open' GROUP BY account, symbol""")
+                       FROM paper_trades WHERE lower(status)='open' GROUP BY UPPER(account), symbol""")
         for acct, sym, sh, avg_entry, stop, tgt, strat, ent in cur.fetchall():
             sh = float(sh or 0)
             if sh <= 0:

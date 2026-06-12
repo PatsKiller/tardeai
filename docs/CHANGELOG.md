@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-12 - CRITICAL DATA FIX: roth/rollover account-hash links were SWAPPED + Open Trades badges/filters + Schwab monitor sub-tabs
+
+**Account swap (operator caught it via the new monitor: "rollover has way more than 2 positions").**
+Root cause: `schwab_account_links` mapped schwab_rollover_ira->...9415 and schwab_roth_ira->...0258, but
+Schwab's own 2026-04-21 CSV proves ...415 IS the Roth (V 130 + SCHG 43); the big 13-position account
+(...0258: FCNTX/V 301/SCHD 4122/scalp activity) is the ROLLOVER. Every API read/ingest since cred-in
+labeled those two accounts backwards; holdings.json + json_migration rows were always correct.
+Fix (operator-authorized, backup table `_backup_acct_swap_20260612`, 179 rows): swapped the 2 link rows;
+relabeled 177 schwab_api trade_transactions rows (164 roth->rollover, 13 rollover->roth) incl. the
+account segment inside dedupe_key (prevents re-ingest duplicates); re-keyed the V IPO-basis override to
+V|schwab_rollover_ira (the sells happened there); journal rebuilt — active stats unchanged (116 trips,
+52.6%, +$37,046), long-term realized restored +$114,560, basis_unknown back to 13, round-trips now
+rollover 46 / roth 1 / taxable 88. Monitor verified: rollover 13 positions + 27 orders, roth 2, taxable 22.
+LLM grades for re-keyed trips regenerate on the nightly 18:15 classifier cron.
+
+**UI (operator requests):** PositionDecisionCard account badge now loud + color-coded (📝 PAPER blue /
+💰 REAL amber) — AGNC/NWG exist as both paper trades and real holdings, badge disambiguates. Open Trades
+gains one-tap account filter pills (with per-account counts). Schwab Accounts monitor gains account
+filter pills + sub-tabs: Positions / Working Orders (working statuses only, edit->DRAFT) / Order History
+(FILLED/CANCELED/REJECTED read window). open_trades_intelligence normalizes UPPER(account) for paper
+rows ('ALPACA_PAPER' vs 'alpaca_paper' showed as two phantom accounts).
+
 ## 2026-06-12 - Stage 2a readiness: ToS-style dormant UI + hardcoded canary gate + two-channel approval + L3 read-only prereqs
 
 READ-ONLY throughout; execution stays BROKER_DISABLED; validator extended 12/12 -> 17/17 green.
