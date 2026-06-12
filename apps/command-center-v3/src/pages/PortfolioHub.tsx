@@ -262,9 +262,9 @@ export default function PortfolioHub({ onDrill }: Props) {
                             {sc.vs_sector_week != null && <span title={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`}
                               style={{ color: sc.vs_sector_week >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
                               {sc.vs_sector_week >= 0 ? '+' : ''}{sc.vs_sector_week}% vs sector</span>}
-                            {sc.analyst?.rating && <span title={`Yahoo consensus ${sc.analyst.mean} · range $${sc.analyst.target_low}–$${sc.analyst.target_high}${sc.analyst.finviz_score != null ? ` · Finviz 2nd opinion ${sc.analyst.finviz_score}` : ''}${sc.analyst.source_divergence ? ' · ⚠ sources disagree' : ''}`}
-                              style={{ color: sc.analyst.source_divergence ? '#f59e0b' : String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
-                              {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions} analysts · target ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}{sc.analyst.source_divergence ? ' ⚠' : ''}</span>}
+                            {sc.analyst?.rating && <span title={`Yahoo consensus ${sc.analyst.mean} · target range $${sc.analyst.target_low}–$${sc.analyst.target_high}${sc.analyst.distribution ? ` · votes: ${sc.analyst.distribution.strong_buy ?? 0} strong buy / ${sc.analyst.distribution.buy ?? 0} buy / ${sc.analyst.distribution.hold ?? 0} hold / ${sc.analyst.distribution.sell ?? 0} sell` : ''}`}
+                              style={{ color: String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
+                              {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions} analysts · target ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}</span>}
                           </div>
                           {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
                             <div key={i} style={{ fontSize: 8.5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
