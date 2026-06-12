@@ -177,7 +177,7 @@ function PipelineChevron({ stages }: { stages: any[] }) {
 }
 
 // -- Proposal card --
-function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
+function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string>; symCard?: any }) {
   const { data: extIntel } = useApi<any>(`/api/v2/hermes/subject-intel?type=proposal&key=${p.symbol}`, 120_000)
   const extOpinions: any[] = extIntel?.external_intel ?? []
   const hermes = extIntel?.hermes
@@ -380,6 +380,12 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}
           {p.signal_grade && <StatusBadge status={p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'ready' : p.signal_grade === 'B' ? 'warning' : 'blocked'} label={`${p.signal_grade} ${p.signal_score}pts`} />}
           {p.strategy_trade_count > 0 && <span style={{ fontSize: 9, color: (p.strategy_win_rate ?? 0) >= 50 ? '#22C55E' : '#F59E0B', fontWeight: 600 }}>{p.strategy_win_rate}% WR</span>}
+          {symCard?.vs_sector_week != null && <span title={`symbol ${symCard.perf_week}% vs ${symCard.sector_etf} ${symCard.sector_perf_week}% (week)`}
+            style={{ fontSize: 9, fontWeight: 700, color: symCard.vs_sector_week >= 0 ? '#22c55e' : '#ef4444' }}>
+            {symCard.vs_sector_week >= 0 ? '+' : ''}{symCard.vs_sector_week}% vs sector</span>}
+          {symCard?.analyst?.rating && <span title={`analyst consensus ${symCard.analyst.mean} · range $${symCard.analyst.target_low}–$${symCard.analyst.target_high}`}
+            style={{ fontSize: 9, fontWeight: 600, color: String(symCard.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
+            {String(symCard.analyst.rating).replace('_', ' ')} · {symCard.analyst.opinions}an · tgt ${symCard.analyst.target}{symCard.analyst.upside_pct != null ? ` (${symCard.analyst.upside_pct >= 0 ? '+' : ''}${symCard.analyst.upside_pct}%)` : ''}</span>}
           {l2?.imbalance != null && (
             <span title={`Level-2 book pressure (advisory evidence, never a trigger)\n15m avg imbalance: ${l2p?.avg_imbalance ?? '—'} (${l2p?.read ?? ''})\nbid depth ${l2.bid_depth} / ask depth ${l2.ask_depth}\nbest ${l2.best_bid} × ${l2.best_ask} · ${String(l2.captured_at).slice(11, 19)}`}
               style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'help',
@@ -395,6 +401,20 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           <span style={{ fontSize: 9, fontWeight: 600, color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B', ...mono }}>{p.age_display || ''}</span>
         </div>
       </div>
+
+      {/* what the company does + top-3 news (unified card layer, operator 2026-06-12) */}
+      {symCard?.description && (
+        <div style={{ padding: '4px 14px 5px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 9.5, color: 'var(--text2)', lineHeight: 1.4 }}>{symCard.description}</div>
+          {(symCard.news ?? []).slice(0, 3).map((n: any, i: number) => (
+            <div key={i} style={{ fontSize: 9, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span style={{ color: 'var(--text3)' }}>{n.source} · {n.at ? `${Math.round((Date.now() - new Date(n.at).getTime()) / 36e5)}h · ` : ''}</span>
+              {n.url ? <a href={n.url} target="_blank" rel="noreferrer" style={{ color: '#93c5fd', textDecoration: 'none' }} title={n.title}>{n.title}</a>
+                : <span style={{ color: 'var(--text2)' }} title={n.title}>{n.title}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* B. DECISION BANNER */}
       <div style={{ padding: '5px 14px 6px', background: `${vc.bg}80`, borderBottom: '1px solid var(--border)' }}>
@@ -681,6 +701,8 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
 // -- Main proposals surface --
 export default function ProposalsRich() {
   const { data, refetch } = useApi<any>('/api/v2/paper-proposals', 30000)
+  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const [acting, setActing] = useState<Record<number, string>>({})
   const [showAll, setShowAll] = useState(true)
   const [strategyFilter, setStrategyFilter] = useState('ALL')
@@ -1001,7 +1023,7 @@ export default function ProposalsRich() {
             )}
           </div>
         ) : displayed.map((p: any) => (
-          <ProposalCard key={p.id} p={p} act={act} acting={acting} />
+          <ProposalCard key={p.id} p={p} act={act} acting={acting} symCard={cardMap[(p.symbol || '').toUpperCase()]} />
         ))}
       </div>
 
