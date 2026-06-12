@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-12 - CANARY SESSION SCREEN RUN + ALLOWLIST COMMITTED (GRAB primary / XRX fallback)
+
+Operator-ordered screen per stage2a-canary-protocol: price $2-4 · vol >=5M · ZERO footprint
+(holdings / watchlist / paper / journal / ledger). PRIMARY **GRAB $3.37** (51.2M avg vol, 0.6%
+spread even after-hours, superapp mega-name) · FALLBACK **XRX $3.45** (6.3M, NYSE household name).
+Screened out live: VIDA drifted to $4.20 (above cap mid-screen), ABEV/BBD/CIG (footprint),
+LYG/ERIC (>$4). `CANARY_SYMBOL_ALLOWLIST = ("GRAB","XRX")` committed into canary_gate.py with the
+full rationale; gate verified live (GRAB 10sh@$3.40 in-envelope, @$4.05 BLOCKED 'price > $4 cap');
+gate tests 23/23 (resting-empty contract kept as patched assertion); validator 17/17; execution
+remains BROKER_DISABLED — the allowlist arms nothing. Session reminders encoded in code+protocol:
+re-verify spreads at the open (AH quotes), ROTATE allowlist back to () by commit post-session.
+Remaining pre-session: fresh OAuth · start shadow-recon + activity-capture watchers · draft each
+order in the panel first · manual ToS placement 11:30-14:00 ET, one at a time.
+
 ## 2026-06-12 - Home/overview truth fixes + analyst honesty correction + Today's-Move-by-account
 
 **Analyst sources (operator question + correction):** abbreviations spelled out everywhere
