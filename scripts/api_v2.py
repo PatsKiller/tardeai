@@ -372,24 +372,9 @@ def _fib_analysis(price, high_pct, low_pct):
     return out
 
 
-# Public-ETF proxies for non-tradeable holdings (401k commingled pools / institutional
-# mutual funds with no public ticker). Each value: (proxy_etf, asset-class label). Proxies
-# are chosen from the enrichment universe so technicals are available; they approximate the
-# holding's asset class, NOT the exact fund. Always surfaced with a "(proxy)" label.
-_HOLDING_PROXY_MAP = {
-    "FID-CONTRA-F":  ("SCHG", "US large-cap growth"),
-    "FCNTX":         ("SCHG", "US large-cap growth"),
-    "JPM-LGCG":      ("SCHG", "US large-cap growth"),
-    "SP500-D":       ("SPY",  "S&P 500"),
-    "VANG-FTSE-SOC": ("SPY",  "US large-cap blend (ESG)"),
-    "TRP-LVAL":      ("SCHD", "US large-cap value"),
-    "AMANX":         ("SCHD", "US large-cap value / dividend"),
-    "SS-SMMD":       ("IJH",  "US mid-cap blend"),
-    "WM-BLAIR":      ("IWP",  "US mid-cap growth"),
-    "AB-DISC-Z":     ("IWN",  "US small-cap value"),
-    "FID-DIVINTL":   ("VXUS", "international ex-US equity"),
-    "SS-GACEQ":      ("VXUS", "global ex-US equity"),
-}
+# Public-ETF proxies for non-tradeable holdings — moved to holding_proxies.py (single source of
+# truth, 2026-06-12) so the technicals backfill + advisor pipeline share the exact same mapping.
+from holding_proxies import HOLDING_PROXY_MAP as _HOLDING_PROXY_MAP
 
 
 def portfolio_holdings():

@@ -30,10 +30,17 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
 def _held_symbols() -> set:
+    from holding_proxies import HOLDING_PROXY_MAP
     h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
-    return {(x.get("symbol") or "").upper() for x in h.get("holdings", [])
-            if not x.get("is_cash") and (x.get("symbol") or "").upper() != "CASH"
-            and re.fullmatch(r"[A-Z]{1,5}", (x.get("symbol") or "").upper())}
+    out = set()
+    for x in h.get("holdings", []):
+        sym = (x.get("symbol") or "").upper()
+        if x.get("is_cash") or sym == "CASH":
+            continue
+        # public tickers AND proxy-mapped fund codes (401k pools, institutional funds) are in scope
+        if re.fullmatch(r"[A-Z]{1,5}", sym) or sym in HOLDING_PROXY_MAP:
+            out.add(sym)
+    return out
 
 
 def _missing(cur, universe):
@@ -83,14 +90,29 @@ def run(symbols=None, alert=False):
         print(json.dumps({"status": "clean", "checked": len(universe), "missing": 0}))
         return
     import yfinance as yf
+    from holding_proxies import HOLDING_PROXY_MAP
     filled, dead = [], []
     today = dt.date.today()
-    for sym in missing:
+    def _closes(ticker):
         try:
-            hist = yf.Ticker(sym).history(period="1y")
-            closes = [float(v) for v in hist["Close"].tolist()] if len(hist) else []
+            hist = yf.Ticker(ticker).history(period="1y")
+            return [float(v) for v in hist["Close"].tolist()] if len(hist) else []
         except Exception:
-            closes = []
+            return []
+
+    for sym in missing:
+        # fund codes with no public ticker route through their asset-class proxy ETF
+        # (operator-approved 2026-06-12); result is stored under the FUND code, source='proxy:<ETF>'
+        proxy = HOLDING_PROXY_MAP.get(sym)
+        is_public = bool(re.fullmatch(r"[A-Z]{1,5}", sym))
+        fetch_sym, source, note = sym, "nav_computed", {}
+        closes = _closes(sym) if is_public else []
+        if len(closes) < 15 and proxy:        # fund code, or public symbol with no series but mapped
+            fetch_sym = proxy[0]
+            source = f"proxy:{proxy[0]}"
+            note = {"proxy": proxy[0], "asset_class": proxy[1],
+                    "caveat": "asset-class proxy — approximates the class, NOT the exact fund"}
+            closes = _closes(fetch_sym)
         if len(closes) < 15:
             dead.append(sym)
             cur.execute("""INSERT INTO ticker_snapshot_daily (snapshot_date, symbol, source, data)
@@ -102,15 +124,15 @@ def run(symbols=None, alert=False):
         cur.execute("""INSERT INTO ticker_snapshot_daily
                          (snapshot_date, symbol, source, rsi, sma20_pct, sma50_pct, sma200_pct,
                           perf_week_pct, perf_month_pct, data)
-                       VALUES (%s,%s,'nav_computed',%s,%s,%s,%s,%s,%s,%s)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (snapshot_date, symbol) DO UPDATE SET
                          rsi=EXCLUDED.rsi, sma20_pct=EXCLUDED.sma20_pct, sma50_pct=EXCLUDED.sma50_pct,
                          sma200_pct=EXCLUDED.sma200_pct, perf_week_pct=EXCLUDED.perf_week_pct,
-                         perf_month_pct=EXCLUDED.perf_month_pct, source='nav_computed', data=EXCLUDED.data""",
-                    (today, sym, t.get("rsi"), t.get("sma20_pct"), t.get("sma50_pct"), t.get("sma200_pct"),
+                         perf_month_pct=EXCLUDED.perf_month_pct, source=EXCLUDED.source, data=EXCLUDED.data""",
+                    (today, sym, source, t.get("rsi"), t.get("sma20_pct"), t.get("sma50_pct"), t.get("sma200_pct"),
                      t.get("perf_week_pct"), t.get("perf_month_pct"),
-                     json.dumps({"computed_from": "yfinance NAV/close", "bars": len(closes)})))
-        filled.append({sym: t})
+                     json.dumps({"computed_from": f"yfinance {fetch_sym}", "bars": len(closes), **note})))
+        filled.append({sym: {**t, "via": fetch_sym if fetch_sym != sym else "direct"}})
     conn.commit()
     report = {"checked": len(universe), "was_missing": len(missing),
               "filled": filled, "no_data": dead}
