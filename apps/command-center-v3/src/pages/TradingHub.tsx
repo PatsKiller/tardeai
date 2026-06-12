@@ -64,7 +64,11 @@ export default function TradingHub({ onDrill }: Props) {
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Trading</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {trades.length} open · {pending.length} pending proposals · Alpaca {alpaca.account_status ?? '—'}
+            {/* hub-wide strip: "paper (Alpaca)" = the automated-trading PAPER pipeline's brokerage —
+                unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
+            {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
+              ? <span>{trades.length} open (paper) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>
+              : <span>{trades.length} open · {pending.length} pending proposals · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
             {readiness && <span> · P-level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
