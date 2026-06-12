@@ -27,6 +27,35 @@ const originColor = (o?: string) => {
 const originLabel = (o?: string) => ({ trade_ai_screener: 'Screener', agent_discovery: 'AI', operator: 'Operator', hermes: 'Hermes', portfolio: 'Portfolio', social: 'Social' } as any)[o || ''] || (o || 'screener')
 const tierColor = (t?: string) => (({ core: '#22c55e', trusted: '#84cc16', probationary: '#f59e0b', candidate: '#94a3b8', demoted: '#ef4444' } as any)[t || ''] || 'var(--text3)')
 
+// ── CIO strip helpers: relative time + freshness/recommendation colors ──
+function ago(v: any) {
+  if (!v) return ''
+  const t = new Date(v).getTime()
+  if (!Number.isFinite(t)) return ''
+  const h = Math.round((Date.now() - t) / 36e5)
+  if (h < 1) return 'just now'
+  if (h < 48) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
+}
+
+function freshnessColor(v: any) {
+  if (!v) return 'var(--text3)'
+  const t = new Date(v).getTime()
+  if (!Number.isFinite(t)) return 'var(--text3)'
+  const h = (Date.now() - t) / 36e5
+  if (h <= 2) return '#22c55e'
+  if (h <= 24) return '#f59e0b'
+  return '#ef4444'
+}
+
+function recColor(v: any) {
+  const s = String(v ?? '').toUpperCase()
+  if (s.includes('BUY') || s.includes('ACCUMULATE') || s.includes('WATCH')) return '#22c55e'
+  if (s.includes('HOLD') || s.includes('WAIT')) return '#f59e0b'
+  if (s.includes('AVOID') || s.includes('SELL')) return '#ef4444'
+  return 'var(--text3)'
+}
+
 const Pill = ({ text, color, tip }: any) => (
   <span title={tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color + '22', color, border: `1px solid ${color}55`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
 )
@@ -200,7 +229,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         {visible.length === 0 ? (
           <div style={{ color: 'var(--text3)', fontSize: 12, padding: 16 }}>No items match the filters.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12, maxHeight: 640, overflowY: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: 14, maxHeight: 720, overflowY: 'auto' }}>
             {visible.slice(0, 200).map((it: any) => {
               const a = advMap[it.symbol]
               const fr = freshness(it)
@@ -224,6 +253,67 @@ export default function WatchlistHub({ onDrill }: Props) {
                       {it.change_pct != null && <span style={{ fontSize: 10, marginLeft: 5, color: Number(it.change_pct) >= 0 ? '#22c55e' : '#ef4444' }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</span>}
                     </span>
                   </div>
+                  {/* CIO summary strip: recommendation / freshness / entry plan at a glance (advisory-only) */}
+                  {(it.latest_recommendation || it.research_confidence != null || it.last_enriched_at || it.last_validated_at || it.entry_model || it.entry_rr != null || it.entry_limit != null || it.entry_stop != null) && (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, minmax(90px, 1fr))',
+                      gap: 6,
+                      padding: '7px 8px',
+                      background: 'rgba(15,23,42,.45)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 7
+                    }}>
+                      {it.latest_recommendation && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>CIO View</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: recColor(it.latest_recommendation) }}>{it.latest_recommendation}</div>
+                        </div>
+                      )}
+                      {it.research_confidence != null && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Confidence</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa' }}>{Number(it.research_confidence).toFixed(2)}</div>
+                        </div>
+                      )}
+                      {it.last_enriched_at && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>AI Enriched</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: freshnessColor(it.last_enriched_at) }}>{ago(it.last_enriched_at)}</div>
+                        </div>
+                      )}
+                      {it.last_validated_at && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Validated</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: freshnessColor(it.last_validated_at) }}>{ago(it.last_validated_at)}</div>
+                        </div>
+                      )}
+                      {it.entry_model && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Entry Model</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: '#a78bfa' }}>{it.entry_model}</div>
+                        </div>
+                      )}
+                      {it.entry_rr != null && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>R:R</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: Number(it.entry_rr) >= 2 ? '#22c55e' : '#f59e0b' }}>{Number(it.entry_rr).toFixed(2)}</div>
+                        </div>
+                      )}
+                      {it.entry_limit != null && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Limit</div>
+                          <div style={{ fontSize: 10, fontWeight: 800 }}>${Number(it.entry_limit).toFixed(2)}</div>
+                        </div>
+                      )}
+                      {it.entry_stop != null && (
+                        <div>
+                          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Stop</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: '#ef4444' }}>${Number(it.entry_stop).toFixed(2)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {/* provenance pills */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Pill text={originLabel(it.origin_system)} color={originColor(it.origin_system)} tip={it.provenance_reason || it.source} />
@@ -253,6 +343,16 @@ export default function WatchlistHub({ onDrill }: Props) {
                       {it.score != null && <Pill text={`score ${Number(it.score).toFixed(0)}`} color={it.watch_score_kind === 'strategy_qualified' ? '#22c55e' : 'var(--text3)'} tip={it.watch_score_kind === 'strategy_qualified' ? 'qualifies for a Bucket-2/3 strategy' : 'technical posture score (not a proposal score)'} />}
                       {a && <Pill text={`${a.advisory_flag === 'caution' ? '⚠ ' : ''}${a.band}`} color={advColor(a.advisory_flag)} tip={a.note} />}
                       {stale && <Pill text="technicals stale" color="#f59e0b" tip="last enriched > 2h ago" />}
+                    </div>
+                  )}
+                  {/* AI review strip: pipeline stage + per-agent review status */}
+                  {(it.analysis_stage || it.maria_status || it.steph_status || it.risk_status || it.final_synthesis_status) && (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {it.analysis_stage && <Pill text={`stage ${it.analysis_stage}`} color="#60a5fa" />}
+                      {it.maria_status && <Pill text={`Maria ${it.maria_status}`} color={it.maria_status === 'completed' ? '#22c55e' : '#f59e0b'} />}
+                      {it.steph_status && <Pill text={`Steph ${it.steph_status}`} color={it.steph_status === 'completed' ? '#22c55e' : '#f59e0b'} />}
+                      {it.risk_status && <Pill text={`Risk ${it.risk_status}`} color={it.risk_status === 'completed' ? '#22c55e' : '#f59e0b'} />}
+                      {it.final_synthesis_status && <Pill text={`Final ${it.final_synthesis_status}`} color={it.final_synthesis_status === 'completed' ? '#22c55e' : '#f59e0b'} />}
                     </div>
                   )}
                   {/* unified info block: what the company does · sector vs sector · analyst · top-3 news */}
@@ -290,7 +390,7 @@ export default function WatchlistHub({ onDrill }: Props) {
             })}
           </div>
         )}
-        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a card → full provenance + intelligence. Enriched by the standing sweep (rsi/trend/score/advisory). Advisory-only — read-only, never gates.</div>
+        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a card → full provenance, model reviews, risk/counter-view, catalyst chain, and entry plan. Advisory-only — read-only, never places trades.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} />}
