@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-12 - SSOT BASIS SHIELD: root fix for basis reverts, enforced at Gate B
+
+Whodunit closed structurally: rather than chasing which of the interleaved 15-min pipelines reverts
+corrected basis (two writers alternate on holdings.json; reconstruction has no callers; loader
+reads-not-rebuilds — the culprit will now NAME ITSELF), basis stickiness is enforced at the ONE
+write gate every holdings writer funnels through (protected_holdings_write; holdings_guard
+re-exports it). Rows with cost_basis_source in (csv_lot, broker_api) cannot have their VALUES
+changed by any writer except broker_basis_sync: the gate restores the protected value, recomputes
+gain fields, and logs 'basis_shielded [writer-source]' to schwab_sync_history — so the reverting
+pipeline is identified on its next attempt. PROVEN: simulated 4-row revert via the gate -> all
+restored + logged with writer name; legitimate SSOT-sync update passes. Fail-soft. Validator 18/18;
+audit 0/38 clean. The 16:33 self-heal cron stays as a second belt.
+
 ## 2026-06-12 - Basis-audit alarm cycle closed + canary session record + server backlog live
 
 Basis audit re-run post-restart: **0 flagged / 38 clean**; server backlog-128 patch confirmed live
