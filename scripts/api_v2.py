@@ -7959,8 +7959,18 @@ def _paper_proposals_enriched():
                    pa.reject_case as pa_reject_case, pa.invalidation as pa_invalidation,
                    pa.narrative_source as pa_narrative_source,
                    pa.confidence as pa_confidence,
-                   pa.missing_data as pa_missing_data
+                   pa.missing_data as pa_missing_data,
+                   -- LLM entry plan (zone like the watchlist, operator 2026-06-12; advisory-only)
+                   ep.setup_type as entry_setup, ep.entry_zone_low, ep.entry_zone_high,
+                   ep.limit_price as entry_plan_limit, ep.urgency as entry_urgency,
+                   ep.proposal_tag as entry_tag, ep.risk_reward as entry_rr,
+                   ep.model_used as entry_model, ep.created_at as entry_planned_at
             FROM paper_trade_proposals ptp
+            LEFT JOIN LATERAL (
+                SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, urgency,
+                       proposal_tag, risk_reward, model_used, created_at
+                FROM watchlist_entry_plans wep WHERE wep.symbol = ptp.symbol
+                ORDER BY created_at DESC LIMIT 1) ep ON true
             LEFT JOIN LATERAL (
                 SELECT * FROM trade_ai_scans
                 WHERE symbol = ptp.symbol

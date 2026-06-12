@@ -68,8 +68,11 @@ def _enrich_proposal_async(proposal_id: int, symbol: str):
 
         # Step 2: Warm up Ollama
         try:
+            # 2026-06-12: was hardcoded 'qwen3:14b' (DISABLED + uninstalled) — silently failed on
+            # every proposal since qwen removal. Warm the CONFIGURED primary model instead.
+            from local_llm_config import get_local_llm_model
             subprocess.run(
-                ['ollama', 'run', 'qwen3:14b', 'ready'],
+                ['ollama', 'run', get_local_llm_model(), 'ready'],
                 capture_output=True, text=True, timeout=30, cwd=BASE
             )
         except Exception:
@@ -101,6 +104,22 @@ def _enrich_proposal_async(proposal_id: int, symbol: str):
             log.info(f"Quality review complete for #{proposal_id}")
         except Exception as e:
             log.warning(f"Quality review failed for #{proposal_id}: {e}")
+
+        # Step 5: INLINE grok entry-zone validation (operator 2026-06-12: "not weekly — when a
+        # proposal for a strategy [is created], have grok review inline"). Advisory-only: writes an
+        # entry plan (zone/limit/urgency/WAIT-READY tag) into watchlist_entry_plans; the proposal
+        # row itself is never modified. Lane falls back to local automatically if the grok proxy
+        # is down (llm_lane.available inside the planner).
+        try:
+            r = subprocess.run(
+                [PYTHON, f'{BASE}/scripts/watchlist_entry_planner.py',
+                 '--scope', 'proposals', '--symbols', symbol, '--lane', 'grok'],
+                capture_output=True, text=True, timeout=180, cwd=BASE
+            )
+            log.info(f"Grok entry validation for #{proposal_id}: "
+                     f"{'OK' if r.returncode == 0 else 'FAILED'}")
+        except Exception as e:
+            log.warning(f"Grok entry validation failed for #{proposal_id}: {e}")
 
         log.info(f"Enrichment complete for proposal #{proposal_id} ({symbol})")
 

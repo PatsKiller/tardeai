@@ -269,6 +269,16 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       tileColor: rr >= 2.5 ? 'green' : rr >= 2 ? 'green' : rr > 0 ? 'red' : 'gray',
     },
     {
+      // LLM entry zone (operator 2026-06-12: "entry price range like the watchlist") — grok validates
+      // inline at proposal creation; advisory only, the proposed entry itself is untouched.
+      label: '🎯 Entry Zone',
+      value: p.entry_zone_low != null ? `${Number(p.entry_zone_low).toFixed(2)}–${Number(p.entry_zone_high).toFixed(2)}` : '--',
+      status: p.entry_zone_low != null
+        ? `lim ${Number(p.entry_plan_limit).toFixed(2)} · ${p.entry_urgency} · ${p.entry_tag} (${p.entry_model})`
+        : 'awaiting LLM validation',
+      tileColor: p.entry_urgency === 'ready' ? 'green' : p.entry_urgency === 'near_entry' ? 'amber' : p.entry_zone_low != null ? 'gray' : 'gray',
+    },
+    {
       label: 'Agents',
       value: agentReviews.length > 0 ? `${agentReviews.length}` : '--',
       status: agentReviews.length > 0
