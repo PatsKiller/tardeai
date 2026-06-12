@@ -95,10 +95,29 @@ Pilot closes (success or abort) → `api_write_enabled` reverts to false by migr
 date expires (automatic), results logged in the reconciliation log + CHANGELOG, and a Stage 2c
 decision (ladder automation on Schwab) is a NEW spec gated on SB-0's environment verdict.
 
-## Open items
+## Open items — RESOLVED (operator, 2026-06-12 evening)
 
-1. Sandbox app credentials live as a SEPARATE keyset in `.env` (`SCHWAB_SANDBOX_APP_KEY/SECRET/...`)
-   so production read-only tokens and pilot write tokens can never be confused. Naming confirmed?
-2. OAuth callback for the sandbox app — same redirect URI as the read-only app, or new one?
-3. If SB-0 says "not a sandbox": does the operator still want the 5-trade pilot live-tiny under
-   the $4/$40 inner envelope, or pause?
+1. Keyset: **same app / same credentials** as the existing read-only integration (operator: "same
+   API account was selected in API"). There is no separate sandbox keyset — the write tokens ARE
+   the production tokens. Consequence: per-order confirm is non-negotiable, and the no-IRA-hash
+   assert moves into the transport write path itself.
+2. OAuth callback: **same redirect URI.**
+3. **SB-0 EXECUTED 2026-06-12 (read-only): NOT A SANDBOX.** The app's credentials returned all
+   three REAL accounts with REAL balances (taxable equity $76,105 / cash $7,901; rollover
+   $572,672; roth $43,463). Operator decision on record: **continue live-tiny under the committed
+   $4/$40 inner canary envelope** (price ≤ $4 · qty ≤ 10 · notional ≤ $40 · committed allowlist ·
+   committed session date · long-only · LIMIT only). The operator's wider caps (price < $10) are
+   VOID for live orders; the 5-trade total cap stands.
+
+## Next: SB-1 build checklist (write surface + validator rewrite, one commit)
+
+- [ ] `schwab_transport.place_order/cancel_order` (real impl) behind: execution_guard →
+      canary_gate → 5-order cumulative cap → `api_write_enabled` → single-use confirm token
+- [ ] Hard assert in the write path: account_key == 'schwab_taxable' (IRA keys raise, always)
+- [ ] Correlation id persisted before POST; timeout ⇒ reconcile via GET before any retry
+- [ ] Migration: `api_write_enabled=true` for schwab_taxable ONLY (reversible, operator-approved)
+- [ ] `validate_schwab_no_writes.py` → `validate_schwab_write_policy.py` (all-green redefinition
+      per this spec; same runner wiring so Stage 2a battery + cron keep working)
+- [ ] Pilot session scheduling: commit a NEW `CANARY_SESSION_DATE` + re-screened allowlist the
+      morning of the session (GRAB $3.37 / XRX $3.45 quotes are from 2026-06-12 AH — re-verify
+      price ≤ $4 and spread at the open; rotate back after)
