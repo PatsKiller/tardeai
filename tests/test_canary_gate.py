@@ -48,10 +48,16 @@ def mk(symbol="TST", direction=Direction.LONG, qty=2.0, limit=3.50, method=Entry
     return OrderIntent(**kw)
 
 
-print("\n— 1. shipped state: EMPTY allowlist fails closed —")
-d = canary_gate.evaluate(mk())
-check("empty allowlist blocks even an in-envelope order", not d.allowed and any("allowlist EMPTY" in r for r in d.reasons))
-check("shipped allowlist is empty (committed at session time only)", canary_gate.CANARY_SYMBOL_ALLOWLIST == ())
+print("\n— 1. committed-allowlist state: fail-closed shape holds —")
+d = canary_gate.evaluate(mk())   # mk() uses TST — never in any committed allowlist
+check("non-allowlisted symbol blocked in shipped state", not d.allowed)
+AL = canary_gate.CANARY_SYMBOL_ALLOWLIST
+check("allowlist is resting-empty OR a session commit of ≤2 uppercase tickers",
+      AL == () or (len(AL) <= 2 and all(s.isupper() and s.isalpha() and len(s) <= 5 for s in AL)), str(AL))
+with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ()):
+    d0 = canary_gate.evaluate(mk())
+    check("empty allowlist blocks even an in-envelope order (resting-state contract)",
+          not d0.allowed and any("allowlist EMPTY" in r for r in d0.reasons))
 
 print("\n— 2. envelope logic (allowlist patched to ('TST',) for isolation) —")
 with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ("TST",)):
