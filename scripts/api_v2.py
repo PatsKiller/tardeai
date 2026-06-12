@@ -16532,17 +16532,47 @@ def _portfolio_llm_coverage(query=None):
     for r in rows + ext:
         cov.setdefault((r["symbol"] or "").upper(), []).append(
             {"model": r["model"], "lane": r["lane"], "last_at": _json_clean(r["at"]), "n": r["n"]})
-    # latest stop/trailing-stop advisory per symbol (holding_protection_advisor + monthly meta-review)
+    # latest stop/trailing-stop advisory per symbol — STRUCTURED (operator 2026-06-12: numeric
+    # stop/trail fields so an approved advisory can later become a draft OrderIntent -> Schwab at L4,
+    # with live distance-to-stop monitoring meanwhile)
     prot = _db_query("""SELECT DISTINCT ON (symbol) symbol, thesis, summary, model_used, confidence_score,
-                          created_at FROM hermes_research_intelligence
+                          evidence_json, created_at FROM hermes_research_intelligence
                         WHERE research_type='protection_advisory' AND created_at > NOW()-INTERVAL '30 days'
                         ORDER BY symbol, created_at DESC""") or []
-    protection = {(p["symbol"] or "").upper(): {"rec": p["thesis"], "rationale": p["summary"],
-                                                "model": p["model_used"], "confidence": _json_clean(p["confidence_score"]),
-                                                "at": _json_clean(p["created_at"])} for p in prot}
-    return _json_clean({"coverage": cov, "protection": protection, "window_days": 30,
-                        "note": "advisory research provenance only — which LLM lanes reviewed each "
-                                "symbol + latest stop/trail advisory; never an execution signal"})
+    quotes = {r["symbol"]: r for r in (_db_query(
+        """SELECT DISTINCT ON (symbol) symbol, price FROM market_quotes
+           WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""",
+        ([p["symbol"] for p in prot],)) or [])} if prot else {}
+    protection = {}
+    for p in prot:
+        sym = (p["symbol"] or "").upper()
+        ev = p.get("evidence_json") or {}
+        ev = ev if isinstance(ev, dict) else {}
+        rec = ev.get("recommendation") or {}
+        px = quotes.get(sym, {}).get("price") or (ev.get("inputs") or {}).get("price")
+        stop = rec.get("stop_price")
+        dist = (round((float(px) - float(stop)) / float(px) * 100, 2)
+                if px and stop and float(px) > 0 else None)
+        protection[sym] = {"rec": p["thesis"], "rationale": p["summary"], "model": p["model_used"],
+                           "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
+                           "stop_price": stop, "trail_recommended": rec.get("trail_recommended"),
+                           "trail_type": rec.get("trail_type"), "trail_offset": rec.get("trail_offset"),
+                           "price": _json_clean(px), "stop_distance_pct": dist}
+    # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
+    cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
+                      FROM hermes_external_research
+                      WHERE lane='claude' AND trigger_reason='monthly_protection_meta_review'
+                      ORDER BY symbol, created_at DESC""") or []
+    claude_verdicts = {(r["symbol"] or "").upper(): {
+        "verdict": r["recommendation"], "model": r["model"], "at": _json_clean(r["created_at"]),
+        **{k: (r["evidence_json"] or {}).get(k) for k in
+           ("verdict_stop", "verdict_trail_type", "verdict_trail_offset", "agrees_with", "note")
+           if isinstance(r.get("evidence_json"), dict)}} for r in cv}
+    return _json_clean({"coverage": cov, "protection": protection, "claude_verdicts": claude_verdicts,
+                        "window_days": 30,
+                        "note": "advisory research provenance — structured stop/trail fields + live "
+                                "distance-to-stop; APPROVAL/EXECUTION WIRING IS FUTURE (L4): nothing "
+                                "here places or modifies orders"})
 
 
 def _broker_orders_shadow_recon(query=None):
