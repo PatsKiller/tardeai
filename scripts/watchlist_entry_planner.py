@@ -3,7 +3,9 @@
 
 For every watch-grade symbol (active watchlist + operator directives), goes beyond analysis to a
 concrete plan: entry thesis · entry zone (typed: pullback/breakout/support-bounce/reversal) · limit
-price with realistic fill odds · pullback definition + invalidation · stop + target + R:R · urgency.
+price with realistic fill odds · pullback definition + invalidation · stop + target + R:R · urgency
+· layered exit ladder (T1 +1R de-risk / T2 plan target / T3 Street-mean runner with trail — same
+deterministic math as command-center-v3 lib/exitLadder.ts) + in-trade monitoring rules.
 
 ADVISORY ONLY — never submits orders, never modifies proposal state, never触execution. The proposal
 section is a RECOMMENDATION tag (WAIT / READY / NEEDS_CONFIRMATION) for the operator's queue.
@@ -99,11 +101,49 @@ def _analyst(cur, symbol):
                    WHERE symbol=%s ORDER BY created_at DESC LIMIT 1""", (symbol,))
     r = cur.fetchone()
     if not r:
-        return {"tgt_mean": "n/a", "tgt_low": "n/a", "tgt_high": "n/a", "rec_key": "n/a", "n_analysts": 0}
+        return {"tgt_mean": "n/a", "tgt_low": "n/a", "tgt_high": "n/a", "rec_key": "n/a",
+                "n_analysts": 0, "tgt_mean_num": None}
     return {"tgt_mean": f"${float(r[0]):.2f}" if r[0] else "n/a",
             "tgt_low": f"${float(r[1]):.2f}" if r[1] else "n/a",
             "tgt_high": f"${float(r[2]):.2f}" if r[2] else "n/a",
-            "rec_key": r[3] or "n/a", "n_analysts": int(r[4] or 0)}
+            "rec_key": r[3] or "n/a", "n_analysts": int(r[4] or 0),
+            "tgt_mean_num": float(r[0]) if r[0] else None}   # numeric mean for the exit ladder
+
+
+MONITOR_RULES = ("+1R -> stop to breakeven; T1 filled -> trail 1R or prior-day low; "
+                 "close below stop = exit, never average down; "
+                 "no +0.5R within 5 sessions -> time-stop review")
+
+
+def _exit_ladder(entry, stop, plan_target, street_target):
+    """Deterministic layered scale-out — SAME math as command-center-v3 lib/exitLadder.ts so the
+    engine, the Watchlist cards and the Manual ToS desk never disagree. The LLM's single target is
+    the floor, not the whole exit: T1 banks +1R and de-risks, T2 is the plan target, T3 keeps a
+    runner toward the Street mean with a trailing stop. Advisory only."""
+    try:
+        entry, stop = float(entry), float(stop)
+    except (TypeError, ValueError):
+        return None
+    if entry <= 0 or stop <= 0 or entry <= stop:
+        return None
+    r = entry - stop
+    plan_t = float(plan_target) if plan_target else None
+    street = float(street_target) if street_target else None
+    t1 = entry + r
+    plan_above_t1 = bool(plan_t and plan_t > t1 + 0.01)
+    t2 = plan_t if plan_above_t1 else entry + 2 * r
+    steps = [
+        {"px": round(t1, 2), "label": "T1 (+1R)", "action": "sell 1/3, move stop to breakeven"},
+        {"px": round(t2, 2), "label": "T2 (plan target)" if plan_above_t1 else "T2 (+2R)",
+         "action": "sell 1/3, trail stop to T1"},
+    ]
+    if street and street > t2 * 1.03:
+        steps.append({"px": round(street, 2), "label": "T3 (Street mean)",
+                      "action": "runner, trail 1R or prior-day low"})
+    else:
+        steps.append({"px": round(t2 + r, 2), "label": "T3 (runner)",
+                      "action": "runner, trail 1R or prior-day low"})
+    return {"r_per_share": round(r, 2), "steps": steps, "monitoring": MONITOR_RULES}
 
 
 def _parse(text):
@@ -157,12 +197,13 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist"):
         if not bars:
             failed += 1; continue
         t = _tech(bars)
+        an = _analyst(cur, sym)
         prompt = PROMPT_V1.format(symbol=sym, hermes=c.get("hermes_composite_score"),
                                   rank=c.get("hermes_rank"), trend=c.get("trend"),
                                   atr_pct=t["atr"] / t["price"] * 100,
                                   sma50_dist=(t["price"] - t["sma50"]) / t["sma50"] * 100,
                                   **{k: t[k] for k in ("price", "rsi", "atr", "swing_high", "swing_low", "sma50")},
-                                  **_analyst(cur, sym))
+                                  **{k: v for k, v in an.items() if k != "tgt_mean_num"})
         if scope == "proposals" and c.get("proposal_id"):
             prompt += (f"\nEXISTING PROPOSAL #{c['proposal_id']} (strategy {c.get('strategy_id')}): "
                        f"entry ${c.get('proposed_entry')} stop ${c.get('proposed_stop')} "
@@ -186,6 +227,10 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist"):
         p["scope"] = scope
         if c.get("proposal_id"):
             p["proposal_id"] = c["proposal_id"]
+        # layered exit plan (operator 2026-06-12): deterministic ladder from the LLM's entry/stop/target
+        # + Street mean — stored in the plan JSON so proposals, cards and alerts all carry it
+        p["exit_ladder"] = _exit_ladder(p.get("limit_price"), p.get("stop_price"),
+                                        p.get("target_price"), an.get("tgt_mean_num"))
         cur.execute("""INSERT INTO watchlist_entry_plans
                          (symbol, plan, setup_type, entry_zone_low, entry_zone_high, limit_price,
                           stop_price, target_price, risk_reward, urgency, confidence, proposal_tag,
@@ -229,10 +274,17 @@ def _alert(sym, p, urg, price) -> bool:
         return False
     icon = "🟢 READY" if urg == "ready" else "🟡 NEAR-ENTRY"
     prop = p.get("proposal") or {}
+    lad = p.get("exit_ladder")
+    ladder_txt = ""
+    if lad and lad.get("steps"):
+        ladder_txt = (f"exit ladder (R ${lad.get('r_per_share')}/sh):\n"
+                      + "\n".join(f"  {s['label']} ${s['px']} — {s['action']}" for s in lad["steps"])
+                      + "\n")
     text = (f"{icon} *ENTRY ALERT — {sym}* (advisory)\n"
             f"setup: {p.get('setup_type')} · now ${price:.2f}\n"
             f"zone: ${p.get('entry_zone_low')}–${p.get('entry_zone_high')} · limit ${p.get('limit_price')}\n"
             f"stop ${p.get('stop_price')} · target ${p.get('target_price')} · R:R {p.get('risk_reward')}\n"
+            f"{ladder_txt}"
             f"why: {str(p.get('entry_thesis',''))[:180]}\n"
             f"invalidation: {str(p.get('invalidation',''))[:120]}\n"
             f"proposal advice: *{prop.get('tag','WAIT')}* — {str(prop.get('sizing_rationale',''))[:100]}\n"
