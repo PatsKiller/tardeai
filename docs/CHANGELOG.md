@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-12 - Buy-process audit fixes: account selector in Edit modal + account badge on draft cards
+
+Operator audit caught it live: the Edit modal carried account_key INVISIBLY (selector existed only
+on the Active Trader panel) and draft cards displayed no account — breaking the runbook's per-order
+panel==ToS account tick. Edit modal now leads with an amber 'ACCOUNT (must match ToS!)' select;
+every draft card wears its account badge. All 5 staged canary drafts verified schwab_taxable.
+Also clarified in-session: 'superseded' approval chips = consumed by this morning's live Part-C
+verification (correct); Request approval issues a fresh pair at session time.
+
 ## 2026-06-12 - Stage 2a runbook hardening: order-5 short-safety (position-quantity) + wide OCO bands + abort-with-position
 
 Doc-only. The oversell guard caught a LINGERING child but not a FILLED one — with ±2% bands a
