@@ -1865,9 +1865,16 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 class ReusableHTTPServer(http.server.HTTPServer):
-    """HTTPServer with SO_REUSEADDR to prevent 'Address already in use' on restart."""
+    """HTTPServer with SO_REUSEADDR to prevent 'Address already in use' on restart.
+
+    request_queue_size raised 5→128 (2026-06-12, found live during the canary session): the server
+    is deliberately single-threaded (shared DB connection is not thread-safe), so one slow endpoint
+    serializes the dashboard's parallel polls — with the default backlog of 5, overflow connections
+    were silently DROPPED (UI buttons hung on 'translating…'). A deep queue keeps them waiting
+    instead of dying; latency under burst is acceptable, dropped requests are not."""
     allow_reuse_address = True
     allow_reuse_port = True
+    request_queue_size = 128
 
 
 if __name__ == "__main__":
