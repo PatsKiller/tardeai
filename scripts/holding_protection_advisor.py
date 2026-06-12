@@ -68,9 +68,16 @@ def _bars(symbol, days=70):
     end = dt.date.today()
     start = end - dt.timedelta(days=days * 2)
     r = st.get_price_history(symbol, start.isoformat(), end.isoformat(), timeframe="1Day")
-    if isinstance(r, dict) and r.get("status"):
-        return None
-    bars = r if isinstance(r, list) else (r or {}).get("bars") or []
+    bars = r if isinstance(r, list) else []
+    if not bars:
+        # mutual funds / cred-less contexts: yfinance NAV/close fallback (same fields, read-only)
+        try:
+            import yfinance as yf
+            h = yf.Ticker(symbol).history(period="1y")
+            bars = [{"open": float(o), "high": float(hi), "low": float(lo), "close": float(c)}
+                    for o, hi, lo, c in zip(h["Open"], h["High"], h["Low"], h["Close"])]
+        except Exception:
+            return None
     return bars[-days:] if bars else None
 
 
