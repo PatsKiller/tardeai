@@ -16565,17 +16565,30 @@ def _symbol_cards(query=None):
                         number_of_analyst_opinions, target_mean_price, target_high_price,
                         target_low_price, current_price FROM yahoo_analyst_targets_history
                       WHERE symbol = ANY(%s) ORDER BY symbol, created_at DESC""", (syms,)) or []
+    # second source: Finviz consensus (kept separate — never blended into the Yahoo rating of record)
+    fv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recom_score, analyst_rating
+                      FROM analyst_consensus_history WHERE source='finviz' AND symbol = ANY(%s)
+                      ORDER BY symbol, snapshot_date DESC""", (syms,)) or []
+    fv_map = {f["symbol"]: f for f in fv}
     for a in an:
         s = a["symbol"]
         if s in out:
             tm, cp = a.get("target_mean_price"), a.get("current_price")
+            f = fv_map.get(s, {})
+            ym = a.get("recommendation_mean")
+            fs = f.get("recom_score")
+            # both scales are 1(strong buy)..5(sell): >1.0 apart = the two sources disagree materially
+            divergent = (ym is not None and fs is not None and abs(float(ym) - float(fs)) > 1.0)
             out[s]["analyst"] = {"rating": a.get("recommendation_key"),
-                                 "mean": _json_clean(a.get("recommendation_mean")),
+                                 "mean": _json_clean(ym),
                                  "opinions": a.get("number_of_analyst_opinions"),
                                  "target": _json_clean(tm), "target_high": _json_clean(a.get("target_high_price")),
                                  "target_low": _json_clean(a.get("target_low_price")),
                                  "upside_pct": round((float(tm) - float(cp)) / float(cp) * 100, 1)
-                                 if tm and cp and float(cp) > 0 else None}
+                                 if tm and cp and float(cp) > 0 else None,
+                                 "finviz_score": _json_clean(fs), "finviz_rating": f.get("analyst_rating"),
+                                 "sources": ["yahoo"] + (["finviz"] if fs is not None else []),
+                                 "source_divergence": divergent}
     # top 3 latest relevant news per symbol (relevance-weighted recency)
     news = _db_query("""SELECT symbol, title, source, source_url, published_at, sentiment FROM (
                           SELECT symbol, title, source, source_url, published_at, sentiment,

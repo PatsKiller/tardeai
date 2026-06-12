@@ -35,9 +35,9 @@ export default function ProAnalystPill({ symbol, map, compact }: { symbol?: stri
           </span>
         : <span title={`Analyst price targets only — no aggregated buy/hold/sell rating${p.stale ? ' — STALE >7d' : ''}`}
             style={{ fontWeight: 600, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>
-            tgt{p.stale ? ' ⚠' : ''}
+            targets only{p.stale ? ' ⚠' : ''}
           </span>}
-      {p.n != null && <span title={`${p.n} professional analysts covering · mean target $${p.target}`} style={{ color: 'var(--text3)' }}>{p.n}an</span>}
+      {p.n != null && <span title={`${p.n} professional analysts covering · mean target $${p.target}`} style={{ color: 'var(--text3)' }}>{p.n} analysts</span>}
       {p.upside != null && <span title={`Upside to mean analyst target ($${p.target} vs current)`} style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
       {p.divergence === 'divergent' && <span style={{ color: '#ef4444', fontWeight: 700 }} title={`Divergence: internal signal is ${p.internal || 'n/a'} but Street consensus is ${p.street || 'n/a'} — review`}>⚡</span>}
     </span>

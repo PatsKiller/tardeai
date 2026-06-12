@@ -267,9 +267,9 @@ export default function WatchlistHub({ onDrill }: Props) {
                           {sc.vs_sector_week != null && <Pill text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`}
                             color={sc.vs_sector_week >= 0 ? '#22c55e' : '#ef4444'}
                             tip={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`} />}
-                          {sc.analyst?.rating && <Pill text={`${String(sc.analyst.rating).replace('_', ' ')} · ${sc.analyst.opinions}an · tgt $${sc.analyst.target}${sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}`}
-                            color={String(sc.analyst.rating).includes('buy') ? '#22c55e' : sc.analyst.rating === 'hold' ? '#f59e0b' : 'var(--text3)'}
-                            tip={`analyst consensus ${sc.analyst.mean} · range $${sc.analyst.target_low}–$${sc.analyst.target_high}`} />}
+                          {sc.analyst?.rating && <Pill text={`${String(sc.analyst.rating).replace('_', ' ')} · ${sc.analyst.opinions} analysts · target $${sc.analyst.target}${sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}${sc.analyst.source_divergence ? ' ⚠' : ''}`}
+                            color={sc.analyst.source_divergence ? '#f59e0b' : String(sc.analyst.rating).includes('buy') ? '#22c55e' : sc.analyst.rating === 'hold' ? '#f59e0b' : 'var(--text3)'}
+                            tip={`Yahoo consensus ${sc.analyst.mean} · range $${sc.analyst.target_low}–$${sc.analyst.target_high}${sc.analyst.finviz_score != null ? `\nFinviz second opinion: ${sc.analyst.finviz_score} (${sc.analyst.finviz_rating ?? ''})` : ''}${sc.analyst.source_divergence ? '\n⚠ SOURCES DISAGREE >1.0 on the 1–5 scale' : ''}\nsources: ${(sc.analyst.sources || []).join(' + ')}`} />}
                         </div>
                         {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
                           <div key={i} style={{ fontSize: 9, lineHeight: 1.35 }}>
