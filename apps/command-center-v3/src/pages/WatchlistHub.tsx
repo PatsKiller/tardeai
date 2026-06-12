@@ -58,6 +58,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fKind, setFKind] = useState('all')   // all | directive
   const [fDir, setFDir] = useState('all')
   const [fStatus, setFStatus] = useState('all')   // all (active+researched) | active | researched
+  const [fRating, setFRating] = useState('all')   // analyst-rating filter (operator 2026-06-12)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
 
@@ -85,11 +86,15 @@ export default function WatchlistHub({ onDrill }: Props) {
       if (fKind === 'directive' && !it.directive_id) return false
       if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
       if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
+      if (fRating !== 'all') {
+        const rec = paMap[it.symbol]?.rec || 'no_coverage'
+        if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false
+      }
       if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
       seen.add(it.symbol)
       return true
     })
-  }, [items, fOrigin, fKind, fDir, fBand, fStatus, search])
+  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, search, paMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -160,6 +165,19 @@ export default function WatchlistHub({ onDrill }: Props) {
           <select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Advisory band
           <select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
+        {/* analyst-rating filter pills (operator 2026-06-12) */}
+        <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Analyst rating
+          <span style={{ display: 'flex', gap: 4 }}>
+            {[['all', 'All', 'var(--text3)'], ['strong_buy', 'Strong Buy', '#22c55e'], ['buy_plus', 'Buy+', '#86efac'],
+              ['hold', 'Hold', '#f59e0b'], ['no_coverage', 'No coverage', 'var(--text3)']].map(([k, lbl, c]) => (
+              <button key={k} onClick={() => setFRating(k as string)} style={{
+                fontSize: 9.5, padding: '4px 9px', borderRadius: 5, cursor: 'pointer',
+                border: `1px solid ${fRating === k ? c : 'var(--border)'}`,
+                background: fRating === k ? `color-mix(in srgb, ${c} 16%, transparent)` : 'var(--bg2)',
+                color: fRating === k ? (c as string) : 'var(--text3)', fontWeight: fRating === k ? 700 : 400,
+              }}>{lbl}</button>
+            ))}
+          </span></label>
         <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Kind
           <select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="directive">Directive-sourced</option></select></label>
         <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>Directive
@@ -210,6 +228,12 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {fr && <Pill text={fr} color="#60a5fa" tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color="#a855f7" tip={it.provenance_reason || 'from an operator watch directive'} />}
                     {it.in_portfolio && <Pill text="💼 HELD" color="#ffa726" tip="this watchlist symbol is also a current portfolio holding — see Portfolio hub for position/basis" />}
+                    {/* entry plan chip (operator 2026-06-12: actionable plans, not just analysis) */}
+                    {it.entry_urgency && (
+                      <Pill text={`🎯 ${it.entry_urgency === 'ready' ? 'READY' : it.entry_urgency === 'near_entry' ? 'NEAR-ENTRY' : 'planned'} · ${it.entry_setup} · zone ${Number(it.entry_zone_low).toFixed(2)}–${Number(it.entry_zone_high).toFixed(2)} · lim ${Number(it.entry_limit).toFixed(2)}`}
+                        color={it.entry_urgency === 'ready' ? '#22c55e' : it.entry_urgency === 'near_entry' ? '#f59e0b' : 'var(--text3)'}
+                        tip={`ENTRY PLAN (advisory only — nothing queued/executed)\nstop ${it.entry_stop} · target ${it.entry_target} · R:R ${it.entry_rr}\nproposal advice: ${it.entry_tag} · confidence ${it.entry_confidence}\nplanned ${String(it.entry_planned_at).slice(0, 16).replace('T', ' ')} by ${it.entry_model}`} />
+                    )}
                     {(extMap[it.symbol] || []).map((e: any, i: number) => {
                       const m = llmMeta(e.lane)
                       return <Pill key={`llm${i}`} text={`✦ ${m.label}`} color={m.color}

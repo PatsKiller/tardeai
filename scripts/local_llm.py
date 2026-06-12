@@ -266,8 +266,10 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
                      loaded_before=loaded_before, loaded_after=_get_loaded_models())
         return None
 
-    # Build options with CPU enforcement
-    options = {"temperature": 0.3, "num_predict": 300}
+    # Build options with CPU enforcement. num_predict env-overridable (2026-06-12: the 300 cap
+    # truncated strict-JSON outputs like entry plans mid-object — callers needing longer output set
+    # LOCAL_LLM_NUM_PREDICT for their process; default unchanged for all existing callers).
+    options = {"temperature": 0.3, "num_predict": int(os.getenv("LOCAL_LLM_NUM_PREDICT", "300"))}
     if FORCE_CPU:
         options["num_gpu"] = 0
     elif FORCE_NUM_GPU != 99:
