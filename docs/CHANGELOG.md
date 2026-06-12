@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-12 - Manual ToS Desk tab live + orchestrator STALE root-caused (failed cron retirement reverted)
+
+**Manual ToS Execution Desk:** desk built across sessions (661583e9 et al); Trading hub gains the
+'Manual ToS' tab (85cc7b97 — safe patch, all 9 original tabs preserved). Workflow: Trade AI prepares
+ToS setup tickets -> operator executes manually in thinkorswim -> Schwab READ-ONLY activity
+recognition confirms. No submit/send/place/cancel endpoints anywhere (no-execution grep clean);
+validator 18/18; build green. NOTE: two Stage-2b API-write prompts arrived alongside and were
+DECLINED this pass — they contradict the Manual ToS safety rules; a write-path threshold change
+needs its own unambiguous order.
+
+**Orchestrator STALE root cause:** 06-11's 'cadence fix' RETIRED the 0900/1000 orchestrator crons
+as 'redundant (continuous_runner covers 04:00-11:00)' — but continuous_runner does NOT emit the
+0900/1000 run artifacts (run_summary/LAST RUN/dashboards), and the health monitor's expectation
+(0 9,10,12,14,16) was never updated -> real morning gap + STALE alarm; 0 proposals 'today' was
+CORRECT downstream behavior (453 scans, 0 GO, 32 WAIT — generator fires on GO only, 0 errors).
+Recovery: manual 0900 backfill ran clean; 1200/1400/1600 fired on their own crons (full ledger
+0400-1600 today). FIX: failed retirement REVERTED — 0900/1000 cron lines restored per the
+documented restore path, annotated with the reason.
+
 ## 2026-06-12 - Buy-process audit fixes: account selector in Edit modal + account badge on draft cards
 
 Operator audit caught it live: the Edit modal carried account_key INVISIBLY (selector existed only
