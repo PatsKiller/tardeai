@@ -170,6 +170,43 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         _alert(f"🛑 holdings write REJECTED ({source}): catastrophic drop — {rsn}. Prior snapshot kept.", source)
         return {"wrote": False, "status": "rejected_drop", "reason": rsn}
 
+    # ── SSOT BASIS SHIELD (root fix 2026-06-12) ──────────────────────────────────────────────
+    # Rows whose basis came from the single-source-of-truth hierarchy (csv tax lot > broker API
+    # averagePrice; see sync_basis_from_broker.py) are STICKY against every writer EXCEPT the SSOT
+    # syncer itself. Found live: a pipeline writer was reverting corrected basis VALUES while the
+    # source label survived (SCHD $127,954 -> $16,562 etc.). Enforced here — the one gate all
+    # writers funnel through (holdings_guard re-exports this) — so no individual pipeline can ever
+    # resurrect stale basis again. Each shielded restore is logged WITH the writer's source, which
+    # also unmasks the reverting pipeline on its next attempt. Fail-soft: shield errors never block.
+    if source != "broker_basis_sync" and HP.exists():
+        try:
+            _cur_rows = _positions_of(json.loads(HP.read_text()))
+            _protected = {((p.get("symbol") or "").upper(), p.get("account") or ""):
+                          (p.get("cost_basis"), p.get("cost_basis_source"))
+                          for p in _cur_rows
+                          if p.get("cost_basis_source") in ("csv_lot", "broker_api") and p.get("cost_basis")}
+            _shielded = []
+            for p in _positions_of(new_holdings):
+                k = ((p.get("symbol") or "").upper(), p.get("account") or "")
+                if k in _protected:
+                    keep_cb, keep_src = _protected[k]
+                    new_cb = p.get("cost_basis")
+                    if new_cb is None or abs(float(new_cb) - float(keep_cb)) > max(1.0, 0.001 * float(keep_cb)):
+                        p["cost_basis"] = keep_cb
+                        p["cost_basis_source"] = keep_src
+                        mv = p.get("market_value")
+                        if mv is not None and keep_cb:
+                            p["gain_loss"] = round(float(mv) - float(keep_cb), 2)
+                            p["gain_loss_pct"] = round((float(mv) - float(keep_cb)) / float(keep_cb) * 100, 4)
+                        _shielded.append(f"{k[0]}@{k[1].replace('schwab_','')}:{new_cb}->{keep_cb}")
+            if _shielded:
+                _record(account_key, "basis_shielded",
+                        f"[{source}] SSOT basis shield restored {len(_shielded)}: " + "; ".join(_shielded[:6]))
+                print(f"  [holdings-guard] SSOT basis shield: writer '{source}' tried to change "
+                      f"{len(_shielded)} protected basis value(s) — restored: {'; '.join(_shielded[:6])}")
+        except Exception:
+            pass  # shield is best-effort; never blocks a write
+
     # preserve manually-repaired tax-grade basis — Schwab sync only (opt-in), never for general writers
     flagged = check_basis_divergence(new_holdings, account_key) if protect_basis else []
     if protect_basis and flagged and HP.exists():
