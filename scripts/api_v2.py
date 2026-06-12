@@ -262,6 +262,22 @@ def overview():
     today_change = sum(p.get("day_change") or 0 for p in holdings)
     total_val = totals.get("total_value", 0)
     today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
+    # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
+    today_by_account = {}
+    for p in holdings:
+        a = p.get("account") or "unknown"
+        d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
+        d["change"] += p.get("day_change") or 0
+        d["value"] += p.get("market_value") or 0
+    for a, d in today_by_account.items():
+        base = d["value"] - d["change"]
+        d["change"] = round(d["change"], 2)
+        d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
+        d["value"] = round(d["value"], 2)
+        movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
+                          key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
+        d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                    f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
 
     # Trade AI run data
     import glob
@@ -289,6 +305,7 @@ def overview():
         "total_cash": totals.get("total_cash", 0),
         "today_change": round(today_change, 2),
         "today_pct": round(today_pct, 2),
+        "today_by_account": today_by_account,
         "position_count": len(active_positions),
         "account_count": len(h.get("account_summaries", {})),
         "as_of": h.get("as_of", ""),

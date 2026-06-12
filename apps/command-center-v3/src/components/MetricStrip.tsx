@@ -45,8 +45,18 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       color: todayChange == null ? 'var(--text3)' : todayChange >= 0 ? '#22c55e' : '#ef4444',
-      drill: { title: "Today's Move", subtitle: 'From /api/v2/overview', endpoint: '/api/v2/overview',
-        rows: overview ? [{ today_change: overview.today_change, today_pct: overview.today_pct, portfolio_value: overview.portfolio_value, as_of: overview.as_of }] : [] },
+      drill: { title: "Today's Move", subtitle: 'By account · from /api/v2/overview', endpoint: '/api/v2/overview',
+        rows: overview ? [
+          { today_change: overview.today_change, today_pct: overview.today_pct, portfolio_value: overview.portfolio_value, as_of: overview.as_of },
+          // per-account breakdown (operator 2026-06-12), biggest mover first
+          ...Object.entries(overview.today_by_account ?? {})
+            .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
+            .map(([acct, d]: any) => ({
+              account: acct, today_change: d.change,
+              today_pct: d.pct != null ? `${d.pct >= 0 ? '+' : ''}${d.pct}%` : null,
+              account_value: d.value, top_movers: d.top_movers || null,
+            })),
+        ] : [] },
     },
     {
       label: 'WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
