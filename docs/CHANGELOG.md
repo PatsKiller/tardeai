@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-12 - Layered exit ladders end-to-end + Manual ToS account cash fix
+
+Entry plans now carry a LAYERED exit, not a single capped target. Deterministic ladder (T1 +1R
+sell-1/3 + stop->breakeven; T2 plan target sell-1/3 + trail to T1; T3 Street-mean runner with 1R /
+prior-day-low trail) + in-trade monitoring rules, computed with IDENTICAL math in three places:
+`watchlist_entry_planner.py` (`_exit_ladder`, stored in plan JSON + Telegram entry alerts, both
+watchlist and proposals scopes) and `command-center-v3 lib/exitLadder.ts` (shared), rendered on the
+Manual ToS desk and Watchlist cards with plan-sanity warnings (no-stop, R:R<1 reject / <1.5 thin,
+plan-target-caps-below-Street-mean keep-a-runner, price-above-Street-mean no-headroom, notional >
+100% of cash oversized). Desk exports (JSON/HTML) carry exit_ladder/plan_warnings/monitoring_rules.
+Also: `/api/v2/schwab/accounts-live` now returns read-only cash/buying_power/account_value per
+account (transport get_account; balances_status honest on failure) and ManualTosDesk `anyNum` no
+longer coerces null->$0 — selected accounts show real cash/BP and %-of-account sizing. Advisory
+only throughout; validator 18/18 green.
+
 ## 2026-06-12 - SSOT BASIS SHIELD: root fix for basis reverts, enforced at Gate B
 
 Whodunit closed structurally: rather than chasing which of the interleaved 15-min pipelines reverts
