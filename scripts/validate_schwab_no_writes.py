@@ -170,6 +170,26 @@ for uf in ("components/BrokerOrders.tsx", "components/SchwabAccountsMonitor.tsx"
 ok("Broker Orders UI has no execution path (no submit route in API; UI calls none)",
    not bad_routes and not ui_bad, f"routes={bad_routes} ui={ui_bad}" if (bad_routes or ui_bad) else "draft/preview/approve only")
 
+# 12b. Canary gate AUTO-EXPIRY (pre-session patch 2026-06-12): allowlist honored only on the
+#      committed CANARY_SESSION_DATE; off-date the gate fails closed even with symbols committed.
+try:
+    from unittest import mock as _mock
+    import brokers.canary_gate as _cg
+    from brokers.order_intent import (OrderIntent as _OI, Instrument as _In, Direction as _Dir,
+                                      EntrySpec as _ES, EntryMethod as _EM, Quantity as _Q)
+    _probe = _OI(instrument=_In("ZGATE"), direction=_Dir.LONG,
+                 entry=_ES(method=_EM.LIMIT, limit_price=3.0), quantity=_Q(qty=2), broker="schwab")
+    with _mock.patch.object(_cg, "CANARY_SYMBOL_ALLOWLIST", ("ZGATE",)), \
+         _mock.patch.object(_cg, "CANARY_SESSION_DATE", "2099-01-01"):
+        with _mock.patch.object(_cg, "_today", return_value="2099-01-01"):
+            on_ok = _cg.evaluate(_probe).allowed
+        with _mock.patch.object(_cg, "_today", return_value="2099-01-02"):
+            off_blocked = not _cg.evaluate(_probe).allowed
+    ok("canary gate auto-expiry: on-date passes, off-date fails closed",
+       on_ok and off_blocked and "CANARY_SESSION_DATE" in (SCRIPTS / "brokers" / "canary_gate.py").read_text())
+except Exception as e:
+    ok("canary gate auto-expiry check", False, str(e)[:60])
+
 # 13. Canary analytics exclusion present in every schwab_round_trips consumer
 CANARY_CONSUMERS = ["api_v2.py", "schwab_journal_builder.py", "schwab_journal_classifier.py",
                     "backtest_fill_reconciliation.py", "build_trade_execution_quality.py",

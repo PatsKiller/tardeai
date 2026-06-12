@@ -31,6 +31,11 @@ from dataclasses import dataclass
 #   screened-out: VIDA (drifted to $4.20 — above cap), ABEV/BBD/CIG (footprint), LYG/ERIC (>$4)
 #   ⚠ re-verify spreads at the session open (AH spreads quoted); ROTATE BACK TO () after the session.
 CANARY_SYMBOL_ALLOWLIST: tuple[str, ...] = ("GRAB", "XRX")
+
+# AUTO-EXPIRY (pre-session patch 2026-06-12): the allowlist is honored ONLY on this committed date.
+# Any other date ⇒ the gate treats the allowlist as EMPTY — fail-closed — so a forgotten
+# post-session rotate-back can never leave the envelope armed. Rescheduling = commit a new date.
+CANARY_SESSION_DATE = "2026-06-12"   # YYYY-MM-DD, single day
 MAX_PRICE_USD = 4.00
 MAX_QTY_SHARES = 10
 MAX_NOTIONAL_USD = 40.00
@@ -60,15 +65,30 @@ def _worst_case_prices(intent) -> list[float]:
     return prices
 
 
+def _today() -> str:
+    """Isolated for testability; date source only — never config/env."""
+    import datetime
+    return datetime.date.today().isoformat()
+
+
 def evaluate(intent) -> CanaryGateDecision:
     """Pure, deterministic, fail-closed. Any doubt => BLOCKED with the reason(s)."""
     reasons: list[str] = []
     try:
+        # auto-expiry: allowlist is live ONLY on the committed session date (fail-closed otherwise)
+        try:
+            allowlist = CANARY_SYMBOL_ALLOWLIST if _today() == CANARY_SESSION_DATE else ()
+        except Exception:
+            allowlist = ()
         sym = (intent.instrument.symbol or "").strip().upper()
-        if not CANARY_SYMBOL_ALLOWLIST:
-            reasons.append("allowlist EMPTY — no canary session is committed (commit symbols at session time)")
-        elif sym not in CANARY_SYMBOL_ALLOWLIST:
-            reasons.append(f"symbol {sym!r} not in committed canary allowlist {CANARY_SYMBOL_ALLOWLIST}")
+        if not allowlist:
+            if CANARY_SYMBOL_ALLOWLIST and _safe_today_mismatch():
+                reasons.append(f"allowlist EXPIRED — committed for {CANARY_SESSION_DATE}, today is not "
+                               "that date (auto-expiry fail-closed; recommit to reschedule)")
+            else:
+                reasons.append("allowlist EMPTY — no canary session is committed (commit symbols at session time)")
+        elif sym not in allowlist:
+            reasons.append(f"symbol {sym!r} not in committed canary allowlist {allowlist}")
 
         if intent.instrument.asset_type.value not in ALLOWED_ASSET_TYPES or intent.instrument.option_legs:
             reasons.append(f"asset type {intent.instrument.asset_type.value} not allowed (US equities only)")
@@ -98,3 +118,10 @@ def evaluate(intent) -> CanaryGateDecision:
     except Exception as e:                      # malformed intent => fail closed, never allow
         reasons.append(f"gate could not evaluate intent ({type(e).__name__}: {str(e)[:80]}) — fail closed")
     return CanaryGateDecision(allowed=not reasons, reasons=reasons)
+
+
+def _safe_today_mismatch() -> bool:
+    try:
+        return _today() != CANARY_SESSION_DATE
+    except Exception:
+        return True   # can't determine the date => treat as expired (fail closed)

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-12 - Stage 2a PRE-SESSION PATCH: runbook oversell/token/account guards + gate date auto-expiry + approval verified live
+
+**Runbook (stage2a-session-runbook.md):** A1 BLOCKING oversell guard before order-5's closing sell
+(zero-working-sells must be VERIFIED via read-back — a lingering OCO child + closing sell = selling
+20 vs 10 owned = unintended short); A2 token-freshness as a blocking green-light precondition
+(known-fresh re-auth, never coasting toward 7-day expiry); A3 panel-account == ToS-account as a
+PER-ORDER checklist tick (mismatch = false-FAIL reconciliation + wrong-account risk).
+
+**Gate auto-expiry (canary_gate.py, commit-only):** CANARY_SESSION_DATE='2026-06-12' — allowlist
+honored ONLY on that date; any other date (or an unreadable clock) treats it as () fail-closed, so
+a forgotten post-session rotate-back can never leave the envelope armed. Tests 23->26 (on-date
+passes, off-date 'allowlist EXPIRED', clock-failure fail-closed); validator 17/17 -> 18/18.
+
+**Two-channel approval VERIFIED LIVE (Part C):** real Telegram sent to the proposals chat with the
+Tailscale deep-link (/v3/trading?tab=Broker+Orders&intent=<id>); web click-only REJECTED; typed
+'GRAB' CONFIRMED; telegram one-time code CONFIRMED -> FULLY APPROVED -> guard submit still
+BLOCKED (BROKER_DISABLED) -> approvals superseded clean. The future-execution safeguard works
+end-to-end while harmless. Execution remains BROKER_DISABLED; no writes anywhere.
+
 ## 2026-06-12 - CANARY SESSION SCREEN RUN + ALLOWLIST COMMITTED (GRAB primary / XRX fallback)
 
 Operator-ordered screen per stage2a-canary-protocol: price $2-4 · vol >=5M · ZERO footprint

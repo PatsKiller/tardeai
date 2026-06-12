@@ -79,6 +79,18 @@ with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ("TST",)):
     check("in-envelope ladder passes", canary_gate.evaluate(lad_ok).allowed)
     check("malformed intent fails closed", not canary_gate.evaluate(object()).allowed)
 
+print("\n— 2b. AUTO-EXPIRY: allowlist honored ONLY on CANARY_SESSION_DATE (fail-closed off-date) —")
+with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ("TST",)), \
+     mock.patch.object(canary_gate, "CANARY_SESSION_DATE", "2099-01-01"):
+    with mock.patch.object(canary_gate, "_today", return_value="2099-01-01"):
+        check("ON the session date: allowlisted in-envelope order passes", canary_gate.evaluate(mk()).allowed)
+    with mock.patch.object(canary_gate, "_today", return_value="2099-01-02"):
+        d = canary_gate.evaluate(mk())
+        check("OFF-date: same order BLOCKED with 'allowlist EXPIRED' (forgotten rotate-back is harmless)",
+              not d.allowed and any("EXPIRED" in r for r in d.reasons), str(d.reasons))
+    with mock.patch.object(canary_gate, "_today", side_effect=RuntimeError("clock broken")):
+        check("date source failure => fail closed", not canary_gate.evaluate(mk()).allowed)
+
 print("\n— 3. purity: commit-only by construction —")
 src = (ROOT / "scripts" / "brokers" / "canary_gate.py").read_text()
 check("gate module never imports os (no env access possible)",
