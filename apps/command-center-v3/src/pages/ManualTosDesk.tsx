@@ -6,14 +6,16 @@ type SetupState = 'READY' | 'GENERATED' | 'BROKER_OBSERVED' | 'EXCEPTION'
 type SourceFilter = 'ALL' | SourceKind
 type AccountFilter = 'ALL' | 'ANY' | 'schwab_taxable' | 'schwab_rollover_ira' | 'schwab_roth_ira'
 type DecisionFilter = 'ALL' | 'GO' | 'WAIT' | 'OTHER'
+type AnalystFilter = 'ALL' | 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL' | 'UNKNOWN'
 type StatusFilter = 'ALL' | SetupState
-type SortMode = 'SCORE_DESC' | 'SYMBOL_ASC' | 'SOURCE' | 'STATUS' | 'ENTRY_PRICE'
+type SortMode = 'SCORE_DESC' | 'SYMBOL_ASC' | 'SOURCE' | 'STATUS' | 'ENTRY_PRICE' | 'ANALYST'
 
 type LocalState = Record<string, { account?: string; qty?: number; generated?: boolean }>
 type UiPrefs = {
   source: SourceFilter
   account: AccountFilter
   decision: DecisionFilter
+  analyst: AnalystFilter
   status: StatusFilter
   search: string
   minScore: string
@@ -28,6 +30,7 @@ type SetupRow = {
   raw: any
   symbol: string
   company?: string | null
+  analyst?: string | null
   account: string
   qty: number
   side: string
@@ -46,25 +49,52 @@ type SetupRow = {
 }
 
 const LS_KEY = 'tradeai.manualTosDesk.v2'
-const PREF_KEY = 'tradeai.manualTosDesk.prefs.v1'
+const PREF_KEY = 'tradeai.manualTosDesk.prefs.v2'
 const ACCOUNTS = ['ANY', 'schwab_taxable', 'schwab_rollover_ira', 'schwab_roth_ira']
+const ANALYST_OPTIONS: AnalystFilter[] = ['ALL', 'STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL', 'UNKNOWN']
 const C = { blue: '#60a5fa', green: '#22c55e', amber: '#f59e0b', red: '#ef4444', purple: '#a78bfa', dim: 'var(--text3)' }
 const mono = { fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' as const }
 const btn = (bg: string, fg = '#fff') => ({ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: 'none', background: bg, color: fg, cursor: 'pointer' as const })
 const inputStyle = { fontSize: 10, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' } as const
-const defaultPrefs: UiPrefs = { source: 'ALL', account: 'ALL', decision: 'ALL', status: 'ALL', search: '', minScore: '', hasEntry: false, hasRisk: false, sort: 'SCORE_DESC' }
+const defaultPrefs: UiPrefs = { source: 'ALL', account: 'ALL', decision: 'ALL', analyst: 'ALL', status: 'ALL', search: '', minScore: '', hasEntry: false, hasRisk: false, sort: 'SCORE_DESC' }
 
 function num(v: any): number | null { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null }
 function first(...vals: any[]) { return vals.find(v => v !== undefined && v !== null && v !== '') }
 function str(v: any) { return v == null ? '' : String(v) }
 function scoreNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 function acct(a: string) { return !a || a === 'ANY' ? 'ANY SCHWAB' : a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase() }
+function labelCase(v: string) { return v.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) }
 function baseQty(x: any) { return Number(first(x.qty, x.shares, x.quantity?.qty, x.recommended_qty, x.position_size_shares, 10)) || 10 }
 function normalizedDecision(v: any): DecisionFilter {
   const d = String(v ?? '').toUpperCase()
   if (d === 'GO') return 'GO'
   if (d === 'WAIT') return 'WAIT'
   return 'OTHER'
+}
+function rawAnalyst(x: any) {
+  return first(
+    x.analyst_rating, x.analyst_recommendation, x.analyst_consensus, x.consensus_rating,
+    x.recommendation, x.recommendationKey, x.rating, x.finviz_analyst, x.finviz_recommendation,
+    x.street_rating, x.wall_street_rating, x.tipranks_rating, x.zacks_rank, x.analyst
+  )
+}
+function normalizedAnalyst(v: any): AnalystFilter {
+  const s = String(v ?? '').trim().toLowerCase().replace(/[_-]/g, ' ')
+  if (!s) return 'UNKNOWN'
+  if (s.includes('strong buy') || s.includes('conviction buy') || s.includes('very bullish')) return 'STRONG_BUY'
+  if (s === 'buy' || s.includes(' buy') || s.includes('outperform') || s.includes('overweight') || s.includes('bullish')) return 'BUY'
+  if (s.includes('hold') || s.includes('neutral') || s.includes('market perform') || s.includes('equal weight')) return 'HOLD'
+  if (s.includes('strong sell') || s.includes('very bearish')) return 'STRONG_SELL'
+  if (s.includes('sell') || s.includes('underperform') || s.includes('underweight') || s.includes('bearish')) return 'SELL'
+  return 'UNKNOWN'
+}
+function analystColor(a: any) {
+  const n = normalizedAnalyst(a)
+  return n === 'STRONG_BUY' ? '#22c55e' : n === 'BUY' ? '#84cc16' : n === 'HOLD' ? '#f59e0b' : n === 'SELL' || n === 'STRONG_SELL' ? '#ef4444' : C.dim
+}
+function analystRank(v: any) {
+  const n = normalizedAnalyst(v)
+  return n === 'STRONG_BUY' ? 5 : n === 'BUY' ? 4 : n === 'HOLD' ? 3 : n === 'SELL' ? 2 : n === 'STRONG_SELL' ? 1 : 0
 }
 
 function fromProposal(p: any, local: LocalState): SetupRow | null {
@@ -76,7 +106,7 @@ function fromProposal(p: any, local: LocalState): SetupRow | null {
   const target = num(first(p.target_price, p.take_profit, p.target1, p.target))
   return {
     id, source: 'PROPOSAL', raw: p, symbol,
-    company: first(p.company, p.name, p.company_name),
+    company: first(p.company, p.name, p.company_name), analyst: rawAnalyst(p),
     account: local[id]?.account ?? 'ANY', qty: local[id]?.qty ?? baseQty(p),
     side: String(first(p.direction, p.side, 'BUY')).toUpperCase().includes('SHORT') ? 'SELL SHORT' : 'BUY',
     entryType: String(first(p.entry_type, p.order_type, 'LIMIT')).toUpperCase(), entryPrice: entry,
@@ -94,7 +124,7 @@ function fromWatch(x: any, local: LocalState): SetupRow | null {
   const price = num(first(x.price, x.last, x.current_price))
   return {
     id, source: 'WATCHLIST', raw: x, symbol,
-    company: first(x.company, x.name, x.company_name),
+    company: first(x.company, x.name, x.company_name), analyst: rawAnalyst(x),
     account: local[id]?.account ?? 'ANY', qty: local[id]?.qty ?? 10,
     side: 'BUY', entryType: 'LIMIT', entryPrice: price,
     stop: null, trail: null, targets: [], tif: 'DAY', session: 'NORMAL',
@@ -113,7 +143,7 @@ function fromDraft(d: any, local: LocalState): SetupRow | null {
   const fallbackQty = Number(first(it.quantity?.qty, d.qty, 10)) || 10
   return {
     id, source: 'DRAFT', raw: d, symbol,
-    company: first(d.company, it.instrument?.name, it.company_name),
+    company: first(d.company, it.instrument?.name, it.company_name), analyst: rawAnalyst(d),
     account: local[id]?.account ?? String(first(it.account_key, d.account_key, 'ANY')),
     qty: local[id]?.qty ?? fallbackQty,
     side: it.direction === 'SHORT' ? 'SELL SHORT' : 'BUY',
@@ -137,9 +167,9 @@ function setupLine(r: SetupRow) {
 
 function csv(v: any) { const s = str(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 function csvText(rows: SetupRow[]) {
-  const out: string[][] = [['Source','Symbol','Company','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
+  const out: string[][] = [['Source','Symbol','Company','Analyst','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
   rows.forEach(r => out.push([
-    r.source, r.symbol, str(r.company), r.account, r.side, String(r.qty), r.entryType,
+    r.source, r.symbol, str(r.company), str(r.analyst), r.account, r.side, String(r.qty), r.entryType,
     str(r.entryPrice), str(r.stop), r.targets.map((t: any) => t.price).join('|'), r.tif,
     str(r.decision), str(r.score), str(r.sector), str(r.reason), setupLine(r)
   ]))
@@ -170,7 +200,7 @@ function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
   return local[r.id]?.generated ? 'GENERATED' : 'READY'
 }
 function payload(r: SetupRow, state: SetupState, hit: any) {
-  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, company: r.company, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: setupLine(r) }
+  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, company: r.company, analyst: r.analyst, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: setupLine(r) }
 }
 function badgeColor(source: SourceKind) { return source === 'PROPOSAL' ? C.green : source === 'WATCHLIST' ? C.blue : C.purple }
 function statusColor(state: SetupState) { return state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : state === 'EXCEPTION' ? C.red : C.dim }
@@ -191,6 +221,7 @@ export default function ManualTosDesk() {
   }, [])
   const saveLocal = (n: LocalState) => { setLocal(n); localStorage.setItem(LS_KEY, JSON.stringify(n)) }
   const savePrefs = (patch: Partial<UiPrefs>) => { const next = { ...prefs, ...patch }; setPrefs(next); localStorage.setItem(PREF_KEY, JSON.stringify(next)) }
+  const drill = (patch: Partial<UiPrefs>) => savePrefs({ ...defaultPrefs, ...patch })
 
   const rows = useMemo(() => {
     const p = (((proposalsR as any)?.proposals ?? []) as any[]).map(x => fromProposal(x, local)).filter(Boolean) as SetupRow[]
@@ -207,12 +238,14 @@ export default function ManualTosDesk() {
   const wrapped = rows.map(r => ({ r, state: rowState(r, local, activity), hit: activityHit(r, activity) }))
   const filtered = wrapped.filter(({ r, state }) => {
     const decision = normalizedDecision(r.decision)
+    const analyst = normalizedAnalyst(r.analyst)
     const q = prefs.search.trim().toUpperCase()
     if (prefs.source !== 'ALL' && r.source !== prefs.source) return false
     if (prefs.account !== 'ALL' && r.account !== prefs.account) return false
     if (prefs.decision !== 'ALL' && decision !== prefs.decision) return false
+    if (prefs.analyst !== 'ALL' && analyst !== prefs.analyst) return false
     if (prefs.status !== 'ALL' && state !== prefs.status) return false
-    if (q && !`${r.symbol} ${r.company ?? ''} ${r.reason ?? ''}`.toUpperCase().includes(q)) return false
+    if (q && !`${r.symbol} ${r.company ?? ''} ${r.reason ?? ''} ${r.analyst ?? ''}`.toUpperCase().includes(q)) return false
     if (prefs.minScore && scoreNum(r.score) < Number(prefs.minScore)) return false
     if (prefs.hasEntry && !r.entryPrice) return false
     if (prefs.hasRisk && !r.stop && r.targets.length === 0) return false
@@ -223,6 +256,7 @@ export default function ManualTosDesk() {
     if (prefs.sort === 'SOURCE') return a.r.source.localeCompare(b.r.source) || a.r.symbol.localeCompare(b.r.symbol)
     if (prefs.sort === 'STATUS') return a.state.localeCompare(b.state) || a.r.symbol.localeCompare(b.r.symbol)
     if (prefs.sort === 'ENTRY_PRICE') return (b.r.entryPrice ?? 0) - (a.r.entryPrice ?? 0)
+    if (prefs.sort === 'ANALYST') return analystRank(b.r.analyst) - analystRank(a.r.analyst) || scoreNum(b.r.score) - scoreNum(a.r.score)
     return scoreNum(b.r.score) - scoreNum(a.r.score)
   })
   const counts = {
@@ -235,13 +269,21 @@ export default function ManualTosDesk() {
     observed: wrapped.filter(x => x.state === 'BROKER_OBSERVED').length,
     exceptions: wrapped.filter(x => x.state === 'EXCEPTION').length,
   }
+  const analystCounts: Record<AnalystFilter, number> = { ALL: rows.length, STRONG_BUY: 0, BUY: 0, HOLD: 0, SELL: 0, STRONG_SELL: 0, UNKNOWN: 0 }
+  rows.forEach(r => { analystCounts[normalizedAnalyst(r.analyst)] += 1 })
   const lastRun = (reconR as any)?.runs?.[0]
   const watchTxt = visible.map(x => x.r.symbol).filter((s, i, a) => a.indexOf(s) === i).join('\n') + '\n'
   const setField = (id: string, patch: Partial<LocalState[string]>) => saveLocal({ ...local, [id]: { ...(local[id] ?? {}), ...patch } })
   const kpis = [
-    ['Total Candidates', counts.total, 'var(--text0)'], ['Proposals', counts.proposals, C.green], ['Watchlist', counts.watchlist, C.blue], ['Drafts', counts.drafts, C.purple],
-    ['Ready', counts.ready, C.dim], ['Generated', counts.generated, C.blue], ['Broker Observed', counts.observed, C.green], ['Exceptions', counts.exceptions, C.red],
-  ] as const
+    { label: 'Total Candidates', value: counts.total, color: 'var(--text0)', onClick: () => drill({}) },
+    { label: 'Proposals', value: counts.proposals, color: C.green, onClick: () => drill({ source: 'PROPOSAL' }) },
+    { label: 'Watchlist', value: counts.watchlist, color: C.blue, onClick: () => drill({ source: 'WATCHLIST' }) },
+    { label: 'Drafts', value: counts.drafts, color: C.purple, onClick: () => drill({ source: 'DRAFT' }) },
+    { label: 'Ready', value: counts.ready, color: C.dim, onClick: () => drill({ status: 'READY' }) },
+    { label: 'Generated', value: counts.generated, color: C.blue, onClick: () => drill({ status: 'GENERATED' }) },
+    { label: 'Broker Observed', value: counts.observed, color: C.green, onClick: () => drill({ status: 'BROKER_OBSERVED' }) },
+    { label: 'Exceptions', value: counts.exceptions, color: C.red, onClick: () => drill({ status: 'EXCEPTION' }) },
+  ]
 
   return <div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
@@ -250,7 +292,7 @@ export default function ManualTosDesk() {
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,minmax(100px,1fr))', gap: 8, marginBottom: 12 }}>
-      {kpis.map(([label, value, color]) => <div key={label} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}><div style={{ fontSize: 16, fontWeight: 900, color }}>{value}</div><div style={{ fontSize: 8, color: C.dim, textTransform: 'uppercase' }}>{label}</div></div>)}
+      {kpis.map(k => <button key={k.label} onClick={k.onClick} title={`Filter to ${k.label}`} style={{ textAlign: 'left', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px', cursor: 'pointer' }}><div style={{ fontSize: 16, fontWeight: 900, color: k.color }}>{k.value}</div><div style={{ fontSize: 8, color: C.dim, textTransform: 'uppercase' }}>{k.label}</div></button>)}
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -268,14 +310,18 @@ export default function ManualTosDesk() {
     </div>
 
     <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: 10, color: C.dim, fontWeight: 800 }}>Analyst / recommendation:</span>
+        {ANALYST_OPTIONS.map(a => <button key={a} onClick={() => savePrefs({ analyst: a })} style={{ ...btn(prefs.analyst === a ? analystColor(a) : 'var(--bg2)', prefs.analyst === a ? '#0b1020' : 'var(--text2)'), border: `1px solid ${prefs.analyst === a ? analystColor(a) : 'var(--border)'}` }}>{a === 'ALL' ? 'All' : labelCase(a)} · {analystCounts[a]}</button>)}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px,1fr))', gap: 8, marginBottom: 8 }}>
         <select value={prefs.source} onChange={e => savePrefs({ source: e.target.value as SourceFilter })} style={inputStyle}><option value="ALL">All sources</option><option value="PROPOSAL">Proposal</option><option value="WATCHLIST">Watchlist</option><option value="DRAFT">Draft</option></select>
         <select value={prefs.account} onChange={e => savePrefs({ account: e.target.value as AccountFilter })} style={inputStyle}><option value="ALL">All account selections</option><option value="ANY">Any Schwab</option><option value="schwab_taxable">Taxable</option><option value="schwab_rollover_ira">Rollover IRA</option><option value="schwab_roth_ira">Roth IRA</option></select>
         <select value={prefs.decision} onChange={e => savePrefs({ decision: e.target.value as DecisionFilter })} style={inputStyle}><option value="ALL">All decisions</option><option value="GO">GO</option><option value="WAIT">WAIT</option><option value="OTHER">Other</option></select>
         <select value={prefs.status} onChange={e => savePrefs({ status: e.target.value as StatusFilter })} style={inputStyle}><option value="ALL">All statuses</option><option value="READY">Ready</option><option value="GENERATED">Generated</option><option value="BROKER_OBSERVED">Broker observed</option><option value="EXCEPTION">Exception</option></select>
-        <input value={prefs.search} onChange={e => savePrefs({ search: e.target.value })} placeholder="Search symbol/company/reason" style={inputStyle} />
+        <input value={prefs.search} onChange={e => savePrefs({ search: e.target.value })} placeholder="Search symbol/company/reason/rating" style={inputStyle} />
         <input value={prefs.minScore} onChange={e => savePrefs({ minScore: e.target.value })} placeholder="Min score" type="number" style={inputStyle} />
-        <select value={prefs.sort} onChange={e => savePrefs({ sort: e.target.value as SortMode })} style={inputStyle}><option value="SCORE_DESC">Score desc</option><option value="SYMBOL_ASC">Symbol A-Z</option><option value="SOURCE">Source</option><option value="STATUS">Status</option><option value="ENTRY_PRICE">Entry price</option></select>
+        <select value={prefs.sort} onChange={e => savePrefs({ sort: e.target.value as SortMode })} style={inputStyle}><option value="SCORE_DESC">Score desc</option><option value="ANALYST">Analyst strength</option><option value="SYMBOL_ASC">Symbol A-Z</option><option value="SOURCE">Source</option><option value="STATUS">Status</option><option value="ENTRY_PRICE">Entry price</option></select>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 10, color: C.dim }}><label><input type="checkbox" checked={prefs.hasEntry} onChange={e => savePrefs({ hasEntry: e.target.checked })} /> Has entry</label><label><input type="checkbox" checked={prefs.hasRisk} onChange={e => savePrefs({ hasRisk: e.target.checked })} /> Has stop/target</label></div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: C.dim }}>Visible exports:</span><button style={btn('#1d4ed8')} onClick={() => copyText(watchTxt, setMsg)}>copy visible symbols</button><button style={btn('#334155')} onClick={() => dl('tradeai_tos_watchlist.txt', 'text/plain', watchTxt)}>download Thinkorswim watchlist .txt</button><button style={btn('#334155')} onClick={() => dl('tradeai_manual_setups.csv', 'text/csv', csvText(visible.map(x => x.r)))}>download setup CSV</button>{msg && <span style={{ fontSize: 10, color: C.green }}>{msg}</span>}</div>
@@ -286,7 +332,7 @@ export default function ManualTosDesk() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr auto', gap: 12, alignItems: 'start' }}>
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span><span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>{r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}<span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>{state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}</span></div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}><span style={{ color: C.amber }}>{str(r.decision) || 'decision n/a'}</span><span style={{ color: C.blue }}>score {str(r.score) || 'n/a'}</span>{r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ color: C.dim }}>{String(r.reason).slice(0, 180)}</span>}</div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}><span style={{ color: C.amber }}>{str(r.decision) || 'decision n/a'}</span><span style={{ color: analystColor(r.analyst) }}>analyst {str(r.analyst) || 'n/a'}</span><span style={{ color: C.blue }}>score {str(r.score) || 'n/a'}</span>{r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ color: C.dim }}>{String(r.reason).slice(0, 180)}</span>}</div>
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>{r.entryPrice != null && <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>}{r.stop != null && <span style={{ color: C.red }}>stop {r.stop.toFixed(2)}</span>}{r.targets.map((t: any, i: number) => <span key={i} style={{ color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>)}{r.trail && <span style={{ color: C.purple }}>trail {r.trail.offset}</span>}</div>
           {hit ? <div style={{ marginTop: 7, fontSize: 10, color: C.green }}>Observed account {acct(hit.account_key)} · {hit.kind ?? 'activity'} · {hit.status ?? 'status n/a'} · {String(hit.captured_at ?? '').slice(0, 16)}</div> : <div style={{ marginTop: 7, fontSize: 10, color: C.dim }}>No matching Schwab activity observed yet.</div>}
