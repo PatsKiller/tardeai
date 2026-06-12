@@ -15,12 +15,24 @@ const RSI_C = (b: string) => b === 'oversold' ? '#22c55e' : b === 'overbought' ?
 const BASIS_C: Record<string, string> = { broker: '#22c55e', tax_grade: '#22c55e', verified: '#60a5fa', entry: '#60a5fa', owner_provided: '#a855f7', unknown: '#ef4444' }
 const FRESH_C: Record<string, string> = { fresh: '#22c55e', aging: '#f59e0b', stale: '#ef4444', none: 'var(--text3)' }
 
-export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction }: any) {
+// LLM lane badge meta (matches Portfolio holdings cards)
+const LANE_META: Record<string, { label: string; c: string }> = {
+  local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: '#f59e0b' },
+  chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' },
+}
+
+export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec }: any) {
   const t = p.technical || {}, sr = p.sector_relative || {}, pr = p.protection || {}
   const priority = p.operator_priority || 'low'
   const border = PRI[priority] || 'var(--border)'
   const news: any[] = (p.news ?? [])
   const ageH = p.latest_news_age_hours
+  // newest review per lane (badge tooltip = model · date analyzed · count)
+  const lanes: Record<string, any> = {}
+  for (const c of (llmCov ?? [])) {
+    const k = LANE_META[c.lane] ? c.lane : 'local'
+    if (!lanes[k] || c.last_at > lanes[k].last_at) lanes[k] = c
+  }
 
   return (
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: `4px solid ${border}`, borderRadius: 10, padding: 12 }}>
@@ -54,6 +66,31 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{p.decision_reason}</div>
         {p.primary_next_review && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 3 }}>Next: {p.primary_next_review}</div>}
       </div>
+
+      {/* ── ZONE 3b: LLM PROTECTION ADVISORY (operator 2026-06-12 — stop/trail recs + who reviewed) ── */}
+      {(protectionRec || Object.keys(lanes).length > 0) && (
+        <div style={{ marginTop: 6, padding: '6px 9px', borderRadius: 6, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.25)' }}>
+          {protectionRec && (
+            <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — never an order`}
+              style={{ fontSize: 10.5, fontWeight: 700, color: '#c084fc', cursor: 'help' }}>
+              🛡 LLM advisory: {protectionRec.rec}
+            </div>
+          )}
+          {protectionRec?.rationale && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{protectionRec.rationale}</div>}
+          <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 8, color: 'var(--text3)' }}>reviewed by:</span>
+            {Object.keys(lanes).length === 0 && <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>no LLM review in 30d</span>}
+            {Object.entries(lanes).map(([lane, c]: any) => {
+              const m = LANE_META[lane]
+              return <span key={lane}
+                title={`${c.model} · analyzed ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''} (advisory research)`}
+                style={{ fontSize: 7.5, fontWeight: 800, padding: '1px 5px', borderRadius: 3, letterSpacing: 0.4,
+                  background: m.c + '1f', color: m.c, border: `1px solid ${m.c}44`, cursor: 'help' }}>🤖 {m.label}</span>
+            })}
+            <span style={{ fontSize: 7.5, color: 'var(--text3)', marginLeft: 'auto' }}>advisory only — hover for date analyzed</span>
+          </div>
+        </div>
+      )}
 
       {/* ── ZONE 2: ECONOMICS ── */}
       <div style={{ display: 'flex', gap: 12, marginTop: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>

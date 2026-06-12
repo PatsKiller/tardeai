@@ -23,6 +23,11 @@ const srcBadge = (s: string) => {
 
 export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: DrillContext) => void }) {
   const { data, loading, error } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
+  // LLM provenance + stop/trail advisories (operator 2026-06-12: badges belong HERE, where
+  // protection gets reviewed — not only on Portfolio holdings)
+  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
+  const coverage: Record<string, any[]> = (llmCov as any)?.coverage ?? {}
+  const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
   const paMap = useProAnalystMap()
   const [f, setF] = useState<any>({ account: 'all', broker: 'all', strategy: 'all', sector: 'all', rsi: 'all', protection: 'all', pnl: 'all', sort: 'priority', quick: 'all' })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -185,8 +190,12 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
         {visible.map(p => {
           const key = `${p.account}:${p.symbol}:${p.trade_id}`
           return (
-            <PositionDecisionCard key={key} p={p} paMap={paMap} expanded={!!expanded[key]}
-              onToggle={() => setExpanded({ ...expanded, [key]: !expanded[key] })}
+            <PositionDecisionCard key={key} p={p} paMap={paMap}
+              /* operator 2026-06-12: cards default to FULL (expanded); 'less' collapses per card */
+              expanded={expanded[key] !== false}
+              llmCov={coverage[(p.symbol || '').toUpperCase()]}
+              protectionRec={protection[(p.symbol || '').toUpperCase()]}
+              onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })}
               onDrill={onDrill}
               onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} />
           )
