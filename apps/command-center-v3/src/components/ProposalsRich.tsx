@@ -383,9 +383,9 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
           {symCard?.vs_sector_week != null && <span title={`symbol ${symCard.perf_week}% vs ${symCard.sector_etf} ${symCard.sector_perf_week}% (week)`}
             style={{ fontSize: 9, fontWeight: 700, color: symCard.vs_sector_week >= 0 ? '#22c55e' : '#ef4444' }}>
             {symCard.vs_sector_week >= 0 ? '+' : ''}{symCard.vs_sector_week}% vs sector</span>}
-          {symCard?.analyst?.rating && <span title={`Yahoo consensus ${symCard.analyst.mean} · range $${symCard.analyst.target_low}–$${symCard.analyst.target_high}${symCard.analyst.finviz_score != null ? ` · Finviz 2nd opinion ${symCard.analyst.finviz_score}` : ''}${symCard.analyst.source_divergence ? ' · ⚠ sources disagree' : ''}`}
-            style={{ fontSize: 9, fontWeight: 600, color: symCard.analyst.source_divergence ? '#f59e0b' : String(symCard.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
-            {String(symCard.analyst.rating).replace('_', ' ')} · {symCard.analyst.opinions} analysts · target ${symCard.analyst.target}{symCard.analyst.upside_pct != null ? ` (${symCard.analyst.upside_pct >= 0 ? '+' : ''}${symCard.analyst.upside_pct}%)` : ''}{symCard.analyst.source_divergence ? ' ⚠' : ''}</span>}
+          {symCard?.analyst?.rating && <span title={`Yahoo consensus ${symCard.analyst.mean} · target range $${symCard.analyst.target_low}–$${symCard.analyst.target_high}${symCard.analyst.distribution ? ` · votes: ${symCard.analyst.distribution.strong_buy ?? 0} strong buy / ${symCard.analyst.distribution.buy ?? 0} buy / ${symCard.analyst.distribution.hold ?? 0} hold / ${symCard.analyst.distribution.sell ?? 0} sell` : ''}`}
+            style={{ fontSize: 9, fontWeight: 600, color: String(symCard.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
+            {String(symCard.analyst.rating).replace('_', ' ')} · {symCard.analyst.opinions} analysts · target ${symCard.analyst.target}{symCard.analyst.upside_pct != null ? ` (${symCard.analyst.upside_pct >= 0 ? '+' : ''}${symCard.analyst.upside_pct}%)` : ''}</span>}
           {l2?.imbalance != null && (
             <span title={`Level-2 book pressure (advisory evidence, never a trigger)\n15m avg imbalance: ${l2p?.avg_imbalance ?? '—'} (${l2p?.read ?? ''})\nbid depth ${l2.bid_depth} / ask depth ${l2.ask_depth}\nbest ${l2.best_bid} × ${l2.best_ask} · ${String(l2.captured_at).slice(11, 19)}`}
               style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'help',
