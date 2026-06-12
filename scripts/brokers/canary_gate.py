@@ -24,7 +24,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # ── THE COMMITTED ENVELOPE — change only by commit ──────────────────────────────────────────────
-CANARY_SYMBOL_ALLOWLIST: tuple[str, ...] = ()   # committed at session time after the $2-$4 screen
+# SESSION COMMIT 2026-06-12 (operator-ordered screen run; full log in stage2a-canary-protocol.md):
+#   PRIMARY  GRAB $3.37 — 51.2M avg vol, 0.6% spread even after-hours, boring mega-name, ZERO
+#            footprint (never held/watched/papered/journaled)
+#   FALLBACK XRX  $3.45 — 6.3M avg vol, NYSE household name, zero footprint
+#   screened-out: VIDA (drifted to $4.20 — above cap), ABEV/BBD/CIG (footprint), LYG/ERIC (>$4)
+#   ⚠ re-verify spreads at the session open (AH spreads quoted); ROTATE BACK TO () after the session.
+CANARY_SYMBOL_ALLOWLIST: tuple[str, ...] = ("GRAB", "XRX")
 MAX_PRICE_USD = 4.00
 MAX_QTY_SHARES = 10
 MAX_NOTIONAL_USD = 40.00
