@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import { deriveTradeAiRating, normalizeAnalystRating, ratingLabel, ratingRank, type ManualTosRating } from '../lib/manualTosRating'
 
 type SourceKind = 'PROPOSAL' | 'WATCHLIST' | 'DRAFT'
 type SetupState = 'READY' | 'GENERATED' | 'BROKER_OBSERVED' | 'EXCEPTION'
 type SourceFilter = 'ALL' | SourceKind
 type AccountFilter = 'ALL' | 'ANY' | 'schwab_taxable' | 'schwab_rollover_ira' | 'schwab_roth_ira'
 type DecisionFilter = 'ALL' | 'GO' | 'WAIT' | 'OTHER'
-type AnalystFilter = 'ALL' | 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL' | 'UNKNOWN'
+type AnalystFilter = 'ALL' | ManualTosRating
 type StatusFilter = 'ALL' | SetupState
 type SortMode = 'SCORE_DESC' | 'SYMBOL_ASC' | 'SOURCE' | 'STATUS' | 'ENTRY_PRICE' | 'ANALYST'
 
@@ -49,7 +50,7 @@ type SetupRow = {
 }
 
 const LS_KEY = 'tradeai.manualTosDesk.v2'
-const PREF_KEY = 'tradeai.manualTosDesk.prefs.v2'
+const PREF_KEY = 'tradeai.manualTosDesk.prefs.v3'
 const ACCOUNTS = ['ANY', 'schwab_taxable', 'schwab_rollover_ira', 'schwab_roth_ira']
 const ANALYST_OPTIONS: AnalystFilter[] = ['ALL', 'STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL', 'UNKNOWN']
 const C = { blue: '#60a5fa', green: '#22c55e', amber: '#f59e0b', red: '#ef4444', purple: '#a78bfa', dim: 'var(--text3)' }
@@ -63,10 +64,9 @@ function first(...vals: any[]) { return vals.find(v => v !== undefined && v !== 
 function str(v: any) { return v == null ? '' : String(v) }
 function scoreNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 function acct(a: string) { return !a || a === 'ANY' ? 'ANY SCHWAB' : a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase() }
-function labelCase(v: string) { return v.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) }
 function baseQty(x: any) { return Number(first(x.qty, x.shares, x.quantity?.qty, x.recommended_qty, x.position_size_shares, 10)) || 10 }
 function normalizedDecision(v: any): DecisionFilter {
-  const d = String(v ?? '').toUpperCase()
+  const d = String(v ?? '').toUpperCase().replace('_', '-')
   if (d === 'GO') return 'GO'
   if (d === 'WAIT') return 'WAIT'
   return 'OTHER'
@@ -78,23 +78,9 @@ function rawAnalyst(x: any) {
     x.street_rating, x.wall_street_rating, x.tipranks_rating, x.zacks_rank, x.analyst
   )
 }
-function normalizedAnalyst(v: any): AnalystFilter {
-  const s = String(v ?? '').trim().toLowerCase().replace(/[_-]/g, ' ')
-  if (!s) return 'UNKNOWN'
-  if (s.includes('strong buy') || s.includes('conviction buy') || s.includes('very bullish')) return 'STRONG_BUY'
-  if (s === 'buy' || s.includes(' buy') || s.includes('outperform') || s.includes('overweight') || s.includes('bullish')) return 'BUY'
-  if (s.includes('hold') || s.includes('neutral') || s.includes('market perform') || s.includes('equal weight')) return 'HOLD'
-  if (s.includes('strong sell') || s.includes('very bearish')) return 'STRONG_SELL'
-  if (s.includes('sell') || s.includes('underperform') || s.includes('underweight') || s.includes('bearish')) return 'SELL'
-  return 'UNKNOWN'
-}
 function analystColor(a: any) {
-  const n = normalizedAnalyst(a)
+  const n = typeof a === 'string' ? normalizeAnalystRating(a) : deriveTradeAiRating(a).rating
   return n === 'STRONG_BUY' ? '#22c55e' : n === 'BUY' ? '#84cc16' : n === 'HOLD' ? '#f59e0b' : n === 'SELL' || n === 'STRONG_SELL' ? '#ef4444' : C.dim
-}
-function analystRank(v: any) {
-  const n = normalizedAnalyst(v)
-  return n === 'STRONG_BUY' ? 5 : n === 'BUY' ? 4 : n === 'HOLD' ? 3 : n === 'SELL' ? 2 : n === 'STRONG_SELL' ? 1 : 0
 }
 
 function fromProposal(p: any, local: LocalState): SetupRow | null {
@@ -167,12 +153,15 @@ function setupLine(r: SetupRow) {
 
 function csv(v: any) { const s = str(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 function csvText(rows: SetupRow[]) {
-  const out: string[][] = [['Source','Symbol','Company','Analyst','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
-  rows.forEach(r => out.push([
-    r.source, r.symbol, str(r.company), str(r.analyst), r.account, r.side, String(r.qty), r.entryType,
-    str(r.entryPrice), str(r.stop), r.targets.map((t: any) => t.price).join('|'), r.tif,
-    str(r.decision), str(r.score), str(r.sector), str(r.reason), setupLine(r)
-  ]))
+  const out: string[][] = [['Source','Symbol','Company','Rating','RatingSource','AnalystRaw','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
+  rows.forEach(r => {
+    const rr = deriveTradeAiRating(r)
+    out.push([
+      r.source, r.symbol, str(r.company), ratingLabel(rr.rating), rr.source, str(r.analyst), r.account, r.side, String(r.qty), r.entryType,
+      str(r.entryPrice), str(r.stop), r.targets.map((t: any) => t.price).join('|'), r.tif,
+      str(r.decision), str(r.score), str(r.sector), str(r.reason), setupLine(r)
+    ])
+  })
   return out.map(r => r.map(csv).join(',')).join('\n') + '\n'
 }
 function copyText(text: string, setMsg: (s: string) => void) {
@@ -200,7 +189,8 @@ function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
   return local[r.id]?.generated ? 'GENERATED' : 'READY'
 }
 function payload(r: SetupRow, state: SetupState, hit: any) {
-  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, company: r.company, analyst: r.analyst, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: setupLine(r) }
+  const derived = deriveTradeAiRating(r)
+  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, company: r.company, rating: derived.rating, rating_source: derived.source, analyst_raw: r.analyst, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: setupLine(r) }
 }
 function badgeColor(source: SourceKind) { return source === 'PROPOSAL' ? C.green : source === 'WATCHLIST' ? C.blue : C.purple }
 function statusColor(state: SetupState) { return state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : state === 'EXCEPTION' ? C.red : C.dim }
@@ -238,14 +228,14 @@ export default function ManualTosDesk() {
   const wrapped = rows.map(r => ({ r, state: rowState(r, local, activity), hit: activityHit(r, activity) }))
   const filtered = wrapped.filter(({ r, state }) => {
     const decision = normalizedDecision(r.decision)
-    const analyst = normalizedAnalyst(r.analyst)
+    const rating = deriveTradeAiRating(r).rating
     const q = prefs.search.trim().toUpperCase()
     if (prefs.source !== 'ALL' && r.source !== prefs.source) return false
     if (prefs.account !== 'ALL' && r.account !== prefs.account) return false
     if (prefs.decision !== 'ALL' && decision !== prefs.decision) return false
-    if (prefs.analyst !== 'ALL' && analyst !== prefs.analyst) return false
+    if (prefs.analyst !== 'ALL' && rating !== prefs.analyst) return false
     if (prefs.status !== 'ALL' && state !== prefs.status) return false
-    if (q && !`${r.symbol} ${r.company ?? ''} ${r.reason ?? ''} ${r.analyst ?? ''}`.toUpperCase().includes(q)) return false
+    if (q && !`${r.symbol} ${r.company ?? ''} ${r.reason ?? ''} ${r.analyst ?? ''} ${ratingLabel(rating)}`.toUpperCase().includes(q)) return false
     if (prefs.minScore && scoreNum(r.score) < Number(prefs.minScore)) return false
     if (prefs.hasEntry && !r.entryPrice) return false
     if (prefs.hasRisk && !r.stop && r.targets.length === 0) return false
@@ -256,7 +246,7 @@ export default function ManualTosDesk() {
     if (prefs.sort === 'SOURCE') return a.r.source.localeCompare(b.r.source) || a.r.symbol.localeCompare(b.r.symbol)
     if (prefs.sort === 'STATUS') return a.state.localeCompare(b.state) || a.r.symbol.localeCompare(b.r.symbol)
     if (prefs.sort === 'ENTRY_PRICE') return (b.r.entryPrice ?? 0) - (a.r.entryPrice ?? 0)
-    if (prefs.sort === 'ANALYST') return analystRank(b.r.analyst) - analystRank(a.r.analyst) || scoreNum(b.r.score) - scoreNum(a.r.score)
+    if (prefs.sort === 'ANALYST') return ratingRank(deriveTradeAiRating(b.r).rating) - ratingRank(deriveTradeAiRating(a.r).rating) || scoreNum(b.r.score) - scoreNum(a.r.score)
     return scoreNum(b.r.score) - scoreNum(a.r.score)
   })
   const counts = {
@@ -269,8 +259,8 @@ export default function ManualTosDesk() {
     observed: wrapped.filter(x => x.state === 'BROKER_OBSERVED').length,
     exceptions: wrapped.filter(x => x.state === 'EXCEPTION').length,
   }
-  const analystCounts: Record<AnalystFilter, number> = { ALL: rows.length, STRONG_BUY: 0, BUY: 0, HOLD: 0, SELL: 0, STRONG_SELL: 0, UNKNOWN: 0 }
-  rows.forEach(r => { analystCounts[normalizedAnalyst(r.analyst)] += 1 })
+  const ratingCounts: Record<ManualTosRating, number> = { STRONG_BUY: 0, BUY: 0, HOLD: 0, SELL: 0, STRONG_SELL: 0, UNKNOWN: 0 }
+  rows.forEach(r => { ratingCounts[deriveTradeAiRating(r).rating] += 1 })
   const lastRun = (reconR as any)?.runs?.[0]
   const watchTxt = visible.map(x => x.r.symbol).filter((s, i, a) => a.indexOf(s) === i).join('\n') + '\n'
   const setField = (id: string, patch: Partial<LocalState[string]>) => saveLocal({ ...local, [id]: { ...(local[id] ?? {}), ...patch } })
@@ -311,8 +301,10 @@ export default function ManualTosDesk() {
 
     <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', marginBottom: 12 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: 10, color: C.dim, fontWeight: 800 }}>Analyst / recommendation:</span>
-        {ANALYST_OPTIONS.map(a => <button key={a} onClick={() => savePrefs({ analyst: a })} style={{ ...btn(prefs.analyst === a ? analystColor(a) : 'var(--bg2)', prefs.analyst === a ? '#0b1020' : 'var(--text2)'), border: `1px solid ${prefs.analyst === a ? analystColor(a) : 'var(--border)'}` }}>{a === 'ALL' ? 'All' : labelCase(a)} · {analystCounts[a]}</button>)}
+        <span style={{ fontSize: 10, color: C.dim, fontWeight: 800 }}>Recommendation filter:</span>
+        <button onClick={() => savePrefs({ analyst: 'ALL' })} style={{ ...btn(prefs.analyst === 'ALL' ? C.blue : 'var(--bg2)', prefs.analyst === 'ALL' ? '#0b1020' : 'var(--text2)'), border: `1px solid ${prefs.analyst === 'ALL' ? C.blue : 'var(--border)'}` }}>All · {rows.length}</button>
+        {(['STRONG_BUY','BUY','HOLD','SELL','STRONG_SELL','UNKNOWN'] as ManualTosRating[]).map(a => <button key={a} onClick={() => savePrefs({ analyst: a })} style={{ ...btn(prefs.analyst === a ? analystColor(a) : 'var(--bg2)', prefs.analyst === a ? '#0b1020' : 'var(--text2)'), border: `1px solid ${prefs.analyst === a ? analystColor(a) : 'var(--border)'}` }}>{ratingLabel(a)} · {ratingCounts[a]}</button>)}
+        <span style={{ fontSize: 9, color: C.dim }}>Uses true analyst fields when present; otherwise derives from Trade AI decision + score.</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px,1fr))', gap: 8, marginBottom: 8 }}>
         <select value={prefs.source} onChange={e => savePrefs({ source: e.target.value as SourceFilter })} style={inputStyle}><option value="ALL">All sources</option><option value="PROPOSAL">Proposal</option><option value="WATCHLIST">Watchlist</option><option value="DRAFT">Draft</option></select>
@@ -321,30 +313,33 @@ export default function ManualTosDesk() {
         <select value={prefs.status} onChange={e => savePrefs({ status: e.target.value as StatusFilter })} style={inputStyle}><option value="ALL">All statuses</option><option value="READY">Ready</option><option value="GENERATED">Generated</option><option value="BROKER_OBSERVED">Broker observed</option><option value="EXCEPTION">Exception</option></select>
         <input value={prefs.search} onChange={e => savePrefs({ search: e.target.value })} placeholder="Search symbol/company/reason/rating" style={inputStyle} />
         <input value={prefs.minScore} onChange={e => savePrefs({ minScore: e.target.value })} placeholder="Min score" type="number" style={inputStyle} />
-        <select value={prefs.sort} onChange={e => savePrefs({ sort: e.target.value as SortMode })} style={inputStyle}><option value="SCORE_DESC">Score desc</option><option value="ANALYST">Analyst strength</option><option value="SYMBOL_ASC">Symbol A-Z</option><option value="SOURCE">Source</option><option value="STATUS">Status</option><option value="ENTRY_PRICE">Entry price</option></select>
+        <select value={prefs.sort} onChange={e => savePrefs({ sort: e.target.value as SortMode })} style={inputStyle}><option value="SCORE_DESC">Score desc</option><option value="ANALYST">Recommendation strength</option><option value="SYMBOL_ASC">Symbol A-Z</option><option value="SOURCE">Source</option><option value="STATUS">Status</option><option value="ENTRY_PRICE">Entry price</option></select>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 10, color: C.dim }}><label><input type="checkbox" checked={prefs.hasEntry} onChange={e => savePrefs({ hasEntry: e.target.checked })} /> Has entry</label><label><input type="checkbox" checked={prefs.hasRisk} onChange={e => savePrefs({ hasRisk: e.target.checked })} /> Has stop/target</label></div>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: C.dim }}>Visible exports:</span><button style={btn('#1d4ed8')} onClick={() => copyText(watchTxt, setMsg)}>copy visible symbols</button><button style={btn('#334155')} onClick={() => dl('tradeai_tos_watchlist.txt', 'text/plain', watchTxt)}>download Thinkorswim watchlist .txt</button><button style={btn('#334155')} onClick={() => dl('tradeai_manual_setups.csv', 'text/csv', csvText(visible.map(x => x.r)))}>download setup CSV</button>{msg && <span style={{ fontSize: 10, color: C.green }}>{msg}</span>}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: C.dim }}>Visible exports:</span><button style={btn('#475569')} onClick={() => savePrefs(defaultPrefs)}>Reset Filters</button><button style={btn('#1d4ed8')} onClick={() => copyText(watchTxt, setMsg)}>copy visible symbols</button><button style={btn('#334155')} onClick={() => dl('tradeai_tos_watchlist.txt', 'text/plain', watchTxt)}>download Thinkorswim watchlist .txt</button><button style={btn('#334155')} onClick={() => dl('tradeai_manual_setups.csv', 'text/csv', csvText(visible.map(x => x.r)))}>download setup CSV</button>{msg && <span style={{ fontSize: 10, color: C.green }}>{msg}</span>}</div>
     </div>
 
-    {visible.length === 0 && <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', color: C.dim, fontSize: 11 }}>No candidates match the current filters.</div>}
-    {visible.map(({ r, state, hit }) => <div key={`${r.source}-${r.id}`} style={{ border: `1px solid ${state === 'BROKER_OBSERVED' ? C.green : state === 'EXCEPTION' ? C.red : 'var(--border)'}`, borderRadius: 10, background: 'var(--bg1)', padding: 13, marginBottom: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr auto', gap: 12, alignItems: 'start' }}>
-        <div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span><span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>{r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}<span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>{state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}</span></div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}><span style={{ color: C.amber }}>{str(r.decision) || 'decision n/a'}</span><span style={{ color: analystColor(r.analyst) }}>analyst {str(r.analyst) || 'n/a'}</span><span style={{ color: C.blue }}>score {str(r.score) || 'n/a'}</span>{r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ color: C.dim }}>{String(r.reason).slice(0, 180)}</span>}</div>
-          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>{r.entryPrice != null && <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>}{r.stop != null && <span style={{ color: C.red }}>stop {r.stop.toFixed(2)}</span>}{r.targets.map((t: any, i: number) => <span key={i} style={{ color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>)}{r.trail && <span style={{ color: C.purple }}>trail {r.trail.offset}</span>}</div>
-          {hit ? <div style={{ marginTop: 7, fontSize: 10, color: C.green }}>Observed account {acct(hit.account_key)} · {hit.kind ?? 'activity'} · {hit.status ?? 'status n/a'} · {String(hit.captured_at ?? '').slice(0, 16)}</div> : <div style={{ marginTop: 7, fontSize: 10, color: C.dim }}>No matching Schwab activity observed yet.</div>}
+    {visible.length === 0 && <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', color: C.dim, fontSize: 11 }}>No candidates match the current filters. Use Total Candidates or Reset Filters to clear saved browser filters.</div>}
+    {visible.map(({ r, state, hit }) => {
+      const rating = deriveTradeAiRating(r)
+      return <div key={`${r.source}-${r.id}`} style={{ border: `1px solid ${state === 'BROKER_OBSERVED' ? C.green : state === 'EXCEPTION' ? C.red : 'var(--border)'}`, borderRadius: 10, background: 'var(--bg1)', padding: 13, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr auto', gap: 12, alignItems: 'start' }}>
+          <div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span><span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>{r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}<span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>{state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}</span></div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}><span style={{ color: C.amber }}>{str(r.decision) || 'decision n/a'}</span><span style={{ color: analystColor(r) }}>{rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingLabel(rating.rating)}</span><span style={{ color: C.blue }}>score {str(r.score) || 'n/a'}</span>{r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ color: C.dim }}>{String(r.reason).slice(0, 180)}</span>}</div>
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>{r.entryPrice != null && <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>}{r.stop != null && <span style={{ color: C.red }}>stop {r.stop.toFixed(2)}</span>}{r.targets.map((t: any, i: number) => <span key={i} style={{ color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>)}{r.trail && <span style={{ color: C.purple }}>trail {r.trail.offset}</span>}</div>
+            {hit ? <div style={{ marginTop: 7, fontSize: 10, color: C.green }}>Observed account {acct(hit.account_key)} · {hit.kind ?? 'activity'} · {hit.status ?? 'status n/a'} · {String(hit.captured_at ?? '').slice(0, 16)}</div> : <div style={{ marginTop: 7, fontSize: 10, color: C.dim }}>No matching Schwab activity observed yet.</div>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8 }}>
+            <select value={r.account} onChange={e => setField(r.id, { account: e.target.value })} style={inputStyle}>{ACCOUNTS.map(a => <option key={a} value={a}>{acct(a)}</option>)}</select>
+            <input value={r.qty} onChange={e => setField(r.id, { qty: Number(e.target.value) || 1 })} style={inputStyle} />
+            <div style={{ gridColumn: '1 / span 2', fontSize: 9, color: C.dim }}>Account and quantity are local setup preferences only.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button onClick={() => { setField(r.id, { generated: true }); copyText(setupLine(r), setMsg) }} style={btn('#1d4ed8')}>Copy setup</button><button onClick={() => dl(`tradeai_${r.symbol}.json`, 'application/json', JSON.stringify(payload(r, state, hit), null, 2) + '\n')} style={btn('#334155')}>Export JSON</button><button onClick={() => dl(`tradeai_${r.symbol}.html`, 'text/html', `<pre>${setupLine(r)}\n\n${JSON.stringify(payload(r, state, hit), null, 2)}</pre>`)} style={btn('#334155')}>Export HTML</button></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8 }}>
-          <select value={r.account} onChange={e => setField(r.id, { account: e.target.value })} style={inputStyle}>{ACCOUNTS.map(a => <option key={a} value={a}>{acct(a)}</option>)}</select>
-          <input value={r.qty} onChange={e => setField(r.id, { qty: Number(e.target.value) || 1 })} style={inputStyle} />
-          <div style={{ gridColumn: '1 / span 2', fontSize: 9, color: C.dim }}>Account and quantity are local setup preferences only.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button onClick={() => { setField(r.id, { generated: true }); copyText(setupLine(r), setMsg) }} style={btn('#1d4ed8')}>Copy setup</button><button onClick={() => dl(`tradeai_${r.symbol}.json`, 'application/json', JSON.stringify(payload(r, state, hit), null, 2) + '\n')} style={btn('#334155')}>Export JSON</button><button onClick={() => dl(`tradeai_${r.symbol}.html`, 'text/html', `<pre>${setupLine(r)}\n\n${JSON.stringify(payload(r, state, hit), null, 2)}</pre>`)} style={btn('#334155')}>Export HTML</button></div>
       </div>
-    </div>)}
+    })}
     <div style={{ marginTop: 12, fontSize: 8.5, color: C.dim }}>Sources: /api/v2/paper-proposals, /api/v2/trade-ai, /api/v2/broker-orders/drafts, /api/v2/broker-orders/activity. Advisory/manual setup only; no broker write route is present.</div>
   </div>
 }
