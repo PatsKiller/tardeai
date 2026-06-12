@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11 - Modal reject/delete + test plan delivered (email + telegram)
+
+Broker Orders modal gains '✖ Reject (keep record)' (supersedes approvals, state=REJECTED, audited) and
+'🗑 Delete draft' (confirm prompt; row removed, audit events retained) - both smoke-tested via API. Master
+test plan + stage-2a protocol + stage-1 review log emailed to john@jwwhiting.com via gog (msg
+19eb948cbd381a0f) and the plan sent as a Telegram document to the proposals chat for developer review.
+
+
 ## 2026-06-11 - Edit-before-approval modal + 2-share fixtures + master test plan
 
 All Broker Orders drafts regenerated at canary size (2 sh, named purposes; the "100 sh" was harness default,

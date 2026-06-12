@@ -19486,6 +19486,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
+    if method == "POST" and base_path == "/api/v2/broker-orders/reject":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from brokers import approval_service
+            from db_adapter import _get_conn as _gc
+            iid = (body or {}).get("intent_id")
+            approval_service.reject(iid)
+            conn = _gc(); cur = conn.cursor()
+            cur.execute("""UPDATE broker_order_intents SET state='REJECTED',
+                           blocked_reason='rejected by operator' WHERE intent_id=%s""", (iid,))
+            cur.execute("""INSERT INTO intent_state_events (intent_id, correlation_id, event, detail)
+                           SELECT intent_id, correlation_id, 'state:REJECTED', 'operator reject (web)'
+                           FROM broker_order_intents WHERE intent_id=%s""", (iid,))
+            conn.commit()
+            return 200, {"ok": True, "intent_id": iid, "state": "REJECTED"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/delete":
+        try:
+            from db_adapter import _get_conn as _gc
+            iid = (body or {}).get("intent_id")
+            conn = _gc(); cur = conn.cursor()
+            cur.execute("""INSERT INTO intent_state_events (intent_id, correlation_id, event, detail)
+                           SELECT intent_id, correlation_id, 'state:DELETED', 'operator delete (web) — draft removed'
+                           FROM broker_order_intents WHERE intent_id=%s""", (iid,))
+            cur.execute("DELETE FROM broker_order_intents WHERE intent_id=%s", (iid,))
+            n = cur.rowcount; conn.commit()
+            return 200, {"ok": True, "deleted": n}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
     if method == "POST" and base_path == "/api/v2/broker-orders/approve":
         try:
             import sys as _sys
