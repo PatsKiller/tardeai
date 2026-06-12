@@ -109,15 +109,32 @@ decision (ladder automation on Schwab) is a NEW spec gated on SB-0's environment
    committed session date · long-only · LIMIT only). The operator's wider caps (price < $10) are
    VOID for live orders; the 5-trade total cap stands.
 
-## Next: SB-1 build checklist (write surface + validator rewrite, one commit)
+## SB-1 BUILT 2026-06-12 (session day: 2026-06-13)
 
-- [ ] `schwab_transport.place_order/cancel_order` (real impl) behind: execution_guard →
-      canary_gate → 5-order cumulative cap → `api_write_enabled` → single-use confirm token
-- [ ] Hard assert in the write path: account_key == 'schwab_taxable' (IRA keys raise, always)
-- [ ] Correlation id persisted before POST; timeout ⇒ reconcile via GET before any retry
-- [ ] Migration: `api_write_enabled=true` for schwab_taxable ONLY (reversible, operator-approved)
-- [ ] `validate_schwab_no_writes.py` → `validate_schwab_write_policy.py` (all-green redefinition
-      per this spec; same runner wiring so Stage 2a battery + cron keep working)
-- [ ] Pilot session scheduling: commit a NEW `CANARY_SESSION_DATE` + re-screened allowlist the
-      morning of the session (GRAB $3.37 / XRX $3.45 quotes are from 2026-06-12 AH — re-verify
-      price ≤ $4 and spread at the open; rotate back after)
+- [x] `schwab_transport.place_order/cancel_order` real impl behind the full stack
+      (`_pilot_preconditions` taxable-only assert + api_write_enabled → `execution_guard.require`:
+      canary gate → standing locks → pilot caps → per-trade 2FA); `replace_order` stays fenced
+- [x] `brokers/pilot_caps.py` — commit-only literals: taxable-only allowlist + 5-order lifetime cap
+- [x] Correlation row persisted in `schwab_pilot_orders` BEFORE any POST; timeout note forbids
+      blind retry (reconcile via GET first); 2FA set consumed single-use at submit
+- [x] `brokers/capabilities.py` schwab mode → LIVE_ENABLED_FUTURE (reachable, fail-closed);
+      `execution_guard` LIVE branch can now GRANT (submit: caps+2FA; cancel: safe direction)
+- [x] Arm/disarm: `scripts/schwab_pilot_arm.py` (typed-phrase confirmed; sets db control row +
+      standing approval + api_write_enabled; env flag + restart stay manual on purpose)
+- [x] API: GET broker-orders/pilot/status · POST pilot/preflight (full Stage 2b preflight, saves
+      draft for the existing 2FA routes) · POST pilot/execute (sole transport caller) · POST
+      pilot/cancel — UI: Stage 2b Pilot Console at the top of v3 Trading → Broker Orders
+- [x] `validate_schwab_write_policy.py` (25 guards incl. tamper-evidence: gate modules must match
+      git HEAD) + `validate_schwab_no_writes.py` kept as passthrough shim
+- [ ] MORNING-OF (2026-06-13, in order): re-screen GRAB/XRX (≤$4 + sane spread at open) → commit
+      new `CANARY_SESSION_DATE = "2026-06-13"` (+ rotated allowlist if re-screen changes it) →
+      `schwab_pilot_arm.py --arm --confirm "ARM SCHWAB PILOT 2026-06-13"` → add
+      `BROKER_LIVE_ENABLED=true` to .env → restart server → validator 25/25 → run the 5-ticket
+      pilot from the console (per-order 2FA each time) → after session: `--disarm`, remove env
+      flag, validator green again
+
+### Confirmation factors per order (operator question 2026-06-12: "robust 2-3 factor")
+① Web: type the TICKER exactly in the confirm popup (anti-fat-finger, single-use, 10-min TTL)
+② Telegram: one-tap Approve on the proposals chat (or type the 6-digit code back) — second device
+③ Structural: committed canary envelope + committed session date + 5-order cap + typed arm phrase
+   — plus one-order-at-a-time (a second intent can't even request approval while one is active)

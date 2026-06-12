@@ -93,19 +93,36 @@ def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
                           "dry-run: local translate/validate/audit only — order-endpoint I/O prohibited "
                           "(operator decision 2026-06-11)", intent.correlation_id)
     elif mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked():
-        # 4th lock (operator requirement 2026-06-11): per-trade TWO-FACTOR approval — web popup AND
-        # telegram code, both confirmed, unexpired, single-use. Even with all standing locks open,
-        # an unapproved intent is denied. (And this phase's adapter still blocks unconditionally.)
-        try:
-            from .approval_service import is_fully_approved
-            twofa = is_fully_approved(intent.intent_id)
-        except Exception:
-            twofa = False
-        d = GuardDecision(False, mode,
-                          ("2FA approved but LIVE execution is out of scope this phase (adapter blocks "
-                           "unconditionally)" if twofa else
-                           "DENIED: per-trade two-factor approval missing/incomplete (web + telegram both "
-                           "required)"), intent.correlation_id)
+        # Stage 2b SB-1 (operator-approved 2026-06-12): the gated branch can now GRANT. Stack at this
+        # point: canary gate already passed above (mutating actions) + 3 standing locks open. Remaining
+        # per-order locks: pilot caps (account allowlist + cumulative 5-order cap) and per-trade
+        # TWO-FACTOR approval (web typed-ticker AND telegram code, unexpired, single-use).
+        # Cancel is the safe direction: allowed under open locks without 2FA (audited).
+        if action == "cancel":
+            d = GuardDecision(True, mode, "cancel granted (safe direction) under unlocked Stage 2b pilot",
+                              intent.correlation_id)
+        else:
+            try:
+                from .approval_service import is_fully_approved
+                twofa = is_fully_approved(intent.intent_id)
+            except Exception:
+                twofa = False
+            try:
+                from .pilot_caps import evaluate as _pilot_eval
+                pilot_ok, pilot_reasons = _pilot_eval(intent.account_key)
+            except Exception as e:
+                pilot_ok, pilot_reasons = False, [f"pilot caps unavailable ({str(e)[:60]}) — fail closed"]
+            if not pilot_ok:
+                d = GuardDecision(False, mode, "PILOT_CAPS BLOCK: " + "; ".join(pilot_reasons),
+                                  intent.correlation_id)
+            elif not twofa:
+                d = GuardDecision(False, mode,
+                                  "DENIED: per-trade two-factor approval missing/incomplete (web + telegram "
+                                  "both required)", intent.correlation_id)
+            else:
+                d = GuardDecision(True, mode,
+                                  "GRANTED (Stage 2b pilot): canary envelope + standing locks + pilot caps "
+                                  "+ per-trade 2FA all green", intent.correlation_id)
     else:
         d = GuardDecision(False, BrokerExecutionMode.BROKER_DISABLED,
                           f"broker '{intent.broker}' execution disabled (fail-closed default)",
