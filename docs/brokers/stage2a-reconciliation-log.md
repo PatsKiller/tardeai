@@ -19,3 +19,12 @@
 No UNVERIFIED register items were resolved (no orders placed). The battery remains available via
 the staged drafts + runbook whenever a session is re-scheduled (requires committing a new
 `CANARY_SESSION_DATE`).
+
+## 2026-06-12 — SB-0 environment identity proof (Stage 2b spec)
+
+Read-only check with the operator's "sandbox" app credentials (operator confirmed: same app/keyset
+as the read-only integration). GET account balances via schwab_transport returned ALL THREE real
+accounts: taxable equity $76,105 / cash $7,901; rollover_ira $572,672; roth_ira $43,463.
+**VERDICT: NOT an isolated sandbox — any order POST hits a real account.** Operator decision:
+pilot continues live-tiny under the committed $4/$40 inner canary envelope (see
+stage2b-write-pilot-spec.md). No write code exists yet; validator 18/18 green at time of proof.
