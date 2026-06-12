@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-12 - Basis-audit alarm cycle closed + canary session record + server backlog live
+
+Basis audit re-run post-restart: **0 flagged / 38 clean**; server backlog-128 patch confirmed live
+(queues under load instead of dropping). Defense stack: 16:33 daily basis self-heal -> 16:35 audit
+alarm (env-sourced, honest-skip on API-unreachable). OPEN: repricer root fix (reads stale basis
+inputs; reverts SSOT values — self-heal compensates daily until fixed).
+
+Canary session record (stage2a-reconciliation-log.md): watchers ran live ~4h with clean read-backs;
+draft 1/5 two-channel approved (fully approved -> still BLOCKED ✓); NO orders were placed in ToS —
+session superseded by the Manual ToS Desk build, which formalizes the same workflow. Gate allowlist
+auto-expired end-of-day by construction. Harness TODO: md logger should append only NEW/changed
+orders (idle polling grew the log to 5,620 repetitive lines; truncated to the honest record).
+
 ## 2026-06-12 - Manual ToS Desk tab live + orchestrator STALE root-caused (failed cron retirement reverted)
 
 **Manual ToS Execution Desk:** desk built across sessions (661583e9 et al); Trading hub gains the
