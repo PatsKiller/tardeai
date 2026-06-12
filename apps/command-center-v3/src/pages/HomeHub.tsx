@@ -236,10 +236,10 @@ export default function HomeHub({ onDrill }: Props) {
             {((cmd.top_gainers?.length > 0) || (cmd.top_losers?.length > 0)) && (
               <SCard title="Weekly Movers">
                 {(cmd.top_gainers ?? []).slice(0, 3).map((g: any, i: number) => (
-                  <Line key={'g' + i} color="#22c55e"><span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span><span>+{Number(g.change_pct ?? g.pct ?? 0).toFixed(1)}%</span></Line>
+                  <Line key={'g' + i} color="#22c55e"><span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span><span>+{Number(g.perf_week ?? g.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
                 ))}
                 {(cmd.top_losers ?? []).slice(0, 3).map((l: any, i: number) => (
-                  <Line key={'l' + i} color="#ef4444"><span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span><span>{Number(l.change_pct ?? l.pct ?? 0).toFixed(1)}%</span></Line>
+                  <Line key={'l' + i} color="#ef4444"><span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span><span>{Number(l.perf_week ?? l.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
                 ))}
               </SCard>
             )}
@@ -297,7 +297,12 @@ export default function HomeHub({ onDrill }: Props) {
               {[['Portfolio Risk', cmd.llm_intelligence.portfolio_risk], ['Morning Synthesis', cmd.llm_intelligence.morning_synthesis]].filter(([, v]) => v).map(([k, v]: any) => (
                 <div key={k} style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 9, color: '#60a5fa', textTransform: 'uppercase', marginBottom: 3 }}>{k}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>{typeof v === 'string' ? v : (v.summary ?? v.text ?? JSON.stringify(v).slice(0, 400))}</div>
+                  {/* briefings are stored as JSON {"content": "..."} — render the prose, never raw JSON */}
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{(() => {
+                    let x: any = v
+                    if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return x } }
+                    return x?.content ?? x?.summary ?? x?.text ?? String(v)
+                  })()}</div>
                 </div>
               ))}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/command → llm_intelligence (gemma3:12b daily)</div>

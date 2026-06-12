@@ -11970,15 +11970,23 @@ def _morning_command():
     # ── Top movers today (from holdings with perf data) ──
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     movers = []
+    _seen_mv = set()
     for pos in holdings:
         sym = pos.get("symbol", "")
-        if not sym or pos.get("is_cash"):
+        if not sym or pos.get("is_cash") or sym in _seen_mv:   # dedupe multi-account symbols (V etc.)
             continue
+        _seen_mv.add(sym)
         tech = ts.get(sym, {}) if isinstance(ts, dict) else {}
         perf = tech.get("perf_week")
+        if perf is None:   # fall back to the snapshot table (covers funds via proxy backfill)
+            r = _db_query("""SELECT perf_week_pct FROM ticker_snapshot_daily WHERE symbol=%s
+                             AND perf_week_pct IS NOT NULL ORDER BY snapshot_date DESC LIMIT 1""",
+                          (sym,), fetch="one")
+            perf = _json_clean((r or {}).get("perf_week_pct"))
         if perf is not None:
-            movers.append({"symbol": sym, "perf_week": perf, "price": pos.get("price", 0),
-                           "market_value": pos.get("market_value", 0)})
+            # change_pct included too — the UI historically read that name (0.0% bug, 2026-06-12)
+            movers.append({"symbol": sym, "perf_week": perf, "change_pct": perf,
+                           "price": pos.get("price", 0), "market_value": pos.get("market_value", 0)})
     movers.sort(key=lambda x: abs(x.get("perf_week", 0)), reverse=True)
     top_gainers = [m for m in movers if m.get("perf_week", 0) > 0][:5]
     top_losers = [m for m in movers if m.get("perf_week", 0) < 0][:5]
@@ -12009,6 +12017,8 @@ def _morning_command():
         SELECT DISTINCT ON (symbol) symbol, title, source, relevance_score, sentiment, created_at
         FROM news_articles
         WHERE created_at > NOW() - INTERVAL '24 hours' AND symbol IS NOT NULL AND symbol != ''
+          -- junk guards (2026-06-12): topic-ingest stub rows ('sector: AMSS') are not headlines
+          AND title IS NOT NULL AND length(title) > 15 AND title NOT ILIKE 'sector:%%'
         ORDER BY symbol, relevance_score DESC NULLS LAST
         LIMIT 10
     """) or []
