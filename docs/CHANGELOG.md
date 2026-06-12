@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-12 - Proposals get the watchlist treatment: inline grok entry validation + entry-zone tile; buys curated; dead-qwen warm fixed
+
+**Inline (operator: "not weekly — grok reviews when a proposal is created"):** auto_proposal_generator
+enrichment Step 5 now runs watchlist_entry_planner --scope proposals --lane grok per new proposal —
+zone/limit/urgency/WAIT-READY tag written advisory-only at creation time (falls back local if proxy
+down). Weekly cron removed. ALSO FOUND: enrichment Step 2 was warming hardcoded 'qwen3:14b'
+(DISABLED + uninstalled) — silently failing on every proposal since qwen removal; now warms the
+CONFIGURED primary model (local_llm_config). Proposal cards gain a 🎯 Entry Zone tile (range like
+the watchlist: zone low-high · limit · urgency · tag · model); /api/v2/paper-proposals LATERAL-joins
+the latest entry plan.
+
+**Buy/strong-buy curation (operator order):** --symbols flag added to hermes_top20_external_intel;
+grok ran ALL 29 buy/strong_buy watchlist names (19 called + 10 already-fresh = 29/29 ✦ badged).
+ChatGPT lane root-caused: CODEX_HEADLESS_UNAVAILABLE was the ChatGPT-subscription usage cap (7 calls
+then throttled; auth was fine) — detached retry self-fires after the cap window, skipping
+already-sent names.
+
 ## 2026-06-12 - Entry Strategy pipeline + canonical watch universe + enrichment-coverage auditing agent
 
 **Watchlist Entry Strategy (operator requirement, ADVISORY ONLY):** scripts/watchlist_entry_planner.py
