@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-12 - Home/overview truth fixes + analyst honesty correction + Today's-Move-by-account
+
+**Analyst sources (operator question + correction):** abbreviations spelled out everywhere
+('N analysts', 'target $X', 'targets only'). HONEST CORRECTION after live verification: the planned
+"Finviz second opinion" was RETRACTED — finviz recom fields system-wide are target-distance math,
+not a 1-5 rating (values like 517.84 produced 19 false divergence flags; the old read-model warning
+was right; no true finviz Recom is captured anywhere). Yahoo = the only true rating source; the
+real second layer shipped instead: Yahoo's analyst VOTE DISTRIBUTION (strong-buy/buy/hold/sell
+counts from analyst_data_history) in every analyst tooltip. Polygon noted as the clean path to a
+genuine second rating source if wanted (key already validated).
+
+**Today's Move by account (operator request):** overview() returns today_by_account (change / pct /
+value / top-2 movers per account); the TODAY metric drill lists accounts biggest-mover-first
+(verified: rollover +$2,024 · fidelity +$1,185 · taxable +$654 · roth +$303).
+
+**Home page truth fixes (operator: 'fix missing info'):** Weekly Movers showed 0.0% forever —
+backend sent perf_week, UI read change_pct (field mismatch) + no symbol dedupe (double V); now real
+values, deduped, '(1w)' labeled, funds included via the proxy snapshot fallback. AI Intelligence
+Briefing rendered raw {"content":...} JSON — now parsed to full-width prose. 'sector: AMSS' stub
+rows filtered from Portfolio News. BONUS root cause: pipeline_runs.run_completed_at NEVER existed
+(column is finished_at) — the freshness query errored on every morning-command load since
+inception; fixed, now 'All systems operational'.
+
 ## 2026-06-12 - Unified card layer: company sentence + sector-vs-sector + analyst + top-3 news on ALL cards
 
 Operator: every card on Watchlist / Open Trades / Portfolio shows sector + performance vs sector,
