@@ -3,6 +3,17 @@ import { useApi } from '../hooks/useApi'
 
 // Secrets / API-key manager. Write-only: the UI never shows or receives a full secret value — only a
 // masked '••••1234' hint + presence. Used to rotate keys (e.g. ANTHROPIC_API_KEY) after a leak.
+// Live-validation chip colors. "set" ≠ "works" — a dead ANTHROPIC key sat green for weeks (2026-06-12).
+const VSTATUS: Record<string, { c: string; label: string }> = {
+  valid: { c: '#22c55e', label: 'VERIFIED ✓' },
+  INVALID: { c: '#ef4444', label: 'INVALID ✗' },
+  quota_or_billing: { c: '#f59e0b', label: 'QUOTA/BILLING ⚠' },
+  not_set: { c: 'var(--text3)', label: 'not set' },
+  not_validatable: { c: '#60a5fa', label: 'n/a' },
+  check_failed: { c: '#f59e0b', label: 'check failed' },
+  unknown_key: { c: 'var(--text3)', label: '—' },
+}
+
 export default function SecretsManager() {
   const { data, refetch } = useApi<any>('/api/v2/admin/secrets', 60_000)
   const secrets: any[] = data?.secrets ?? []
@@ -11,7 +22,30 @@ export default function SecretsManager() {
   const [val, setVal] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const [vres, setVres] = useState<Record<string, any>>({})
+  const [vbusy, setVbusy] = useState(false)
   const selectedConfig = !!secrets.find((s: any) => s.key === key)?.is_config  // config value (not a masked secret)
+
+  const validateAll = async () => {
+    setVbusy(true)
+    try {
+      const r = await fetch('/api/v2/admin/validate-secret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const j = await r.json(); const d = j?.data ?? j
+      const m: Record<string, any> = {}
+      for (const x of (d.results ?? [])) m[x.name] = x
+      setVres(m)
+    } catch { /* chips just stay absent */ }
+    setVbusy(false)
+  }
+
+  const validateOne = async (name: string) => {
+    try {
+      const r = await fetch('/api/v2/admin/validate-secret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+      const j = await r.json(); const d = j?.data ?? j
+      if (d.result) setVres(v => ({ ...v, [name]: d.result }))
+      return d.result
+    } catch { return null }
+  }
 
   const save = async () => {
     if (!key.trim() || val.trim().length < 4 || busy) return
@@ -19,7 +53,13 @@ export default function SecretsManager() {
     try {
       const r = await fetch('/api/v2/admin/secrets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key.trim(), value: val }) })
       const j = await r.json()
-      if (j?.data?.ok) { setMsg(`✓ ${j.data.key} ${j.data.rotated ? 'rotated' : 'set'} (${j.data.masked}). ${j.data.note}`); setVal(''); setKey(''); setTimeout(() => { refetch(); setOpen(false) }, 1800) }
+      if (j?.data?.ok) {
+        // validate-on-save: ask the PROVIDER immediately so a dead key can never sit "green"
+        const vr = await validateOne(j.data.key)
+        const vtxt = vr ? ` · provider check: ${VSTATUS[vr.status]?.label ?? vr.status} (${vr.detail})` : ''
+        setMsg(`✓ ${j.data.key} ${j.data.rotated ? 'rotated' : 'set'} (${j.data.masked}).${vtxt}`)
+        setVal(''); setKey(''); setTimeout(() => { refetch(); setOpen(false) }, vr ? 3200 : 1800)
+      }
       else setMsg(`✗ ${j?.error || j?.data?.error || 'failed'}`)
     } catch { setMsg('✗ request failed') }
     setBusy(false)
@@ -32,17 +72,33 @@ export default function SecretsManager() {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>API Keys & Secrets</div>
           <div style={{ fontSize: 10, color: 'var(--text3)' }}>write-only · values are masked & never displayed · stored in .env (0600, gitignored, never synced)</div>
         </div>
-        <button onClick={() => { setOpen(true); setMsg('') }} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: 'none', cursor: 'pointer', background: '#a855f7', color: '#fff' }}>+ Add / Rotate Secret</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={validateAll} disabled={vbusy} title="Live-checks every key against its provider (cheap authenticated pings; Brave costs 1 search credit)"
+            style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg2)', color: '#60a5fa' }}>
+            {vbusy ? 'Validating…' : '✓ Validate all keys'}</button>
+          <button onClick={() => { setOpen(true); setMsg('') }} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: 'none', cursor: 'pointer', background: '#a855f7', color: '#fff' }}>+ Add / Rotate Secret</button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 6, marginTop: 12 }}>
-        {secrets.map((s: any) => (
-          <div key={s.key} onClick={() => { setKey(s.key); setOpen(true); setMsg('') }} title="rotate this secret"
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 7, cursor: 'pointer', background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}{s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}</span>
-            <span style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{s.present ? s.masked : 'not set'}</span>
-          </div>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 6, marginTop: 12 }}>
+        {secrets.map((s: any) => {
+          const v = vres[s.key]
+          const vs = v ? VSTATUS[v.status] : null
+          return (
+            <div key={s.key} onClick={() => { setKey(s.key); setOpen(true); setMsg('') }} title={v ? `${v.status}: ${v.detail}` : 'rotate this secret'}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 7, cursor: 'pointer', background: 'var(--bg2)',
+                border: `1px solid ${v?.status === 'INVALID' ? '#ef4444' : v?.status === 'valid' ? '#22c55e44' : 'var(--border)'}` }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}{s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {vs && <span style={{ fontSize: 8.5, fontWeight: 800, color: vs.c }}>{vs.label}</span>}
+                <span style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{s.present ? s.masked : 'not set'}</span>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 6 }}>
+        "set" only means written to .env — <b>Validate</b> asks each PROVIDER (models/getMe/quote pings). New saves auto-validate. n/a = no harmless ping exists (Schwab OAuth, SMTP, …) — those prove themselves in their own flows.
       </div>
 
       {open && (

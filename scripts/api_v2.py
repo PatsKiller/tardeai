@@ -18406,6 +18406,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _hermes_curate_top20_trigger(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/admin/validate-secret":
+        # Live provider validation (operator 2026-06-12, after a dead ANTHROPIC key showed 'set'-green
+        # while 401ing for weeks). Key material read server-side only — never returned/logged.
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            import secret_validators as _sv
+            name = ((body or {}).get("name") or "").strip()
+            if name:
+                return 200, {"ok": True, "result": _sv.validate(name)}
+            results = [_sv.validate(n) for n in sorted(_sv.VALIDATORS)]
+            results += [{"name": n, "status": "not_validatable", "detail": d}
+                        for n, d in sorted(_sv.NOT_VALIDATABLE.items())]
+            return 200, {"ok": True, "results": results}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
     if method == "POST" and base_path == "/api/v2/admin/secrets":
         # write-only secret rotation. NEVER log the value; return masked confirmation only.
         try:
