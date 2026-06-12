@@ -94,10 +94,13 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
     else:
         news_freshness = "stale"
     protection_state = "protected" if (protected and stop) else ("partial" if stop else "unprotected")
-    basis_quality = ("broker" if cost_basis_source in ("broker", "schwab", "alpaca") else
-                     "tax_grade" if cost_basis_source in ("csv", "tax", "documented") else
+    basis_quality = ("broker" if cost_basis_source in ("broker", "schwab", "alpaca", "broker_api") else
+                     "tax_grade" if cost_basis_source in ("csv", "tax", "documented", "csv_lot") else
                      "owner_provided" if cost_basis_source in ("owner", "owner_provided", "manual") else
                      "entry" if basis_kind == "entry" else
+                     # 2026-06-12: reconstruction is NEVER badged "verified" again — the SCHG/SCHD
+                     # audit showed reconstructed basis can be wildly wrong while wearing the badge
+                     "reconstructed" if cost_basis_source == "reconstructed_from_amounts" else
                      "verified" if basis_reliable else "unknown")
     watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
     # decision (most important text) — priority-ordered
@@ -530,8 +533,11 @@ def build_intelligence():
             #    trusted source (operator_provided, reconstructed_from_amounts, fidelity_positions_pdf)
             #    is honoured as-is even with a large legit gain (e.g. V at $43 → +600%). Only fall back
             #    to the heuristic when there is no source flag (legacy/unrepaired data). ──
+            # 2026-06-12 basis-audit fix: reconstruction REMOVED from trusted (SCHD showed a +$111K
+            # phantom gain wearing "verified"); broker_api + csv_lot added (sync_basis_from_broker
+            # hierarchy: csv tax lot > Schwab averagePrice > nothing).
             TRUSTED = {"operator_provided", "operator_provided_carry_forward",
-                       "reconstructed_from_amounts", "fidelity_positions_pdf"}
+                       "fidelity_positions_pdf", "broker_api", "csv_lot"}
             basis_reliable, basis_warning = True, None
             cbasis, avgc = p.get("cost_basis"), p.get("avg_cost")
             cbsrc = p.get("cost_basis_source")
