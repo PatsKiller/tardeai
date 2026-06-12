@@ -12198,7 +12198,9 @@ def _compute_freshness(freshness):
     from datetime import datetime, timezone
     file_ts = freshness.get("completed_at")
     # Check latest pipeline run
-    pr = _db_query("SELECT MAX(run_completed_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
+    # 2026-06-12: column is finished_at (run_completed_at never existed — this errored on every
+    # morning-command load and silently returned None for pipeline freshness)
+    pr = _db_query("SELECT MAX(finished_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
     db_ts = pr.get("latest") if pr else None
     # Also check holdings.json mtime as most relevant freshness signal
     holdings_ts = None
