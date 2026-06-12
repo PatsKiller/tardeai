@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""watchlist_entry_planner.py — actionable ENTRY PLANS for watchlist items (operator req 2026-06-12).
+
+For every watch-grade symbol (active watchlist + operator directives), goes beyond analysis to a
+concrete plan: entry thesis · entry zone (typed: pullback/breakout/support-bounce/reversal) · limit
+price with realistic fill odds · pullback definition + invalidation · stop + target + R:R · urgency.
+
+ADVISORY ONLY — never submits orders, never modifies proposal state, never触execution. The proposal
+section is a RECOMMENDATION tag (WAIT / READY / NEEDS_CONFIRMATION) for the operator's queue.
+
+Alerting: urgency near_entry/ready, or price already inside the entry zone, sends a Telegram alert
+(ticker, zone, limit, reason, urgency). One alert per symbol per day (dedup on alerted_at).
+
+  python3 scripts/watchlist_entry_planner.py [--lane local|grok] [--symbols CIFR,DLR] [--limit 25]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+import os
+os.environ.setdefault("LOCAL_LLM_NUM_PREDICT", "700")   # strict-JSON plans need more than the 300 default
+
+PROMPT_VERSION = "entry_planner_v1"
+
+# ── CURATED PROMPT — same discipline as protection_advisor_v1: role → hard rules → labeled
+# inputs → exact output contract. Identical across lanes so plans are comparable.
+PROMPT_V1 = """You are a disciplined swing-trade entry planner. Produce an ACTIONABLE ENTRY PLAN for
+a stock we are watching but do NOT yet own. You never place orders — the operator decides.
+
+HARD RULES
+- The entry ZONE must be technically anchored (pullback to SMA/support, breakout over resistance,
+  support bounce, or reversal) — never "buy here" at any price.
+- limit_price sits INSIDE the zone at a level with REALISTIC fill probability (no optimistic fills
+  at the extreme of the zone).
+- pullback_definition must be objective (e.g. "3-5% drop from 20d high into the rising 20d SMA").
+- invalidation must state when the setup is DEAD (level or condition).
+- stop is structural (below the zone's anchor, ATR-buffered), target honest vs analyst mean and
+  recent range. risk_reward = (target-limit)/(limit-stop), one decimal.
+- urgency: "ready" = price in/at zone now; "near_entry" = within ~1 ATR of the zone; else "watch".
+- proposal_tag: READY only when urgency=ready AND confidence>=0.7; NEEDS_CONFIRMATION when a
+  specific catalyst/level must confirm first; else WAIT.
+- STRICT JSON only. Numbers as numbers.
+
+CANDIDATE
+symbol: {symbol} · price: ${price:.2f} · RSI14: {rsi} · ATR14: ${atr:.2f} ({atr_pct:.1f}%)
+20d swing high: ${swing_high:.2f} · 20d swing low: ${swing_low:.2f} · 50d SMA: ${sma50:.2f} ({sma50_dist:+.1f}%)
+hermes composite: {hermes} (rank #{rank}) · trend: {trend}
+ANALYSTS: mean target {tgt_mean} · range {tgt_low}-{tgt_high} · rating {rec_key} · n={n_analysts}
+
+OUTPUT (strict JSON):
+{{"entry_thesis": "<max 50 words — why actionable now/soon + the trigger>",
+  "setup_type": "pullback"|"breakout"|"support_bounce"|"reversal",
+  "entry_zone_low": <number>, "entry_zone_high": <number>, "limit_price": <number>,
+  "pullback_definition": "<objective qualifying condition>",
+  "invalidation": "<level/condition that kills the setup>",
+  "stop_price": <number>, "target_price": <number>, "risk_reward": <number>,
+  "urgency": "watch"|"near_entry"|"ready", "confidence": <0.0-1.0>,
+  "proposal": {{"tag": "WAIT"|"READY"|"NEEDS_CONFIRMATION",
+               "suggested_entry": <number>, "sizing_rationale": "<max 25 words>"}}}}"""
+
+
+def _bars(symbol, days=70):
+    import yfinance as yf
+    try:
+        h = yf.Ticker(symbol).history(period="1y")
+        bars = [{"high": float(hi), "low": float(lo), "close": float(c)}
+                for hi, lo, c in zip(h["High"], h["Low"], h["Close"])]
+        return bars[-days:] if len(bars) >= 50 else None
+    except Exception:
+        return None
+
+
+def _tech(bars):
+    closes = [b["close"] for b in bars]
+    highs = [b["high"] for b in bars]
+    lows = [b["low"] for b in bars]
+    gains = losses = 0.0
+    for i in range(-14, 0):
+        d = closes[i] - closes[i - 1]
+        gains += max(d, 0); losses += max(-d, 0)
+    rsi = round(100 - 100 / (1 + gains / losses), 1) if losses else 100.0
+    trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+           for i in range(-14, 0)]
+    return {"price": closes[-1], "rsi": rsi, "atr": sum(trs) / 14,
+            "swing_high": max(highs[-20:]), "swing_low": min(lows[-20:]),
+            "sma50": sum(closes[-50:]) / 50}
+
+
+def _analyst(cur, symbol):
+    cur.execute("""SELECT target_mean_price, target_low_price, target_high_price, recommendation_key,
+                          number_of_analyst_opinions FROM yahoo_analyst_targets_history
+                   WHERE symbol=%s ORDER BY created_at DESC LIMIT 1""", (symbol,))
+    r = cur.fetchone()
+    if not r:
+        return {"tgt_mean": "n/a", "tgt_low": "n/a", "tgt_high": "n/a", "rec_key": "n/a", "n_analysts": 0}
+    return {"tgt_mean": f"${float(r[0]):.2f}" if r[0] else "n/a",
+            "tgt_low": f"${float(r[1]):.2f}" if r[1] else "n/a",
+            "tgt_high": f"${float(r[2]):.2f}" if r[2] else "n/a",
+            "rec_key": r[3] or "n/a", "n_analysts": int(r[4] or 0)}
+
+
+def _parse(text):
+    m = re.search(r"\{.*\}", text or "", re.S)
+    try:
+        p = json.loads(m.group(0)) if m else None
+        return p if p and "entry_zone_low" in p else None
+    except Exception:
+        return None
+
+
+def _candidates(cur, limit, symbols=None, scope="watchlist"):
+    if scope == "proposals":
+        # operator 2026-06-12: "same should be done for strategy proposals" — validate each PENDING
+        # proposal's entry against live structure (zone realism, urgency, WAIT/READY tag)
+        cur.execute("""SELECT DISTINCT ON (symbol) symbol, NULL::numeric AS hermes_composite_score,
+                         NULL::int AS hermes_rank, NULL::text AS trend,
+                         id AS proposal_id, proposed_entry, proposed_stop, proposed_target1, strategy_id
+                       FROM paper_trade_proposals
+                       WHERE status IN ('PENDING','APPROVED') AND symbol ~ '^[A-Z]{1,5}$'
+                       ORDER BY symbol, created_at DESC""")
+    else:
+        cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
+                         NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
+                         NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
+                       FROM watchlist_items
+                       WHERE symbol ~ '^[A-Z]{1,5}$' AND status <> 'removed'
+                         AND (in_directive_watch=true OR status='active')
+                       ORDER BY symbol, hermes_composite_score DESC NULLS LAST""")
+    rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+    if symbols:
+        want = {s.upper() for s in symbols}
+        rows = [r for r in rows if r["symbol"] in want]
+    rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
+    return rows[:limit]
+
+
+def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist"):
+    import llm_lane
+    from db_adapter import _get_conn
+    conn = _get_conn(); cur = conn.cursor()
+    if not llm_lane.available(lane):
+        lane = "local"
+    done = failed = alerts = 0
+    for c in _candidates(cur, limit, symbols, scope):
+        sym = c["symbol"]
+        bars = _bars(sym)
+        if not bars:
+            failed += 1; continue
+        t = _tech(bars)
+        prompt = PROMPT_V1.format(symbol=sym, hermes=c.get("hermes_composite_score"),
+                                  rank=c.get("hermes_rank"), trend=c.get("trend"),
+                                  atr_pct=t["atr"] / t["price"] * 100,
+                                  sma50_dist=(t["price"] - t["sma50"]) / t["sma50"] * 100,
+                                  **{k: t[k] for k in ("price", "rsi", "atr", "swing_high", "swing_low", "sma50")},
+                                  **_analyst(cur, sym))
+        if scope == "proposals" and c.get("proposal_id"):
+            prompt += (f"\nEXISTING PROPOSAL #{c['proposal_id']} (strategy {c.get('strategy_id')}): "
+                       f"entry ${c.get('proposed_entry')} stop ${c.get('proposed_stop')} "
+                       f"target ${c.get('proposed_target1')}. VALIDATE this entry against live structure: "
+                       "your zone/limit may agree or amend it — say which in entry_thesis. The proposal "
+                       "stays untouched; this is advisory.")
+        try:
+            out = llm_lane.generate(prompt, lane=lane, timeout=120)
+        except Exception as e:
+            print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
+        p = _parse(out)
+        if not p:
+            print(f"  {sym}: unparseable"); failed += 1; continue
+        model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "local"
+        # proximity check: already inside the zone upgrades urgency honestly
+        urg = p.get("urgency", "watch")
+        if p.get("entry_zone_low") and p.get("entry_zone_high") \
+                and p["entry_zone_low"] <= t["price"] <= p["entry_zone_high"] and urg == "watch":
+            urg = "ready"
+        prop = p.get("proposal") or {}
+        p["scope"] = scope
+        if c.get("proposal_id"):
+            p["proposal_id"] = c["proposal_id"]
+        cur.execute("""INSERT INTO watchlist_entry_plans
+                         (symbol, plan, setup_type, entry_zone_low, entry_zone_high, limit_price,
+                          stop_price, target_price, risk_reward, urgency, confidence, proposal_tag,
+                          price_at_plan, model_used, prompt_version)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (sym, json.dumps(p), p.get("setup_type"), p.get("entry_zone_low"),
+                     p.get("entry_zone_high"), p.get("limit_price"), p.get("stop_price"),
+                     p.get("target_price"), p.get("risk_reward"), urg, p.get("confidence"),
+                     prop.get("tag"), t["price"], model, PROMPT_VERSION))
+        plan_id = cur.fetchone()[0]
+        conn.commit()
+        print(f"  {sym}: {p.get('setup_type')} zone {p.get('entry_zone_low')}-{p.get('entry_zone_high')} "
+              f"limit {p.get('limit_price')} R:R {p.get('risk_reward')} · {urg} · {prop.get('tag')}")
+        done += 1
+        if alert and urg in ("near_entry", "ready"):
+            cur.execute("""SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND alerted_at > now()-interval '20 hours'""", (sym,))
+            if not cur.fetchone():
+                if _alert(sym, p, urg, t["price"]):
+                    cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
+                    conn.commit(); alerts += 1
+    print(json.dumps({"lane": lane, "planned": done, "failed": failed, "alerts": alerts,
+                      "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}))
+
+
+def _alert(sym, p, urg, price) -> bool:
+    import os
+    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not tok:
+        try:
+            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if l.startswith("TELEGRAM_BOT_TOKEN="):
+                    tok = l.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    try:
+        from tg_chat_ids import chat_ids
+        chat = (chat_ids() or [None])[0]
+    except Exception:
+        chat = None
+    if not (tok and chat):
+        return False
+    icon = "🟢 READY" if urg == "ready" else "🟡 NEAR-ENTRY"
+    prop = p.get("proposal") or {}
+    text = (f"{icon} *ENTRY ALERT — {sym}* (advisory)\n"
+            f"setup: {p.get('setup_type')} · now ${price:.2f}\n"
+            f"zone: ${p.get('entry_zone_low')}–${p.get('entry_zone_high')} · limit ${p.get('limit_price')}\n"
+            f"stop ${p.get('stop_price')} · target ${p.get('target_price')} · R:R {p.get('risk_reward')}\n"
+            f"why: {str(p.get('entry_thesis',''))[:180]}\n"
+            f"invalidation: {str(p.get('invalidation',''))[:120]}\n"
+            f"proposal advice: *{prop.get('tag','WAIT')}* — {str(prop.get('sizing_rationale',''))[:100]}\n"
+            f"_advisory only — nothing queued, nothing executed_")
+    try:
+        import requests
+        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown"}, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lane", default="local", choices=["local", "grok"])
+    ap.add_argument("--symbols")
+    ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])
+    ap.add_argument("--no-alert", action="store_true")
+    a = ap.parse_args()
+    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None,
+        limit=a.limit, alert=not a.no_alert, scope=a.scope)

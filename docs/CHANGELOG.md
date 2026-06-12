@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-06-12 - Entry Strategy pipeline + canonical watch universe + enrichment-coverage auditing agent
+
+**Watchlist Entry Strategy (operator requirement, ADVISORY ONLY):** scripts/watchlist_entry_planner.py
++ watchlist_entry_plans table — per watch-grade symbol: entry thesis, typed setup (pullback/breakout/
+support-bounce/reversal), entry ZONE + realistic limit, objective pullback definition + invalidation,
+structural stop/target/R:R, urgency (watch/near_entry/ready, price-in-zone upgrades honestly),
+proposal advice tag (WAIT/READY/NEEDS_CONFIRMATION — never queues/executes). Telegram entry alerts
+(ticker/zone/limit/reason/urgency, 20h dedup). --scope proposals VALIDATES pending proposals' entries
+against live structure (proposal untouched). First run: 5/5 directive symbols planned, 5 alerts.
+Crons: watchlist 17:35 + proposals 17:45 M-F. Watchlist cards: 🎯 entry chip (zone·limit·urgency,
+full plan tooltip); items endpoint LATERAL-joins latest plan. local_llm num_predict env-overridable
+(300 cap truncated strict-JSON outputs).
+
+**Root cause + the agent that checks the checkers (operator order):** scripts/watch_universe.py =
+THE canonical watch-grade universe (held + paper-30d + pending proposals + GO/WAIT + active +
+DIRECTIVES regardless of status/rank — operator directives outrank scores, encoded once).
+scripts/audit_enrichment_coverage.py audits EVERY enrichment surface (technicals/analyst/news/LLM
+curation/protection advisory/synthesis-failures) against that universe daily 16:45 w/ Telegram on
+directive gaps. First pass honestly flags directive news_7d (fix lands next ingestion cycle) +
+CIFR synthesis retry (re-queued — the dead-qwen 'LLM error: All providers failed' era: 409 stale
+failure rows found, current-universe = only CIFR; agents re-run on gemma). pro-analyst read model +
+fetch universes patched (CIFR strong_buy 16an $32 +41.4% now pills on the card); analyst-rating
+filter pills added to Watchlist hub; psycopg2 LIKE-% bug fixed in audit.
+
 ## 2026-06-12 - FULL-portfolio arbitration COMPLETE (39 symbols) + directive-universe fix (analyst/news/LLM curation)
 
 **Full sweep finished, free lanes first:** gemma 39/39 -> grok 39/39 -> ONE Anthropic arbitration

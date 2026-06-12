@@ -3225,12 +3225,23 @@ def _wl_items(query: dict = None):
                    am.final_synthesis_status, am.required_agents, am.completed_agents,
                    am.needs_iteration as maturity_needs_iteration,
                    am.decision_quality_status, am.actionable as decision_actionable,
-                   sm.in_portfolio
+                   sm.in_portfolio,
+                   ep.setup_type AS entry_setup, ep.entry_zone_low, ep.entry_zone_high,
+                   ep.limit_price AS entry_limit, ep.stop_price AS entry_stop,
+                   ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
+                   ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
+                   ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
+                   ep.model_used AS entry_model
             FROM watchlist_items wi
             LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
             LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
             LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
             LEFT JOIN watchlist_symbol_master sm ON sm.symbol = wi.symbol
+            LEFT JOIN LATERAL (
+                SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
+                       target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
+                FROM watchlist_entry_plans wep WHERE wep.symbol = wi.symbol
+                ORDER BY created_at DESC LIMIT 1) ep ON true
             WHERE {where}
             ORDER BY wi.symbol,
                      (COALESCE(wi.in_directive_watch, false) = false),
