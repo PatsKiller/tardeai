@@ -39,6 +39,7 @@ function num(v: any): number | null { const x = Number(v); return Number.isFinit
 function first(...vals: any[]) { return vals.find(v => v !== undefined && v !== null && v !== '') }
 function acct(a: string) { return !a || a === 'ANY' ? 'ANY SCHWAB' : a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase() }
 function baseQty(x: any) { return Number(first(x.qty, x.shares, x.quantity?.qty, x.recommended_qty, x.position_size_shares, 10)) || 10 }
+function str(v: any) { return v == null ? '' : String(v) }
 
 function fromProposal(p: any, local: LocalState): SetupRow | null {
   const symbol = String(first(p.symbol, p.ticker, p.instrument?.symbol, '')).toUpperCase()
@@ -81,10 +82,11 @@ function fromDraft(d: any, local: LocalState): SetupRow | null {
   if (!symbol) return null
   const id = String(first(d.intent_id, it.intent_id, `draft-${symbol}-${it.entry?.limit_price ?? ''}`))
   const entry = it.entry ?? {}
+  const fallbackQty = Number(first(it.quantity?.qty, d.qty, 10)) || 10
   return {
     id, source: 'DRAFT', raw: d, symbol,
     account: local[id]?.account ?? String(first(it.account_key, d.account_key, 'ANY')),
-    qty: local[id]?.qty ?? Number(first(it.quantity?.qty, d.qty, 10)) || 10,
+    qty: local[id]?.qty ?? fallbackQty,
     side: it.direction === 'SHORT' ? 'SELL SHORT' : 'BUY',
     entryType: String(first(entry.method, 'LIMIT')), entryPrice: num(first(entry.limit_price, entry.stop_price)),
     stop: num(it.exit_policy?.stop?.price), trail: it.exit_policy?.stop?.trail ?? null,
@@ -106,8 +108,12 @@ function line(r: SetupRow) {
 
 function csv(v: any) { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 function csvText(rows: SetupRow[]) {
-  const out = [['Source','Symbol','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
-  rows.forEach(r => out.push([r.source, r.symbol, r.account, r.side, String(r.qty), r.entryType, r.entryPrice ?? '', r.stop ?? '', r.targets.map((t: any) => t.price).join('|'), r.tif, r.decision ?? '', r.score ?? '', r.sector ?? '', r.reason ?? '', line(r)]))
+  const out: string[][] = [['Source','Symbol','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
+  rows.forEach(r => out.push([
+    r.source, r.symbol, r.account, r.side, String(r.qty), r.entryType,
+    str(r.entryPrice), str(r.stop), r.targets.map((t: any) => t.price).join('|'), r.tif,
+    str(r.decision), str(r.score), str(r.sector), str(r.reason), line(r)
+  ]))
   return out.map(r => r.map(csv).join(',')).join('\n') + '\n'
 }
 
