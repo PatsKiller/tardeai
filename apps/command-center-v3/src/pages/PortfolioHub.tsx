@@ -24,11 +24,51 @@ const signalColor = (s?: string) => {
 const plPct = (h: any): number | null =>
   (h.cost_basis != null && h.cost_basis > 0 && h.gain_loss != null) ? (h.gain_loss / h.cost_basis) * 100 : null
 
+// ── signal sub-tab buckets (operator request 2026-06-12) ──
+const SIGNAL_TABS: [string, string[]][] = [
+  ['All', []],
+  ['Buy/Add', ['ADD', 'BUY', 'STRONG_BUY', 'ACCUMULATE']],
+  ['Hold', ['HOLD', 'NEUTRAL']],
+  ['Watch', ['WATCH', 'MONITOR', 'CAUTION']],
+  ['Trim/Sell', ['TRIM', 'SELL', 'REDUCE', 'EXIT']],
+]
+const PAGE_SIZE = 12
+
+// LLM provenance badge styling — which model lane reviewed this symbol (advisory research only)
+const LLM_LANE: Record<string, { label: string; c: string }> = {
+  local: { label: 'GEMMA', c: '#2dd4bf' },
+  grok: { label: 'GROK', c: '#f59e0b' },
+  chatgpt: { label: 'GPT', c: '#a3e635' },
+  claude: { label: 'CLAUDE', c: '#d97757' },
+}
+function LlmBadges({ cov }: { cov?: any[] }) {
+  if (!cov?.length) return <span title="no LLM research touched this symbol in 30d" style={{ fontSize: 8, color: 'var(--text3)' }}>no LLM review</span>
+  const byLane: Record<string, any> = {}
+  for (const c of cov) {
+    const k = LLM_LANE[c.lane] ? c.lane : 'local'
+    if (!byLane[k] || c.last_at > byLane[k].last_at) byLane[k] = c
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
+      {Object.entries(byLane).map(([lane, c]: any) => {
+        const m = LLM_LANE[lane]
+        return <span key={lane} title={`${c.model} · ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''} (advisory research)`}
+          style={{ fontSize: 7.5, fontWeight: 800, padding: '1px 5px', borderRadius: 3, letterSpacing: 0.4,
+            background: m.c + '1f', color: m.c, border: `1px solid ${m.c}44`, cursor: 'help' }}>
+          🤖 {m.label}</span>
+      })}
+    </span>
+  )
+}
+
 export default function PortfolioHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Holdings')
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
+  const [sigTab, setSigTab] = useState('All')
+  const [page, setPage] = useState(0)
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
+  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
   const paMap = useProAnalystMap()
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
@@ -48,7 +88,19 @@ export default function PortfolioHub({ onDrill }: Props) {
   }
   const accounts = Object.entries(acctMap).sort((a, b) => b[1].value - a[1].value)
   const acctColor = (a: string) => ACCT_COLORS[Math.max(0, accounts.findIndex(([k]) => k === a)) % ACCT_COLORS.length]
-  const holdingsList = acctFilter ? allHoldings.filter((h: any) => (h.account ?? 'unknown') === acctFilter) : allHoldings
+  const acctFiltered = acctFilter ? allHoldings.filter((h: any) => (h.account ?? 'unknown') === acctFilter) : allHoldings
+  // signal sub-tab filter + per-bucket counts
+  const sigCount = (sigs: string[]) => sigs.length === 0 ? acctFiltered.length
+    : acctFiltered.filter((h: any) => sigs.includes(String(h.signal || '').toUpperCase())).length
+  const sigSet = SIGNAL_TABS.find(([k]) => k === sigTab)?.[1] ?? []
+  const holdingsList = (sigSet.length === 0 ? acctFiltered
+    : acctFiltered.filter((h: any) => sigSet.includes(String(h.signal || '').toUpperCase())))
+    .slice().sort((a: any, b: any) => (b.market_value ?? 0) - (a.market_value ?? 0))
+  const pages = Math.max(1, Math.ceil(holdingsList.length / PAGE_SIZE))
+  const pageClamped = Math.min(page, pages - 1)
+  const pageRows = holdingsList.slice(pageClamped * PAGE_SIZE, (pageClamped + 1) * PAGE_SIZE)
+  const coverage: Record<string, any[]> = (llmCov as any)?.coverage ?? {}
+  const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
 
   return (
     <div>
@@ -114,50 +166,116 @@ export default function PortfolioHub({ onDrill }: Props) {
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/overview → sectors</div>
           </div>
 
-          {/* Holdings table */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, maxHeight: 500, overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Holdings ({holdingsList.length})</div>
+          {/* Holdings — large graphical cards (operator request 2026-06-12) */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+              {/* signal sub-tab filters */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {SIGNAL_TABS.map(([k, sigs]) => {
+                  const n = sigCount(sigs)
+                  const c = k === 'Buy/Add' ? '#22c55e' : k === 'Trim/Sell' ? '#ef4444' : k === 'Watch' ? '#f59e0b' : '#60a5fa'
+                  return (
+                    <button key={k} onClick={() => { setSigTab(k); setPage(0) }} style={{
+                      padding: '4px 12px', fontSize: 10.5, borderRadius: 6, cursor: 'pointer',
+                      border: `1px solid ${sigTab === k ? c : 'var(--border)'}`,
+                      background: sigTab === k ? `${c}1f` : 'var(--bg2)',
+                      color: sigTab === k ? c : 'var(--text3)', fontWeight: sigTab === k ? 800 : 400,
+                    }}>{k} ({n})</button>
+                  )
+                })}
+              </div>
               {holdings?.enrichment_as_of && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={new Date(holdings.enrichment_as_of).toLocaleString()}>technicals as of {new Date(holdings.enrichment_as_of).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.85fr 1.25fr 0.85fr 0.6fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span>Symbol</span><span>Value</span><span>P/L%</span><span>RSI</span><span>Signal</span><span>% Port</span>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
+              {pageRows.map((h: any) => {
+                const pl = plPct(h)
+                const zc = rsiZoneColor(h.rsi_status)
+                const sc = signalColor(h.signal)
+                const ac = acctColor(h.account ?? 'unknown')
+                const dayPct = h.day_change_pct
+                return (
+                  <div key={`${h.symbol}-${h.account}`}
+                    onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
+                    style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: `4px solid ${sc === 'var(--text3)' ? ac : sc}`,
+                      borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
+                    {/* header: symbol + signal */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</span>
+                      <ProAnalystPill symbol={h.symbol} map={paMap} compact />
+                      <span style={{ flex: 1 }} />
+                      {h.signal
+                        ? <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${sc}1f`, color: sc }}>{h.signal}</span>
+                        : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
+                    </div>
+                    <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.name}</div>
+                    {/* account badge */}
+                    <div style={{ marginTop: 5 }}>
+                      <span style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 7px', borderRadius: 3, background: `${ac}1f`, color: ac }}>
+                        ● {(h.account ?? 'unknown').replace(/_/g, ' ')}</span>
+                    </div>
+                    {/* value + P/L row */}
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+                      <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: pl == null ? 'var(--text3)' : pl >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {pl == null ? '— P/L' : `${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%`}</span>
+                      {dayPct != null && <span style={{ fontSize: 9.5, color: dayPct >= 0 ? '#22c55e' : '#ef4444' }}>today {dayPct >= 0 ? '+' : ''}{Number(dayPct).toFixed(1)}%</span>}
+                    </div>
+                    {/* % of portfolio bar */}
+                    <div style={{ marginTop: 7, height: 5, background: 'var(--bg2)', borderRadius: 3 }}>
+                      <div style={{ width: `${Math.min(100, (h.portfolio_pct ?? 0) * 4)}%`, height: '100%', background: ac, borderRadius: 3, minWidth: 2 }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>
+                      <span>{h.portfolio_pct != null ? `${h.portfolio_pct.toFixed(1)}% of portfolio` : ''}</span>
+                      <span>{h.shares != null ? `${h.shares} sh` : ''}</span>
+                    </div>
+                    {/* chips: RSI + LLM stop/trail advisory + LLM provenance */}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {h.rsi != null && (
+                        <span title={h.proxy ? `proxy: ${h.proxy.ticker} (${h.proxy.label})` : h.rsi_status}
+                          style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${zc}1a`, color: zc }}>
+                          RSI {Math.round(h.rsi)}{h.proxy ? '*' : ''} {h.rsi_status === 'oversold' ? 'buy zone' : h.rsi_status === 'overbought' ? 'caution' : 'neutral'}</span>
+                      )}
+                      {(() => {
+                        const pr = protection[(h.symbol || '').toUpperCase()]
+                        return pr ? (
+                          <span title={`${pr.rec}\n${pr.rationale ?? ''}\nanalyzed ${String(pr.at).slice(0, 10)} by ${pr.model} · confidence ${pr.confidence ?? '—'} · ADVISORY ONLY`}
+                            style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+                              background: 'rgba(168,85,247,.13)', color: '#a855f7', cursor: 'help' }}>
+                            🛡 {String(pr.rec).split('·')[0].trim()}</span>
+                        ) : null
+                      })()}
+                      <span style={{ flex: 1 }} />
+                      <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            {holdingsList.map((h: any) => {
-              const pl = plPct(h)
-              const zc = rsiZoneColor(h.rsi_status)
-              return (
-              <div key={`${h.symbol}-${h.account}`}
-                onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
-                style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.85fr 1.25fr 0.85fr 0.6fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol} <ProAnalystPill symbol={h.symbol} map={paMap} compact /></div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{h.account}</div>
-                </div>
-                <span style={{ color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
-                {/* P/L% — green/red; "—" where no cost basis (e.g. 401k funds) */}
-                <span style={{ color: pl == null ? 'var(--text3)' : pl >= 0 ? '#22c55e' : '#ef4444', fontWeight: pl == null ? 400 : 600 }}>
-                  {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%`}
-                </span>
-                {/* RSI zone chip (+* when via proxy) */}
-                <span>
-                  {h.rsi != null
-                    ? <span title={h.proxy ? `proxy: ${h.proxy.ticker} (${h.proxy.label})` : h.rsi_status} style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: `${zc}1a`, color: zc, whiteSpace: 'nowrap' }}>
-                        {Math.round(h.rsi)}{h.proxy ? '*' : ''} {h.rsi_status === 'oversold' ? 'buy' : h.rsi_status === 'overbought' ? 'caution' : 'neutral'}
-                      </span>
-                    : <span style={{ color: 'var(--text3)' }}>—</span>}
-                </span>
-                {/* Signal pill */}
-                <span>
-                  {h.signal
-                    ? <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${signalColor(h.signal)}1a`, color: signalColor(h.signal) }}>{h.signal}</span>
-                    : <span style={{ color: 'var(--text3)' }}>—</span>}
-                </span>
-                <span style={{ color: 'var(--text2)' }}>{h.portfolio_pct != null ? `${h.portfolio_pct.toFixed(1)}%` : '—'}</span>
+            {holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
+
+            {/* pagination */}
+            {pages > 1 && (
+              <div style={{ display: 'flex', gap: 5, justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
+                <button disabled={pageClamped === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
+                  style={{ fontSize: 11, padding: '3px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: pageClamped === 0 ? 'var(--text3)' : '#60a5fa', cursor: 'pointer' }}>‹ prev</button>
+                {Array.from({ length: pages }, (_, i) => (
+                  <button key={i} onClick={() => setPage(i)} style={{
+                    fontSize: 10.5, padding: '3px 9px', borderRadius: 5, cursor: 'pointer',
+                    border: `1px solid ${i === pageClamped ? '#60a5fa' : 'var(--border)'}`,
+                    background: i === pageClamped ? 'rgba(96,165,250,.18)' : 'var(--bg2)',
+                    color: i === pageClamped ? '#60a5fa' : 'var(--text3)', fontWeight: i === pageClamped ? 800 : 400 }}>{i + 1}</button>
+                ))}
+                <button disabled={pageClamped >= pages - 1} onClick={() => setPage(p => Math.min(pages - 1, p + 1))}
+                  style={{ fontSize: 11, padding: '3px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: pageClamped >= pages - 1 ? 'var(--text3)' : '#60a5fa', cursor: 'pointer' }}>next ›</button>
+                <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>{holdingsList.length} holdings · {PAGE_SIZE}/page</span>
               </div>
-            )})}
+            )}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
+              P/L% shown where cost basis exists (single source of truth: csv tax lot &gt; broker API); 401(k) funds carry no per-lot basis → "—". RSI * = public-ETF proxy.
+              🤖 badges = which LLM lane reviewed the symbol in the last 30d (advisory research, never an execution signal) · source: /api/v2/portfolio/llm-coverage. Card click = full drawer.
+            </div>
           </div>
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>P/L% shown where cost basis exists (Schwab); 401(k) funds carry no per-lot basis → "—". RSI * = via public-ETF proxy. Day change, shares, fib ladder & full ratings in the row drawer.</div>
         </div>
       )}
 
