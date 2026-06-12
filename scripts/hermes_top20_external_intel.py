@@ -22,6 +22,16 @@ def _conn():
     return _get_conn()
 
 
+def _named(conn, symbols):
+    """Explicit symbol list (operator runs, e.g. 'all buy/strong_buy watchlist items' 2026-06-12)."""
+    cur = conn.cursor()
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_rank, hermes_composite_score,
+                     hermes_score_components, rsi, trend
+                   FROM watchlist_items WHERE symbol = ANY(%s)
+                   ORDER BY symbol, hermes_composite_score DESC""", (sorted({s.upper() for s in symbols}),))
+    return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+
+
 def _top(conn, n):
     """Top-N by Hermes rank PLUS every operator-directive symbol regardless of rank (2026-06-12:
     CIFR #326 / DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions
@@ -63,9 +73,9 @@ def _recent(conn, symbol, lane):
     return cur.fetchone() is not None
 
 
-def run(top=20, lanes=("chatgpt", "grok"), apply=False):
+def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
     conn = _conn()
-    rows = _top(conn, top)
+    rows = _named(conn, symbols) if symbols else _top(conn, top)
     report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0, "detail": []}
     for r in rows:
         q = _question(r)
@@ -96,8 +106,10 @@ def main():
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--lanes", default="chatgpt,grok")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--symbols", help="explicit comma-separated symbol list (overrides --top)")
     a = ap.parse_args()
-    run(top=a.top, lanes=tuple(x.strip() for x in a.lanes.split(",") if x.strip()), apply=a.apply)
+    run(top=a.top, lanes=tuple(x.strip() for x in a.lanes.split(",") if x.strip()), apply=a.apply,
+        symbols=a.symbols.split(",") if a.symbols else None)
 
 
 if __name__ == "__main__":
