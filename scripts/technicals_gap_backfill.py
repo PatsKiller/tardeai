@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""technicals_gap_backfill.py — fill + WATCH for missing technicals (operator 2026-06-12).
+
+Finviz (the ticker_snapshot_daily source) carries no mutual-fund data, so held funds (FCNTX, AMANX,
+401k-style NAV funds) sat with NULL RSI/SMA — which poisons position intelligence and would feed
+garbage to the LLM protection advisor. This script:
+
+  1. Finds HELD + watchlist symbols whose latest snapshot has rsi IS NULL
+  2. Computes RSI14 / SMA20-50-200 distance / week-month perf from yfinance daily NAV/closes
+     (funds have real NAVs; computed honestly, source='nav_computed')
+  3. Upserts into ticker_snapshot_daily — same table, same downstream pipeline, no UI changes needed
+  4. Symbols with NO price series anywhere (delisted, e.g. SRNE) are recorded as delisted_or_no_data
+     — surfaced, never faked
+  5. --alert: Telegram report when symbols REMAIN missing after backfill (the "agent that checks
+     regularly" — wire via cron)
+
+  python3 scripts/technicals_gap_backfill.py [--alert] [--symbols X,Y]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import datetime as dt
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+def _held_symbols() -> set:
+    h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
+    return {(x.get("symbol") or "").upper() for x in h.get("holdings", [])
+            if not x.get("is_cash") and (x.get("symbol") or "").upper() != "CASH"
+            and re.fullmatch(r"[A-Z]{1,5}", (x.get("symbol") or "").upper())}
+
+
+def _missing(cur, universe):
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, rsi, data FROM ticker_snapshot_daily
+                   WHERE symbol = ANY(%s) ORDER BY symbol, snapshot_date DESC""", (sorted(universe),))
+    latest = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    out = []
+    for s in universe:
+        rsi, data = latest.get(s, (None, None))
+        if rsi is not None:
+            continue
+        d = data if isinstance(data, dict) else {}
+        if d.get("delisted_or_no_data"):
+            continue        # operator 2026-06-12: IGNORE delisted assets — marked once, never re-nagged
+        out.append(s)
+    return sorted(out)
+
+
+def _compute(closes):
+    import statistics
+    c = closes
+    out = {}
+    if len(c) >= 15:
+        gains = losses = 0.0
+        for i in range(-14, 0):
+            d = c[i] - c[i - 1]
+            gains += max(d, 0); losses += max(-d, 0)
+        out["rsi"] = round(100 - 100 / (1 + gains / losses), 2) if losses else 100.0
+    px = c[-1]
+    for n, k in ((20, "sma20_pct"), (50, "sma50_pct"), (200, "sma200_pct")):
+        if len(c) >= n:
+            sma = sum(c[-n:]) / n
+            out[k] = round((px - sma) / sma * 100, 2)
+    if len(c) >= 6:
+        out["perf_week_pct"] = round((px - c[-6]) / c[-6] * 100, 2)
+    if len(c) >= 22:
+        out["perf_month_pct"] = round((px - c[-22]) / c[-22] * 100, 2)
+    return out
+
+
+def run(symbols=None, alert=False):
+    from db_adapter import _get_conn
+    conn = _get_conn(); cur = conn.cursor()
+    universe = set(s.upper() for s in symbols) if symbols else _held_symbols()
+    missing = _missing(cur, universe)
+    if not missing:
+        print(json.dumps({"status": "clean", "checked": len(universe), "missing": 0}))
+        return
+    import yfinance as yf
+    filled, dead = [], []
+    today = dt.date.today()
+    for sym in missing:
+        try:
+            hist = yf.Ticker(sym).history(period="1y")
+            closes = [float(v) for v in hist["Close"].tolist()] if len(hist) else []
+        except Exception:
+            closes = []
+        if len(closes) < 15:
+            dead.append(sym)
+            cur.execute("""INSERT INTO ticker_snapshot_daily (snapshot_date, symbol, source, data)
+                           VALUES (%s,%s,'nav_computed',%s)
+                           ON CONFLICT (snapshot_date, symbol) DO UPDATE SET data=EXCLUDED.data""",
+                        (today, sym, json.dumps({"delisted_or_no_data": True, "checked_at": str(dt.datetime.now())})))
+            continue
+        t = _compute(closes)
+        cur.execute("""INSERT INTO ticker_snapshot_daily
+                         (snapshot_date, symbol, source, rsi, sma20_pct, sma50_pct, sma200_pct,
+                          perf_week_pct, perf_month_pct, data)
+                       VALUES (%s,%s,'nav_computed',%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (snapshot_date, symbol) DO UPDATE SET
+                         rsi=EXCLUDED.rsi, sma20_pct=EXCLUDED.sma20_pct, sma50_pct=EXCLUDED.sma50_pct,
+                         sma200_pct=EXCLUDED.sma200_pct, perf_week_pct=EXCLUDED.perf_week_pct,
+                         perf_month_pct=EXCLUDED.perf_month_pct, source='nav_computed', data=EXCLUDED.data""",
+                    (today, sym, t.get("rsi"), t.get("sma20_pct"), t.get("sma50_pct"), t.get("sma200_pct"),
+                     t.get("perf_week_pct"), t.get("perf_month_pct"),
+                     json.dumps({"computed_from": "yfinance NAV/close", "bars": len(closes)})))
+        filled.append({sym: t})
+    conn.commit()
+    report = {"checked": len(universe), "was_missing": len(missing),
+              "filled": filled, "no_data": dead}
+    print(json.dumps(report, indent=1))
+    if alert and dead:
+        _alert(dead)
+    return report
+
+
+def _alert(dead):
+    import os
+    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not tok:
+        try:
+            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if l.startswith("TELEGRAM_BOT_TOKEN="):
+                    tok = l.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    try:
+        from tg_chat_ids import chat_ids
+        chat = (chat_ids() or [None])[0]
+    except Exception:
+        chat = None
+    if not (tok and chat):
+        return
+    try:
+        import requests
+        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                      json={"chat_id": chat, "parse_mode": "Markdown",
+                            "text": "⚠️ *TECHNICALS GAP* — no price series found for held symbols: "
+                                    + ", ".join(dead) + "\n(delisted or unmapped — flagged, not faked)"},
+                      timeout=10)
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--alert", action="store_true")
+    ap.add_argument("--symbols")
+    a = ap.parse_args()
+    run(symbols=a.symbols.split(",") if a.symbols else None, alert=a.alert)

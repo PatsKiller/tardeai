@@ -141,13 +141,19 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
           <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text2)', marginBottom: 4 }}>News & catalysts</div>
           {news.length === 0 && <div style={{ fontSize: 9, color: 'var(--text3)' }}>No recent research surfaced.</div>}
-          {news.slice(0, 3).map((n: any, i: number) => {
+          {/* operator 2026-06-12: expanded = FULL text, no truncation — the card is open to be READ */}
+          {news.map((n: any, i: number) => {
             const stale = (n.age_hours ?? 0) > 48
             return (
-              <div key={i} style={{ fontSize: 9, marginBottom: 4, display: 'flex', gap: 5, alignItems: 'baseline', opacity: stale ? 0.6 : 1 }}>
-                <span style={chip('var(--bg2)', 'var(--text2)')}>{n.source}</span>
-                {n.url ? <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none', flex: 1 }}>{(n.title || '').slice(0, 64)}</a> : <span style={{ color: 'var(--text2)', flex: 1 }}>{(n.title || '').slice(0, 64)}</span>}
-                {n.age_hours != null && <span style={{ color: stale ? '#f59e0b' : 'var(--text3)' }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}
+              <div key={i} style={{ fontSize: 10, marginBottom: 6, opacity: stale ? 0.65 : 1, lineHeight: 1.45 }}>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'baseline' }}>
+                  <span style={chip('var(--bg2)', 'var(--text2)')}>{n.source}</span>
+                  {n.age_hours != null && <span style={{ fontSize: 9, color: stale ? '#f59e0b' : 'var(--text3)' }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}
+                </div>
+                {n.url
+                  ? <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none', display: 'block', marginTop: 2 }}>{n.title || ''}</a>
+                  : <div style={{ color: 'var(--text2)', marginTop: 2 }}>{n.title || ''}</div>}
+                {n.why_it_matters && <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 2 }}><b style={{ color: 'var(--text2)' }}>Why it matters:</b> {n.why_it_matters}</div>}
               </div>
             )
           })}
