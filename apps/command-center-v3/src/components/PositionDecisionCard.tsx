@@ -71,9 +71,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       {(protectionRec || Object.keys(lanes).length > 0) && (
         <div style={{ marginTop: 6, padding: '6px 9px', borderRadius: 6, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.25)' }}>
           {protectionRec && (
-            <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — never an order`}
+            <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — approval→draft→Schwab wiring is a future gated phase`}
               style={{ fontSize: 10.5, fontWeight: 700, color: '#c084fc', cursor: 'help' }}>
               🛡 LLM advisory: {protectionRec.rec}
+              {/* live distance-to-advised-stop — the monitoring leg of the future approve→send chain */}
+              {protectionRec.stop_distance_pct != null && (
+                <span style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 800,
+                  color: protectionRec.stop_distance_pct < 2 ? '#ef4444' : protectionRec.stop_distance_pct < 5 ? '#f59e0b' : '#22c55e' }}
+                  title={`current $${protectionRec.price} vs advised stop $${protectionRec.stop_price}`}>
+                  {protectionRec.stop_distance_pct < 0 ? '⛔ BELOW advised stop' : `${protectionRec.stop_distance_pct}% above advised stop`}
+                </span>
+              )}
             </div>
           )}
           {protectionRec?.rationale && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{protectionRec.rationale}</div>}

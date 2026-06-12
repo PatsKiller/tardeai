@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-06-12 - FULL-portfolio LLM coverage + structured advisory chain (approve->draft->Schwab-ready) + fidelity proxy technicals
+
+**Fidelity funds wired through proxies:** holding_proxies.py = single source of truth for the
+fund->ETF map (was inlined in api_v2); technicals_gap_backfill fills FID-CONTRA-F/SP500-D/TRP-LVAL/
+SS-SMMD/WM-BLAIR/AB-DISC-Z/FID-DIVINTL/SS-GACEQ/JPM-LGCG under the FUND code (source='proxy:<ETF>',
+explicit asset-class caveat); open_trades_intelligence joins proxy-mapped codes -> all 10 401k funds
+now show RSI/SMA/trend; their false 'data stale / RSI missing' CRITICALs clear.
+
+**Full sweep (operator-ordered, free lanes first):** advisor floor 500->100, default limit 50,
+per-symbol dedupe (V/SCHD/SCHG multi-account), 401k positions included with reframed prompt (stop =
+NAV ALERT level for manual trim — stop ORDERS impossible in a 401k; proxy noted). gemma local
+39/39 -> grok full sweep -> ONE Anthropic arbitration (operator-authorized).
+
+**Structured advisory chain (future wiring: approved -> draft OrderIntent -> Schwab L4 -> monitor):**
+/api/v2/portfolio/llm-coverage now returns NUMERIC stop_price / trail_type / trail_offset /
+current price / **stop_distance_pct** per symbol + structured claude_verdicts (verdict_stop/trail,
+agrees_with). Position cards show live 'X% above advised stop' (red <2% / amber <5% / green) and
+'⛔ BELOW advised stop'. Everything stays ADVISORY — the approve/send legs are a future gated phase
+on the existing dormant broker-orders rails.
+
+**LLM holdings schedule (operator-approved, all installed):** daily 16:30 technicals checker ·
+16:35 basis audit · 17:05 gemma full advisory (M-F) · WEEKLY Mon 17:20 grok full sweep ·
+MONTHLY 1st 08:10 Claude arbitration. Free lanes always run first; Anthropic is monthly-only.
+
 ## 2026-06-12 - LLM sweeps RAN + monthly Claude arbitration + live API-key validator
 
 Sequencing honored: data gates first (basis 0-flagged, technicals backfilled), then FREE lanes, then

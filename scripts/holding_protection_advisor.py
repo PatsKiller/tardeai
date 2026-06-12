@@ -77,6 +77,18 @@ def _bars(symbol, days=70):
             bars = [{"open": float(o), "high": float(hi), "low": float(lo), "close": float(c)}
                     for o, hi, lo, c in zip(h["Open"], h["High"], h["Low"], h["Close"])]
         except Exception:
+            bars = []
+    if len(bars) < 15:
+        # fund codes with no public series: asset-class proxy ETF bars (operator-approved 2026-06-12)
+        try:
+            from holding_proxies import HOLDING_PROXY_MAP
+            px = HOLDING_PROXY_MAP.get(symbol.upper())
+            if px:
+                import yfinance as yf
+                h = yf.Ticker(px[0]).history(period="1y")
+                bars = [{"open": float(o), "high": float(hi), "low": float(lo), "close": float(c),
+                         "_proxy": px[0]} for o, hi, lo, c in zip(h["Open"], h["High"], h["Low"], h["Close"])]
+        except Exception:
             return None
     return bars[-days:] if bars else None
 
@@ -125,14 +137,33 @@ def _parse(text):
 
 
 def _candidates(limit):
+    """All real-account positions worth advising (operator 2026-06-12: full sweep — floor lowered
+    500->100 so the small taxable names are covered; proxy-mapped 401k fund codes included; only
+    CASH/dust/delisted-CUSIPs stay out)."""
+    from holding_proxies import HOLDING_PROXY_MAP
     h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
-    rows = [x for x in h.get("holdings", [])
-            if str(x.get("account", "")).startswith("schwab") and not x.get("is_cash")
-            and (x.get("symbol") or "").upper() != "CASH"
-            and re.fullmatch(r"[A-Z]{1,5}", (x.get("symbol") or "").upper())   # equities/ETFs, skip CUSIPs
-            and float(x.get("market_value") or 0) > 500]
+    rows = []
+    for x in h.get("holdings", []):
+        sym = (x.get("symbol") or "").upper()
+        acct = str(x.get("account", ""))
+        if x.get("is_cash") or sym == "CASH":
+            continue
+        if not (acct.startswith("schwab") or acct.startswith("fidelity")):
+            continue
+        if not (re.fullmatch(r"[A-Z]{1,5}", sym) or sym in HOLDING_PROXY_MAP):
+            continue
+        if float(x.get("market_value") or 0) <= 100:
+            continue
+        rows.append(x)
     rows.sort(key=lambda x: -float(x.get("market_value") or 0))
-    return rows[:limit]
+    # one advisory per SYMBOL (largest position wins) — V/SCHD/SCHG live in several accounts
+    seen, dedup = set(), []
+    for x in rows:
+        s = (x.get("symbol") or "").upper()
+        if s in seen:
+            continue
+        seen.add(s); dedup.append(x)
+    return dedup[:limit]
 
 
 def run(lane="local", symbols=None, limit=12):
@@ -162,6 +193,13 @@ def run(lane="local", symbols=None, limit=12):
             pnl_pct=pnl_pct, rsi=t["rsi"], atr=t["atr"], atr_pct=t["atr"] / t["price"] * 100,
             swing_low=t["swing_low"], sma50=t["sma50"],
             sma50_dist=(t["price"] - t["sma50"]) / t["sma50"] * 100, **_analyst(cur, sym))
+        # 401k funds can't hold stop ORDERS — reframe as NAV alert/trim levels (proxy-based when noted)
+        if str(c.get("account", "")).startswith("fidelity") or bars[0].get("_proxy"):
+            proxy_note = f" Technicals are from the {bars[0].get('_proxy', 'fund NAV')} asset-class proxy." \
+                if bars[0].get("_proxy") else ""
+            prompt += ("\nNOTE: this is a retirement-plan FUND position — stop ORDERS are impossible. "
+                       "Frame stop_price as a NAV ALERT level for a manual trim/rebalance decision, and "
+                       "trail as a review trigger, not an order." + proxy_note)
         try:
             out = llm_lane.generate(prompt, lane=lane, timeout=120)
         except Exception as e:
@@ -197,7 +235,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lane", default="local", choices=["local", "grok"])
     ap.add_argument("--symbols", help="comma-separated override")
-    ap.add_argument("--limit", type=int, default=12)
+    ap.add_argument("--limit", type=int, default=50)   # full-portfolio default (operator 2026-06-12)
     a = ap.parse_args()
     run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit)
 
