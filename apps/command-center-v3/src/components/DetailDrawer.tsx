@@ -88,24 +88,83 @@ function parseMaybeJson(v: any): any {
   if (typeof v === 'string') { const t = v.trim(); if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) { try { return JSON.parse(t) } catch { /* not json */ } } }
   return null
 }
+// Empty-value detector (operator 2026-06-12: "info missing on pills" — null rows are NOISE, hide them)
+function isEmptyVal(v: any): boolean {
+  if (v === null || v === undefined) return true
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase()
+    if (t === '' || t === 'null' || t === 'none' || t === 'n/a') return true
+  }
+  const obj = parseMaybeJson(v)
+  if (Array.isArray(obj)) return obj.length === 0
+  if (obj && typeof obj === 'object') return Object.values(obj).every(isEmptyVal)
+  return false
+}
+
+// Recursive plain-English renderer — NO JSON.stringify anywhere (operator: "remove json with real english").
+// Arrays of objects (news items, findings) become readable blocks; nulls vanish; long text wraps fully.
+function ObjBlock({ obj, depth = 0 }: { obj: any; depth?: number }) {
+  if (Array.isArray(obj)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {obj.filter(x => !isEmptyVal(x)).map((x, i) => {
+          const inner = parseMaybeJson(x)
+          if (inner && typeof inner === 'object') return (
+            <div key={i} style={{ padding: '6px 9px', background: 'var(--bg1)', borderRadius: 6, borderLeft: '2px solid var(--border)' }}>
+              <ObjBlock obj={inner} depth={depth + 1} />
+            </div>
+          )
+          return <div key={i} style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.45 }}>• {String(x)}</div>
+        })}
+      </div>
+    )
+  }
+  // news-shaped object → headline / meta / why-it-matters as readable prose
+  if (obj && typeof obj === 'object' && (obj.title || obj.why_it_matters)) {
+    return (
+      <div>
+        {obj.title && <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text0)', lineHeight: 1.45 }}>{String(obj.title)}</div>}
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+          {[obj.source, obj.age_hours != null ? `${Math.round(Number(obj.age_hours))}h ago` : (obj.published_at ? new Date(obj.published_at).toLocaleString() : null), obj.severity, obj.sentiment].filter(Boolean).join(' · ')}
+        </div>
+        {obj.why_it_matters && <div style={{ fontSize: 10.5, color: 'var(--text2)', marginTop: 4, lineHeight: 1.5 }}><b style={{ color: 'var(--text1)' }}>Why it matters:</b> {String(obj.why_it_matters)}</div>}
+        {obj.url && <a href={obj.url} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, color: '#60a5fa' }}>open source →</a>}
+      </div>
+    )
+  }
+  const entries = Object.entries(obj || {}).filter(([, vv]) => !isEmptyVal(vv))
+  if (entries.length === 0) return <span style={{ fontSize: 10, color: 'var(--text3)' }}>(nothing notable)</span>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {entries.map(([kk, vv]) => {
+        const inner = parseMaybeJson(vv)
+        if (inner && typeof inner === 'object') return (
+          <div key={kk} style={{ padding: '2px 0' }}>
+            <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>{humanizeKey(kk)}</span>
+            <div style={{ paddingLeft: 8, marginTop: 2 }}><ObjBlock obj={inner} depth={depth + 1} /></div>
+          </div>
+        )
+        const f = fmtScalar(vv)
+        return (
+          <div key={kk} style={{ display: 'flex', gap: 10, padding: '1px 0' }}>
+            <span style={{ fontSize: 9.5, color: 'var(--text3)', minWidth: 130 }}>{humanizeKey(kk)}</span>
+            <span style={{ fontSize: 10.5, color: f.color || 'var(--text1)', lineHeight: 1.45, wordBreak: 'break-word' }}>{f.text}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function Field({ k, v }: { k: string; v: any }) {
   const sec = k.match(SECTION_RE)
-  if (sec) return <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text2)', margin: '10px 0 4px', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>{sec[1]}</div>
+  if (sec) return <div style={{ gridColumn: '1 / -1', fontSize: 9, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text2)', margin: '10px 0 4px', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>{sec[1]}</div>
   const obj = parseMaybeJson(v)
   if (obj && typeof obj === 'object') {
-    const entries = Array.isArray(obj) ? obj.map((x, i) => [String(i + 1), x]) : Object.entries(obj)
     return (
-      <div style={{ padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 3 }}>{humanizeKey(k)}</div>
-        <div style={{ paddingLeft: 8, borderLeft: '2px solid var(--border)' }}>
-          {entries.length === 0 && <div style={{ fontSize: 10, color: 'var(--text3)' }}>(none)</div>}
-          {entries.map(([kk, vv]: any) => {
-            const inner = parseMaybeJson(vv)
-            if (Array.isArray(inner)) return <div key={kk} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}><span style={{ fontSize: 9, color: 'var(--text3)' }}>{humanizeKey(String(kk))}</span><span style={{ fontSize: 10, color: 'var(--text1)', textAlign: 'right', maxWidth: 230 }}>{inner.length ? inner.map((x: any) => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(', ') : '—'}</span></div>
-            const f = fmtScalar(typeof vv === 'object' ? JSON.stringify(vv) : vv)
-            return <div key={kk} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', gap: 10 }}><span style={{ fontSize: 9, color: 'var(--text3)' }}>{humanizeKey(String(kk))}</span><span style={{ fontSize: 10, color: f.color || 'var(--text1)', textAlign: 'right', maxWidth: 230, wordBreak: 'break-word' }}>{f.text}</span></div>
-          })}
-        </div>
+      <div style={{ gridColumn: '1 / -1', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4 }}>{humanizeKey(k)}</div>
+        <ObjBlock obj={obj} />
       </div>
     )
   }
@@ -113,7 +172,7 @@ function Field({ k, v }: { k: string; v: any }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
       <span style={{ color: 'var(--text3)', fontSize: 10 }}>{humanizeKey(k)}</span>
-      <span style={{ color: f.color || 'var(--text0)', fontSize: 11, fontWeight: f.color ? 600 : 400, maxWidth: 250, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span>
+      <span style={{ color: f.color || 'var(--text0)', fontSize: 11, fontWeight: f.color ? 600 : 400, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span>
     </div>
   )
 }
@@ -178,7 +237,8 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
       <div style={{
-        width: 420, maxWidth: '90vw', height: '100vh', background: 'var(--bg1)',
+        /* operator 2026-06-12: expanded view opens almost full page for readability */
+        width: 'min(1100px, 94vw)', height: '100vh', background: 'var(--bg1)',
         borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         boxShadow: '-4px 0 20px rgba(0,0,0,.5)',
       }} onClick={e => e.stopPropagation()}>
@@ -270,11 +330,19 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
           )}
           {btState === 'loading' && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Looking up backtest entry grade…</div>}
           {ctx.rows.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>No data rows</div>}
-          {ctx.rows.map((row, i) => (
-            <div key={i} style={{ marginBottom: 10, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }}>
-              {Object.entries(row).map(([k, v]) => <Field key={k} k={k} v={v} />)}
-            </div>
-          ))}
+          {ctx.rows.map((row, i) => {
+            // hide empty/null fields entirely — only real information renders (count shown for honesty)
+            const entries = Object.entries(row).filter(([k, v]) => k.match(SECTION_RE) || !isEmptyVal(v))
+            const hidden = Object.keys(row).length - entries.length
+            return (
+              <div key={i} style={{ marginBottom: 10, padding: '10px 14px', background: 'var(--bg2)', borderRadius: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', columnGap: 28 }}>
+                  {entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}
+                </div>
+                {hidden > 0 && <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 6 }}>{hidden} empty field{hidden > 1 ? 's' : ''} hidden (no data for this position)</div>}
+              </div>
+            )
+          })}
         </div>
         {/* Read-only footer */}
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 8, color: 'var(--text3)', textAlign: 'center' }}>
