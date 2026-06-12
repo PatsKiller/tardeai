@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
-import HubPlaceholder from './components/HubPlaceholder'
 import StrategyHub from './pages/StrategyHub'
 import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
@@ -18,6 +17,7 @@ import WatchlistHub from './pages/WatchlistHub'
 import WatchpoolHub from './pages/WatchpoolHub'
 import SectorsHub from './pages/SectorsHub'
 import SystemHub from './pages/SystemHub'
+import ManualExecutionHub from './pages/ManualExecutionHub'
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
@@ -33,6 +33,7 @@ function Shell() {
             <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
             <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
+            <Route path="manual-execution" element={<ManualExecutionHub />} />
             <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
             <Route path="agents" element={<AgentsHub onDrill={setDrill} />} />
             <Route path="intelligence" element={<IntelligenceHub onDrill={setDrill} />} />
