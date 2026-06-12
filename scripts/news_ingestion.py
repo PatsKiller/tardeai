@@ -76,6 +76,10 @@ def _get_symbols(priority_only: bool = False) -> list:
                 UNION SELECT symbol FROM paper_trade_proposals WHERE status IN ('PENDING','APPROVED') AND symbol IS NOT NULL
                 UNION SELECT symbol FROM trade_ai_scans WHERE run_date >= CURRENT_DATE AND decision IN ('GO','WAIT') AND symbol IS NOT NULL
                 UNION SELECT symbol FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
+                -- operator directives are watch-grade regardless of lifecycle status (2026-06-12:
+                -- directive symbols sat status='researched' -> zero news coverage on the watchlist)
+                UNION SELECT symbol FROM watchlist_items
+                      WHERE in_directive_watch = true AND status <> 'removed' AND symbol IS NOT NULL
             ) u LEFT JOIN ticker_strategy_classifications tsc ON tsc.symbol = u.symbol
         """)
         actionable = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]

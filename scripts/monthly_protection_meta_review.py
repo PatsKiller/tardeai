@@ -62,7 +62,7 @@ def _claude(prompt: str) -> str | None:
         import anthropic
         from local_llm import FALLBACK_ANTHROPIC
         client = anthropic.Anthropic(api_key=key)
-        msg = client.messages.create(model=FALLBACK_ANTHROPIC, max_tokens=4096,
+        msg = client.messages.create(model=FALLBACK_ANTHROPIC, max_tokens=8000,
                                      messages=[{"role": "user", "content": prompt}])
         return msg.content[0].text.strip()
     except Exception as e:
@@ -90,14 +90,20 @@ def main():
     by_sym: dict = {}
     for sym, model, summary, thesis, ev, conf, at in rows:
         ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
-        # latest rec per (symbol, model)
+        # latest rec per (symbol, model); inputs compressed to the decision-relevant numbers so a
+        # FULL-portfolio review (39 symbols x 2 lanes) fits without mid-JSON truncation (2026-06-12)
+        inp = ev.get("inputs") or {}
         by_sym.setdefault(sym, {})
         if model not in by_sym[sym]:
-            by_sym[sym][model] = {"thesis": thesis, "rationale": summary, "confidence": float(conf or 0),
-                                  "inputs": {k: round(v, 2) if isinstance(v, float) else v
-                                             for k, v in (ev.get("inputs") or {}).items()},
-                                  "rec": ev.get("recommendation"), "at": str(at)[:10]}
-    body = json.dumps(by_sym, indent=1, default=str)[:14000]
+            by_sym[sym][model] = {"rec": ev.get("recommendation"), "why": (summary or "")[:140],
+                                  "conf": float(conf or 0),
+                                  "px": round(float(inp.get("price") or 0), 2),
+                                  "atr": round(float(inp.get("atr") or 0), 2),
+                                  "swing_low": round(float(inp.get("swing_low") or 0), 2),
+                                  "pnl_pct": round(float(inp.get("pnl_pct") or 0), 1), "at": str(at)[:10]}
+    body = json.dumps(by_sym, separators=(",", ":"), default=str)
+    if len(body) > 60000:        # hard guard — never send a broken-JSON prompt
+        body = json.dumps({k: by_sym[k] for k in sorted(by_sym)[:45]}, separators=(",", ":"), default=str)
     prompt = META_PROMPT_V1.format(body=body)
     snap_hash = hashlib.sha256(body.encode()).hexdigest()[:32]
     month = dt.date.today().replace(day=1).isoformat()

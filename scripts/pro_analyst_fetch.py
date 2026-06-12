@@ -34,6 +34,10 @@ def main():
             UNION SELECT symbol FROM paper_trade_proposals WHERE status IN('PENDING','APPROVED') AND symbol IS NOT NULL
             UNION SELECT symbol FROM trade_ai_scans WHERE run_date>=current_date AND decision IN('GO','WAIT') AND symbol IS NOT NULL
             UNION SELECT symbol FROM watchlist_items WHERE status='active' AND symbol IS NOT NULL
+            -- operator directives are watch-grade regardless of lifecycle status (2026-06-12:
+            -- CIFR/AXTI/DLR sat status='researched' and never got analyst pills)
+            UNION SELECT symbol FROM watchlist_items
+                  WHERE in_directive_watch=true AND status<>'removed' AND symbol IS NOT NULL
         ) u WHERE symbol ~ '^[A-Z]{1,5}$'""")
     syms = [r[0] for r in cur.fetchall() if not r[0].startswith(_FIDELITY_PFX)]
     c.close()

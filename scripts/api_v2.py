@@ -16867,6 +16867,7 @@ def _hermes_curate_top20_trigger(body=None):
     """POST /api/v2/hermes/curate-top20 — launch the manual ChatGPT (free codex OAuth) curation on the
     top-20 in the background. Non-blocking; badges + drawer theses fill in as each name completes."""
     import subprocess
+    import sys  # 2026-06-12: was missing in this scope — endpoint 500'd with "name 'sys' is not defined"
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
     lanes = (body or {}).get("lanes", "chatgpt")
