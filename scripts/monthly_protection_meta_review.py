@@ -98,8 +98,10 @@ def main():
                       input_snapshot_hash, input_snapshot, output_payload, error_message)
                    VALUES (%s,'anthropic',%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (month, FALLBACK_ANTHROPIC, PROMPT_VERSION, status, len(rows), len(by_sym),
-                 json.dumps((parsed or {}).get("patterns")), json.dumps((parsed or {}).get("per_symbol")),
-                 snap_hash, body[:60000], json.dumps(parsed) if parsed else (out or "")[:60000],
+                 json.dumps((parsed or {}).get("patterns") or []),
+                 json.dumps((parsed or {}).get("per_symbol") or {}),
+                 snap_hash, json.dumps(by_sym, default=str),               # json column: never truncate mid-token
+                 json.dumps(parsed if parsed else {"raw_response": (out or "")[:50000]}),
                  None if parsed else "no/invalid JSON from model"))
     conn.commit()
     if parsed:
