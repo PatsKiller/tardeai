@@ -3239,11 +3239,13 @@ def _wl_items(query: dict = None):
                    am.risk_status, am.tax_status, am.full_chain_status,
                    am.final_synthesis_status, am.required_agents, am.completed_agents,
                    am.needs_iteration as maturity_needs_iteration,
-                   am.decision_quality_status, am.actionable as decision_actionable
+                   am.decision_quality_status, am.actionable as decision_actionable,
+                   sm.in_portfolio
             FROM watchlist_items wi
             LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
             LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
             LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
+            LEFT JOIN watchlist_symbol_master sm ON sm.symbol = wi.symbol
             WHERE {where}
             ORDER BY wi.symbol,
                      (COALESCE(wi.in_directive_watch, false) = false),
@@ -15906,7 +15908,27 @@ def _watch_directive_create(body):
                      body.get("priority", "normal"),
                      bool(body.get("trade_ai_enabled", True)), bool(body.get("hermes_enabled", True))),
                     fetch="one")
-    return 200, {"ok": True, "directive_id": (row or {}).get("id"), "kind": kind, "label": label}
+    did = (row or {}).get("id")
+    # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
+    # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
+    # SAME real evaluation engine (directive_promotion.promote_directive_lead) synchronously, so the
+    # symbol appears in the watchlist immediately, 24/7. Sector/trend directives still discover via
+    # the cron (they are searches, not single symbols). Failure here never loses the directive —
+    # the cron remains the safety net.
+    serviced = None
+    if kind == "ticker" and did:
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            import directive_promotion as _dp
+            res = _dp.promote_directive_lead((spec.get("symbol") or "").upper(), did,
+                                             f"directive:{label}", "operator", auto=True)
+            serviced = {"status": res.get("status"), "detail": str(res)[:200]}
+            _db_query("UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s",
+                      (did,), fetch="none")
+        except Exception as e:
+            serviced = {"status": "DEFERRED_TO_CRON", "detail": str(e)[:140]}
+    return 200, {"ok": True, "directive_id": did, "kind": kind, "label": label, "serviced": serviced}
 
 
 def _watch_directive_promote(body):
@@ -16504,6 +16526,38 @@ def _broker_orders_drafts(query=None):
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from brokers import audit as br_audit
     return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
+
+
+def _portfolio_llm_coverage(query=None):
+    """GET /api/v2/portfolio/llm-coverage — per-symbol LLM research provenance (operator request
+    2026-06-12: 'LLM name badge so we know which has looked at it'). Sources: hermes internal research
+    (gemma local models) + hermes_external_research lanes (grok / chatgpt / claude). Advisory-only
+    research; 30-day window; read-only."""
+    rows = _db_query("""SELECT symbol, model_used AS model, 'local' AS lane, max(created_at) AS at, count(*) n
+                        FROM hermes_research_intelligence
+                        WHERE symbol IS NOT NULL AND model_used IS NOT NULL
+                          AND created_at > NOW()-INTERVAL '30 days'
+                        GROUP BY symbol, model_used""") or []
+    ext = _db_query("""SELECT symbol, model, lane, max(created_at) AS at, count(*) n
+                       FROM hermes_external_research
+                       WHERE symbol IS NOT NULL AND status='sent'
+                         AND created_at > NOW()-INTERVAL '30 days'
+                       GROUP BY symbol, model, lane""") or []
+    cov: dict = {}
+    for r in rows + ext:
+        cov.setdefault((r["symbol"] or "").upper(), []).append(
+            {"model": r["model"], "lane": r["lane"], "last_at": _json_clean(r["at"]), "n": r["n"]})
+    # latest stop/trailing-stop advisory per symbol (holding_protection_advisor + monthly meta-review)
+    prot = _db_query("""SELECT DISTINCT ON (symbol) symbol, thesis, summary, model_used, confidence_score,
+                          created_at FROM hermes_research_intelligence
+                        WHERE research_type='protection_advisory' AND created_at > NOW()-INTERVAL '30 days'
+                        ORDER BY symbol, created_at DESC""") or []
+    protection = {(p["symbol"] or "").upper(): {"rec": p["thesis"], "rationale": p["summary"],
+                                                "model": p["model_used"], "confidence": _json_clean(p["confidence_score"]),
+                                                "at": _json_clean(p["created_at"])} for p in prot}
+    return _json_clean({"coverage": cov, "protection": protection, "window_days": 30,
+                        "note": "advisory research provenance only — which LLM lanes reviewed each "
+                                "symbol + latest stop/trail advisory; never an execution signal"})
 
 
 def _broker_orders_shadow_recon(query=None):
@@ -17307,6 +17361,7 @@ ROUTES = {
     "/api/v2/broker-orders/shadow-recon": _broker_orders_shadow_recon,
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
+    "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,

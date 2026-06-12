@@ -209,6 +209,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
                     {fr && <Pill text={fr} color="#60a5fa" tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color="#a855f7" tip={it.provenance_reason || 'from an operator watch directive'} />}
+                    {it.in_portfolio && <Pill text="💼 HELD" color="#ffa726" tip="this watchlist symbol is also a current portfolio holding — see Portfolio hub for position/basis" />}
                     {(extMap[it.symbol] || []).map((e: any, i: number) => {
                       const m = llmMeta(e.lane)
                       return <Pill key={`llm${i}`} text={`✦ ${m.label}`} color={m.color}
@@ -284,7 +285,17 @@ function AddWatchModal({ onClose, onCreated, paMap }: { onClose: () => void; onC
         body: JSON.stringify({ kind, label: autoLabel, spec, rationale, priority, ttl_days: ttl ? Number(ttl) : null, trade_ai_enabled: taOn, hermes_enabled: hermesOn }),
       })
       const j = await r.json()
-      if (j.ok) { setMsg(`✓ Created directive #${j.directive_id}`); onCreated(); setTimeout(onClose, 900) }
+      if (j.ok) {
+        // service-at-creation feedback (2026-06-12): ticker directives are evaluated synchronously —
+        // tell the operator exactly what happened instead of silently waiting for the cron.
+        const sv = j.serviced?.status
+        setMsg(`✓ Created directive #${j.directive_id}` +
+          (sv === 'PROMOTED' ? ' — symbol PROMOTED to the watchlist now'
+            : sv === 'STAGED_FOR_REVIEW' ? ' — staged for your one-tap promote'
+            : sv === 'MONITORED_NO_QUALIFY' ? ' — watching now (shown in list; no strategy qualifies yet)'
+            : sv ? ` — ${sv}` : ''))
+        onCreated(); setTimeout(onClose, sv ? 1600 : 900)
+      }
       else setMsg(`Error: ${j.error}`)
     } catch (e: any) { setMsg('Error: ' + e.message) }
     setBusy(false)

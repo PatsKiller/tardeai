@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-06-12 - Portfolio holdings cards + LLM provenance/protection advisory + watchlist service-at-creation fix
+
+**Portfolio Holdings redesign (operator request):** table -> large graphical cards (signal-colored left
+border, account badge, value + P/L%, % -of-portfolio bar, RSI chip), signal sub-tab filters
+(All / Buy-Add / Hold / Watch / Trim-Sell with counts), pagination 12/page, analyst pill retained.
+
+**LLM provenance + protection advisory (operator request):**
+- /api/v2/portfolio/llm-coverage — per-symbol 30d badges: which lane reviewed it (GEMMA local /
+  GROK / GPT / CLAUDE), tooltip = model · date analyzed · review count. Status today: gemma local
+  1,100+ reviews (active); Grok OAuth ACTIVE (264 sent, grok-3-mini); ChatGPT PARTIAL (21 sent,
+  23 unavailable — OAuth gaps); Anthropic NOT yet enhancing (no lane traffic; fallback-only).
+- scripts/holding_protection_advisor.py — curated versioned prompt (technicals ATR14/RSI14/swing-low/
+  SMA50 + Yahoo analyst targets) -> strict-JSON stop / trailing-stop advisory per held equity; lanes
+  local gemma (default) / grok; stores hermes_research_intelligence research_type='protection_advisory';
+  🛡 chip on Portfolio cards with full tooltip. ADVISORY ONLY.
+- scripts/monthly_protection_meta_review.py — monthly Claude arbitration of the month's gemma/grok
+  protection recs ("fable-5 weighs in"): writes monthly_llm_meta_reviews + per-symbol claude-lane
+  verdicts (lights the CLAUDE badge). Anthropic call is monthly by design.
+- Proposed crons (await operator OK): basis audit 16:35 M-F · protection advisor 17:05 M-F (local) ·
+  meta-review 1st of month 08:10.
+
+**Watchlist workflow fix (operator caught CIFR missing):** root cause = watch_directives_service cron
+is market-hours-only (every 30m, 9-16 M-F); a 22:47 ticker add sat unlinked + invisible until 09:00
+with zero feedback. Fix: POST /api/v2/watch/directives now services TICKER directives synchronously at
+creation through the same evaluation engine (directive_promotion.promote_directive_lead, auto=True;
+cron stays as safety net + handles sector/trend discovery); Add-Watch modal reports the immediate
+outcome (PROMOTED / staged / watching-no-qualify). Items endpoint joins watchlist_symbol_master ->
+💼 HELD badge on watchlist cards (watchlist↔holdings overlap visible). CIFR + AXTI verified pinned
+at the top of /api/v2/watchlist/items.
+
 ## 2026-06-12 - CRITICAL DATA FIX 2: cost-basis single source of truth (operator caught SCHG +108% phantom)
 
 Operator question ("these don't add up") -> full 38-position audit (`scripts/audit_position_basis.py`,
