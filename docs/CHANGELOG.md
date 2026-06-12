@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-06-12 - Stage 2a readiness: ToS-style dormant UI + hardcoded canary gate + two-channel approval + L3 read-only prereqs
+
+READ-ONLY throughout; execution stays BROKER_DISABLED; validator extended 12/12 -> 17/17 green.
+- **Part D — hardcoded canary gate** (`scripts/brokers/canary_gate.py`): commit-only envelope (allowlist
+  EMPTY until session-time commit · price<=$4 · qty<=10 · notional<=$40 · US equities · long-only) wired
+  IN FRONT of the execution-guard mode logic; pure module (no env/DB/config); 22/22 unit tests incl.
+  hypothetical BROKER_DISABLED-lifted scenario — out-of-envelope denied by the gate, in-envelope still
+  denied end-to-end.
+- **Part A1 — shadow-reconciliation harness** (`schwab_shadow_recon.py`): ~30s read-back of manual ToS
+  orders, diffs Schwab's actual JSON vs translator prediction (∅ pass modulo documented renames;
+  mismatch = session ABORT); tables schwab_shadow_recon_runs/_items + md session log; selftest proven.
+- **Part A2 — canary analytics exclusion**: schwab_round_trips.canary (sticky, tagged at ingest from the
+  gate allowlist); all 6 consumers filtered (api stats, trade_closed refresh, classifier, backtest recon,
+  exec quality, gain/loss recon); proof test: $10k fake canary row moved ZERO aggregates (9/9).
+- **Part A3 — activity capture** (`schwab_activity_capture.py`): poll-based order-status/transaction
+  payload capture -> schwab_activity_log, surfaced in the Broker Orders safety log; streaming deferred.
+- **Part B — stage2a-canary-protocol.md** revised to operator caps: $2-$4 session-time screen (ITUB/SNAP
+  obsolete — violate the cap), <=10 sh, orders 1-6 far-from-market+cancel (~$0), 7 = the one attended
+  micro-fill (<=$40), 8-9 OCO exits + canary-tagged close->ingestion; session rails + abort conditions.
+- **Part C — ToS-desktop Active Trader panel** (v3 Trading -> Broker Orders): bid/last/ask strip, qty
+  presets 2/5/10, structure-aware fields (SINGLE/BRACKET/MULTI-TARGET/TRAILING/OCO/LADDER) with static
+  tooltips + inline explainers; EVERY control builds a DRAFT -> preview/translate -> guard BLOCK logged;
+  no auto-send/submit endpoint exists (validator-checked). AI help advisory-only: local model default,
+  Claude only on explicit escalation (/api/v2/broker-orders/explain).
+- **Part C2 — all-Schwab-accounts monitor** (v3 Trading -> Schwab Accounts): live positions + open orders
+  x3 accounts via /api/v2/schwab/accounts-live (fenced reads, 30s cache); "edit -> DRAFT only" seeds the
+  order panel — never an API modify.
+- **Part E — two-channel approval**: web channel now requires TYPING the ticker (click never confirms);
+  one order at a time (slot check); Telegram approval message carries the Tailscale deep-link
+  https://<TAILSCALE_HOSTNAME>/v3/trading?tab=Broker+Orders&intent=<id> (env-driven, not hardcoded);
+  exercised end-to-end with execution still BLOCKED (11/11).
+- Tests: 90/90 across canary gate / canary exclusion / two-channel approval / broker scaffold;
+  validate_schwab_no_writes 17/17 (5 new guards: harness+capture read-only, gate purity+front-position,
+  UI no-execution-path, consumer canary filters). Migration 2026_06_12_stage2a_canary_readiness.sql.
+
 ## 2026-06-11 - Modal reject/delete + test plan delivered (email + telegram)
 
 Broker Orders modal gains '✖ Reject (keep record)' (supersedes approvals, state=REJECTED, audited) and

@@ -22,23 +22,46 @@ def _conn():
 
 
 def request_approval(intent) -> dict:
-    """Create a pending 2FA approval for an intent: web row + telegram row w/ one-time code; notify operator."""
-    code = f"{secrets.randbelow(1000000):06d}"
+    """Create a pending 2FA approval for an intent: web row (requires TYPING THE TICKER to confirm —
+    anti-fat-finger, operator-confirmed 2026-06-12) + telegram row w/ one-time code; notify operator
+    with a Tailscale deep-link straight to this intent. ONE ORDER AT A TIME: while any OTHER intent
+    holds an unexpired pending/confirmed approval, a new request is refused (fail closed)."""
     conn = _conn(); cur = conn.cursor()
+    # one-order-at-a-time slot check (operator requirement 2026-06-12)
+    cur.execute("""SELECT DISTINCT intent_id FROM trade_approvals
+                   WHERE intent_id<>%s AND status IN ('pending','confirmed') AND expires_at > NOW()""",
+                (intent.intent_id,))
+    holders = [str(r[0]) for r in cur.fetchall()]
+    if holders:
+        return {"ok": False, "reason": "one order at a time: another intent holds an active approval "
+                                       "(reject it or let it expire first)", "holder_intent_ids": holders}
+    code = f"{secrets.randbelow(1000000):06d}"
     expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=TTL_MIN)
     # invalidate any prior pending approvals for this intent (one active approval set at a time)
     cur.execute("""UPDATE trade_approvals SET status='superseded'
                    WHERE intent_id=%s AND status='pending'""", (intent.intent_id,))
+    ticker_phrase = (intent.instrument.symbol or "").strip().upper()
     for channel in ("web", "telegram"):
+        # web row's code = the ticker the operator must TYPE (not click) in the confirm popup
         cur.execute("""INSERT INTO trade_approvals
                        (intent_id, correlation_id, channel, code, status, expires_at)
                        VALUES (%s,%s,%s,%s,'pending',%s)""",
                     (intent.intent_id, intent.correlation_id, channel,
-                     code if channel == "telegram" else None, expires))
+                     code if channel == "telegram" else ticker_phrase, expires))
     conn.commit()
     _send_approval_request(intent, code)
-    return {"intent_id": intent.intent_id, "expires_at": expires.isoformat(),
-            "channels": ["web", "telegram"], "ttl_min": TTL_MIN}
+    return {"ok": True, "intent_id": intent.intent_id, "expires_at": expires.isoformat(),
+            "channels": ["web", "telegram"], "ttl_min": TTL_MIN,
+            "web_confirm": "type-the-ticker required"}
+
+
+def intent_deep_link(intent_id: str) -> str | None:
+    """Tailscale FQDN deep-link to the exact order item in the v3 Broker Orders tab. Host comes from
+    env (TAILSCALE_HOSTNAME) — never hardcoded; None when unset (link simply omitted)."""
+    host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
+    if not host:
+        return None
+    return f"https://{host}/v3/trading?tab=Broker+Orders&intent={intent_id}"
 
 
 def _approval_chat() -> str | None:
@@ -68,12 +91,15 @@ def _send_approval_request(intent, code: str) -> None:
         return
     qty = intent.quantity.qty or intent.quantity.notional or intent.quantity.contracts
     is_test = intent.instrument.symbol in ("TEST", "ZZGUARD") or (intent.meta.thesis or "").startswith("scaffold")
+    link = intent_deep_link(intent.intent_id)
     text = (f"🔐 *TRADE APPROVAL REQUEST*{' — ⚠️ SCAFFOLD TEST FIXTURE' if is_test else ''}\n\n"
             f"{intent.direction.value} *{qty} sh* {intent.instrument.symbol} ({intent.broker})\n"
             f"entry {intent.entry.method.value}"
             f"{' @' + str(intent.entry.limit_price) if intent.entry.limit_price else ''}\n"
             f"intent `{intent.intent_id[:8]}` · expires {TTL_MIN}min\n"
             f"manual fallback code: `{code}`\n"
+            + (f"[Open this order in Command Center]({link})\n" if link else "")
+            + f"_2nd factor: web popup — you must TYPE the ticker ({intent.instrument.symbol}) to confirm_\n"
             f"_(Execution remains DISABLED this phase)_")
     kb = {"inline_keyboard": [[
         {"text": "✅ Approve", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
@@ -97,7 +123,9 @@ def reject(intent_id: str) -> dict:
 
 
 def confirm(intent_id: str, channel: str, code: str | None = None) -> dict:
-    """Confirm one channel. telegram requires the matching one-time code. Fail-closed on everything."""
+    """Confirm one channel. telegram requires the matching one-time code; web requires the operator to
+    have TYPED the ticker symbol exactly (anti-fat-finger — a click alone never confirms). Fail-closed
+    on everything."""
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT id, code, expires_at, status FROM trade_approvals
                    WHERE intent_id=%s AND channel=%s ORDER BY id DESC LIMIT 1""", (intent_id, channel))
@@ -113,6 +141,8 @@ def confirm(intent_id: str, channel: str, code: str | None = None) -> dict:
         return {"ok": False, "reason": "approval expired"}
     if channel == "telegram" and (not code or code != want_code):
         return {"ok": False, "reason": "invalid confirmation code"}
+    if channel == "web" and (not code or code.strip().upper() != (want_code or "").strip().upper() or not want_code):
+        return {"ok": False, "reason": "web confirmation requires typing the ticker symbol exactly"}
     cur.execute("UPDATE trade_approvals SET status='confirmed', confirmed_at=NOW() WHERE id=%s", (aid,))
     conn.commit()
     return {"ok": True, "channel": channel, "fully_approved": is_fully_approved(intent_id)}

@@ -16391,13 +16391,16 @@ def _schwab_round_trips(query=None):
     API-authoritative ledger). Read-only."""
     rows = _db_query("""SELECT account, symbol, entry_time, exit_time, hold_minutes, qty, entry_price,
                           exit_price, gross_pnl, fees, net_pnl, pnl_pct, classification,
-                          strategy_tag, entry_grade, exit_grade, lesson, review_lane, basis_status, basis_source
+                          strategy_tag, entry_grade, exit_grade, lesson, review_lane, basis_status, basis_source,
+                          canary
                         FROM schwab_round_trips ORDER BY exit_time DESC LIMIT 600""") or []
     trips = [{**r, "entry_time": _json_clean(r["entry_time"]), "exit_time": _json_clean(r["exit_time"]),
               **{k: _json_clean(r[k]) for k in ("qty", "entry_price", "exit_price", "gross_pnl", "fees", "net_pnl", "pnl_pct")}}
              for r in rows]
-    # ACTIVE trading stats EXCLUDE long-term trims (pre-window lots) + basis_unknown — they aren't trading
-    active = [t for t in trips if not t.get("basis_status")]
+    # ACTIVE trading stats EXCLUDE long-term trims (pre-window lots) + basis_unknown — they aren't trading.
+    # Stage 2a: canary test orders also EXCLUDED from every aggregate (listed with a canary badge only).
+    active = [t for t in trips if not t.get("basis_status") and not t.get("canary")]
+    canary_trips = [t for t in trips if t.get("canary")]
     lt = [t for t in trips if t.get("basis_status") == "long_term_trim"]
     unk = [t for t in trips if t.get("basis_status") == "basis_unknown"]
     wins = sum(1 for t in active if (t["net_pnl"] or 0) > 0)
@@ -16410,7 +16413,9 @@ def _schwab_round_trips(query=None):
             "net_pnl": round(sum(t["net_pnl"] or 0 for t in active), 2), "by_account": by_acct,
             "long_term_trims": {"count": len(lt), "realized": round(sum(t["net_pnl"] or 0 for t in lt), 2)},
             "basis_unknown": {"count": len(unk), "symbols": sorted(set(t["symbol"] for t in unk))},
-            "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis) and basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses). Real-account, separate from the paper-only live-trading gate."}
+            "canary": {"count": len(canary_trips), "symbols": sorted(set(t["symbol"] for t in canary_trips)),
+                       "note": "Stage 2a test orders — excluded from ALL stats/aggregates above"},
+            "note": "Active trading stats exclude long-term trims (pre-window lots, e.g. V at ~$10.75 IPO basis), basis_unknown sells (no opening lot in the data — flagged, never fabricated as losses), and Stage-2a canary test orders. Real-account, separate from the paper-only live-trading gate."}
 
 
 def _broker_orders_approval_status(query=None):
@@ -16499,6 +16504,115 @@ def _broker_orders_drafts(query=None):
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from brokers import audit as br_audit
     return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
+
+
+def _broker_orders_shadow_recon(query=None):
+    """GET /api/v2/broker-orders/shadow-recon — Stage 2a shadow-reconciliation runs + latest items.
+    Read-only view of schwab_shadow_recon_runs/_items (the harness itself is a separate cron/CLI)."""
+    runs = _db_query("""SELECT id, started_at, accounts, orders_seen, matched, mismatched, unmatched,
+                          status, detail FROM schwab_shadow_recon_runs ORDER BY id DESC LIMIT 20""") or []
+    items = _db_query("""SELECT run_id, account_key, broker_order_id, symbol, verdict, diff, created_at
+                         FROM schwab_shadow_recon_items ORDER BY id DESC LIMIT 100""") or []
+    return _json_clean({"runs": runs, "items": items,
+                        "note": "READ-ONLY harness: diffs Schwab's actual order representation vs the "
+                                "translator's predicted payload. mismatch = protocol ABORT condition."})
+
+
+def _broker_orders_activity(query=None):
+    """GET /api/v2/broker-orders/activity — Stage 2a poll-based ACCT_ACTIVITY capture (fills/status),
+    surfaced in the Broker Orders safety log. Read-only; streaming deferred."""
+    rows = _db_query("""SELECT account_key, kind, broker_order_id, symbol, status, event_time, captured_at
+                        FROM schwab_activity_log ORDER BY id DESC LIMIT 120""") or []
+    return _json_clean({"activity": rows,
+                        "note": "poll-based read-only capture (schwab_activity_capture.py); fills for the "
+                                "canary battery land here with full payloads in schwab_activity_log"})
+
+
+_SCHWAB_LIVE_CACHE: dict = {}   # accounts-live 30s cache — the monitor UI must never hammer the API
+
+
+def _schwab_accounts_live(query=None):
+    """GET /api/v2/schwab/accounts-live — READ-ONLY live positions + open orders across ALL Schwab
+    accounts (ToS-style monitor, Stage 2a Part C2). 30s server-side cache; per-account errors are
+    reported honestly, never fabricated. No write path: transport reads only."""
+    import time as _t
+    hit = _SCHWAB_LIVE_CACHE.get("accounts_live")
+    if hit and _t.time() - hit[0] < 30:
+        return hit[1]
+    import schwab_transport as st
+    rows = _db_query("SELECT account_key FROM broker_accounts WHERE broker ILIKE '%schwab%' ORDER BY account_key") or []
+    accounts = []
+    for r in rows:
+        ak = r["account_key"]
+        pos = st.get_positions(ak)
+        raw = st.get_orders_raw(ak)
+        orders = []
+        if isinstance(raw, list):
+            for o in raw:
+                legs = o.get("orderLegCollection") or [{}]
+                orders.append({
+                    "order_id": str(o.get("orderId") or ""), "status": o.get("status"),
+                    "symbol": ((legs[0].get("instrument") or {}).get("symbol") or "").upper(),
+                    "instruction": legs[0].get("instruction"), "qty": o.get("quantity"),
+                    "filled_qty": o.get("filledQuantity"), "order_type": o.get("orderType"),
+                    "price": o.get("price"), "stop_price": o.get("stopPrice"),
+                    "duration": o.get("duration"), "session": o.get("session"),
+                    "strategy": o.get("orderStrategyType"),
+                    "children": len(o.get("childOrderStrategies") or []),
+                    "entered_time": o.get("enteredTime"),
+                })
+        accounts.append({
+            "account_key": ak,
+            "positions": pos if isinstance(pos, list) else [],
+            "positions_status": "ok" if isinstance(pos, list) else (pos or {}).get("status", "error"),
+            "orders": orders,
+            "orders_status": "ok" if isinstance(raw, list) else (raw or {}).get("status", "error"),
+        })
+    out = _json_clean({"accounts": accounts, "read_only": True, "cached_seconds": 30,
+                       "note": "READ-ONLY monitor. 'Edit' anywhere on this surface produces a DRAFT "
+                               "modification (preview/translate) — it NEVER modifies a live order via "
+                               "API (that write path does not exist this phase)."})
+    _SCHWAB_LIVE_CACHE["accounts_live"] = (_t.time(), out)
+    return out
+
+
+def _broker_orders_explain(body=None):
+    """POST /api/v2/broker-orders/explain — ADVISORY-ONLY AI helper for the ToS-style order panel.
+    Explains order-type/field MECHANICS and how the canonical intent translates to Schwab. It can
+    never submit/approve (pure text; no DB writes) and never gives security-selection advice.
+    Routing (operator-confirmed 2026-06-12): local model by default; Claude ONLY on explicit
+    escalate=true — never auto-cloud."""
+    b = body or {}
+    topic = str(b.get("topic") or "order basics")[:120]
+    question = str(b.get("question") or "")[:600]
+    intent = b.get("intent") if isinstance(b.get("intent"), dict) else None
+    escalate = bool(b.get("escalate"))
+    prompt = (
+        "You are an order-mechanics tutor inside a trading dashboard. STRICT RULES: explain ONLY the "
+        "mechanics of order types, fields, and how our canonical order intent translates to Schwab's "
+        "order payload (session, duration, orderType, orderStrategyType TRIGGER/OCO, "
+        "orderLegCollection, stopPriceLink*). You must NEVER recommend what to trade, never evaluate "
+        "whether a ticker/price is a good idea, never predict markets. If asked for trade advice, "
+        "reply exactly: 'I only explain order mechanics — what to trade is the operator's decision.' "
+        "Be concise (<=180 words), plain English.\n\n"
+        f"Topic: {topic}\n"
+        + (f"Operator question: {question}\n" if question else "")
+        + (f"Current draft intent (context only): {json.dumps(intent)[:1200]}\n" if intent else "")
+    )
+    try:
+        if escalate:
+            from local_llm import _try_anthropic
+            text = _try_anthropic(prompt)
+            provider = "anthropic (explicit operator escalation)"
+        else:
+            from local_llm import generate as _gen
+            text = _gen(prompt, timeout=60, fallback=False, caller="broker_orders_explain")
+            provider = "local model"
+    except Exception as e:
+        text, provider = None, f"unavailable ({str(e)[:60]})"
+    return {"answer": (text or "").strip() or "(model unavailable — static tooltips still apply)",
+            "provider": provider, "advisory_only": True,
+            "note": "explains mechanics only; cannot submit or approve orders; no security selection"}
 
 
 def _schwab_batch_quotes(query=None):
@@ -17190,6 +17304,9 @@ ROUTES = {
     "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,
     "/api/v2/broker-orders/events": _broker_orders_events,
     "/api/v2/broker-orders/drafts": _broker_orders_drafts,
+    "/api/v2/broker-orders/shadow-recon": _broker_orders_shadow_recon,
+    "/api/v2/broker-orders/activity": _broker_orders_activity,
+    "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
@@ -19482,7 +19599,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not rows:
                 return 404, {"ok": False, "error": "unknown intent_id (save a preview first)"}
             intent = OrderIntent.from_dict(rows[0]["intent_json"])
-            return 200, {"ok": True, **approval_service.request_approval(intent)}
+            r = approval_service.request_approval(intent)
+            return (200 if r.get("ok") else 409), r
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
@@ -19533,6 +19651,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/broker-orders/preview":
         try:
             return 200, _broker_orders_preview(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/explain":
+        try:
+            return 200, _broker_orders_explain(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 

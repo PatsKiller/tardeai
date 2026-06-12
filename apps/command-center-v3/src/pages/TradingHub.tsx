@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
@@ -11,13 +13,20 @@ import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
 
 export default function TradingHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('Trade AI')
+  // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
+  // message links the operator straight to the exact order item.
+  const [searchParams] = useSearchParams()
+  const urlTab = searchParams.get('tab')
+  const [tab, setTab] = useState<typeof TABS[number]>(
+    (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
+  // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
+  const [draftSeed, setDraftSeed] = useState<any | null>(null)
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
@@ -319,7 +328,10 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Proposals' && <ProposalsRich />}
-      {tab === 'Broker Orders' && <BrokerOrders />}
+      {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
+      {tab === 'Schwab Accounts' && (
+        <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />
+      )}
 
       {tab === 'Execution' && execQual && (() => {
         // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──

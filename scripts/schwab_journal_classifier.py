@@ -59,7 +59,8 @@ def run(limit=None, do_all=False, lane="grok"):
     if not llm_lane.available(lane):
         lane = "local"
     conn = _conn(); cur = conn.cursor()
-    where = "" if do_all else "WHERE reviewed_at IS NULL"
+    # Stage 2a: canary test orders are never classified/graded — they aren't trading decisions
+    where = "WHERE canary IS NOT TRUE" if do_all else "WHERE reviewed_at IS NULL AND canary IS NOT TRUE"
     cur.execute(f"""SELECT id, account, symbol, entry_time, exit_time, hold_minutes, qty, entry_price,
                       exit_price, net_pnl, pnl_pct, classification
                     FROM schwab_round_trips {where} ORDER BY abs(net_pnl) DESC NULLS LAST
