@@ -481,6 +481,7 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
 // ── Edit-before-approval modal (kept from prior phase, ToS-toned) ────────────────────────────────
 function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => void; onSaved: () => void }) {
   const it = draft.intent_json ?? {}
+  const [account, setAccount] = useState(it.account_key ?? 'schwab_taxable')   // operator 2026-06-12: was hidden here
   const [qty, setQty] = useState(String(it.quantity?.qty ?? 2))
   const [method, setMethod] = useState(it.entry?.method ?? 'LIMIT')
   const [limit, setLimit] = useState(String(it.entry?.limit_price ?? ''))
@@ -498,7 +499,7 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
 
   const buildIntent = () => ({
     ...it,
-    direction: dir, tif, session,
+    direction: dir, tif, session, account_key: account,
     quantity: { qty: Number(qty) || null, notional: null, contracts: null },
     entry: { ...it.entry, method, limit_price: limit ? Number(limit) : null,
              stop_price: entryStop ? Number(entryStop) : null },
@@ -535,6 +536,10 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
           Step 1: adjust · Step 2: re-preview the Schwab translation · Step 3: two-channel approval
           (Telegram ✅ + web type-the-ticker). Nothing executes this phase regardless.</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <F label="ACCOUNT (must match ToS!)"><select value={account} onChange={e => setAccount(e.target.value)}
+            style={{ ...inp, width: 130, borderColor: '#ffa726' }}>
+            {SCHWAB_ACCOUNTS.map(a => <option key={a} value={a}>{a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase()}</option>)}
+          </select></F>
           <F label="direction"><select value={dir} onChange={e => setDir(e.target.value)} style={inp}>
             <option>LONG</option><option>SHORT</option></select></F>
           <F label="shares"><input value={qty} onChange={e => setQty(e.target.value)} style={inp} /></F>
@@ -657,6 +662,11 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
           <div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, color: T.text }}>{h.line}</span>
+              {/* account badge on every draft card (operator 2026-06-12: per-order account tick) */}
+              <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 7px', borderRadius: 3,
+                background: 'rgba(255,167,38,.15)', color: T.amber }}
+                title="this draft's account — must match your thinkorswim account selector before placing">
+                {(d.intent_json?.account_key ?? 'no account').replace('schwab_', '').replace(/_/g, ' ').toUpperCase()}</span>
               {n > 1 && <span style={{ fontSize: 9, color: T.dim }}>×{n} identical</span>}
               {d.intent_id === intentParam && <span style={{ fontSize: 9, fontWeight: 800, color: T.amber }}>← from Telegram deep-link</span>}
               <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
