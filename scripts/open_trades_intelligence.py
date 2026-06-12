@@ -387,7 +387,13 @@ def build_intelligence():
                 dir_set.add(r["sym"])
     except Exception:
         pass
-    tickers = [s for s in syms if _is_ticker(s)]
+    # proxy-mapped fund codes (FID-CONTRA-F etc.) now carry proxy-computed technicals in
+    # ticker_snapshot_daily (technicals_gap_backfill, 2026-06-12) — include them in the lookup
+    try:
+        from holding_proxies import HOLDING_PROXY_MAP as _PXM
+    except Exception:
+        _PXM = {}
+    tickers = [s for s in syms if _is_ticker(s) or s in _PXM]
 
     c = _conn()
     import psycopg2.extras
