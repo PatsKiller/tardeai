@@ -29,12 +29,21 @@ for that comparison — not a queued order.
 | **System** | reads orders/fills every 30s, diffs vs drafts, logs, canary-tags the round-trip | place, modify, cancel, queue, or suggest sending ANYTHING |
 | **Claude (live)** | calls PASS/FAIL per order, watches for abort conditions | touch the broker |
 
-## Session start (Claude runs this when you say go)
-watchers up (recon + activity, 30s) → GRAB/XRX spread + $2–$4 band re-verified → green light.
+## Session start (Claude runs this when you say go) — GREEN-LIGHT PRECONDITIONS
+1. Watchers up (recon + activity, 30s cadence)
+2. GRAB/XRX spread + $2–$4 band re-verified live
+3. **TOKEN FRESHNESS (blocking):** Gate-A token health = `ok` on a KNOWN-FRESH re-auth — not
+   coasting toward the 7-day expiry. A token that dies mid-battery aborts the session half-tested;
+   we start fresh or we don't start.
+4. Gate auto-expiry date check: today == `CANARY_SESSION_DATE` (otherwise the allowlist is dead by
+   design and the session cannot arm).
 
 ## THE 5 ORDERS — in this exact sequence, ONE AT A TIME
-Wait for **PASS** before starting the next. All in the ACCOUNT you selected in the panel (default
-TAXABLE — pick in the new dropdown and place in the SAME account in ToS).
+Wait for **PASS** before starting the next.
+
+**☑ PER-ORDER CHECK (every single order, not once):** panel ACCOUNT selector == thinkorswim
+account selector — confirm BOTH before placing. A mismatch makes the harness reconcile against the
+wrong account (reads as a false FAIL) and risks placing real orders in the wrong account.
 
 ### Order 1 — plain limit + cancel (cost $0)
 - **Panel draft:** symbol GRAB · account (your pick) · qty 10 · structure SINGLE · LIMIT $1.70 · DAY → press "BUY (fields)"
@@ -60,7 +69,14 @@ TAXABLE — pick in the new dropdown and place in the SAME account in ToS).
 
 ### Order 5 — OCO exits on the live position, then close (± cents)
 - **Panel draft:** structure **OCO EXITS** · stop-loss ≈ −2% from your fill · target ≈ +2%
-- **ToS:** attach OCO to the position: SELL 10 GRAB OCO [LIMIT target / STOP stop] → Claude PASSes the live children → **cancel the OCO**, then **SELL 10 GRAB LIMIT @bid** to close flat.
+- **ToS:** attach OCO to the position: SELL 10 GRAB OCO [LIMIT target / STOP stop] → Claude PASSes the live children → **cancel the OCO**.
+- **🛑 BLOCKING OVERSELL GUARD — before the closing sell:** Claude confirms via read-back that the
+  position shows **ZERO working sell orders** — the OCO children must be VERIFIED GONE, not merely
+  cancel-submitted. Cancel propagation is an assumption until orders 2/3 observed it live. **If ANY
+  working sell remains: do NOT place the closing sell — re-cancel and re-verify first.**
+  *Why this is the real-money step: a still-working child + a new closing sell = selling 20 shares
+  against 10 owned ⇒ an unintended SHORT position.*
+- Only after the zero-working-sells confirmation: **SELL 10 GRAB LIMIT @bid** to close flat.
 - Proves: live children arm against a real position; close → ingestion lands **canary-tagged** (auto-excluded from all stats — already proven by test).
 
 **End state: flat. Total real cost ≈ the spread on 10 shares = cents.**
