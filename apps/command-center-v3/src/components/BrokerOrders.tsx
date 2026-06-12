@@ -135,6 +135,10 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
         <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
           <button onClick={repreview} disabled={busy} style={{ ...btn('#1d4ed8'), fontSize: 11, padding: '6px 14px' }}>
             {busy ? 'translating…' : '② Re-preview Schwab translation'}</button>
+          <button onClick={async () => { await fetch('/api/v2/broker-orders/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent_id: it.intent_id }) }); onSaved(); onClose() }}
+            style={{ ...btn('#b45309'), fontSize: 11, padding: '6px 14px' }}>✖ Reject (keep record)</button>
+          <button onClick={async () => { if (confirm('Delete this draft entirely? (audit events are kept)')) { await fetch('/api/v2/broker-orders/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent_id: it.intent_id }) }); onSaved(); onClose() } }}
+            style={{ ...btn('#991b1b'), fontSize: 11, padding: '6px 14px' }}>🗑 Delete draft</button>
           <button onClick={onClose} style={{ ...btn('#374151'), fontSize: 11, padding: '6px 14px' }}>close</button>
         </div>
         {result && (
