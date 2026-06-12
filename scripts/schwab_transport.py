@@ -8,9 +8,12 @@ ROLE SPLIT (non-negotiable):
     refresh persists THROUGH the manager — the wrapper NEVER owns token storage.
   • schwab-py = request/response transport ONLY.
 
-WRITE FENCE (Hard Rule #1 — the point of this module): the wrapper's place_order / cancel_order /
-replace_order are NEVER exposed. The only order-surface symbols here RAISE NotProvenWrite. No caller —
-adapter, endpoint, or agent — can reach a live Schwab write through this module.
+WRITE SURFACE (Stage 2b SB-1, operator-approved 2026-06-12): place_order / cancel_order are now REAL,
+but every call passes the FULL stack before any HTTP: committed pilot account allowlist (taxable only —
+IRA keys raise unconditionally) → broker_accounts.api_write_enabled (DB) → execution_guard.require()
+(canary envelope → standing locks → pilot 5-order cap → per-trade 2FA web+telegram). A correlation row
+is persisted BEFORE the POST (Schwab does not dedupe — timeout ⇒ reconcile via GET before any retry).
+replace_order remains FENCED (NotProvenWrite) — no replace in the pilot; cancel + new order instead.
 
 LIVE = NOT_PROVEN until credentials exist (SCHWAB_APP_KEY/SECRET/CALLBACK). Without them build_client()
 returns NOT_PROVEN and every read returns degraded. The NORMALIZERS are pure functions proven against
@@ -32,17 +35,142 @@ class NotProvenWrite(RuntimeError):
     """Raised by any wrapper write-surface symbol. Stage 1 is read-only; writes are fenced."""
 
 
-# ── WRITE FENCE — these shadow the wrapper's write methods so any call hits NOT_PROVEN, never a live write ──
-def place_order(*_a, **_k):
-    raise NotProvenWrite("Schwab place_order is FENCED (read-only Stage 1; api_write_enabled=false)")
+# ── Stage 2b WRITE SURFACE — the ONLY Schwab write path in the repo; full guard stack per call ──
+
+def _pilot_ensure_table(cur):
+    cur.execute("""CREATE TABLE IF NOT EXISTS schwab_pilot_orders (
+                     id SERIAL PRIMARY KEY,
+                     correlation_id TEXT NOT NULL,
+                     intent_id TEXT,
+                     account_key TEXT NOT NULL,
+                     symbol TEXT,
+                     side TEXT,
+                     qty NUMERIC,
+                     limit_price NUMERIC,
+                     order_spec JSONB,
+                     status TEXT NOT NULL,
+                     broker_order_id TEXT,
+                     detail TEXT,
+                     created_at TIMESTAMPTZ DEFAULT NOW(),
+                     updated_at TIMESTAMPTZ DEFAULT NOW())""")
 
 
-def cancel_order(*_a, **_k):
-    raise NotProvenWrite("Schwab cancel_order is FENCED (read-only Stage 1; api_write_enabled=false)")
+def _pilot_preconditions(account_key):
+    """Hard structural asserts BEFORE the guard even runs. IRA keys can never reach a write."""
+    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+    if (account_key or "").strip() not in PILOT_ACCOUNT_ALLOWLIST:
+        raise NotProvenWrite(f"account {account_key!r} is not in the committed pilot allowlist "
+                             f"{PILOT_ACCOUNT_ALLOWLIST} — Schwab writes are taxable-only by commit")
+    from db_adapter import _get_conn
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT api_write_enabled FROM broker_accounts WHERE account_key=%s", (account_key,))
+    r = cur.fetchone()
+    if not r or r[0] is not True:
+        raise NotProvenWrite(f"broker_accounts.api_write_enabled is not true for {account_key} "
+                             "(pilot disarmed — run schwab_pilot_arm.py --arm)")
+    return conn
+
+
+def place_order(account_key, order_spec, intent):
+    """Stage 2b pilot submit. Stack: taxable-only assert → api_write_enabled → execution_guard.require
+    (canary gate → standing locks → pilot cap → 2FA) → persist row → POST → consume approval → read-back.
+    Raises NotProvenWrite/ExecutionBlocked on any closed lock; returns a result dict on broker contact."""
+    import json as _json
+    from brokers.execution_guard import require           # raises ExecutionBlocked when denied
+    from brokers import approval_service
+    conn = _pilot_preconditions(account_key)
+    if (intent.account_key or "") != account_key:
+        raise NotProvenWrite(f"intent.account_key {intent.account_key!r} != {account_key!r} — refusing")
+    require(intent, "submit")
+    cur = conn.cursor()
+    _pilot_ensure_table(cur)
+    legs = (order_spec.get("orderLegCollection") or [{}])[0]
+    # persist BEFORE any HTTP — Schwab does not dedupe; this row is the reconcile anchor on timeout
+    cur.execute("""INSERT INTO schwab_pilot_orders
+                     (correlation_id, intent_id, account_key, symbol, side, qty, limit_price, order_spec, status)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'submitting') RETURNING id""",
+                (intent.correlation_id, intent.intent_id, account_key,
+                 (legs.get("instrument") or {}).get("symbol"), legs.get("instruction"),
+                 legs.get("quantity"), order_spec.get("price"), _json.dumps(order_spec)))
+    row_id = cur.fetchone()[0]
+    conn.commit()
+    client, err = build_client(account_key)
+    if err:
+        cur.execute("UPDATE schwab_pilot_orders SET status='client_unavailable', detail=%s, updated_at=NOW() "
+                    "WHERE id=%s", (str(err)[:300], row_id)); conn.commit()
+        return {"status": "error", "error": "client unavailable", "detail": err, "pilot_row_id": row_id}
+    h = _get_hash(account_key)
+    _rate_acquire()
+    try:
+        resp = client.place_order(h, order_spec)
+    except Exception as e:
+        cur.execute("UPDATE schwab_pilot_orders SET status='post_exception', detail=%s, updated_at=NOW() "
+                    "WHERE id=%s", (str(e)[:300], row_id)); conn.commit()
+        return {"status": "error", "error": f"POST exception: {str(e)[:160]}", "pilot_row_id": row_id,
+                "note": "DO NOT blind-retry — reconcile open orders via GET first (Schwab does not dedupe)"}
+    if resp.status_code not in (200, 201):
+        cur.execute("UPDATE schwab_pilot_orders SET status='rejected_by_broker', detail=%s, updated_at=NOW() "
+                    "WHERE id=%s", (f"HTTP {resp.status_code}: {resp.text[:240]}", row_id)); conn.commit()
+        return {"status": "rejected", "http_status": resp.status_code, "body": resp.text[:400],
+                "pilot_row_id": row_id}
+    order_id = None
+    try:
+        from schwab.utils import Utils
+        order_id = str(Utils(client, h).extract_order_id(resp) or "")
+    except Exception:
+        loc = resp.headers.get("Location", "")
+        order_id = loc.rstrip("/").rsplit("/", 1)[-1] if loc else None
+    approval_service.consume(intent.intent_id)              # single-use: burn the 2FA set NOW
+    cur.execute("UPDATE schwab_pilot_orders SET status='submitted', broker_order_id=%s, updated_at=NOW() "
+                "WHERE id=%s", (order_id, row_id)); conn.commit()
+    readback = None
+    try:
+        _rate_acquire()
+        rb = client.get_order(order_id, h)
+        readback = rb.json() if rb.status_code == 200 else {"http_status": rb.status_code}
+    except Exception as e:
+        readback = {"error": str(e)[:120]}
+    return {"status": "submitted", "broker_order_id": order_id, "pilot_row_id": row_id,
+            "readback": readback}
+
+
+def cancel_order(account_key, broker_order_id):
+    """Stage 2b pilot cancel — the safe direction. Same structural asserts + guard (no 2FA for cancel)."""
+    from brokers.execution_guard import require
+    from brokers.order_intent import OrderIntent, Instrument, Direction, EntrySpec, EntryMethod, Quantity
+    conn = _pilot_preconditions(account_key)
+    cur = conn.cursor()
+    _pilot_ensure_table(cur)
+    cur.execute("SELECT id, symbol, qty FROM schwab_pilot_orders WHERE broker_order_id=%s AND account_key=%s "
+                "ORDER BY id DESC LIMIT 1", (str(broker_order_id), account_key))
+    row = cur.fetchone()
+    if not row:
+        raise NotProvenWrite(f"order {broker_order_id} is not a pilot order — only pilot orders may be canceled")
+    row_id, sym, qty = row
+    intent = OrderIntent(instrument=Instrument(sym or "UNKNOWN"), direction=Direction.LONG,
+                         entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=0.01),
+                         quantity=Quantity(qty=float(qty or 1)), broker="schwab", account_key=account_key)
+    require(intent, "cancel")
+    client, err = build_client(account_key)
+    if err:
+        return {"status": "error", "error": "client unavailable", "detail": err}
+    h = _get_hash(account_key)
+    _rate_acquire()
+    try:
+        resp = client.cancel_order(broker_order_id, h)
+    except Exception as e:
+        return {"status": "error", "error": f"cancel exception: {str(e)[:160]}"}
+    ok = resp.status_code in (200, 201)
+    cur.execute("UPDATE schwab_pilot_orders SET status=%s, detail=%s, updated_at=NOW() WHERE id=%s",
+                ("cancel_requested" if ok else "cancel_rejected",
+                 f"HTTP {resp.status_code}", row_id)); conn.commit()
+    return {"status": "cancel_requested" if ok else "cancel_rejected",
+            "http_status": resp.status_code, "broker_order_id": str(broker_order_id)}
 
 
 def replace_order(*_a, **_k):
-    raise NotProvenWrite("Schwab replace_order is FENCED (read-only Stage 1; api_write_enabled=false)")
+    raise NotProvenWrite("Schwab replace_order is FENCED — no replace in the Stage 2b pilot "
+                         "(cancel + new order instead)")
 
 
 def _creds():

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-12 - SB-1: Schwab write pilot built (fenced), validator rewritten to write-policy
+
+Operator-approved Stage 2b: SB-0 proved the "sandbox" is NOT a sandbox (same app/keyset returns
+all 3 real accounts) -> pilot proceeds live-tiny under the committed $4/$40 canary envelope,
+session day 2026-06-13. SB-1 ships the ONE write path: schwab_transport.place_order/cancel_order
+behind taxable-only structural assert + api_write_enabled + execution_guard (canary gate ->
+standing locks env/db/approval -> brokers/pilot_caps.py commit-only 5-order cap -> per-trade 2FA
+web-typed-ticker + telegram, single-use, one-order-at-a-time); replace stays fenced; pilot row
+persisted BEFORE POST (no-dedupe reconcile anchor). Arm/disarm via schwab_pilot_arm.py
+(typed-phrase). API: broker-orders/pilot/{status,preflight,execute,cancel}; UI: Pilot Console in
+v3 Trading->Broker Orders (reuses ApprovalPanel 2FA). Validator REWRITTEN:
+validate_schwab_write_policy.py (25 guards; new: write-stack static+runtime proofs, pilot-caps
+behavior, 2FA deny/grant matrix, tamper-evidence gate-modules-match-git-HEAD; old file = shim).
+Everything fail-closed disarmed; armed still requires per-order canary envelope + 2FA.
+
 ## 2026-06-12 - Layered exit ladders end-to-end + Manual ToS account cash fix
 
 Entry plans now carry a LAYERED exit, not a single capped target. Deterministic ladder (T1 +1R

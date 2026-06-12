@@ -167,6 +167,106 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
   )
 }
 
+// ── STAGE 2b PILOT CONSOLE — the ONLY surface that can reach the fenced write path. Flow:
+// preflight (envelope/gate/quote) → 2FA (existing ApprovalPanel: web typed-ticker + Telegram) →
+// execute (transport re-enforces the whole stack server-side) → cancel. Everything fail-closed.
+function PilotConsole() {
+  const { data: stR, refetch } = useApi<any>('/api/v2/broker-orders/pilot/status', 15_000)
+  const s = (stR as any)?.data ?? stR
+  const [symbol, setSymbol] = useState('')
+  const [qty, setQty] = useState('1')
+  const [limit, setLimit] = useState('')
+  const [pf, setPf] = useState<any>(null)
+  const [execMsg, setExecMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const post = async (path: string, body: any) => {
+    setBusy(true)
+    try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json(); return (j as any)?.data ?? j }
+    finally { setBusy(false) }
+  }
+  if (!s) return null
+  const lock = (label: string, ok: boolean, tip?: string) => (
+    <span title={tip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 3,
+      background: (ok ? '#66bb6a' : '#ef5350') + '22', color: ok ? '#66bb6a' : '#ef5350' }}>{ok ? '🔓' : '🔒'} {label}</span>
+  )
+  const armed = !!s.armed
+  const used = s.pilot_orders_used ?? 0
+  const cap = s.pilot_orders_cap ?? 5
+  return (
+    <div style={{ border: `1px solid ${armed ? '#66bb6a55' : T.border}`, borderRadius: 6, padding: 12, marginBottom: 12, background: T.card }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>STAGE 2b PILOT CONSOLE</span>
+        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 3,
+          background: (armed ? '#66bb6a' : '#ef5350') + '22', color: armed ? '#66bb6a' : '#ef5350' }}>
+          {armed ? 'ARMED' : 'DISARMED'}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: used >= cap ? '#ef5350' : T.text }}>orders {used}/{cap}</span>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => refetch()} style={btn('#333')}>refresh</button>
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 7 }}>
+        {lock('env flag', !!s.env_BROKER_LIVE_ENABLED, 'BROKER_LIVE_ENABLED=true in .env + server restart')}
+        {lock('db control', !!s.db_control_broker_live_enabled, "system_controls['broker_live_enabled']")}
+        {lock('standing approval', (s.standing_approvals_active ?? 0) > 0, 'broker_live_approvals row (schwab_pilot_arm.py --arm)')}
+        {lock('write flag (taxable)', !!s.api_write_enabled?.schwab_taxable, 'broker_accounts.api_write_enabled')}
+        {lock(`canary day ${s.canary_session_date}`, !!s.canary_session_is_today, 'committed CANARY_SESSION_DATE must be today (auto-expires)')}
+        <span style={{ fontSize: 9, color: T.dim }}>allowlist: {(s.canary_allowlist ?? []).join(', ') || '—'} ·
+          ≤${s.canary_envelope?.max_price} · ≤{s.canary_envelope?.max_qty} sh · ≤${s.canary_envelope?.max_notional}</span>
+      </div>
+      <div style={{ fontSize: 9, color: T.dim, marginTop: 5 }}>{s.note}</div>
+
+      {/* preflight form */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="symbol (allowlist)" style={{ ...inp, width: 120 }} />
+        <input value={qty} onChange={e => setQty(e.target.value.replace(/\D/g, ''))} placeholder="qty" style={{ ...inp, width: 60 }} />
+        <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="limit $" style={{ ...inp, width: 80 }} />
+        <button disabled={busy || !symbol || !qty || !limit}
+          onClick={async () => { setPf(await post('/api/v2/broker-orders/pilot/preflight', { symbol, qty: Number(qty), limit_price: limit, account_key: 'schwab_taxable' })); setExecMsg('') }}
+          style={btn('#1565c0')}>Run preflight</button>
+        <span style={{ fontSize: 9, color: T.dim }}>preflight = envelope + canary gate + token health + live quote/spread; saves the draft for 2FA</span>
+      </div>
+      {pf && !pf.ok && <div style={{ fontSize: 10, color: '#ef5350', marginTop: 7, fontWeight: 700 }}>⛔ {pf.reason ?? pf.error}</div>}
+      {pf && pf.ok && (
+        <div style={{ marginTop: 8, padding: 8, background: '#101010', border: `1px solid ${T.border}`, borderRadius: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#66bb6a' }}>✓ preflight passed — {pf.operator_phrase}</div>
+          <div style={{ fontSize: 9, color: T.dim, marginTop: 3, ...mono }}>
+            quote: bid {pf.checks?.live_quote?.bid} / ask {pf.checks?.live_quote?.ask} · spread {pf.checks?.live_quote?.spread_pct}%</div>
+          <pre style={{ fontSize: 9, color: T.dim, margin: '6px 0 0', maxHeight: 120, overflow: 'auto' }}>{JSON.stringify(pf.order_spec)}</pre>
+          {/* factor ② and ③: the existing two-channel approval (web typed-ticker + telegram) */}
+          <ApprovalPanel intentId={pf.intent_id} symbol={symbol} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <button disabled={busy || !armed}
+              onClick={async () => { const r = await post('/api/v2/broker-orders/pilot/execute', { intent_id: pf.intent_id }); setExecMsg(JSON.stringify(r).slice(0, 220)); refetch() }}
+              style={{ ...btn(armed ? T.buy : '#222', armed ? '#fff' : '#555'), padding: '7px 16px', fontWeight: 800 }}>
+              EXECUTE PILOT ORDER (server re-checks everything)</button>
+            <span style={{ fontSize: 9, color: T.dim }}>denied unless BOTH 2FA channels are confirmed + all locks open</span>
+          </div>
+          {execMsg && <div style={{ fontSize: 9, color: T.text, marginTop: 6, ...mono }}>{execMsg}</div>}
+        </div>
+      )}
+
+      {/* pilot orders + cancel */}
+      {(s.pilot_orders ?? []).length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text, marginBottom: 4 }}>Pilot orders</div>
+          {(s.pilot_orders ?? []).map((o: any) => (
+            <div key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 9.5, padding: '4px 0', borderTop: `1px solid ${T.border}` }}>
+              <span style={{ ...mono, fontWeight: 800, color: T.text }}>#{o.id} {o.side} {o.qty} {o.symbol} @{o.limit_price}</span>
+              <span style={{ color: o.status === 'submitted' ? '#66bb6a' : o.status?.startsWith('cancel') ? T.amber : T.dim }}>{o.status}</span>
+              {o.broker_order_id && <span style={{ color: T.dim, ...mono }}>id {o.broker_order_id}</span>}
+              <span style={{ color: T.dim }}>{String(o.created_at ?? '').slice(0, 16)}</span>
+              <span style={{ flex: 1 }} />
+              {o.broker_order_id && o.status === 'submitted' && (
+                <button disabled={busy} onClick={async () => { const r = await post('/api/v2/broker-orders/pilot/cancel', { broker_order_id: o.broker_order_id }); setExecMsg(JSON.stringify(r).slice(0, 180)); refetch() }}
+                  style={btn('#b71c1c')}>cancel</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── ACTIVE TRADER panel (ToS desktop layout; builds DRAFTS only) ────────────────────────────────
 const SCHWAB_ACCOUNTS = ['schwab_taxable', 'schwab_rollover_ira', 'schwab_roth_ira']
 
@@ -631,6 +731,8 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
           Protocol: docs/brokers/stage2a-canary-protocol.md
         </div>
       </div>
+
+      <PilotConsole />
 
       <ActiveTraderPanel seed={draftSeed ?? null} onPreviewed={() => { refetch(); refetchEvents() }} />
 

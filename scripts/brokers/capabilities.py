@@ -34,7 +34,11 @@ CAPS: dict[str, dict] = {
         },
     },
     "schwab": {
-        "execution_mode_default": "BROKER_DISABLED",   # THE phase invariant
+        # Stage 2b SB-1 (operator-approved 2026-06-12): mode is now LIVE_ENABLED_FUTURE — the guard's
+        # gated branch is REACHABLE but fail-closed until ALL standing locks open (env flag + DB
+        # control row + standing signed approval) AND per-order: canary gate + pilot caps + 2FA.
+        # Disarmed state (any lock closed) behaves exactly like BROKER_DISABLED.
+        "execution_mode_default": "LIVE_ENABLED_FUTURE",
         "environment": "live-only (NO paper environment exists)",
         "features": {
             "entry.market":        {"level": "native", "confidence": "VERIFIED-SDK"},

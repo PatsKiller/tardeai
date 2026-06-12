@@ -16775,6 +16775,100 @@ def _schwab_accounts_live(query=None):
     return out
 
 
+def _pilot_status(query=None):
+    """GET /api/v2/broker-orders/pilot/status — Stage 2b pilot locks/envelope/counter + recent orders.
+    Read-only; mirrors schwab_pilot_arm.py --status for the console."""
+    import schwab_pilot_arm as arm
+    st = arm.status()
+    rows = _db_query("""SELECT id, correlation_id, intent_id, account_key, symbol, side, qty, limit_price,
+                          status, broker_order_id, detail, created_at, updated_at
+                        FROM schwab_pilot_orders ORDER BY id DESC LIMIT 20""") or []
+    # active 2FA slot (one order at a time)
+    slot = _db_query("""SELECT DISTINCT intent_id FROM trade_approvals
+                        WHERE status IN ('pending','confirmed') AND expires_at > NOW()""") or []
+    return _json_clean({**st, "pilot_orders": rows,
+                        "active_approval_intents": [r["intent_id"] for r in slot]})
+
+
+def _pilot_preflight(body=None):
+    """POST /api/v2/broker-orders/pilot/preflight — full Stage 2b preflight (envelope, canonical model,
+    canary gate, token health, account hash, live quote/spread) + saves the intent DRAFT so the existing
+    2FA request-approval/approve routes work on it. NO order I/O."""
+    import schwab_stage2b_canary_preflight as pf
+    from brokers import audit as br_audit
+    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+    b = body or {}
+    try:
+        plan = pf.make_plan(str(b.get("account_key") or PILOT_ACCOUNT_ALLOWLIST[0]),
+                            str(b.get("symbol") or ""), b.get("qty") or 0,
+                            str(b.get("limit_price") or "0"))
+        checks = {}
+        checks["model_and_gate"] = pf.require_model_and_gate(plan)
+        checks["token_health"] = pf.require_token_health(plan.account_key)
+        pf.require_account_hash(plan.account_key)
+        checks["live_quote"] = pf.require_live_quote(plan, pf.DEFAULT_MAX_SPREAD_PCT)
+        intent = pf.make_order_intent(plan)
+        spec = pf.make_order_spec(plan)
+        br_audit.save_intent(intent, validation={"stage2b_preflight": "passed", **checks},
+                             translation={"order_spec": spec}, state="PREVIEWED")
+        pf.write_audit("api_preflight", plan, {"checks": checks, "order_spec": spec})
+        return _json_clean({"ok": True, "intent_id": intent.intent_id,
+                            "correlation_id": plan.correlation_id,
+                            "order_spec": spec, "checks": checks,
+                            "operator_phrase": plan.operator_phrase,
+                            "next": "POST /api/v2/broker-orders/request-approval {intent_id} → confirm web "
+                                    "(type ticker) + telegram (button/code) → POST pilot/execute"})
+    except pf.CanaryAbort as e:
+        return _json_clean({"ok": False, "blocked": True, "reason": str(e)})
+    except Exception as e:
+        return _json_clean({"ok": False, "error": str(e)[:200]})
+
+
+def _pilot_execute(body=None):
+    """POST /api/v2/broker-orders/pilot/execute {intent_id} — the ONLY caller of the transport write
+    surface. Re-runs nothing itself: the transport enforces the entire stack (taxable-only assert,
+    api_write_enabled, canary gate, standing locks, pilot cap, 2FA) and fails closed."""
+    from brokers import audit as br_audit
+    from brokers.order_intent import OrderIntent
+    import schwab_transport as st
+    b = body or {}
+    iid = str(b.get("intent_id") or "")
+    rows = [r for r in br_audit.load_drafts("schwab", 200) if r["intent_id"] == iid]
+    if not rows:
+        return _json_clean({"ok": False, "error": "unknown intent_id (run pilot/preflight first)"})
+    row = rows[0]
+    intent = OrderIntent.from_dict(row["intent_json"])
+    spec = (row.get("translation_json") or {}).get("order_spec")
+    if not spec:
+        return _json_clean({"ok": False, "error": "intent has no preflighted order_spec — re-run preflight"})
+    try:
+        res = st.place_order(intent.account_key, spec, intent)
+    except st.NotProvenWrite as e:
+        return _json_clean({"ok": False, "blocked": True, "reason": str(e)})
+    except Exception as e:
+        # ExecutionBlocked (guard deny) and anything else — honest reason, nothing submitted
+        return _json_clean({"ok": False, "blocked": True, "reason": str(e)[:240]})
+    br_audit.save_intent(intent, translation={"order_spec": spec, "submit_result": res},
+                         state="SUBMITTED" if res.get("status") == "submitted" else "BLOCKED",
+                         blocked_reason=None if res.get("status") == "submitted" else str(res)[:200])
+    return _json_clean({"ok": res.get("status") == "submitted", **res})
+
+
+def _pilot_cancel(body=None):
+    """POST /api/v2/broker-orders/pilot/cancel {broker_order_id} — cancel a PILOT order (safe direction)."""
+    import schwab_transport as st
+    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+    b = body or {}
+    oid = str(b.get("broker_order_id") or "")
+    if not oid:
+        return _json_clean({"ok": False, "error": "broker_order_id required"})
+    try:
+        res = st.cancel_order(PILOT_ACCOUNT_ALLOWLIST[0], oid)
+    except Exception as e:
+        return _json_clean({"ok": False, "blocked": True, "reason": str(e)[:240]})
+    return _json_clean({"ok": res.get("status") == "cancel_requested", **res})
+
+
 def _broker_orders_explain(body=None):
     """POST /api/v2/broker-orders/explain — ADVISORY-ONLY AI helper for the ToS-style order panel.
     Explains order-type/field MECHANICS and how the canonical intent translates to Schwab. It can
@@ -17506,6 +17600,7 @@ ROUTES = {
     "/api/v2/broker-orders/drafts": _broker_orders_drafts,
     "/api/v2/broker-orders/shadow-recon": _broker_orders_shadow_recon,
     "/api/v2/broker-orders/activity": _broker_orders_activity,
+    "/api/v2/broker-orders/pilot/status": _pilot_status,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
     "/api/v2/symbol-cards": _symbol_cards,
@@ -19864,6 +19959,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body or {}
             r = approval_service.confirm(b.get("intent_id"), b.get("channel", "web"), b.get("code"))
             return (200 if r.get("ok") else 400), {"ok": r.get("ok", False), **r}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/pilot/preflight":
+        try:
+            return 200, _pilot_preflight(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/pilot/execute":
+        try:
+            return 200, _pilot_execute(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/pilot/cancel":
+        try:
+            return 200, _pilot_cancel(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
