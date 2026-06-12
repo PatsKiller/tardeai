@@ -35,8 +35,14 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {p.watchlist_state === 'directive' && <span style={chip('rgba(168,85,247,.18)', '#a855f7')} title="Operator directive-linked">★ directive</span>}
           {p.watchlist_state === 'watchlist' && <span style={chip('rgba(96,165,250,.15)', '#60a5fa')}>watchlist</span>}
-          <span style={chip('var(--bg2)', 'var(--text2)')}>{p.account}</span>
-          <span style={chip('var(--bg2)', 'var(--text3)')}>{p.broker}/{p.environment}</span>
+          {/* account badge — loud paper-vs-real distinction (operator request 2026-06-12: AGNC/NWG
+              exist as BOTH paper trades and real Schwab holdings; the badge disambiguates at a glance) */}
+          {(() => {
+            const paper = p.environment === 'paper' || String(p.account ?? '').toLowerCase().includes('paper')
+            return <span title={`${p.broker}/${p.environment}`} style={chip(
+              paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)', paper ? '#60a5fa' : '#ffa726')}>
+              {paper ? '📝 PAPER' : '💰 REAL'} · {String(p.account ?? '?').replace(/_/g, ' ').toUpperCase()}</span>
+          })()}
           <span style={chip(`${border}22`, border)} title={`Operator priority: ${priority}`}>{priority.toUpperCase()}</span>
           <span style={chip(p.protection_state === 'protected' ? 'rgba(34,197,94,.15)' : p.protection_state === 'partial' ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)', p.protection_state === 'protected' ? '#22c55e' : p.protection_state === 'partial' ? '#f59e0b' : '#ef4444')}>{p.protection_state}</span>
         </div>

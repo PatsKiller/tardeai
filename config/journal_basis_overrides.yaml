@@ -12,6 +12,9 @@ overrides:
   # basis is now CAPPED at documented_qty: shares sold beyond 400 underflow to basis_unknown (their true
   # basis needs the Schwab Realized Gain/Loss export). Confirmed by the 2026-04-21 Roth Positions export:
   # the 130 V shares still HELD carry cost basis $307.32/sh (NOT $10.75) — so the non-IPO V is high-basis.
-  "V|schwab_roth_ira":
+  # 2026-06-12 ACCOUNT-SWAP FIX: the roth/rollover hash links were crossed since cred-in; the IPO-lot
+  # sells actually occurred in the ROLLOVER IRA (...0258, the big account). Key re-pointed accordingly;
+  # the true Roth (...9415) holds only the 130 high-basis V shares.
+  "V|schwab_rollover_ira":
     basis: 10.75
     documented_qty: 400

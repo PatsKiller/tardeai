@@ -153,6 +153,24 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
         </label>
       </div>
 
+      {/* QUICK ACCOUNT PILLS — one-tap account filter (operator request 2026-06-12) */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 9, color: 'var(--text3)' }}>account:</span>
+        {['all', ...(flt.accounts ?? [])].map((a: string) => {
+          const paper = String(a).toLowerCase().includes('paper')
+          const on = f.account === a
+          return (
+            <button key={a} onClick={() => set('account', a)}
+              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)',
+                background: on ? (a === 'all' ? 'rgba(96,165,250,.18)' : paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)') : 'var(--bg2)',
+                color: on ? (a === 'all' || paper ? '#60a5fa' : '#ffa726') : 'var(--text3)', fontWeight: on ? 700 : 400 }}>
+              {a === 'all' ? 'All accounts' : `${paper ? '📝' : '💰'} ${a.replace(/_/g, ' ')}`}
+              {a !== 'all' && summary.by_account?.[a] != null ? ` (${summary.by_account[a]})` : ''}
+            </button>
+          )
+        })}
+      </div>
+
       {/* QUICK ACTION-ITEM FILTERS */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => (
