@@ -16534,6 +16534,66 @@ def _broker_orders_drafts(query=None):
     return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
 
 
+def _symbol_cards(query=None):
+    """GET /api/v2/symbol-cards — ONE map powering the unified card layer on Watchlist / Open Trades /
+    Portfolio (operator 2026-06-12): per symbol -> {description, sector, industry, sector_etf,
+    perf_week, sector_perf_week, vs_sector_week, analyst{...}, news[top 3 relevant]}. Read-only."""
+    profs = _db_query("SELECT symbol, description_1s, sector, industry FROM symbol_profiles") or []
+    out = {p["symbol"]: {"description": p["description_1s"], "sector": p["sector"],
+                         "industry": p["industry"]} for p in profs}
+    syms = list(out.keys())
+    if not syms:
+        return {"cards": {}, "count": 0}
+    # weekly perf for symbol + its sector ETF (ticker_snapshot_daily carries both).
+    # yfinance sector names differ from the GICS map keys — alias them.
+    _YF_ALIAS = {"Financial Services": "Financials", "Consumer Cyclical": "Consumer Cyclical",
+                 "Consumer Defensive": "Consumer Defensive", "Basic Materials": "Basic Materials"}
+    etf_map = {**_SECTOR_ETF_MAP, **{k: _SECTOR_ETF_MAP.get(v) for k, v in _YF_ALIAS.items()
+                                     if _SECTOR_ETF_MAP.get(v)}}
+    snaps = _db_query("""SELECT DISTINCT ON (symbol) symbol, perf_week_pct FROM ticker_snapshot_daily
+                         WHERE perf_week_pct IS NOT NULL ORDER BY symbol, snapshot_date DESC""") or []
+    perf = {s["symbol"]: _json_clean(s["perf_week_pct"]) for s in snaps}
+    for sym, c in out.items():
+        etf = etf_map.get(c.get("sector") or "", None)
+        c["sector_etf"] = etf
+        c["perf_week"] = perf.get(sym)
+        c["sector_perf_week"] = perf.get(etf) if etf else None
+        c["vs_sector_week"] = (round(c["perf_week"] - c["sector_perf_week"], 2)
+                               if c["perf_week"] is not None and c["sector_perf_week"] is not None else None)
+    # analyst consensus (latest per symbol)
+    an = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation_key, recommendation_mean,
+                        number_of_analyst_opinions, target_mean_price, target_high_price,
+                        target_low_price, current_price FROM yahoo_analyst_targets_history
+                      WHERE symbol = ANY(%s) ORDER BY symbol, created_at DESC""", (syms,)) or []
+    for a in an:
+        s = a["symbol"]
+        if s in out:
+            tm, cp = a.get("target_mean_price"), a.get("current_price")
+            out[s]["analyst"] = {"rating": a.get("recommendation_key"),
+                                 "mean": _json_clean(a.get("recommendation_mean")),
+                                 "opinions": a.get("number_of_analyst_opinions"),
+                                 "target": _json_clean(tm), "target_high": _json_clean(a.get("target_high_price")),
+                                 "target_low": _json_clean(a.get("target_low_price")),
+                                 "upside_pct": round((float(tm) - float(cp)) / float(cp) * 100, 1)
+                                 if tm and cp and float(cp) > 0 else None}
+    # top 3 latest relevant news per symbol (relevance-weighted recency)
+    news = _db_query("""SELECT symbol, title, source, source_url, published_at, sentiment FROM (
+                          SELECT symbol, title, source, source_url, published_at, sentiment,
+                                 row_number() OVER (PARTITION BY symbol ORDER BY published_at DESC,
+                                                    relevance_score DESC NULLS LAST) rn
+                          FROM news_articles
+                          WHERE symbol = ANY(%s) AND published_at > now() - interval '14 days') n
+                        WHERE rn <= 3""", (syms,)) or []
+    for n in news:
+        s = n["symbol"]
+        if s in out:
+            out[s].setdefault("news", []).append({"title": n["title"], "source": n["source"],
+                                                  "url": n["source_url"], "at": _json_clean(n["published_at"]),
+                                                  "sentiment": n["sentiment"]})
+    return _json_clean({"cards": out, "count": len(out),
+                        "note": "unified card layer — description/sector/vs-sector/analyst/top-3 news; read-only"})
+
+
 def _portfolio_llm_coverage(query=None):
     """GET /api/v2/portfolio/llm-coverage — per-symbol LLM research provenance (operator request
     2026-06-12: 'LLM name badge so we know which has looked at it'). Sources: hermes internal research
@@ -17399,6 +17459,7 @@ ROUTES = {
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
+    "/api/v2/symbol-cards": _symbol_cards,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,

@@ -69,6 +69,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
+  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
@@ -248,6 +250,32 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <span style={{ flex: 1 }} />
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
                     </div>
+                    {/* unified info block (operator 2026-06-12): what it does · sector vs sector · analyst · news */}
+                    {(() => {
+                      const sc = cardMap[(h.symbol || '').toUpperCase()]
+                      if (!sc) return null
+                      return (
+                        <div style={{ borderTop: '1px solid var(--border)', marginTop: 7, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {sc.description && <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.4 }}>{sc.description}</div>}
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 8.5 }}>
+                            {sc.sector && <span style={{ color: '#60a5fa' }}>{sc.sector}{sc.sector_etf ? ` (${sc.sector_etf})` : ''}</span>}
+                            {sc.vs_sector_week != null && <span title={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`}
+                              style={{ color: sc.vs_sector_week >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                              {sc.vs_sector_week >= 0 ? '+' : ''}{sc.vs_sector_week}% vs sector</span>}
+                            {sc.analyst?.rating && <span title={`consensus ${sc.analyst.mean} · range $${sc.analyst.target_low}–$${sc.analyst.target_high}`}
+                              style={{ color: String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
+                              {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions}an · tgt ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}</span>}
+                          </div>
+                          {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
+                            <div key={i} style={{ fontSize: 8.5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <span style={{ color: 'var(--text3)' }}>{n.source} · </span>
+                              {n.url ? <a href={n.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#93c5fd', textDecoration: 'none' }} title={n.title}>{n.title}</a>
+                                : <span style={{ color: 'var(--text2)' }} title={n.title}>{n.title}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-12 - Unified card layer: company sentence + sector-vs-sector + analyst + top-3 news on ALL cards
+
+Operator: every card on Watchlist / Open Trades / Portfolio shows sector + performance vs sector,
+one sentence on what the company does, analyst rating + predictions, top-3 latest relevant news.
+- symbol_profiles table + build_symbol_profiles.py (yfinance longBusinessSummary first sentence —
+  two when the first is just the company name; sector/industry; proxy fund codes get their
+  asset-class label; 86/88 universe profiled; weekly refresh cron Sun 19:00).
+- /api/v2/symbol-cards: ONE map for all three surfaces — description · sector + ETF (yfinance->GICS
+  alias fix: 'Financial Services'->XLF) · week perf vs sector ETF · analyst consensus
+  (rating/mean/opinions/targets/upside) · top-3 relevant news (14d, recency+relevance ranked,
+  linked, sentiment carried).
+- UI: Watchlist cards gain the full info block; Portfolio holding cards gain description/sector-vs/
+  analyst line/news; Open Trades cards gain the description + vs-sector line (sector/analyst/news
+  already present there).
+
 ## 2026-06-12 - Proposals get the watchlist treatment: inline grok entry validation + entry-zone tile; buys curated; dead-qwen warm fixed
 
 **Inline (operator: "not weekly — grok reviews when a proposal is created"):** auto_proposal_generator

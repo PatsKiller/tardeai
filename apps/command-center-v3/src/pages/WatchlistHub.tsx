@@ -42,6 +42,9 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: ext, refetch: refetchExt } = useApi<any>('/api/v2/hermes/external-intel-map', 60_000)
   const extMap: Record<string, any[]> = ext?.map ?? {}
+  // unified card layer: description / sector vs-sector / analyst / top-3 news (operator 2026-06-12)
+  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const curateRunning = !!curateStatus?.running
   const runChatgptTop20 = async () => {
@@ -252,6 +255,32 @@ export default function WatchlistHub({ onDrill }: Props) {
                       {stale && <Pill text="technicals stale" color="#f59e0b" tip="last enriched > 2h ago" />}
                     </div>
                   )}
+                  {/* unified info block: what the company does · sector vs sector · analyst · top-3 news */}
+                  {(() => {
+                    const sc = cardMap[it.symbol]
+                    if (!sc) return null
+                    return (
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {sc.description && <div style={{ fontSize: 9.5, color: 'var(--text2)', lineHeight: 1.4 }}>{sc.description}</div>}
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {sc.sector && <Pill text={`${sc.sector}${sc.sector_etf ? ` (${sc.sector_etf})` : ''}`} color="#60a5fa" tip={sc.industry || undefined} />}
+                          {sc.vs_sector_week != null && <Pill text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`}
+                            color={sc.vs_sector_week >= 0 ? '#22c55e' : '#ef4444'}
+                            tip={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`} />}
+                          {sc.analyst?.rating && <Pill text={`${String(sc.analyst.rating).replace('_', ' ')} · ${sc.analyst.opinions}an · tgt $${sc.analyst.target}${sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}`}
+                            color={String(sc.analyst.rating).includes('buy') ? '#22c55e' : sc.analyst.rating === 'hold' ? '#f59e0b' : 'var(--text3)'}
+                            tip={`analyst consensus ${sc.analyst.mean} · range $${sc.analyst.target_low}–$${sc.analyst.target_high}`} />}
+                        </div>
+                        {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
+                          <div key={i} style={{ fontSize: 9, lineHeight: 1.35 }}>
+                            <span style={{ color: 'var(--text3)' }}>{n.source} · {n.at ? `${Math.round((Date.now() - new Date(n.at).getTime()) / 36e5)}h` : ''} </span>
+                            {n.url ? <a href={n.url} target="_blank" rel="noreferrer" style={{ color: '#93c5fd', textDecoration: 'none' }}>{n.title}</a>
+                              : <span style={{ color: 'var(--text2)' }}>{n.title}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9, color: 'var(--text3)' }}>
                     <span>{it.origin_system === 'agent_discovery' ? 'AI-discovered' : originLabel(it.origin_system)}</span>
                     <span style={{ color: '#60a5fa' }}>more intelligence →</span>
