@@ -2,16 +2,32 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 
 type SourceKind = 'PROPOSAL' | 'WATCHLIST' | 'DRAFT'
-type SetupState = 'READY' | 'GENERATED' | 'BROKER_OBSERVED'
-type DeskFilter = 'ALL' | SourceKind | SetupState
+type SetupState = 'READY' | 'GENERATED' | 'BROKER_OBSERVED' | 'EXCEPTION'
+type SourceFilter = 'ALL' | SourceKind
+type AccountFilter = 'ALL' | 'ANY' | 'schwab_taxable' | 'schwab_rollover_ira' | 'schwab_roth_ira'
+type DecisionFilter = 'ALL' | 'GO' | 'WAIT' | 'OTHER'
+type StatusFilter = 'ALL' | SetupState
+type SortMode = 'SCORE_DESC' | 'SYMBOL_ASC' | 'SOURCE' | 'STATUS' | 'ENTRY_PRICE'
 
 type LocalState = Record<string, { account?: string; qty?: number; generated?: boolean }>
+type UiPrefs = {
+  source: SourceFilter
+  account: AccountFilter
+  decision: DecisionFilter
+  status: StatusFilter
+  search: string
+  minScore: string
+  hasEntry: boolean
+  hasRisk: boolean
+  sort: SortMode
+}
 
 type SetupRow = {
   id: string
   source: SourceKind
   raw: any
   symbol: string
+  company?: string | null
   account: string
   qty: number
   side: string
@@ -29,17 +45,27 @@ type SetupRow = {
   sourceLabel?: string | null
 }
 
-const LS_KEY = 'tradeai.manualTosDesk.v1'
+const LS_KEY = 'tradeai.manualTosDesk.v2'
+const PREF_KEY = 'tradeai.manualTosDesk.prefs.v1'
 const ACCOUNTS = ['ANY', 'schwab_taxable', 'schwab_rollover_ira', 'schwab_roth_ira']
 const C = { blue: '#60a5fa', green: '#22c55e', amber: '#f59e0b', red: '#ef4444', purple: '#a78bfa', dim: 'var(--text3)' }
 const mono = { fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' as const }
-const btn = (bg: string, fg = '#fff') => ({ fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 5, border: 'none', background: bg, color: fg, cursor: 'pointer' as const })
+const btn = (bg: string, fg = '#fff') => ({ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: 'none', background: bg, color: fg, cursor: 'pointer' as const })
+const inputStyle = { fontSize: 10, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' } as const
+const defaultPrefs: UiPrefs = { source: 'ALL', account: 'ALL', decision: 'ALL', status: 'ALL', search: '', minScore: '', hasEntry: false, hasRisk: false, sort: 'SCORE_DESC' }
 
 function num(v: any): number | null { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null }
 function first(...vals: any[]) { return vals.find(v => v !== undefined && v !== null && v !== '') }
+function str(v: any) { return v == null ? '' : String(v) }
+function scoreNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 function acct(a: string) { return !a || a === 'ANY' ? 'ANY SCHWAB' : a.replace('schwab_', '').replace(/_/g, ' ').toUpperCase() }
 function baseQty(x: any) { return Number(first(x.qty, x.shares, x.quantity?.qty, x.recommended_qty, x.position_size_shares, 10)) || 10 }
-function str(v: any) { return v == null ? '' : String(v) }
+function normalizedDecision(v: any): DecisionFilter {
+  const d = String(v ?? '').toUpperCase()
+  if (d === 'GO') return 'GO'
+  if (d === 'WAIT') return 'WAIT'
+  return 'OTHER'
+}
 
 function fromProposal(p: any, local: LocalState): SetupRow | null {
   const symbol = String(first(p.symbol, p.ticker, p.instrument?.symbol, '')).toUpperCase()
@@ -50,6 +76,7 @@ function fromProposal(p: any, local: LocalState): SetupRow | null {
   const target = num(first(p.target_price, p.take_profit, p.target1, p.target))
   return {
     id, source: 'PROPOSAL', raw: p, symbol,
+    company: first(p.company, p.name, p.company_name),
     account: local[id]?.account ?? 'ANY', qty: local[id]?.qty ?? baseQty(p),
     side: String(first(p.direction, p.side, 'BUY')).toUpperCase().includes('SHORT') ? 'SELL SHORT' : 'BUY',
     entryType: String(first(p.entry_type, p.order_type, 'LIMIT')).toUpperCase(), entryPrice: entry,
@@ -67,6 +94,7 @@ function fromWatch(x: any, local: LocalState): SetupRow | null {
   const price = num(first(x.price, x.last, x.current_price))
   return {
     id, source: 'WATCHLIST', raw: x, symbol,
+    company: first(x.company, x.name, x.company_name),
     account: local[id]?.account ?? 'ANY', qty: local[id]?.qty ?? 10,
     side: 'BUY', entryType: 'LIMIT', entryPrice: price,
     stop: null, trail: null, targets: [], tif: 'DAY', session: 'NORMAL',
@@ -85,10 +113,11 @@ function fromDraft(d: any, local: LocalState): SetupRow | null {
   const fallbackQty = Number(first(it.quantity?.qty, d.qty, 10)) || 10
   return {
     id, source: 'DRAFT', raw: d, symbol,
+    company: first(d.company, it.instrument?.name, it.company_name),
     account: local[id]?.account ?? String(first(it.account_key, d.account_key, 'ANY')),
     qty: local[id]?.qty ?? fallbackQty,
     side: it.direction === 'SHORT' ? 'SELL SHORT' : 'BUY',
-    entryType: String(first(entry.method, 'LIMIT')), entryPrice: num(first(entry.limit_price, entry.stop_price)),
+    entryType: String(first(entry.method, 'LIMIT')).toUpperCase(), entryPrice: num(first(entry.limit_price, entry.stop_price)),
     stop: num(it.exit_policy?.stop?.price), trail: it.exit_policy?.stop?.trail ?? null,
     targets: Array.isArray(it.exit_policy?.targets) ? it.exit_policy.targets : [],
     tif: String(first(it.tif, 'DAY')), session: String(first(it.session, 'NORMAL')),
@@ -96,7 +125,7 @@ function fromDraft(d: any, local: LocalState): SetupRow | null {
   }
 }
 
-function line(r: SetupRow) {
+function setupLine(r: SetupRow) {
   const price = r.entryPrice != null ? ` ${r.entryPrice.toFixed(2)}` : ''
   const exits = [
     r.stop != null ? `STOP ${r.stop.toFixed(2)}` : null,
@@ -106,17 +135,16 @@ function line(r: SetupRow) {
   return `${r.side} ${r.qty} ${r.symbol} ${r.entryType}${price} ${r.tif}${exits ? ` | ${exits}` : ''}`
 }
 
-function csv(v: any) { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+function csv(v: any) { const s = str(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 function csvText(rows: SetupRow[]) {
-  const out: string[][] = [['Source','Symbol','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
+  const out: string[][] = [['Source','Symbol','Company','Account','Side','Qty','EntryType','EntryPrice','Stop','Targets','TIF','Decision','Score','Sector','Reason','SetupLine']]
   rows.forEach(r => out.push([
-    r.source, r.symbol, r.account, r.side, String(r.qty), r.entryType,
+    r.source, r.symbol, str(r.company), r.account, r.side, String(r.qty), r.entryType,
     str(r.entryPrice), str(r.stop), r.targets.map((t: any) => t.price).join('|'), r.tif,
-    str(r.decision), str(r.score), str(r.sector), str(r.reason), line(r)
+    str(r.decision), str(r.score), str(r.sector), str(r.reason), setupLine(r)
   ]))
   return out.map(r => r.map(csv).join(',')).join('\n') + '\n'
 }
-
 function copyText(text: string, setMsg: (s: string) => void) {
   const done = () => { setMsg('copied'); setTimeout(() => setMsg(''), 1200) }
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done).catch(done)
@@ -131,16 +159,21 @@ function activityHit(r: SetupRow, activity: any[]) {
     const ac = !exactAcct || String(a.account_key ?? '') === r.account
     const aq = first(a.quantity, a.qty, a.filled_qty, a.shares)
     const q = aq == null || Number(aq) === r.qty || !r.qty
-    return sym && ac && q
+    const sideRaw = String(first(a.side, a.action, a.instruction, '')).toUpperCase()
+    const sideOk = !sideRaw || r.side.includes(sideRaw) || sideRaw.includes(r.side.split(' ')[0])
+    return sym && ac && q && sideOk
   }) ?? null
 }
 function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
+  if (!r.entryPrice) return 'EXCEPTION'
   if (activityHit(r, activity)) return 'BROKER_OBSERVED'
   return local[r.id]?.generated ? 'GENERATED' : 'READY'
 }
 function payload(r: SetupRow, state: SetupState, hit: any) {
-  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: line(r) }
+  return { mode: 'MANUAL_TOS', source: r.source, source_id: r.id, account: r.account, symbol: r.symbol, company: r.company, side: r.side, qty: r.qty, entry_type: r.entryType, entry_price: r.entryPrice, stop: r.stop, targets: r.targets, tif: r.tif, score: r.score, decision: r.decision, reason: r.reason, broker_observed: !!hit, observed: hit ? { account_key: hit.account_key, kind: hit.kind, status: hit.status, captured_at: hit.captured_at } : null, setup_line: setupLine(r) }
 }
+function badgeColor(source: SourceKind) { return source === 'PROPOSAL' ? C.green : source === 'WATCHLIST' ? C.blue : C.purple }
+function statusColor(state: SetupState) { return state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : state === 'EXCEPTION' ? C.red : C.dim }
 
 export default function ManualTosDesk() {
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
@@ -149,14 +182,21 @@ export default function ManualTosDesk() {
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: tradeAiR } = useApi<any>('/api/v2/trade-ai', 60_000)
   const [local, setLocal] = useState<LocalState>({})
-  const [filter, setFilter] = useState<DeskFilter>('ALL')
+  const [prefs, setPrefs] = useState<UiPrefs>(defaultPrefs)
   const [msg, setMsg] = useState('')
-  useEffect(() => { try { setLocal(JSON.parse(localStorage.getItem(LS_KEY) || '{}')) } catch { setLocal({}) } }, [])
-  const save = (n: LocalState) => { setLocal(n); localStorage.setItem(LS_KEY, JSON.stringify(n)) }
+
+  useEffect(() => {
+    try { setLocal(JSON.parse(localStorage.getItem(LS_KEY) || '{}')) } catch { setLocal({}) }
+    try { setPrefs({ ...defaultPrefs, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') }) } catch { setPrefs(defaultPrefs) }
+  }, [])
+  const saveLocal = (n: LocalState) => { setLocal(n); localStorage.setItem(LS_KEY, JSON.stringify(n)) }
+  const savePrefs = (patch: Partial<UiPrefs>) => { const next = { ...prefs, ...patch }; setPrefs(next); localStorage.setItem(PREF_KEY, JSON.stringify(next)) }
 
   const rows = useMemo(() => {
     const p = (((proposalsR as any)?.proposals ?? []) as any[]).map(x => fromProposal(x, local)).filter(Boolean) as SetupRow[]
-    const w = (((tradeAiR as any)?.tickers ?? []) as any[]).filter(x => ['GO','WAIT'].includes(String(x.decision ?? '').toUpperCase()) || Number(x.score ?? 0) >= 30).map(x => fromWatch(x, local)).filter(Boolean) as SetupRow[]
+    const w = (((tradeAiR as any)?.tickers ?? []) as any[])
+      .filter(x => ['GO','WAIT'].includes(String(x.decision ?? '').toUpperCase()) || Number(x.score ?? 0) >= 30)
+      .map(x => fromWatch(x, local)).filter(Boolean) as SetupRow[]
     const d = (((draftsR as any)?.drafts ?? []) as any[]).map(x => fromDraft(x, local)).filter(Boolean) as SetupRow[]
     const seen: Record<string, SetupRow> = {}
     ;[...p, ...w, ...d].forEach(r => { const k = `${r.source}:${r.id}`; if (!seen[k]) seen[k] = r })
@@ -165,27 +205,100 @@ export default function ManualTosDesk() {
 
   const activity = ((activityR as any)?.activity ?? []) as any[]
   const wrapped = rows.map(r => ({ r, state: rowState(r, local, activity), hit: activityHit(r, activity) }))
-  const visible = filter === 'ALL' ? wrapped : wrapped.filter(x => x.r.source === filter || x.state === filter)
+  const filtered = wrapped.filter(({ r, state }) => {
+    const decision = normalizedDecision(r.decision)
+    const q = prefs.search.trim().toUpperCase()
+    if (prefs.source !== 'ALL' && r.source !== prefs.source) return false
+    if (prefs.account !== 'ALL' && r.account !== prefs.account) return false
+    if (prefs.decision !== 'ALL' && decision !== prefs.decision) return false
+    if (prefs.status !== 'ALL' && state !== prefs.status) return false
+    if (q && !`${r.symbol} ${r.company ?? ''} ${r.reason ?? ''}`.toUpperCase().includes(q)) return false
+    if (prefs.minScore && scoreNum(r.score) < Number(prefs.minScore)) return false
+    if (prefs.hasEntry && !r.entryPrice) return false
+    if (prefs.hasRisk && !r.stop && r.targets.length === 0) return false
+    return true
+  })
+  const visible = [...filtered].sort((a, b) => {
+    if (prefs.sort === 'SYMBOL_ASC') return a.r.symbol.localeCompare(b.r.symbol)
+    if (prefs.sort === 'SOURCE') return a.r.source.localeCompare(b.r.source) || a.r.symbol.localeCompare(b.r.symbol)
+    if (prefs.sort === 'STATUS') return a.state.localeCompare(b.state) || a.r.symbol.localeCompare(b.r.symbol)
+    if (prefs.sort === 'ENTRY_PRICE') return (b.r.entryPrice ?? 0) - (a.r.entryPrice ?? 0)
+    return scoreNum(b.r.score) - scoreNum(a.r.score)
+  })
+  const counts = {
+    total: rows.length,
+    proposals: rows.filter(r => r.source === 'PROPOSAL').length,
+    watchlist: rows.filter(r => r.source === 'WATCHLIST').length,
+    drafts: rows.filter(r => r.source === 'DRAFT').length,
+    ready: wrapped.filter(x => x.state === 'READY').length,
+    generated: wrapped.filter(x => x.state === 'GENERATED').length,
+    observed: wrapped.filter(x => x.state === 'BROKER_OBSERVED').length,
+    exceptions: wrapped.filter(x => x.state === 'EXCEPTION').length,
+  }
   const lastRun = (reconR as any)?.runs?.[0]
   const watchTxt = visible.map(x => x.r.symbol).filter((s, i, a) => a.indexOf(s) === i).join('\n') + '\n'
-  const setField = (id: string, patch: Partial<LocalState[string]>) => save({ ...local, [id]: { ...(local[id] ?? {}), ...patch } })
+  const setField = (id: string, patch: Partial<LocalState[string]>) => saveLocal({ ...local, [id]: { ...(local[id] ?? {}), ...patch } })
+  const kpis = [
+    ['Total Candidates', counts.total, 'var(--text0)'], ['Proposals', counts.proposals, C.green], ['Watchlist', counts.watchlist, C.blue], ['Drafts', counts.drafts, C.purple],
+    ['Ready', counts.ready, C.dim], ['Generated', counts.generated, C.blue], ['Broker Observed', counts.observed, C.green], ['Exceptions', counts.exceptions, C.red],
+  ] as const
 
   return <div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-      <div><div style={{ fontSize: 20, fontWeight: 800 }}>Manual ToS Desk</div><div style={{ fontSize: 11, color: C.dim }}>Proposal, watchlist, and broker-draft setup bridge. Schwab activity is read-only confirmation.</div></div>
+      <div><div style={{ fontSize: 22, fontWeight: 900 }}>Manual ToS Execution Desk</div><div style={{ fontSize: 11, color: C.dim }}>Trade AI prepares Thinkorswim setup tickets. Operator enters manually. Schwab read-only activity confirms what happened.</div></div>
       <button onClick={() => refetch()} style={btn('var(--bg2)', C.blue)}>refresh</button>
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(105px,1fr))', gap: 8, marginBottom: 12 }}>{(['ALL','PROPOSAL','WATCHLIST','DRAFT','READY','GENERATED','BROKER_OBSERVED'] as const).map(f => { const count = f === 'ALL' ? wrapped.length : wrapped.filter(x => x.r.source === f || x.state === f).length; return <button key={f} onClick={() => setFilter(f)} style={{ ...btn(filter === f ? C.blue : 'var(--bg2)'), padding: '8px 10px' }}>{f.replace('BROKER_OBSERVED','LINKED')} · {count}</button> })}</div>
-    <div style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg1)', marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: C.dim }}>Visible exports:</span><button style={btn('#1d4ed8')} onClick={() => copyText(watchTxt, setMsg)}>copy symbols</button><button style={btn('#334155')} onClick={() => dl('tradeai_tos_watchlist.txt', 'text/plain', watchTxt)}>watchlist .txt</button><button style={btn('#334155')} onClick={() => dl('tradeai_manual_setups.csv', 'text/csv', csvText(visible.map(x => x.r)))}>setup CSV</button>{msg && <span style={{ fontSize: 10, color: C.green }}>{msg}</span>}</div>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}><div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg1)' }}><b>Lifecycle</b><div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>Candidate to generated setup to broker activity observed. No local button creates truth.</div></div><div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg1)' }}><b>Read-only recon</b><div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{lastRun ? `Last run #${lastRun.id} · orders ${lastRun.orders_seen} · matched ${lastRun.matched} · mismatched ${lastRun.mismatched} · ${lastRun.status}` : 'No recon run yet'}</div></div></div>
-    {visible.map(({ r, state, hit }) => <div key={`${r.source}-${r.id}`} style={{ border: `1px solid ${state === 'BROKER_OBSERVED' ? C.green : 'var(--border)'}`, borderRadius: 9, background: 'var(--bg1)', padding: 12, marginBottom: 10 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: r.source === 'PROPOSAL' ? C.green : r.source === 'WATCHLIST' ? C.blue : C.purple, fontWeight: 900 }}>{r.source}</span><span style={{ fontSize: 14, fontWeight: 900, ...mono }}>{line(r)}</span><span style={{ fontSize: 9, color: state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : C.dim, background: 'rgba(96,165,250,.12)', padding: '2px 7px', borderRadius: 4 }}>{state === 'BROKER_OBSERVED' ? 'AUTO-LINKED' : state}</span>{r.decision && <span style={{ fontSize: 9, color: C.amber }}>{r.decision}</span>}{r.score != null && <span style={{ fontSize: 9, color: C.blue }}>score {r.score}</span>}<span style={{ flex: 1 }} />
-      <select value={r.account} onChange={e => setField(r.id, { account: e.target.value })} style={{ fontSize: 10, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }}>{ACCOUNTS.map(a => <option key={a} value={a}>{acct(a)}</option>)}</select>
-      <input value={r.qty} onChange={e => setField(r.id, { qty: Number(e.target.value) || 1 })} style={{ width: 48, fontSize: 10, padding: '5px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
-      <button onClick={() => { setField(r.id, { generated: true }); copyText(line(r), setMsg) }} style={btn('#1d4ed8')}>copy setup</button><button onClick={() => dl(`tradeai_${r.symbol}.json`, 'application/json', JSON.stringify(payload(r, state, hit), null, 2) + '\n')} style={btn('#334155')}>JSON</button><button onClick={() => dl(`tradeai_${r.symbol}.html`, 'text/html', `<pre>${line(r)}\n\n${JSON.stringify(payload(r, state, hit), null, 2)}</pre>`)} style={btn('#334155')}>HTML</button></div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>{r.stop != null && <span style={{ fontSize: 9, color: C.red }}>stop {r.stop.toFixed(2)}</span>}{r.targets.map((t: any, i: number) => <span key={i} style={{ fontSize: 9, color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>)}{r.sector && <span style={{ fontSize: 9, color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ fontSize: 9, color: C.dim }}>{String(r.reason).slice(0, 150)}</span>}</div>
-      {hit ? <div style={{ marginTop: 7, fontSize: 10, color: C.green }}>Matched by read-only activity: {String(hit.captured_at ?? '').slice(0, 16)} · {acct(hit.account_key)} · {hit.kind} · {hit.status}</div> : <div style={{ marginTop: 7, fontSize: 10, color: C.dim }}>No matching Schwab activity observed yet.</div>}
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,minmax(100px,1fr))', gap: 8, marginBottom: 12 }}>
+      {kpis.map(([label, value, color]) => <div key={label} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}><div style={{ fontSize: 16, fontWeight: 900, color }}>{value}</div><div style={{ fontSize: 8, color: C.dim, textTransform: 'uppercase' }}>{label}</div></div>)}
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Enterprise workflow</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
+          {['Candidate','Ticket Generated','Operator Enters in Thinkorswim','Schwab Read-Only Observes','Trade AI Tracks / Reconciles'].map((s, i) => <div key={s} style={{ background: 'var(--bg2)', borderRadius: 8, padding: 8, minHeight: 48 }}><div style={{ fontSize: 9, color: C.blue, fontWeight: 900 }}>STEP {i + 1}</div><div style={{ fontSize: 10, color: 'var(--text0)', marginTop: 3 }}>{s}</div></div>)}
+        </div>
+      </div>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800 }}>Read-only reconciliation</div>
+        <div style={{ fontSize: 10, color: C.dim, marginTop: 6 }}>{lastRun ? `Last run #${lastRun.id} · orders ${lastRun.orders_seen} · matched ${lastRun.matched} · mismatched ${lastRun.mismatched} · ${lastRun.status}` : 'No recon run yet'}</div>
+        <div style={{ fontSize: 9, color: C.amber, marginTop: 8 }}>No local button creates truth. Broker-observed status only appears after read-only Schwab activity matches.</div>
+      </div>
+    </div>
+
+    <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px,1fr))', gap: 8, marginBottom: 8 }}>
+        <select value={prefs.source} onChange={e => savePrefs({ source: e.target.value as SourceFilter })} style={inputStyle}><option value="ALL">All sources</option><option value="PROPOSAL">Proposal</option><option value="WATCHLIST">Watchlist</option><option value="DRAFT">Draft</option></select>
+        <select value={prefs.account} onChange={e => savePrefs({ account: e.target.value as AccountFilter })} style={inputStyle}><option value="ALL">All account selections</option><option value="ANY">Any Schwab</option><option value="schwab_taxable">Taxable</option><option value="schwab_rollover_ira">Rollover IRA</option><option value="schwab_roth_ira">Roth IRA</option></select>
+        <select value={prefs.decision} onChange={e => savePrefs({ decision: e.target.value as DecisionFilter })} style={inputStyle}><option value="ALL">All decisions</option><option value="GO">GO</option><option value="WAIT">WAIT</option><option value="OTHER">Other</option></select>
+        <select value={prefs.status} onChange={e => savePrefs({ status: e.target.value as StatusFilter })} style={inputStyle}><option value="ALL">All statuses</option><option value="READY">Ready</option><option value="GENERATED">Generated</option><option value="BROKER_OBSERVED">Broker observed</option><option value="EXCEPTION">Exception</option></select>
+        <input value={prefs.search} onChange={e => savePrefs({ search: e.target.value })} placeholder="Search symbol/company/reason" style={inputStyle} />
+        <input value={prefs.minScore} onChange={e => savePrefs({ minScore: e.target.value })} placeholder="Min score" type="number" style={inputStyle} />
+        <select value={prefs.sort} onChange={e => savePrefs({ sort: e.target.value as SortMode })} style={inputStyle}><option value="SCORE_DESC">Score desc</option><option value="SYMBOL_ASC">Symbol A-Z</option><option value="SOURCE">Source</option><option value="STATUS">Status</option><option value="ENTRY_PRICE">Entry price</option></select>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 10, color: C.dim }}><label><input type="checkbox" checked={prefs.hasEntry} onChange={e => savePrefs({ hasEntry: e.target.checked })} /> Has entry</label><label><input type="checkbox" checked={prefs.hasRisk} onChange={e => savePrefs({ hasRisk: e.target.checked })} /> Has stop/target</label></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: C.dim }}>Visible exports:</span><button style={btn('#1d4ed8')} onClick={() => copyText(watchTxt, setMsg)}>copy visible symbols</button><button style={btn('#334155')} onClick={() => dl('tradeai_tos_watchlist.txt', 'text/plain', watchTxt)}>download Thinkorswim watchlist .txt</button><button style={btn('#334155')} onClick={() => dl('tradeai_manual_setups.csv', 'text/csv', csvText(visible.map(x => x.r)))}>download setup CSV</button>{msg && <span style={{ fontSize: 10, color: C.green }}>{msg}</span>}</div>
+    </div>
+
+    {visible.length === 0 && <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg1)', color: C.dim, fontSize: 11 }}>No candidates match the current filters.</div>}
+    {visible.map(({ r, state, hit }) => <div key={`${r.source}-${r.id}`} style={{ border: `1px solid ${state === 'BROKER_OBSERVED' ? C.green : state === 'EXCEPTION' ? C.red : 'var(--border)'}`, borderRadius: 10, background: 'var(--bg1)', padding: 13, marginBottom: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr auto', gap: 12, alignItems: 'start' }}>
+        <div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span><span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>{r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}<span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>{state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}</span></div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}><span style={{ color: C.amber }}>{str(r.decision) || 'decision n/a'}</span><span style={{ color: C.blue }}>score {str(r.score) || 'n/a'}</span>{r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}{r.reason && <span style={{ color: C.dim }}>{String(r.reason).slice(0, 180)}</span>}</div>
+          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>{r.entryPrice != null && <span>entry {r.entryType} {r.entryPrice.toFixed(2)}</span>}{r.stop != null && <span style={{ color: C.red }}>stop {r.stop.toFixed(2)}</span>}{r.targets.map((t: any, i: number) => <span key={i} style={{ color: C.green }}>target {i + 1}: {Number(t.price).toFixed(2)}</span>)}{r.trail && <span style={{ color: C.purple }}>trail {r.trail.offset}</span>}</div>
+          {hit ? <div style={{ marginTop: 7, fontSize: 10, color: C.green }}>Observed account {acct(hit.account_key)} · {hit.kind ?? 'activity'} · {hit.status ?? 'status n/a'} · {String(hit.captured_at ?? '').slice(0, 16)}</div> : <div style={{ marginTop: 7, fontSize: 10, color: C.dim }}>No matching Schwab activity observed yet.</div>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8 }}>
+          <select value={r.account} onChange={e => setField(r.id, { account: e.target.value })} style={inputStyle}>{ACCOUNTS.map(a => <option key={a} value={a}>{acct(a)}</option>)}</select>
+          <input value={r.qty} onChange={e => setField(r.id, { qty: Number(e.target.value) || 1 })} style={inputStyle} />
+          <div style={{ gridColumn: '1 / span 2', fontSize: 9, color: C.dim }}>Account and quantity are local setup preferences only.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button onClick={() => { setField(r.id, { generated: true }); copyText(setupLine(r), setMsg) }} style={btn('#1d4ed8')}>Copy setup</button><button onClick={() => dl(`tradeai_${r.symbol}.json`, 'application/json', JSON.stringify(payload(r, state, hit), null, 2) + '\n')} style={btn('#334155')}>Export JSON</button><button onClick={() => dl(`tradeai_${r.symbol}.html`, 'text/html', `<pre>${setupLine(r)}\n\n${JSON.stringify(payload(r, state, hit), null, 2)}</pre>`)} style={btn('#334155')}>Export HTML</button></div>
+      </div>
     </div>)}
-    <div style={{ marginTop: 12, fontSize: 8.5, color: C.dim }}>Sources: paper proposals, Trade AI scanner/watchlist, broker drafts, read-only broker activity.</div>
+    <div style={{ marginTop: 12, fontSize: 8.5, color: C.dim }}>Sources: /api/v2/paper-proposals, /api/v2/trade-ai, /api/v2/broker-orders/drafts, /api/v2/broker-orders/activity. Advisory/manual setup only; no broker write route is present.</div>
   </div>
 }
