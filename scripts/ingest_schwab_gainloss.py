@@ -154,7 +154,8 @@ def reconcile():
                    FROM schwab_cost_basis_lots WHERE kind='realized' GROUP BY symbol, account""")
     auth = {(r[0], r[1]): {"gain": r[2], "basis": r[3], "qty": r[4]} for r in cur.fetchall()}
     cur.execute("""SELECT symbol, account, SUM(net_pnl) jrnl_pnl, SUM(qty) qty FROM schwab_round_trips
-                   WHERE basis_status IS DISTINCT FROM 'basis_unknown' GROUP BY symbol, account""")
+                   WHERE basis_status IS DISTINCT FROM 'basis_unknown' AND canary IS NOT TRUE
+                   GROUP BY symbol, account""")
     out = []
     for sym, acct, jrnl, qty in cur.fetchall():
         a = auth.get((sym, acct))

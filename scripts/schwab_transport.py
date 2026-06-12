@@ -223,6 +223,25 @@ def get_orders(account_key, account_hash=None):
     return _read(account_key, "get_orders_for_account", normalize_orders, h)
 
 
+def get_orders_raw(account_key, account_hash=None):
+    """READ-ONLY raw order JSON (no normalization) — for the Stage-2a shadow-reconciliation harness,
+    which diffs Schwab's actual order representation against the translator's predicted payload.
+    Same fenced read path as get_orders; never touches the order WRITE surface."""
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
+    return _read(account_key, "get_orders_for_account", lambda raw: list(raw or []), h)
+
+
+def get_transactions_raw(account_key, account_hash=None):
+    """READ-ONLY raw transaction JSON — for the Stage-2a poll-based activity capture (full payloads,
+    not the single-item summary normalize_transactions keeps)."""
+    h = account_hash or _get_hash(account_key)
+    if not h:
+        return {"status": "needs_account_hash", "reason": "run resolve_account_hashes(account_key, expected_last4=...)"}
+    return _read(account_key, "get_transactions", lambda raw: list(raw or []), h)
+
+
 def get_transactions(account_key, account_hash=None):
     h = account_hash or _get_hash(account_key)
     if not h:

@@ -214,8 +214,13 @@ try:
         req = ap.request_approval(it2)
     check("2FA request creates both channels", set(req["channels"]) == {"web", "telegram"})
     check("not approved with zero confirmations", not ap.is_fully_approved(it2.intent_id))
-    r1 = ap.confirm(it2.intent_id, "web")
-    check("web confirm ok", r1["ok"] and not r1["fully_approved"])
+    # Stage 2a (operator 2026-06-12): web channel requires TYPING the ticker — a bare click never confirms
+    r0 = ap.confirm(it2.intent_id, "web")
+    check("web confirm WITHOUT typed ticker rejected", not r0["ok"])
+    r0b = ap.confirm(it2.intent_id, "web", "WRONGTICKER")
+    check("web confirm with WRONG ticker rejected", not r0b["ok"])
+    r1 = ap.confirm(it2.intent_id, "web", it2.instrument.symbol)
+    check("web confirm with typed ticker ok", r1["ok"] and not r1["fully_approved"])
     check("single channel insufficient", not ap.is_fully_approved(it2.intent_id))
     rbad = ap.confirm(it2.intent_id, "telegram", "000000" )
     # 1-in-a-million collision guard:
@@ -228,7 +233,7 @@ try:
     r2 = ap.confirm(it2.intent_id, "telegram", real_code)
     check("telegram confirm w/ code ok", r2["ok"] and r2["fully_approved"])
     check("fully approved after both", ap.is_fully_approved(it2.intent_id))
-    r3 = ap.confirm(it2.intent_id, "web")
+    r3 = ap.confirm(it2.intent_id, "web", it2.instrument.symbol)
     check("web re-confirm blocked (single-use)", not r3["ok"])
     check("consume marks used", ap.consume(it2.intent_id))
     check("not approved after consume", not ap.is_fully_approved(it2.intent_id))
@@ -237,7 +242,7 @@ try:
     ap.request_approval(it3)
     cur.execute("UPDATE trade_approvals SET expires_at=NOW()-INTERVAL '1 minute' WHERE intent_id=%s", (it3.intent_id,))
     _gc().commit()
-    rexp = ap.confirm(it3.intent_id, "web")
+    rexp = ap.confirm(it3.intent_id, "web", it3.instrument.symbol)
     check("expired approval rejected", not rexp["ok"] and "expired" in rexp["reason"])
     # cleanup
     cur.execute("DELETE FROM trade_approvals WHERE intent_id IN (%s,%s)", (it2.intent_id, it3.intent_id))

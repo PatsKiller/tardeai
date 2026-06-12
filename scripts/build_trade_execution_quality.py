@@ -229,7 +229,7 @@ def _rows(source, limit, trade_key):
         q = """SELECT 'srt:'||id AS trade_key, account, symbol, entry_time, exit_time, entry_price, exit_price,
                       qty, net_pnl, COALESCE(strategy_tag, classification), classification
                FROM schwab_round_trips WHERE basis_status IS DISTINCT FROM 'basis_unknown' AND entry_time IS NOT NULL
-                 AND exit_time IS NOT NULL"""
+                 AND exit_time IS NOT NULL AND canary IS NOT TRUE"""
         if trade_key:
             q += f" AND 'srt:'||id = '{trade_key}'"
         q += f" ORDER BY exit_time DESC LIMIT {int(limit)}"

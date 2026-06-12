@@ -25,10 +25,22 @@ CREATE TABLE IF NOT EXISTS schwab_round_trips (
     entry_time TIMESTAMPTZ, exit_time TIMESTAMPTZ, hold_minutes INT,
     qty NUMERIC, entry_price NUMERIC, exit_price NUMERIC,
     gross_pnl NUMERIC, fees NUMERIC, net_pnl NUMERIC, pnl_pct NUMERIC,
-    classification TEXT, dedupe_key TEXT UNIQUE, created_at TIMESTAMPTZ DEFAULT NOW()
+    classification TEXT, dedupe_key TEXT UNIQUE, created_at TIMESTAMPTZ DEFAULT NOW(),
+    canary BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS idx_srt_acct ON schwab_round_trips (account, symbol, exit_time);
 """
+
+
+def _canary_symbols() -> set:
+    """Stage 2a: symbols in the committed hardcoded canary allowlist (brokers/canary_gate.py). Trips on
+    these symbols are tagged canary=true at ingest and EXCLUDED from all stats/journal/strategy data.
+    The tag is sticky on upsert — once canary, always canary, even after the allowlist rotates."""
+    try:
+        from brokers.canary_gate import CANARY_SYMBOL_ALLOWLIST
+        return {s.upper() for s in CANARY_SYMBOL_ALLOWLIST}
+    except Exception:
+        return set()
 
 
 def _conn():
@@ -145,19 +157,23 @@ def run(apply=False, gap_min=5):
             fills.append({"side": "Buy", "qty": inject, "price": ov_basis, "fees": 0.0,
                           "t": _dt.datetime(2008, 1, 1, tzinfo=_dt.timezone.utc), "pre_window": True, "source": "operator"})
     all_trips = []
+    canary_syms = _canary_symbols()
     for (acct, sym), fills in bykey.items():
-        all_trips.extend(_round_trips(acct, sym, _group_legs(fills, gap_min)))
+        for tp in _round_trips(acct, sym, _group_legs(fills, gap_min)):
+            tp["canary"] = sym.upper() in canary_syms
+            all_trips.append(tp)
     ins = 0
     if apply:
         for tp in all_trips:
             cur.execute("""INSERT INTO schwab_round_trips
                              (account,symbol,entry_time,exit_time,hold_minutes,qty,entry_price,exit_price,
-                              gross_pnl,fees,net_pnl,pnl_pct,classification,basis_status,basis_source,dedupe_key)
+                              gross_pnl,fees,net_pnl,pnl_pct,classification,basis_status,basis_source,dedupe_key,canary)
                            VALUES (%(account)s,%(symbol)s,%(entry_time)s,%(exit_time)s,%(hold_minutes)s,%(qty)s,
                               %(entry_price)s,%(exit_price)s,%(gross_pnl)s,%(fees)s,%(net_pnl)s,%(pnl_pct)s,
-                              %(classification)s,%(basis_status)s,%(basis_source)s,%(dedupe_key)s)
+                              %(classification)s,%(basis_status)s,%(basis_source)s,%(dedupe_key)s,%(canary)s)
                            ON CONFLICT (dedupe_key) DO UPDATE SET net_pnl=EXCLUDED.net_pnl, fees=EXCLUDED.fees,
-                             basis_status=EXCLUDED.basis_status, basis_source=EXCLUDED.basis_source""", tp)
+                             basis_status=EXCLUDED.basis_status, basis_source=EXCLUDED.basis_source,
+                             canary=(schwab_round_trips.canary OR EXCLUDED.canary)""", tp)
             ins += 1
         # purge orphans: rows whose dedupe_key is no longer produced this run (e.g. a trip's classification
         # flipped long_term_trim -> basis_unknown when an override was capped, changing its dedupe_key).
@@ -175,15 +191,17 @@ def run(apply=False, gap_min=5):
                          net_pnl, pnl_pct, round(hold_minutes/1440.0)::int, strategy_tag, 'srt:'||id, NOW()
                        FROM schwab_round_trips
                        WHERE basis_status IS DISTINCT FROM 'basis_unknown' AND entry_time IS NOT NULL
+                         AND canary IS NOT TRUE
                        ON CONFLICT (dedupe_key) DO UPDATE SET pnl=EXCLUDED.pnl, close_date=EXCLUDED.close_date""")
         ins_tc = cur.rowcount
         conn.commit()
-    # ACTIVE trading stats exclude long-term trims + basis_unknown
-    active = [t for t in all_trips if t["basis_status"] is None]
+    # ACTIVE trading stats exclude long-term trims + basis_unknown + canary test orders (Stage 2a)
+    active = [t for t in all_trips if t["basis_status"] is None and not t.get("canary")]
     awins = sum(1 for t in active if (t["net_pnl"] or 0) > 0)
     lt = [t for t in all_trips if t["basis_status"] == "long_term_trim"]
     unk = [t for t in all_trips if t["basis_status"] == "basis_unknown"]
     report = {"mode": "APPLIED" if apply else "DRY-RUN", "total_rows": len(all_trips),
+              "canary_rows": sum(1 for t in all_trips if t.get("canary")),
               "active_round_trips": len(active), "active_win_rate": round(awins / len(active) * 100, 1) if active else 0,
               "active_net_pnl": round(sum(t["net_pnl"] or 0 for t in active), 2),
               "long_term_trims": len(lt), "long_term_realized": round(sum(t["net_pnl"] or 0 for t in lt), 2),

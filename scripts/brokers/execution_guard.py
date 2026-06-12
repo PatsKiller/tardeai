@@ -60,9 +60,32 @@ def _live_future_unlocked() -> bool:
         return False
 
 
+_MUTATING_ACTIONS = ("submit", "replace")   # cancel stays allowed-in-principle: cancelling is the safe direction
+
+
 def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
     """The single gate every adapter call must pass. Audited regardless of outcome."""
     mode = mode_for(intent.broker)
+    # ── HARDCODED CANARY GATE (Stage 2a Part D, operator 2026-06-12) ──────────────────────────
+    # Evaluated BEFORE the mode logic so no present-or-future allow branch can bypass it. Applies
+    # to every mutating action on every broker EXCEPT the alpaca paper-training pipeline (Hard
+    # Rule 7: paper gate untouched). The envelope lives in canary_gate.py — commit-only literals;
+    # any gate failure (including import failure) denies. Redundant this phase by design.
+    if action in _MUTATING_ACTIONS and intent.broker != "alpaca":
+        try:
+            from .canary_gate import evaluate as _canary_evaluate
+            g = _canary_evaluate(intent)
+            gate_reason = None if g.allowed else "; ".join(g.reasons)
+        except Exception as e:
+            gate_reason = f"canary gate unavailable ({str(e)[:60]}) — fail closed"
+        if gate_reason:
+            d = GuardDecision(False, mode, f"CANARY_GATE BLOCK: {gate_reason}", intent.correlation_id)
+            try:
+                from .audit import record_guard_decision
+                record_guard_decision(intent, action, d)
+            except Exception:
+                pass
+            return d
     if mode == BrokerExecutionMode.PAPER_TRAINING and intent.broker == "alpaca":
         d = GuardDecision(True, mode, "alpaca paper training path (existing pipeline)", intent.correlation_id)
     elif mode == BrokerExecutionMode.BROKER_DRY_RUN:

@@ -30,6 +30,7 @@ def run(limit=20, tolerance=0.05):
                           qty, net_pnl
                    FROM schwab_round_trips
                    WHERE entry_price > 0 AND exit_price > 0 AND qty > 0 AND basis_status IS NULL
+                     AND canary IS NOT TRUE
                    ORDER BY exit_time DESC LIMIT %s""", (limit,))
     rows = cur.fetchall()
     results, fails = [], 0

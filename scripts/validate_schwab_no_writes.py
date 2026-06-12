@@ -131,6 +131,54 @@ for stem in SCREENER_FILES:
             leak2.append(f.name)
 ok("schwab_transport isolated from screeners+routing (Rule 9)", not leak2, f"leak: {leak2}" if leak2 else "no references")
 
+# ── Stage 2a additions (2026-06-12): harness/capture read-only, hardcoded gate, dormant UI ──────
+# 10. Shadow-recon harness + activity capture call NO write symbol and never import schwab-py
+WRITE_RE = re.compile(r"place_order|cancel_order|replace_order|requests\.(post|put|delete|patch)")
+for fname in ("schwab_shadow_recon.py", "schwab_activity_capture.py"):
+    src = (SCRIPTS / fname).read_text() if (SCRIPTS / fname).exists() else ""
+    clean = bool(src) and not WRITE_RE.search(src) \
+        and not re.search(r"\bfrom\s+schwab\.\w|\bimport\s+schwab\b(?!_)", src)
+    ok(f"{fname} is read-only (no write symbols, no schwab-py import)", clean)
+
+# 11. Hardcoded canary gate: pure (commit-only) AND fail-closed at runtime, IN FRONT of the guard
+try:
+    gate_src = (SCRIPTS / "brokers" / "canary_gate.py").read_text()
+    pure = not re.search(r"^\s*(import os\b|from os\b)", gate_src, re.M) \
+        and not re.search(r"db_adapter|_get_conn|json\.load|yaml|configparser|open\(", gate_src)
+    from brokers.order_intent import OrderIntent, Instrument, Direction, EntrySpec, EntryMethod, Quantity
+    from brokers.execution_guard import authorize as _auth
+    _big = OrderIntent(instrument=Instrument("AAPL"), direction=Direction.LONG,
+                       entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=180.0),
+                       quantity=Quantity(qty=100), broker="schwab")
+    d = _auth(_big, "submit")
+    ok("hardcoded canary gate: pure module + out-of-envelope submit denied in front of guard",
+       pure and (not d.allowed) and d.reason.startswith("CANARY_GATE BLOCK"),
+       f"pure={pure} reason={d.reason[:60]}")
+except Exception as e:
+    ok("hardcoded canary gate check", False, str(e)[:60])
+
+# 12. Dormant UI surface: no submit/execute route exists, and the UI files call no such endpoint
+api_src = (SCRIPTS / "api_v2.py").read_text()
+bad_routes = re.findall(r"broker-orders/(submit|execute|send|place|cancel-live|replace)", api_src)
+ui_dir = PROJECT_ROOT / "apps" / "command-center-v3" / "src"
+ui_bad = []
+for uf in ("components/BrokerOrders.tsx", "components/SchwabAccountsMonitor.tsx"):
+    txt = (ui_dir / uf).read_text() if (ui_dir / uf).exists() else ""
+    for m in re.findall(r"fetch\('([^']+)'", txt):
+        if re.search(r"submit|execute|/send|place|/live", m):
+            ui_bad.append(f"{uf}:{m}")
+ok("Broker Orders UI has no execution path (no submit route in API; UI calls none)",
+   not bad_routes and not ui_bad, f"routes={bad_routes} ui={ui_bad}" if (bad_routes or ui_bad) else "draft/preview/approve only")
+
+# 13. Canary analytics exclusion present in every schwab_round_trips consumer
+CANARY_CONSUMERS = ["api_v2.py", "schwab_journal_builder.py", "schwab_journal_classifier.py",
+                    "backtest_fill_reconciliation.py", "build_trade_execution_quality.py",
+                    "ingest_schwab_gainloss.py"]
+missing = [f for f in CANARY_CONSUMERS
+           if "canary" not in (SCRIPTS / f).read_text()]
+ok("canary exclusion wired into all round-trip consumers", not missing,
+   f"missing: {missing}" if missing else f"{len(CANARY_CONSUMERS)} consumers filtered")
+
 passed = sum(1 for _, p, _ in checks if p)
 print(f"\n  {passed}/{len(checks)} guards green")
 sys.exit(0 if passed == len(checks) else 1)
