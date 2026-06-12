@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
+import { exitLadder, planWarnings, MONITOR_RULES } from '../lib/exitLadder'
 import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 
@@ -314,6 +315,36 @@ export default function WatchlistHub({ onDrill }: Props) {
                       )}
                     </div>
                   )}
+                  {/* advisory exit ladder + plan sanity warnings (shared math with the Manual ToS desk) */}
+                  {(() => {
+                    const entry = it.entry_limit != null ? Number(it.entry_limit) : null
+                    const stop = it.entry_stop != null ? Number(it.entry_stop) : null
+                    const planTarget = it.entry_target != null ? Number(it.entry_target) : null
+                    if (entry == null && stop == null) return null
+                    const pa = paMap[it.symbol] ?? {}
+                    const street = Number(pa.target) > 0 ? Number(pa.target) : null
+                    const rr = it.entry_rr != null ? Number(it.entry_rr) : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
+                    const ladder = exitLadder(entry, stop, planTarget, street)
+                    const warns = planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa.upside != null ? Number(pa.upside) : null })
+                    if (!ladder && warns.length === 0) return null
+                    return (
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {warns.map((w, i) => <div key={i} style={{ fontSize: 9, color: w.color, fontWeight: 700 }}>⚠ {w.text}</div>)}
+                        {ladder && (
+                          <div style={{ background: 'rgba(15,23,42,.45)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px' }}>
+                            <div style={{ fontSize: 8, color: 'var(--text3)', fontWeight: 900, textTransform: 'uppercase' }}>Exit ladder (advisory) · R = ${ladder.R.toFixed(2)}/sh</div>
+                            {ladder.steps.map((s, i) => (
+                              <div key={i} style={{ fontSize: 9.5, marginTop: 2 }}>
+                                <span style={{ color: '#22c55e', fontWeight: 800, fontFamily: 'monospace' }}>{s.label} {s.px.toFixed(2)}</span>
+                                <span style={{ color: 'var(--text3)' }}> — {s.action}</span>
+                              </div>
+                            ))}
+                            <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4 }}>In-trade: {MONITOR_RULES}</div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {/* provenance pills */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Pill text={originLabel(it.origin_system)} color={originColor(it.origin_system)} tip={it.provenance_reason || it.source} />
