@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-12 - FULL-portfolio arbitration COMPLETE (39 symbols) + directive-universe fix (analyst/news/LLM curation)
+
+**Full sweep finished, free lanes first:** gemma 39/39 -> grok 39/39 -> ONE Anthropic arbitration
+(superseded the earlier 10-symbol run): **39 symbols, 102 input recs, 9 systematic patterns** —
+gemma trails LOSSES on 15+ underwater positions (trailing protects profits, not losses), places
+stops AT swing lows (fills on normal retests) and even ABOVE stated support (LMT/NOC/TDG), plus
+field-mapping data errors; grok graded systematically strong on ATR calibration (1.5-2.5x below
+swing lows) with a minor trail-on-marginal-profit weakness; cross-cutting: neither model integrates
+analyst-target distance or gain-magnitude/tax-lot sensitivity into trail aggressiveness. 39 CLAUDE
+verdict rows -> badges on every advised card. Meta-review input compression + 8k output so a
+full-portfolio review can never truncate mid-JSON.
+
+**Directive-universe fix (operator: "why only one showing grok, no analyst, no news"):** three
+enrichment pipelines each picked their own universe and operator-directive symbols (status=
+'researched', rank 326/1172/1627) fell through ALL of them. Principle now encoded: OPERATOR
+DIRECTIVES OUTRANK SCORES — pro_analyst_fetch + news_ingestion + hermes_top20_external_intel all
+include in_directive_watch=true regardless of status/rank. Analyst data fetched immediately:
+CIFR STRONG_BUY 16an target $32 (+41%) · DLR BUY 29an $218.72 · AXTI BUY 4an $96.50. ChatGPT+Grok
+watchlist curation (top-20 + directives) launched. curate-top20 endpoint sys-import bug fixed.
+
 ## 2026-06-12 - FULL-portfolio LLM coverage + structured advisory chain (approve->draft->Schwab-ready) + fidelity proxy technicals
 
 **Fidelity funds wired through proxies:** holding_proxies.py = single source of truth for the

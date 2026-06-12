@@ -23,13 +23,18 @@ def _conn():
 
 
 def _top(conn, n):
+    """Top-N by Hermes rank PLUS every operator-directive symbol regardless of rank (2026-06-12:
+    CIFR #326 / DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions
+    outrank scores)."""
     cur = conn.cursor()
     cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_rank, hermes_composite_score,
                      hermes_score_components, rsi, trend
-                   FROM watchlist_items WHERE hermes_rank IS NOT NULL AND hermes_rank <= %s
+                   FROM watchlist_items
+                   WHERE (hermes_rank IS NOT NULL AND hermes_rank <= %s)
+                      OR (in_directive_watch=true AND status<>'removed')
                    ORDER BY symbol, hermes_composite_score DESC""", (n,))
     rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
-    rows.sort(key=lambda r: r["hermes_rank"])
+    rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 0))
     return rows
 
 
