@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-12 - CRITICAL DATA FIX 2: cost-basis single source of truth (operator caught SCHG +108% phantom)
+
+Operator question ("these don't add up") -> full 38-position audit (`scripts/audit_position_basis.py`,
+4-source cross-check: holdings.json vs live API vs csv tax lots vs API fills). 8 positions carried
+phantom basis from stale CSV-window reconstruction: SCHD rollover $4.02/sh vs broker $31.04
+(+$111,392 fake gain), SCHG rollover $16.06 vs $30.81 (+$25,072 fake), V roth $43.58 vs $307.35,
+V rollover $6.41 vs $80.10, PFLT $0.20 vs $9.49, ARKG (fake LOSS), FCNTX/AMANX/SRNE transfer-ins.
+CSV lots + ledger fills corroborated the API in every checkable case.
+
+Fix (operator decision: ONE source of truth, API->DB): new `schwab_positions_live` table (canonical
+broker positions layer) + `scripts/sync_basis_from_broker.py` — basis hierarchy csv tax lot >
+Schwab averagePrice > nothing; CSV reconstruction DEMOTED to Fidelity-only. 34 holdings rows
+rewritten through Gate-B protected_holdings_write; re-audit 0 flagged / 38 clean (delisted CUSIP
+dust = info-level). open_trades_intelligence: reconstructed_from_amounts REMOVED from trusted set,
+never badged "verified" again; broker_api/csv_lot added as broker/tax_grade tiers.
+
+Why no agent caught it: no monitor compared basis across sources (health=process/freshness, TCA=paper
+fills, gainloss reconcile=realized-only, unscheduled). New control: audit_position_basis.py --alert
+(Telegram on discrepancies); cron line proposed, awaiting operator approval.
+
 ## 2026-06-12 - CRITICAL DATA FIX: roth/rollover account-hash links were SWAPPED + Open Trades badges/filters + Schwab monitor sub-tabs
 
 **Account swap (operator caught it via the new monitor: "rollover has way more than 2 positions").**
