@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-12 - Stage 2a runbook hardening: order-5 short-safety (position-quantity) + wide OCO bands + abort-with-position
+
+Doc-only. The oversell guard caught a LINGERING child but not a FILLED one — with ±2% bands a
+target child can fill mid-test, flatten the position silently, and a blind closing sell opens the
+same unintended SHORT by another path. E1: order-5 guard is now POSITION-QUANTITY-BASED — closing
+sell only when position == +10 long AND zero working sells; if already FLAT (a child filled) the
+session is DONE, do NOT sell. E2: order-5 OCO bands widened ±2% -> ±5-8% with the explicit note
+that order 5 proves children ARM, not fill. E3: ABORT section gains the open-position case — abort
+after order 4 means holding ~10 real unmanaged GRAB; manually flatten in ToS (same short-safety
+check) and confirm flat before standing down. In-panel draft-5 cheat note synced to match (data
+row, not code). No code/config/test changes; execution stays BROKER_DISABLED; validator 18/18.
+
 ## 2026-06-12 - Stage 2a PRE-SESSION PATCH: runbook oversell/token/account guards + gate date auto-expiry + approval verified live
 
 **Runbook (stage2a-session-runbook.md):** A1 BLOCKING oversell guard before order-5's closing sell
