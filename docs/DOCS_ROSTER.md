@@ -164,7 +164,8 @@ Generated: 2026-05-26 (post-incident recovery session)
 - `FIX_SUMMARY.md` (3KB)
 - `ROOT_CAUSE_MATRIX.md` (4KB)
 
-## design (1 files)
+## design (2 files)
+- `SCALED_EXITS_PAPER_EXECUTOR_DESIGN.md` (6KB)
 - `STOP_MANAGEMENT_V2_DESIGN.md` (9KB)
 
 ## design/signal_freshness_audit_2026-05-15 (1 files)
