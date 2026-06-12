@@ -111,8 +111,12 @@ writes NOT_PROVEN/fenced** (validator 12/12, `api_write_enabled=false`, MANUAL_R
   listening server. schwab-py token shape = TokenMetadata `{creation_timestamp, token}`.
 - **One login covers all accounts** — `canonical_token_key`; the account HASH distinguishes accounts.
 - **Account-hash resolver** — `resolve_account_hashes(account_key, expected_last4)`, refuses ambiguity,
-  stores the encrypted hash in `schwab_account_links`. 3 accounts linked (taxable ..9469 / roth ..0258 /
-  rollover ..9415).
+  stores the encrypted hash in `schwab_account_links`. 3 accounts linked: taxable ..9469 / **roth ..9415 /
+  rollover ..0258** (CORRECTED 2026-06-12 — the original mapping had roth/rollover SWAPPED; Schwab's own
+  2026-04-21 CSV proves ..415 = Roth Contributory IRA. Links swapped, 177 API-sourced ledger rows
+  relabeled incl. dedupe_key, V IPO-basis override re-keyed, journal rebuilt; backup
+  `_backup_acct_swap_20260612`. Lesson: last-4 mapping is operator-supplied — verify against a Schwab
+  account-named export before trusting per-account attribution).
 - **Live reads** — account/positions/orders/transactions/quotes.
 - **Transaction ledger reconciliation** — `schwab_transaction_ingest.py`: API authoritative; replaces lossy
   CSV in-window (older pre-window CSV kept), granular per-order fills (slippage preserved), dividends/interest/
