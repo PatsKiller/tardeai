@@ -16738,6 +16738,7 @@ def _schwab_accounts_live(query=None):
         ak = r["account_key"]
         pos = st.get_positions(ak)
         raw = st.get_orders_raw(ak)
+        bal = st.get_account(ak)   # READ-ONLY balances (cash / buying power / equity) for sizing math
         orders = []
         if isinstance(raw, list):
             for o in raw:
@@ -16753,12 +16754,18 @@ def _schwab_accounts_live(query=None):
                     "children": len(o.get("childOrderStrategies") or []),
                     "entered_time": o.get("enteredTime"),
                 })
+        bal_ok = isinstance(bal, dict) and bal.get("status") == "active"
         accounts.append({
             "account_key": ak,
             "positions": pos if isinstance(pos, list) else [],
             "positions_status": "ok" if isinstance(pos, list) else (pos or {}).get("status", "error"),
             "orders": orders,
             "orders_status": "ok" if isinstance(raw, list) else (raw or {}).get("status", "error"),
+            # read-only balance snapshot — the Manual ToS desk uses these for advisory sizing only
+            "cash": bal.get("cash") if bal_ok else None,
+            "buying_power": bal.get("buying_power") if bal_ok else None,
+            "account_value": bal.get("equity") if bal_ok else None,
+            "balances_status": "ok" if bal_ok else (bal or {}).get("status", "error"),
         })
     out = _json_clean({"accounts": accounts, "read_only": True, "cached_seconds": 30,
                        "note": "READ-ONLY monitor. 'Edit' anywhere on this surface produces a DRAFT "

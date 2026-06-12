@@ -29,7 +29,7 @@ const metricBox = { background: 'rgba(15,23,42,.48)', border: '1px solid var(--b
 const defaultPrefs: UiPrefs = { source: 'ALL', account: 'ALL', decision: 'ALL', analyst: 'ALL', status: 'ALL', search: '', minScore: '', hasEntry: false, hasRisk: false, sort: 'ANALYST' }
 
 function num(v: any): number | null { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null }
-function anyNum(...vals: any[]): number | null { for (const v of vals) { const x = Number(v); if (Number.isFinite(x) && x >= 0) return x } return null }
+function anyNum(...vals: any[]): number | null { for (const v of vals) { if (v == null || v === '') continue; const x = Number(v); if (Number.isFinite(x) && x >= 0) return x } return null }
 function first(...vals: any[]) { return vals.find(v => v !== undefined && v !== null && v !== '') }
 function str(v: any) { return v == null ? '' : String(v) }
 function money(v: number | null | undefined) { return v == null || !Number.isFinite(Number(v)) ? '—' : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}` }
