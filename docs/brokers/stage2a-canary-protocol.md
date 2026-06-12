@@ -13,8 +13,19 @@ surface stays read-only throughout (no-writes validator green; execution BROKER_
 - These same caps are HARDCODED in `scripts/brokers/canary_gate.py` (commit-only, fail-closed, empty
   allowlist between sessions). **Commit the screened symbol(s) to `CANARY_SYMBOL_ALLOWLIST` at session
   start; revert/rotate by commit after the session.**
-- ⚠️ The previously screened ITUB ($7.91) / SNAP ($5.33) **violate the $2–$4 cap** — do NOT reuse them;
-  re-screen via `/api/v2/schwab/quotes` at session time.
+- ⚠️ The previously screened ITUB ($7.91) / SNAP ($5.33) **violate the $2–$4 cap** — do NOT reuse them.
+
+## SESSION SCREEN — 2026-06-12 (operator-ordered; allowlist COMMITTED)
+| Pick | Px (AH) | Spread (AH) | Avg vol | Why |
+|---|---|---|---|---|
+| **PRIMARY: GRAB** | $3.37 | 0.6% | 51.2M | superapp mega-name; deepest book in band; ZERO footprint (never held/watched/papered/journaled) |
+| **FALLBACK: XRX** | $3.45 | 0.9% | 6.3M | NYSE household name; zero footprint |
+| (screened out) | | | | VIDA drifted to $4.20 (above cap) · ABEV/BBD/CIG have footprint · LYG/ERIC > $4 |
+
+Committed: `CANARY_SYMBOL_ALLOWLIST = ("GRAB", "XRX")` · gate verified live (10 sh @ $3.40 passes;
+@ $4.05 blocked "price > $4 cap") · gate tests 23/23 · validator 17/17. **At the session open:
+re-verify spreads (quotes above are after-hours) and confirm GRAB remains in the $2–$4 band.
+ROTATE the allowlist back to `()` by commit after the session.**
 
 ## Pre-session checklist (system side — all read-only)
 1. Re-run the $2–$4 liquidity screen; **commit** the pick (+fallback) to the hardcoded gate allowlist.
