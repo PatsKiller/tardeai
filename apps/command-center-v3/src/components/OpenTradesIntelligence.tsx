@@ -28,6 +28,8 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
   const coverage: Record<string, any[]> = (llmCov as any)?.coverage ?? {}
   const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
+  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
   const [f, setF] = useState<any>({ account: 'all', broker: 'all', strategy: 'all', sector: 'all', rsi: 'all', protection: 'all', pnl: 'all', sort: 'priority', quick: 'all' })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -195,6 +197,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
               expanded={expanded[key] !== false}
               llmCov={coverage[(p.symbol || '').toUpperCase()]}
               protectionRec={protection[(p.symbol || '').toUpperCase()]}
+              symCard={cardMap[(p.symbol || '').toUpperCase()]}
               onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })}
               onDrill={onDrill}
               onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} />

@@ -21,7 +21,7 @@ const LANE_META: Record<string, { label: string; c: string }> = {
   chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' },
 }
 
-export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec }: any) {
+export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec, symCard }: any) {
   const t = p.technical || {}, sr = p.sector_relative || {}, pr = p.protection || {}
   const priority = p.operator_priority || 'low'
   const border = PRI[priority] || 'var(--border)'
@@ -59,6 +59,18 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
           <span style={chip(p.protection_state === 'protected' ? 'rgba(34,197,94,.15)' : p.protection_state === 'partial' ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)', p.protection_state === 'protected' ? '#22c55e' : p.protection_state === 'partial' ? '#f59e0b' : '#ef4444')}>{p.protection_state}</span>
         </div>
       </div>
+
+      {/* what the company does + sector vs-sector (unified card layer, operator 2026-06-12) */}
+      {symCard?.description && (
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, lineHeight: 1.4 }}>
+          {symCard.description}
+          {symCard.vs_sector_week != null && (
+            <span title={`symbol ${symCard.perf_week}% vs ${symCard.sector_etf} ${symCard.sector_perf_week}% (week)`}
+              style={{ marginLeft: 6, fontWeight: 700, color: symCard.vs_sector_week >= 0 ? '#22c55e' : '#ef4444' }}>
+              {symCard.vs_sector_week >= 0 ? '+' : ''}{symCard.vs_sector_week}% vs sector (1w)</span>
+          )}
+        </div>
+      )}
 
       {/* ── ZONE 3: DECISION BANNER (most important text) ── */}
       <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 6, background: `${border}14`, border: `1px solid ${border}44` }}>
