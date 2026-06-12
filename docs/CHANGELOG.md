@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-12 - LLM sweeps RAN + monthly Claude arbitration + live API-key validator
+
+Sequencing honored: data gates first (basis 0-flagged, technicals backfilled), then FREE lanes, then
+the single metered call. gemma local 12/12 -> grok OAuth 12/12 -> Claude monthly meta-review
+COMPLETED (10 symbols, 24 input recs): 7 systematic patterns (gemma trails 0.5-1x ATR too tight;
+stops AT swing lows not below; grok ATR rounding; no trail-activation triggers on underwater
+positions) + per-symbol verdicts -> claude lane rows (CLAUDE badges live). Root causes fixed along
+the way: dead ANTHROPIC_API_KEY (admin showed 'set'-green while 401ing — operator rotated) and
+_try_anthropic's 1024-token cap truncating the arbitration JSON (meta-review now calls Anthropic
+directly at 4096).
+
+**Live key validator** (operator-requested after the dead-key lesson): scripts/secret_validators.py
+(15 providers, cheapest authenticated pings, key material never returned/logged; 402/429 =
+quota_or_billing not invalid; Schwab/SMTP etc = not-validatable-by-ping, proven in their own flows)
++ POST /api/v2/admin/validate-secret + SecretsManager UI: 'Validate all keys' button, per-key
+VERIFIED/INVALID/QUOTA chips, and VALIDATE-ON-SAVE so a dead key can never sit green again.
+First sweep findings: BRAVE 402 (plan lapsed), NEWSAPI 429, FMP 403 INVALID, GEMINI not set,
+12 keys verified.
+
+Also: technicals_gap_backfill.py + 16:30 checker cron (operator-approved); delisted assets marked
+once then ignored; expanded position cards show FULL news text; advisor yfinance bars fallback.
+
 ## 2026-06-12 - Portfolio holdings cards + LLM provenance/protection advisory + watchlist service-at-creation fix
 
 **Portfolio Holdings redesign (operator request):** table -> large graphical cards (signal-colored left

@@ -46,6 +46,30 @@ THIS MONTH'S RECOMMENDATIONS:
 {body}"""
 
 
+def _claude(prompt: str) -> str | None:
+    """Direct Anthropic call sized for the meta-review (local_llm._try_anthropic caps at 1024 tokens,
+    which truncated the 10-symbol arbitration mid-JSON — found 2026-06-12). Key from env/.env only."""
+    import os
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("ANTHROPIC_API_KEY="):
+                key = line.split("=", 1)[1].strip().strip('"')
+                break
+    if not key:
+        return None
+    try:
+        import anthropic
+        from local_llm import FALLBACK_ANTHROPIC
+        client = anthropic.Anthropic(api_key=key)
+        msg = client.messages.create(model=FALLBACK_ANTHROPIC, max_tokens=4096,
+                                     messages=[{"role": "user", "content": prompt}])
+        return msg.content[0].text.strip()
+    except Exception as e:
+        print(f"  anthropic error: {str(e)[:160]}")
+        return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=31)
@@ -82,8 +106,8 @@ def main():
         print(f"DRY-RUN: {len(by_sym)} symbols, {len(rows)} recs, prompt {len(prompt)} chars, month {month}")
         return
 
-    from local_llm import _try_anthropic, FALLBACK_ANTHROPIC
-    out = _try_anthropic(prompt)
+    from local_llm import FALLBACK_ANTHROPIC
+    out = _claude(prompt)
     parsed = None
     if out:
         m = re.search(r"\{.*\}", out, re.S)
