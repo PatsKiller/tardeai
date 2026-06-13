@@ -24,18 +24,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # ── THE COMMITTED ENVELOPE — change only by commit ──────────────────────────────────────────────
-# SESSION COMMIT 2026-06-12 (operator-ordered screen run; full log in stage2a-canary-protocol.md):
-#   PRIMARY  GRAB $3.37 — 51.2M avg vol, 0.6% spread even after-hours, boring mega-name, ZERO
-#            footprint (never held/watched/papered/journaled)
-#   FALLBACK XRX  $3.45 — 6.3M avg vol, NYSE household name, zero footprint
-#   screened-out: VIDA (drifted to $4.20 — above cap), ABEV/BBD/CIG (footprint), LYG/ERIC (>$4)
+# SESSION COMMIT 2026-06-13 (operator-ordered reschedule; full log in stage2a-canary-protocol.md):
+#   PRIMARY  GRAB last $3.30 — re-screened 2026-06-13 02:3x: 0.6% spread after-hours, ZERO footprint
+#            (never held/watched/papered/journaled). Clean primary.
+#   FALLBACK XRX  last $3.35 — re-screened 02:3x: 3.8% spread AFTER-HOURS (wide — re-verify ≤1.5% at
+#            the open before using; GRAB is the primary). Both still ≤ $4 cap.
 #   ⚠ re-verify spreads at the session open (AH spreads quoted); ROTATE BACK TO () after the session.
 CANARY_SYMBOL_ALLOWLIST: tuple[str, ...] = ("GRAB", "XRX")
 
-# AUTO-EXPIRY (pre-session patch 2026-06-12): the allowlist is honored ONLY on this committed date.
-# Any other date ⇒ the gate treats the allowlist as EMPTY — fail-closed — so a forgotten
-# post-session rotate-back can never leave the envelope armed. Rescheduling = commit a new date.
-CANARY_SESSION_DATE = "2026-06-12"   # YYYY-MM-DD, single day
+# AUTO-EXPIRY: the allowlist is honored ONLY on this committed date. Any other date ⇒ the gate treats
+# the allowlist as EMPTY — fail-closed — so a forgotten post-session rotate-back can never leave the
+# envelope armed. Rescheduling = commit a new date (this is exactly such a reschedule from 06-12).
+CANARY_SESSION_DATE = "2026-06-13"   # YYYY-MM-DD, single day (rescheduled from 2026-06-12)
 MAX_PRICE_USD = 4.00
 MAX_QTY_SHARES = 10
 MAX_NOTIONAL_USD = 40.00
