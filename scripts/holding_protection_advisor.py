@@ -36,20 +36,22 @@ PROMPT_VERSION = "protection_advisor_v1"
 PROMPT_V1 = """You are a risk-management analyst. Your ONLY job: recommend protective stop placement
 for an EXISTING long stock position. You never recommend buying, selling more, or new positions.
 
+STRATEGY FAMILY: this is a {family_label} holding ({family_hold}). Size the protection to the family.
+
 HARD RULES (these are BOUNDS, not suggestions — a number outside them is WRONG)
 - stop_price MUST be BELOW current price (this is a long). NEVER at or above price.
 - stop_price MUST sit AT or just BELOW the 20d swing low: between (swing_low − 1.0×ATR) and swing_low.
   Anchor to structure — do NOT place the stop above the swing low.
-- Resulting stop distance MUST be between 1% and 12% below price. If swing_low is >12% below price,
-  the position is extended — cap the stop at 12% below price and say so in the rationale.
+- Resulting stop distance MUST be between {stop_min_pct}% and {stop_max_pct}% below price (the
+  {family_label} band). If swing_low is further than {stop_max_pct}% below, the position is extended —
+  cap the stop at {stop_max_pct}% below price and say so in the rationale.
 - stop_pct_below MUST EQUAL round((price − stop_price)/price × 100, 1). Compute it; do not guess.
-- FIXED vs TRAILING (decide by the position's state — this is the rule, not a preference):
-    • trail_recommended = TRUE only if BOTH: unrealized P&L ≥ +10% (real profit to protect) AND
-      price > 50d SMA (uptrend). Otherwise trail_recommended = FALSE (fixed stop only).
-    • When trailing: trail_type="PERCENT", trail_offset between 3 and 10 (percent). No $ offsets,
-      no ATR-multiples in trail_offset — percent only, so it is unambiguous.
+- FIXED vs TRAILING (decided by family + position state — this is the rule, not a preference):
+    {trail_rule}
+    • When trailing: trail_type="PERCENT", trail_offset between {trail_min_pct} and {trail_max_pct}
+      (percent). No $ offsets, no ATR-multiples — percent only, so it is unambiguous.
 - Respect analyst context: if price is ABOVE the analyst mean target, bias the stop tighter (nearer
-  the 1% end); if below target with intact uptrend, the wider end is acceptable.
+  the {stop_min_pct}% end); if below target with intact uptrend, the wider end is acceptable.
 - Output STRICT JSON only. No prose outside the JSON. Numbers as numbers, not strings.
 
 POSITION
@@ -143,11 +145,13 @@ def _parse(text):
         return None
 
 
-def _sanity_check(rec, t):
-    """Validate the LLM advisory against the ACTUAL technicals (all current holdings are long).
-    Direction/strategy-agnostic — pure internal-consistency math. Returns {verdict, issues}:
-      fail = internally wrong (stop at/above price) · warn = questionable · ok = clean.
-    The fixed-vs-trailing PREFERENCE is a separate question (needs trade categorization)."""
+def _sanity_check(rec, t, bounds=None):
+    """Validate the LLM advisory against the ACTUAL technicals (all current holdings are long) and the
+    holding's FAMILY bounds. Returns {verdict, issues}: fail = internally wrong (stop at/above price) ·
+    warn = questionable / out-of-family-band · ok = clean."""
+    b = bounds or {}
+    stop_max = float(b.get("stop_max_pct", 12.0))
+    trail_max = float(b.get("trail_max_pct", 20.0))
     issues: list[str] = []
     fail = False
     try:
@@ -173,8 +177,8 @@ def _sanity_check(rec, t):
                 pass
         if dist < 0.5:
             issues.append(f"stop only {dist:.1f}% below — inside noise, will whipsaw")
-        elif dist > 12:
-            issues.append(f"stop {dist:.1f}% below — wider than the 12% cap / weak protection")
+        elif dist > stop_max:
+            issues.append(f"stop {dist:.1f}% below — wider than the {stop_max:.0f}% family cap / weak protection")
         # anchor-to-structure: only demand the stop sit at/below the 20d swing low when that low is
         # REACHABLE (≤12% below price). For extended positions the stop is correctly capped above it.
         swing_reachable = bool(swing_low) and (price - swing_low) / price * 100 <= 12
@@ -186,8 +190,8 @@ def _sanity_check(rec, t):
             tp = off if rec.get("trail_type") == "PERCENT" else (off / price * 100 if price else None)
             if tp is not None and tp < 0.3:
                 issues.append(f"trail {tp:.1f}% — too tight, trails out on noise")
-            elif tp is not None and tp > 20:
-                issues.append(f"trail {tp:.1f}% — too wide to protect")
+            elif tp is not None and tp > trail_max:
+                issues.append(f"trail {tp:.1f}% — wider than the {trail_max:.0f}% family band")
         except Exception:
             issues.append("trail offset not numeric")
     return {"verdict": "fail" if fail else ("warn" if issues else "ok"), "issues": issues}
@@ -247,11 +251,24 @@ def run(lane="grok", symbols=None, limit=12):
         basis = float(c.get("cost_basis") or 0)
         basis_ps = basis / qty if qty and basis else t["price"]
         pnl_pct = (t["price"] - basis_ps) / basis_ps * 100 if basis_ps else 0.0
+        # classify the holding into a trailing family (config buckets + volatility) → per-family bounds
+        import holding_family as hf
+        atr_pct = t["atr"] / t["price"] * 100 if t["price"] else None
+        family, fam_source = hf.classify_family(sym, atr_pct)
+        fb = hf.protection_bounds(family)
+        trail_rule = (f"• {fb['label']} is held through noise — trail_recommended = TRUE only on a LARGE "
+                      f"gain (unrealized ≥ +20%) AND price > 50d SMA; otherwise FALSE (fixed stop)."
+                      if not fb["trail_norm"] else
+                      f"• trail_recommended = TRUE only if unrealized P&L ≥ +10% AND price > 50d SMA "
+                      f"(real profit + uptrend); otherwise FALSE (fixed stop).")
         prompt = PROMPT_V1.format(
             symbol=sym, account=c.get("account"), qty=qty, basis_ps=basis_ps, price=t["price"],
-            pnl_pct=pnl_pct, rsi=t["rsi"], atr=t["atr"], atr_pct=t["atr"] / t["price"] * 100,
+            pnl_pct=pnl_pct, rsi=t["rsi"], atr=t["atr"], atr_pct=atr_pct,
             swing_low=t["swing_low"], sma50=t["sma50"],
-            sma50_dist=(t["price"] - t["sma50"]) / t["sma50"] * 100, **_analyst(cur, sym))
+            sma50_dist=(t["price"] - t["sma50"]) / t["sma50"] * 100,
+            family_label=fb["label"], family_hold=fb["hold"], stop_min_pct=fb["stop_min_pct"],
+            stop_max_pct=fb["stop_max_pct"], trail_min_pct=fb["trail_min_pct"],
+            trail_max_pct=fb["trail_max_pct"], trail_rule=trail_rule, **_analyst(cur, sym))
         # 401k funds can't hold stop ORDERS — reframe as NAV alert/trim levels (proxy-based when noted)
         if str(c.get("account", "")).startswith("fidelity") or bars[0].get("_proxy"):
             proxy_note = f" Technicals are from the {bars[0].get('_proxy', 'fund NAV')} asset-class proxy." \
@@ -266,7 +283,7 @@ def run(lane="grok", symbols=None, limit=12):
         rec = _parse(out)
         if not rec:
             print(f"  {sym}: unparseable response"); failed += 1; continue
-        sanity = _sanity_check(rec, t)   # validate the LLM output against the real structure
+        sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
         model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
         cur.execute("""INSERT INTO hermes_research_intelligence
                          (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
@@ -281,11 +298,12 @@ def run(lane="grok", symbols=None, limit=12):
                          else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
                         if rec.get("trail_recommended") else " · no trail yet"),
                      json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
-                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane, "sanity": sanity}),
+                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane, "sanity": sanity,
+                                 "family": family, "family_source": fam_source, "family_bounds": fb}),
                      rec.get("confidence"), model, PROMPT_VERSION))
         conn.commit()
-        sflag = '' if sanity['verdict'] == 'ok' else f" · ⚠{sanity['verdict'].upper()}: {'; '.join(sanity['issues'])[:80]}"
-        print(f"  {sym}: stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below) · "
+        sflag = '' if sanity['verdict'] == 'ok' else f" · ⚠{sanity['verdict'].upper()}: {'; '.join(sanity['issues'])[:70]}"
+        print(f"  {sym}: [{family}] stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below) · "
               f"trail={'%s%%' % rec.get('trail_offset') if rec.get('trail_recommended') else 'no'} "
               f"· conf {rec.get('confidence')} · {model}{sflag}")
         done += 1

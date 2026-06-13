@@ -99,6 +99,11 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
               <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — approval→draft→Schwab wiring is a future gated phase`}
                 style={{ cursor: 'help', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c084fc' }}>🛡 advisory</span>
+                {protectionRec.family && (
+                  <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: 'rgba(96,165,250,.14)', color: '#60a5fa', textTransform: 'capitalize' }}
+                    title={`trailing-stop family: ${protectionRec.family}${protectionRec.family_source ? ` (${protectionRec.family_source})` : ''} — sets the stop-width band`}>
+                    {protectionRec.family}</span>
+                )}
                 {stop != null && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>
                     stop <b style={{ color: '#c084fc' }}>${stop.toFixed(2)}</b>
