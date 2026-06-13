@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""holding_family.py — map a HOLDING to a trailing-stop strategy family + its protection bounds.
+
+Reuses the EXISTING classification in config/asset_classification_rules.json (bucket_overrides +
+asset_type_overrides + aliases) — no new per-symbol hardcoding. Buckets already tag holdings
+(dividend_income / bond_income / swing_trade / growth_fund / defense_aerospace …); this module folds
+those into the four trailing families (momentum / swing / income / position) from
+strategy_trailing_policy and attaches per-family STOP/TRAIL width bounds the protection advisor uses.
+
+  family, source = classify_family("BND")        # -> ("income", "bucket:bond_income")
+  bounds = protection_bounds("position")          # -> {stop_min_pct, stop_max_pct, trail_min_pct, ...}
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Optional
+
+_CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "asset_classification_rules.json"
+_CFG_CACHE: Optional[dict] = None
+
+# per-family protection profile — stop distance band (% below price) + trail band (% offset) + whether
+# trailing is the norm for the family. Wider for long-hold families, tighter for fast ones. These are
+# the BOUNDS the bounded prompt + sanity gate enforce; they sit alongside strategy_trailing_policy's
+# R-tier model (which governs WHEN to tighten; this governs HOW WIDE).
+FAMILY_PROTECTION = {
+    "momentum": {"stop_min_pct": 2.0, "stop_max_pct": 6.0, "trail_min_pct": 3.0, "trail_max_pct": 6.0,
+                 "trail_norm": True, "label": "Momentum", "hold": "fast / same-week"},
+    "swing":    {"stop_min_pct": 3.0, "stop_max_pct": 8.0, "trail_min_pct": 4.0, "trail_max_pct": 8.0,
+                 "trail_norm": True, "label": "Swing", "hold": "multi-day to weeks"},
+    "income":   {"stop_min_pct": 4.0, "stop_max_pct": 10.0, "trail_min_pct": 5.0, "trail_max_pct": 10.0,
+                 "trail_norm": False, "label": "Income", "hold": "long / held through noise"},
+    "position": {"stop_min_pct": 5.0, "stop_max_pct": 12.0, "trail_min_pct": 6.0, "trail_max_pct": 10.0,
+                 "trail_norm": True, "label": "Position / Core", "hold": "very long / compounder"},
+}
+DEFAULT_FAMILY = "position"   # conservative default: widest stop, no premature tightening
+
+# bucket tag → family. First match wins, checked in this priority order.
+_BUCKET_TO_FAMILY = [
+    ("bond_income", "income"), ("dividend_income", "income"), ("dividend_etf", "income"),
+    ("reit_income", "income"), ("high_yield", "income"), ("covered_call", "income"),
+    ("scalp", "momentum"), ("gap", "momentum"), ("momentum", "momentum"),
+    ("swing_trade", "swing"), ("breakout", "swing"), ("earnings", "swing"),
+    ("growth_fund", "position"), ("core", "position"), ("index", "position"),
+    ("compounder", "position"), ("defense_aerospace", "position"), ("space_defense", "position"),
+]
+
+
+def _cfg() -> dict:
+    global _CFG_CACHE
+    if _CFG_CACHE is None:
+        try:
+            _CFG_CACHE = json.loads(_CFG_PATH.read_text())
+        except Exception:
+            _CFG_CACHE = {}
+    return _CFG_CACHE
+
+
+def _resolve(symbol: str) -> str:
+    """Apply config aliases (e.g. FID-CONTRA-F -> FCNTX)."""
+    s = (symbol or "").strip().upper()
+    return (_cfg().get("aliases") or {}).get(s, s)
+
+
+def classify_family(symbol: str, atr_pct: float | None = None) -> tuple[str, str]:
+    """Return (family, source). Priority: committed bucket tags → asset_type + volatility → default.
+    source is human-readable provenance ('bucket:bond_income' / 'etf->position' / 'stock vol 6.1%')."""
+    s = _resolve(symbol)
+    cfg = _cfg()
+    buckets = [str(b).lower() for b in (cfg.get("bucket_overrides") or {}).get(s, [])]
+    for tag, fam in _BUCKET_TO_FAMILY:
+        if any(tag in b for b in buckets):
+            return fam, f"bucket:{tag}"
+    # no bucket tag — fall back to asset type + volatility
+    at = ((cfg.get("asset_type_overrides") or {}).get(s) or "").lower()
+    if at in ("mutual_fund", "fund"):
+        return "position", f"{at}->position"
+    if at == "etf":
+        return "position", "etf->position"   # broad/sector ETF; income ETFs are caught by buckets above
+    if at == "stock":
+        if atr_pct is not None:
+            if atr_pct >= 8:
+                return "momentum", f"stock vol {atr_pct:.1f}%"
+            if atr_pct >= 4:
+                return "swing", f"stock vol {atr_pct:.1f}%"
+        return "position", "stock low-vol/large-cap"
+    return DEFAULT_FAMILY, "default"
+
+
+def protection_bounds(family: str) -> dict:
+    return FAMILY_PROTECTION.get(family, FAMILY_PROTECTION[DEFAULT_FAMILY])
+
+
+if __name__ == "__main__":
+    import sys
+    syms = sys.argv[1:] or ["BND", "JEPI", "SCHD", "AVAV", "KTOS", "RKLB", "LMT", "FCNTX", "SCHG", "V", "NVDA"]
+    for s in syms:
+        fam, src = classify_family(s)
+        b = protection_bounds(fam)
+        print(f"{s:6} -> {fam:9} ({src:28}) stop {b['stop_min_pct']}-{b['stop_max_pct']}% · "
+              f"trail {b['trail_min_pct']}-{b['trail_max_pct']}% · trail_norm={b['trail_norm']}")

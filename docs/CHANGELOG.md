@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-13 - Holdings wired to trailing families → per-family stop widths (no "unclassified")
+
+holding_family.py maps each holding to a trailing family (momentum/swing/income/position) by REUSING
+the existing config/asset_classification_rules.json bucket_overrides (dividend_income/bond_income→income,
+swing_trade→swing, growth_fund/defense→position) + asset_type + volatility fallback — zero new
+per-symbol hardcoding. Each family carries a STOP/TRAIL width band (momentum 2-6% … position 5-12%).
+The protection advisor now injects the family's bands + a family-specific fixed-vs-trailing rule into
+the (already-bounded) prompt, and the sanity gate validates against the family's max. Family + source
+stored in evidence, surfaced as a chip on the Open Trades card (replaces "unclassified"). PROVEN live
+via free Grok: KTOS[swing] 8% stop · LMT[position] 5.6% · BND[income] 1.4% (anchored to low-vol
+structure). This is the WIDTH layer; strategy_trailing_policy's R-tiers remain the WHEN-to-tighten layer.
+
 ## 2026-06-13 - Protection advisory: sanity gate + bounded prompt + free Grok OAuth (root-cause fix)
 
 The display clarity fix made loose LLM advisories visible (ARKG 15% stop); this fixes the SOURCE.
