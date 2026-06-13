@@ -782,7 +782,7 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
     <div>
       {/* execution-disabled banner — text from backend capability truth */}
       <div style={{ padding: '10px 14px', background: 'rgba(239,83,80,.07)', border: '1px solid rgba(239,83,80,.35)', borderRadius: 6, marginBottom: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: '#ef5350' }}>EXECUTION DISABLED — {caps?.execution_mode}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#ef5350' }}>EXECUTION GATED — mode {caps?.execution_mode} · this panel builds DRAFTS only (never sends)</span>
         <div style={{ fontSize: 10, color: '#bdbdbd', marginTop: 3 }}>{caps?.execution_disabled_notice}</div>
         <div style={{ fontSize: 9, color: T.dim, marginTop: 3 }}>
           Environment: {caps?.environment} · Hardcoded canary gate armed (≤$4 / ≤10 sh / ≤$40, allowlist committed at session time) ·

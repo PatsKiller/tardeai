@@ -16505,11 +16505,33 @@ def _broker_orders_capabilities(query=None):
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from brokers import capabilities as caps
     c = caps.get(b)
+    # Honest notice that reflects the REAL Stage 2b pilot state (mode is LIVE_ENABLED_FUTURE now, but
+    # disarmed = still fully blocked). Drafts/previews always work regardless.
+    notice = None
+    if b != "alpaca":
+        try:
+            import schwab_pilot_arm as _arm
+            st = _arm.status()
+            if st.get("armed"):
+                notice = ("Schwab pilot is ARMED (Stage 2b). Drafts/previews here are advisory; ACTUAL "
+                          "execution happens ONLY in the Pilot Console, and every submit still passes the "
+                          "canary envelope + pilot caps + per-order 2FA. This panel never sends.")
+            else:
+                locks = [k for k, v in {"env flag": st.get("env_BROKER_LIVE_ENABLED"),
+                                        "db control": st.get("db_control_broker_live_enabled"),
+                                        "standing approval": (st.get("standing_approvals_active", 0) > 0),
+                                        "write flag": st.get("api_write_enabled", {}).get("schwab_taxable"),
+                                        "canary day": st.get("canary_session_is_today")}.items() if not v]
+                notice = (f"Mode LIVE_ENABLED_FUTURE but pilot DISARMED — every order BLOCKED. "
+                          f"Closed locks: {', '.join(locks)}. This panel only builds DRAFTS + previews; "
+                          f"real execution is the Pilot Console after arming. See "
+                          f"docs/brokers/stage2b-write-pilot-spec.md.")
+        except Exception:
+            notice = ("Execution gated (Stage 2b). Drafts and translation previews only on this panel. "
+                      "See docs/brokers/execution-safety-guards.md.")
     return _json_clean({"broker": b, "execution_mode": c.get("execution_mode_default"),
                         "environment": c.get("environment"), "features": c.get("features", {}),
-                        "execution_disabled_notice": (None if b == "alpaca" else
-                            "Execution is DISABLED for this broker (BROKER_DISABLED). Drafts and translation "
-                            "previews only. See docs/brokers/execution-safety-guards.md.")})
+                        "execution_disabled_notice": notice})
 
 
 def _broker_orders_preview(body=None):
