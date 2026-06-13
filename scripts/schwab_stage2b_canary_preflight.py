@@ -162,6 +162,78 @@ def make_order_intent(plan: CanaryPlan):
     )
 
 
+# ── Stage 2b BATTERY (Monday 2026-06-15): single-leg shapes forming a logical round-trip. Every
+# shape is bounded by the canary envelope (≤$4 / ≤10 sh / ≤$40), so even a worst-case error caps at
+# ~$40. Shapes that SELL are sells-to-CLOSE the canary long (direction stays LONG for the gate).
+# id            side  order_type      duration  price-source            proves
+# buy_cancel    BUY   LIMIT           DAY       fixed (below market)    place + cancel lifecycle
+# real_fill     BUY   LIMIT           DAY       ask (fills, ~$33)       fill capture + read-back
+# protective    SELL  STOP            GTC       fixed (below market)    protective stop shape
+# trailing      SELL  TRAILING_STOP   GTC       trail % off LAST        trailing stopPriceLink fields
+# close         SELL  LIMIT           DAY       bid (closes the long)   close round-trip
+BATTERY_SHAPES = {
+    "buy_cancel":  {"side": "BUY",  "order_type": "LIMIT",         "duration": "DAY"},
+    "real_fill":   {"side": "BUY",  "order_type": "LIMIT",         "duration": "DAY"},
+    "protective":  {"side": "SELL", "order_type": "STOP",          "duration": "GOOD_TILL_CANCEL"},
+    "trailing":    {"side": "SELL", "order_type": "TRAILING_STOP", "duration": "GOOD_TILL_CANCEL"},
+    "close":       {"side": "SELL", "order_type": "LIMIT",         "duration": "DAY"},
+}
+
+
+def make_battery_spec(symbol: str, qty: int, shape_id: str, *, price: Decimal | None = None,
+                      stop_price: Decimal | None = None, trail_pct: Decimal | None = None) -> dict[str, Any]:
+    """Build the exact Schwab order JSON for a battery shape. Single-leg, EQUITY, SINGLE strategy."""
+    if shape_id not in BATTERY_SHAPES:
+        raise CanaryAbort(f"unknown battery shape {shape_id!r}")
+    sh = BATTERY_SHAPES[shape_id]
+    leg = {"instruction": sh["side"], "quantity": qty,
+           "instrument": {"symbol": symbol, "assetType": "EQUITY"}}
+    spec: dict[str, Any] = {"session": "NORMAL", "duration": sh["duration"],
+                            "orderType": sh["order_type"], "orderStrategyType": "SINGLE",
+                            "orderLegCollection": [leg]}
+    if sh["order_type"] == "LIMIT":
+        if price is None:
+            raise CanaryAbort(f"{shape_id}: LIMIT requires a price")
+        spec["price"] = _money(price)
+    elif sh["order_type"] == "STOP":
+        if stop_price is None:
+            raise CanaryAbort(f"{shape_id}: STOP requires a stop_price")
+        spec["stopPrice"] = _money(stop_price)
+    elif sh["order_type"] == "TRAILING_STOP":
+        if trail_pct is None:
+            raise CanaryAbort(f"{shape_id}: TRAILING_STOP requires a trail_pct")
+        spec["stopPriceLinkBasis"] = "LAST"
+        spec["stopPriceLinkType"] = "PERCENT"
+        spec["stopPriceOffset"] = float(trail_pct)
+    return spec
+
+
+def make_battery_intent(account_key: str, symbol: str, qty: int, shape_id: str, *,
+                        price: Decimal | None = None, stop_price: Decimal | None = None,
+                        trail_pct: Decimal | None = None, reference_price: Decimal | None = None):
+    """Build a gate-consistent OrderIntent for a battery shape. Direction stays LONG (sells close the
+    canary long). For TRAILING_STOP (no fixed price) we stamp the live reference into entry.limit_price
+    so the canary gate always has a committed price to bound qty×price ≤ $40."""
+    from brokers.order_intent import (OrderIntent, Instrument, Direction, EntrySpec, EntryMethod,
+                                      Quantity, TIF, SessionPolicy, ExitPolicy, StopSpec)
+    import uuid
+    sh = BATTERY_SHAPES[shape_id]
+    dur = TIF.GTC if sh["duration"] == "GOOD_TILL_CANCEL" else TIF.DAY
+    if sh["order_type"] == "LIMIT":
+        entry = EntrySpec(method=EntryMethod.LIMIT, limit_price=float(price))
+    elif sh["order_type"] == "STOP":
+        entry = EntrySpec(method=EntryMethod.STOP, stop_price=float(stop_price))
+    else:  # TRAILING_STOP — bound via the live reference price
+        if reference_price is None:
+            raise CanaryAbort("trailing shape requires reference_price for the envelope bound")
+        entry = EntrySpec(method=EntryMethod.LIMIT, limit_price=float(reference_price))
+    return OrderIntent(
+        instrument=Instrument(symbol), direction=Direction.LONG, entry=entry,
+        quantity=Quantity(qty=qty), broker="schwab", account_key=account_key,
+        tif=dur, session=SessionPolicy.NORMAL, correlation_id=str(uuid.uuid4()),
+    )
+
+
 def require_model_and_gate(plan: CanaryPlan) -> dict[str, Any]:
     from brokers.order_intent import validate
     from brokers import canary_gate

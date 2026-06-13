@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-13 - SB-2: full single-leg canary battery executable via API (Monday 2026-06-15 session)
+
+Expanded the Stage 2b pilot from BUY-LIMIT-only to the full 5-shape battery, all single-leg, all via
+the API console (no fragile OTOCO): buy_cancel (BUY LIMIT below-mkt, place→cancel) · real_fill (BUY
+LIMIT @ask, ~$33 fill) · protective (SELL STOP GTC) · trailing (SELL TRAILING_STOP GTC) · close (SELL
+LIMIT @bid). Canary date re-pointed 06-13(Sat)→**06-15 Monday**. SAFETY: canary gate now counts
+entry.stop_price so STOP shapes are envelope-bounded (every committed price ≤$4, qty×max ≤$40) — even
+SELL/STOP/trailing can't escape; a true MARKET entry still blocks (no committed price). The $40
+envelope means even a worst-case error caps at ~$40. New builders make_battery_spec/make_battery_intent
+(preflight); pilot/preflight accepts a `shape`; execute path unchanged (generic spec). UI: Pilot
+Console battery = 5 single-leg presets, param field adapts (limit/stop/trail), live bid/ask pulled for
+fill/close. Validator +1 guard (battery shapes envelope-bounded; in-env allow, >$4 buy/stop + >10sh
+block) → 26 guards. Tests: canary_gate 26/26 (section-2 now date-pinned for envelope isolation).
+Still: taxable-only, api_write_enabled, standing locks, pilot 5-cap, per-order 2FA, disarmed at rest.
+
 ## 2026-06-13 - Backtest: STOP-V2.4 vs V2.3 A/B (proves expectancy before config flip)
 
 backtest_hybrid_stops.py — read-only A/B over 20d-breakout entries, both policies through the REAL

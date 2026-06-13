@@ -16861,6 +16861,9 @@ def _pilot_preflight(body=None):
     from brokers import audit as br_audit
     from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
     b = body or {}
+    shape = b.get("shape")
+    if shape:
+        return _pilot_preflight_battery(b)
     try:
         plan = pf.make_plan(str(b.get("account_key") or PILOT_ACCOUNT_ALLOWLIST[0]),
                             str(b.get("symbol") or ""), b.get("qty") or 0,
@@ -16881,6 +16884,59 @@ def _pilot_preflight(body=None):
                             "operator_phrase": plan.operator_phrase,
                             "next": "POST /api/v2/broker-orders/request-approval {intent_id} → confirm web "
                                     "(type ticker) + telegram (button/code) → POST pilot/execute"})
+    except pf.CanaryAbort as e:
+        return _json_clean({"ok": False, "blocked": True, "reason": str(e)})
+    except Exception as e:
+        return _json_clean({"ok": False, "error": str(e)[:200]})
+
+
+def _pilot_preflight_battery(b):
+    """Battery-shape preflight (Monday 2026-06-15): BUY/SELL LIMIT, SELL STOP, SELL TRAILING_STOP at
+    qty≤10. Validates through the SAME stack — canonical model + canary gate (now bounds every
+    committed price) + token health + account hash + live quote. Saves the draft for 2FA."""
+    import schwab_stage2b_canary_preflight as pf
+    from brokers import audit as br_audit, canary_gate as cg
+    from brokers.order_intent import validate as oi_validate
+    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+    from decimal import Decimal
+    try:
+        acct = str(b.get("account_key") or PILOT_ACCOUNT_ALLOWLIST[0])
+        sym = pf._clean_symbol(str(b.get("symbol") or ""))
+        qty = int(b.get("qty") or 0)
+        shape = str(b.get("shape"))
+        if shape not in pf.BATTERY_SHAPES:
+            return _json_clean({"ok": False, "blocked": True, "reason": f"unknown shape {shape!r}"})
+        D = lambda v: (Decimal(str(v)) if v not in (None, "", "0") else None)
+        price, stop_price, trail_pct = D(b.get("price")), D(b.get("stop_price")), D(b.get("trail_pct"))
+        # live quote — also the reference bound for trailing; verify ref ≤ $4 + spread sane
+        import schwab_transport as _st
+        qres = _st.get_quotes([sym])
+        q = (qres.get("quotes") or {}).get(sym) if isinstance(qres, dict) else None
+        if not q:
+            return _json_clean({"ok": False, "blocked": True, "reason": f"no live quote for {sym}"})
+        bid, ask, last = q.get("bid"), q.get("ask"), q.get("last")
+        ref = Decimal(str(ask or last or bid or "0"))
+        if ref <= 0 or ref > pf.STAGE2B_MAX_PRICE_USD:
+            return _json_clean({"ok": False, "blocked": True, "reason": f"{sym} live ref ${ref} not in (0, ${pf.STAGE2B_MAX_PRICE_USD}]"})
+        spec = pf.make_battery_spec(sym, qty, shape, price=price, stop_price=stop_price, trail_pct=trail_pct)
+        intent = pf.make_battery_intent(acct, sym, qty, shape, price=price, stop_price=stop_price,
+                                        trail_pct=trail_pct, reference_price=ref)
+        vr = oi_validate(intent)
+        if not vr.ok:
+            return _json_clean({"ok": False, "blocked": True, "reason": f"canonical validation: {vr.errors}"})
+        gd = cg.evaluate(intent)
+        if not gd.allowed:
+            return _json_clean({"ok": False, "blocked": True, "reason": "CANARY_GATE BLOCK: " + "; ".join(gd.reasons)})
+        pf.require_account_hash(acct)
+        th = pf.require_token_health(acct)
+        br_audit.save_intent(intent, validation={"stage2b_battery": shape, "token_health": th},
+                             translation={"order_spec": spec}, state="PREVIEWED")
+        phrase = f"OPERATOR CONFIRMS SCHWAB CANARY {shape.upper()} {sym} {qty}"
+        return _json_clean({"ok": True, "intent_id": intent.intent_id, "shape": shape,
+                            "order_spec": spec, "operator_phrase": phrase,
+                            "checks": {"live_quote": {"bid": bid, "ask": ask, "last": last},
+                                       "token_health": th},
+                            "next": "request-approval → 2FA (web+telegram) → pilot/execute"})
     except pf.CanaryAbort as e:
         return _json_clean({"ok": False, "blocked": True, "reason": str(e)})
     except Exception as e:
