@@ -681,6 +681,34 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
             )}
             {result.validation?.warnings?.length > 0 &&
               <div style={{ fontSize: 9, color: T.amber, marginTop: 3 }}>⚠ {result.validation.warnings.join(' · ')}</div>}
+            {result.live_quote && (() => {
+              const q = result.live_quote
+              const ts = q.fetched_at ? new Date(q.fetched_at) : null
+              const age = ts ? Math.round((Date.now() - ts.getTime()) / 1000) : null
+              const ok = q.status === 'ok'
+              return (
+                <div style={{ marginTop: 8, padding: '7px 9px', background: '#0d1117',
+                  border: `1px solid ${ok ? '#1f6f43' : '#7f1d1d'}`, borderRadius: 5 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: ok ? '#66bb6a' : '#ef5350' }}>
+                      📡 LIVE SCHWAB QUOTE{ok ? '' : ` — ${q.status}`}</span>
+                    {ok && <span style={{ ...mono, fontSize: 11, color: T.text }}>
+                      bid {q.bid ?? '—'} · ask {q.ask ?? '—'} · last {q.last ?? '—'}
+                      {q.spread_pct != null ? ` · spread ${q.spread_pct}%` : ''}</span>}
+                    {!ok && <span style={{ fontSize: 9, color: T.dim }}>{q.detail}</span>}
+                  </div>
+                  {ok && q.limit_vs_last_pct != null && (
+                    <div style={{ fontSize: 9, marginTop: 2,
+                      color: Math.abs(q.limit_vs_last_pct) <= 2 ? '#66bb6a' : T.amber }}>
+                      your limit ${limit} is {q.limit_vs_last_pct >= 0 ? '+' : ''}{q.limit_vs_last_pct}% vs last
+                      {q.limit_vs_last_pct > 0 ? ' (above market — marketable buy)' : q.limit_vs_last_pct < 0 ? ' (below market — rests)' : ''}
+                    </div>)}
+                  <div style={{ fontSize: 8.5, color: T.dim, marginTop: 2 }}>
+                    fetched {ts ? ts.toLocaleTimeString() : '—'}{age != null ? ` (${age}s ago)` : ''} · re-preview to refresh
+                  </div>
+                </div>
+              )
+            })()}
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 9.5, fontWeight: 700, color: T.text }}>③ Two-channel approval</div>
               <ApprovalPanel intentId={it.intent_id} symbol={it.instrument?.symbol ?? ''} />

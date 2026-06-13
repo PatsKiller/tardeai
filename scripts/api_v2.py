@@ -16538,6 +16538,46 @@ def _broker_orders_preview(body=None):
             from brokers.translators.alpaca import translate as _tr_fn
         translation = _tr_fn(intent)
     guard = authorize(intent, "preview")
+    # Live broker quote at re-preview time (operator 2026-06-13): a re-preview should validate the
+    # limit/stop against CURRENT market, not the stale price the draft was built from. READ-ONLY
+    # batch-quote call; failure is non-fatal (the translation result still stands). Server-stamped.
+    quote = None
+    if intent.broker == "schwab" and (intent.instrument.symbol or "").strip():
+        try:
+            import schwab_transport as _st
+            from datetime import datetime as _dt, timezone as _tz
+            sym = intent.instrument.symbol.strip().upper()
+            qres = _st.get_quotes([sym])
+            q = (qres.get("quotes") or {}).get(sym) if isinstance(qres, dict) else None
+            fetched_at = _dt.now(_tz.utc).isoformat()
+            if q:
+                bid = q.get("bid"); ask = q.get("ask"); last = q.get("last")
+                spread_pct = None
+                try:
+                    if bid and ask and float(ask) >= float(bid) > 0:
+                        mid = (float(bid) + float(ask)) / 2
+                        spread_pct = round((float(ask) - float(bid)) / mid * 100, 2)
+                except Exception:
+                    spread_pct = None
+                # how the order's limit sits vs the live market right now (advisory)
+                lim = intent.entry.limit_price
+                vs_last = None
+                try:
+                    if lim and last:
+                        vs_last = round((float(lim) - float(last)) / float(last) * 100, 2)
+                except Exception:
+                    vs_last = None
+                quote = {"symbol": sym, "bid": bid, "ask": ask, "last": last,
+                         "spread_pct": spread_pct, "limit_vs_last_pct": vs_last,
+                         "fetched_at": fetched_at, "source": "schwab", "status": "ok"}
+            else:
+                quote = {"symbol": sym, "status": "unavailable",
+                         "detail": (qres or {}).get("error") if isinstance(qres, dict) else "no quote",
+                         "fetched_at": fetched_at, "source": "schwab"}
+        except Exception as e:
+            from datetime import datetime as _dt, timezone as _tz
+            quote = {"symbol": (intent.instrument.symbol or "").upper(), "status": "error",
+                     "detail": str(e)[:120], "fetched_at": _dt.now(_tz.utc).isoformat(), "source": "schwab"}
     try:
         br_audit.save_intent(intent, validation={"ok": v.ok, "errors": v.errors, "warnings": v.warnings},
                              translation=translation, capability_notes=ann, state=state,
@@ -16550,6 +16590,7 @@ def _broker_orders_preview(body=None):
                         "validation": {"errors": v.errors, "warnings": v.warnings},
                         "capabilities": ann,
                         "translation_preview": translation,
+                        "live_quote": quote,
                         "execution": {"allowed": False, "mode": guard.mode.value, "reason": guard.reason}})
 
 
