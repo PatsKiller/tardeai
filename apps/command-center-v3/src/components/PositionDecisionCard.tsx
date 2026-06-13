@@ -82,20 +82,45 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       {/* ── ZONE 3b: LLM PROTECTION ADVISORY (operator 2026-06-12 — stop/trail recs + who reviewed) ── */}
       {(protectionRec || Object.keys(lanes).length > 0) && (
         <div style={{ marginTop: 6, padding: '6px 9px', borderRadius: 6, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.25)' }}>
-          {protectionRec && (
-            <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — approval→draft→Schwab wiring is a future gated phase`}
-              style={{ fontSize: 10.5, fontWeight: 700, color: '#c084fc', cursor: 'help' }}>
-              🛡 LLM advisory: {protectionRec.rec}
-              {/* live distance-to-advised-stop — the monitoring leg of the future approve→send chain */}
-              {protectionRec.stop_distance_pct != null && (
-                <span style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 800,
-                  color: protectionRec.stop_distance_pct < 2 ? '#ef4444' : protectionRec.stop_distance_pct < 5 ? '#f59e0b' : '#22c55e' }}
-                  title={`current $${protectionRec.price} vs advised stop $${protectionRec.stop_price}`}>
-                  {protectionRec.stop_distance_pct < 0 ? '⛔ BELOW advised stop' : `${protectionRec.stop_distance_pct}% above advised stop`}
-                </span>
-              )}
-            </div>
-          )}
+          {protectionRec && (() => {
+            // Render from STRUCTURED fields (not the free-form string) so stop + trail units are
+            // explicit and cross-checkable. trail is shown as BOTH $ and % regardless of which the
+            // model emitted, so "$0.30" vs "0.3%" can never be confused (operator 2026-06-13).
+            const price = Number(protectionRec.price) || null
+            const stop = Number(protectionRec.stop_price) || null
+            const dist = protectionRec.stop_distance_pct   // % current price is above the stop
+            const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null
+            const isPct = protectionRec.trail_type === 'PERCENT'
+            const trailDollar = off == null ? null : isPct ? (price ? price * off / 100 : null) : off
+            const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
+            const distColor = dist == null ? 'var(--text3)' : dist < 0 ? '#ef4444' : dist < 2 ? '#ef4444' : dist < 5 ? '#f59e0b' : '#22c55e'
+            const wideStop = dist != null && dist > 12   // stop far below price = weak protection
+            return (
+              <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — approval→draft→Schwab wiring is a future gated phase`}
+                style={{ cursor: 'help', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c084fc' }}>🛡 advisory</span>
+                {stop != null && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>
+                    stop <b style={{ color: '#c084fc' }}>${stop.toFixed(2)}</b>
+                    {dist != null && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({dist < 0 ? '' : '−'}{Math.abs(dist).toFixed(1)}% {dist < 0 ? 'ABOVE price' : 'vs price'})</span>}
+                  </span>
+                )}
+                {off != null ? (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>
+                    trail <b style={{ color: '#60a5fa' }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>
+                    {trailPct != null && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({trailPct.toFixed(1)}%)</span>}
+                  </span>
+                ) : <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>no trail yet</span>}
+                {dist != null && (
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: distColor }}
+                    title={`current $${price?.toFixed(2)} vs advised stop $${stop?.toFixed(2)}`}>
+                    {dist < 0 ? '⛔ price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}
+                  </span>
+                )}
+                {wideStop && <span style={{ fontSize: 8.5, fontWeight: 800, color: '#f59e0b' }} title="advised stop sits far below price — wide/weak protection; verify">⚠ wide stop</span>}
+              </div>
+            )
+          })()}
           {protectionRec?.rationale && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{protectionRec.rationale}</div>}
           <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 8, color: 'var(--text3)' }}>reviewed by:</span>

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-13 - Stop/trailing-stop clarity across Open Trades + Proposals (consistent w/ Watchlist)
+
+Open Trades protection advisory was garbled ("trail 0.3$1.04% above advised stop" — mixed %/$/ATR
+units, run-together fields). Rebuilt PositionDecisionCard to render from STRUCTURED fields (not the
+free-form string): stop $X.XX with % vs price, trail shown as BOTH $ and % (so $0.30 vs 0.3% can
+never be confused), clean "price N% above stop" separator, +"⚠ wide stop" flag when the advised stop
+sits >12% below price. Backend holding_protection_advisor string fixed ($ before value, not suffix).
+Proposals (ProposalsRich) now carry the SAME layered exit ladder + plan-sanity warnings as Watchlist
+(T1/T2/T3 + trailing + monitoring rules via lib/exitLadder), plus stop-distance % and inline R:R.
+All three surfaces — Watchlist, Open Trades, Proposals — now speak one clear stop/trailing language.
+
 ## 2026-06-13 - Zero-shell arming: UI Arm/Disarm via auto-expiring DB session (operator choice)
 
 Monday 2026-06-15 pilot is now 100% UI — no shell. The shell env-flag "physical key" is replaced by

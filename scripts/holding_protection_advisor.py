@@ -217,7 +217,8 @@ def run(lane="local", symbols=None, limit=12):
                           CURRENT_DATE)""",
                     (sym, rec.get("rationale", "")[:400],
                      f"stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below)"
-                     + (f" · trail {rec.get('trail_offset')}{'%' if rec.get('trail_type') == 'PERCENT' else '$'}"
+                     + ((f" · trail {rec.get('trail_offset')}%" if rec.get('trail_type') == 'PERCENT'
+                         else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
                         if rec.get("trail_recommended") else " · no trail yet"),
                      json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
                                  "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane}),
