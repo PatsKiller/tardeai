@@ -16973,6 +16973,22 @@ def _pilot_execute(body=None):
     return _json_clean({"ok": res.get("status") == "submitted", **res})
 
 
+def _pilot_arm(body=None):
+    """POST /api/v2/broker-orders/pilot/arm {confirm} — UI arming (operator 2026-06-13: zero-shell).
+    Validates the date-specific typed phrase and opens an AUTO-EXPIRING armed session (no env flag /
+    restart). Per-order Telegram 2FA still gates every submit — arming alone places nothing."""
+    import schwab_pilot_arm as arm
+    r = arm.arm(str((body or {}).get("confirm") or ""))
+    return _json_clean(r if r.get("ok") else {"ok": False, "error": r.get("error", "arm failed")})
+
+
+def _pilot_disarm(body=None):
+    """POST /api/v2/broker-orders/pilot/disarm {confirm} — expire the armed session + clear all locks."""
+    import schwab_pilot_arm as arm
+    r = arm.disarm(str((body or {}).get("confirm") or ""))
+    return _json_clean(r if r.get("ok") else {"ok": False, "error": r.get("error", "disarm failed")})
+
+
 def _pilot_cancel(body=None):
     """POST /api/v2/broker-orders/pilot/cancel {broker_order_id} — cancel a PILOT order (safe direction)."""
     import schwab_transport as st
@@ -20134,6 +20150,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body or {}
             r = approval_service.confirm(b.get("intent_id"), b.get("channel", "web"), b.get("code"))
             return (200 if r.get("ok") else 400), {"ok": r.get("ok", False), **r}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/pilot/arm":
+        try:
+            return 200, _pilot_arm(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/broker-orders/pilot/disarm":
+        try:
+            return 200, _pilot_disarm(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 

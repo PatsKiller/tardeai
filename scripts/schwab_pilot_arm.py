@@ -51,13 +51,28 @@ def status() -> dict:
     control = bool(r and str(r[0]).lower() == "true")
     cur.execute("SELECT count(*) FROM broker_live_approvals WHERE revoked_at IS NULL")
     approvals = int(cur.fetchone()[0] or 0)
+    # UI-armed session (auto-expiring 'physical key' replacing the shell env flag)
+    cur.execute("SELECT value FROM system_controls WHERE key='pilot_armed_until'")
+    sr = cur.fetchone()
+    session_until = sr[0] if sr and sr[0] else None
+    session_active = False
+    if session_until:
+        try:
+            session_active = dt.datetime.fromisoformat(str(session_until)) > dt.datetime.now(dt.timezone.utc)
+        except Exception:
+            session_active = False
     cur.execute("SELECT account_key, api_write_enabled FROM broker_accounts WHERE broker ILIKE '%schwab%' ORDER BY account_key")
     accounts = {k: bool(v) for k, v in cur.fetchall()}
     from brokers import canary_gate as cg
     env_flag = os.getenv("BROKER_LIVE_ENABLED", "false").lower() == "true"
     today = dt.date.today().isoformat()
+    key_present = env_flag or session_active   # the 'physical key' (shell env OR UI session)
     return {
         "env_BROKER_LIVE_ENABLED": env_flag,
+        "pilot_armed_until": session_until,
+        "pilot_session_active": session_active,
+        "arm_phrase": f"ARM SCHWAB PILOT {today}",   # exact typed phrase the UI requires to arm
+        "disarm_phrase": "DISARM SCHWAB PILOT",
         "db_control_broker_live_enabled": control,
         "standing_approvals_active": approvals,
         "api_write_enabled": accounts,
@@ -69,9 +84,10 @@ def status() -> dict:
         "canary_allowlist": list(cg.CANARY_SYMBOL_ALLOWLIST),
         "canary_envelope": {"max_price": cg.MAX_PRICE_USD, "max_qty": cg.MAX_QTY_SHARES,
                             "max_notional": cg.MAX_NOTIONAL_USD},
-        "armed": env_flag and control and approvals > 0 and accounts.get(PILOT_ACCOUNT_ALLOWLIST[0]) is True,
+        "armed": key_present and control and approvals > 0 and accounts.get(PILOT_ACCOUNT_ALLOWLIST[0]) is True,
         "note": "armed=true still places NOTHING by itself: per-order canary envelope + pilot caps + "
-                "2FA (web typed-ticker AND telegram) gate every submit",
+                "2FA (web typed-ticker AND telegram) gate every submit. Session auto-expires; any "
+                "restart fails safe to disarmed.",
     }
 
 
@@ -84,18 +100,23 @@ def arm(confirm: str) -> dict:
     _ensure_tables(cur)
     cur.execute("""INSERT INTO system_controls (key, value) VALUES ('broker_live_enabled','true')
                    ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW()""")
-    cur.execute("""INSERT INTO broker_live_approvals (approved_by, note)
-                   VALUES ('operator', %s)""",
-                (f"Stage 2b pilot armed {today} (typed-phrase confirmed; spec docs/brokers/stage2b-write-pilot-spec.md)",))
+    cur.execute("""INSERT INTO broker_live_approvals (broker, approved_by, scope)
+                   VALUES ('schwab', 'operator', %s)""",
+                (f"stage2b_pilot {today} (typed-phrase confirmed)",))
     cur.execute("UPDATE broker_accounts SET api_write_enabled=true WHERE account_key=%s",
                 (PILOT_ACCOUNT_ALLOWLIST[0],))
+    # UI-armed session = the 'physical key': auto-expires in 6h, never past the canary session day end,
+    # so a forgotten disarm cannot leave writes armed (and any restart resting-state clears it too).
+    now = dt.datetime.now(dt.timezone.utc)
+    day_end = dt.datetime.fromisoformat(today).replace(tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
+    armed_until = min(now + dt.timedelta(hours=6), day_end)
+    cur.execute("""INSERT INTO system_controls (key, value) VALUES ('pilot_armed_until', %s)
+                   ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
+                (armed_until.isoformat(),))
     conn.commit()
-    return {"ok": True, "armed_db": True,
-            "manual_steps_remaining": [
-                "add BROKER_LIVE_ENABLED=true to .env",
-                "restart tradeai-portfolio-server",
-                "commit today's CANARY_SESSION_DATE + re-screened allowlist in brokers/canary_gate.py",
-            ],
+    return {"ok": True, "armed_db": True, "armed_until": armed_until.isoformat(),
+            "note": "ARMED via auto-expiring session — no env flag / restart needed. Per-order "
+                    "Telegram 2FA still gates every submit.",
             "status": status()}
 
 
@@ -106,11 +127,13 @@ def disarm(confirm: str) -> dict:
     _ensure_tables(cur)
     cur.execute("""INSERT INTO system_controls (key, value) VALUES ('broker_live_enabled','false')
                    ON CONFLICT (key) DO UPDATE SET value='false', updated_at=NOW()""")
+    # expire the armed session immediately (the auto-expiring 'physical key')
+    cur.execute("""INSERT INTO system_controls (key, value) VALUES ('pilot_armed_until','')
+                   ON CONFLICT (key) DO UPDATE SET value='', updated_at=NOW()""")
     cur.execute("UPDATE broker_live_approvals SET revoked_at=NOW() WHERE revoked_at IS NULL")
     cur.execute("UPDATE broker_accounts SET api_write_enabled=false WHERE broker ILIKE '%schwab%'")
     conn.commit()
-    return {"ok": True, "disarmed_db": True,
-            "manual_steps_remaining": ["remove BROKER_LIVE_ENABLED from .env", "restart tradeai-portfolio-server"],
+    return {"ok": True, "disarmed_db": True, "note": "DISARMED — session expired, all locks cleared.",
             "status": status()}
 
 
