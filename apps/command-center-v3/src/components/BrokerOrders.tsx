@@ -291,6 +291,8 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
   const [quote, setQuote] = useState<any>(null)
   const [result, setResult] = useState<any>(null)
   const [busy, setBusy] = useState(false)
+  const [sug, setSug] = useState<any>(null)
+  const [sugBusy, setSugBusy] = useState(false)
   const [ai, setAi] = useState<{ q: string; a: string; provider: string } | null>(null)
   const [aiQ, setAiQ] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
@@ -314,7 +316,9 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
       const r = await fetch(`/api/v2/schwab/quotes?symbols=${encodeURIComponent(sym)}`)
       const j = await r.json()
       const d = j?.data ?? j
-      setQuote(d?.[sym.toUpperCase()] ?? null)
+      // response shape: { data: { quotes: { SYM: {bid,ask,last,...} } } } — read the nested map
+      const q = (d?.quotes ?? d)?.[sym.toUpperCase()] ?? null
+      setQuote(q ? { ...q, fetched_at: Date.now() } : null)
     } catch { setQuote(null) }
   }
   useEffect(() => {
@@ -323,6 +327,24 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
     const iv = symbol.trim() ? setInterval(() => fetchQuote(symbol.trim().toUpperCase()), 10_000) : undefined
     return () => { clearTimeout(t); if (iv) clearInterval(iv) }
   }, [symbol])
+
+  // Read-only technical level suggester (advisory): fills entry/stop/target from ATR + structure.
+  const suggestLevels = async () => {
+    const sym = symbol.trim().toUpperCase()
+    if (!sym) return
+    setSugBusy(true); setSug(null)
+    try {
+      const r = await fetch(`/api/v2/broker-orders/suggest-levels?symbol=${encodeURIComponent(sym)}`)
+      const j = await r.json(); const d = j?.data ?? j
+      setSug(d)
+      if (d && !d.error) {
+        if (d.limit != null) setLimit(String(d.limit))
+        if (d.stop != null) setStopLoss(String(d.stop))
+        if (d.target != null) setTarget(String(d.target))
+      }
+    } catch (e: any) { setSug({ error: e.message }) }
+    setSugBusy(false)
+  }
 
   const buildIntent = (direction: 'LONG' | 'SHORT') => {
     const exits: any = { stop: null, targets: [] as any[], oco: true, on_stop_place_failure: 'CLOSE_POSITION' }
@@ -460,9 +482,17 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
                 </div>
               </div>
             ))}
-            <button onClick={() => fetchQuote(symbol.trim().toUpperCase())} title="quotes auto-refresh every 10s while a symbol is typed; this forces it now"
-              style={{ ...btn('#1b1b1b', '#90caf9'), padding: '4px 9px' }}>↻ quote</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <button onClick={() => fetchQuote(symbol.trim().toUpperCase())} title="quotes auto-refresh every 10s while a symbol is typed; this forces it now"
+                style={{ ...btn('#1b1b1b', '#90caf9'), padding: '4px 9px' }}>↻ quote</button>
+              {quote?.fetched_at && <span style={{ fontSize: 8, color: T.dim }}>@ {new Date(quote.fetched_at).toLocaleTimeString()}</span>}
+            </div>
+            <button onClick={suggestLevels} disabled={!symbol.trim() || sugBusy}
+              title="Read-only technical suggestion: ATR-buffered stop below structure, limit near support/last, target vs recent range + analyst mean. Advisory — fills the fields, never sends."
+              style={{ ...btn('#3b245e', '#c4b5fd'), padding: '4px 10px' }}>{sugBusy ? '…' : '💡 suggest levels'}</button>
           </div>
+          {sug && <div style={{ fontSize: 9, color: sug.error ? '#ef5350' : T.dim, padding: '0 10px 4px' }}>
+            {sug.error ? `suggest failed: ${sug.error}` : `💡 ${sug.rationale} · entry ${sug.limit} · stop ${sug.stop} (${sug.stop_pct}%) · target ${sug.target} · R:R ${sug.rr}`}</div>}
           {/* qty stepper — canary-scaled presets ONLY */}
           <F label="qty (shares)" tip={FIELD_TIP.qty}>
             <span style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
