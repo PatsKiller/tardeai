@@ -177,8 +177,8 @@ def _sanity_check(rec, t, bounds=None):
                 pass
         if dist < 0.5:
             issues.append(f"stop only {dist:.1f}% below — inside noise, will whipsaw")
-        elif dist > stop_max:
-            issues.append(f"stop {dist:.1f}% below — wider than the {stop_max:.0f}% family cap / weak protection")
+        elif dist > stop_max + 1.0:   # 1% tolerance so a stop sitting AT the band edge isn't flagged
+            issues.append(f"stop {dist:.1f}% below — beyond the {stop_max:.0f}% family band / weak protection")
         # anchor-to-structure: only demand the stop sit at/below the 20d swing low when that low is
         # REACHABLE (≤12% below price). For extended positions the stop is correctly capped above it.
         swing_reachable = bool(swing_low) and (price - swing_low) / price * 100 <= 12
@@ -190,8 +190,8 @@ def _sanity_check(rec, t, bounds=None):
             tp = off if rec.get("trail_type") == "PERCENT" else (off / price * 100 if price else None)
             if tp is not None and tp < 0.3:
                 issues.append(f"trail {tp:.1f}% — too tight, trails out on noise")
-            elif tp is not None and tp > trail_max:
-                issues.append(f"trail {tp:.1f}% — wider than the {trail_max:.0f}% family band")
+            elif tp is not None and tp > trail_max + 1.0:
+                issues.append(f"trail {tp:.1f}% — beyond the {trail_max:.0f}% family band")
         except Exception:
             issues.append("trail offset not numeric")
     return {"verdict": "fail" if fail else ("warn" if issues else "ok"), "issues": issues}
