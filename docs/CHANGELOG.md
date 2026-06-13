@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-13 - Protection advisory: sanity gate + bounded prompt + free Grok OAuth (root-cause fix)
+
+The display clarity fix made loose LLM advisories visible (ARKG 15% stop); this fixes the SOURCE.
+(1) BOUNDED prompt (holding_protection_advisor PROMPT_V1): stop must be below price, anchored at/below
+the 20d swing low, distance 1-12% (cap at 12% if swing low is further), stop_pct_below must equal the
+computed value; explicit FIXED-vs-TRAILING rule (trail only if unrealized ≥+10% AND price>SMA50, else
+fixed) — answers "do we categorize first": the fixed/trailing choice is now derived from profit-state
++ trend, no separate long/short/swing classifier needed; trail is PERCENT-only (3-10%), no ambiguous
+$/ATR offsets. (2) _sanity_check validates every output against the real technicals (stop-below-price,
+claimed-vs-actual %, reachable-swing-low anchoring, distance + trail bounds) → verdict ok/warn/fail
+stored in evidence + surfaced as "⚠ check advisory" / "⛔ unreliable advisory" on the card. (3) default
+lane → free Grok OAuth (tighter than gemma3:4b), local fallback. PROVEN live: gemma3:4b emitted an
+inconsistent stop (gate flagged it); grok under the bounded prompt emitted a clean one (gate ok).
+
 ## 2026-06-13 - Stop/trailing-stop clarity across Open Trades + Proposals (consistent w/ Watchlist)
 
 Open Trades protection advisory was garbled ("trail 0.3$1.04% above advised stop" — mixed %/$/ATR

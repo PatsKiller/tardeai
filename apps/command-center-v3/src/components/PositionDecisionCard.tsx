@@ -118,6 +118,12 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
                   </span>
                 )}
                 {wideStop && <span style={{ fontSize: 8.5, fontWeight: 800, color: '#f59e0b' }} title="advised stop sits far below price — wide/weak protection; verify">⚠ wide stop</span>}
+                {protectionRec.sanity && protectionRec.sanity.verdict !== 'ok' && (
+                  <span style={{ fontSize: 8.5, fontWeight: 800, color: protectionRec.sanity.verdict === 'fail' ? '#ef4444' : '#f59e0b' }}
+                    title={`advisory self-check ${protectionRec.sanity.verdict.toUpperCase()}:\n` + (protectionRec.sanity.issues || []).join('\n')}>
+                    {protectionRec.sanity.verdict === 'fail' ? '⛔ unreliable advisory' : '⚠ check advisory'}
+                  </span>
+                )}
               </div>
             )
           })()}
