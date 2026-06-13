@@ -16743,7 +16743,8 @@ def _portfolio_llm_coverage(query=None):
                            "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
                            "stop_price": stop, "trail_recommended": rec.get("trail_recommended"),
                            "trail_type": rec.get("trail_type"), "trail_offset": rec.get("trail_offset"),
-                           "price": _json_clean(px), "stop_distance_pct": dist}
+                           "price": _json_clean(px), "stop_distance_pct": dist,
+                           "sanity": ev.get("sanity")}   # advisory self-consistency verdict + issues
     # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
     cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
                       FROM hermes_external_research

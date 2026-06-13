@@ -36,13 +36,20 @@ PROMPT_VERSION = "protection_advisor_v1"
 PROMPT_V1 = """You are a risk-management analyst. Your ONLY job: recommend protective stop placement
 for an EXISTING long stock position. You never recommend buying, selling more, or new positions.
 
-HARD RULES
-- Use the swing low and ATR to place stops OUTSIDE normal noise (typically 1.5-2.5x ATR or just
-  below the recent swing low, whichever is more sensible for this volatility).
-- A trailing stop is preferred when the position is in profit and trending; a fixed stop when basis
-  protection matters more. You may recommend both (initial stop now, trail once price advances).
-- Respect the analyst context: if price is far above the analyst mean target, protection should be
-  tighter; far below, allow more room only if technicals support it.
+HARD RULES (these are BOUNDS, not suggestions — a number outside them is WRONG)
+- stop_price MUST be BELOW current price (this is a long). NEVER at or above price.
+- stop_price MUST sit AT or just BELOW the 20d swing low: between (swing_low − 1.0×ATR) and swing_low.
+  Anchor to structure — do NOT place the stop above the swing low.
+- Resulting stop distance MUST be between 1% and 12% below price. If swing_low is >12% below price,
+  the position is extended — cap the stop at 12% below price and say so in the rationale.
+- stop_pct_below MUST EQUAL round((price − stop_price)/price × 100, 1). Compute it; do not guess.
+- FIXED vs TRAILING (decide by the position's state — this is the rule, not a preference):
+    • trail_recommended = TRUE only if BOTH: unrealized P&L ≥ +10% (real profit to protect) AND
+      price > 50d SMA (uptrend). Otherwise trail_recommended = FALSE (fixed stop only).
+    • When trailing: trail_type="PERCENT", trail_offset between 3 and 10 (percent). No $ offsets,
+      no ATR-multiples in trail_offset — percent only, so it is unambiguous.
+- Respect analyst context: if price is ABOVE the analyst mean target, bias the stop tighter (nearer
+  the 1% end); if below target with intact uptrend, the wider end is acceptable.
 - Output STRICT JSON only. No prose outside the JSON. Numbers as numbers, not strings.
 
 POSITION
@@ -136,6 +143,56 @@ def _parse(text):
         return None
 
 
+def _sanity_check(rec, t):
+    """Validate the LLM advisory against the ACTUAL technicals (all current holdings are long).
+    Direction/strategy-agnostic — pure internal-consistency math. Returns {verdict, issues}:
+      fail = internally wrong (stop at/above price) · warn = questionable · ok = clean.
+    The fixed-vs-trailing PREFERENCE is a separate question (needs trade categorization)."""
+    issues: list[str] = []
+    fail = False
+    try:
+        price = float(t.get("price") or 0)
+        swing_low = float(t.get("swing_low") or 0)
+        atr = float(t.get("atr") or 0)
+        stop = float(rec["stop_price"]) if rec.get("stop_price") is not None else None
+    except Exception:
+        return {"verdict": "warn", "issues": ["non-numeric stop/technicals"]}
+    if not price or stop is None:
+        return {"verdict": "warn", "issues": ["missing price or stop"]}
+    if stop >= price:
+        issues.append(f"stop ${stop:.2f} is AT/ABOVE price ${price:.2f} — would trigger immediately, not a protective stop")
+        fail = True
+    else:
+        dist = (price - stop) / price * 100
+        claimed = rec.get("stop_pct_below")
+        if claimed is not None:
+            try:
+                if abs(float(claimed) - dist) > 1.0:
+                    issues.append(f"claims {float(claimed):.1f}% below but stop is actually {dist:.1f}% below")
+            except Exception:
+                pass
+        if dist < 0.5:
+            issues.append(f"stop only {dist:.1f}% below — inside noise, will whipsaw")
+        elif dist > 12:
+            issues.append(f"stop {dist:.1f}% below — wider than the 12% cap / weak protection")
+        # anchor-to-structure: only demand the stop sit at/below the 20d swing low when that low is
+        # REACHABLE (≤12% below price). For extended positions the stop is correctly capped above it.
+        swing_reachable = bool(swing_low) and (price - swing_low) / price * 100 <= 12
+        if swing_reachable and atr and stop > swing_low + 0.5 * atr:
+            issues.append(f"stop ${stop:.2f} sits ABOVE the reachable 20d swing low ${swing_low:.2f} — not anchored to support")
+    if rec.get("trail_recommended"):
+        try:
+            off = float(rec.get("trail_offset"))
+            tp = off if rec.get("trail_type") == "PERCENT" else (off / price * 100 if price else None)
+            if tp is not None and tp < 0.3:
+                issues.append(f"trail {tp:.1f}% — too tight, trails out on noise")
+            elif tp is not None and tp > 20:
+                issues.append(f"trail {tp:.1f}% — too wide to protect")
+        except Exception:
+            issues.append("trail offset not numeric")
+    return {"verdict": "fail" if fail else ("warn" if issues else "ok"), "issues": issues}
+
+
 def _candidates(limit):
     """All real-account positions worth advising (operator 2026-06-12: full sweep — floor lowered
     500->100 so the small taxable names are covered; proxy-mapped 401k fund codes included; only
@@ -166,7 +223,9 @@ def _candidates(limit):
     return dedup[:limit]
 
 
-def run(lane="local", symbols=None, limit=12):
+def run(lane="grok", symbols=None, limit=12):
+    # operator 2026-06-13: prefer the FREE Grok OAuth lane (tighter adherence to the bounded prompt
+    # than gemma3:4b); auto-fall back to local gemma when the proxy isn't authenticated. Both free.
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
@@ -207,6 +266,7 @@ def run(lane="local", symbols=None, limit=12):
         rec = _parse(out)
         if not rec:
             print(f"  {sym}: unparseable response"); failed += 1; continue
+        sanity = _sanity_check(rec, t)   # validate the LLM output against the real structure
         model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
         cur.execute("""INSERT INTO hermes_research_intelligence
                          (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
@@ -221,12 +281,13 @@ def run(lane="local", symbols=None, limit=12):
                          else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
                         if rec.get("trail_recommended") else " · no trail yet"),
                      json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
-                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane}),
+                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane, "sanity": sanity}),
                      rec.get("confidence"), model, PROMPT_VERSION))
         conn.commit()
+        sflag = '' if sanity['verdict'] == 'ok' else f" · ⚠{sanity['verdict'].upper()}: {'; '.join(sanity['issues'])[:80]}"
         print(f"  {sym}: stop ${rec.get('stop_price')} ({rec.get('stop_pct_below')}% below) · "
-              f"trail={'%s %s' % (rec.get('trail_offset'), rec.get('trail_type')) if rec.get('trail_recommended') else 'no'} "
-              f"· conf {rec.get('confidence')} · {model}")
+              f"trail={'%s%%' % rec.get('trail_offset') if rec.get('trail_recommended') else 'no'} "
+              f"· conf {rec.get('confidence')} · {model}{sflag}")
         done += 1
     print(json.dumps({"lane": lane, "advised": done, "failed": failed,
                       "note": "advisory only — surfaced on Portfolio cards + monthly Claude meta-review"}))
@@ -234,7 +295,7 @@ def run(lane="local", symbols=None, limit=12):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="local", choices=["local", "grok"])
+    ap.add_argument("--lane", default="grok", choices=["local", "grok"])   # free Grok OAuth by default
     ap.add_argument("--symbols", help="comma-separated override")
     ap.add_argument("--limit", type=int, default=50)   # full-portfolio default (operator 2026-06-12)
     a = ap.parse_args()
