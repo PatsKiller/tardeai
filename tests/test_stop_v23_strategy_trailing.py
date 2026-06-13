@@ -85,3 +85,35 @@ def test_no_orders_in_policy():
 def test_v22_compiles():
     assert subprocess.run([PY, "-m", "py_compile",
         f"{PROJECT_ROOT}/scripts/unified_stop_supervisor.py"]).returncode == 0
+
+
+# ── STOP-V2.4 hybrid structural overlay (config-gated) ───────────────────────────────────────────
+
+def test_v24_overlay_default_off_is_noop():
+    """With config disabled (default), passing symbol must NOT add a hybrid key or change the stop."""
+    import strategy_trailing_policy as p
+    p._HYBRID_CFG_CACHE = {"enabled": False}
+    r = p.recommend_stop("swing_breakout", 100.0, 95.0, 95.0, 110.0, market_hours=True, symbol="V")
+    assert "hybrid" not in r
+    assert r["recommended_stop"] == 105.0  # pure R-multiple lock 1.0R
+
+
+def test_v24_overlay_only_tightens():
+    """The overlay can only RAISE the stop above the R-multiple baseline, never lower it."""
+    import strategy_trailing_policy as p
+    # synthetic levels: chandelier/ma far BELOW baseline → overlay must be a no-op (not loosen)
+    p._HYBRID_CFG_CACHE = {"enabled": True, "atr_period": 14, "chandelier_lookback": 22,
+                           "adx_ranging_below": 20, "adx_trending_above": 25, "ma_proximity_atr": 1.5,
+                           "families": {"swing": {"chandelier": True, "base_atr_mult": 3.0}}}
+    p._structural_levels = lambda sym, cfg: {"atr": 1.0, "ema20": 50.0, "sma50": 50.0,
+                                             "adx": 30.0, "highest_high": 90.0, "close": 110.0}
+    r = p.recommend_stop("swing_breakout", 100.0, 95.0, 95.0, 110.0, market_hours=True, symbol="ZZ")
+    # baseline lock 1R = 105; chandelier = 90-3 = 87 (below) → must stay 105, never drop
+    assert r["recommended_stop"] >= 105.0
+    p._HYBRID_CFG_CACHE = {"enabled": False}  # reset for other tests
+
+
+def test_v24_overlay_no_orders():
+    src = open(f"{PROJECT_ROOT}/scripts/strategy_trailing_policy.py").read()
+    for sym in ("submit_order", "cancel_order", "replace_order", "place_order"):
+        assert sym not in src

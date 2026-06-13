@@ -1,0 +1,47 @@
+# STOP-V2.4 — Hybrid structural trailing overlay (config-gated, DEFAULT OFF).
+#
+# Augments the existing R-multiple trailing (strategy_trailing_policy.py) with structure-aware stops:
+#   • ma_trend_filter   — only let the structural overlay TIGHTEN while price is in a confirmed uptrend
+#                         (price > EMA20 and/or > SMA50); in chop it defers to the R-multiple stop so
+#                         the trade isn't shaken out. Never loosens an existing stop.
+#   • chandelier        — highest_high(N) − mult×ATR(14); a classic ratchet-up trailing stop.
+#   • dynamic_multiplier— widen the ATR multiplier in strong trends (let winners run, ADX high) and
+#                         tighten in ranging tape (ADX low); widen slightly near a key MA.
+#
+# SAFETY: the overlay can only RAISE the recommended stop above the R-multiple baseline (tighten /
+# lock more), never lower it, and never above current price. Master switch `enabled: false` or any
+# family left out ⇒ identical behavior to STOP-V2.3. Advisory only — the supervisor still decides;
+# no broker write path is touched. Paper-first.
+
+enabled: false            # master switch — flip to true to activate any of the per-family blocks
+
+# shared indicator params (consumed via indicator_engine bars)
+atr_period: 14
+chandelier_lookback: 22   # N for highest_high(N)
+adx_ranging_below: 20     # ADX < this ⇒ ranging ⇒ tighten multiplier
+adx_trending_above: 25    # ADX > this ⇒ strong trend ⇒ widen multiplier
+ma_proximity_atr: 1.5     # within this many ATRs of EMA20/SMA50 ⇒ widen buffer (correction cushion)
+
+# per-family enablement. Each family mirrors strategy_trailing_policy.STRATEGY_FAMILIES.
+# base_atr_mult is the chandelier / MA-trail multiplier BEFORE dynamic adjustment.
+families:
+  momentum:
+    ma_trend_filter: false
+    chandelier: false
+    dynamic_multiplier: false
+    base_atr_mult: 2.5
+  swing:
+    ma_trend_filter: false
+    chandelier: false
+    dynamic_multiplier: false
+    base_atr_mult: 3.0
+  income:
+    ma_trend_filter: false
+    chandelier: false
+    dynamic_multiplier: false
+    base_atr_mult: 3.5
+  position:
+    ma_trend_filter: false
+    chandelier: false
+    dynamic_multiplier: false
+    base_atr_mult: 4.0
