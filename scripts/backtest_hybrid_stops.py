@@ -161,14 +161,15 @@ def _metrics(trades):
     }
 
 
-def run(symbols, years, strategy):
+def run(symbols, years, strategy, algos=("ma_trend_filter", "chandelier", "dynamic_multiplier"),
+        base_atr_mult=3.0):
     import strategy_trailing_policy as p
-    # configure the overlay for the strategy's family, all algos on, fed point-in-time levels
+    # configure the overlay for the strategy's family with the SELECTED algos, fed point-in-time levels
     fam = p.get_strategy_family(strategy)
+    fcfg = {"ma_trend_filter": "ma_trend_filter" in algos, "chandelier": "chandelier" in algos,
+            "dynamic_multiplier": "dynamic_multiplier" in algos, "base_atr_mult": base_atr_mult}
     cfg = {"enabled": True, "atr_period": 14, "chandelier_lookback": 22, "adx_ranging_below": 20,
-           "adx_trending_above": 25, "ma_proximity_atr": 1.5,
-           "families": {fam: {"ma_trend_filter": True, "chandelier": True,
-                              "dynamic_multiplier": True, "base_atr_mult": 3.0}}}
+           "adx_trending_above": 25, "ma_proximity_atr": 1.5, "families": {fam: fcfg}}
     # patch _structural_levels to hand back the injected point-in-time levels during the v24 run
     p._BT_LEVELS = None
     _orig_levels = p._structural_levels
@@ -206,10 +207,15 @@ def main():
     ap.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS))
     ap.add_argument("--years", type=int, default=3)
     ap.add_argument("--strategy", default="swing_breakout")
+    ap.add_argument("--algos", default="ma_trend_filter,chandelier,dynamic_multiplier",
+                    help="comma list of overlay algos to enable")
+    ap.add_argument("--base-atr-mult", type=float, default=3.0)
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
-    print(f"\nSTOP-V2.4 (hybrid) vs V2.3 (R-multiple) — {a.strategy} · {a.years}y · 20d-breakout entries\n")
-    rows, totals = run(syms, a.years, a.strategy)
+    algos = tuple(s.strip() for s in a.algos.split(",") if s.strip())
+    print(f"\nSTOP-V2.4 (hybrid) vs V2.3 (R-multiple) — {a.strategy} · algos={algos} · "
+          f"mult={a.base_atr_mult} · {a.years}y · 20d-breakout entries\n")
+    rows, totals = run(syms, a.years, a.strategy, algos=algos, base_atr_mult=a.base_atr_mult)
     for sym, m23, m24 in rows:
         print(f"── {sym}")
         if m23 is None:
