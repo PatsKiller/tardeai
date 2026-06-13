@@ -44,12 +44,28 @@ def mode_for(broker: str) -> BrokerExecutionMode:
 
 
 def _live_future_unlocked() -> bool:
-    """ALL three locks must exist; none do this phase. Any error => locked (fail closed)."""
-    if os.getenv("BROKER_LIVE_ENABLED", "false").lower() != "true":
-        return False
+    """Standing locks open? The 'physical key' is EITHER the shell env flag (BROKER_LIVE_ENABLED) OR
+    an unexpired UI-armed session (system_controls['pilot_armed_until'] > now) — operator chose the
+    UI path (2026-06-13). PLUS the DB control row AND a standing approval. Any error => locked.
+
+    The armed session AUTO-EXPIRES (set ~6h at arm) and is cleared by any server restart's resting
+    state, so a forgotten disarm can never leave writes armed. The real per-trade second surface is
+    the Telegram 2FA at execute-time — clicking arm alone still cannot place an order."""
     try:
         from db_adapter import _get_conn
         cur = _get_conn().cursor()
+        env_ok = os.getenv("BROKER_LIVE_ENABLED", "false").lower() == "true"
+        session_ok = False
+        cur.execute("SELECT value FROM system_controls WHERE key='pilot_armed_until'")
+        sr = cur.fetchone()
+        if sr and sr[0]:
+            import datetime as _dt
+            try:
+                session_ok = _dt.datetime.fromisoformat(str(sr[0])) > _dt.datetime.now(_dt.timezone.utc)
+            except Exception:
+                session_ok = False
+        if not (env_ok or session_ok):
+            return False
         cur.execute("SELECT value FROM system_controls WHERE key='broker_live_enabled'")
         r = cur.fetchone()
         if not r or str(r[0]).lower() != "true":

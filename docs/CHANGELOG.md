@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-13 - Zero-shell arming: UI Arm/Disarm via auto-expiring DB session (operator choice)
+
+Monday 2026-06-15 pilot is now 100% UI — no shell. The shell env-flag "physical key" is replaced by
+an auto-expiring DB armed session (system_controls['pilot_armed_until'], ~6h, capped at session-day
+end): _live_future_unlocked accepts env-flag OR unexpired session; arm()/disarm() set/clear it +
+control row + standing approval + api_write_enabled(taxable). New POST pilot/arm + pilot/disarm
+(typed date-phrase) and Pilot Console ARM…/DISARM buttons (typed-phrase modal). SAFETY POSTURE
+MOVES, doesn't vanish: the two-surface protection shifts from arm-time to EXECUTE-time — per-order
+Telegram 2FA (second device) still gates every submit, so a UI click alone places nothing; plus
+typed phrase, ≤$4/$40 envelope, 5-order cap, AND the session auto-expires / any restart fails safe
+to disarmed (operator accepted that the web UI can now open the armed window). Disarmed at rest;
+canary 26/26; write-policy 26 guards. (Trade-off acknowledged: web UI alone can arm the window.)
+
 ## 2026-06-13 - SB-2: full single-leg canary battery executable via API (Monday 2026-06-15 session)
 
 Expanded the Stage 2b pilot from BUY-LIMIT-only to the full 5-shape battery, all single-leg, all via

@@ -204,6 +204,9 @@ function PilotConsole() {
   const [limit, setLimit] = useState('')
   const [step, setStep] = useState<any>(null)   // selected canary battery preset
   const [param, setParam] = useState('')        // shape value: limit $ / stop $ / trail %
+  const [armModal, setArmModal] = useState<null | 'arm' | 'disarm'>(null)
+  const [armPhrase, setArmPhrase] = useState('')
+  const [armMsg, setArmMsg] = useState('')
   const [pf, setPf] = useState<any>(null)
   const [execMsg, setExecMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -229,10 +232,44 @@ function PilotConsole() {
           {armed ? 'ARMED' : 'DISARMED'}</span>
         <span style={{ fontSize: 10, fontWeight: 800, color: used >= cap ? '#ef5350' : T.text }}>orders {used}/{cap}</span>
         <span style={{ flex: 1 }} />
+        {armed
+          ? <button onClick={() => { setArmModal('disarm'); setArmPhrase(''); setArmMsg('') }} style={btn('#b71c1c')}>● DISARM</button>
+          : <button onClick={() => { setArmModal('arm'); setArmPhrase(''); setArmMsg('') }} style={btn('#1b5e20')}>○ ARM…</button>}
         <button onClick={() => refetch()} style={btn('#333')}>refresh</button>
       </div>
+      {s.pilot_armed_until && s.pilot_session_active && (
+        <div style={{ fontSize: 9, color: '#66bb6a', marginTop: 4 }}>session armed until {new Date(s.pilot_armed_until).toLocaleTimeString()} · auto-expires · any restart disarms</div>
+      )}
+      {armModal && (
+        <div onClick={() => setArmModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${armModal === 'arm' ? '#1b5e20' : '#b71c1c'}`, borderRadius: 8, padding: 18, width: 'min(460px,94vw)' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: armModal === 'arm' ? '#81c784' : '#ef5350' }}>
+              {armModal === 'arm' ? 'ARM the Stage 2b pilot' : 'DISARM the pilot'}</div>
+            <div style={{ fontSize: 10, color: T.dim, margin: '6px 0 10px', lineHeight: 1.5 }}>
+              {armModal === 'arm'
+                ? 'Opens an auto-expiring armed session (no shell/restart). Per-order Telegram 2FA still gates every submit — this alone places nothing. Type the exact phrase to confirm:'
+                : 'Expires the session and clears all locks. Type the exact phrase to confirm:'}</div>
+            <div style={{ fontSize: 11, ...mono, color: T.text, padding: '5px 8px', background: '#0d1117', borderRadius: 4, marginBottom: 8 }}>
+              {armModal === 'arm' ? (s.arm_phrase ?? '—') : (s.disarm_phrase ?? 'DISARM SCHWAB PILOT')}</div>
+            <input autoFocus value={armPhrase} onChange={e => setArmPhrase(e.target.value)} placeholder="type the phrase exactly"
+              style={{ ...inp, width: '100%', fontSize: 12, padding: '7px 9px' }} />
+            {armMsg && <div style={{ fontSize: 10, color: armMsg.startsWith('✓') ? '#66bb6a' : '#ef5350', marginTop: 7 }}>{armMsg}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button onClick={() => setArmModal(null)} style={btn('#333')}>cancel</button>
+              <button disabled={busy} onClick={async () => {
+                const want = armModal === 'arm' ? s.arm_phrase : (s.disarm_phrase ?? 'DISARM SCHWAB PILOT')
+                if (armPhrase !== want) { setArmMsg('phrase does not match exactly'); return }
+                const r = await post(`/api/v2/broker-orders/pilot/${armModal}`, { confirm: armPhrase })
+                if (r?.ok) { setArmMsg(`✓ ${armModal}ed`); refetch(); setTimeout(() => setArmModal(null), 800) }
+                else setArmMsg(r?.error ?? `${armModal} failed`)
+              }} style={btn(armModal === 'arm' ? '#1b5e20' : '#b71c1c')}>
+                {armModal === 'arm' ? 'ARM' : 'DISARM'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 7 }}>
-        {lock('env flag', !!s.env_BROKER_LIVE_ENABLED, 'BROKER_LIVE_ENABLED=true in .env + server restart')}
+        {lock('armed key', !!s.env_BROKER_LIVE_ENABLED || !!s.pilot_session_active, 'auto-expiring armed session (ARM button) OR shell env flag — the physical key')}
         {lock('db control', !!s.db_control_broker_live_enabled, "system_controls['broker_live_enabled']")}
         {lock('standing approval', (s.standing_approvals_active ?? 0) > 0, 'broker_live_approvals row (schwab_pilot_arm.py --arm)')}
         {lock('write flag (taxable)', !!s.api_write_enabled?.schwab_taxable, 'broker_accounts.api_write_enabled')}
