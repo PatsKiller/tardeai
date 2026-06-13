@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-13 - Backtest: STOP-V2.4 vs V2.3 A/B (proves expectancy before config flip)
+
+backtest_hybrid_stops.py — read-only A/B over 20d-breakout entries, both policies through the REAL
+recommend_stop (overlay fed POINT-IN-TIME levels, no lookahead). 3y / 6 names (V/RTX/LMT/NOC/GD/PLTR):
+aggregate V2.4 expectancy +0.535R→+0.637R, PF 2.17→2.75, maxDD −7.0R→−6.04R (PROMOTE on aggregate).
+BUT mixed per-symbol: better on V/RTX/GD/PLTR (RTX PF 3.1→10.25), WORSE on LMT (1.134→0.815R) and
+NOC (0.765→0.699R); whipsaws 23→28. Honest read: helps most names, hurts some — promote PER-FAMILY/
+per-name, not blanket. Config stays OFF pending operator decision. Advisory; no orders/config writes.
+
 ## 2026-06-13 - STOP-V2.4: structural trailing overlay (MA-trend / chandelier / dynamic-mult, default OFF)
 
 Augments the R-multiple trailing (strategy_trailing_policy.py) with structure-aware stops instead of
