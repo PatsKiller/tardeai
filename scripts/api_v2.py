@@ -16910,6 +16910,61 @@ def _pilot_cancel(body=None):
     return _json_clean({"ok": res.get("status") == "cancel_requested", **res})
 
 
+def _broker_orders_suggest_levels(query=None):
+    """GET /api/v2/broker-orders/suggest-levels?symbol=X — READ-ONLY advisory entry/stop/target from
+    technicals (ATR-buffered stop below structure, limit near support/last, target vs recent range +
+    analyst mean). Reuses watchlist_entry_planner._bars/_tech/_analyst. Never places anything."""
+    q = query or {}
+    sym = ((q.get("symbol") or [""])[0] if isinstance(q.get("symbol"), list) else (q.get("symbol") or "")).strip().upper()
+    if not sym:
+        return {"error": "symbol required"}
+    try:
+        import watchlist_entry_planner as wep
+        bars = wep._bars(sym)
+        if not bars:
+            return {"error": f"no price history for {sym}"}
+        t = wep._tech(bars)
+        price = float(t["price"]); atr = float(t["atr"])
+        swing_low = float(t["swing_low"]); swing_high = float(t["swing_high"]); sma50 = float(t["sma50"])
+        # analyst mean target (numeric) for the upside ceiling
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        an = wep._analyst(cur, sym)
+        tgt_mean = an.get("tgt_mean_num")
+        # ENTRY: just under the last print / nearest support (rising SMA50 if price is above it),
+        # so a limit has a realistic fill instead of chasing.
+        support = max([v for v in (sma50, swing_low) if v < price] or [price * 0.985])
+        limit = round(min(price, (price + support) / 2 if support < price else price), 2)
+        # STOP: 1.5x ATR below the chosen entry, but never above structural support − a tick.
+        stop = round(min(limit - 1.5 * atr, support - 0.01), 2)
+        if stop >= limit:
+            stop = round(limit - max(1.5 * atr, limit * 0.02), 2)
+        # TARGET: prefer analyst mean if it gives >=1.5R; else recent swing high; else 2R.
+        r_per_share = limit - stop
+        cand = []
+        if tgt_mean and tgt_mean > limit:
+            cand.append(float(tgt_mean))
+        if swing_high > limit:
+            cand.append(swing_high)
+        cand.append(limit + 2 * r_per_share)
+        target = round(next((c for c in cand if (c - limit) / r_per_share >= 1.5), max(cand)), 2)
+        rr = round((target - limit) / r_per_share, 2) if r_per_share > 0 else None
+        stop_pct = round((stop - limit) / limit * 100, 2)
+        rationale = (f"ATR ${atr:.2f} ({atr/price*100:.1f}%) · entry near "
+                     f"{'SMA50' if abs(support-sma50) < abs(support-swing_low) else '20d-low'} support "
+                     f"${support:.2f} · stop 1.5×ATR below structure"
+                     + (f" · target = analyst mean ${tgt_mean:.2f}" if tgt_mean and target == round(float(tgt_mean),2) else
+                        f" · target = 20d-high/2R"))
+        return _json_clean({"symbol": sym, "price": round(price, 2), "atr": round(atr, 2),
+                            "limit": limit, "stop": stop, "stop_pct": stop_pct, "target": target,
+                            "rr": rr, "swing_low": round(swing_low, 2), "swing_high": round(swing_high, 2),
+                            "sma50": round(sma50, 2), "rsi": t["rsi"], "analyst_mean": tgt_mean,
+                            "rationale": rationale,
+                            "note": "advisory technical levels — read-only; fills the draft fields, never sends"})
+    except Exception as e:
+        return {"error": str(e)[:160]}
+
+
 def _broker_orders_explain(body=None):
     """POST /api/v2/broker-orders/explain — ADVISORY-ONLY AI helper for the ToS-style order panel.
     Explains order-type/field MECHANICS and how the canonical intent translates to Schwab. It can
@@ -17642,6 +17697,7 @@ ROUTES = {
     "/api/v2/broker-orders/shadow-recon": _broker_orders_shadow_recon,
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/broker-orders/pilot/status": _pilot_status,
+    "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
     "/api/v2/symbol-cards": _symbol_cards,
