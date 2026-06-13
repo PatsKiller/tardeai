@@ -60,7 +60,10 @@ with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ()):
           not d0.allowed and any("allowlist EMPTY" in r for r in d0.reasons))
 
 print("\n— 2. envelope logic (allowlist patched to ('TST',) for isolation) —")
-with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ("TST",)):
+# pin _today to the committed session date so envelope logic is tested independent of the calendar
+# (the date auto-expiry is exercised separately in section 2b).
+with mock.patch.object(canary_gate, "CANARY_SYMBOL_ALLOWLIST", ("TST",)), \
+     mock.patch.object(canary_gate, "_today", return_value=canary_gate.CANARY_SESSION_DATE):
     check("in-envelope LIMIT buy passes the gate in isolation", canary_gate.evaluate(mk()).allowed)
     check("non-allowlisted symbol blocked", not canary_gate.evaluate(mk(symbol="AAPL")).allowed)
     check("price > $4 blocked", not canary_gate.evaluate(mk(limit=4.01)).allowed)

@@ -194,6 +194,30 @@ try:
 except Exception as e:
     ok("canary auto-expiry check", False, str(e)[:60])
 
+# 10b. BATTERY SHAPES envelope-bounded (Stage 2b 2026-06-15): every shape — incl SELL / STOP /
+#      TRAILING — must be capped by the ≤$4/≤$40 envelope; out-of-envelope prices must BLOCK.
+try:
+    import schwab_stage2b_canary_preflight as _pf
+    from decimal import Decimal as _Dec
+    with _mock.patch.object(_cg, "_today", return_value=_cg.CANARY_SESSION_DATE):
+        in_env = [
+            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("1.70")),
+            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("3.00")),
+            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "trailing", trail_pct=_Dec("3"), reference_price=_Dec("3.30")),
+            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "close", price=_Dec("3.30")),
+        ]
+        all_allow = all(_cg.evaluate(i).allowed for i in in_env)
+        # out-of-envelope must block on BUY and on SELL/STOP alike
+        over_buy = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("5.00"))).allowed
+        over_stop = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("4.50"))).allowed
+        # qty over cap blocks too
+        over_qty = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 11, "buy_cancel", price=_Dec("3.00"))).allowed
+    ok("battery shapes envelope-bounded (in-env allow; >$4 buy/stop + >10sh block)",
+       all_allow and over_buy and over_stop and over_qty,
+       f"allow={all_allow} overbuy={over_buy} overstop={over_stop} overqty={over_qty}")
+except Exception as e:
+    ok("battery envelope check", False, str(e)[:80])
+
 # 11. pilot caps: pure commit-only literals + behavioral cap/allowlist denial
 try:
     caps_src = (SCRIPTS / "brokers" / "pilot_caps.py").read_text()

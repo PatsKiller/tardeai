@@ -167,6 +167,32 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
   )
 }
 
+// ── Canary 5-ticket battery (Monday 2026-06-15) — ALL single-leg, ALL via the API pilot. A logical
+// round-trip that proves every order TYPE + lifecycle inside the ≤$4/$40/10-share envelope:
+//   1 buy_cancel  BUY  LIMIT  below-market → place + CANCEL (cannot fill)  · pilot order 1
+//   2 real_fill   BUY  LIMIT  @ live ask   → let it FILL (~$33)            · pilot order 2 (now long 10)
+//   3 protective  SELL STOP   below-market → place + CANCEL (won't trigger)· pilot order 3
+//   4 trailing    SELL TRAIL  3% off LAST  → place + CANCEL (won't trigger)· pilot order 4
+//   5 close       SELL LIMIT  @ live bid   → CLOSE the long (back to flat) · pilot order 5
+// pkey = which body field carries the operator value; live = pull bid/ask at load time.
+const CANARY_BATTERY: any[] = [
+  { n: '1/5', shape: 'buy_cancel', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', pdef: '1.70',
+    title: 'PLACE → CANCEL ($0)', spec: 'BUY 10 GRAB LIMIT 1.70 DAY',
+    note: 'BUY ~50% below market — CANNOT fill. Preflight → 2FA → Execute → confirm it RESTS in ToS → Cancel (row button). Proves place + cancel at zero fill risk.' },
+  { n: '2/5', shape: 'real_fill', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', live: 'ask',
+    title: 'THE REAL FILL (~$33)', spec: 'BUY 10 GRAB LIMIT @ live ask',
+    note: 'Limit = live ASK (~$33, under $40). Preflight → 2FA → Execute → DO NOT cancel, let it FILL. Proves fill capture + read-back. You now hold 10 GRAB.' },
+  { n: '3/5', shape: 'protective', symbol: 'GRAB', qty: 10, pkey: 'stop_price', plabel: 'stop $', pdef: '2.90',
+    title: 'PROTECTIVE STOP → CANCEL', spec: 'SELL 10 GRAB STOP 2.90 GTC',
+    note: 'A real protective SELL STOP on your 10 shares, set below market so it WON\'T trigger. Preflight → 2FA → Execute → verify it rests → Cancel. Proves the STOP shape.' },
+  { n: '4/5', shape: 'trailing', symbol: 'GRAB', qty: 10, pkey: 'trail_pct', plabel: 'trail %', pdef: '3',
+    title: 'TRAILING STOP → CANCEL', spec: 'SELL 10 GRAB TRAILING_STOP 3% GTC',
+    note: 'A SELL TRAILING_STOP (3% off LAST) on your 10 shares — wide enough it won\'t trigger now. Preflight → 2FA → Execute → verify → Cancel. Proves stopPriceLink/offset fields.' },
+  { n: '5/5', shape: 'close', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', live: 'bid',
+    title: 'CLOSE FLAT', spec: 'SELL 10 GRAB LIMIT @ live bid',
+    note: '⚠ Verify you are LONG +10 with ZERO working sells FIRST (a stray fill would already be flat — selling flat = an unintended SHORT). Then Execute the SELL @ bid to close. Round-trip lands canary-tagged. Disarm after.' },
+]
+
 // ── STAGE 2b PILOT CONSOLE — the ONLY surface that can reach the fenced write path. Flow:
 // preflight (envelope/gate/quote) → 2FA (existing ApprovalPanel: web typed-ticker + Telegram) →
 // execute (transport re-enforces the whole stack server-side) → cancel. Everything fail-closed.
@@ -176,6 +202,8 @@ function PilotConsole() {
   const [symbol, setSymbol] = useState('')
   const [qty, setQty] = useState('1')
   const [limit, setLimit] = useState('')
+  const [step, setStep] = useState<any>(null)   // selected canary battery preset
+  const [param, setParam] = useState('')        // shape value: limit $ / stop $ / trail %
   const [pf, setPf] = useState<any>(null)
   const [execMsg, setExecMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -214,15 +242,50 @@ function PilotConsole() {
       </div>
       <div style={{ fontSize: 9, color: T.dim, marginTop: 5 }}>{s.note}</div>
 
-      {/* preflight form */}
+      {/* canary 5-ticket battery presets — all single-leg, all via this console */}
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: T.text, marginBottom: 5 }}>Canary battery <span style={{ fontWeight: 400, color: T.dim }}>· run 1→5 in order · all execute via this console (single-leg, envelope-bounded)</span></div>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {CANARY_BATTERY.map((b) => (
+            <button key={b.n} onClick={() => {
+              setStep(b); setSymbol(b.symbol); setQty(String(b.qty)); setPf(null); setExecMsg('')
+              if (b.live) {
+                setParam('')
+                fetch(`/api/v2/schwab/quotes?symbols=${b.symbol}`).then(r => r.json()).then(j => {
+                  const q = ((j?.data ?? j)?.quotes ?? {})[b.symbol]
+                  const px = b.live === 'ask' ? q?.ask : q?.bid
+                  if (px != null) setParam(String(px))
+                }).catch(() => {})
+              } else setParam(b.pdef ?? '')
+            }} style={{
+              ...btn(step?.n === b.n ? '#1565c0' : '#222', step?.n === b.n ? '#fff' : '#90caf9'),
+              fontSize: 9.5, padding: '5px 9px' }}>▸ {b.n} · {b.title}</button>
+          ))}
+        </div>
+        {step && (
+          <div style={{ marginTop: 7, padding: 9, borderRadius: 5, background: 'rgba(21,101,192,.10)', border: '1px solid #1565c044' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#90caf9' }}>{step.n} — {step.title} · loaded below ▾{step.live ? ` (${step.plabel} pulled live)` : ''}</div>
+            <div style={{ fontSize: 10, ...mono, color: T.text, margin: '4px 0' }}>{step.spec}</div>
+            <div style={{ fontSize: 9, color: '#cfcfcf', lineHeight: 1.45 }}>{step.note}</div>
+          </div>
+        )}
+      </div>
+
+      {/* preflight form — the param field adapts to the selected shape (limit $ / stop $ / trail %) */}
       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="symbol (allowlist)" style={{ ...inp, width: 120 }} />
-        <input value={qty} onChange={e => setQty(e.target.value.replace(/\D/g, ''))} placeholder="qty" style={{ ...inp, width: 60 }} />
-        <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="limit $" style={{ ...inp, width: 80 }} />
-        <button disabled={busy || !symbol || !qty || !limit}
-          onClick={async () => { setPf(await post('/api/v2/broker-orders/pilot/preflight', { symbol, qty: Number(qty), limit_price: limit, account_key: 'schwab_taxable' })); setExecMsg('') }}
+        <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="symbol (allowlist)" style={{ ...inp, width: 110 }} />
+        <input value={qty} onChange={e => setQty(e.target.value.replace(/\D/g, ''))} placeholder="qty" style={{ ...inp, width: 55 }} />
+        <label style={{ fontSize: 9, color: T.dim, display: 'flex', flexDirection: 'column', gap: 2 }}>{step?.plabel ?? 'limit $'}
+          <input value={param} onChange={e => setParam(e.target.value)} placeholder={step?.plabel ?? 'limit $'} style={{ ...inp, width: 80 }} /></label>
+        <button disabled={busy || !symbol || !qty || !param}
+          onClick={async () => {
+            const body: any = { symbol, qty: Number(qty), account_key: 'schwab_taxable' }
+            if (step?.shape) { body.shape = step.shape; body[step.pkey] = param }
+            else { body.limit_price = param }
+            setPf(await post('/api/v2/broker-orders/pilot/preflight', body)); setExecMsg('')
+          }}
           style={btn('#1565c0')}>Run preflight</button>
-        <span style={{ fontSize: 9, color: T.dim }}>preflight = envelope + canary gate + token health + live quote/spread; saves the draft for 2FA</span>
+        <span style={{ fontSize: 9, color: T.dim }}>preflight = envelope + canary gate + token health + live quote; saves the draft for 2FA</span>
       </div>
       {pf && !pf.ok && <div style={{ fontSize: 10, color: '#ef5350', marginTop: 7, fontWeight: 700 }}>⛔ {pf.reason ?? pf.error}</div>}
       {pf && pf.ok && (
