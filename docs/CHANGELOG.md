@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-13 - STOP-V2.4: structural trailing overlay (MA-trend / chandelier / dynamic-mult, default OFF)
+
+Augments the R-multiple trailing (strategy_trailing_policy.py) with structure-aware stops instead of
+building the redundant parallel `stop_trailing_engine` a pasted spec proposed (~70% of which already
+existed: indicator_engine has ATR/EMA/SMA/ADX, trailing_stop_analysis is the audit table, qwen3 is
+dead → gemma). Three new algos, config-gated per family in config/stop_trailing_hybrid.yaml
+(master `enabled: false` by default): **ma_trend_filter** (only tighten in confirmed uptrend, defer
+in chop), **chandelier** (highest_high(N)−mult×ATR), **dynamic_multiplier** (widen on high ADX /
+near MAs, tighten when ranging). SAFETY: overlay can only RAISE the stop above the R-multiple
+baseline, never lower it, never above price; disabled ⇒ byte-identical V2.3. Structural levels reuse
+indicator_engine._fetch_ohlcv (one data path); unified_stop_supervisor passes symbol= to enable it.
+CLI preview: `strategy_trailing_policy.py SYM STRAT ENTRY PSTOP CSTOP CPRICE` (forces overlay on for
+A/B). Advisory; no broker write path touched; paper-first. Tests 15/15 (12 V2.3 unchanged + 3 V2.4:
+default-off no-op, tighten-only invariant, no-order-symbols). Verified: V swing R=2.2 → overlay
+tightens $310→$314.58 (chandelier+ma_trail+dyn_mult 2.93); losing/chop position holds.
+
 ## 2026-06-12 - SB-1: Schwab write pilot built (fenced), validator rewritten to write-policy
 
 Operator-approved Stage 2b: SB-0 proved the "sandbox" is NOT a sandbox (same app/keyset returns

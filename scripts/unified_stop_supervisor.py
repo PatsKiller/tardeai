@@ -189,6 +189,7 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
                     float(_t["stop_loss"] or 0),
                     float(_t["current_price"] or 0),
                     market_hours=in_hours,
+                    symbol=_t["symbol"],   # STOP-V2.4: enables the structural overlay when config'd on
                 )
                 rec["trade_id"] = _t["id"]
                 rec["symbol"] = _t["symbol"]
