@@ -1,5 +1,6 @@
 import React, { useState, useCallback, lazy, Suspense } from 'react'
 import { useApi } from '../hooks/useApi'
+import { exitLadder, planWarnings, MONITOR_RULES } from '../lib/exitLadder'
 import { StatusBadge } from './StatusBadge'
 import { StateCard } from './StateCard'
 import { ActionButton } from './ActionButton'
@@ -447,9 +448,37 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, fontSize: 11, ...mono }}>
           <div><div style={lbl}>Entry</div><div style={{ fontWeight: 700, color: 'var(--text0)' }}>${Number(entry).toFixed(2)}</div></div>
           <div><div style={lbl}>Current</div><div style={{ fontWeight: 700, color: driftColor }}>${curPrice ? Number(curPrice).toFixed(2) : '--'}{driftPct != null ? ` (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)` : ''}</div></div>
-          <div><div style={lbl}>Stop</div><div style={{ fontWeight: 700, color: '#EF4444' }}>${Number(stop).toFixed(2)}</div></div>
-          <div><div style={lbl}>Target</div><div style={{ fontWeight: 700, color: '#22C55E' }}>${Number(target).toFixed(2)}</div></div>
+          <div><div style={lbl}>Stop</div><div style={{ fontWeight: 700, color: '#EF4444' }}>${Number(stop).toFixed(2)}
+            {entry > 0 && stop > 0 && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> (−{(Math.abs(entry - stop) / entry * 100).toFixed(1)}%)</span>}</div></div>
+          <div><div style={lbl}>Target · R:R</div><div style={{ fontWeight: 700, color: '#22C55E' }}>${Number(target).toFixed(2)}
+            {rr ? <span style={{ color: rr >= 2 ? '#22c55e' : rr >= 1.5 ? '#f59e0b' : '#ef4444', fontWeight: 800 }}> · {Number(rr).toFixed(2)}</span> : null}</div></div>
         </div>
+        {/* layered exit ladder + plan sanity — same model as Watchlist / Open Trades (operator 2026-06-13) */}
+        {(() => {
+          const street = Number(symCard?.analyst?.target) > 0 ? Number(symCard.analyst.target) : null
+          const ladder = exitLadder(entry || null, stop || null, target || null, street)
+          const warns = planWarnings({ entry: entry || null, stop: stop || null, planTarget: target || null,
+            rr: rr || null, pctCash: null, streetTarget: street,
+            analystUpside: symCard?.analyst?.upside_pct != null ? Number(symCard.analyst.upside_pct) : null })
+          if (!ladder && warns.length === 0) return null
+          return (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {warns.map((w, i) => <div key={i} style={{ fontSize: 9, color: w.color, fontWeight: 700 }}>⚠ {w.text}</div>)}
+              {ladder && (
+                <div style={{ background: 'rgba(15,23,42,.45)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', fontWeight: 900, textTransform: 'uppercase' }}>Exit ladder (advisory) · R = ${ladder.R.toFixed(2)}/sh</div>
+                  {ladder.steps.map((s, i) => (
+                    <div key={i} style={{ fontSize: 9.5, marginTop: 2 }}>
+                      <span style={{ color: '#22c55e', fontWeight: 800, ...mono }}>{s.label} {s.px.toFixed(2)}</span>
+                      <span style={{ color: 'var(--text3)' }}> — {s.action}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4 }}>In-trade: {MONITOR_RULES}</div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         <div style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', lineHeight: 1.5 }}>
           {p.entry_rationale && <div>Entry: {p.entry_rationale}</div>}
           {p.stop_rationale && <div>Stop: {p.stop_rationale}</div>}
