@@ -1259,6 +1259,26 @@ second opinion (loose-stop / giveback / no-take-profit / metadata-missing findin
 `GET /api/v2/atm/profit-protection-advisory` for the inline ATM panel. **No stops moved / no orders
 placed** — operator-approved execution is deferred to Phase 192.
 
+**LLM stop/trailing advisory — family-aware, bounded, self-checked (2026-06-13):**
+`holding_protection_advisor.py` produces a per-holding protective-stop + trailing recommendation on
+the free **Grok OAuth** lane (local-gemma fallback; both free), surfaced on the Open Trades cards and
+the Watchlist/Proposals exit ladders. Three reinforcing layers keep the advice honest:
+1. **Family WIDTH** — `holding_family.py` maps each holding to a trailing family
+   (momentum/swing/income/position) by REUSING `config/asset_classification_rules.json` bucket tags
+   (`dividend_income`/`bond_income`→income, `swing_trade`→swing, `growth_fund`/`defense`→position) +
+   asset_type + volatility fallback — no new per-symbol hardcoding. Each family carries a stop/trail
+   width band (momentum 2-6% … position 5-12%) injected into the prompt and shown as a card chip
+   (replaces "unclassified").
+2. **Bounded prompt** — stop must be below price, anchored at/below the 20d swing low, inside the
+   family band, `stop_pct_below` = the computed value; **fixed-vs-trailing is a RULE**: trail only if
+   unrealized ≥ +10% AND price > 50d SMA (income: ≥ +20%), else fixed; trail is **PERCENT-only** so
+   units are never ambiguous. (The WHEN-to-tighten R-tiers stay in `strategy_trailing_policy.py`.)
+3. **Sanity gate** — `_sanity_check()` validates every output against the real technicals + family
+   bounds (stop-below-price=fail, claimed-vs-actual %, reachable-swing-low anchoring, distance/trail
+   bands) → verdict ok/warn/fail stored in evidence, surfaced as "⚠ check advisory" / "⛔ unreliable
+   advisory" on the card. Display renders from STRUCTURED fields ($ stop + trail shown as both $ and
+   %), never a free-form string. **Advisory only — no stops moved / no orders placed.**
+
 ### Proposal Lifecycle State Machine
 
 **Implemented in:** `proposal_paper_submitter.py` → `submit_paper()`
