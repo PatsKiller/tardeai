@@ -1,0 +1,16 @@
+{
+  "_comment": "IPO lockup expirations — when insiders / early investors can sell, per the company's S-1. A lockup expiry is a real catalyst (supply unlock often pressures the stock). Surfaced in the Ask box and flagged near expiry. Update tranches with the ACTUAL S-1 terms and set confirmed:true once verified; large IPOs often have early-release provisions (partial unlock if price holds) and staggered tranches.",
+  "lockups": {
+    "SPCX": {
+      "company": "SpaceX",
+      "ipo_date": "2026-06-12",
+      "offer_price": 135.00,
+      "tranches": [
+        {"date": "2026-09-10", "days": 90, "pct_unlocked": null, "desc": "Possible EARLY release window (90d) — many recent S-1s release a portion if the stock holds above the offer price; CONFIRM terms", "confirmed": false},
+        {"date": "2026-12-09", "days": 180, "pct_unlocked": 100, "desc": "Standard 180-day lockup expiry — bulk of insider / early-investor / employee shares become eligible to sell", "confirmed": false}
+      ],
+      "notes": "Estimate based on a standard 180-day lockup. CONFIRM against the SpaceX S-1 (lockup section + underwriter early-release provisions). Index forced-buys (S&P/Nasdaq inclusion) are a separate supply event.",
+      "source": "estimate"
+    }
+  }
+}

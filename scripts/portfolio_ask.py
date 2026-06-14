@@ -85,9 +85,15 @@ def gather_context(question: str) -> dict:
                        "current": cur, "target_mean": tgt, "target_low": pa.get("target_low_price"),
                        "target_high": pa.get("target_high_price"),
                        "upside_pct": round((tgt - cur) / cur * 100, 1) if (cur and tgt) else None}
-        if pos or analyst:
+        lockup = None
+        try:
+            import ipo_lockups
+            lockup = ipo_lockups.lockup_info(sym)
+        except Exception:
+            pass
+        if pos or analyst or lockup:
             positions.append({"symbol": sym, "held": pos is not None, "position": pos,
-                              "analyst": analyst, "lookthrough": lt_top.get(sym)})
+                              "analyst": analyst, "lookthrough": lt_top.get(sym), "ipo_lockup": lockup})
     return {"portfolio_total": round(total), "positions": positions,
             "themes": {k: v.get("pct") for k, v in (lt.get("themes") or {}).items()}}
 
@@ -108,7 +114,9 @@ def ask(question: str, lane: str | None = None) -> dict:
             "2026-06-12 and trades on Nasdaq). Only treat a name as private if it is explicitly marked "
             "'private' in the context below; for those, give the real access vehicles and don't invent a "
             "ticker. If unsure of a fact, say so rather than inventing it. If they ask for an alert, state "
-            "the exact alert condition.\n"
+            "the exact alert condition. If asked about INSIDER SELLING / lockup / supply unlock, use the "
+            "'ipo_lockup' tranches in the context (dates + days_until) and flag which are confirmed vs "
+            "estimates (confirm against the S-1).\n"
             + (f"PRIVATE-NAME FACTS (use verbatim, do not contradict):\n{private_facts}\n" if private_facts else "")
             + "Be concrete, 5-8 sentences.\n\n"
             f"QUESTION: {question}\n\nPORTFOLIO CONTEXT:\n{json.dumps(ctx, indent=2)}")
