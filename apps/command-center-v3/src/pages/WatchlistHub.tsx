@@ -107,7 +107,8 @@ export default function WatchlistHub({ onDrill }: Props) {
       }
       if (fKind === 'directive' && !it.directive_id) return false
       if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
-      if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
+      if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
+      else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
       if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
       seen.add(it.symbol)
@@ -131,8 +132,16 @@ export default function WatchlistHub({ onDrill }: Props) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
-        {[{ label: 'Watchlist items', value: items.length, color: TEXT0 }, { label: 'With setup advisory', value: advisories.length, color: BLUE }, { label: 'Caution band', value: cautionN, color: RED }, { label: 'Favorable band', value: favorableN, color: GREEN }].map(k => (
-          <div key={k.label} style={{ ...panel, textAlign: 'center' }}><div style={{ fontSize: 26, fontWeight: 900, color: k.color }}>{k.value}</div><div style={{ fontSize: 10, color: MUTED, marginTop: 4, textTransform: 'uppercase' }}>{k.label}</div></div>
+        {[
+          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFKind('all'); setFDir('all'); setSearch('') } },
+          { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
+          { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
+          { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
+        ].map(k => (
+          <div key={k.label} title={k.tip} onClick={k.onClick} style={{ ...panel, textAlign: 'center', cursor: 'pointer', outline: (k.label === 'With setup advisory' && fBand === 'any') || (k.label === 'Caution band' && fBand === 'caution') || (k.label === 'Favorable band' && fBand === 'favorable') ? `1px solid ${k.color}` : 'none' }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 4, textTransform: 'uppercase' }}>{k.label} <span style={{ color: DIM }}>▸</span></div>
+          </div>
         ))}
       </div>
 
@@ -150,7 +159,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       <div style={{ ...panel, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Status<select style={SEL} value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Active + Researched</option><option value="active">Active only</option><option value="researched">Researched only</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Origin<select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Kind<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="directive">Directive-sourced</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{d.label}</option>)}</select></label>
@@ -180,14 +189,16 @@ export default function WatchlistHub({ onDrill }: Props) {
               const rr = it.entry_rr != null ? Number(it.entry_rr) : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
               const ladder = entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null
               const warns = entry != null || stop != null ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa.upside != null ? Number(pa.upside) : null }) : []
+              const hasPlan = entry != null && stop != null   // a real entry/stop plan exists → make it stand out
               const llms = extMap[it.symbol] || []
               return (
                 <div key={it.id} onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
-                  style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.74), rgba(15,23,42,.68))', border: '1px solid rgba(148,163,184,.22)', borderLeft: `4px solid ${it.directive_id ? PURPLE : originColor(it.origin_system)}`, borderRadius: 13, padding: 16, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
+                  style={{ background: hasPlan ? 'linear-gradient(180deg, rgba(22,52,42,.74), rgba(15,32,26,.7))' : 'linear-gradient(180deg, rgba(30,41,59,.74), rgba(15,23,42,.68))', border: hasPlan ? `1px solid ${GREEN}77` : '1px solid rgba(148,163,184,.22)', borderLeft: `4px solid ${it.directive_id ? PURPLE : originColor(it.origin_system)}`, borderRadius: 13, padding: 16, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: hasPlan ? `0 0 0 1px ${GREEN}44, 0 0 22px rgba(34,197,94,.18), 0 10px 28px rgba(0,0,0,.2)` : '0 10px 28px rgba(0,0,0,.18)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       {it.hermes_rank != null && <span title={`Hermes composite ${it.hermes_composite_score} · confidence ${it.hermes_score_components?._confidence ?? '—'} · coverage ${it.hermes_score_components?._coverage ?? '—'}`} style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(168,85,247,.22)', color: '#e9d5ff', cursor: 'help' }}>★#{it.hermes_rank} · {Number(it.hermes_composite_score).toFixed(0)}</span>}
                       <span style={{ fontWeight: 950, color: TEXT0, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
+                      {hasPlan && <span title="entry plan ready — limit/stop/exit-ladder set" style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: GREEN + '26', color: '#bbf7d0', border: `1px solid ${GREEN}77` }}>🎯 PLAN</span>}
                       <ProAnalystPill symbol={it.symbol} map={paMap} compact />
                     </div>
                     <div style={{ textAlign: 'right' }}><div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</div>{it.change_pct != null && <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</div>}</div>
@@ -200,7 +211,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                     <Metric label="Validated" value={ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.last_validated_at)} />
                     <Metric label="Entry Model" value={it.entry_model || '—'} color={PURPLE} />
                     <Metric label="R:R" value={rr != null ? rr.toFixed(2) : '—'} color={rr != null && rr >= 2 ? GREEN : AMBER} />
-                    <Metric label="Limit" value={money(it.entry_limit)} color={TEXT0} />
+                    <Metric label="Limit" value={money(it.entry_limit)} color={hasPlan ? GREEN : MUTED} />
                     <Metric label="Stop" value={money(it.entry_stop)} color={RED} />
                   </div>
 
