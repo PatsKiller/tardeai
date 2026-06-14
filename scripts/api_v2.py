@@ -926,9 +926,10 @@ def watchlist_combined():
         if item.get("rsi_signal") in ("oversold", "overbought"):
             item["alert"] = f"RSI {item.get('rsi_signal').upper()}: {item.get('rsi'):.0f}" if rsi else None
 
-    # ── Flag PRIVATE / non-tradeable pseudo-tickers (SPCX≠SpaceX) so the card stops looking investable ──
+    # ── Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs) ──
     try:
-        import private_symbols as _ps
+        import importlib, private_symbols as _ps
+        importlib.reload(_ps)
         for it in items:
             info = _ps.private_info(it.get("symbol", ""))
             if info:
@@ -3291,9 +3292,11 @@ def _wl_items(query: dict = None):
                  {sort} LIMIT 200
     """, params) or []
     _items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
-    # Flag PRIVATE / non-tradeable pseudo-tickers (SPCX≠SpaceX) so cards stop looking investable
+    # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
+    # edits go live without a full restart.
     try:
-        import private_symbols as _ps
+        import importlib, private_symbols as _ps
+        importlib.reload(_ps)
         for _it in _items:
             _info = _ps.private_info(_it.get("symbol", ""))
             if _info:
