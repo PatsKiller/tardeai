@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-14 - Local LLM default → gemma3:12b (policy primary; was 4b)
+
+DEFAULT_LOCAL_LLM_MODEL switched gemma3:4b → gemma3:12b (installed, 8.1GB) so the specialist agents
+(Maria/Steph/Risk) and all local-default consumers use the sharper 12b — matching the standing model
+policy (12b primary, 4b fallback). Slower per call but better reasoning; per-process env keys still
+override. CIO final-synthesis remains on free Grok OAuth (separate, committed prior). Directive +
+buy-rated names' CIO View refreshed on Grok to reflect the upgrade immediately.
+
+# Changelog
+
 ## 2026-06-14 - CIO synthesis → free Grok OAuth (local fallback) + prompt versioning
 
 The watchlist CIO View (final synthesis) was running 100% on gemma3:4b (verified: 323 syntheses / 7d,
