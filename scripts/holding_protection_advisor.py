@@ -202,8 +202,10 @@ def _candidates(limit):
     500->100 so the small taxable names are covered; proxy-mapped 401k fund codes included; only
     CASH/dust/delisted-CUSIPs stay out)."""
     from holding_proxies import HOLDING_PROXY_MAP
+    import holding_family as hf
     h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
     rows = []
+    skipped_funds = []
     for x in h.get("holdings", []):
         sym = (x.get("symbol") or "").upper()
         acct = str(x.get("account", ""))
@@ -215,7 +217,16 @@ def _candidates(limit):
             continue
         if float(x.get("market_value") or 0) <= 100:
             continue
+        # Open-end mutual funds CANNOT take an exchange stop order (they transact at end-of-day NAV), so a
+        # protective-stop advisory is not actionable for them — skip the sweep. (The Open Trades card frames
+        # them as "trim / rebalance"; protection is a price-stop product for stocks/ETFs only.)
+        if hf.is_mutual_fund(sym):
+            skipped_funds.append(sym)
+            continue
         rows.append(x)
+    if skipped_funds:
+        print(f"  [skip] {len(skipped_funds)} mutual fund(s) excluded from protection sweep (no exchange "
+              f"stop possible): {', '.join(sorted(set(skipped_funds)))}")
     rows.sort(key=lambda x: -float(x.get("market_value") or 0))
     # one advisory per SYMBOL (largest position wins) — V/SCHD/SCHG live in several accounts
     seen, dedup = set(), []
