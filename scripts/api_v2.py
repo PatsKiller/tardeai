@@ -321,6 +321,8 @@ def overview():
                         "estimated": v.get("source") == "repriced"}
                     for k, v in periods.items() if isinstance(v, dict)},
         "sectors": [{"name": n, "value": v} for n, v in sector_list],
+        "sectors_by_account": {acct: [{"name": r.get("sector"), "value": r.get("value")} for r in (rows or [])]
+                               for acct, rows in (h.get("resolved_sectors_by_account") or {}).items()},
         "top_movers": [{"symbol": m.get("symbol"), "name": (m.get("name") or "")[:30],
                         "day_change": m.get("day_change", 0), "day_change_pct": m.get("day_change_pct", 0)}
                        for m in movers],
