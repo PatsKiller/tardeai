@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
@@ -72,7 +72,10 @@ export default function WatchlistHub({ onDrill }: Props) {
   const items: any[] = wl?.items ?? []
   const advMap: Record<string, any> = {}
   for (const a of (adv?.advisories ?? [])) advMap[a.symbol] = a
-  const advisories: any[] = adv?.advisories ?? []
+  // count only advisories whose symbol is actually IN the displayed items, so the KPI tiles match
+  // what clicking them filters to (an advisory for a symbol outside the 200-item window isn't shown)
+  const itemSyms = new Set(items.map(i => i.symbol))
+  const advisories: any[] = (adv?.advisories ?? []).filter((a: any) => itemSyms.has(a.symbol))
   const cautionN = advisories.filter(a => a.advisory_flag === 'caution').length
   const favorableN = advisories.filter(a => a.advisory_flag === 'favorable').length
   const byStatus = summary?.by_status ?? {}
@@ -87,6 +90,9 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fRating, setFRating] = useState('all')
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [page, setPage] = useState(0)
+  const PER_PAGE = 24
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, search])   // reset to page 1 on any filter change
 
   const runChatgptTop20 = async () => {
     if (curateRunning) return
@@ -117,6 +123,10 @@ export default function WatchlistHub({ onDrill }: Props) {
   }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, search, paMap, advMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
+
+  const pageCount = Math.max(1, Math.ceil(visible.length / PER_PAGE))
+  const curPage = Math.min(page, pageCount - 1)
+  const pageItems = visible.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
 
   return (
     <div>
@@ -170,10 +180,19 @@ export default function WatchlistHub({ onDrill }: Props) {
       <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 7 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
 
       <div style={panel}>
-        <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0, marginBottom: 12 }}>Watchlist ({visible.length})</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
+          {pageCount > 1 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ ...SEL, cursor: curPage === 0 ? 'default' : 'pointer', opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
+              <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700, minWidth: 96, textAlign: 'center' }}>Page {curPage + 1} / {pageCount} · {curPage * PER_PAGE + 1}-{Math.min((curPage + 1) * PER_PAGE, visible.length)}</span>
+              <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
+            </div>
+          )}
+        </div>
         {visible.length === 0 ? <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>No items match the filters.</div> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(620px, 1fr))', gap: 16, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>
-            {visible.slice(0, 200).map((it: any) => {
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(620px, 1fr))', gap: 16, paddingRight: 4 }}>
+            {pageItems.map((it: any) => {
               const a = advMap[it.symbol]
               const fr = freshness(it)
               const enriched = !!it.last_enriched_at
@@ -237,6 +256,13 @@ export default function WatchlistHub({ onDrill }: Props) {
                 </div>
               )
             })}
+          </div>
+        )}
+        {pageCount > 1 && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', marginTop: 14 }}>
+            <button onClick={() => { setPage(p => Math.max(0, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage === 0} style={{ ...SEL, cursor: curPage === 0 ? 'default' : 'pointer', opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
+            <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700, minWidth: 96, textAlign: 'center' }}>Page {curPage + 1} / {pageCount}</span>
+            <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
         <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>Click a card → full provenance, model reviews, risk/counter-view, catalyst chain, and entry plan. Advisory-only — read-only, never places trades.</div>
