@@ -242,6 +242,14 @@ def main():
     if a.grok:
         r["grok_narrative"] = grok_narrative(r)
         r["agent_advisories"] = agent_advisories(r)
+    # per-account detail (no LLM — themes/top/rule-advisories only; the fund-holdings cache makes this cheap)
+    if not a.account:
+        detail = {}
+        for acct in r.get("accounts", []):
+            ar = run(account=acct)
+            detail[acct] = {k: ar[k] for k in ("portfolio_total", "coverage_pct", "themes",
+                                               "top_underlying", "advisories")}
+        r["accounts_detail"] = detail
     # write the cache the API serves (fast, no yfinance in the request path) — only for the global run
     if not a.account:
         try:
