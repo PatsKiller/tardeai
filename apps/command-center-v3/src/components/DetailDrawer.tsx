@@ -1,473 +1,110 @@
-import { useState, useEffect, type ReactNode, type CSSProperties } from 'react'
-import { ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts'
+import { useEffect, useMemo, useState } from 'react'
 
 export interface DrillContext {
   title: string
   subtitle?: string
   endpoint: string
   rows: Record<string, any>[]
-  // Optional navigation links (read-only — no mutation). Rendered as a button row.
   links?: { label: string; href: string; note?: string }[]
-  // Optional: surface external-LLM theses for this subject (proposal/position/closed_trade/sector/scalp).
   subjectType?: string
   subjectKey?: string
 }
 
-interface Props {
-  ctx: DrillContext | null
-  onClose: () => void
-}
+interface Props { ctx: DrillContext | null; onClose: () => void }
 
-const GRADE_C: Record<string, string> = { A: '#22c55e', B: '#86efac', C: '#f59e0b', D: '#ef4444' }
+const TEXT0 = '#f8fafc'
+const TEXT1 = '#dbeafe'
+const TEXT2 = '#cbd5e1'
+const MUTED = '#94a3b8'
+const DIM = '#64748b'
+const GREEN = '#22c55e'
+const RED = '#ef4444'
+const AMBER = '#f59e0b'
+const BLUE = '#60a5fa'
+const PURPLE = '#a855f7'
+const panel = { background: 'rgba(15,23,42,.72)', border: '1px solid rgba(148,163,184,.20)', borderRadius: 12, padding: 14 } as const
+const metric = { background: 'rgba(2,6,23,.40)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10, padding: '10px 12px' } as const
 
-// Pull a numeric series out of an arbitrary drilled row (equity curve, etc.)
-function extractSeries(rows: Record<string, any>[]): number[] | null {
-  for (const row of rows) {
-    for (const v of Object.values(row)) {
-      let arr: any = v
-      if (typeof v === 'string' && v.trim().startsWith('[')) { try { arr = JSON.parse(v) } catch { continue } }
-      if (Array.isArray(arr) && arr.length > 2) {
-        const nums = arr.map((p: any) => typeof p === 'number' ? p : (p?.value ?? p?.cumulative_r ?? p?.cumulative ?? null)).filter((n: any) => typeof n === 'number')
-        if (nums.length > 2) return nums
-      }
-    }
-  }
-  return null
-}
-
-// Build the backtest trade_key from a drilled trade row, if it looks like a closed trade.
-function deriveTradeKey(rows: Record<string, any>[]): string | null {
-  const r = rows[0]
-  if (!r) return null
-  const sym = r.symbol
-  const acct = r.account || r.na
-  const date = r.close_date || r.exitDate || r.trade_date || r.proposed_date
-  if (!sym || !acct || !date) return null
-  const d = String(date).slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
-  return `${sym}:${acct}:${d}`
-}
-
-// ── Human-readable field rendering (humanize keys, parse JSON blobs, format values, color statuses) ──
 const KEY_LABELS: Record<string, string> = {
   pnl: 'P&L', total_pnl: 'Total P&L', rsi: 'RSI', win_rate: 'Win Rate', avg_confidence: 'Avg Confidence',
   eval_overall_score: 'Overall Score', eval_verdict: 'Verdict', profit_factor: 'Profit Factor', r_multiple: 'R Multiple',
-  proposed_entry: 'Entry', proposed_target1: 'Target', proposed_stop: 'Stop', strategy_id: 'Strategy',
-  object_type: 'Type', object_id: 'ID', tradeai_original: 'TradeAI Original', hermes_audit: 'Hermes Audit',
-  hermes_enhancement: 'Hermes Enhancement', hermes_agreement_status: 'Agreement', hermes_confidence: 'Hermes Confidence',
-  recommended_operator_choice: 'Recommended Choice', operator_choice: 'Operator Choice', created_at: 'Created',
-  no_overwrite: 'No Overwrite', advisory_only: 'Advisory Only', rows_written: 'Rows Written', last_active: 'Last Active',
-  run_mode: 'Run Mode', effective_state: 'Effective State', approval_state: 'Approval State', allowed_reads: 'Allowed Reads',
-  allowed_writes: 'Allowed Writes', handoff_targets: 'Handoff Targets', activation_phase: 'Activation Phase',
+  proposed_entry: 'Entry', proposed_target1: 'Target', proposed_stop: 'Stop', strategy_id: 'Strategy', object_id: 'ID',
+  last_enriched_at: 'Last AI Enriched', last_validated_at: 'Last Validated', latest_recommendation: 'CIO View',
+  entry_limit: 'Entry Limit', entry_stop: 'Stop', entry_target: 'Target', entry_rr: 'R:R', operator_decision: 'Decision',
 }
 const ACRONYMS = /\b(Pnl|Rsi|Raci|Id|Url|Llm|Atr|Mfe|Mae|Vwap|Macd|Adx|Pf|Wr|Rr|Cio|Tca|Pct|Bb|Rvol)\b/gi
-function humanizeKey(k: string): string {
-  if (KEY_LABELS[k]) return KEY_LABELS[k]
-  return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    .replace(ACRONYMS, m => ({ pnl: 'P&L', rsi: 'RSI', raci: 'RACI', id: 'ID', url: 'URL', llm: 'LLM', atr: 'ATR', mfe: 'MFE', mae: 'MAE', vwap: 'VWAP', macd: 'MACD', adx: 'ADX', pf: 'PF', wr: 'WR', rr: 'R:R', cio: 'CIO', tca: 'TCA', pct: '%', bb: 'BB', rvol: 'RVOL' }[m.toLowerCase()] || m))
-}
 const SECTION_RE = /^[—\-]{1,2}\s*(.+?)\s*[—\-]{1,2}$/
-function statusColor(s: string): string | null {
-  const t = s.toLowerCase()
-  if (/\b(agree|proposal[_ ]allowed|operational|completed|promoted|approved|win|good|pass|active|on)\b/.test(t)) return '#22c55e'
-  if (/\b(disagree|disabled|error|rejected|failed|loss|blocked|critical|naked|off)\b/.test(t)) return '#ef4444'
-  if (/\b(wait|caution|shadow|staged|pending|designed|warning|review|not approved|dry.?run|small|weak)\b/.test(t)) return '#f59e0b'
-  return null
-}
-function fmtScalar(v: any): { text: string; color?: string } {
-  if (v === null || v === undefined || v === '') return { text: '—', color: 'var(--text3)' }
-  if (typeof v === 'boolean') return { text: v ? 'yes' : 'no', color: v ? '#22c55e' : 'var(--text3)' }
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.]/.test(v)) {
-    const d = new Date(v); if (!isNaN(d.getTime())) return { text: d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
-  }
-  const s = String(v)
-  return { text: s, color: statusColor(s) || undefined }
-}
-function parseMaybeJson(v: any): any {
-  if (v && typeof v === 'object') return v
-  if (typeof v === 'string') { const t = v.trim(); if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) { try { return JSON.parse(t) } catch { /* not json */ } } }
-  return null
-}
-// Empty-value detector (operator 2026-06-12: "info missing on pills" — null rows are NOISE, hide them)
-function isEmptyVal(v: any): boolean {
-  if (v === null || v === undefined) return true
-  if (typeof v === 'string') {
-    const t = v.trim().toLowerCase()
-    if (t === '' || t === 'null' || t === 'none' || t === 'n/a') return true
-  }
-  const obj = parseMaybeJson(v)
-  if (Array.isArray(obj)) return obj.length === 0
-  if (obj && typeof obj === 'object') return Object.values(obj).every(isEmptyVal)
-  return false
-}
+const LLM_META: Record<string, { label: string; color: string }> = { grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' }, local: { label: 'Local', color: '#2dd4bf' } }
 
-// Recursive plain-English renderer — NO JSON.stringify anywhere (operator: "remove json with real english").
-// Arrays of objects (news items, findings) become readable blocks; nulls vanish; long text wraps fully.
-function ObjBlock({ obj, depth = 0 }: { obj: any; depth?: number }) {
-  if (Array.isArray(obj)) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {obj.filter(x => !isEmptyVal(x)).map((x, i) => {
-          const inner = parseMaybeJson(x)
-          if (inner && typeof inner === 'object') return (
-            <div key={i} style={{ padding: '6px 9px', background: 'var(--bg1)', borderRadius: 6, borderLeft: '2px solid var(--border)' }}>
-              <ObjBlock obj={inner} depth={depth + 1} />
-            </div>
-          )
-          return <div key={i} style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.45 }}>• {String(x)}</div>
-        })}
-      </div>
-    )
-  }
-  // news-shaped object → headline / meta / why-it-matters as readable prose
-  if (obj && typeof obj === 'object' && (obj.title || obj.why_it_matters)) {
-    return (
-      <div>
-        {obj.title && <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text0)', lineHeight: 1.45 }}>{String(obj.title)}</div>}
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
-          {[obj.source, obj.age_hours != null ? `${Math.round(Number(obj.age_hours))}h ago` : (obj.published_at ? new Date(obj.published_at).toLocaleString() : null), obj.severity, obj.sentiment].filter(Boolean).join(' · ')}
-        </div>
-        {obj.why_it_matters && <div style={{ fontSize: 10.5, color: 'var(--text2)', marginTop: 4, lineHeight: 1.5 }}><b style={{ color: 'var(--text1)' }}>Why it matters:</b> {String(obj.why_it_matters)}</div>}
-        {obj.url && <a href={obj.url} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, color: '#60a5fa' }}>open source →</a>}
-      </div>
-    )
-  }
+function humanizeKey(k: string): string { if (KEY_LABELS[k]) return KEY_LABELS[k]; return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(ACRONYMS, m => ({ pnl: 'P&L', rsi: 'RSI', raci: 'RACI', id: 'ID', url: 'URL', llm: 'LLM', atr: 'ATR', mfe: 'MFE', mae: 'MAE', vwap: 'VWAP', macd: 'MACD', adx: 'ADX', pf: 'PF', wr: 'WR', rr: 'R:R', cio: 'CIO', tca: 'TCA', pct: '%', bb: 'BB', rvol: 'RVOL' }[m.toLowerCase()] || m)) }
+function parseMaybeJson(v: any): any { if (v && typeof v === 'object') return v; if (typeof v === 'string') { const t = v.trim(); if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) { try { return JSON.parse(t) } catch {} } } return null }
+function isEmptyVal(v: any): boolean { if (v == null) return true; if (typeof v === 'string') { const t = v.trim().toLowerCase(); if (t === '' || t === 'null' || t === 'none' || t === 'n/a' || t === 'undefined') return true } const obj = parseMaybeJson(v); if (Array.isArray(obj)) return obj.length === 0; if (obj && typeof obj === 'object') return Object.values(obj).every(isEmptyVal); return false }
+function statusColor(v: any): string | undefined { const t = String(v ?? '').toLowerCase(); if (/\b(agree|allowed|operational|completed|promoted|approved|win|good|pass|active|on|buy|bullish|fresh|protected|yes)\b/.test(t)) return GREEN; if (/\b(disagree|disabled|error|rejected|failed|loss|blocked|critical|naked|off|avoid|sell|bearish|stale|unprotected|no)\b/.test(t)) return RED; if (/\b(wait|caution|shadow|staged|pending|review|warning|weak|hold|neutral|partial)\b/.test(t)) return AMBER; return undefined }
+function fmtScalar(v: any): { text: string; color?: string } { if (v == null || v === '') return { text: '—', color: DIM }; if (typeof v === 'boolean') return { text: v ? 'yes' : 'no', color: v ? GREEN : DIM }; if (typeof v === 'number') return { text: Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(Number(v.toFixed(4))), color: v < 0 ? RED : undefined }; if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.]/.test(v)) { const d = new Date(v); if (!isNaN(d.getTime())) return { text: d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) } } const s = String(v); return { text: s, color: statusColor(s) } }
+function ago(v: any) { if (!v) return ''; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return ''; const h = Math.round((Date.now() - t) / 36e5); if (h < 1) return 'just now'; if (h < 48) return `${h}h ago`; return `${Math.round(h / 24)}d ago` }
+function money(v: any) { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—' }
+function pick(row: any, keys: string[]) { for (const k of keys) if (!isEmptyVal(row?.[k])) return row[k]; return null }
+function chipColor(v: any) { return statusColor(v) || BLUE }
+function fmtBlob(v: any): string[] { if (v == null) return []; let x = v; if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return [x] } } if (Array.isArray(x)) return x.map((e: any) => typeof e === 'object' ? Object.values(e).filter(Boolean).join(' · ') : String(e)); if (typeof x === 'object') return Object.values(x).filter(Boolean).map(String); return [String(x)] }
+
+function Metric({ label, value, color = TEXT0 }: any) { return <div style={metric}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 850 }}>{label}</div><div style={{ fontSize: 14, fontWeight: 950, color, marginTop: 4, lineHeight: 1.15 }}>{value || '—'}</div></div> }
+function Chip({ text, color = BLUE }: any) { return <span style={{ fontSize: 10, fontWeight: 850, padding: '3px 8px', borderRadius: 6, background: color + '22', color, border: `1px solid ${color}55`, whiteSpace: 'nowrap' }}>{text}</span> }
+function Section({ title, subtitle, children, accent = BLUE }: any) { return <div style={{ ...panel, borderLeft: `4px solid ${accent}` }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 9 }}><div style={{ fontSize: 12, fontWeight: 950, color: TEXT0, textTransform: 'uppercase', letterSpacing: '.04em' }}>{title}</div>{subtitle && <div style={{ fontSize: 10, color: MUTED }}>{subtitle}</div>}</div>{children}</div> }
+
+function ObjBlock({ obj }: { obj: any }) {
+  if (Array.isArray(obj)) return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{obj.filter(x => !isEmptyVal(x)).map((x, i) => { const inner = parseMaybeJson(x); return <div key={i} style={{ padding: '8px 10px', background: 'rgba(2,6,23,.32)', borderRadius: 8, border: '1px solid rgba(148,163,184,.12)' }}>{inner && typeof inner === 'object' ? <ObjBlock obj={inner} /> : <div style={{ fontSize: 11, color: TEXT2, lineHeight: 1.5 }}>• {String(x)}</div>}</div> })}</div>
+  if (obj && typeof obj === 'object' && (obj.title || obj.why_it_matters || obj.url)) return <div>{obj.title && <div style={{ fontSize: 12, fontWeight: 850, color: TEXT0, lineHeight: 1.45 }}>{String(obj.title)}</div>}<div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{[obj.source, obj.age_hours != null ? `${Math.round(Number(obj.age_hours))}h ago` : (obj.published_at ? new Date(obj.published_at).toLocaleString() : null), obj.severity, obj.sentiment].filter(Boolean).join(' · ')}</div>{obj.why_it_matters && <div style={{ fontSize: 11, color: TEXT2, marginTop: 5, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Why it matters:</b> {String(obj.why_it_matters)}</div>}{obj.url && <a href={obj.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: '#bfdbfe', fontWeight: 800 }}>open source →</a>}</div>
   const entries = Object.entries(obj || {}).filter(([, vv]) => !isEmptyVal(vv))
-  if (entries.length === 0) return <span style={{ fontSize: 10, color: 'var(--text3)' }}>(nothing notable)</span>
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {entries.map(([kk, vv]) => {
-        const inner = parseMaybeJson(vv)
-        if (inner && typeof inner === 'object') return (
-          <div key={kk} style={{ padding: '2px 0' }}>
-            <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>{humanizeKey(kk)}</span>
-            <div style={{ paddingLeft: 8, marginTop: 2 }}><ObjBlock obj={inner} depth={depth + 1} /></div>
-          </div>
-        )
-        const f = fmtScalar(vv)
-        return (
-          <div key={kk} style={{ display: 'flex', gap: 10, padding: '1px 0' }}>
-            <span style={{ fontSize: 9.5, color: 'var(--text3)', minWidth: 130 }}>{humanizeKey(kk)}</span>
-            <span style={{ fontSize: 10.5, color: f.color || 'var(--text1)', lineHeight: 1.45, wordBreak: 'break-word' }}>{f.text}</span>
-          </div>
-        )
-      })}
-    </div>
-  )
+  if (entries.length === 0) return <span style={{ fontSize: 10, color: MUTED }}>(nothing notable)</span>
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 6 }}>{entries.map(([kk, vv]) => { const inner = parseMaybeJson(vv); if (inner && typeof inner === 'object') return <div key={kk} style={{ gridColumn: '1 / -1', padding: '4px 0' }}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', fontWeight: 850 }}>{humanizeKey(kk)}</div><div style={{ marginTop: 4 }}><ObjBlock obj={inner} /></div></div>; const f = fmtScalar(vv); return <div key={kk} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid rgba(148,163,184,.12)', padding: '4px 0' }}><span style={{ fontSize: 10, color: MUTED }}>{humanizeKey(kk)}</span><span style={{ fontSize: 11, color: f.color || TEXT1, fontWeight: f.color ? 850 : 650, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span></div> })}</div>
 }
-
-function Field({ k, v }: { k: string; v: any }) {
-  const sec = k.match(SECTION_RE)
-  if (sec) return <div style={{ gridColumn: '1 / -1', fontSize: 9, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text2)', margin: '10px 0 4px', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>{sec[1]}</div>
-  const obj = parseMaybeJson(v)
-  if (obj && typeof obj === 'object') {
-    return (
-      <div style={{ gridColumn: '1 / -1', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4 }}>{humanizeKey(k)}</div>
-        <ObjBlock obj={obj} />
-      </div>
-    )
-  }
-  const f = fmtScalar(v)
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-      <span style={{ color: 'var(--text3)', fontSize: 10 }}>{humanizeKey(k)}</span>
-      <span style={{ color: f.color || 'var(--text0)', fontSize: 11, fontWeight: f.color ? 600 : 400, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span>
-    </div>
-  )
-}
-
-const LLM_META: Record<string, { label: string; color: string }> = {
-  grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' },
-}
-function fmtBlob(v: any): string[] {
-  if (v == null) return []
-  let x = v
-  if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return [x] } }
-  if (Array.isArray(x)) return x.map((e: any) => typeof e === 'object' ? JSON.stringify(e) : String(e))
-  if (typeof x === 'object') return Object.values(x).map(String)
-  return [String(x)]
-}
+function Field({ k, v }: { k: string; v: any }) { const sec = k.match(SECTION_RE); if (sec) return <div style={{ gridColumn: '1 / -1', fontSize: 10, fontWeight: 900, letterSpacing: '.06em', textTransform: 'uppercase', color: TEXT2, margin: '10px 0 4px', paddingBottom: 4, borderBottom: '1px solid rgba(148,163,184,.18)' }}>{sec[1]}</div>; const obj = parseMaybeJson(v); if (obj && typeof obj === 'object') return <div style={{ gridColumn: '1 / -1', padding: '8px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', marginBottom: 5, fontWeight: 850 }}>{humanizeKey(k)}</div><ObjBlock obj={obj} /></div>; const f = fmtScalar(v); return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><span style={{ color: MUTED, fontSize: 10 }}>{humanizeKey(k)}</span><span style={{ color: f.color || TEXT0, fontSize: 11.5, fontWeight: f.color ? 850 : 600, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span></div> }
 
 export default function DetailDrawer({ ctx, onClose }: Props) {
-  const [bt, setBt] = useState<any>(null)
-  const [btState, setBtState] = useState<'idle' | 'loading' | 'none'>('idle')
   const [intel, setIntel] = useState<any>(null)
-
   useEffect(() => {
     setIntel(null)
     if (!ctx) return
     let cancelled = false
-    // Watchlist intel card (full Hermes intel), or generic subject-intel (external LLM theses) for any
-    // other surface that passes subjectType/subjectKey.
-    const url = ctx.endpoint?.startsWith('/api/v2/hermes/intel/') ? ctx.endpoint
-      : (ctx.subjectType && ctx.subjectKey)
-        ? `/api/v2/hermes/subject-intel?type=${encodeURIComponent(ctx.subjectType)}&key=${encodeURIComponent(ctx.subjectKey)}`
-        : null
+    const url = ctx.endpoint?.startsWith('/api/v2/hermes/intel/') ? ctx.endpoint : (ctx.subjectType && ctx.subjectKey) ? `/api/v2/hermes/subject-intel?type=${encodeURIComponent(ctx.subjectType)}&key=${encodeURIComponent(ctx.subjectKey)}` : null
     if (!url) return
-    fetch(url).then(r => r.ok ? r.json() : null)
-      .then(j => { if (!cancelled && j?.data) setIntel(j.data) }).catch(() => {})
+    fetch(url).then(r => r.ok ? r.json() : null).then(j => { if (!cancelled && j?.data) setIntel(j.data) }).catch(() => {})
     return () => { cancelled = true }
   }, [ctx])
 
-  useEffect(() => {
-    setBt(null); setBtState('idle')
-    if (!ctx) return
-    // Skip if the row already IS backtest-grade data
-    if (ctx.rows[0]?.entry_grade != null) return
-    const key = deriveTradeKey(ctx.rows)
-    if (!key) return
-    setBtState('loading')
-    let cancelled = false
-    fetch(`/api/v2/journal/backtest/${encodeURIComponent(key).replace(/%3A/gi, '__').replace(/:/g, '__')}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => { if (!cancelled) { if (j?.ok && j.data) { setBt(j.data); setBtState('idle') } else setBtState('none') } })
-      .catch(() => { if (!cancelled) setBtState('none') })
-    return () => { cancelled = true }
-  }, [ctx])
+  const primary = ctx?.rows?.[0] ?? {}
+  const actionMetrics = useMemo(() => {
+    if (!ctx) return []
+    return [
+      ['CIO view', pick(primary, ['latest_recommendation', 'operator_decision', 'recommendation', 'signal'])],
+      ['Score', pick(primary, ['score', 'hermes_composite_score', 'eval_overall_score', 'pi_score'])],
+      ['Entry', pick(primary, ['entry_limit', 'proposed_entry', 'entry_price', 'limit_price'])],
+      ['Stop', pick(primary, ['entry_stop', 'proposed_stop', 'stop_price'])],
+      ['Target', pick(primary, ['entry_target', 'proposed_target1', 'target_price'])],
+      ['R:R', pick(primary, ['entry_rr', 'rr', 'risk_reward'])],
+      ['RSI', pick(primary, ['rsi', 'current_rsi'])],
+      ['Freshness', pick(primary, ['last_enriched_at', 'updated_at', 'last_validated_at'])],
+    ].filter(([, v]) => !isEmptyVal(v))
+  }, [ctx, primary])
 
   if (!ctx) return null
-
-  const series = extractSeries(ctx.rows)
-  const grade = ctx.rows[0]?.entry_grade ?? bt?.entry_grade
-  const exitGrade = ctx.rows[0]?.exit_grade ?? bt?.exit_grade
-  // Holding rows carry data_available — render a technical-analysis panel for them.
-  const h0 = ctx.rows[0]
-  const isHolding = h0 != null && h0.data_available !== undefined
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div style={{
-        /* operator 2026-06-12: expanded view opens almost full page for readability */
-        width: 'min(1100px, 94vw)', height: '100vh', background: 'var(--bg1)',
-        borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-        boxShadow: '-4px 0 20px rgba(0,0,0,.5)',
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{ctx.title}</div>
-            {ctx.subtitle && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{ctx.subtitle}</div>}
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>{'\u00d7'}</button>
-        </div>
-        {/* Provenance badge — read-only */}
-        <div style={{ padding: '6px 16px', background: 'rgba(59,130,246,.04)', borderBottom: '1px solid var(--border)', fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }}>
-          Source: {ctx.endpoint}
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
-          {/* Navigation links (read-only — go act elsewhere) */}
-          {ctx.links && ctx.links.length > 0 && (
-            <div style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.25)', borderRadius: 6 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Where to act</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {ctx.links.map((l, i) => (
-                  <a key={i} href={l.href} title={l.note} style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', textDecoration: 'none', padding: '4px 10px', borderRadius: 5, background: 'rgba(96,165,250,.12)', border: '1px solid rgba(96,165,250,.3)' }}>{l.label} →</a>
-                ))}
-              </div>
-            </div>
-          )}
-          {/* Enrichment: sparkline */}
-          {series && series.length > 2 && (
-            <div style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Series</div>
-              <ResponsiveContainer width="100%" height={48}>
-                <LineChart data={series.map((v, i) => ({ i, v }))}>
-                  <ReferenceLine y={0} stroke="var(--border)" />
-                  <Line type="monotone" dataKey="v" dot={false} stroke={series[series.length - 1] >= series[0] ? '#22c55e' : '#ef4444'} strokeWidth={1.5} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          {/* Enrichment: entry/exit grade badges (own row or fetched backtest link) */}
-          {(grade || exitGrade) && (
-            <div style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(96,165,250,.05)', border: '1px solid rgba(96,165,250,.2)', borderRadius: 6 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>How was our entry {bt && !ctx.rows[0]?.entry_grade && <span style={{ color: 'var(--text3)', textTransform: 'none' }}>· from backtest grading</span>}</div>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                {grade && <Badge label="Entry" g={grade} />}
-                {exitGrade && <Badge label="Exit" g={exitGrade} />}
-                {(bt?.entry_rsi != null) && <Stat k="Entry RSI" v={Number(bt.entry_rsi).toFixed(0)} />}
-                {(bt?.left_on_table_20d != null) && <Stat k="Left 20d" v={`$${Number(bt.left_on_table_20d).toLocaleString()}`} />}
-                {(bt?.better_entry_existed != null) && <Stat k="Better entry?" v={bt.better_entry_existed ? `yes ($${Number(bt.best_entry_price).toFixed(2)})` : 'no'} />}
-              </div>
-            </div>
-          )}
-          {isHolding && <HoldingAnalysis h={h0} />}
-          {/* Hermes trade-setup recommendation */}
-          {intel?.setup && (
-            <div style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.22)', borderRadius: 6 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Hermes setup · {intel.setup.conviction} conviction</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#c084fc' }}>{intel.setup.type}</div>
-              <div style={{ fontSize: 10, color: 'var(--text1)', marginTop: 3 }}>Entry: {intel.setup.entry}</div>
-              <div style={{ fontSize: 10, color: 'var(--text1)' }}>Invalidation: {intel.setup.invalidation}</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{intel.setup.why}</div>
-              {intel.competition && (intel.competition.relative_rank || intel.competition.vs_peers) && (
-                <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 5 }}>Competition: {intel.competition.relative_rank || intel.competition.peer_group} · {intel.competition.vs_peers}
-                  {intel.competition.peers?.length > 0 && <span style={{ color: 'var(--text3)' }}> ({intel.competition.peers.map((p: any) => p.symbol).join(', ')})</span>}</div>
-              )}
-            </div>
-          )}
-          {/* External LLM intelligence — full theses */}
-          {intel?.external_intel?.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>External LLM intelligence ({intel.external_intel.length})</div>
-              {intel.external_intel.map((e: any, i: number) => {
-                const m = LLM_META[e.lane] || { label: e.lane, color: 'var(--text2)' }
-                const ev = fmtBlob(e.evidence), rf = fmtBlob(e.risk_flags)
-                return (
-                  <div key={i} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6, borderLeft: `3px solid ${m.color}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: m.color }}>✦ {m.label}<span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 9, marginLeft: 6 }}>{e.model}</span></span>
-                      <span style={{ fontSize: 9, color: 'var(--text3)' }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span>
-                    </div>
-                    {e.recommendation && <div style={{ fontSize: 11, color: 'var(--text0)', marginBottom: ev.length ? 4 : 0 }}>{e.recommendation}</div>}
-                    {ev.length > 0 && <ul style={{ margin: '2px 0', paddingLeft: 16 }}>{ev.map((x, j) => <li key={j} style={{ fontSize: 10, color: 'var(--text2)' }}>{x}</li>)}</ul>}
-                    {e.dissent && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 3 }}>⚠ Counter-view: {e.dissent}</div>}
-                    {rf.length > 0 && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2 }}>Risks: {rf.join('; ')}</div>}
-                    {e.confidence != null && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>confidence {e.confidence}</div>}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          {btState === 'loading' && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Looking up backtest entry grade…</div>}
-          {ctx.rows.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>No data rows</div>}
-          {ctx.rows.map((row, i) => {
-            // hide empty/null fields entirely — only real information renders (count shown for honesty)
-            const entries = Object.entries(row).filter(([k, v]) => k.match(SECTION_RE) || !isEmptyVal(v))
-            const hidden = Object.keys(row).length - entries.length
-            return (
-              <div key={i} style={{ marginBottom: 10, padding: '10px 14px', background: 'var(--bg2)', borderRadius: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', columnGap: 28 }}>
-                  {entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}
-                </div>
-                {hidden > 0 && <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 6 }}>{hidden} empty field{hidden > 1 ? 's' : ''} hidden (no data for this position)</div>}
-              </div>
-            )
-          })}
-        </div>
-        {/* Read-only footer */}
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 8, color: 'var(--text3)', textAlign: 'center' }}>
-          Read-only drill view. No action controls. Level 7 prohibited.
-        </div>
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end', background: 'rgba(2,6,23,.22)' }} onClick={onClose}>
+    <div onClick={e => e.stopPropagation()} style={{ width: 'min(1320px, 96vw)', height: '100vh', background: 'linear-gradient(180deg, #111827, #0f172a)', borderLeft: '1px solid rgba(148,163,184,.22)', display: 'flex', flexDirection: 'column', boxShadow: '-10px 0 40px rgba(0,0,0,.55)' }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(148,163,184,.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
+        <div><div style={{ fontSize: 20, fontWeight: 950, color: TEXT0 }}>{ctx.title}</div>{ctx.subtitle && <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{ctx.subtitle}</div>}<div style={{ fontSize: 10, color: DIM, fontFamily: 'monospace', marginTop: 8 }}>Source: {ctx.endpoint}</div></div>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, padding: '0 4px' }}>×</button>
       </div>
-    </div>
-  )
-}
-
-export function DrawerStat({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px' }}>{label}</div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: color || 'var(--text0)' }}>{value}</div>
-    </div>
-  )
-}
-
-function Badge({ label, g }: { label: string; g: string }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 22, fontWeight: 800, color: GRADE_C[g] ?? 'var(--text2)', lineHeight: 1 }}>{g}</div>
-      <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</div>
-    </div>
-  )
-}
-
-function Stat({ k, v }: { k: string; v: string }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text0)' }}>{v}</div>
-      <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
-    </div>
-  )
-}
-
-// Technical-analysis panel for a portfolio holding: RSI zone, fib retracement ladder, ratings.
-function HoldingAnalysis({ h }: { h: Record<string, any> }) {
-  const refreshed = h.enrichment_as_of ? new Date(h.enrichment_as_of) : null
-  const refreshTxt = refreshed && !isNaN(refreshed.getTime())
-    ? refreshed.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '—'
-  const card: CSSProperties = { marginBottom: 12, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }
-  const head = (t: string) => <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}><span>{t}</span><span style={{ textTransform: 'none' }}>data as of {refreshTxt}</span></div>
-
-  const proxy = h.proxy as { ticker: string; label: string } | undefined
-  // Only a bare note when there's no direct data AND no proxy fallback (e.g. cash).
-  if (!h.data_available && !proxy) {
-    return (
-      <div style={card}>
-        {head('Technical Analysis')}
-        <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.5 }}>{h.analysis_note || 'No market data available for this symbol.'}</div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {ctx.links && ctx.links.length > 0 && <Section title="Where to act" accent={BLUE}><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{ctx.links.map((l, i) => <a key={i} href={l.href} title={l.note} style={{ fontSize: 12, fontWeight: 850, color: '#bfdbfe', textDecoration: 'none', padding: '6px 12px', borderRadius: 7, background: 'rgba(96,165,250,.13)', border: '1px solid rgba(96,165,250,.32)' }}>{l.label} →</a>)}</div></Section>}
+        {actionMetrics.length > 0 && <Section title="Action board" subtitle="key fields surfaced from the record" accent={GREEN}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(150px,1fr))', gap: 10 }}>{actionMetrics.map(([k, v]) => { const f = fmtScalar(v); return <Metric key={k} label={k} value={k === 'Freshness' ? (ago(v) || f.text) : (String(k).match(/Entry|Stop|Target/) ? money(v) : f.text)} color={f.color || (k === 'Stop' ? RED : k === 'Entry' || k === 'Target' ? TEXT0 : TEXT1)} /> })}</div></Section>}
+        {intel?.setup && <Section title={`Hermes setup · ${intel.setup.conviction || 'unknown'} conviction`} accent={PURPLE}><div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 12 }}><div><div style={{ fontSize: 16, color: '#d8b4fe', fontWeight: 950 }}>{intel.setup.type}</div><div style={{ fontSize: 12, color: TEXT2, marginTop: 7, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Entry:</b> {intel.setup.entry}</div><div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Invalidation:</b> {intel.setup.invalidation}</div><div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>{intel.setup.why}</div></div>{intel.competition && <div style={{ ...metric }}><div style={{ fontSize: 9, color: MUTED, fontWeight: 850, textTransform: 'uppercase' }}>Competition / peer context</div><ObjBlock obj={intel.competition} /></div>}</div></Section>}
+        {intel?.external_intel?.length > 0 && <Section title={`External LLM intelligence (${intel.external_intel.length})`} subtitle="recommendation, evidence, counter-view, risk flags" accent={BLUE}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>{intel.external_intel.map((e: any, i: number) => { const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }; const ev = fmtBlob(e.evidence), rf = fmtBlob(e.risk_flags); return <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}><span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span><span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span></div>{e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}{ev.length > 0 && <ul style={{ margin: '4px 0', paddingLeft: 18 }}>{ev.map((x, j) => <li key={j} style={{ fontSize: 11, color: TEXT2, lineHeight: 1.45 }}>{x}</li>)}</ul>}{e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}{rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}{e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}</div> })}</div></Section>}
+        {ctx.rows.length === 0 && <Section title="No data" accent={DIM}><div style={{ color: MUTED, fontSize: 12 }}>No data rows.</div></Section>}
+        {ctx.rows.map((row, i) => { const entries = Object.entries(row).filter(([k, v]) => k.match(SECTION_RE) || !isEmptyVal(v)); const hidden = Object.keys(row).length - entries.length; return <Section key={i} title={ctx.rows.length > 1 ? `Source record ${i + 1}` : 'Source record'} subtitle={hidden > 0 ? `${hidden} empty fields hidden` : undefined} accent={DIM}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 28, rowGap: 2 }}>{entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}</div></Section> })}
       </div>
-    )
-  }
-
-  const rsi = h.rsi
-  const zone = h.rsi_status as string | undefined
-  const zoneColor = zone === 'oversold' ? '#22c55e' : zone === 'overbought' ? '#ef4444' : 'var(--text2)'
-  const fib = h.fib
-  const ratings: [string, any][] = [
-    ['Signal', h.signal], ['Analyst', h.analyst_rating],
-    ['Recom (1=buy)', h.recom_score], ['PI score', h.pi_score],
-  ].filter(([, v]) => v != null && v !== '') as [string, any][]
-
-  return (
-    <div style={card}>
-      {head(proxy ? `Technical Analysis · via ${proxy.ticker} (proxy)` : 'Technical Analysis')}
-      {proxy && (
-        <div style={{ fontSize: 9, color: '#f59e0b', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)', borderRadius: 5, padding: '4px 8px', marginBottom: 8, lineHeight: 1.4 }}>
-          Proxy: <b>{proxy.ticker}</b> ({proxy.label}). This fund/pool has no public ticker — technicals below approximate the asset class, not the exact holding.
-        </div>
-      )}
-      {/* RSI + zone */}
-      {rsi != null && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: fib ? 10 : 4 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: zoneColor }}>{Number(rsi).toFixed(0)}</div>
-          <div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>RSI (14)</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: zoneColor, textTransform: 'capitalize' }}>
-              {zone === 'oversold' ? 'Oversold — potential buy zone' : zone === 'overbought' ? 'Overbought — caution' : (zone || 'neutral')}
-            </div>
-          </div>
-          {/* RSI track */}
-          <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'linear-gradient(90deg,#22c55e33 0 30%,var(--bg1) 30% 70%,#ef444433 70% 100%)', position: 'relative' }}>
-            <div style={{ position: 'absolute', left: `${Math.min(100, Math.max(0, Number(rsi)))}%`, top: -2, width: 2, height: 10, background: zoneColor }} />
-          </div>
-        </div>
-      )}
-      {/* Fib retracement */}
-      {fib && (
-        <div>
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
-            Fibonacci retracement · {fib.retracement_from_high_pct}% off 52w high · nearest <span style={{ color: 'var(--text1)', fontWeight: 700 }}>{fib.nearest_level}</span>
-          </div>
-          {fib.levels
-            ? Object.entries(fib.levels).map(([label, price]: any) => {
-                const isNear = label === fib.nearest_level
-                return (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 6px', borderRadius: 4, fontSize: 10, background: isNear ? 'rgba(96,165,250,.12)' : 'transparent', color: isNear ? '#60a5fa' : 'var(--text2)', fontWeight: isNear ? 700 : 400 }}>
-                    <span>{label}</span><span style={{ fontFamily: 'monospace' }}>${Number(price).toFixed(2)}</span>
-                  </div>
-                )
-              })
-            : <div style={{ fontSize: 9, color: 'var(--text3)' }}>{proxy ? 'Dollar levels omitted for proxy (different price scale); position % shown above.' : ''}</div>}
-        </div>
-      )}
-      {/* Ratings */}
-      {ratings.length > 0 && (
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-          {ratings.map(([k, v]) => (
-            <div key={k}><span style={{ fontSize: 9, color: 'var(--text3)' }}>{k}: </span><span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{typeof v === 'number' ? Number(v).toFixed(typeof v === 'number' && v % 1 ? 2 : 0) : String(v)}</span></div>
-          ))}
-        </div>
-      )}
+      <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(148,163,184,.18)', fontSize: 9, color: MUTED, textAlign: 'center' }}>Read-only intelligence drawer. No order controls, no broker writes, advisory review only.</div>
     </div>
-  )
+  </div>
 }
 
-export function DrawerSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid var(--border)' }}>{title}</div>
-      {children}
-    </div>
-  )
-}
+export function DrawerStat({ label, value, color }: { label: string; value: string; color?: string }) { return <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase' }}>{label}</div><div style={{ fontSize: 13, fontWeight: 850, color: color || TEXT0 }}>{value}</div></div> }
