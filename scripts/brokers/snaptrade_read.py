@@ -1,0 +1,133 @@
+"""snaptrade_read.py — SnapTrade client for holdings aggregation (READ today).
+
+Scope today is READ-ONLY SYNC: list accounts, pull positions/balances/activities, normalize to the
+holdings.json shape. Trading is intentionally NOT here yet — but this is a soft boundary, not a hard
+block: when you decide to add SnapTrade trading later, add it (ideally a `snaptrade_trade.py` sibling
+behind the same canary + 2FA rails as the Schwab write pilot, or here). Nothing in this module
+prevents that.
+
+Reads work as soon as the client keys + a connected user are present (no separate enable flag gating
+reads). WRITING into the canonical holdings.json is a separate, explicit step owned by
+scripts/snaptrade_sync.py (which defaults to a dry run and only persists with --apply, going through
+schwab_position_sync.protected_holdings_write so the sanity/no-wipe gate still applies).
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import Optional
+
+from . import snaptrade_credentials as _creds
+
+
+@dataclass(frozen=True)
+class SnapTradeUser:
+    """Per-end-user credentials minted by registerUser (stored in broker_credentials.env via the creds
+    helper, or passed in directly)."""
+    user_id: str
+    user_secret: str
+
+    @classmethod
+    def from_env(cls) -> "SnapTradeUser":
+        u = _creds.user_status()
+        if not u.get("ready"):
+            raise RuntimeError("SnapTrade user not connected — run snaptrade_connect.py first.")
+        return cls(user_id=os.environ.get(_creds.USER_ID_KEY, ""),
+                   user_secret=os.environ.get(_creds.USER_SECRET_KEY, ""))
+
+
+def is_configured() -> bool:
+    """True when both the client keys and a connected user are present (reads can run)."""
+    return bool(_creds.status().get("ready") and _creds.user_status().get("ready"))
+
+
+def _client():
+    """Build the SnapTrade SDK client, or raise a clear error. Imported lazily so there's no hard
+    dependency until you opt in (`pip install snaptrade-python-sdk`)."""
+    st = _creds.status()
+    if not st.get("ready"):
+        raise RuntimeError("SnapTrade client keys not set — add them in the UI modal (Schwab Accounts → "
+                           "Connect SnapTrade).")
+    try:
+        from snaptrade_client import SnapTrade  # type: ignore
+    except Exception as e:  # pragma: no cover - optional dep
+        raise RuntimeError(f"snaptrade-python-sdk not installed ({e}). `pip install snaptrade-python-sdk`.")
+    return SnapTrade(
+        consumer_key=os.environ.get(_creds.CONSUMER_KEY_KEY, ""),
+        client_id=os.environ.get(_creds.CLIENT_ID_KEY, ""),
+    )
+
+
+def _body(resp):
+    return list(getattr(resp, "body", resp) or [])
+
+
+# ── READ surface ─────────────────────────────────────────────────────────────────────────────────
+
+def list_accounts(user: SnapTradeUser) -> list[dict]:
+    """GET connected brokerage accounts for the user."""
+    c = _client()
+    return _body(c.account_information.list_user_accounts(user_id=user.user_id, user_secret=user.user_secret))
+
+
+def holdings(user: SnapTradeUser, account_id: str) -> list[dict]:
+    """GET positions for one account (normalize via normalize_positions before any holdings write)."""
+    c = _client()
+    return _body(c.account_information.get_user_account_positions(
+        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id))
+
+
+def balances(user: SnapTradeUser, account_id: str) -> list[dict]:
+    """GET cash/balances for one account."""
+    c = _client()
+    return _body(c.account_information.get_user_account_balance(
+        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id))
+
+
+def activities(user: SnapTradeUser, account_id: str, *, start: Optional[str] = None,
+               end: Optional[str] = None) -> list[dict]:
+    """GET transactions/activities for one account (reconciliation)."""
+    c = _client()
+    return _body(c.transactions_and_reporting.get_activities(
+        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id,
+        start_date=start, end_date=end))
+
+
+# ── Normalization to the holdings.json shape (pure, no network) ─────────────────────────────────────
+
+def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dict]:
+    """Map SnapTrade position dicts → the holdings.json holding shape, tagged with provenance so the merge
+    never double-counts or silently replaces a direct-broker source. Pure / unit-testable."""
+    out: list[dict] = []
+    for p in raw_positions or []:
+        symobj = p.get("symbol") or {}
+        sym = (((symobj.get("symbol") or {}) if isinstance(symobj, dict) else {}).get("symbol")
+               or (symobj.get("symbol") if isinstance(symobj, dict) else None)
+               or p.get("symbol") or "")
+        sym = str(sym).upper().strip()
+        if not sym:
+            continue
+        units = p.get("units") or p.get("quantity") or 0
+        price = p.get("price") or 0
+        try:
+            units = float(units); price = float(price)
+        except (TypeError, ValueError):
+            continue
+        avg = p.get("average_purchase_price") or p.get("average_price") or p.get("cost_basis")
+        try:
+            avg = float(avg) if avg is not None else None
+        except (TypeError, ValueError):
+            avg = None
+        out.append({
+            "symbol": sym,
+            "account": account_key,
+            "shares": units,
+            "cost_basis": (avg * units) if (avg is not None) else None,
+            "avg_cost": avg,
+            "market_value": units * price,
+            "current_price": price,
+            "is_cash": False,
+            "cost_basis_source": "snaptrade",
+            "position_source": "snaptrade",
+        })
+    return out
