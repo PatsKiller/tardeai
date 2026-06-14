@@ -56,9 +56,10 @@ export default function SnapTradeCredsModal({ onClose }: { onClose: () => void }
         </div>
         <div style={{ fontSize: 10.5, color: '#bdbdbd', lineHeight: 1.5, marginBottom: 12 }}>
           Paste the <b>Client ID</b> and <b>Consumer Key</b> from your SnapTrade dashboard → API Keys. They’re
-          written to <code style={{ color: '#64b5f6' }}>config/broker_credentials.env</code> (chmod 600, in the
-          encrypted backup). This saves the <b>app keys only</b> — next, link a brokerage with the connect flow
-          (<code style={{ color: '#64b5f6' }}>snaptrade_connect.py</code>), then run the read-only sync.
+          written to <code style={{ color: '#64b5f6' }}>.env</code> (chmod 600, gitignored) — the same store as
+          the System → API Keys &amp; Secrets page, where they also appear as slots. This saves the <b>app keys
+          only</b> — next, link a brokerage (<code style={{ color: '#64b5f6' }}>snaptrade_connect.py</code>), then
+          run the read-only sync.
         </div>
 
         {/* current status */}

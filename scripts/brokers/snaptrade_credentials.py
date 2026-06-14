@@ -2,8 +2,9 @@
 
 SnapTrade auth has TWO halves:
   • the CLIENT pair (clientId + consumerKey) — from your SnapTrade dashboard "API Keys" page. These are
-    APP-level secrets, the same for every end-user. They live in config/broker_credentials.env (chmod 600,
-    gpg-backed by the encrypted-state backup), loaded via broker_secrets.load_into_env().
+    APP-level, the same for every end-user. They live in .env (chmod 600, gitignored) — the SAME store the
+    central "API Keys & Secrets" page (secrets_admin) manages, so both UIs agree. Add them there OR via the
+    Connect SnapTrade modal; the consumer key registers as a masked secret, the client id as a config value.
   • the per-USER secret (userId + userSecret) — minted later by registerUser during the connect flow and
     stored in the DB, NOT here. (See the connect scaffold.)
 
@@ -15,9 +16,12 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
-_ENV_FILE = Path(__file__).resolve().parent.parent.parent / "config" / "broker_credentials.env"
+# Unified store: the SAME .env the central "API Keys & Secrets" manager (secrets_admin.py) writes to, so the
+# secrets page, this modal, and the connect flow all read/write one file. (.env is 0600 + gitignored.)
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 CLIENT_ID_KEY = "SNAPTRADE_CLIENT_ID"
 CONSUMER_KEY_KEY = "SNAPTRADE_CONSUMER_KEY"
 # per-end-user connection secret, minted by registerUser during the connect flow
@@ -65,8 +69,9 @@ def status() -> dict:
 
 
 def _write_keys(updates: dict[str, str]) -> None:
-    """Idempotently write/replace KEY=VALUE pairs in broker_credentials.env, preserving all other lines,
-    chmod 600, and exporting into the live process env."""
+    """Atomically write/replace KEY=VALUE pairs in .env, preserving every other line, chmod 600, and
+    exporting into the live process env. Atomic (tmp + os.replace) so a crash can't corrupt .env — same
+    discipline as secrets_admin.set_secret."""
     _ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
     lines = _ENV_FILE.read_text().splitlines() if _ENV_FILE.exists() else []
     seen: set[str] = set()
@@ -81,11 +86,11 @@ def _write_keys(updates: dict[str, str]) -> None:
     for k, v in updates.items():
         if k not in seen:
             out.append(f"{k}={v}")
-    _ENV_FILE.write_text("\n".join(out) + "\n")
-    try:
-        os.chmod(_ENV_FILE, 0o600)
-    except OSError:
-        pass
+    fd, tmp = tempfile.mkstemp(dir=str(_ENV_FILE.parent), suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(out).rstrip("\n") + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, _ENV_FILE)
     for k, v in updates.items():
         os.environ[k] = v
 
