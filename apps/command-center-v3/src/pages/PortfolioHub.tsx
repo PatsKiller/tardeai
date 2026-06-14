@@ -320,17 +320,29 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Look-through' && (() => {
         const lt = (lookthrough as any)?.data ?? lookthrough ?? {}
-        const themes = Object.entries(lt.themes ?? {}).map(([name, t]: any) => ({ name, ...t })).sort((a: any, b: any) => b.pct - a.pct)
-        const top = lt.top_underlying ?? []
-        const advs = lt.advisories ?? []
+        const acctDetail = lt.accounts_detail ?? {}
+        // account filter: per-account look-through when selected, else portfolio-wide
+        const view = (acctFilter && acctDetail[acctFilter]) ? acctDetail[acctFilter] : lt
+        const themes = Object.entries(view.themes ?? {}).map(([name, t]: any) => ({ name, ...t })).sort((a: any, b: any) => b.pct - a.pct)
+        const top = view.top_underlying ?? []
+        const advs = view.advisories ?? []
         const maxThemePct = Math.max(1, ...themes.map((t: any) => t.pct))
         const maxStockPct = Math.max(1, ...top.map((s: any) => s.pct))
         const sevColor = (s: string) => s === 'high' ? '#ef4444' : s === 'medium' ? '#f59e0b' : '#22c55e'
         if (!themes.length) return <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>No look-through computed yet — run <code>scripts/portfolio_lookthrough_themes.py --grok</code>.</div>
+        const ltAccts = Object.keys(acctDetail)
         return (
           <div>
+            {ltAccts.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
+                <button onClick={() => setAcctFilter(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
+                {ltAccts.map(a => (
+                  <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
-              True stock-level look-through — funds resolved to their underlying holdings. Coverage <b style={{ color: 'var(--text1)' }}>{lt.coverage_pct}%</b> (top-10 fund holdings; theme %s are lower bounds). Hover a stock to see which funds hold it.
+              True stock-level look-through{acctFilter ? <b style={{ color: 'var(--text1)' }}> · {acctFilter.replace(/_/g, ' ')} (${Math.round(view.portfolio_total ?? 0).toLocaleString()})</b> : ' — funds resolved to their underlying holdings'}. Coverage <b style={{ color: 'var(--text1)' }}>{view.coverage_pct}%</b> (top-10 fund holdings; theme %s are lower bounds). Hover a stock to see which funds hold it.
             </div>
             {lt.grok_narrative && (
               <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 10 }}>
