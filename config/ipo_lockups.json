@@ -1,24 +1,32 @@
 {
-  "_comment": "IPO lockup expirations — when insiders/early investors can sell, per the company's S-1. A lockup expiry is a real supply catalyst. Surfaced in the Ask box; the near-expiry monitor (ipo_lockup_alert.py) fires a Telegram alert ahead of each tranche. Earnings-tied tranches have approximate dates (depend on the actual earnings date) — flagged approx:true.",
+  "_comment": "IPO lockup expirations per the PRIMARY S-1. Surfaced in the Ask box; ipo_lockup_alert.py fires a Telegram alert 14d before each tranche. Day-count dates are exact from the prospectus date; earnings-tied dates are approximate (move with the actual report date) and flagged approx:true.",
   "lockups": {
     "SPCX": {
-      "company": "SpaceX",
+      "company": "SpaceX (Space Exploration Technologies Corp)",
       "ipo_date": "2026-06-12",
       "offer_price": 135.00,
-      "structure": "UNUSUAL — staggered milestone + time-based release (not a standard single 180-day cliff). Most insiders can sell early; Elon Musk is carved out and locked the FULL YEAR.",
+      "structure": "THREE groups: (1) 180-day lock-up group with early releases from Q3-2026; (2) a larger EXTENDED group (~7.8B sh, ~63% of shares, non-Musk) locked until Q2-2027 earnings with releases starting Q4-2026 earnings; (3) Mr. Musk — 366-day lock, NO early release (all ~6.4B his shares + together with extended = ~63% locked >1yr).",
       "tranches": [
-        {"date": "2026-07-28", "days": 46, "pct_unlocked": 20, "approx": true, "desc": "Q2 (Apr–Jun) earnings publication → up to 20% of eligible insider shares unlock (+10% MORE if SPCX is ≥30% above the $135 offer, i.e. ≥$175.50, at that point). Date approximate (first quarterly report).", "confirmed": true},
-        {"date": "2026-08-21", "days": 70, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 1/5 — 7% of eligible shares", "confirmed": true},
-        {"date": "2026-09-10", "days": 90, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 2/5 — 7%", "confirmed": true},
-        {"date": "2026-09-25", "days": 105, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 3/5 — 7%", "confirmed": true},
-        {"date": "2026-10-10", "days": 120, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 4/5 — 7%", "confirmed": true},
-        {"date": "2026-10-25", "days": 135, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 5/5 — 7%", "confirmed": true},
-        {"date": "2026-10-30", "days": 140, "pct_unlocked": 28, "approx": true, "desc": "Q3 (Jul–Sep) earnings publication → +28% of eligible shares unlock. Date approximate.", "confirmed": true},
-        {"date": "2026-12-09", "days": 180, "pct_unlocked": 100, "approx": false, "desc": "Standard 180-day expiry — full remainder of eligible (non-Musk) shares comes off restriction", "confirmed": true},
-        {"date": "2027-06-12", "days": 365, "pct_unlocked": null, "approx": false, "desc": "ELON MUSK lockup expiry — Musk is carved out of all early releases and locked the full year (no early-sale exceptions)", "confirmed": true}
+        {"date": "2026-08-05", "days": null, "pct_unlocked": 20, "group": "180-day", "approx": true, "desc": "Q2-2026 earnings (First Earnings Release Date, qtr ended Jun 30 2026) → up to 20% of the 180-day-group shares (~911.5M sh)", "confirmed": true},
+        {"date": "2026-08-05", "days": null, "pct_unlocked": 10, "group": "180-day", "approx": true, "conditional": "SPCX >= $175.50 (30% over $135 offer) for 5 of 10 days ending on the First Earnings Release Date", "desc": "BONUS +10% of 180-day-group shares — ONLY if the price condition is met at Q2 earnings", "confirmed": true},
+        {"date": "2026-08-21", "days": 70, "pct_unlocked": 7, "group": "180-day", "approx": false, "desc": "Day 70 — +7% of 180-day-group shares", "confirmed": true},
+        {"date": "2026-09-10", "days": 90, "pct_unlocked": 7, "group": "180-day", "approx": false, "desc": "Day 90 — +7%", "confirmed": true},
+        {"date": "2026-09-25", "days": 105, "pct_unlocked": 7, "group": "180-day", "approx": false, "desc": "Day 105 — +7%", "confirmed": true},
+        {"date": "2026-10-10", "days": 120, "pct_unlocked": 7, "group": "180-day", "approx": false, "desc": "Day 120 — +7%", "confirmed": true},
+        {"date": "2026-10-25", "days": 135, "pct_unlocked": 7, "group": "180-day", "approx": false, "desc": "Day 135 — +7%", "confirmed": true},
+        {"date": "2026-11-05", "days": null, "pct_unlocked": null, "group": "180-day", "approx": true, "desc": "Q3-2026 earnings (qtr ended Sep 30 2026) → further release of 180-day-group shares", "confirmed": true},
+        {"date": "2026-12-09", "days": 180, "pct_unlocked": 100, "group": "180-day", "approx": false, "desc": "Day 180 — remainder of the 180-day group comes off restriction", "confirmed": true},
+        {"date": "2027-02-05", "days": null, "pct_unlocked": 20, "group": "extended", "approx": true, "desc": "EXTENDED group: Q4-2026 earnings (qtr ended Dec 31 2026) → up to 20% of the ~7.8B extended-group shares", "confirmed": true},
+        {"date": "2027-03-19", "days": 280, "pct_unlocked": 10, "group": "extended", "approx": false, "desc": "Day 280 — +10% of extended group", "confirmed": true},
+        {"date": "2027-05-05", "days": null, "pct_unlocked": 20, "group": "extended", "approx": true, "desc": "EXTENDED: Q1-2027 earnings (qtr ended Mar 31 2027) → +20% of extended group", "confirmed": true},
+        {"date": "2027-05-18", "days": 340, "pct_unlocked": 10, "group": "extended", "approx": false, "desc": "Day 340 — +10% of extended group", "confirmed": true},
+        {"date": "2027-06-13", "days": 366, "pct_unlocked": 20, "group": "extended", "approx": false, "desc": "Day 366 — +20% of extended group", "confirmed": true},
+        {"date": "2027-06-13", "days": 366, "pct_unlocked": 100, "group": "MUSK", "approx": false, "desc": "MR. MUSK lockup expiry (366 days) — ALL his shares (~6.4B Class A incl. conversions). NO early-release provisions apply to Musk.", "confirmed": true},
+        {"date": "2027-08-05", "days": null, "pct_unlocked": 100, "group": "extended", "approx": true, "desc": "EXTENDED group fully released after Q2-2027 earnings (qtr ended Jun 30 2027) — remaining extended shares", "confirmed": true}
       ],
-      "notes": "Per S-1 coverage (CNBC/Motley Fool/Yahoo, May 2026). Earnings-tied tranches (Q2 ~late-Jul, Q3 ~late-Oct) move with the actual report dates. The +10% bonus tranche is conditional on price ≥$175.50 at Q2 earnings. Index forced-buys (S&P/Nasdaq inclusion) are a SEPARATE supply event. Verify primary doc on SEC EDGAR.",
-      "source": "S-1 (via news coverage)"
+      "notes": "EXACT terms from S-1/A on SEC EDGAR (CIK 0001181412, accession 0001628280-26-040364, filed 2026-06-03). Day-count tranches are exact from the prospectus date (offering 2026-06-12); earnings-tied tranches are approximate and move with SpaceX's actual report dates. KEY: the BULK of insider shares (~63%, the extended group + Musk) stays locked into 2027 — only the smaller 180-day group releases in 2026. Underwriters (Goldman Sachs) can waive early. Index forced-buys (S&P/Nasdaq) are a separate supply event.",
+      "source": "S-1/A primary (SEC EDGAR)",
+      "edgar": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026040364/"
     }
   }
 }
