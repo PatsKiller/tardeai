@@ -242,12 +242,19 @@ def overview():
     periods = perf.get("periods", {})
     active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
 
-    # Sector allocation
-    sectors = {}
-    for p in active_positions:
-        s = p.get("sector_type") or "Other"
-        sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
-    sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
+    # Sector allocation — prefer the pipeline's look-through breakdown (holdings.json resolved_sectors:
+    # funds decomposed into underlying sectors). Holding ROWS carry no sector field, so the old per-row
+    # sector_type aggregation collapsed everything into "Other". Fall back to it only if look-through is absent.
+    resolved = h.get("resolved_sectors")
+    if isinstance(resolved, list) and resolved:
+        sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
+                       for r in resolved if (r.get("value") or 0) > 0][:13]
+    else:
+        sectors = {}
+        for p in active_positions:
+            s = p.get("sector_type") or "Other"
+            sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
+        sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
 
     # Top movers
     movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
