@@ -1,12 +1,12 @@
 {
-  "run_at": "2026-06-07T02:44:00.649157+00:00",
-  "run_id": "ppsr_auto_20260607",
+  "run_at": "2026-06-14T07:30:36.543529+00:00",
+  "run_id": "ppsr_auto_20260614",
   "applied": true,
   "written": 5,
   "min_sample": 20,
   "recommendations": [
     {
-      "run_id": "ppsr_auto_20260607",
+      "run_id": "ppsr_auto_20260614",
       "strategy_family": "income",
       "current_thresholds": {
         "trailing_tiers": [
@@ -37,15 +37,15 @@
       "proposed_thresholds": {
         "candidate_rule": "income_wide_trail8_after_3R"
       },
-      "evidence_sample_size": 1,
+      "evidence_sample_size": 0,
       "expected_giveback_reduction": 0.0,
       "expected_premature_exit_cost": 0.0,
       "confidence": "insufficient",
       "graft_verdict": "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE",
-      "notes": "Best candidate income_wide_trail8_after_3R reliable_n=1 < floor 20. Recovery $0.0 is an path_measured (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
+      "notes": "Best candidate income_wide_trail8_after_3R reliable_n=0 < floor 20. Recovery $0.0 is an upper_bound_single_peak (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
     },
     {
-      "run_id": "ppsr_auto_20260607",
+      "run_id": "ppsr_auto_20260614",
       "strategy_family": "momentum",
       "current_thresholds": {
         "trailing_tiers": [
@@ -84,7 +84,7 @@
       "notes": "Best candidate scalp_partial_tp_1R reliable_n=3 < floor 20. Recovery $0.0 is an path_measured (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
     },
     {
-      "run_id": "ppsr_auto_20260607",
+      "run_id": "ppsr_auto_20260614",
       "strategy_family": "position",
       "current_thresholds": {
         "trailing_tiers": [
@@ -123,7 +123,7 @@
       "notes": "Best candidate position_lock50_after_3R reliable_n=0 < floor 20. Recovery $0.0 is an upper_bound_single_peak (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
     },
     {
-      "run_id": "ppsr_auto_20260607",
+      "run_id": "ppsr_auto_20260614",
       "strategy_family": "swing",
       "current_thresholds": {
         "trailing_tiers": [
@@ -162,7 +162,7 @@
       "notes": "Best candidate swing_lock50_after_2R reliable_n=7 < floor 20. Recovery $7.02 is an path_measured (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
     },
     {
-      "run_id": "ppsr_auto_20260607",
+      "run_id": "ppsr_auto_20260614",
       "strategy_family": "unknown",
       "current_thresholds": {
         "trailing_tiers": [],
@@ -172,12 +172,12 @@
       "proposed_thresholds": {
         "candidate_rule": "trail8_after_3R"
       },
-      "evidence_sample_size": 11,
+      "evidence_sample_size": 10,
       "expected_giveback_reduction": 221.04,
       "expected_premature_exit_cost": 0.0,
       "confidence": "weak",
       "graft_verdict": "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE",
-      "notes": "Best candidate trail8_after_3R reliable_n=11 < floor 20. Recovery $221.04 is an path_measured (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
+      "notes": "Best candidate trail8_after_3R reliable_n=10 < floor 20. Recovery $221.04 is an path_measured (upper bound). Operator may approve a strategy-specific pilot, but no auto-graft."
     }
   ]
 }
