@@ -18478,11 +18478,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                 "((SELECT COALESCE(MAX(id),0)+1 FROM watchlist_agent_jobs), %s, %s, 'requeue', "
                                 "'high', 'pending', 'watchlist_requeue')", (sym, agent), fetch="none")
                             n += 1
-                    # clear the synthesis review gate so it isn't skipped as 'not due'
+                    # clear the synthesis gates so a FULL re-review runs end-to-end: (1) the review-date
+                    # gate, (2) needs_iteration, and (3) final_synthesis_status — without resetting (3) the
+                    # agents re-run but _check_synthesis_ready stays False ('completed') and the CIO verdict
+                    # never refreshes (the half-fix we just hit on SPCX).
                     _db_query("UPDATE watchlist_final_synthesis SET next_review_date=CURRENT_DATE "
                               "WHERE symbol=%s AND COALESCE(superseded,false)=false", (sym,), fetch="none")
                     _db_query("UPDATE watchlist_research_cards SET needs_iteration=true WHERE symbol=%s",
                               (sym,), fetch="none")
+                    _db_query("UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending' "
+                              "WHERE symbol=%s", (sym,), fetch="none")
                     return 200, {"ok": True, "symbol": sym, "requeued": n}
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
