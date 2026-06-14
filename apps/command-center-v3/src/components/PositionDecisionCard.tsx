@@ -70,27 +70,40 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
         const distColor = dist == null ? MUTED : dist < 0 ? RED : dist < 2 ? RED : dist < 5 ? AMBER : GREEN
         const unprotected = p.protection_state !== 'protected'
+        const mf = !!(p as any).is_mutual_fund            // open-end fund: no exchange stop can be placed
+        const income = (p as any).holding_family === 'income'  // held for yield — protective stop optional
         const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
         const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c) — LOCKED until the canary write test passes Monday and you arm the protective-stop policy. Each order will require web + Telegram 2FA.'
         return <>
           <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
             {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
-            {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>stop <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
+            {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>{mf ? 'ref level' : 'stop'} <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
             {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
             {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
           </div>
           {/* concrete advised action (replaces the vague "review protection") + Stage-2c-locked order buttons.
               Two axes the buttons make explicit: fixed-vs-trailing trigger, and market-vs-limit fill. */}
-          {stop != null && unprotected && (() => {
+          {stop != null && unprotected && mf && (
+            // Open-end mutual fund: an exchange stop order cannot be placed (transacts at end-of-day NAV).
+            // Show the level as REFERENCE only and steer to trim/rebalance — no order buttons.
+            <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(100,116,139,.12)', border: '1px solid rgba(100,116,139,.30)' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: MUTED }}>▸ Open-end fund — no exchange stop can be placed (trades at end-of-day NAV). Protect via tax-aware <b style={{ color: TEXT1 }}>trim / rebalance</b>; ${stop.toFixed(2)} is a reference level only.</span>
+            </div>
+          )}
+          {stop != null && unprotected && !mf && (() => {
             const trailReady = off != null && trailPct != null
             const stopTip = `Queue a FIXED sell stop (stop-market) GTC at $${stop.toFixed(2)}. If the price falls to $${stop.toFixed(2)} a MARKET sell fires — it ALWAYS fills, but the fill can slip below $${stop.toFixed(2)} in a fast drop. The trigger does NOT move.\n\n${STAGE2C_TIP}`
             const limitTip = `Queue a FIXED sell stop-limit GTC triggering at $${stop.toFixed(2)}. If the price hits $${stop.toFixed(2)} a LIMIT sell (~$${stop.toFixed(2)}) fires — it avoids a bad fill, but may NOT fill if the price gaps straight through, leaving you unprotected on the way down. The trigger does NOT move.\n\n${STAGE2C_TIP}`
             const trailTip = trailReady ? `Queue a native TRAILING sell stop GTC, trailing ${trailPct.toFixed(0)}%${trailDollar != null ? ` (≈$${trailDollar.toFixed(2)})` : ''}. The stop starts near $${stop.toFixed(2)} and RATCHETS UP as the price rises (never down), locking in profit; if the price then falls ${trailPct.toFixed(0)}% from its high a MARKET sell fires. This is the order the advisory recommends.\n\n${STAGE2C_TIP}` : ''
             const modifyTip = `Modify an ACTIVE stop — change the stop price, the trail %, or switch order type — once a protective order is already working at the broker.\n\n${STAGE2C_TIP}`
             const recBtn = { ...lockBtn, border: `1px dashed ${AMBER}`, background: 'rgba(245,158,11,.14)', color: AMBER }
-            return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 950, color: AMBER }}>▸ ADVISED: {trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`} GTC</span>
+            // Income holdings are held for yield — frame the level as OPTIONAL, not "ADVISED".
+            const headColor = income ? BLUE : AMBER
+            const orderTxt = trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`
+            const head = income ? `▸ OPTIONAL stop (income hold): ${orderTxt} GTC` : `▸ ADVISED: ${orderTxt} GTC`
+            return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: income ? 'rgba(96,165,250,.10)' : 'rgba(245,158,11,.10)', border: `1px solid ${income ? 'rgba(96,165,250,.32)' : 'rgba(245,158,11,.32)'}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 950, color: headColor }}>{head}</span>
               <span style={{ flex: 1 }} />
               <button disabled title={stopTip} style={lockBtn}>🔒 Queue stop (fixed)</button>
               <button disabled title={limitTip} style={lockBtn}>🔒 Queue stop-limit (fixed)</button>

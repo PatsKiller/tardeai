@@ -56,7 +56,7 @@ def _strategy_purposes():
 def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, below, stop_near, rsi,
                      stale_tech, basis_reliable, cost_basis_source, basis_kind, market_value, strategy,
                      trend_label, sec_label, vs_sec5, latest_news_age_h, last_hermes_at, on_watchlist,
-                     directive, is_fund):
+                     directive, is_fund, family="position", mutual_fund=False):
     """Derive the read-only operator-decision fields. Pure function of already-computed signals — no writes,
     no source-of-truth changes. Action language is review/consider only, never execute."""
     high_value = (market_value or 0) >= 50000
@@ -107,6 +107,13 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
     if not basis_reliable and high_value:
         decision, reason, pr = "Cost basis uncertain", "High-value position with unverified cost basis — resolve before any tax/exit decision.", "high"
         nxt = "Resolve cost basis (CSV/broker reconciliation)"
+    elif mutual_fund and ((upnl_pct or 0) > 10 or big_gain_unprot):
+        # Open-end mutual fund: an exchange stop CANNOT be placed (transacts at EOD NAV). A large gain is
+        # still worth protecting — but via a tax-aware trim / rebalance, never a stop order.
+        decision, reason, pr = ("Large gain — review trim (fund)",
+            f"+{round(upnl_pct or 0)}% in an open-end fund with no exchange stop available — protect the "
+            "gain with a tax-aware trim / rebalance, not a stop order.", "high")
+        nxt = "Review trim / rebalance (no stop on a fund)"
     elif big_gain_unprot or (not protected and not stop and (upnl_pct or 0) > 10):
         decision, reason, pr = "Needs protection review", f"+{round(upnl_pct or 0)}% gain with no active protection{', bullish trend' if 'bullish_trend' in opp_flags else ''}{', trailing candidate' if 'trailing_candidate' in opp_flags else ''}.", "high"
         nxt = "Review protection / trailing-stop placement"
@@ -114,20 +121,30 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         decision, reason, pr = "Data stale — refresh first", "Technicals are stale on a high-value position — refresh intelligence before judging.", "high"
         nxt = "Refresh intelligence, then re-review"
     elif below and (upnl_pct or 0) < -5:
-        decision, reason, pr = "Needs exit review", f"Down {round(upnl_pct or 0)}% and below entry — review thesis vs stop.", "medium"
-        nxt = "Review exit / stop vs thesis"
-    elif is_fund or (strategy and ("income" in str(strategy) or "dividend" in str(strategy))):
-        decision, reason, pr = "Income/dividend review", "Held for income/dividend role — monitor distribution + total return, not momentum.", "low"
-        nxt = "Income role — monitor distributions"
+        decision, reason, pr = "Needs exit review", f"Down {round(upnl_pct or 0)}% and below entry — review thesis vs exit.", "medium"
+        nxt = "Review exit vs thesis"
+    elif family == "income" or (strategy and ("income" in str(strategy) or "dividend" in str(strategy))):
+        # Income-family holding (dividend/bond ETF): held for yield, not momentum. A hard protective stop
+        # is OPTIONAL by design — income holdings are held through noise to keep the distribution. Frame as
+        # an income role, not as a missing stop.
+        decision, reason, pr = ("Income role — held for yield",
+            "Held for income/distributions, not price momentum. A protective stop is OPTIONAL here (income "
+            "holdings ride through noise to keep the yield) — monitor distributions + total return instead.", "low")
+        nxt = "Income role — monitor distributions (stop optional)"
     elif "no_protection" in risk_flags:
-        # Unprotected, but low-urgency (modest/flat gain, not below entry, not a big-gain runner). It still
-        # has NO protective stop in place. Do NOT say "No action" — that reads as "no stop needed". State
-        # the gap plainly and mark it optional/low. Wording is advisory-neutral (true whether or not a
-        # specific advised-stop number is shown on the card below).
-        decision, reason, pr = ("Unprotected — no stop in place",
-            "No protective stop is set. A stop is worth placing to cap downside — low urgency at this "
-            "size/gain, but this is NOT 'no stop needed'. See the advised level below if present.", "low")
-        nxt = "Consider placing a protective stop (optional)"
+        if mutual_fund:
+            # Un-stoppable open-end fund, no large gain: don't tell the operator to place a stop that can't exist.
+            decision, reason, pr = ("Fund — no exchange stop",
+                "Open-end fund: a protective stop order can't be placed (transacts at end-of-day NAV). "
+                "Manage via sell / rebalance and monitor total return — a stop does not apply.", "low")
+            nxt = "Monitor NAV / total return — no stop applies"
+        else:
+            # Stop-eligible (stock or ETF), unprotected, low-urgency. NO protective stop in place. Do NOT say
+            # "No action" — that reads as "no stop needed". State the gap; mark it optional/low. Advisory-neutral.
+            decision, reason, pr = ("Unprotected — no stop in place",
+                "No protective stop is set. A stop is worth placing to cap downside — low urgency at this "
+                "size/gain, but this is NOT 'no stop needed'. See the advised level below if present.", "low")
+            nxt = "Consider placing a protective stop (optional)"
     elif trend_label and "bull" in str(trend_label).lower() and not risk_flags:
         decision, reason, pr = "Hold thesis intact", "Thesis intact: trend supportive, protective stop in place, no data flags.", "low"
         nxt = "No action needed — protected & monitored"
@@ -622,6 +639,12 @@ def build_intelligence():
                     except Exception:
                         pass
             _mv = p.get("market_value") or (cur_px * sh if cur_px else None)
+            try:
+                from holding_family import classify_family, is_mutual_fund
+                _fam, _ = classify_family(sym)
+                _is_mf = is_mutual_fund(sym)
+            except Exception:
+                _fam, _is_mf = "position", False
             _decision = _derive_decision(
                 upnl_pct=upnl_pct, protected=pr["protected"], stop=stop, tp_missing=tp_missing,
                 big_gain_unprot=big_gain_unprot, below=below, stop_near=stop_near, rsi=rsi,
@@ -631,13 +654,15 @@ def build_intelligence():
                 trend_label=_trend_label(sma50, sma200), sec_label=sec_label, vs_sec5=vs_sec5,
                 latest_news_age_h=(round(_news_age_h, 1) if _news_age_h is not None else None),
                 last_hermes_at=herm.get(sym, {}).get("research_at"),
-                on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False))
+                on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False),
+                family=_fam, mutual_fund=_is_mf)
             positions.append({
                 **_decision,
                 **_card_enrichment(sym),
                 "trade_id": None, "symbol": sym, "company_name": p.get("company_name"),
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
+                "holding_family": _fam, "is_mutual_fund": _is_mf, "stop_eligible": (not _is_mf),
                 "entry_price": ent, "avg_cost": p.get("avg_cost"), "cost_basis": p.get("cost_basis"),
                 "basis_kind": ("entry" if p.get("src") == "paper_trades" else "avg_cost"),
                 "basis_reliable": basis_reliable, "basis_warning": basis_warning,

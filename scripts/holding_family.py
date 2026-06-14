@@ -87,6 +87,20 @@ def classify_family(symbol: str, atr_pct: float | None = None) -> tuple[str, str
     return DEFAULT_FAMILY, "default"
 
 
+def is_mutual_fund(symbol: str) -> bool:
+    """True for an open-end mutual fund — which CANNOT take an exchange stop order (it transacts at
+    end-of-day NAV). Config asset_type_overrides first (authoritative); otherwise the standard US
+    mutual-fund ticker convention: 5 letters ending in 'X' (FCNTX/FSELX/AMANX…). ETFs (SCHD/SCHG/JEPI)
+    are ≤4 letters or tagged 'etf' in config, so they return False and remain stop-eligible."""
+    s = _resolve(symbol)
+    at = ((_cfg().get("asset_type_overrides") or {}).get(s) or "").lower()
+    if at in ("mutual_fund", "fund"):
+        return True
+    if at in ("etf", "stock"):
+        return False
+    return len(s) == 5 and s.isalpha() and s.endswith("X")
+
+
 def protection_bounds(family: str) -> dict:
     return FAMILY_PROTECTION.get(family, FAMILY_PROTECTION[DEFAULT_FAMILY])
 
