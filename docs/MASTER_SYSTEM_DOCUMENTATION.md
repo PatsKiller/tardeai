@@ -450,6 +450,27 @@ first, then `priority`, then `created_at`:
 (G4). With tiered prioritization, the ~50 directive/active/buy-rated names stay fresh while the tail no
 longer starves them.
 
+### Portfolio Look-through, Ask-the-Agents & IPO Lockups (2026-06-14)
+
+**Look-through** (Portfolio → Look-through tab; `portfolio_lookthrough_themes.py`; `/api/v2/portfolio/lookthrough`,
+refreshed daily 07:40) resolves every fund to its underlying stocks (yfinance fund top-holdings) and
+aggregates portfolio-wide + per-account. Surfaces: theme exposure (Mag7 / Nasdaq100 / S&P500 / Semis / AI
+mega-cap / AI-datacenter-power / Nuclear / Energy / Cyber / Defense / China), top-underlying-stock
+concentration with **fund-source tooltips**, a concentration donut, rule-based advisories, a Grok narrative,
+and **CIO / Risk / Steph agent cards**. Honest caveat: yfinance gives top-10 fund holdings → theme %s are
+lower bounds.
+
+**Ask-the-Agents** (`AskAgents` component on Look-through + Risk; `portfolio_ask.py`; `/api/v2/portfolio/ask`)
+— natural-language Q&A that pulls REAL positions + analyst ratings (pro_analyst) + look-through and routes
+to Grok as CIO/risk advisor. Frames R:R from analyst targets; handles private names. **Defer-to-live-data**
+rule: a name with a live quote IS public (the model's training may be stale — e.g. SpaceX/SPCX IPO'd
+2026-06-12). `private_symbols.py` lists only genuinely-private names (OpenAI/Stripe/Anthropic/Databricks).
+"Set alert" → `ask_alerts.py` (IPO-news / price → Telegram).
+
+**IPO lockups** (`config/ipo_lockups.json` from the primary **S-1 on SEC EDGAR**; `ipo_lockups.py`) — when
+insiders can sell, by tranche. `ipo_lockup_alert.py` fires Telegram 14d before each unlock;
+`update_lockup_earnings_dates.py` auto-snaps earnings-tied tranches to the real report date when announced.
+
 ### Daily Intelligence Workflow (End-to-End)
 
 This is the complete day-in-the-life showing how data flows from raw ingestion through agent analysis, LLM curation, and back into smarter searches:

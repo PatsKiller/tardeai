@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-06-14 - Portfolio Look-through tab + Ask-the-agents + multi-agent advisory
+
+New Portfolio → **Look-through** tab: true stock-level exposure (funds resolved to underlying holdings via
+yfinance fund top-holdings) with theme baskets (Mag7 / Nasdaq100 / S&P500 / Semis / AI mega-cap / AI
+datacenter-power / Nuclear / Energy / Cyber / Defense / China), **fund-source tooltips** per stock,
+per-account filter, a top-10 concentration donut, rule-based advisories + a **Grok narrative** + **CIO /
+Risk / Steph agent cards**. Engine: `portfolio_lookthrough_themes.py` (cached, scheduled daily 07:40);
+endpoint `/api/v2/portfolio/lookthrough`. **Ask-the-agents box** (`AskAgents` component + `portfolio_ask.py`
++ `/api/v2/portfolio/ask`): natural-language Q&A that pulls REAL positions + analyst ratings + look-through
+and routes to Grok (e.g. "R:R of trimming 5% V to fund SpaceX?" → answered with the actual numbers). Ask
+alerts (`ask_alerts.py`) fire to Telegram on IPO-news/price conditions. Added to RiskHub too.
+
+## 2026-06-14 - Private-symbol handling + defer-to-live-data (SpaceX/SPCX)
+
+`private_symbols.py` registry flags genuinely-private names (OpenAI/Stripe/Anthropic/Databricks) on
+watchlist cards + the ask box. IMPORTANT correction: SpaceX IPO'd 2026-06-12 (SPCX, Nasdaq) — AFTER the
+model knowledge cutoff — so it was wrongly flagged "private". Removed SpaceX/SPCX/xAI from the registry and
+hardened the ask prompt to **DEFER TO LIVE DATA over training knowledge** (a name with a live quote IS
+public). SPCX price was stale ($173 from IPO-day "ai_discovered"); fixed the repricer universe
+(`external_market_data_ingest` now UNIONs directive-watch/active watchlist) + a yfinance fallback in
+`watchlist_enrichment_sweep._price` so tracked/newly-IPO'd names stay priced. CIO re-reviewed SPCX
+(IGNORE/gemma pre-IPO → AVOID 0.72/grok on the now-public stock).
+
+## 2026-06-14 - IPO lockup tracker (S-1 from EDGAR) + alerts + auto-update
+
+`config/ipo_lockups.json` + `ipo_lockups.py`: when insiders can sell, per the **primary S-1/A pulled from
+SEC EDGAR** (SpaceX CIK 1181412 — three groups: 180-day w/ early releases, a ~63% EXTENDED group locked
+into 2027, Musk 366-day no-early-release). Wired into the Ask box. `ipo_lockup_alert.py` fires Telegram
+14d before each tranche (with price-conditional logic on the +10% bonus). `update_lockup_earnings_dates.py`
+auto-snaps earnings-tied tranches to the real report date (earnings+2 trading days) when announced.
+Scheduled daily 08:15/08:18.
+
+## 2026-06-14 - Fixes: requeue, analyst-rating atomic write, family-aware protection
+
+(1) Watchlist **requeue** was a silent no-op (id col has no default → INSERT rolled back while reporting
+success); now resets jobs to pending + clears the synthesis gate (final_synthesis_status) so re-review
+runs end-to-end. (2) `build_pro_analyst_read_model` now writes **atomically** — the non-atomic write
+briefly blanked ALL Strong-Buy/Buy ratings on the watchlist mid-rebuild. (3) Open-Trades protection
+framing is now **family-aware**: income holdings → "Income role, stop optional"; open-end mutual funds /
+401k-proxy codes → "no exchange stop — trim/rebalance"; stop-eligible ETFs/stocks keep the advised stop.
+`is_unstoppable_fund` extended to opaque plan codes. Allocation panel + header total/day-P&L now follow the
+account filter.
+
 ## 2026-06-14 - Phase3 look-through: yfinance sector fallback (auto-classify any stock)
 
 Root-cause fix for the 'Other' bucket: phase3 resolved direct stocks only from the snapshot's
