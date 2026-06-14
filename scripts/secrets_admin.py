@@ -31,6 +31,10 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
 # OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
 KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID"]
+# READ-ONLY status rows: shown (present + masked) but NOT settable here — they're owned by another flow.
+# SnapTrade's userId/userSecret are minted by the connect flow (snaptrade_connect.py), so the secrets page
+# surfaces connection state without letting you hand-rotate them.
+KNOWN_READONLY = ["SNAPTRADE_USER_ID", "SNAPTRADE_USER_SECRET"]
 
 
 def _read_env():
@@ -53,12 +57,15 @@ def _mask(v):
 def list_secrets():
     """Names + presence + masked hint. NEVER full values."""
     _, d = _read_env()
-    keys = sorted(set(KNOWN) | {k for k in d if k.endswith(SECRET_SUFFIXES)})
+    keys = sorted((set(KNOWN) | {k for k in d if k.endswith(SECRET_SUFFIXES)}) - set(KNOWN_READONLY))
     out = [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False} for k in keys]
     # config values are NOT secrets → shown in full (still editable here)
     out += [{"key": k, "present": bool(d.get(k)), "masked": d.get(k) or None, "is_config": True} for k in KNOWN_CONFIG]
+    # read-only status rows (connect-flow-owned) — masked, present/absent only, NOT editable here
+    out += [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False, "read_only": True}
+            for k in KNOWN_READONLY]
     return {"secrets": out,
-            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. .env is 0600 + gitignored."}
+            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. Read-only rows are managed by their own flow (e.g. SnapTrade connect). .env is 0600 + gitignored."}
 
 
 def _audit(key, actor):
@@ -76,6 +83,8 @@ def set_secret(key, value, actor="operator"):
     key = (key or "").strip()
     if not KEY_RE.match(key):
         raise ValueError("invalid key name (must be UPPER_SNAKE_CASE)")
+    if key in KNOWN_READONLY:
+        raise ValueError(f"{key} is read-only here — it is managed by its own flow (e.g. snaptrade_connect.py)")
     is_config = key in KNOWN_CONFIG
     if not is_config and not key.endswith(SECRET_SUFFIXES):
         raise ValueError(f"key must end with one of {SECRET_SUFFIXES} (secret keys only) or be a known config key")
