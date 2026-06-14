@@ -40,7 +40,7 @@ def register_user(user_id: str) -> dict:
     """Register the end-user with SnapTrade → store the returned userSecret. Idempotent-ish: re-registering
     an existing user_id returns a fresh secret (SnapTrade behavior)."""
     c = _client()
-    resp = c.authentication.register_snap_trade_user(body={"userId": user_id})
+    resp = c.authentication.register_snap_trade_user(user_id=user_id)
     body = getattr(resp, "body", resp) or {}
     secret = body.get("userSecret")
     if not secret:
@@ -56,8 +56,8 @@ def login_link(*, redirect_immediate: bool = False) -> str:
     if not u.get("ready"):
         raise RuntimeError("No connected user yet — run `register` first.")
     resp = c.authentication.login_snap_trade_user(
-        query_params={"userId": os.environ.get(creds.USER_ID_KEY, ""),
-                      "userSecret": os.environ.get(creds.USER_SECRET_KEY, "")})
+        user_id=os.environ.get(creds.USER_ID_KEY, ""),
+        user_secret=os.environ.get(creds.USER_SECRET_KEY, ""))
     body = getattr(resp, "body", resp) or {}
     return body.get("redirectURI") or body.get("redirect_uri") or str(body)
 
