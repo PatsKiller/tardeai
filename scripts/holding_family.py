@@ -101,6 +101,25 @@ def is_mutual_fund(symbol: str) -> bool:
     return len(s) == 5 and s.isalpha() and s.endswith("X")
 
 
+def is_unstoppable_fund(symbol: str) -> bool:
+    """True when NO exchange stop order can be placed on the holding — so a protective-stop advisory is
+    not actionable (manage via trim / rebalance instead). Covers BOTH:
+      • open-end mutual funds (is_mutual_fund) — transact at end-of-day NAV; and
+      • 401(k) / separate-account / collective fund codes carried in holding_proxies.HOLDING_PROXY_MAP
+        (e.g. SP500-D, JPM-LGCG, WM-BLAIR) — proxy-mapped to a tradeable ETF for technicals only; the
+        plan holding itself can't take a stop."""
+    s = (symbol or "").strip().upper()
+    if is_mutual_fund(s):
+        return True
+    try:
+        from holding_proxies import HOLDING_PROXY_MAP
+        if s in HOLDING_PROXY_MAP:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def protection_bounds(family: str) -> dict:
     return FAMILY_PROTECTION.get(family, FAMILY_PROTECTION[DEFAULT_FAMILY])
 

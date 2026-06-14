@@ -217,16 +217,17 @@ def _candidates(limit):
             continue
         if float(x.get("market_value") or 0) <= 100:
             continue
-        # Open-end mutual funds CANNOT take an exchange stop order (they transact at end-of-day NAV), so a
-        # protective-stop advisory is not actionable for them — skip the sweep. (The Open Trades card frames
-        # them as "trim / rebalance"; protection is a price-stop product for stocks/ETFs only.)
-        if hf.is_mutual_fund(sym):
+        # Funds with no exchange stop (open-end mutual funds AND 401k/separate-account proxy-mapped fund
+        # codes) can't take a protective stop order — transact at NAV / inside the plan — so a stop
+        # advisory is not actionable. Skip the sweep. (The Open Trades card frames them as "trim /
+        # rebalance"; protection is a price-stop product for stocks/ETFs only.)
+        if hf.is_unstoppable_fund(sym):
             skipped_funds.append(sym)
             continue
         rows.append(x)
     if skipped_funds:
-        print(f"  [skip] {len(skipped_funds)} mutual fund(s) excluded from protection sweep (no exchange "
-              f"stop possible): {', '.join(sorted(set(skipped_funds)))}")
+        print(f"  [skip] {len(skipped_funds)} fund(s) excluded from protection sweep (no exchange stop "
+              f"possible — mutual fund / 401k code): {', '.join(sorted(set(skipped_funds)))}")
     rows.sort(key=lambda x: -float(x.get("market_value") or 0))
     # one advisory per SYMBOL (largest position wins) — V/SCHD/SCHG live in several accounts
     seen, dedup = set(), []

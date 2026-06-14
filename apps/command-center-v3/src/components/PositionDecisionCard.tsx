@@ -70,7 +70,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
         const distColor = dist == null ? MUTED : dist < 0 ? RED : dist < 2 ? RED : dist < 5 ? AMBER : GREEN
         const unprotected = p.protection_state !== 'protected'
-        const mf = !!(p as any).is_mutual_fund            // open-end fund: no exchange stop can be placed
+        const mf = (p as any).is_unstoppable_fund ?? (p as any).is_mutual_fund   // fund (mutual/401k): no exchange stop possible
         const income = (p as any).holding_family === 'income'  // held for yield — protective stop optional
         const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
         const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c) — LOCKED until the canary write test passes Monday and you arm the protective-stop policy. Each order will require web + Telegram 2FA.'
@@ -85,10 +85,10 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
           {/* concrete advised action (replaces the vague "review protection") + Stage-2c-locked order buttons.
               Two axes the buttons make explicit: fixed-vs-trailing trigger, and market-vs-limit fill. */}
           {stop != null && unprotected && mf && (
-            // Open-end mutual fund: an exchange stop order cannot be placed (transacts at end-of-day NAV).
-            // Show the level as REFERENCE only and steer to trim/rebalance — no order buttons.
+            // Fund holding (mutual fund or 401k/proxy code): an exchange stop order cannot be placed
+            // (transacts at NAV / inside the plan). Show the level as REFERENCE only — no order buttons.
             <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(100,116,139,.12)', border: '1px solid rgba(100,116,139,.30)' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 900, color: MUTED }}>▸ Open-end fund — no exchange stop can be placed (trades at end-of-day NAV). Protect via tax-aware <b style={{ color: TEXT1 }}>trim / rebalance</b>; ${stop.toFixed(2)} is a reference level only.</span>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: MUTED }}>▸ Fund holding — no exchange stop can be placed (trades at NAV / inside the plan). Protect via tax-aware <b style={{ color: TEXT1 }}>trim / rebalance</b>; ${stop.toFixed(2)} is a reference level only.</span>
             </div>
           )}
           {stop != null && unprotected && !mf && (() => {
