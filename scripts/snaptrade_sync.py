@@ -28,6 +28,25 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "brokers"))
 
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 ACCOUNTS_MAP_PATH = PROJECT_ROOT / "config" / "snaptrade_accounts.json"
+STATE_PATH = PROJECT_ROOT / "data" / "runtime" / "snaptrade_sync_state.json"
+# A mapped account that SnapTrade stops returning is only ZEROED after this many consecutive --apply syncs
+# confirm it's gone — so a transient API miss never wipes a live account (e.g. the 401k mid-rollover).
+VANISH_CONFIRM_SYNCS = 2
+
+
+def _load_state() -> dict:
+    try:
+        return json.loads(STATE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _save_state(state: dict) -> None:
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text(json.dumps(state, indent=2))
+    except Exception:
+        pass
 
 
 def _load_account_map() -> dict:
@@ -92,6 +111,29 @@ def run(apply: bool = False) -> dict:
         synced[key] = positions
         report.append(f"  {key} ({aid}): {_summary(positions)}")
 
+    # ── vanished-account detection (e.g. the 401k closing after a rollover) ──────────────────────────
+    # A mapped account that SnapTrade no longer returns is ZEROED — but only after VANISH_CONFIRM_SYNCS
+    # consecutive --apply runs confirm it, so a transient API miss never wipes a live account. Guarded by
+    # a non-empty listing (if SnapTrade returns NO accounts at all, treat as an anomaly and touch nothing).
+    listed_ids = {str(a.get("id") or a.get("account_id") or "") for a in accounts}
+    state = _load_state()
+    miss = dict(state.get("missing", {}))
+    zeroed: list[str] = []
+    if accounts:  # only run the check when the listing itself is healthy
+        for aid, key in acct_map.items():
+            if aid in listed_ids:
+                miss.pop(key, None)  # present → reset the counter
+            else:
+                n = miss.get(key, 0) + 1
+                miss[key] = n
+                if n >= VANISH_CONFIRM_SYNCS:
+                    synced[key] = []  # confirmed gone → zero its holdings in the merge
+                    zeroed.append(key)
+                    report.append(f"  {key} ({aid}): VANISHED {n}x — zeroing holdings")
+                else:
+                    report.append(f"  {key} ({aid}): not returned by SnapTrade "
+                                  f"({n}/{VANISH_CONFIRM_SYNCS} confirmations before zeroing)")
+
     print("SnapTrade read-only sync — mapped accounts:")
     print("\n".join(report) if report else "  (no mapped accounts matched the connected brokerages)")
 
@@ -101,7 +143,23 @@ def run(apply: bool = False) -> dict:
     if not apply:
         print("DRY RUN — nothing written. Re-run with --apply to merge into holdings.json.")
         return {"ok": True, "applied": False, "accounts": len(synced),
-                "would_write": {k: len(v) for k, v in synced.items()}}
+                "would_write": {k: len(v) for k, v in synced.items()},
+                "would_zero": zeroed}
+
+    # persist the confirmation counters (only on a real apply, so dry runs don't advance them)
+    state["missing"] = miss
+    _save_state(state)
+
+    if zeroed:
+        try:
+            from alert_event_writer import save_alert_event
+            save_alert_event(alert_type="system_health", severity="warning",
+                             source_script="snaptrade_sync.py",
+                             raw_text=f"[snaptrade] zeroed vanished account(s): {', '.join(zeroed)} "
+                                      f"(no longer returned by SnapTrade after {VANISH_CONFIRM_SYNCS} syncs)",
+                             parsed_payload={"kind": "snaptrade_account_vanished", "accounts": zeroed})
+        except Exception:
+            pass
 
     # apply: merge only the synced accounts, write through the sanity gate
     import schwab_position_sync as sps
@@ -110,7 +168,8 @@ def run(apply: bool = False) -> dict:
     result = sps.protected_holdings_write(merged, source="snaptrade",
                                           account_key=",".join(sorted(synced.keys())), protect_basis=False)
     print(f"holdings write: {result.get('status')} (wrote={result.get('wrote')})")
-    return {"ok": bool(result.get("wrote")), "applied": True, "accounts": len(synced), "write": result}
+    return {"ok": bool(result.get("wrote")), "applied": True, "accounts": len(synced),
+            "zeroed": zeroed, "write": result}
 
 
 def main():
