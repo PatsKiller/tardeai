@@ -3265,7 +3265,9 @@ def _wl_items(query: dict = None):
                      (wi.source = 'personal_watchlist') DESC,
                      wi.first_seen_at ASC
         ) dedup
-        ORDER BY (COALESCE(in_directive_watch, false) = false), {sort} LIMIT 200
+        ORDER BY (COALESCE(in_directive_watch, false) = false),
+                 (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
+                 {sort} LIMIT 200
     """, params) or []
     return {"count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
