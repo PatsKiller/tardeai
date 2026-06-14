@@ -80,14 +80,24 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
             {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
           </div>
-          {/* concrete advised action (replaces the vague "review protection") + Stage-2c-locked order buttons */}
-          {stop != null && unprotected && <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10.5, fontWeight: 950, color: AMBER }}>▸ ADVISED: SELL STOP ${stop.toFixed(2)} GTC{off != null && trailPct != null ? ` · then trail ${trailPct.toFixed(0)}%` : ''}</span>
-            <span style={{ flex: 1 }} />
-            <button disabled title={STAGE2C_TIP} style={lockBtn}>🔒 Queue stop</button>
-            <button disabled title={'STOP-LIMIT variant — ' + STAGE2C_TIP} style={lockBtn}>🔒 Queue stop-limit</button>
-            <button disabled title={'Modify an active stop — ' + STAGE2C_TIP} style={lockBtn}>🔒 Modify</button>
-          </div>}
+          {/* concrete advised action (replaces the vague "review protection") + Stage-2c-locked order buttons.
+              Two axes the buttons make explicit: fixed-vs-trailing trigger, and market-vs-limit fill. */}
+          {stop != null && unprotected && (() => {
+            const trailReady = off != null && trailPct != null
+            const stopTip = `Queue a FIXED sell stop (stop-market) GTC at $${stop.toFixed(2)}. If the price falls to $${stop.toFixed(2)} a MARKET sell fires — it ALWAYS fills, but the fill can slip below $${stop.toFixed(2)} in a fast drop. The trigger does NOT move.\n\n${STAGE2C_TIP}`
+            const limitTip = `Queue a FIXED sell stop-limit GTC triggering at $${stop.toFixed(2)}. If the price hits $${stop.toFixed(2)} a LIMIT sell (~$${stop.toFixed(2)}) fires — it avoids a bad fill, but may NOT fill if the price gaps straight through, leaving you unprotected on the way down. The trigger does NOT move.\n\n${STAGE2C_TIP}`
+            const trailTip = trailReady ? `Queue a native TRAILING sell stop GTC, trailing ${trailPct.toFixed(0)}%${trailDollar != null ? ` (≈$${trailDollar.toFixed(2)})` : ''}. The stop starts near $${stop.toFixed(2)} and RATCHETS UP as the price rises (never down), locking in profit; if the price then falls ${trailPct.toFixed(0)}% from its high a MARKET sell fires. This is the order the advisory recommends.\n\n${STAGE2C_TIP}` : ''
+            const modifyTip = `Modify an ACTIVE stop — change the stop price, the trail %, or switch order type — once a protective order is already working at the broker.\n\n${STAGE2C_TIP}`
+            const recBtn = { ...lockBtn, border: `1px dashed ${AMBER}`, background: 'rgba(245,158,11,.14)', color: AMBER }
+            return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 950, color: AMBER }}>▸ ADVISED: {trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`} GTC</span>
+              <span style={{ flex: 1 }} />
+              <button disabled title={stopTip} style={lockBtn}>🔒 Queue stop (fixed)</button>
+              <button disabled title={limitTip} style={lockBtn}>🔒 Queue stop-limit (fixed)</button>
+              {trailReady && <button disabled title={trailTip} style={recBtn}>🔒 Queue trailing stop ★</button>}
+              <button disabled title={modifyTip} style={lockBtn}>🔒 Modify</button>
+            </div>
+          })()}
         </>
       })()}
       {protectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{protectionRec.rationale}</div>}
