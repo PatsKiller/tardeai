@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-14 - Local model FLEET health check (pings every installed model)
+
+New `scripts/check_local_model_fleet.py` — walks the WHOLE Ollama fleet from `/api/tags` and pings each
+model (tiny prompt for generation, short input for embedding), recording ok / latency / failure-reason
+per model. The old `check_local_llm_health.py` only exercised the single SAFE model (4b), which is why
+gemma3:12b could rot unnoticed. Detects three failure modes: HTTP 5xx, timeout, and **degenerate output**
+— the probe found gemma3:12b returns `<pad><pad>…` special-tokens-only (30s) rather than 500ing, so a
+"non-empty response" was NOT enough; the check strips `<pad>/<unk>/<eos>/<bos>` and fails if nothing real
+remains. CRITICAL models (derived from `DEFAULT_LOCAL_LLM_MODEL` ∪ `LOCAL_LLM_MODEL` ∪
+`LOCAL_LLM_SAFE_MODEL` ∪ `CRITICAL_LOCAL_MODELS`, no hardcoding) → exit 1 + `critical` alert; any other
+model failing → WARN + `warning` alert, exit 0 (a broken-but-unused 12b is surfaced, not silenced).
+`--alert` writes an `alert_events` row (curated `system_health` type, `parsed_payload.kind=local_model_health`)
+so it flows into the existing SIEM/Telegram monitoring. `LLM_HEALTH_SKIP_MODELS` excludes heavy models
+(the two 17GB ones) from the probe. **Scheduled:** cron daily 06:35 pre-market with `--alert`.
+
 ## 2026-06-14 - REVERT local default to gemma3:4b (12b broken) + CIO queue prioritization
 
 **Revert:** the gemma3:12b switch below was REVERTED (commit 0f219183). A grok-vs-12b A/B exposed that
