@@ -38,6 +38,23 @@ def _user():
     return SnapTradeUser.from_env()
 
 
+def broker_allows_trading() -> tuple[bool, str]:
+    """Does the connected brokerage actually support trading via SnapTrade? Many (incl. FIDELITY) are
+    READ-ONLY — allows_trading=False — so no order can ever be placed there regardless of this module's
+    gate. Checked live so the scaffold never pretends a trade path exists where the broker has none.
+    Returns (ok, detail)."""
+    try:
+        u = _user(); c = _client()
+        auths = c.connections.list_brokerage_authorizations(user_id=u.user_id, user_secret=u.user_secret)
+        for a in (getattr(auths, "body", auths) or []):
+            b = a.get("brokerage") or {}
+            if b.get("allows_trading"):
+                return (True, f"{b.get('name')} allows_trading=True (type={a.get('type')})")
+        return (False, "no connected brokerage allows trading via SnapTrade (e.g. Fidelity is read-only)")
+    except Exception as e:
+        return (False, f"capability check failed ({type(e).__name__}: {str(e)[:60]})")
+
+
 def _client():
     from .snaptrade_read import _client as _c
     return _c()
@@ -87,6 +104,9 @@ def place(*, trade_id: str, confirmed: bool = False) -> dict:
     per-order 2FA to be wired before real use). Raises if not armed/confirmed."""
     if not ENABLED:
         raise RuntimeError("SnapTrade trade path DISABLED — commit ENABLED=True to arm (future).")
+    ok, detail = broker_allows_trading()
+    if not ok:
+        raise RuntimeError(f"broker does not support SnapTrade trading: {detail}")
     if not confirmed:
         raise RuntimeError("per-order confirmation required (2FA) before place() — refusing.")
     u = _user(); c = _client()
