@@ -6,7 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
+const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -76,6 +76,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: forecast } = useApi<any>('/api/v2/forecast', 300_000)
+  const { data: lookthrough } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000)
 
   // Allocation follows the account filter: per-account look-through when an account is selected, else global.
   const sectorsByAccount = overview?.sectors_by_account ?? {}
@@ -316,6 +317,71 @@ export default function PortfolioHub({ onDrill }: Props) {
           </div>
         </div>
       )}
+
+      {tab === 'Look-through' && (() => {
+        const lt = (lookthrough as any)?.data ?? lookthrough ?? {}
+        const themes = Object.entries(lt.themes ?? {}).map(([name, t]: any) => ({ name, ...t })).sort((a: any, b: any) => b.pct - a.pct)
+        const top = lt.top_underlying ?? []
+        const advs = lt.advisories ?? []
+        const maxThemePct = Math.max(1, ...themes.map((t: any) => t.pct))
+        const maxStockPct = Math.max(1, ...top.map((s: any) => s.pct))
+        const sevColor = (s: string) => s === 'high' ? '#ef4444' : s === 'medium' ? '#f59e0b' : '#22c55e'
+        if (!themes.length) return <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>No look-through computed yet — run <code>scripts/portfolio_lookthrough_themes.py --grok</code>.</div>
+        return (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
+              True stock-level look-through — funds resolved to their underlying holdings. Coverage <b style={{ color: 'var(--text1)' }}>{lt.coverage_pct}%</b> (top-10 fund holdings; theme %s are lower bounds). Hover a stock to see which funds hold it.
+            </div>
+            {lt.grok_narrative && (
+              <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#c084fc', marginBottom: 4 }}>🧠 AI ADVISORY (Grok)</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.55 }}>{lt.grok_narrative}</div>
+              </div>
+            )}
+            {advs.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                {advs.map((a: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'baseline', padding: '7px 11px', borderRadius: 8, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
+                    <span style={{ fontSize: 8.5, fontWeight: 900, color: sevColor(a.severity), textTransform: 'uppercase' }}>{a.severity}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)' }}>{a.title}</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--text2)' }}>{a.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Theme exposure</div>
+                {themes.map((t: any) => (
+                  <div key={t.name} title={(t.by_stock ?? []).map((s: any) => `${s.symbol} $${Math.round(s.value).toLocaleString()}`).join(' · ')} style={{ marginBottom: 7, cursor: 'help' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: 'var(--text1)' }}>{t.name}</span>
+                      <span style={{ color: 'var(--text2)' }}>${Math.round(t.value).toLocaleString()} · <b style={{ color: '#60a5fa' }}>{t.pct}%</b></span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, marginTop: 2 }}>
+                      <div style={{ height: '100%', width: `${t.pct / maxThemePct * 100}%`, background: '#60a5fa', borderRadius: 3 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Top underlying stocks (look-through)</div>
+                {top.slice(0, 15).map((s: any) => (
+                  <div key={s.symbol} title={'Held via:\n' + (s.in ?? []).map((x: any) => `  ${x.src} — $${Math.round(x.value).toLocaleString()}`).join('\n')} style={{ marginBottom: 6, cursor: 'help' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{s.symbol} <span style={{ fontSize: 8.5, color: 'var(--text4)' }}>ⓘ</span></span>
+                      <span style={{ color: 'var(--text2)' }}>${Math.round(s.value).toLocaleString()} · <b style={{ color: s.pct >= 8 ? '#ef4444' : s.pct >= 5 ? '#f59e0b' : '#22c55e' }}>{s.pct}%</b></span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, marginTop: 2 }}>
+                      <div style={{ height: '100%', width: `${s.pct / maxStockPct * 100}%`, background: s.pct >= 8 ? '#ef4444' : s.pct >= 5 ? '#f59e0b' : '#22c55e', borderRadius: 3 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'Dividends' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
