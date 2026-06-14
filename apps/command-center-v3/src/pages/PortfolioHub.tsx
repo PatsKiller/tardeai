@@ -77,7 +77,9 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: forecast } = useApi<any>('/api/v2/forecast', 300_000)
 
-  const sectors = overview?.sectors ?? []
+  // Allocation follows the account filter: per-account look-through when an account is selected, else global.
+  const sectorsByAccount = overview?.sectors_by_account ?? {}
+  const sectors = (acctFilter && sectorsByAccount[acctFilter]) ? sectorsByAccount[acctFilter] : (overview?.sectors ?? [])
   const allHoldings = holdings?.holdings ?? []
   const payers = divs?.payers ?? []
 

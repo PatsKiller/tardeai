@@ -146,8 +146,9 @@ def main():
     holdings_list = holdings_data.get("holdings", [])
     snapshot_tickers = snapshot_data.get("tickers", {})
 
-    # Bucket: sector → total value
+    # Bucket: sector → total value (global) + per-account so the UI can filter the allocation by account
     sector_bucket = defaultdict(float)
+    sector_by_account = defaultdict(lambda: defaultdict(float))
     # Per-symbol resolution log
     resolution_log = []
     unresolved = []
@@ -155,6 +156,7 @@ def main():
     for h in holdings_list:
         sym = h.get("symbol", "")
         mv = float(h.get("market_value") or 0)
+        acct = h.get("account") or h.get("account_id") or "unknown"
 
         if not sym or h.get("is_loan") or h.get("is_cash") or mv <= 0:
             continue
@@ -176,6 +178,7 @@ def main():
                     normalized_pct = (weight / total_weight * 100) if total_weight else weight
                     allocated = mv * (normalized_pct / 100)
                     sector_bucket[sector] += allocated
+                    sector_by_account[acct][sector] += allocated
 
                 resolution_log.append({
                     "symbol": sym,
@@ -192,6 +195,7 @@ def main():
                 # No weights yet — fall back to asset class label
                 label = asset_class or "Other / Unclassified"
                 sector_bucket[label] += mv
+                sector_by_account[acct][label] += mv
                 resolution_log.append({
                     "symbol": sym,
                     "method": "asset_class_label",
@@ -204,6 +208,7 @@ def main():
         rec = snapshot_tickers.get(sym, {"symbol": sym})
         sector, industry, source = _resolve_direct_stock(rec, manual_map)
         sector_bucket[sector] += mv
+        sector_by_account[acct][sector] += mv
 
         if sector == "Other / Unclassified":
             unresolved.append({"symbol": sym, "market_value": round(mv, 2)})
@@ -228,11 +233,21 @@ def main():
         for sector, value in sorted(sector_bucket.items(), key=lambda x: x[1], reverse=True)
     ]
 
+    # Per-account sector breakdown (so the UI Allocation can filter by selected account)
+    resolved_sectors_by_account = {}
+    for acct, buckets in sector_by_account.items():
+        atot = sum(buckets.values()) or 1.0
+        resolved_sectors_by_account[acct] = [
+            {"sector": s, "value": round(v, 2), "pct": round(v / atot * 100, 2)}
+            for s, v in sorted(buckets.items(), key=lambda x: x[1], reverse=True)
+        ]
+
     # Build overlap analysis (passive)
     overlap_analysis = build_overlap_analysis(holdings_list, lookthrough, snapshot_tickers)
 
     # Write to holdings.json
     holdings_data["resolved_sectors"] = resolved_sectors
+    holdings_data["resolved_sectors_by_account"] = resolved_sectors_by_account
     holdings_data["overlap_analysis"] = overlap_analysis
     holdings_data["lookthrough_as_of"] = date.today().isoformat()
     from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
