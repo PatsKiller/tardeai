@@ -140,7 +140,13 @@ def main():
                    "Upgrade/downgrade headlines are EVENT pills. Advisory; no scoring/trade change.",
            "pills": sorted(pills, key=lambda p: (not p["has_professional_coverage"], p["symbol"]))}
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(out, indent=2, default=str))
+    # ATOMIC write — never leave readers (the watchlist analyst-rating layer) seeing a half-written/empty
+    # file during the daily rebuild (that briefly blanked all Strong-Buy/Buy ratings).
+    import os, tempfile
+    _fd, _tmp = tempfile.mkstemp(dir=str(OUT.parent), suffix=".tmp")
+    with os.fdopen(_fd, "w") as _f:
+        _f.write(json.dumps(out, indent=2, default=str))
+    os.replace(_tmp, OUT)
     print(json.dumps({"symbols": len(pills), "coverage_by_tier": coverage,
                       "with_consensus": sum(1 for p in pills if p["has_professional_coverage"]),
                       "divergent": sum(1 for p in pills if p["divergence"] == "divergent")}, indent=2))
