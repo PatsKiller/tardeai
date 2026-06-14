@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-06-07T02:44:00.755091+00:00",
+  "run_at": "2026-06-14T07:30:37.087514+00:00",
   "verdict": "PASS",
   "passed": 14,
   "total": 14,
@@ -12,7 +12,7 @@
     {
       "check": "quality-gated run present",
       "pass": true,
-      "detail": "run_id=ppbt_auto_20260607, rows=12"
+      "detail": "run_id=ppbt_auto_20260614, rows=12"
     },
     {
       "check": "raw n AND reliable n reported",
@@ -27,7 +27,7 @@
     {
       "check": "premature cost path-measured where path exists",
       "pass": true,
-      "detail": "11 path_measured rule rows; all known=true=True"
+      "detail": "10 path_measured rule rows; all known=true=True"
     },
     {
       "check": "estimate quality honestly labelled",
@@ -37,12 +37,12 @@
     {
       "check": "intrabar paths ingested",
       "pass": true,
-      "detail": "11383 bars / 31 trades"
+      "detail": "9546 bars / 31 trades"
     },
     {
       "check": "rule graft verdicts blocked",
       "pass": true,
-      "detail": "max_reliable_n=11 (floor 20)"
+      "detail": "max_reliable_n=10 (floor 20)"
     },
     {
       "check": "shadow recommendations blocked",
