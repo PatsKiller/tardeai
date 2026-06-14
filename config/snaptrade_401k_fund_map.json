@@ -1,0 +1,55 @@
+{
+  "_comment": "SnapTrade Fidelity 401k opaque fund codes -> source proxy fund (for GICS lookthrough) + Morningstar category. Applied to data/portfolios/state/manual_sector_map.json + fund_lookthrough.json. Recoverable mapping if runtime state is rebuilt. SnapTrade codes change if the plan re-maps them.",
+  "codes": {
+    "3905": {
+      "fund": "Fidelity Contrafund Pool",
+      "category": "US Large Growth",
+      "lookthrough_source": "FID-CONTRA-F"
+    },
+    "TILCX": {
+      "fund": "T. Rowe Price Instl Large-Cap Core Growth",
+      "category": "US Large Growth",
+      "lookthrough_source": "JPM-LGCG"
+    },
+    "OM09": {
+      "fund": "JPM Large Cap Growth CF-A",
+      "category": "US Large Growth",
+      "lookthrough_source": "JPM-LGCG"
+    },
+    "3952": {
+      "fund": "S&P 500 Index Pool CL D",
+      "category": "US Large Blend",
+      "lookthrough_source": "SP500-D"
+    },
+    "VFTNX": {
+      "fund": "Vanguard FTSE Social Index",
+      "category": "US Large Blend",
+      "lookthrough_source": "VANG-FTSE-SOC"
+    },
+    "O7Z7": {
+      "fund": "SS Russell Small/Mid Cap Index II",
+      "category": "US Small/Mid Cap",
+      "lookthrough_source": "SS-SMMD"
+    },
+    "OG51": {
+      "fund": "William Blair Small-Mid Cap Growth",
+      "category": "US Small/Mid Cap",
+      "lookthrough_source": "WM-BLAIR"
+    },
+    "ABSZX": {
+      "fund": "AB Discovery Value Fund Z",
+      "category": "US Small/Mid Cap",
+      "lookthrough_source": "AB-DISC-Z"
+    },
+    "7526": {
+      "fund": "Fidelity Diversified International Pool CL C",
+      "category": "International",
+      "lookthrough_source": "FID-DIVINTL"
+    },
+    "O7Z6": {
+      "fund": "SS Global All Cap Equity ex-US Index II",
+      "category": "International",
+      "lookthrough_source": "SS-GACEQ"
+    }
+  }
+}
