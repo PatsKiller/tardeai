@@ -43,6 +43,7 @@ export default function WatchpoolHub({ onDrill }: Props) {
   const [rationale, setRationale] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [fStatus, setFStatus] = useState('all')   // watchpool status filter (clickable top row)
 
   const createDirective = async () => {
     setBusy(true); setMsg(null)
@@ -73,7 +74,8 @@ export default function WatchpoolHub({ onDrill }: Props) {
 
   const directives = wd?.directives ?? []
   const hits = wd?.recent_hits ?? []
-  const pool = wp?.rows ?? []
+  const allRows = wp?.rows ?? []
+  const pool = fStatus === 'all' ? allRows : allRows.filter((r: any) => String(r.current_status).toUpperCase() === fStatus.toUpperCase())
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -140,10 +142,20 @@ export default function WatchpoolHub({ onDrill }: Props) {
 
       {/* Unified watchpool */}
       <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Watchpool
-          <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 400, marginLeft: 8 }}>
-            {Object.entries(wp?.by_status ?? {}).map(([k, v]: any) => `${v} ${String(k).toLowerCase()}`).join(' · ')}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Watchpool</span>
+          {/* clickable status row — each chip filters the pool; 'all' resets */}
+          {([['all', allRows.length]] as any[]).concat(Object.entries(wp?.by_status ?? {})).map(([k, v]: any) => {
+            const active = fStatus.toUpperCase() === String(k).toUpperCase()
+            return (
+              <button key={k} onClick={() => setFStatus(k)} title={`show ${String(k).toLowerCase()}`}
+                style={{ fontSize: 9.5, fontWeight: active ? 800 : 600, padding: '3px 9px', borderRadius: 5, cursor: 'pointer',
+                  background: active ? 'rgba(96,165,250,.22)' : 'var(--bg2)', color: active ? '#93c5fd' : 'var(--text2)',
+                  border: `1px solid ${active ? '#60a5fa' : 'var(--border)'}` }}>
+                {v} {String(k).toLowerCase()}
+              </button>
+            )
+          })}
         </div>
         {pool.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>Watchpool empty.</div> : (<>
           <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
