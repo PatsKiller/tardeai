@@ -108,11 +108,11 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         decision, reason, pr = "Cost basis uncertain", "High-value position with unverified cost basis — resolve before any tax/exit decision.", "high"
         nxt = "Resolve cost basis (CSV/broker reconciliation)"
     elif mutual_fund and ((upnl_pct or 0) > 10 or big_gain_unprot):
-        # Open-end mutual fund: an exchange stop CANNOT be placed (transacts at EOD NAV). A large gain is
-        # still worth protecting — but via a tax-aware trim / rebalance, never a stop order.
+        # Fund with no exchange stop (mutual fund or 401k/proxy code): a stop CANNOT be placed (transacts at
+        # NAV / inside the plan). A large gain is still worth protecting — via a tax-aware trim / rebalance.
         decision, reason, pr = ("Large gain — review trim (fund)",
-            f"+{round(upnl_pct or 0)}% in an open-end fund with no exchange stop available — protect the "
-            "gain with a tax-aware trim / rebalance, not a stop order.", "high")
+            f"+{round(upnl_pct or 0)}% in a fund with no exchange stop available — protect the gain with a "
+            "tax-aware trim / rebalance, not a stop order.", "high")
         nxt = "Review trim / rebalance (no stop on a fund)"
     elif big_gain_unprot or (not protected and not stop and (upnl_pct or 0) > 10):
         decision, reason, pr = "Needs protection review", f"+{round(upnl_pct or 0)}% gain with no active protection{', bullish trend' if 'bullish_trend' in opp_flags else ''}{', trailing candidate' if 'trailing_candidate' in opp_flags else ''}.", "high"
@@ -133,10 +133,11 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         nxt = "Income role — monitor distributions (stop optional)"
     elif "no_protection" in risk_flags:
         if mutual_fund:
-            # Un-stoppable open-end fund, no large gain: don't tell the operator to place a stop that can't exist.
+            # Un-stoppable fund (mutual fund or 401k/proxy code), no large gain: don't tell the operator to
+            # place a stop that can't exist.
             decision, reason, pr = ("Fund — no exchange stop",
-                "Open-end fund: a protective stop order can't be placed (transacts at end-of-day NAV). "
-                "Manage via sell / rebalance and monitor total return — a stop does not apply.", "low")
+                "Fund / plan holding: a protective stop order can't be placed (transacts at NAV / inside "
+                "the plan). Manage via sell / rebalance and monitor total return — a stop does not apply.", "low")
             nxt = "Monitor NAV / total return — no stop applies"
         else:
             # Stop-eligible (stock or ETF), unprotected, low-urgency. NO protective stop in place. Do NOT say
@@ -640,9 +641,9 @@ def build_intelligence():
                         pass
             _mv = p.get("market_value") or (cur_px * sh if cur_px else None)
             try:
-                from holding_family import classify_family, is_mutual_fund
+                from holding_family import classify_family, is_unstoppable_fund
                 _fam, _ = classify_family(sym)
-                _is_mf = is_mutual_fund(sym)
+                _is_mf = is_unstoppable_fund(sym)   # mutual fund OR 401k/proxy fund code → no exchange stop
             except Exception:
                 _fam, _is_mf = "position", False
             _decision = _derive_decision(
@@ -662,7 +663,7 @@ def build_intelligence():
                 "trade_id": None, "symbol": sym, "company_name": p.get("company_name"),
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
-                "holding_family": _fam, "is_mutual_fund": _is_mf, "stop_eligible": (not _is_mf),
+                "holding_family": _fam, "is_mutual_fund": _is_mf, "is_unstoppable_fund": _is_mf, "stop_eligible": (not _is_mf),
                 "entry_price": ent, "avg_cost": p.get("avg_cost"), "cost_basis": p.get("cost_basis"),
                 "basis_kind": ("entry" if p.get("src") == "paper_trades" else "avg_cost"),
                 "basis_reliable": basis_reliable, "basis_warning": basis_warning,
