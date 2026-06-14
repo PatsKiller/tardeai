@@ -18385,6 +18385,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _john_decide(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/portfolio/ask":
+            # contextual "ask the agents" — pulls real positions + analyst + look-through, routes to Grok
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import portfolio_ask as _pa
+                q = (body or {}).get("question", "").strip()
+                if not q:
+                    return 400, {"ok": False, "error": "no question"}
+                return 200, {"ok": True, **_pa.ask(q)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/snaptrade/credentials":
             # Save SnapTrade client keys (clientId + consumerKey) to config/broker_credentials.env.
             # Write-only: the response never echoes the consumer key, only masked status. No trading.
