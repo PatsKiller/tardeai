@@ -333,9 +333,22 @@ export default function PortfolioHub({ onDrill }: Props) {
               True stock-level look-through — funds resolved to their underlying holdings. Coverage <b style={{ color: 'var(--text1)' }}>{lt.coverage_pct}%</b> (top-10 fund holdings; theme %s are lower bounds). Hover a stock to see which funds hold it.
             </div>
             {lt.grok_narrative && (
-              <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 12 }}>
+              <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 10 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: '#c084fc', marginBottom: 4 }}>🧠 AI ADVISORY (Grok)</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.55 }}>{lt.grok_narrative}</div>
+              </div>
+            )}
+            {(lt.agent_advisories ?? []).length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8, marginBottom: 12 }}>
+                {lt.agent_advisories.map((a: any, i: number) => {
+                  const c = a.agent.startsWith('CIO') ? '#60a5fa' : a.agent.startsWith('Risk') ? '#ef4444' : '#22c55e'
+                  return (
+                    <div key={i} style={{ background: 'var(--bg2)', border: `1px solid ${c}44`, borderTop: `2px solid ${c}`, borderRadius: 8, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: c, marginBottom: 4 }}>{a.agent} <span style={{ color: 'var(--text4)', fontWeight: 500 }}>· {a.model}</span></div>
+                      <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{a.text}</div>
+                    </div>
+                  )
+                })}
               </div>
             )}
             {advs.length > 0 && (
