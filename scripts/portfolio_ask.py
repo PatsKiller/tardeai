@@ -21,17 +21,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 STATE = ROOT / "data" / "portfolios" / "state"
 RUNTIME = ROOT / "data" / "runtime"
 
-_PRIVATE = {"SPCX": "SpaceX", "SPACEX": "SpaceX", "STRIPE": "Stripe", "OPENAI": "OpenAI",
-            "ANTHROPIC": "Anthropic", "DATABRICKS": "Databricks", "XAI": "xAI"}
-# per-name truth to inject so the model never invents a live ticker
+# Only GENUINELY private (no public ticker) names. NOTE: SpaceX IPO'd 2026-06-12 (SPCX, public) — NOT here.
+# Keep current vs live quote data; do not assume private from stale knowledge.
+_PRIVATE = {"STRIPE": "Stripe", "OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "DATABRICKS": "Databricks"}
 _PRIVATE_FACTS = {
-    "SpaceX": "SpaceX is a PRIVATE company — there is NO public SpaceX stock or ticker. 'SPCX' is NOT "
-              "SpaceX (it was an unrelated, now-delisted SPAC ETF). The ONLY exposure is private/secondary "
-              "(ARK Venture Fund ARKVX, Destiny Tech100 DXYZ which holds some SpaceX, or pre-IPO secondaries) "
-              "— illiquid, high-fee, often gated. SpaceX has NOT IPO'd.",
-    "OpenAI": "OpenAI is private — no public stock. Indirect exposure only via Microsoft (MSFT) or private "
-              "vehicles. No OpenAI ticker exists.",
-    "xAI": "xAI is private — no public stock/ticker. Indirect via private rounds only.",
+    "OpenAI": "OpenAI is private — no public stock. Indirect exposure only via Microsoft (MSFT).",
     "Stripe": "Stripe is private — no public stock/ticker.",
     "Anthropic": "Anthropic is private — indirect exposure only via Amazon (AMZN)/Google (GOOGL) stakes.",
     "Databricks": "Databricks is private — no public stock/ticker.",
@@ -108,10 +102,13 @@ def ask(question: str, lane: str | None = None) -> dict:
             "You are the portfolio CIO/risk advisor. Answer the operator's question about THEIR portfolio "
             "with specific numbers and a clear recommendation. Use the analyst targets to frame reward:risk "
             "(R:R = upside to mean target vs downside to low target).\n"
-            "CRITICAL — DO NOT HALLUCINATE: only use the data given. For any name marked 'private': it is "
-            "NOT publicly traded, has NO live ticker, and CANNOT be bought directly — never imply otherwise; "
-            "state it is private and give only the real access vehicles below. If you are unsure of a fact, "
-            "say so rather than inventing it. If they ask for an alert, state the exact alert condition.\n"
+            "CRITICAL — DEFER TO LIVE DATA OVER YOUR TRAINING KNOWLEDGE: your knowledge may be stale and "
+            "companies IPO. If a name appears in the context with a live price/quote/position, it IS publicly "
+            "traded NOW — never claim it is private based on prior knowledge (e.g. SpaceX/SPCX went public "
+            "2026-06-12 and trades on Nasdaq). Only treat a name as private if it is explicitly marked "
+            "'private' in the context below; for those, give the real access vehicles and don't invent a "
+            "ticker. If unsure of a fact, say so rather than inventing it. If they ask for an alert, state "
+            "the exact alert condition.\n"
             + (f"PRIVATE-NAME FACTS (use verbatim, do not contradict):\n{private_facts}\n" if private_facts else "")
             + "Be concrete, 5-8 sentences.\n\n"
             f"QUESTION: {question}\n\nPORTFOLIO CONTEXT:\n{json.dumps(ctx, indent=2)}")
