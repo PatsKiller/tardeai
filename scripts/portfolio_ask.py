@@ -22,7 +22,20 @@ STATE = ROOT / "data" / "portfolios" / "state"
 RUNTIME = ROOT / "data" / "runtime"
 
 _PRIVATE = {"SPCX": "SpaceX", "SPACEX": "SpaceX", "STRIPE": "Stripe", "OPENAI": "OpenAI",
-            "ANTHROPIC": "Anthropic", "DATABRICKS": "Databricks"}
+            "ANTHROPIC": "Anthropic", "DATABRICKS": "Databricks", "XAI": "xAI"}
+# per-name truth to inject so the model never invents a live ticker
+_PRIVATE_FACTS = {
+    "SpaceX": "SpaceX is a PRIVATE company — there is NO public SpaceX stock or ticker. 'SPCX' is NOT "
+              "SpaceX (it was an unrelated, now-delisted SPAC ETF). The ONLY exposure is private/secondary "
+              "(ARK Venture Fund ARKVX, Destiny Tech100 DXYZ which holds some SpaceX, or pre-IPO secondaries) "
+              "— illiquid, high-fee, often gated. SpaceX has NOT IPO'd.",
+    "OpenAI": "OpenAI is private — no public stock. Indirect exposure only via Microsoft (MSFT) or private "
+              "vehicles. No OpenAI ticker exists.",
+    "xAI": "xAI is private — no public stock/ticker. Indirect via private rounds only.",
+    "Stripe": "Stripe is private — no public stock/ticker.",
+    "Anthropic": "Anthropic is private — indirect exposure only via Amazon (AMZN)/Google (GOOGL) stakes.",
+    "Databricks": "Databricks is private — no public stock/ticker.",
+}
 
 
 def _load(p, d):
@@ -66,8 +79,8 @@ def gather_context(question: str) -> dict:
                 continue
             seen_private.add(_PRIVATE[sym])
             positions.append({"symbol": sym, "name": _PRIVATE[sym], "private": True,
-                              "note": "private / pre-IPO — no public ticker; access only via venture funds "
-                                      "(e.g. ARK Venture ARKVX) or pre-IPO vehicles. Illiquid, high fee."})
+                              "note": _PRIVATE_FACTS.get(_PRIVATE[sym],
+                                      "Private company — no public ticker; access via private vehicles only.")})
             continue
         pos = _position(sym, holdings, total)
         pa = pills.get(sym)
@@ -90,13 +103,17 @@ def ask(question: str, lane: str | None = None) -> dict:
     try:
         import llm_lane
         use = lane or ("grok" if llm_lane.available("grok") else "local")
+        private_facts = "\n".join(f"- {p['name']}: {p['note']}" for p in ctx["positions"] if p.get("private"))
         prompt = (
             "You are the portfolio CIO/risk advisor. Answer the operator's question about THEIR portfolio "
             "with specific numbers and a clear recommendation. Use the analyst targets to frame reward:risk "
-            "(R:R = upside to mean target vs downside to low target). If a name is private/pre-IPO, explain "
-            "the only realistic access vehicles and the liquidity/fee trade-off — do NOT treat it as a normal "
-            "buy. If they ask for an alert, state the exact alert condition you'd set. Be concrete, 5-8 "
-            "sentences.\n\n"
+            "(R:R = upside to mean target vs downside to low target).\n"
+            "CRITICAL — DO NOT HALLUCINATE: only use the data given. For any name marked 'private': it is "
+            "NOT publicly traded, has NO live ticker, and CANNOT be bought directly — never imply otherwise; "
+            "state it is private and give only the real access vehicles below. If you are unsure of a fact, "
+            "say so rather than inventing it. If they ask for an alert, state the exact alert condition.\n"
+            + (f"PRIVATE-NAME FACTS (use verbatim, do not contradict):\n{private_facts}\n" if private_facts else "")
+            + "Be concrete, 5-8 sentences.\n\n"
             f"QUESTION: {question}\n\nPORTFOLIO CONTEXT:\n{json.dumps(ctx, indent=2)}")
         out = llm_lane.generate(prompt, lane=use, timeout=90)
         answer = out if (out and not str(out).startswith("LLM error")) else "(LLM unavailable — try again)"

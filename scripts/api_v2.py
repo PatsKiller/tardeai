@@ -926,6 +926,18 @@ def watchlist_combined():
         if item.get("rsi_signal") in ("oversold", "overbought"):
             item["alert"] = f"RSI {item.get('rsi_signal').upper()}: {item.get('rsi'):.0f}" if rsi else None
 
+    # ── Flag PRIVATE / non-tradeable pseudo-tickers (SPCX≠SpaceX) so the card stops looking investable ──
+    try:
+        import private_symbols as _ps
+        for it in items:
+            info = _ps.private_info(it.get("symbol", ""))
+            if info:
+                it["private_nontradeable"] = True
+                it["private_company"] = info["company"]
+                it["private_note"] = info["note"]
+    except Exception:
+        pass
+
     return {"count": len(items), "items": items}
 
 
@@ -3278,7 +3290,19 @@ def _wl_items(query: dict = None):
                  (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
                  {sort} LIMIT 200
     """, params) or []
-    return {"count": len(rows), "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+    _items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    # Flag PRIVATE / non-tradeable pseudo-tickers (SPCX≠SpaceX) so cards stop looking investable
+    try:
+        import private_symbols as _ps
+        for _it in _items:
+            _info = _ps.private_info(_it.get("symbol", ""))
+            if _info:
+                _it["private_nontradeable"] = True
+                _it["private_company"] = _info["company"]
+                _it["private_note"] = _info["note"]
+    except Exception:
+        pass
+    return {"count": len(_items), "items": _items}
 
 
 def _wl_summary():
@@ -18395,6 +18419,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 return 200, {"ok": True, **_pa.ask(q)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/portfolio/ask-alert":
+            # persist an alert from an ask ("alert me when I can get SpaceX") — monitor fires to Telegram
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import ask_alerts as _aa
+                b = body or {}
+                q = b.get("question", "").strip()
+                if not q:
+                    return 400, {"ok": False, "error": "no question"}
+                return 200, {"ok": True, "alert": _aa.add_alert(q, b.get("context") or {})}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/snaptrade/credentials":

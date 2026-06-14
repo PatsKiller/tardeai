@@ -13,6 +13,20 @@ export default function AskAgents({ examples = EXAMPLES }: { examples?: string[]
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
   const [res, setRes] = useState<any>(null)
+  const [alertMsg, setAlertMsg] = useState('')
+
+  const setAlert = async () => {
+    if (!res?.question) return
+    setAlertMsg('saving…')
+    try {
+      const r = await fetch('/api/v2/portfolio/ask-alert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: res.question, context: res.context }),
+      })
+      const d = await r.json()
+      setAlertMsg(d.ok ? `🔔 Alert set (${d.alert?.kind}) — fires to Telegram when met` : `⚠ ${d.error}`)
+    } catch (e: any) { setAlertMsg('⚠ ' + String(e?.message || e)) }
+  }
 
   const ask = async (question?: string) => {
     const text = (question ?? q).trim()
@@ -64,6 +78,10 @@ export default function AskAgents({ examples = EXAMPLES }: { examples?: string[]
                   </span>
                 ))}
                 <span style={{ fontSize: 8.5, color: 'var(--text4)', marginLeft: 'auto' }}>{res.model}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                <button onClick={setAlert} style={{ fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 6, border: '1px solid #f59e0b', background: 'rgba(245,158,11,.14)', color: '#f59e0b', cursor: 'pointer' }}>🔔 Set this as an alert</button>
+                {alertMsg && <span style={{ fontSize: 10, color: alertMsg.startsWith('⚠') ? '#ef4444' : '#22c55e' }}>{alertMsg}</span>}
               </div>
             </>
           )}
