@@ -11,7 +11,10 @@ export type PlanWarning = { text: string; color: string }
 const RED = '#ef4444'
 const AMBER = '#f59e0b'
 
-export const MONITOR_RULES = '+1R → stop to breakeven · T1 filled → trail 1R or prior-day low · close below stop = exit, never average down · no +0.5R within 5 sessions → time-stop review'
+// Order-type names match lib/schwabTickets.ts + the Open Trades protection buttons: tranche scale-outs
+// are SELL LIMIT GTC; the protective exit is a fixed SELL STOP that ratchets up; the runner rides a
+// native SELL TRAILING STOP. Naming the type (not just "trail") keeps the vocabulary identical everywhere.
+export const MONITOR_RULES = '+1R → move SELL STOP to breakeven · T1 filled → SELL TRAILING STOP 1R (or prior-day low) · close below stop = exit, never average down · no +0.5R within 5 sessions → time-stop review'
 
 export function exitLadder(entry: number | null, stop: number | null, planTarget: number | null, streetTarget: number | null): Ladder | null {
   if (!entry || !stop || entry <= stop) return null
@@ -19,11 +22,11 @@ export function exitLadder(entry: number | null, stop: number | null, planTarget
   const t1 = entry + R
   const t2 = planTarget && planTarget > t1 + 0.01 ? planTarget : entry + 2 * R
   const steps: LadderStep[] = [
-    { px: t1, label: 'T1 (+1R)', action: 'sell ⅓ · move stop → breakeven' },
-    { px: t2, label: planTarget && planTarget > t1 + 0.01 ? 'T2 (plan target)' : 'T2 (+2R)', action: 'sell ⅓ · trail stop to T1' },
+    { px: t1, label: 'T1 (+1R)', action: 'SELL LIMIT ⅓ · then move SELL STOP → breakeven' },
+    { px: t2, label: planTarget && planTarget > t1 + 0.01 ? 'T2 (plan target)' : 'T2 (+2R)', action: 'SELL LIMIT ⅓ · then trail SELL STOP to T1' },
     streetTarget && streetTarget > t2 * 1.03
-      ? { px: streetTarget, label: 'T3 (Street mean)', action: 'runner · trail 1R or prior-day low' }
-      : { px: t2 + R, label: 'T3 (runner)', action: 'runner · trail 1R or prior-day low' },
+      ? { px: streetTarget, label: 'T3 (Street mean)', action: 'runner · SELL TRAILING STOP (offset 1R) or prior-day low' }
+      : { px: t2 + R, label: 'T3 (runner)', action: 'runner · SELL TRAILING STOP (offset 1R) or prior-day low' },
   ]
   return { R, steps }
 }
