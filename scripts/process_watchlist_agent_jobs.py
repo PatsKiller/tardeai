@@ -1724,8 +1724,17 @@ def process_jobs(limit: int = 10):
     if adopted:
         print(f"[watchlist-agent] Adopted {len(adopted)} 'pending' jobs → queued")
 
-    # Get queued jobs
-    cur.execute("SELECT * FROM watchlist_agent_jobs WHERE status = 'queued' ORDER BY priority, created_at LIMIT %s", (limit,))
+    # Get queued jobs — PRIORITIZED (operator 2026-06-14): the names that matter jump the 3,000-name
+    # tail so 12b's slower analysis stays fresh where it counts. Tier 0 directive · 1 active · 2
+    # BUY-rated · 3 the long tail; within a tier, the existing priority + FIFO order. EXISTS avoids
+    # row multiplication from duplicate watchlist_items rows.
+    cur.execute("""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'
+        ORDER BY (CASE
+            WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.in_directive_watch) THEN 0
+            WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.status='active') THEN 1
+            WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol=j.symbol
+                         AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY')) THEN 2
+            ELSE 3 END), priority, created_at LIMIT %s""", (limit,))
     jobs = cur.fetchall()
 
     if not jobs:
