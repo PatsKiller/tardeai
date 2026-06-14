@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-14 - Sector allocation fixed (401k look-through + unclassified stocks)
+
+The Portfolio Allocation showed 98%% "Other" — two bugs: (1) overview() aggregated a non-existent
+per-row sector_type field [fixed: now uses holdings.json resolved_sectors look-through]; (2) the SnapTrade
+401k opaque fund codes (OG51/3905/O7Z6…) and several real holdings (Visa, XLI/XLB, JEPI, defense names)
+were unclassified. Mapped the 401k codes to Morningstar categories + same-fund GICS sector_weights
+(config/snaptrade_401k_fund_map.json + scripts/apply_snaptrade_fund_map.py, durable/idempotent) and added
+GICS sectors for the unclassified equities to manual_sector_map. Result: Other 23%% -> 0%%; portfolio now
+classifies as Financial Services 22.8%%, Technology 19.3%%, Industrials 11.5%%, Healthcare 11%%, etc.
+
+# Changelog
+
 ## 2026-06-14 - SnapTrade read-only holdings aggregation (LIVE — Fidelity 401k + IRA)
 
 Added SnapTrade as an additive, read-only holdings source for accounts with no direct API (the Fidelity
