@@ -88,3 +88,4 @@ yfinance==1.2.0
 youtube-transcript-api==1.2.4
 yt-dlp==2026.3.17
 schwab-py==1.5.1  # read-only Schwab transport (adapter boundary only; writes fenced)
+snaptrade-python-sdk>=11
