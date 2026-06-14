@@ -155,7 +155,7 @@ def _parse(text):
         return None
 
 
-def _candidates(cur, limit, symbols=None, scope="watchlist"):
+def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
     if scope == "proposals":
         # operator 2026-06-12: "same should be done for strategy proposals" — validate each PENDING
         # proposal's entry against live structure (zone realism, urgency, WAIT/READY tag)
@@ -169,6 +169,7 @@ def _candidates(cur, limit, symbols=None, scope="watchlist"):
                          AND symbol ~ '^[A-Z]{1,5}$'
                        ORDER BY symbol, created_at DESC""")
     else:
+        # PRIORITY 1: directive-watch + active names (always planned)
         cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
                          NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
@@ -176,22 +177,51 @@ def _candidates(cur, limit, symbols=None, scope="watchlist"):
                        WHERE symbol ~ '^[A-Z]{1,5}$' AND status <> 'removed'
                          AND (in_directive_watch=true OR status='active')
                        ORDER BY symbol, hermes_composite_score DESC NULLS LAST""")
-    rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
-    if symbols:
-        want = {s.upper() for s in symbols}
-        rows = [r for r in rows if r["symbol"] in want]
-    rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
-    return rows[:limit]
+        rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+        if symbols:
+            want = {s.upper() for s in symbols}
+            rows = [r for r in rows if r["symbol"] in want]
+        rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
+        rows = rows[:limit]
+        # PRIORITY 2 (operator 2026-06-14): give the strongest BUY-rated RESEARCHED names an entry
+        # plan BEFORE promotion — bounded HARD: BUY/STRONG_BUY · CIO confidence ≥0.80 · top-N by score
+        # · NOT planned in the last 3 days (so the cron ROTATES coverage instead of re-planning the
+        # same top names). Skipped entirely when a --symbols filter is in play.
+        if buy_rated_cap > 0 and not symbols:
+            have = {r["symbol"] for r in rows}
+            cur.execute("""SELECT * FROM (
+                             SELECT DISTINCT ON (wi.symbol) wi.symbol, wi.hermes_composite_score,
+                               wi.hermes_rank, wi.trend, NULL::int AS proposal_id,
+                               NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
+                               NULL::numeric AS proposed_target1, NULL::text AS strategy_id
+                             FROM watchlist_items wi
+                             JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+                             WHERE wi.symbol ~ '^[A-Z]{1,5}$' AND wi.status <> 'removed'
+                               AND NOT (wi.in_directive_watch OR wi.status='active')
+                               AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY')
+                               AND rc.confidence >= 0.80
+                               AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
+                                               WHERE ep.symbol = wi.symbol
+                                                 AND ep.created_at > now() - interval '3 days')
+                             ORDER BY wi.symbol, wi.hermes_composite_score DESC NULLS LAST
+                           ) t ORDER BY hermes_composite_score DESC NULLS LAST LIMIT %s""",
+                        (buy_rated_cap,))
+            for r in cur.fetchall():
+                d = dict(zip([dd[0] for dd in cur.description], r))
+                if d["symbol"] not in have:
+                    d["_buy_rated"] = True
+                    rows.append(d)
+        return rows
 
 
-def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist"):
+def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
     if not llm_lane.available(lane):
         lane = "local"
     done = failed = alerts = 0
-    for c in _candidates(cur, limit, symbols, scope):
+    for c in _candidates(cur, limit, symbols, scope, buy_rated_cap):
         sym = c["symbol"]
         bars = _bars(sym)
         if not bars:
@@ -245,7 +275,9 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist"):
         print(f"  {sym}: {p.get('setup_type')} zone {p.get('entry_zone_low')}-{p.get('entry_zone_high')} "
               f"limit {p.get('limit_price')} R:R {p.get('risk_reward')} · {urg} · {prop.get('tag')}")
         done += 1
-        if alert and urg in ("near_entry", "ready"):
+        # pre-promotion buy-rated names are NOT active watches — plan them, but don't Telegram-alert
+        # (operator no-noise rule); they alert once you promote them to an active watch/directive.
+        if alert and urg in ("near_entry", "ready") and not c.get("_buy_rated"):
             cur.execute("""SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND alerted_at > now()-interval '20 hours'""", (sym,))
             if not cur.fetchone():
                 if _alert(sym, p, urg, t["price"]):
@@ -304,7 +336,9 @@ if __name__ == "__main__":
     ap.add_argument("--symbols")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])
+    ap.add_argument("--buy-rated-cap", type=int, default=20,
+                    help="also plan up to N strongest BUY-rated researched names (0=off)")
     ap.add_argument("--no-alert", action="store_true")
     a = ap.parse_args()
     run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None,
-        limit=a.limit, alert=not a.no_alert, scope=a.scope)
+        limit=a.limit, alert=not a.no_alert, scope=a.scope, buy_rated_cap=a.buy_rated_cap)

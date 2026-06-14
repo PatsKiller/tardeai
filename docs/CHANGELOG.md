@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-14 - Entry planner expanded to BUY-rated researched pool (pre-promotion plans)
+
+watchlist_entry_planner now plans entry+stop+exit-ladder for the strongest BUY-rated RESEARCHED names
+in addition to directive/active — so the ~195 candidates that showed $0.00/no-plan now get an entry
+plan once they're a confident BUY, before promotion. Bounded HARD to avoid 400 LLM calls: only
+BUY/STRONG_BUY (watchlist_research_cards.latest_recommendation) · CIO confidence ≥0.80 · top-N by
+hermes score (--buy-rated-cap, default 20) · skips anything planned in the last 3 days so the cron
+ROTATES coverage. Pre-promotion buy-rated names are planned but do NOT Telegram-alert (no-noise rule)
+— they alert once promoted to an active watch/directive. Proven: DGXX(directive)+DY+HGV(buy-rated)
+all got plans; only the directive name alerted. Disabled when a --symbols filter is used.
+
 ## 2026-06-13 - Holdings wired to trailing families → per-family stop widths (no "unclassified")
 
 holding_family.py maps each holding to a trailing family (momentum/swing/income/position) by REUSING
