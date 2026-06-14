@@ -1,6 +1,22 @@
 # Changelog
 
-## 2026-06-14 - Local LLM default → gemma3:12b (policy primary; was 4b)
+## 2026-06-14 - REVERT local default to gemma3:4b (12b broken) + CIO queue prioritization
+
+**Revert:** the gemma3:12b switch below was REVERTED (commit 0f219183). A grok-vs-12b A/B exposed that
+gemma3:12b **HTTP-500s on every prompt** — even a one-line one, in 2s — so it's broken at the ollama
+runtime (VRAM/model-load failure, not a context limit), while gemma3:4b runs cleanly. Leaving 12b as the
+default would have 500'd every local-default LLM call system-wide. DEFAULT_LOCAL_LLM_MODEL is back to
+**gemma3:4b**; re-pull/fix 12b (`ollama rm gemma3:12b && ollama pull gemma3:12b`, check VRAM) before
+retrying. The CIO-quality win comes from the **free Grok synthesis lane**, not 12b — and Grok "won" the
+A/B by default since 12b couldn't run.
+
+**Queue prioritization (commit 50ec6564):** the CIO job picker no longer drains the ~3,000-name backlog
+FIFO. It tiers via EXISTS subqueries — directive-watch (0) → active (1) → BUY/STRONG_BUY card (2) → tail
+(3), then priority, then created_at — so the ~50 names the operator cares about refresh first and the
+long tail no longer starves them. Re-run cadence unchanged: 48h staleness → aegis queues → cron drains
+5–10/run; decisions expire at 14 days.
+
+## 2026-06-14 - Local LLM default → gemma3:12b (policy primary; was 4b)  [REVERTED — see above]
 
 DEFAULT_LOCAL_LLM_MODEL switched gemma3:4b → gemma3:12b (installed, 8.1GB) so the specialist agents
 (Maria/Steph/Risk) and all local-default consumers use the sharper 12b — matching the standing model
