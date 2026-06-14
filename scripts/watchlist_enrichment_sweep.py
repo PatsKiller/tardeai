@@ -34,12 +34,32 @@ def _price(conn, symbol):
     try:
         cur = conn.cursor()
         cur.execute("""SELECT price, day_change_pct FROM market_quotes WHERE symbol=%s
+                       AND fetched_at > NOW() - INTERVAL '12 hours'
                        ORDER BY fetched_at DESC LIMIT 1""", (symbol,))
         r = cur.fetchone()
-        return (float(r[0]) if r and r[0] is not None else None,
-                float(r[1]) if r and r[1] is not None else None)
+        if r and r[0] is not None:
+            return float(r[0]), (float(r[1]) if r[1] is not None else None)
     except Exception:
-        return None, None
+        pass
+    # Fallback: no FRESH market_quotes row (e.g. a brand-new IPO the Alpaca/finviz repricer lags on) →
+    # pull from yfinance and backfill market_quotes so downstream stays current.
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info or {}
+        px, prev = info.get("regularMarketPrice"), info.get("regularMarketPreviousClose")
+        if px:
+            chg = round((px - prev) / prev * 100, 2) if prev else None
+            try:
+                cur = conn.cursor()
+                cur.execute("INSERT INTO market_quotes (symbol, price, day_change_pct, source, fetched_at) "
+                            "VALUES (%s,%s,%s,'yfinance',NOW())", (symbol, px, chg))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            return float(px), chg
+    except Exception:
+        pass
+    return None, None
 
 
 def _num(v):
