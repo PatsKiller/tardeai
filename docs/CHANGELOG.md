@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-14 - Phase3 look-through: yfinance sector fallback (auto-classify any stock)
+
+Root-cause fix for the 'Other' bucket: phase3 resolved direct stocks only from the snapshot's
+classification fields, which are usually empty → real holdings (Visa, RTX, NEE, sector ETFs) fell to
+'Other / Unclassified'. Added scripts/sector_cache.py — a yfinance-backed GICS sector lookup (equity
+sector / sector-ETF category), normalized + cached to data/.../sector_cache.json (one network hit per
+symbol, self-healing). Wired as phase3 _resolve_direct_stock's fallback before 'Other'. Validated by
+REMOVING the 20 manual equity entries — phase3 still classifies everything (Other = $0). New holdings now
+classify automatically; no manual_sector_map entry required for ordinary stocks/sector-ETFs.
+
+# Changelog
+
 ## 2026-06-14 - Sector allocation fixed (401k look-through + unclassified stocks)
 
 The Portfolio Allocation showed 98%% "Other" — two bugs: (1) overview() aggregated a non-existent
