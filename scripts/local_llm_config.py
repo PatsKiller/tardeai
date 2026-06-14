@@ -23,8 +23,10 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-DEFAULT_LOCAL_LLM_MODEL = "gemma3:12b"   # operator 2026-06-14: 12b is the policy primary (4b was the loose
-#                                          fallback). Slower but sharper; per-process env keys still override.
+DEFAULT_LOCAL_LLM_MODEL = "gemma3:4b"   # REVERTED 2026-06-14: gemma3:12b 500s on EVERY prompt (2s, even
+#   short) — broken at the ollama runtime (VRAM/model issue), not a context limit. 4b is the reliable
+#   local model. The CIO quality win comes from the free Grok synthesis lane, not 12b. Re-pull/fix 12b
+#   (ollama rm + pull gemma3:12b, check VRAM) before retrying the default switch.
 
 # ── LLM Fleet v4.1 — Process Type Constants ──────────────────────────────
 # Scripts declare intent via process type; model resolution uses .env.
