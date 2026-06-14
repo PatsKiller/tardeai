@@ -17854,7 +17854,7 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
-    "/api/v2/admin/secrets": lambda: __import__("secrets_admin").list_secrets(),
+    "/api/v2/admin/secrets": lambda: __import__("importlib").reload(__import__("secrets_admin")).list_secrets(),
     "/api/v2/admin/strategy-enablement": lambda: {"rows": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT strategy_id, account, enabled, updated_at, updated_by FROM strategy_enablement ORDER BY strategy_id, account") or [])]},
     "/api/v2/admin/cron-retryable": lambda: {"jobs": sorted(__import__("admin_write_guard").NON_TRADING_CRON_ALLOWLIST)},
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
