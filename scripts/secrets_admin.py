@@ -24,17 +24,16 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
          "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD",
          "SCHWAB_APP_KEY", "SCHWAB_APP_SECRET",
-         # SnapTrade (read-only holdings aggregation): consumer key is the secret (masked); the client id is
-         # an app identifier (config, below).
-         "SNAPTRADE_CONSUMER_KEY"]
+         # SnapTrade (read-only holdings aggregation): consumer key + the per-user userSecret are secrets
+         # (masked). For PERSONAL (PERS-) keys, SnapTrade provisions one user at signup and shows its
+         # userId + userSecret in the dashboard — you PASTE them here (registerUser is production-only).
+         "SNAPTRADE_CONSUMER_KEY", "SNAPTRADE_USER_SECRET"]
 # Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
 # OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
-KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID"]
-# READ-ONLY status rows: shown (present + masked) but NOT settable here — they're owned by another flow.
-# SnapTrade's userId/userSecret are minted by the connect flow (snaptrade_connect.py), so the secrets page
-# surfaces connection state without letting you hand-rotate them.
-KNOWN_READONLY = ["SNAPTRADE_USER_ID", "SNAPTRADE_USER_SECRET"]
+KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID", "SNAPTRADE_USER_ID"]
+# READ-ONLY status rows: shown (present + masked) but NOT settable here.
+KNOWN_READONLY = []
 
 
 def _read_env():
