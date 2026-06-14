@@ -49,6 +49,11 @@ def _get_symbols() -> list:
         SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
         UNION
         SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+        UNION
+        -- names the operator explicitly tracks (directive-watch) or active watchlist items: keep them
+        -- priced even before promotion, so newly-IPO'd directives (e.g. SPCX) don't go stale.
+        SELECT DISTINCT symbol FROM watchlist_items
+            WHERE (in_directive_watch = TRUE OR status = 'active') AND symbol IS NOT NULL
     """)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
