@@ -179,6 +179,42 @@ def run(account: str | None = None) -> dict:
     }
 
 
+_AGENT_ROLES = [
+    ("CIO", "You are the CIO. Give a 3-4 sentence verdict: does this effective allocation fit a balanced "
+            "long-term portfolio, and what is the single highest-priority rebalancing action?"),
+    ("Risk Agent", "You are the risk manager. In 3-4 sentences flag the top concentration and correlation "
+                   "risks, name which position-size limits are breached (single-name >5-8%, theme clusters), "
+                   "and state the de-risking priority order."),
+    ("Steph · Allocation", "You are the allocation/income strategist. In 3-4 sentences assess sector/theme "
+                           "balance and gaps, and suggest 2 specific adds/trims to improve diversification "
+                           "without raising overall beta."),
+]
+
+
+def agent_advisories(data: dict) -> list:
+    """Run the look-through through multiple agent lenses (CIO / Risk / Allocation) on the free Grok lane
+    (local fallback). Returns [{agent, model, text}]. Each call is independent + resilient."""
+    out = []
+    try:
+        import llm_lane
+        lane = "grok" if llm_lane.available("grok") else "local"
+        themes = " · ".join(f"{k} {v['pct']}%" for k, v in data.get("themes", {}).items())
+        top = ", ".join(f"{t['symbol']} {t['pct']}%" for t in data.get("top_underlying", [])[:8])
+        ctx = (f"Portfolio ${data.get('portfolio_total',0):,.0f}. LOOK-THROUGH exposure (funds resolved to "
+               f"underlying stocks): themes [{themes}]; top names [{top}]. Be specific and brief.")
+        for agent, role in _AGENT_ROLES:
+            try:
+                txt = llm_lane.generate(f"{role}\n\n{ctx}", lane=lane, timeout=60)
+                if txt and not str(txt).startswith("LLM error"):
+                    out.append({"agent": agent, "model": ("grok-3-mini" if lane == "grok" else "local"),
+                                "text": str(txt).strip()})
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
 def grok_narrative(data: dict) -> str:
     """LLM read of the look-through (free Grok lane, local fallback). Returns a short narrative."""
     try:
@@ -205,6 +241,7 @@ def main():
     r = run(account=a.account)
     if a.grok:
         r["grok_narrative"] = grok_narrative(r)
+        r["agent_advisories"] = agent_advisories(r)
     # write the cache the API serves (fast, no yfinance in the request path) — only for the global run
     if not a.account:
         try:
