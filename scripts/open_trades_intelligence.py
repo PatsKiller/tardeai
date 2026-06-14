@@ -119,12 +119,22 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
     elif is_fund or (strategy and ("income" in str(strategy) or "dividend" in str(strategy))):
         decision, reason, pr = "Income/dividend review", "Held for income/dividend role — monitor distribution + total return, not momentum.", "low"
         nxt = "Income role — monitor distributions"
+    elif "no_protection" in risk_flags:
+        # Unprotected, but low-urgency (modest/flat gain, not below entry, not a big-gain runner). It still
+        # has NO protective stop in place. Do NOT say "No action" — that reads as "no stop needed". State
+        # the gap plainly and mark it optional/low. Wording is advisory-neutral (true whether or not a
+        # specific advised-stop number is shown on the card below).
+        decision, reason, pr = ("Unprotected — no stop in place",
+            "No protective stop is set. A stop is worth placing to cap downside — low urgency at this "
+            "size/gain, but this is NOT 'no stop needed'. See the advised level below if present.", "low")
+        nxt = "Consider placing a protective stop (optional)"
     elif trend_label and "bull" in str(trend_label).lower() and not risk_flags:
-        decision, reason, pr = "Hold thesis intact", "Thesis intact: trend supportive, no protection/data flags.", "low"
-        nxt = "No action — monitored"
+        decision, reason, pr = "Hold thesis intact", "Thesis intact: trend supportive, protective stop in place, no data flags.", "low"
+        nxt = "No action needed — protected & monitored"
     else:
-        decision, reason, pr = "No action — monitored", "No immediate action — within normal parameters.", "low"
-        nxt = "No action — monitored"
+        # Reached only when a stop IS in place (protected/partial) and nothing else flags — genuinely nothing to do.
+        decision, reason, pr = "No action — monitored", "Protective stop in place and within normal parameters — nothing to do.", "low"
+        nxt = "No action needed — protected & monitored"
     # priority escalation by value
     if pr == "high" and high_value:
         pr = "critical"
