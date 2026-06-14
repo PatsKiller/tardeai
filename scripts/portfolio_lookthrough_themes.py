@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""portfolio_lookthrough_themes.py — TRUE stock-level look-through + theme exposure.
+"""portfolio_lookthrough_themes.py — TRUE stock-level look-through, theme exposure + advisories.
 
-The sector look-through (phase3) shows GICS weights; this goes a layer deeper: it resolves every holding
-to its UNDERLYING STOCKS (funds via their proxy ETF's yfinance top-holdings) and aggregates across the
-whole portfolio, so you can see real exposure to themes (Magnificent 7, etc.) and single-stock
-concentration that's hidden inside index/active funds.
+Resolves every holding to its UNDERLYING STOCKS (funds via their proxy ETF's yfinance top-holdings),
+aggregates portfolio-wide AND per-account, computes theme baskets (Mag 7, Nasdaq 100, S&P 500, semis,
+AI, international, fixed income, defense, dividend), tracks SOURCE attribution (which funds hold each
+stock — for tooltips), and emits rule-based concentration advisories. A separate grok_narrative() adds an
+LLM read.
 
-Approximation honesty: yfinance gives each fund's TOP ~10 holdings (not the full book), so theme coverage
-captures the mega-caps (which dominate Mag 7 / concentration) but understates the long tail. Cached to
-data/portfolios/state/fund_holdings_cache.json.
-
-  python3 scripts/portfolio_lookthrough_themes.py            # text report
-  python3 scripts/portfolio_lookthrough_themes.py --json     # machine JSON
+Honest approximation: yfinance gives each fund's TOP ~10 holdings, so mega-caps (Mag 7) are well-captured
+but the long tail is understated — theme %s are lower bounds. Cached to fund_holdings_cache.json.
 """
 from __future__ import annotations
 
@@ -25,12 +22,27 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 STATE = ROOT / "data" / "portfolios" / "state"
 HOLD_CACHE = STATE / "fund_holdings_cache.json"
+CONSTITUENTS = STATE / "index_constituents.json"
 
-THEMES = {
+# ETFs/funds we can pull holdings for directly (others map via proxy)
+_KNOWN_ETFS = {"SPY", "QQQ", "SCHG", "SCHD", "DIV", "JEPI", "BND", "XLI", "XLB", "XLF", "XLK", "ARKG",
+               "ARKQ", "VXUS", "IJH", "IWP", "IWN", "IWR", "IWM", "VTI", "VOO", "IVV"}
+
+_STATIC_THEMES = {
     "Magnificent 7": {"AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA"},
     "Semiconductors": {"NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "INTC", "ASML", "TSM", "LRCX",
-                       "AMAT", "ADI", "KLAC", "MRVL", "NXPI", "MCHP"},
-    "AI mega-cap": {"NVDA", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AVGO", "AMD", "PLTR", "TSM"},
+                       "AMAT", "ADI", "KLAC", "MRVL", "NXPI", "MCHP", "ON", "SMCI", "ARM"},
+    "AI mega-cap": {"NVDA", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AVGO", "AMD", "PLTR", "TSM", "SMCI"},
+    "Defense / Aerospace": {"LMT", "NOC", "RTX", "GD", "BA", "LHX", "TDG", "HII", "KTOS", "AVAV", "DRS",
+                            "LDOS", "CACI", "BAH", "KBR", "AXON", "RKLB"},
+    # current-event baskets — the AI build-out and its power/energy demand
+    "AI datacenter & power": {"NVDA", "AVGO", "SMCI", "DELL", "ANET", "VRT", "ETN", "GEV", "PWR", "NVT",
+                              "VST", "CEG", "TLN", "NRG", "NEE", "DLR", "EQIX", "AMD", "MU", "TSM"},
+    "Nuclear / power gen": {"CEG", "VST", "TLN", "NRG", "GEV", "NEE", "OKLO", "SMR", "BWXT", "CCJ", "UEC"},
+    "Energy": {"XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "WMB", "KMI", "LNG", "FANG",
+               "DVN", "HES", "BKR", "HAL"},
+    "Cybersecurity": {"PANW", "CRWD", "ZS", "FTNT", "NET", "S", "OKTA", "CYBR", "TENB", "QLYS"},
+    "China / EM": {"BABA", "PDD", "JD", "BIDU", "NIO", "TCEHY", "MELI", "TSM"},
 }
 
 
@@ -41,28 +53,23 @@ def _load(p, d):
         return d
 
 
-def _proxy_etf(sym: str) -> str | None:
-    """Map a fund/opaque code to a public ETF whose holdings approximate it."""
+def _proxy_etf(sym: str):
     try:
         from holding_proxies import HOLDING_PROXY_MAP
     except Exception:
         HOLDING_PROXY_MAP = {}
     if sym in HOLDING_PROXY_MAP:
         return HOLDING_PROXY_MAP[sym][0]
-    # SnapTrade 401k codes → their lookthrough_source (old proxy code) → ETF
     fmap = _load(ROOT / "config" / "snaptrade_401k_fund_map.json", {}).get("codes", {})
-    if sym in fmap:
-        src = fmap[sym].get("lookthrough_source")
-        if src in HOLDING_PROXY_MAP:
-            return HOLDING_PROXY_MAP[src][0]
+    if sym in fmap and fmap[sym].get("lookthrough_source") in HOLDING_PROXY_MAP:
+        return HOLDING_PROXY_MAP[fmap[sym]["lookthrough_source"]][0]
     return None
 
 
-def _fund_holdings(etf: str, cache: dict) -> dict[str, float]:
-    """Top-holdings {stock: weight} for a fund/ETF, cached."""
+def _fund_holdings(etf, cache):
     if etf in cache:
         return cache[etf]
-    out: dict[str, float] = {}
+    out = {}
     try:
         import yfinance as yf
         th = yf.Ticker(etf).funds_data.top_holdings
@@ -74,82 +81,147 @@ def _fund_holdings(etf: str, cache: dict) -> dict[str, float]:
     return out
 
 
-def run() -> dict:
+def _resolve_underlying(holdings):
+    """Return (underlying $ by stock, sources {stock:{holding_label:$}}, per-account underlying, total, covered)."""
     import holding_family as hf
-    holdings = _load(STATE / "holdings.json", {}).get("holdings", [])
     cache = _load(HOLD_CACHE, {})
-
-    underlying = defaultdict(float)   # stock -> $ exposure (look-through)
-    total = 0.0
-    covered = 0.0                     # $ we could resolve to underlying stocks
+    underlying = defaultdict(float)
+    sources = defaultdict(lambda: defaultdict(float))
+    by_account = defaultdict(lambda: defaultdict(float))
+    total = covered = 0.0
     for h in holdings:
         sym = (h.get("symbol") or "").upper()
         mv = float(h.get("market_value") or 0)
+        acct = h.get("account") or "unknown"
         if not sym or h.get("is_cash") or mv <= 0:
             continue
         total += mv
-        # direct stock (clean ticker, not a fund) → itself
-        if not hf.is_unstoppable_fund(sym) and sym.isalpha() and 1 <= len(sym) <= 5 and sym not in (
-                "SPY", "QQQ", "SCHG", "SCHD", "DIV", "JEPI", "BND", "XLI", "XLB", "ARKG", "ARKQ", "VXUS",
-                "IJH", "IWP", "IWN", "IWR", "IWM"):
-            # treat as a direct stock UNLESS yfinance says it's a fund (cheap heuristic via proxy absence)
-            etf = None
-        else:
-            etf = sym  # it IS an etf/fund we can pull holdings for
-        if etf is None:
-            etf2 = _proxy_etf(sym)
-            if etf2 is None:
-                # individual stock
-                underlying[sym] += mv
-                covered += mv
-                continue
-            etf = etf2
-        else:
-            etf = _proxy_etf(sym) or sym  # 401k code → proxy; real ETF → itself
+        is_fund = hf.is_unstoppable_fund(sym) or sym in _KNOWN_ETFS or _proxy_etf(sym) is not None
+        if not is_fund:                       # direct stock
+            underlying[sym] += mv
+            sources[sym][f"{sym} (direct · {acct})"] += mv
+            by_account[acct][sym] += mv
+            covered += mv
+            continue
+        etf = _proxy_etf(sym) or (sym if sym in _KNOWN_ETFS else None)
+        if not etf:
+            continue
         weights = _fund_holdings(etf, cache)
         if not weights:
             continue
-        wsum = sum(weights.values())
+        label = f"{sym} → {etf}" if etf != sym else sym
         for stock, w in weights.items():
             underlying[stock] += mv * w
-        covered += mv * wsum
-
+            sources[stock][label] += mv * w
+            by_account[acct][stock] += mv * w
+        covered += mv * sum(weights.values())
     HOLD_CACHE.write_text(json.dumps(cache, indent=2))
+    return underlying, sources, by_account, total, covered
 
-    # theme aggregation
-    theme_out = {}
-    for name, basket in THEMES.items():
+
+def _themes(underlying, total):
+    cons = _load(CONSTITUENTS, {})
+    baskets = dict(_STATIC_THEMES)
+    if cons.get("NASDAQ100"):
+        baskets["Nasdaq 100"] = set(cons["NASDAQ100"])
+    if cons.get("SP500"):
+        baskets["S&P 500"] = set(cons["SP500"])
+    out = {}
+    for name, basket in baskets.items():
         val = sum(v for s, v in underlying.items() if s in basket)
-        per = {s: round(underlying.get(s, 0), 0) for s in sorted(basket, key=lambda x: -underlying.get(x, 0)) if underlying.get(s, 0) > 0}
-        theme_out[name] = {"value": round(val, 0), "pct_of_portfolio": round(val / total * 100, 2) if total else 0, "by_stock": per}
+        by_stock = [{"symbol": s, "value": round(underlying[s], 0)}
+                    for s in sorted(basket, key=lambda x: -underlying.get(x, 0)) if underlying.get(s, 0) > 0][:12]
+        out[name] = {"value": round(val, 0), "pct": round(val / total * 100, 2) if total else 0, "by_stock": by_stock}
+    return out
 
-    top = sorted(underlying.items(), key=lambda x: -x[1])[:15]
+
+def _advisories(themes, top, total):
+    adv = []
+    for row in top:
+        if row["pct"] >= 8:
+            adv.append({"severity": "high", "title": f"{row['symbol']} concentration {row['pct']:.1f}%",
+                        "detail": f"${row['value']:,.0f} look-through in {row['symbol']} — above an 8% single-name guideline. "
+                                  f"Consider trimming toward 5%."})
+        elif row["pct"] >= 5:
+            adv.append({"severity": "medium", "title": f"{row['symbol']} {row['pct']:.1f}%",
+                        "detail": f"${row['value']:,.0f} in {row['symbol']} — watch; above a 5% comfort line."})
+    m7 = themes.get("Magnificent 7", {})
+    if m7.get("pct", 0) >= 25:
+        adv.append({"severity": "medium", "title": f"Mag 7 {m7['pct']:.0f}%",
+                    "detail": "Mega-cap tech is a large share of effective equity — diversified, but rate/AI-sensitive."})
+    semi = themes.get("Semiconductors", {})
+    if semi.get("pct", 0) >= 8:
+        adv.append({"severity": "medium", "title": f"Semiconductors {semi['pct']:.1f}%",
+                    "detail": "Cyclical, correlated cluster — sized like a sector bet via the growth funds."})
+    if not adv:
+        adv.append({"severity": "low", "title": "No concentration flags",
+                    "detail": "No single name above 5% and themes within normal ranges."})
+    return adv
+
+
+def run(account: str | None = None) -> dict:
+    holdings = _load(STATE / "holdings.json", {}).get("holdings", [])
+    if account:
+        holdings = [h for h in holdings if (h.get("account") or "") == account]
+    underlying, sources, by_account, total, covered = _resolve_underlying(holdings)
+    themes = _themes(underlying, total)
+    top = [{"symbol": s, "value": round(v, 0), "pct": round(v / total * 100, 2) if total else 0,
+            "in": [{"src": k, "value": round(x, 0)} for k, x in sorted(sources[s].items(), key=lambda i: -i[1])[:6]]}
+           for s, v in sorted(underlying.items(), key=lambda x: -x[1])[:20]]
     return {
         "portfolio_total": round(total, 0),
-        "look_through_covered": round(covered, 0),
         "coverage_pct": round(covered / total * 100, 1) if total else 0,
-        "themes": theme_out,
-        "top_underlying_stocks": [{"symbol": s, "value": round(v, 0), "pct": round(v / total * 100, 2)} for s, v in top],
+        "account": account,
+        "accounts": sorted(by_account.keys()),
+        "themes": themes,
+        "top_underlying": top,
+        "advisories": _advisories(themes, top, total),
     }
+
+
+def grok_narrative(data: dict) -> str:
+    """LLM read of the look-through (free Grok lane, local fallback). Returns a short narrative."""
+    try:
+        import llm_lane
+        themes = " · ".join(f"{k} {v['pct']}%" for k, v in data.get("themes", {}).items())
+        top = ", ".join(f"{t['symbol']} {t['pct']}%" for t in data.get("top_underlying", [])[:8])
+        prompt = (f"You are a portfolio risk analyst. A ${data['portfolio_total']:,.0f} portfolio has this "
+                  f"LOOK-THROUGH exposure (funds resolved to underlying stocks): themes [{themes}]; top names "
+                  f"[{top}]. In 4-5 sentences, give a concentration/diversification read and 2 concrete actions. "
+                  f"Be specific and brief.")
+        lane = "grok" if llm_lane.available("grok") else "local"
+        out = llm_lane.generate(prompt, lane=lane, timeout=60)
+        return out if out and not str(out).startswith("LLM error") else ""
+    except Exception:
+        return ""
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--account")
+    ap.add_argument("--grok", action="store_true")
     a = ap.parse_args()
-    r = run()
+    r = run(account=a.account)
+    if a.grok:
+        r["grok_narrative"] = grok_narrative(r)
+    # write the cache the API serves (fast, no yfinance in the request path) — only for the global run
+    if not a.account:
+        try:
+            (STATE / "lookthrough_themes.json").write_text(json.dumps(r, indent=2))
+        except Exception:
+            pass
     if a.json:
         print(json.dumps(r, indent=2)); return 0
-    print(f"Portfolio ${r['portfolio_total']:,.0f} · look-through coverage {r['coverage_pct']}% "
-          f"(${r['look_through_covered']:,.0f})")
+    print(f"Portfolio ${r['portfolio_total']:,.0f} · coverage {r['coverage_pct']}%"
+          + (f" · {a.account}" if a.account else ""))
     for name, t in r["themes"].items():
-        print(f"\n{name}: ${t['value']:,.0f}  ({t['pct_of_portfolio']}% of portfolio)")
-        for s, v in t["by_stock"].items():
-            bar = "#" * int(v / max(1, t["value"]) * 30)
-            print(f"   {s:<6} ${v:>11,.0f}  {bar}")
-    print("\nTop underlying single-stock exposure (look-through):")
-    for row in r["top_underlying_stocks"]:
-        print(f"   {row['symbol']:<6} ${row['value']:>11,.0f}  {row['pct']:>5.2f}%")
+        print(f"  {name:<22} ${t['value']:>11,.0f}  {t['pct']:>5.1f}%")
+    print("Advisories:")
+    for x in r["advisories"]:
+        print(f"  [{x['severity']}] {x['title']} — {x['detail']}")
+    if r.get("grok_narrative"):
+        print("\nGrok:", r["grok_narrative"])
     return 0
 
 

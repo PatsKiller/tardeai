@@ -17591,8 +17591,17 @@ def _snaptrade_status():
                 "connected": False, "error": str(e)}
 
 
+def _portfolio_lookthrough():
+    """Stock-level look-through + theme exposure + advisories (cached by portfolio_lookthrough_themes.py;
+    refreshed on a schedule). Fast — no yfinance in the request path."""
+    return _load_json(STATE_DIR / "lookthrough_themes.json") or {
+        "themes": {}, "top_underlying": [], "advisories": [],
+        "note": "not computed yet — run scripts/portfolio_lookthrough_themes.py --grok"}
+
+
 ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
+    "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
