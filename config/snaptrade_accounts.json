@@ -1,4 +1,0 @@
-{
-  "_comment": "Maps SnapTrade account IDs -> internal account_key. ONLY accounts listed here are synced by snaptrade_sync.py; everything else in holdings.json is left untouched. Run `snaptrade_connect.py login`, link the brokerage, then `snaptrade_sync.py` (dry) to see the SnapTrade account IDs in the output, and paste them here. Internal keys should match the account_key already used across the app (e.g. fidelity_401k, fidelity_ira).",
-  "accounts": {}
-}

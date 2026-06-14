@@ -22,6 +22,15 @@ from pathlib import Path
 # Unified store: the SAME .env the central "API Keys & Secrets" manager (secrets_admin.py) writes to, so the
 # secrets page, this modal, and the connect flow all read/write one file. (.env is 0600 + gitignored.)
 _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+
+# Load .env into the process env so standalone scripts (snaptrade_sync.py / _connect.py) see the keys —
+# the long-running server already loads .env at startup; this covers cron/CLI runs. Never overrides an
+# already-exported value (shell/server env wins).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_ENV_FILE)
+except Exception:
+    pass
 CLIENT_ID_KEY = "SNAPTRADE_CLIENT_ID"
 CONSUMER_KEY_KEY = "SNAPTRADE_CONSUMER_KEY"
 # per-end-user connection secret, minted by registerUser during the connect flow
