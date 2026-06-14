@@ -374,6 +374,33 @@ export default function PortfolioHub({ onDrill }: Props) {
                 ))}
               </div>
             )}
+            {top.length > 0 && (() => {
+              const donut = top.slice(0, 10).map((s: any) => ({ name: s.symbol, value: s.value }))
+              return (
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 14, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ width: 190, height: 170, flexShrink: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={donut} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={78} stroke="var(--bg0)" strokeWidth={2}>
+                          {donut.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip formatter={(v: any) => `$${Math.round(v).toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Top-10 underlying concentration (look-through)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+                      {donut.map((d: any, i: number) => (
+                        <span key={d.name} style={{ fontSize: 10.5, color: 'var(--text2)' }}>
+                          <span style={{ color: COLORS[i % COLORS.length] }}>●</span> <b style={{ color: 'var(--text1)' }}>{d.name}</b> ${(d.value / 1000).toFixed(0)}k
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Theme exposure</div>
