@@ -42,6 +42,16 @@ def _resolve_direct_stock(rec: dict, manual_map: dict) -> tuple:
         if f.get(key):
             return f[key], f.get(f"{'fv' if 'fv' in key else 'yf'}_industry", ""), f"fundamentals_{key}"
 
+    # Fallback: yfinance-backed GICS sector lookup (cached). Auto-classifies any stock/sector-ETF the
+    # snapshot didn't, so new holdings never silently land in "Other". Diversified ETFs → None → Other.
+    try:
+        from sector_cache import get_sector
+        yf_sec = get_sector(sym)
+        if yf_sec:
+            return yf_sec, "", "yfinance_cache"
+    except Exception:
+        pass
+
     return "Other / Unclassified", "", "fallback"
 
 
