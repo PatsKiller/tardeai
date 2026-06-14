@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-14 - CIO synthesis → free Grok OAuth (local fallback) + prompt versioning
+
+The watchlist CIO View (final synthesis) was running 100% on gemma3:4b (verified: 323 syntheses / 7d,
+0 Claude/Grok) — the smallest local model, hence loose decisions. Switched ONLY the final-synthesis
+stage (the one call per symbol that becomes the CIO View) to the free **Grok OAuth** lane (llm_lane)
+with local gemma fallback; the 3 specialist agents (Maria/Steph/Risk) stay local. Also FIXED a bug:
+model_used was hard-coded to OLLAMA_MODEL regardless of what ran — now records the actual model.
+Added prompt versioning: SYNTHESIS_PROMPT_VERSION stamp in the prompt + integer synthesis_version=2
+stored per row. Proven live: CIFR re-synthesized on grok-3-mini — grok flagged an agent conflict +
+returned AVOID (vs gemma's HOLD), the sharper read. Both lanes free; no metered API.
+
+# Changelog
+
 ## 2026-06-14 - Entry planner expanded to BUY-rated researched pool (pre-promotion plans)
 
 watchlist_entry_planner now plans entry+stop+exit-ladder for the strongest BUY-rated RESEARCHED names
