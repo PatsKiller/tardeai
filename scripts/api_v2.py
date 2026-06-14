@@ -17565,7 +17565,25 @@ def _hermes_terminal_commands(query=None):
     }
 
 
+def _snaptrade_status():
+    """Non-secret status of the SnapTrade keys + connection (for the credentials modal). Never returns any
+    secret. `ready` = client keys present; `connected` = a brokerage user is linked (reads can run)."""
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent / "brokers"))
+        from brokers import snaptrade_credentials as _sc
+        st = _sc.status()
+        u = _sc.user_status()
+        st["connected"] = bool(u.get("ready"))
+        st["user_id_masked"] = u.get("user_id_masked")
+        return st
+    except Exception as e:
+        return {"client_id_set": False, "consumer_key_set": False, "ready": False,
+                "connected": False, "error": str(e)}
+
+
 ROUTES = {
+    "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
@@ -18347,6 +18365,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/john/decide":
             try:
                 return _john_decide(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/snaptrade/credentials":
+            # Save SnapTrade client keys (clientId + consumerKey) to config/broker_credentials.env.
+            # Write-only: the response never echoes the consumer key, only masked status. No trading.
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent / "brokers"))
+                from brokers import snaptrade_credentials as _sc
+                b = body or {}
+                st = _sc.save(b.get("client_id", ""), b.get("consumer_key", ""))
+                return 200, {"ok": True, "status": st}
+            except ValueError as e:
+                return 400, {"ok": False, "error": str(e)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/watchlist/submit":

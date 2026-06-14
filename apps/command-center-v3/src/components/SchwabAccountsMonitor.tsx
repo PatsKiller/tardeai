@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import SnapTradeCredsModal from './SnapTradeCredsModal'
 
 // Stage 2a Part C2 — ALL-Schwab-accounts monitor, thinkorswim-desktop styling. READ-ONLY data
 // (/api/v2/schwab/accounts-live, 30s server cache). "Edit" builds a DRAFT modification routed through
@@ -27,6 +28,7 @@ export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (i
   const { data, refetch, loading } = useApi<any>('/api/v2/schwab/accounts-live', 35_000)
   const [sub, setSub] = useState<typeof SUBTABS[number]>('Positions')
   const [acct, setAcct] = useState<string>('all')
+  const [snapOpen, setSnapOpen] = useState(false)
   const d = (data as any)?.data ?? data
   const accounts: any[] = d?.accounts ?? []
   const shown = accounts.filter((a: any) => acct === 'all' || a.account_key === acct)
@@ -130,10 +132,15 @@ export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (i
           </button>
         ))}
         <span style={{ flex: 1 }} />
+        <button onClick={() => setSnapOpen(true)} title="Add SnapTrade API keys to aggregate accounts without a direct API (e.g. the Fidelity 401k). Read-only."
+          style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid #1d4ed8', background: 'rgba(29,78,216,.14)', color: '#90caf9', cursor: 'pointer', fontWeight: 700 }}>
+          + Connect SnapTrade
+        </button>
         <button onClick={refetch} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid #2c2c2c', background: '#1b1b1b', color: '#bdbdbd', cursor: 'pointer' }}>
           {loading ? 'refreshing…' : 'refresh'}
         </button>
       </div>
+      {snapOpen && <SnapTradeCredsModal onClose={() => setSnapOpen(false)} />}
 
       {/* ── POSITIONS ── */}
       {sub === 'Positions' && (
