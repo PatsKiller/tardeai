@@ -117,6 +117,12 @@ def is_unstoppable_fund(symbol: str) -> bool:
             return True
     except Exception:
         pass
+    # Not a standard US exchange ticker → a fund / plan / internal code with no exchange stop. A real
+    # equity/ETF ticker is 1-5 letters (optionally a class suffix like BRK.B); Fidelity 401k codes read via
+    # SnapTrade (OG51, 3905, O7Z6, OM09 …) contain digits / non-letters, so no stop order can be placed.
+    core = s.split(".")[0]
+    if core and not (core.isalpha() and 1 <= len(core) <= 5):
+        return True
     return False
 
 

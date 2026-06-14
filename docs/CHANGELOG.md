@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-06-14 - SnapTrade read-only holdings aggregation (LIVE — Fidelity 401k + IRA)
+
+Added SnapTrade as an additive, read-only holdings source for accounts with no direct API (the Fidelity
+401k, previously faked with proxy ETF codes). End-to-end and connected:
+- **Credentials**: SnapTrade keys live in the central API Keys & Secrets manager (`SNAPTRADE_CONSUMER_KEY`
+  masked secret + `SNAPTRADE_CLIENT_ID` config) AND a dedicated Connect-SnapTrade modal on Schwab Accounts;
+  unified on `.env`. Personal (`PERS-`) keys: userId/userSecret are dashboard-provided/rotated, not minted
+  (registerUser is production-only) — both editable on the secrets page.
+- **Read path** (`brokers/snaptrade_read.py`, SDK v11): list_accounts / positions / balances + normalize.
+  No write/trade surface (read-only today; not hard-blocked for future trading per operator).
+- **Sync** (`snaptrade_sync.py`): dry by default, `--apply` merges ONLY mapped accounts
+  (`config/snaptrade_accounts.json`, gitignored) via `protected_holdings_write`. Scheduled 3×/trading day
+  (9:50 / 13:00 / 17:35 ET). Vanished-account auto-zero after 2 consecutive confirmations (transient-safe,
+  alerts) — makes the 401k→IRA rollover hands-off.
+- **Repricing**: broker-sourced fund/opaque codes keep the broker value (no public quote); real exchange
+  tickers reprice intraday from the quote cache.
+- **`is_unstoppable_fund`** extended to opaque plan codes (digit/non-ticker symbols like OG51/3905) so the
+  protection advisor + Open Trades framing never offer an exchange stop on un-stoppable 401k funds.
+- Live result: real Fidelity 401k = $566,790 (10 positions), portfolio total $1,254,255, all aggregates
+  consistent. Spec: docs/brokers/snaptrade-read-only-aggregation-spec.md.
+
 ## 2026-06-14 - Local model FLEET health check (pings every installed model)
 
 New `scripts/check_local_model_fleet.py` — walks the WHOLE Ollama fleet from `/api/tags` and pings each

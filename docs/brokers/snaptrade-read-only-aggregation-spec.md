@@ -1,6 +1,8 @@
 # SnapTrade Read-Only Aggregation — Spec
 
-**Status:** scaffolded (read-only fence + credentials modal shipped); connect flow + sync job pending operator opt-in.
+**Status:** LIVE (2026-06-14) — Fidelity 401k + Rollover IRA connected; sync scheduled 3×/trading day; real
+401k holdings ($566,790) applied to holdings.json. Connect flow uses personal-key secret rotation (not
+registerUser). Remaining: rollover-IRA fills on transfer (hands-off via vanished-account auto-zero).
 **Owner:** operator (John). **Created:** 2026-06-14.
 
 ## Purpose
