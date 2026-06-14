@@ -1,261 +1,113 @@
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
 
-// Actionable position decision card (READ-ONLY). 6 zones: header identity, decision banner (most important),
-// economics, evidence chips (incl. strategy WHY + sector), catalyst/news, manual-action buttons. No trade
-// buttons — all actions are review/open/drill only.
+const TEXT0 = '#f8fafc'
+const TEXT1 = '#dbeafe'
+const TEXT2 = '#cbd5e1'
+const MUTED = '#94a3b8'
+const DIM = '#64748b'
+const GREEN = '#22c55e'
+const RED = '#ef4444'
+const AMBER = '#f59e0b'
+const BLUE = '#60a5fa'
+const PURPLE = '#a855f7'
 
-const chip = (bg: string, fg: string) => ({ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: bg, color: fg, whiteSpace: 'nowrap' as const, display: 'inline-block' })
-const num = (v: any, d = 2) => (v == null ? '—' : Number(v).toFixed(d))
-const pct = (v: any) => (v == null ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`)
+const chip = (bg: string, fg: string, strong = false) => ({ fontSize: strong ? 10 : 9, fontWeight: strong ? 850 : 750, padding: strong ? '3px 8px' : '2px 7px', borderRadius: 5, background: bg, color: fg, whiteSpace: 'nowrap' as const, display: 'inline-block', border: `1px solid ${fg}44` })
+const metric = { background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9, padding: '8px 9px' } as const
+const num = (v: any, d = 2) => (v == null || Number.isNaN(Number(v)) ? '—' : Number(v).toFixed(d))
+const pct = (v: any) => (v == null || Number.isNaN(Number(v)) ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`)
+const PRI: Record<string, string> = { critical: RED, high: AMBER, medium: BLUE, low: GREEN }
+const RSI_C = (b: string) => b === 'oversold' ? GREEN : b === 'overbought' ? RED : b === 'missing' ? MUTED : BLUE
+const BASIS_C: Record<string, string> = { broker: GREEN, tax_grade: GREEN, verified: BLUE, entry: BLUE, owner_provided: PURPLE, unknown: RED }
+const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED, none: MUTED }
+const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
 
-// priority → left border + accent
-const PRI: Record<string, string> = { critical: '#ef4444', high: '#f59e0b', medium: '#60a5fa', low: '#22c55e' }
-const RSI_C = (b: string) => b === 'oversold' ? '#22c55e' : b === 'overbought' ? '#ef4444' : b === 'missing' ? 'var(--text3)' : '#60a5fa'
-const BASIS_C: Record<string, string> = { broker: '#22c55e', tax_grade: '#22c55e', verified: '#60a5fa', entry: '#60a5fa', owner_provided: '#a855f7', unknown: '#ef4444' }
-const FRESH_C: Record<string, string> = { fresh: '#22c55e', aging: '#f59e0b', stale: '#ef4444', none: 'var(--text3)' }
-
-// LLM lane badge meta (matches Portfolio holdings cards)
-const LANE_META: Record<string, { label: string; c: string }> = {
-  local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: '#f59e0b' },
-  chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' },
+function Metric({ label, value, color = TEXT0 }: any) {
+  return <div style={metric}><div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', fontWeight: 850, letterSpacing: '.05em' }}>{label}</div><div style={{ fontSize: 13, color, fontWeight: 900, marginTop: 3 }}>{value}</div></div>
 }
 
 export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec, symCard }: any) {
-  const t = p.technical || {}, sr = p.sector_relative || {}, pr = p.protection || {}
+  const t = p.technical || {}, sr = p.sector_relative || {}
   const priority = p.operator_priority || 'low'
-  const border = PRI[priority] || 'var(--border)'
-  const news: any[] = (p.news ?? [])
-  const ageH = p.latest_news_age_hours
-  // newest review per lane (badge tooltip = model · date analyzed · count)
+  const border = PRI[priority] || BLUE
+  const news: any[] = p.news ?? []
   const lanes: Record<string, any> = {}
-  for (const c of (llmCov ?? [])) {
-    const k = LANE_META[c.lane] ? c.lane : 'local'
-    if (!lanes[k] || c.last_at > lanes[k].last_at) lanes[k] = c
-  }
+  for (const c of (llmCov ?? [])) { const k = LANE_META[c.lane] ? c.lane : 'local'; if (!lanes[k] || c.last_at > lanes[k].last_at) lanes[k] = c }
+  const paper = p.environment === 'paper' || String(p.account ?? '').toLowerCase().includes('paper')
+  const pnlColor = (p.unrealized_pnl ?? 0) >= 0 ? GREEN : RED
+  const basis = p.basis_reliable ? num(p.entry_price) : 'n/a'
 
-  return (
-    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: `4px solid ${border}`, borderRadius: 10, padding: 12 }}>
-
-      {/* ── ZONE 1: HEADER — identity + account + priority ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-        <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{p.symbol}</span>
+  return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 20, fontWeight: 950, color: TEXT0 }}>{p.symbol}</span>
           <ProAnalystPill symbol={p.symbol} map={paMap} compact />
-          <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{p.shares} sh · {p.hold_duration ?? '—'}</span>
+          <span style={{ fontSize: 11, color: MUTED }}>{p.shares} sh · {p.hold_duration ?? '—'}</span>
         </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {p.watchlist_state === 'directive' && <span style={chip('rgba(168,85,247,.18)', '#a855f7')} title="Operator directive-linked">★ directive</span>}
-          {p.watchlist_state === 'watchlist' && <span style={chip('rgba(96,165,250,.15)', '#60a5fa')}>watchlist</span>}
-          {/* account badge — loud paper-vs-real distinction (operator request 2026-06-12: AGNC/NWG
-              exist as BOTH paper trades and real Schwab holdings; the badge disambiguates at a glance) */}
-          {(() => {
-            const paper = p.environment === 'paper' || String(p.account ?? '').toLowerCase().includes('paper')
-            return <span title={`${p.broker}/${p.environment}`} style={chip(
-              paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)', paper ? '#60a5fa' : '#ffa726')}>
-              {paper ? '📝 PAPER' : '💰 REAL'} · {String(p.account ?? '?').replace(/_/g, ' ').toUpperCase()}</span>
-          })()}
-          <span style={chip(`${border}22`, border)} title={`Operator priority: ${priority}`}>{priority.toUpperCase()}</span>
-          <span style={chip(p.protection_state === 'protected' ? 'rgba(34,197,94,.15)' : p.protection_state === 'partial' ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)', p.protection_state === 'protected' ? '#22c55e' : p.protection_state === 'partial' ? '#f59e0b' : '#ef4444')}>{p.protection_state}</span>
-        </div>
+        {symCard?.description && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 5, lineHeight: 1.42 }}>{symCard.description}{symCard.vs_sector_week != null && <span style={{ marginLeft: 6, fontWeight: 850, color: symCard.vs_sector_week >= 0 ? GREEN : RED }}>{symCard.vs_sector_week >= 0 ? '+' : ''}{symCard.vs_sector_week}% vs sector</span>}</div>}
       </div>
-
-      {/* what the company does + sector vs-sector (unified card layer, operator 2026-06-12) */}
-      {symCard?.description && (
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, lineHeight: 1.4 }}>
-          {symCard.description}
-          {symCard.vs_sector_week != null && (
-            <span title={`symbol ${symCard.perf_week}% vs ${symCard.sector_etf} ${symCard.sector_perf_week}% (week)`}
-              style={{ marginLeft: 6, fontWeight: 700, color: symCard.vs_sector_week >= 0 ? '#22c55e' : '#ef4444' }}>
-              {symCard.vs_sector_week >= 0 ? '+' : ''}{symCard.vs_sector_week}% vs sector (1w)</span>
-          )}
-        </div>
-      )}
-
-      {/* ── ZONE 3: DECISION BANNER (most important text) ── */}
-      <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 6, background: `${border}14`, border: `1px solid ${border}44` }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: border }}>{p.operator_decision ?? 'No action — monitored'}</div>
-        <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{p.decision_reason}</div>
-        {p.primary_next_review && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 3 }}>Next: {p.primary_next_review}</div>}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {p.watchlist_state === 'directive' && <span style={chip('rgba(168,85,247,.20)', PURPLE, true)}>★ directive</span>}
+        {p.watchlist_state === 'watchlist' && <span style={chip('rgba(96,165,250,.16)', BLUE, true)}>watchlist</span>}
+        <span title={`${p.broker}/${p.environment}`} style={chip(paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)', paper ? BLUE : '#ffa726', true)}>{paper ? 'PAPER' : 'REAL'} · {String(p.account ?? '?').replace(/_/g, ' ').toUpperCase()}</span>
+        <span style={chip(`${border}22`, border, true)}>{priority.toUpperCase()}</span>
+        <span style={chip(p.protection_state === 'protected' ? 'rgba(34,197,94,.16)' : p.protection_state === 'partial' ? 'rgba(245,158,11,.16)' : 'rgba(239,68,68,.16)', p.protection_state === 'protected' ? GREEN : p.protection_state === 'partial' ? AMBER : RED, true)}>{p.protection_state}</span>
       </div>
-
-      {/* ── ZONE 3b: LLM PROTECTION ADVISORY (operator 2026-06-12 — stop/trail recs + who reviewed) ── */}
-      {(protectionRec || Object.keys(lanes).length > 0) && (
-        <div style={{ marginTop: 6, padding: '6px 9px', borderRadius: 6, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.25)' }}>
-          {protectionRec && (() => {
-            // Render from STRUCTURED fields (not the free-form string) so stop + trail units are
-            // explicit and cross-checkable. trail is shown as BOTH $ and % regardless of which the
-            // model emitted, so "$0.30" vs "0.3%" can never be confused (operator 2026-06-13).
-            const price = Number(protectionRec.price) || null
-            const stop = Number(protectionRec.stop_price) || null
-            const dist = protectionRec.stop_distance_pct   // % current price is above the stop
-            const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null
-            const isPct = protectionRec.trail_type === 'PERCENT'
-            const trailDollar = off == null ? null : isPct ? (price ? price * off / 100 : null) : off
-            const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
-            const distColor = dist == null ? 'var(--text3)' : dist < 0 ? '#ef4444' : dist < 2 ? '#ef4444' : dist < 5 ? '#f59e0b' : '#22c55e'
-            const wideStop = dist != null && dist > 12   // stop far below price = weak protection
-            return (
-              <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}\nADVISORY ONLY — approval→draft→Schwab wiring is a future gated phase`}
-                style={{ cursor: 'help', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#c084fc' }}>🛡 advisory</span>
-                {protectionRec.family && (
-                  <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: 'rgba(96,165,250,.14)', color: '#60a5fa', textTransform: 'capitalize' }}
-                    title={`trailing-stop family: ${protectionRec.family}${protectionRec.family_source ? ` (${protectionRec.family_source})` : ''} — sets the stop-width band`}>
-                    {protectionRec.family}</span>
-                )}
-                {stop != null && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>
-                    stop <b style={{ color: '#c084fc' }}>${stop.toFixed(2)}</b>
-                    {dist != null && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({dist < 0 ? '' : '−'}{Math.abs(dist).toFixed(1)}% {dist < 0 ? 'ABOVE price' : 'vs price'})</span>}
-                  </span>
-                )}
-                {off != null ? (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>
-                    trail <b style={{ color: '#60a5fa' }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>
-                    {trailPct != null && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({trailPct.toFixed(1)}%)</span>}
-                  </span>
-                ) : <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>no trail yet</span>}
-                {dist != null && (
-                  <span style={{ fontSize: 9.5, fontWeight: 800, color: distColor }}
-                    title={`current $${price?.toFixed(2)} vs advised stop $${stop?.toFixed(2)}`}>
-                    {dist < 0 ? '⛔ price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}
-                  </span>
-                )}
-                {wideStop && <span style={{ fontSize: 8.5, fontWeight: 800, color: '#f59e0b' }} title="advised stop sits far below price — wide/weak protection; verify">⚠ wide stop</span>}
-                {protectionRec.sanity && protectionRec.sanity.verdict !== 'ok' && (
-                  <span style={{ fontSize: 8.5, fontWeight: 800, color: protectionRec.sanity.verdict === 'fail' ? '#ef4444' : '#f59e0b' }}
-                    title={`advisory self-check ${protectionRec.sanity.verdict.toUpperCase()}:\n` + (protectionRec.sanity.issues || []).join('\n')}>
-                    {protectionRec.sanity.verdict === 'fail' ? '⛔ unreliable advisory' : '⚠ check advisory'}
-                  </span>
-                )}
-              </div>
-            )
-          })()}
-          {protectionRec?.rationale && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{protectionRec.rationale}</div>}
-          <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 8, color: 'var(--text3)' }}>reviewed by:</span>
-            {Object.keys(lanes).length === 0 && <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>no LLM review in 30d</span>}
-            {Object.entries(lanes).map(([lane, c]: any) => {
-              const m = LANE_META[lane]
-              return <span key={lane}
-                title={`${c.model} · analyzed ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''} (advisory research)`}
-                style={{ fontSize: 7.5, fontWeight: 800, padding: '1px 5px', borderRadius: 3, letterSpacing: 0.4,
-                  background: m.c + '1f', color: m.c, border: `1px solid ${m.c}44`, cursor: 'help' }}>🤖 {m.label}</span>
-            })}
-            <span style={{ fontSize: 7.5, color: 'var(--text3)', marginLeft: 'auto' }}>advisory only — hover for date analyzed</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── ZONE 2: ECONOMICS ── */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        {p.unrealized_pnl != null ? (<>
-          <span style={{ fontSize: 16, fontWeight: 700, color: p.unrealized_pnl >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(p.unrealized_pnl)}</span>
-          <span style={{ fontSize: 12, color: (p.unrealized_pnl_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{pct(p.unrealized_pnl_pct)}</span>
-        </>) : (<>
-          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(p.market_value ?? 0)}</span>
-        </>)}
-        {p.today_move_pct != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>today {pct(p.today_move_pct)}</span>}
-        {p.r_multiple != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{num(p.r_multiple, 1)}R</span>}
-        {p.market_value != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>mv {fmt$(p.market_value, 0)}</span>}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 5, fontFamily: 'monospace' }}>
-        {p.basis_kind === 'avg_cost' ? 'avg' : 'entry'} {p.basis_reliable ? num(p.entry_price) : 'n/a'} · now {num(p.current_price)}
-        {p.stop_price != null ? ` · stop ${num(p.stop_price)}` : ''}{p.target_price ? ` · tgt ${num(p.target_price)}` : ''}
-        {p.basis_reliable && p.cost_basis != null ? ` · basis ${fmt$(p.cost_basis)}` : ''}
-        <span style={{ color: BASIS_C[p.basis_quality] || 'var(--text3)', marginLeft: 6 }}>basis: {p.basis_quality}</span>
-      </div>
-
-      {/* ── ZONE 4: EVIDENCE CHIPS (incl. strategy WHY + sector) ── */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
-        <span style={chip('var(--bg2)', 'var(--text1)')} title="Strategy assigned to this position">{p.strategy ?? 'unclassified'}</span>
-        <span style={chip('var(--bg2)', RSI_C(t.rsi_bucket))}>RSI {t.rsi != null ? num(t.rsi, 0) : '—'} {t.rsi_bucket}</span>
-        <span style={chip('var(--bg2)', t.trend_label === 'bullish' ? '#22c55e' : t.trend_label === 'bearish' ? '#ef4444' : 'var(--text2)')}>{t.trend_label}</span>
-        {sr.sector && <span style={chip('var(--bg2)', (sr.vs_sector_5d ?? 0) > 1 ? '#22c55e' : (sr.vs_sector_5d ?? 0) < -1 ? '#ef4444' : 'var(--text2)')} title={`vs sector 5d ${sr.vs_sector_5d != null ? pct(sr.vs_sector_5d) : '—'}`}>{sr.sector}{sr.sector_etf ? ` (${sr.sector_etf})` : ''}</span>}
-        <span style={chip('var(--bg2)', FRESH_C[p.data_freshness])} title="Technical/price data freshness">data {p.data_freshness}</span>
-        <span style={chip('var(--bg2)', FRESH_C[p.news_freshness])} title={ageH != null ? `newest headline ${Math.round(ageH)}h old` : 'no recent news'}>news {p.news_freshness}{ageH != null ? ` ${Math.round(ageH)}h` : ''}</span>
-        {(p.risk_flags ?? []).map((r: string) => <span key={r} style={chip('rgba(239,68,68,.13)', '#ef4444')}>{r.replace(/_/g, ' ')}</span>)}
-        {(p.opportunity_flags ?? []).map((o: string) => <span key={o} style={chip('rgba(34,197,94,.13)', '#22c55e')}>{o.replace(/_/g, ' ')}</span>)}
-        {p.l2_pressure?.imbalance != null && (
-          <span style={chip(p.l2_pressure.imbalance > 0.2 ? 'rgba(34,197,94,.13)' : p.l2_pressure.imbalance < -0.2 ? 'rgba(239,68,68,.13)' : 'var(--bg2)',
-            p.l2_pressure.imbalance > 0.2 ? '#22c55e' : p.l2_pressure.imbalance < -0.2 ? '#ef4444' : 'var(--text2)')}
-            title={`Level-2 book pressure (live stream)\nbid depth ${p.l2_pressure.bid_depth} / ask depth ${p.l2_pressure.ask_depth} · ${p.l2_pressure.at}`}>
-            L2 {p.l2_pressure.imbalance > 0 ? '+' : ''}{Number(p.l2_pressure.imbalance).toFixed(2)}
-          </span>
-        )}
-        {p.hermes_rank != null && p.hermes_rank <= 100 && (
-          <span style={chip('rgba(167,139,250,.13)', '#a78bfa')} title={`Hermes watchlist intelligence rank (composite ${p.hermes_composite != null ? Number(p.hermes_composite).toFixed(1) : '—'})`}>H#{p.hermes_rank}</span>
-        )}
-        {p.short_float_pct != null && p.short_float_pct >= 5 && (
-          <span style={chip('rgba(245,158,11,.13)', '#f59e0b')} title={`Short float ${p.short_float_pct}% — squeeze/volatility context`}>short {num(p.short_float_pct, 1)}%</span>
-        )}
-        {p.earnings_date && (
-          <span style={chip('rgba(96,165,250,.13)', '#60a5fa')} title="Next earnings date (from enrichment)">earnings {p.earnings_date}</span>
-        )}
-      </div>
-
-      {/* ── ANALYST LINE (explicit — was cryptic pills) ── */}
-      {p.analyst && (p.analyst.rating || p.analyst.target_mean != null) && (
-        <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 5 }}
-          title={`${p.analyst.source ?? 'analyst consensus'}${p.analyst.latest_event ? `\nlatest: ${p.analyst.latest_event}` : ''}\ntarget range $${p.analyst.target_low ?? '—'} – $${p.analyst.target_high ?? '—'}`}>
-          <b style={{ color: 'var(--text1)' }}>Analysts:</b>{' '}
-          {p.analyst.rating ? `${String(p.analyst.rating).toUpperCase()}${p.analyst.rating_mean != null ? ` (${Number(p.analyst.rating_mean).toFixed(1)})` : ''}` : 'no consensus'}
-          {p.analyst.opinions != null && ` · ${p.analyst.opinions} opinions`}
-          {p.analyst.target_mean != null && ` · target $${num(p.analyst.target_mean, 2)}`}
-          {p.analyst.target_upside_pct != null && (
-            <span style={{ color: p.analyst.target_upside_pct > 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
-              {' '}({p.analyst.target_upside_pct > 0 ? '+' : ''}{num(p.analyst.target_upside_pct, 1)}% to target)
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* WHY this strategy (operator asked for this) */}
-      {p.strategy_rationale && (
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic' }} title="Why this strategy applies (from the strategy's purpose)">
-          Why <b style={{ color: 'var(--text2)' }}>{p.strategy}</b>: {p.strategy_rationale}
-        </div>
-      )}
-
-      {/* ── ZONE 6: MANUAL ACTION BUTTONS (read-only / review only) ── */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
-        {(p.recommended_manual_actions ?? []).slice(0, 4).map((a: string) => (
-          <button key={a} onClick={() => onAction?.(a, p)} title="Operator review action (read-only — no order placed)"
-            style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>{a}</button>
-        ))}
-        <span onClick={onToggle} style={{ fontSize: 9, color: 'var(--text3)', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto' }}>{expanded ? 'less' : 'more'}</span>
-        <span onClick={() => onDrill({ title: `${p.symbol} — ${p.account}`, subtitle: `${p.strategy ?? ''} · ${p.broker}/${p.environment}`, endpoint: '/api/v2/open-trades/intelligence', rows: [p], subjectType: 'position', subjectKey: p.symbol })}
-          style={{ fontSize: 9, color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline' }}>drill</span>
-      </div>
-
-      {/* ── ZONE 5: CATALYST / NEWS (expanded) ── */}
-      {expanded && (
-        <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text2)', marginBottom: 4 }}>News & catalysts</div>
-          {news.length === 0 && <div style={{ fontSize: 9, color: 'var(--text3)' }}>No recent research surfaced.</div>}
-          {/* operator 2026-06-12: expanded = FULL text, no truncation — the card is open to be READ */}
-          {news.map((n: any, i: number) => {
-            const stale = (n.age_hours ?? 0) > 48
-            return (
-              <div key={i} style={{ fontSize: 10, marginBottom: 6, opacity: stale ? 0.65 : 1, lineHeight: 1.45 }}>
-                <div style={{ display: 'flex', gap: 5, alignItems: 'baseline' }}>
-                  <span style={chip('var(--bg2)', 'var(--text2)')}>{n.source}</span>
-                  {n.age_hours != null && <span style={{ fontSize: 9, color: stale ? '#f59e0b' : 'var(--text3)' }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}
-                </div>
-                {n.url
-                  ? <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none', display: 'block', marginTop: 2 }}>{n.title || ''}</a>
-                  : <div style={{ color: 'var(--text2)', marginTop: 2 }}>{n.title || ''}</div>}
-                {n.why_it_matters && <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 2 }}><b style={{ color: 'var(--text2)' }}>Why it matters:</b> {n.why_it_matters}</div>}
-              </div>
-            )
-          })}
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
-            SMA50 {t.sma50_pct != null ? pct(t.sma50_pct) : '—'} · SMA200 {t.sma200_pct != null ? pct(t.sma200_pct) : '—'} · RVOL {t.rvol ?? '—'}
-            {sr.sector ? ` · ${sr.sector} ${sr.label}` : ''}{p.last_hermes_review_at ? ` · Hermes ${String(p.last_hermes_review_at).slice(0, 10)}` : ''}
-          </div>
-        </div>
-      )}
     </div>
-  )
+
+    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: `${border}14`, border: `1px solid ${border}55` }}>
+      <div style={{ fontSize: 14, fontWeight: 950, color: border }}>{p.operator_decision ?? 'No action — monitored'}</div>
+      <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, lineHeight: 1.45 }}>{p.decision_reason}</div>
+      {p.primary_next_review && <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>Next: {p.primary_next_review}</div>}
+    </div>
+
+    {(protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
+      {protectionRec && (() => {
+        const price = Number(protectionRec.price) || null, stop = Number(protectionRec.stop_price) || null, dist = protectionRec.stop_distance_pct
+        const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null, isPct = protectionRec.trail_type === 'PERCENT'
+        const trailDollar = off == null ? null : isPct ? (price ? price * off / 100 : null) : off
+        const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
+        const distColor = dist == null ? MUTED : dist < 0 ? RED : dist < 2 ? RED : dist < 5 ? AMBER : GREEN
+        return <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
+          {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
+          {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>stop <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
+          {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
+          {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
+        </div>
+      })()}
+      {protectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{protectionRec.rationale}</div>}
+      <div style={{ display: 'flex', gap: 5, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: MUTED }}>reviewed by:</span>{Object.keys(lanes).length === 0 && <span style={{ fontSize: 9, color: MUTED }}>no LLM review in 30d</span>}{Object.entries(lanes).map(([lane, c]: any) => { const m = LANE_META[lane]; return <span key={lane} title={`${c.model} · analyzed ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''}`} style={{ fontSize: 8.5, fontWeight: 900, padding: '2px 6px', borderRadius: 4, background: m.c + '22', color: m.c, border: `1px solid ${m.c}55` }}>{m.label}</span> })}</div>
+    </div>}
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(95px,1fr))', gap: 8, marginTop: 10 }}>
+      <Metric label="P&L" value={p.unrealized_pnl != null ? fmt$(p.unrealized_pnl) : fmt$(p.market_value ?? 0)} color={p.unrealized_pnl != null ? pnlColor : TEXT0} />
+      <Metric label="P&L %" value={pct(p.unrealized_pnl_pct)} color={(p.unrealized_pnl_pct ?? 0) >= 0 ? GREEN : RED} />
+      <Metric label="Today" value={pct(p.today_move_pct)} color={(p.today_move_pct ?? 0) >= 0 ? GREEN : RED} />
+      <Metric label="Market Value" value={fmt$(p.market_value ?? 0, 0)} color={TEXT0} />
+      <Metric label="Basis" value={basis} color={BASIS_C[p.basis_quality] || TEXT2} />
+      <Metric label="Now" value={num(p.current_price)} color={TEXT0} />
+      <Metric label="Stop" value={p.stop_price != null ? num(p.stop_price) : '—'} color={p.stop_price != null ? RED : MUTED} />
+      <Metric label="R multiple" value={p.r_multiple != null ? `${num(p.r_multiple, 1)}R` : '—'} color={p.r_multiple != null && p.r_multiple >= 1 ? GREEN : AMBER} />
+    </div>
+
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+      <span style={chip('rgba(15,23,42,.55)', TEXT1)}>{p.strategy ?? 'unclassified'}</span>
+      <span style={chip('rgba(15,23,42,.55)', RSI_C(t.rsi_bucket))}>RSI {t.rsi != null ? num(t.rsi, 0) : '—'} {t.rsi_bucket}</span>
+      <span style={chip('rgba(15,23,42,.55)', t.trend_label === 'bullish' ? GREEN : t.trend_label === 'bearish' ? RED : TEXT2)}>{t.trend_label}</span>
+      {sr.sector && <span style={chip('rgba(15,23,42,.55)', (sr.vs_sector_5d ?? 0) > 1 ? GREEN : (sr.vs_sector_5d ?? 0) < -1 ? RED : TEXT2)}>{sr.sector}{sr.sector_etf ? ` (${sr.sector_etf})` : ''}</span>}
+      <span style={chip('rgba(15,23,42,.55)', FRESH_C[p.data_freshness])}>data {p.data_freshness}</span>
+      <span style={chip('rgba(15,23,42,.55)', FRESH_C[p.news_freshness])}>news {p.news_freshness}{p.latest_news_age_hours != null ? ` ${Math.round(p.latest_news_age_hours)}h` : ''}</span>
+      {(p.risk_flags ?? []).map((r: string) => <span key={r} style={chip('rgba(239,68,68,.14)', RED)}>{r.replace(/_/g, ' ')}</span>)}
+      {(p.opportunity_flags ?? []).map((o: string) => <span key={o} style={chip('rgba(34,197,94,.14)', GREEN)}>{o.replace(/_/g, ' ')}</span>)}
+    </div>
+
+    {p.analyst && (p.analyst.rating || p.analyst.target_mean != null) && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 8, lineHeight: 1.45 }}><b style={{ color: TEXT1 }}>Analysts:</b> {p.analyst.rating ? `${String(p.analyst.rating).toUpperCase()}${p.analyst.rating_mean != null ? ` (${Number(p.analyst.rating_mean).toFixed(1)})` : ''}` : 'no consensus'}{p.analyst.opinions != null && ` · ${p.analyst.opinions} opinions`}{p.analyst.target_mean != null && ` · target $${num(p.analyst.target_mean, 2)}`}{p.analyst.target_upside_pct != null && <span style={{ color: p.analyst.target_upside_pct > 0 ? GREEN : RED, fontWeight: 850 }}> ({p.analyst.target_upside_pct > 0 ? '+' : ''}{num(p.analyst.target_upside_pct, 1)}% to target)</span>}</div>}
+    {p.strategy_rationale && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 7, fontStyle: 'italic', lineHeight: 1.45 }}>Why <b style={{ color: TEXT2 }}>{p.strategy}</b>: {p.strategy_rationale}</div>}
+
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 11, alignItems: 'center' }}>{(p.recommended_manual_actions ?? []).slice(0, 4).map((a: string) => <button key={a} onClick={() => onAction?.(a, p)} title="Operator review action only" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(148,163,184,.25)', background: 'rgba(15,23,42,.55)', color: TEXT2, cursor: 'pointer' }}>{a}</button>)}<span onClick={onToggle} style={{ fontSize: 10, color: MUTED, cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto' }}>{expanded ? 'less' : 'more'}</span><span onClick={() => onDrill({ title: `${p.symbol} — ${p.account}`, subtitle: `${p.strategy ?? ''} · ${p.broker}/${p.environment}`, endpoint: '/api/v2/open-trades/intelligence', rows: [p], subjectType: 'position', subjectKey: p.symbol })} style={{ fontSize: 10, color: BLUE, cursor: 'pointer', textDecoration: 'underline', fontWeight: 800 }}>drill</span></div>
+
+    {expanded && <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 10 }}><div style={{ fontSize: 11, fontWeight: 900, color: TEXT1, marginBottom: 6 }}>News & catalysts</div>{news.length === 0 && <div style={{ fontSize: 10.5, color: MUTED }}>No recent research surfaced.</div>}{news.map((n: any, i: number) => { const stale = (n.age_hours ?? 0) > 48; return <div key={i} style={{ fontSize: 11, marginBottom: 7, opacity: stale ? 0.7 : 1, lineHeight: 1.45 }}><div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}><span style={chip('rgba(15,23,42,.55)', TEXT2)}>{n.source}</span>{n.age_hours != null && <span style={{ fontSize: 9.5, color: stale ? AMBER : MUTED }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}</div>{n.url ? <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', display: 'block', marginTop: 3, fontWeight: 650 }}>{n.title || ''}</a> : <div style={{ color: TEXT2, marginTop: 3 }}>{n.title || ''}</div>}{n.why_it_matters && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}><b style={{ color: TEXT2 }}>Why it matters:</b> {n.why_it_matters}</div>}</div> })}<div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>SMA50 {t.sma50_pct != null ? pct(t.sma50_pct) : '—'} · SMA200 {t.sma200_pct != null ? pct(t.sma200_pct) : '—'} · RVOL {t.rvol ?? '—'}{sr.sector ? ` · ${sr.sector} ${sr.label}` : ''}{p.last_hermes_review_at ? ` · Hermes ${String(p.last_hermes_review_at).slice(0, 10)}` : ''}</div></div>}
+  </div>
 }
