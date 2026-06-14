@@ -69,13 +69,26 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const trailDollar = off == null ? null : isPct ? (price ? price * off / 100 : null) : off
         const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
         const distColor = dist == null ? MUTED : dist < 0 ? RED : dist < 2 ? RED : dist < 5 ? AMBER : GREEN
-        return <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
-          {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
-          {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>stop <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
-          {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
-          {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
-        </div>
+        const unprotected = p.protection_state !== 'protected'
+        const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
+        const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c) — LOCKED until the canary write test passes Monday and you arm the protective-stop policy. Each order will require web + Telegram 2FA.'
+        return <>
+          <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
+            {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
+            {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>stop <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
+            {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
+            {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
+          </div>
+          {/* concrete advised action (replaces the vague "review protection") + Stage-2c-locked order buttons */}
+          {stop != null && unprotected && <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 950, color: AMBER }}>▸ ADVISED: SELL STOP ${stop.toFixed(2)} GTC{off != null && trailPct != null ? ` · then trail ${trailPct.toFixed(0)}%` : ''}</span>
+            <span style={{ flex: 1 }} />
+            <button disabled title={STAGE2C_TIP} style={lockBtn}>🔒 Queue stop</button>
+            <button disabled title={'STOP-LIMIT variant — ' + STAGE2C_TIP} style={lockBtn}>🔒 Queue stop-limit</button>
+            <button disabled title={'Modify an active stop — ' + STAGE2C_TIP} style={lockBtn}>🔒 Modify</button>
+          </div>}
+        </>
       })()}
       {protectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{protectionRec.rationale}</div>}
       <div style={{ display: 'flex', gap: 5, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: MUTED }}>reviewed by:</span>{Object.keys(lanes).length === 0 && <span style={{ fontSize: 9, color: MUTED }}>no LLM review in 30d</span>}{Object.entries(lanes).map(([lane, c]: any) => { const m = LANE_META[lane]; return <span key={lane} title={`${c.model} · analyzed ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''}`} style={{ fontSize: 8.5, fontWeight: 900, padding: '2px 6px', borderRadius: 4, background: m.c + '22', color: m.c, border: `1px solid ${m.c}55` }}>{m.label}</span> })}</div>
