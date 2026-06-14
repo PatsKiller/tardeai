@@ -411,6 +411,45 @@ Outcome scorer matches to closed trades → calibration update
 Next run: agent sees updated calibration → adjusts confidence
 ```
 
+> **Local-model status (2026-06-14):** the per-agent passes above resolve to `DEFAULT_LOCAL_LLM_MODEL`,
+> which is **`gemma3:4b`** — the reliable local model. `gemma3:12b` is the *aspirational* policy primary
+> but is currently **broken at the ollama runtime** (HTTP 500 on every prompt, even a one-line one — a
+> VRAM/model-load failure, not a context limit). Re-pull (`ollama rm gemma3:12b && ollama pull
+> gemma3:12b`, check VRAM) before re-pointing the default at it. Where the table says "gemma3:12b", read
+> "the local default" until 12b is fixed.
+
+### CIO Final Synthesis (Grok-primary, 2026-06-14)
+
+The four watchlist specialists (Maria / Steph / Risk → handoff) each emit a structured opinion; a **fifth
+CIO synthesis pass** reconciles them into the single `latest_recommendation` shown on the cards
+(`scripts/process_watchlist_agent_jobs.py`). That synthesis pass now runs on a **two-lane router**:
+
+1. **Primary — free Grok OAuth** (`grok-3-mini` via the local xAI proxy, `llm_lane.generate(lane="grok")`,
+   $0 cost). Chosen after a grok-vs-12b A/B in which **12b 500'd on all three names** while Grok produced
+   sharper, more skeptical reads (e.g. NVDA BUY→AVOID 0.88, DLR BUY→ADD_ON_PULLBACK, BDSX BUY→IGNORE).
+2. **Fallback — local default** (`gemma3:4b`) via `llm_router`, used only if the Grok lane is unavailable.
+
+Each synthesis is **prompt-versioned**: the prompt is stamped `[prompt_version: cio_synth_v2_grok_2026-06-14]`
+and the row records `synthesis_version = 2` (integer) plus the actual `model_used` (`grok-3-mini` or the
+local model that produced it) for audit. This replaced a bug where `model_used` was hardcoded to the
+Ollama model regardless of which model actually ran.
+
+**Queue prioritization** — the job picker in `process_watchlist_agent_jobs.py` no longer drains the
+~3,000-name backlog FIFO. It tiers by `EXISTS` subqueries so the names the operator cares about refresh
+first, then `priority`, then `created_at`:
+
+| Tier | Criterion |
+|------|-----------|
+| 0 | Symbol is an **operator directive-watch** name (`watchlist_items.in_directive_watch`) |
+| 1 | Symbol is **active** on the watchlist (`status='active'`) |
+| 2 | Symbol has a **BUY / STRONG_BUY** research card |
+| 3 | Everything else (the long tail) |
+
+**Re-run / staleness logic** — `aegis_overnight` flags any symbol not analyzed in **48h** and queues a
+`stale_refresh`; the market-hours cron drains ~5–10 jobs/run; a synthesis decision **expires at 14 days**
+(G4). With tiered prioritization, the ~50 directive/active/buy-rated names stay fresh while the tail no
+longer starves them.
+
 ### Daily Intelligence Workflow (End-to-End)
 
 This is the complete day-in-the-life showing how data flows from raw ingestion through agent analysis, LLM curation, and back into smarter searches:
