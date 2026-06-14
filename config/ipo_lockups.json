@@ -1,16 +1,24 @@
 {
-  "_comment": "IPO lockup expirations — when insiders / early investors can sell, per the company's S-1. A lockup expiry is a real catalyst (supply unlock often pressures the stock). Surfaced in the Ask box and flagged near expiry. Update tranches with the ACTUAL S-1 terms and set confirmed:true once verified; large IPOs often have early-release provisions (partial unlock if price holds) and staggered tranches.",
+  "_comment": "IPO lockup expirations — when insiders/early investors can sell, per the company's S-1. A lockup expiry is a real supply catalyst. Surfaced in the Ask box; the near-expiry monitor (ipo_lockup_alert.py) fires a Telegram alert ahead of each tranche. Earnings-tied tranches have approximate dates (depend on the actual earnings date) — flagged approx:true.",
   "lockups": {
     "SPCX": {
       "company": "SpaceX",
       "ipo_date": "2026-06-12",
       "offer_price": 135.00,
+      "structure": "UNUSUAL — staggered milestone + time-based release (not a standard single 180-day cliff). Most insiders can sell early; Elon Musk is carved out and locked the FULL YEAR.",
       "tranches": [
-        {"date": "2026-09-10", "days": 90, "pct_unlocked": null, "desc": "Possible EARLY release window (90d) — many recent S-1s release a portion if the stock holds above the offer price; CONFIRM terms", "confirmed": false},
-        {"date": "2026-12-09", "days": 180, "pct_unlocked": 100, "desc": "Standard 180-day lockup expiry — bulk of insider / early-investor / employee shares become eligible to sell", "confirmed": false}
+        {"date": "2026-07-28", "days": 46, "pct_unlocked": 20, "approx": true, "desc": "Q2 (Apr–Jun) earnings publication → up to 20% of eligible insider shares unlock (+10% MORE if SPCX is ≥30% above the $135 offer, i.e. ≥$175.50, at that point). Date approximate (first quarterly report).", "confirmed": true},
+        {"date": "2026-08-21", "days": 70, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 1/5 — 7% of eligible shares", "confirmed": true},
+        {"date": "2026-09-10", "days": 90, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 2/5 — 7%", "confirmed": true},
+        {"date": "2026-09-25", "days": 105, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 3/5 — 7%", "confirmed": true},
+        {"date": "2026-10-10", "days": 120, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 4/5 — 7%", "confirmed": true},
+        {"date": "2026-10-25", "days": 135, "pct_unlocked": 7, "approx": false, "desc": "Time tranche 5/5 — 7%", "confirmed": true},
+        {"date": "2026-10-30", "days": 140, "pct_unlocked": 28, "approx": true, "desc": "Q3 (Jul–Sep) earnings publication → +28% of eligible shares unlock. Date approximate.", "confirmed": true},
+        {"date": "2026-12-09", "days": 180, "pct_unlocked": 100, "approx": false, "desc": "Standard 180-day expiry — full remainder of eligible (non-Musk) shares comes off restriction", "confirmed": true},
+        {"date": "2027-06-12", "days": 365, "pct_unlocked": null, "approx": false, "desc": "ELON MUSK lockup expiry — Musk is carved out of all early releases and locked the full year (no early-sale exceptions)", "confirmed": true}
       ],
-      "notes": "Estimate based on a standard 180-day lockup. CONFIRM against the SpaceX S-1 (lockup section + underwriter early-release provisions). Index forced-buys (S&P/Nasdaq inclusion) are a separate supply event.",
-      "source": "estimate"
+      "notes": "Per S-1 coverage (CNBC/Motley Fool/Yahoo, May 2026). Earnings-tied tranches (Q2 ~late-Jul, Q3 ~late-Oct) move with the actual report dates. The +10% bonus tranche is conditional on price ≥$175.50 at Q2 earnings. Index forced-buys (S&P/Nasdaq inclusion) are a SEPARATE supply event. Verify primary doc on SEC EDGAR.",
+      "source": "S-1 (via news coverage)"
     }
   }
 }
