@@ -118,6 +118,12 @@ def reprice_holdings(holdings: List[Dict], price_cache: Dict,
             repriced.append(h)
             continue
 
+        # Broker-sourced LIVE values (e.g. SnapTrade) are authoritative — the value came straight from the
+        # brokerage, so never override it with a Yahoo cache price. Preserve as-is.
+        if str(h.get("position_source") or "").lower() == "snaptrade":
+            repriced.append(h)
+            continue
+
         # Skip Fidelity proprietary funds — they don't exist on Yahoo
         if _is_proprietary(sym):
             updated = dict(h)
