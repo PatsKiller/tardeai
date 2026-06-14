@@ -118,11 +118,19 @@ def reprice_holdings(holdings: List[Dict], price_cache: Dict,
             repriced.append(h)
             continue
 
-        # Broker-sourced LIVE values (e.g. SnapTrade) are authoritative — the value came straight from the
-        # brokerage, so never override it with a Yahoo cache price. Preserve as-is.
+        # Broker-sourced (SnapTrade) holdings: keep the broker value ONLY for fund/opaque codes that have no
+        # public quote (the 401k Fidelity codes — broker value is authoritative there). Real exchange
+        # tickers (stocks/ETFs, e.g. rollover-IRA holdings) fall through and reprice intraday from the quote
+        # cache for freshness — shares still come from the periodic sync, prices update between syncs.
         if str(h.get("position_source") or "").lower() == "snaptrade":
-            repriced.append(h)
-            continue
+            try:
+                import holding_family as _hf
+                _opaque = _hf.is_unstoppable_fund(sym) or not (sym.isalpha() and 1 <= len(sym) <= 5)
+            except Exception:
+                _opaque = not (sym.isalpha() and 1 <= len(sym) <= 5)
+            if _opaque:
+                repriced.append(h)
+                continue
 
         # Skip Fidelity proprietary funds — they don't exist on Yahoo
         if _is_proprietary(sym):
