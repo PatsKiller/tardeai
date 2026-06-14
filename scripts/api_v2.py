@@ -18461,17 +18461,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             sym = base_path[len("/api/v2/watchlist/"):-len("/requeue")].strip("/").upper()
             if sym:
                 try:
-                    queued = 0
-                    for agent in ['maria_research', 'steph_allocation', 'risk_agent']:
-                        _db_query(
-                            """INSERT INTO watchlist_agent_jobs
-                                (symbol, requested_agent, task_type, priority, status, submitted_from)
-                               VALUES (%s, %s, 'requeue_llm_error', 'high', 'pending', 'watchlist_requeue')
-                               ON CONFLICT DO NOTHING""",
-                            (sym, agent), fetch="none"
-                        )
-                        queued += 1
-                    return 200, {"ok": True, "symbol": sym, "queued": queued}
+                    # RE-RUN: reset this symbol's existing agent jobs to 'pending' so the processor
+                    # re-analyzes (Maria/Steph/Risk → fresh CIO synthesis). The old INSERT was a no-op:
+                    # watchlist_agent_jobs.id has no default, so a column-list INSERT fails and rolls back
+                    # while still reporting success. UPDATE needs no id and works for already-researched names.
+                    reset = _db_query(
+                        "UPDATE watchlist_agent_jobs SET status='pending', started_at=NULL, completed_at=NULL "
+                        "WHERE symbol=%s RETURNING id", (sym,), fetch="all")
+                    n = len(reset or [])
+                    if n == 0:
+                        # brand-new symbol with no prior jobs: insert a fresh set with an explicit id
+                        for agent in ['maria_research', 'steph_allocation', 'risk_agent']:
+                            _db_query(
+                                "INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, task_type, "
+                                "priority, status, submitted_from) VALUES "
+                                "((SELECT COALESCE(MAX(id),0)+1 FROM watchlist_agent_jobs), %s, %s, 'requeue', "
+                                "'high', 'pending', 'watchlist_requeue')", (sym, agent), fetch="none")
+                            n += 1
+                    # clear the synthesis review gate so it isn't skipped as 'not due'
+                    _db_query("UPDATE watchlist_final_synthesis SET next_review_date=CURRENT_DATE "
+                              "WHERE symbol=%s AND COALESCE(superseded,false)=false", (sym,), fetch="none")
+                    _db_query("UPDATE watchlist_research_cards SET needs_iteration=true WHERE symbol=%s",
+                              (sym,), fetch="none")
+                    return 200, {"ok": True, "symbol": sym, "requeued": n}
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/rewrite-note":
