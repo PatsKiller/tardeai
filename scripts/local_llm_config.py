@@ -23,7 +23,8 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-DEFAULT_LOCAL_LLM_MODEL = "gemma3:4b"
+DEFAULT_LOCAL_LLM_MODEL = "gemma3:12b"   # operator 2026-06-14: 12b is the policy primary (4b was the loose
+#                                          fallback). Slower but sharper; per-process env keys still override.
 
 # ── LLM Fleet v4.1 — Process Type Constants ──────────────────────────────
 # Scripts declare intent via process type; model resolution uses .env.
