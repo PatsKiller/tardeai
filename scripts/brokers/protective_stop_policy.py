@@ -21,7 +21,7 @@ from __future__ import annotations
 
 ENABLED = False                                  # ← MASTER GATE (commit to flip). Default OFF.
 PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)
-ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT")
+ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP")   # native trailing per operator 2026-06-14
 ALLOWED_INSTRUCTION = "SELL"                     # sell-to-close a long; never SELL_SHORT
 MAX_STOP_DRIFT_PCT = 5.0                          # placed stop must be within ±5% of the advised stop
 MAX_POSITION_NOTIONAL_USD = 250_000.0            # per-order ceiling (a held lot's value)

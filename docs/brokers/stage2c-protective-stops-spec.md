@@ -57,14 +57,17 @@ engine advises stop  →  [Queue stop] (Open Trades card)  →  preflight (polic
 - `ENABLED=False` at rest; any restart / disarm returns to blocked; commit-only widening.
 - Paper/canary untouched. Schwab IRAs excluded.
 
-## Open questions for review
+## Design decisions (operator, 2026-06-14 — RESOLVED)
 
-1. **Qty:** full position per stop, or allow partial (e.g. stop only the unrealized-gain tranche)?
-   Default proposed: full held qty.
-2. **STOP vs STOP_LIMIT default:** market-stop (guaranteed exit, slippage risk) vs stop-limit
-   (price floor, gap risk of no fill). Proposed: STOP for liquid names, STOP_LIMIT offered as the
-   variant button.
-3. **Trail execution:** Schwab supports native TRAILING_STOP — place the trail directly, or place a
-   fixed STOP and let the monitor walk it up via [Modify]? Proposed: native trailing where the family
-   says trail, fixed STOP otherwise.
-4. **Envelope scope:** taxable-only first (proposed), or include the IRAs once proven?
+1. **Qty = FULL position** — each protective stop covers all held shares (e.g. SELL 301 V STOP).
+   `[Queue stop]` defaults qty = held shares; policy already refuses qty > held (no shorts).
+2. **Default order type = STOP** (market-on-trigger; guaranteed exit, accepts small slippage).
+   `[Queue stop-limit]` is the explicit variant button for a price floor (gap-risk acknowledged).
+3. **Trail = native Schwab TRAILING_STOP** — when the family engine says trail (unrealized ≥ +10% &
+   price > 50d SMA, e.g. V/FCNTX at 8%), place a real `TRAILING_STOP` that the broker auto-walks up.
+   Fixed STOP only when the engine says no-trail (income / underwater). No manual walk-up needed.
+4. **Envelope = taxable only first** (IRAs excluded until proven), matching the canary pilot.
+
+These are wired into `protective_stop_policy.py` semantics: SELL-to-close · STOP/STOP_LIMIT/TRAILING_STOP
+· taxable · qty≤held · within ±5% of advised · ≤$250K/order. Build the execute endpoints + monitor
+NEXT, after the Stage 2b canary test passes and this spec is approved.
