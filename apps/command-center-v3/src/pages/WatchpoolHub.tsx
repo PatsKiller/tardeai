@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
@@ -44,6 +44,9 @@ export default function WatchpoolHub({ onDrill }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [fStatus, setFStatus] = useState('all')   // watchpool status filter (clickable top row)
+  const [page, setPage] = useState(0)
+  const PER_PAGE = 50
+  useEffect(() => setPage(0), [fStatus])   // reset to page 1 when the status filter changes
 
   const createDirective = async () => {
     setBusy(true); setMsg(null)
@@ -76,6 +79,16 @@ export default function WatchpoolHub({ onDrill }: Props) {
   const hits = wd?.recent_hits ?? []
   const allRows = wp?.rows ?? []
   const pool = fStatus === 'all' ? allRows : allRows.filter((r: any) => String(r.current_status).toUpperCase() === fStatus.toUpperCase())
+  const pageCount = Math.max(1, Math.ceil(pool.length / PER_PAGE))
+  const curPage = Math.min(page, pageCount - 1)
+  const pagePool = pool.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
+  const pager = pageCount > 1 ? (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: curPage === 0 ? 'default' : 'pointer', opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
+      <span style={{ fontSize: 10, color: 'var(--text2)', fontWeight: 700, minWidth: 92, textAlign: 'center' }}>Page {curPage + 1} / {pageCount} · {curPage * PER_PAGE + 1}-{Math.min((curPage + 1) * PER_PAGE, pool.length)}</span>
+      <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
+    </div>
+  ) : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -156,12 +169,14 @@ export default function WatchpoolHub({ onDrill }: Props) {
               </button>
             )
           })}
+          <span style={{ flex: 1 }} />
+          {pager}
         </div>
         {pool.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>Watchpool empty.</div> : (<>
           <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
             <span style={{ flex: '0 0 64px' }}>Symbol</span><span style={{ flex: '0 0 160px' }}>Strategy</span><span style={{ flex: '0 0 96px' }}>Bucket</span><span style={{ flex: '0 0 70px' }}>Status</span><span style={{ flex: '1 1 auto' }}>Origin</span>
           </div>
-          {pool.slice(0, 60).map((r: any) => (
+          {pagePool.map((r: any) => (
             <div key={r.id} onClick={() => onDrill({ title: `${r.symbol} — provenance`, subtitle: `${r.strategy_id} · ${r.bucket}`, endpoint: `/api/v2/watch/provenance/${r.symbol}`, rows: [r] })}
               style={{ display: 'flex', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
               <span style={{ flex: '0 0 64px', fontWeight: 600, fontFamily: 'monospace', color: 'var(--text0)' }}>{r.symbol}</span>
@@ -174,6 +189,7 @@ export default function WatchpoolHub({ onDrill }: Props) {
               </span>
             </div>
           ))}
+          {pageCount > 1 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>{pager}</div>}
         </>)}
         <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a row for full provenance (origin · tier · Street consensus · divergence). Advisory — promotion is gated; no execution.</div>
       </div>
