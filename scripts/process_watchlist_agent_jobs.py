@@ -170,6 +170,31 @@ _llm._last_model = OLLAMA_MODEL
 _llm._last_provider = "local"
 _llm._last_cost = 0
 
+# ── CIO final-synthesis: free Grok OAuth primary, local gemma fallback (operator 2026-06-14) ──
+# The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
+# one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
+# back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v2_grok_2026-06-14"   # descriptive (prompt stamp / audit)
+SYNTHESIS_VERSION_NUM = 2                                    # integer for the synthesis_version column (bump on prompt change)
+
+
+def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
+    """Free Grok OAuth → local gemma fallback. Records the ACTUAL model on _llm._last_model so the
+    stored model_used is truthful (the old path hard-coded OLLAMA_MODEL regardless of what ran)."""
+    try:
+        import llm_lane
+        if llm_lane.available("grok"):
+            out = llm_lane.generate(prompt, lane="grok", timeout=120)
+            if out and not str(out).startswith("LLM error"):
+                _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
+                return out
+    except Exception:
+        pass
+    # fallback: local gemma via the existing router/_llm path
+    out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
+    _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    return out
+
 
 def _get_context(conn, symbol: str) -> dict:
     """Build rich portfolio context for the agent. Returns dict + formatted string."""
@@ -1496,7 +1521,8 @@ Respond in JSON format:
 - "next_review_date": ISO date for when to re-review
 """
 
-    raw = _llm(prompt, max_tokens=1000, task_type="cio_synthesis", high_impact=True)
+    prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
+    raw = _synthesis_llm(prompt, max_tokens=1000)   # free Grok primary, local fallback
     parsed = _parse_result(raw)
 
     # Extract synthesis-specific fields
@@ -1552,12 +1578,13 @@ Respond in JSON format:
     # Update rec after gating
     rec = parsed["recommendation"].upper()
 
-    # Store synthesis
+    # Store synthesis — record the ACTUAL model that ran + the prompt version (not the hardcoded local)
+    actual_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
     cur.execute("""
         INSERT INTO watchlist_final_synthesis
             (symbol, recommendation, confidence, action, reason_codes, conflicts, unresolved,
-             next_review_date, synthesis_narrative, input_agents, model_used, raw_response)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             next_review_date, synthesis_narrative, input_agents, model_used, raw_response, synthesis_version)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (symbol) DO UPDATE SET
             recommendation=EXCLUDED.recommendation, confidence=EXCLUDED.confidence,
             action=EXCLUDED.action, reason_codes=EXCLUDED.reason_codes,
@@ -1565,11 +1592,11 @@ Respond in JSON format:
             next_review_date=EXCLUDED.next_review_date,
             synthesis_narrative=EXCLUDED.synthesis_narrative,
             input_agents=EXCLUDED.input_agents, model_used=EXCLUDED.model_used,
-            raw_response=EXCLUDED.raw_response, updated_at=now()
+            raw_response=EXCLUDED.raw_response, synthesis_version=EXCLUDED.synthesis_version, updated_at=now()
     """, (symbol, parsed["recommendation"], parsed["confidence"], action,
           parsed.get("reason_codes", []), conflicts, unresolved,
           next_review, synthesis_narrative,
-          [r["agent"] for r in results], OLLAMA_MODEL, raw))
+          [r["agent"] for r in results], actual_model, raw, SYNTHESIS_VERSION_NUM))
 
     # Record decision inputs (data lineage — what influenced this synthesis)
     try:
