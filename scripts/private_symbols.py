@@ -8,15 +8,13 @@ so consumers (watchlist cards, ask box, research) flag them and suppress the fak
 """
 from __future__ import annotations
 
+# KEEP THIS CURRENT — a private company can IPO and become a live ticker. Verify against LIVE quote data
+# before adding/keeping an entry; do NOT assume from stale model knowledge.
+#   • SpaceX IPO'd 2026-06-12 (ticker SPCX, Nasdaq, ~$161) — it is PUBLIC. REMOVED from this list.
+#     (xAI / X were folded into SpaceX, so that exposure is now via SPCX too.)
+# Only list companies that genuinely have NO public ticker right now.
 PRIVATE_NONTRADEABLE = {
-    "SPCX": {"company": "SpaceX",
-             "note": "⚠ SPCX is a DELISTED SPAC ETF — NOT SpaceX. SpaceX is PRIVATE with no public ticker. "
-                     "Any price/entry shown is stale/incorrect. Exposure only via ARK Venture (ARKVX) or "
-                     "Destiny Tech100 (DXYZ)."},
-    "SPACEX": {"company": "SpaceX",
-               "note": "SpaceX is PRIVATE — no public ticker. Exposure only via ARKVX / DXYZ / pre-IPO secondaries."},
     "OPENAI": {"company": "OpenAI", "note": "OpenAI is private — no ticker. Indirect via MSFT only."},
-    "XAI": {"company": "xAI", "note": "xAI is private — no public ticker."},
     "STRIPE": {"company": "Stripe", "note": "Stripe is private — no public ticker."},
     "ANTHROPIC": {"company": "Anthropic", "note": "Anthropic is private — indirect via AMZN/GOOGL only."},
     "DATABRICKS": {"company": "Databricks", "note": "Databricks is private — no public ticker."},
