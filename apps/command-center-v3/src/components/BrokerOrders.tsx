@@ -211,6 +211,7 @@ function PilotConsole() {
   const [pf, setPf] = useState<any>(null)
   const [execMsg, setExecMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmTicker, setConfirmTicker] = useState('')  // type-the-ticker = fat-finger confirm + submit
   const post = async (path: string, body: any) => {
     setBusy(true)
     try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json(); return (j as any)?.data ?? j }
@@ -342,16 +343,31 @@ function PilotConsole() {
           <div style={{ fontSize: 9, color: T.dim, marginTop: 3, ...mono }}>
             quote: bid {pf.checks?.live_quote?.bid} / ask {pf.checks?.live_quote?.ask} · spread {pf.checks?.live_quote?.spread_pct}%</div>
           <pre style={{ fontSize: 9, color: T.dim, margin: '6px 0 0', maxHeight: 120, overflow: 'auto' }}>{JSON.stringify(pf.order_spec)}</pre>
-          {/* factor ② and ③: the existing two-channel approval (web typed-ticker + telegram) */}
-          <ApprovalPanel intentId={pf.intent_id} symbol={symbol} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-            <button disabled={busy || !armed}
-              onClick={async () => { const r = await post('/api/v2/broker-orders/pilot/execute', { intent_id: pf.intent_id }); setExecMsg(JSON.stringify(r).slice(0, 220)); refetch() }}
-              style={{ ...btn(armed ? T.buy : '#222', armed ? '#fff' : '#555'), padding: '7px 16px', fontWeight: 800 }}>
-              EXECUTE PILOT ORDER (server re-checks everything)</button>
-            <span style={{ fontSize: 9, color: T.dim }}>denied unless BOTH 2FA channels are confirmed + all locks open</span>
+          {/* operator directive 2026-06-15: type the ticker (= the fat-finger confirm) + SUBMIT and the
+              order goes. One click chains request-approval → web-approve(ticker) → execute. The server
+              STILL enforces the full canary envelope + allowlist + armed session + 5-order cap regardless. */}
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input autoFocus value={confirmTicker} onChange={e => setConfirmTicker(e.target.value.toUpperCase())}
+              placeholder={`type ${symbol} to submit`}
+              style={{ ...inp, width: 150, fontSize: 13, padding: '8px 10px',
+                borderColor: confirmTicker === symbol ? '#66bb6a' : T.border }} />
+            <button disabled={busy || !armed || confirmTicker !== symbol}
+              onClick={async () => {
+                setBusy(true); setExecMsg('submitting…')
+                try {
+                  await post('/api/v2/broker-orders/request-approval', { intent_id: pf.intent_id })
+                  const ap = await post('/api/v2/broker-orders/approve', { intent_id: pf.intent_id, channel: 'web', code: confirmTicker })
+                  if (!ap?.ok && !ap?.fully_approved) { setExecMsg(`approve: ${ap?.reason ?? ap?.error ?? 'failed'}`); return }
+                  const r = await post('/api/v2/broker-orders/pilot/execute', { intent_id: pf.intent_id })
+                  setExecMsg(r?.ok ? `✅ SUBMITTED — ${JSON.stringify(r).slice(0, 200)}` : `⛔ ${r?.reason ?? r?.error ?? JSON.stringify(r).slice(0,180)}`)
+                  setConfirmTicker(''); refetch()
+                } finally { setBusy(false) }
+              }}
+              style={{ ...btn((armed && confirmTicker === symbol) ? T.buy : '#222', (armed && confirmTicker === symbol) ? '#fff' : '#555'), padding: '8px 18px', fontWeight: 800 }}>
+              {busy ? 'SUBMITTING…' : 'SUBMIT ORDER'}</button>
+            <span style={{ fontSize: 9, color: T.dim }}>type the ticker → SUBMIT = sends to Schwab (server still enforces the canary envelope + caps)</span>
           </div>
-          {execMsg && <div style={{ fontSize: 9, color: T.text, marginTop: 6, ...mono }}>{execMsg}</div>}
+          {execMsg && <div style={{ fontSize: 10, color: execMsg.startsWith('✅') ? '#66bb6a' : execMsg.startsWith('⛔') ? '#ef5350' : T.text, marginTop: 7, ...mono }}>{execMsg}</div>}
         </div>
       )}
 
