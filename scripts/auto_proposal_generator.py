@@ -267,7 +267,14 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
     return True, '', None
 
 
-def _liquidity_prescreen(symbol: str, rules: dict) -> tuple:
+# Only true intraday scalp/momentum setups need the strict generation-time liquidity gate. Swing,
+# breakout, fib and earnings plans hold for hours-to-days, so an intraday spread/volume floor would
+# wrongly reject a perfectly tradeable swing name — and the execution-readiness layer is still the
+# tighter backstop at approval. (operator 2026-06-15: swing_breakout plans should generate proposals too.)
+_LIQUIDITY_GATED_STRATEGIES = {"momentum_scalp", "gap_and_go", "earnings_catalyst"}
+
+
+def _liquidity_prescreen(symbol: str, rules: dict, strategy_id: str = None) -> tuple:
     """Structural liquidity gate at GENERATION time. Returns (ok: bool, reason: str).
 
     Stops untradeable microcaps (wide spread / no real volume) from becoming
@@ -275,11 +282,12 @@ def _liquidity_prescreen(symbol: str, rules: dict) -> tuple:
     it has already pinged Telegram. strategy_signals carries no absolute volume or
     spread, so we read a live quote (the only reliable source for thin names).
 
-    Fail-open by design: outside regular hours (pre/after-market spreads are wide
-    for everyone), or when no quote / data error, this NEVER blocks — swing/position
-    after-hours pre-staging is unaffected and the execution-readiness layer stays the
-    tighter backstop at approval.
+    Strategy-aware: only intraday scalp/momentum setups are gated; swing/breakout/fib hold longer and
+    pass (the approval-time execution-readiness check remains the backstop). Fail-open by design:
+    outside regular hours, or when no quote / data error, this NEVER blocks.
     """
+    if strategy_id and strategy_id not in _LIQUIDITY_GATED_STRATEGIES:
+        return True, ""   # swing/breakout/fib/earnings — not intraday-liquidity-dependent
     liq = (rules or {}).get("liquidity_prescreen") or {}
     if not liq.get("enabled", True):
         return True, ""
@@ -842,21 +850,26 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
     signals = get_eligible_signals(conn, run_label=run_label, symbol=symbol, min_score=min_score)
     log.info(f"Found {len(signals)} eligible signals for auto-proposal")
 
-    # Deduplicate: keep best signal per symbol (highest score, best strategy priority)
-    best_by_symbol = {}
+    # Deduplicate: ONE signal per symbol. Prefer the highest-priority strategy, BUT skip past a
+    # strategy whose liquidity gate rejects the symbol — so a name too thin to SCALP still produces a
+    # swing_breakout proposal (looser/ungated) instead of being dropped entirely. (operator 2026-06-15)
+    def _prio(s):
+        sid = s.get("strategy_id", "")
+        return (STRATEGY_PRIORITY.index(sid) if sid in STRATEGY_PRIORITY else 99, -(s.get("signal_score") or 0))
+    by_symbol = {}
     for sig in signals:
-        sym = sig["symbol"]
-        sid = sig.get("strategy_id", "")
-        priority = STRATEGY_PRIORITY.index(sid) if sid in STRATEGY_PRIORITY else 99
-        existing = best_by_symbol.get(sym)
-        if not existing:
-            best_by_symbol[sym] = (sig, priority)
-        else:
-            _, ex_priority = existing
-            if priority < ex_priority or (priority == ex_priority and (sig.get("signal_score") or 0) > (existing[0].get("signal_score") or 0)):
-                best_by_symbol[sym] = (sig, priority)
-
-    deduped = [sig for sig, _ in best_by_symbol.values()]
+        by_symbol.setdefault(sig["symbol"], []).append(sig)
+    deduped = []
+    for sym, lst in by_symbol.items():
+        lst.sort(key=_prio)
+        chosen = lst[0]                       # default: top-priority strategy
+        if not force:
+            for cand in lst:                  # walk priority order; take first that clears liquidity
+                ok, _r = _liquidity_prescreen(sym, shared_rules, cand.get("strategy_id"))
+                if ok:
+                    chosen = cand
+                    break
+        deduped.append(chosen)
     deduped.sort(key=lambda s: -(s.get("signal_score") or 0))
     if limit:
         deduped = deduped[:limit]
@@ -992,7 +1005,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
             # becoming a Telegram proposal — the noise the execution layer blocks at
             # approval but only after it has already alerted. force=True bypasses.
             if not force:
-                liq_ok, liq_reason = _liquidity_prescreen(sym, shared_rules)
+                liq_ok, liq_reason = _liquidity_prescreen(sym, shared_rules, sid)
                 if not liq_ok:
                     stats["liquidity_rejected"] += 1
                     stats["proposals_skipped"] += 1
