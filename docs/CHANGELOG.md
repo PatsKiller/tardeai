@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-06-15 - Stage 2b canary: FIRST live order proven (place→cancel) + workflow fixes
+
+**✅ WHAT WORKED — first live Command Center → Schwab write, end-to-end.** The $0 place→cancel canary
+submitted a real order to Schwab and was cancelled cleanly:
+- **BUY 10 GRAB LIMIT 1.70** · real **broker_order_id `1006761718313`** · `state:SUBMITTED` · pilot
+  `orders 1/5`. Limit 50% below market → could not fill; rested, then operator cancelled in ToS →
+  Schwab live status `canceled`. Proves the full chain: **arm → preflight → single-channel 2FA →
+  execute → schwab_transport → live order → cancel.** This is the core Stage 2b write path validated.
+
+**🔧 WHAT DIDN'T (and the fixes shipped):**
+- **Preflight hung** (HTTP 000, 20s) — a stuck Schwab quote connection inside the long-lived server
+  process (`get_quotes` was 1.6s from a fresh process). Fix: server restart clears it; root cause is
+  connection reuse, watch for recurrence.
+- **"One order at a time" slot kept blocking submits.** Two causes: (1) `consume()` only burned the
+  *confirmed* channel, so with single-channel approval the unconfirmed pending row lingered and held the
+  slot → fixed: `approval_service.consume()` now also supersedes leftover pending rows. (2) The lower
+  DRAFT cards rendered an ApprovalPanel; approving there (drafts never execute) created slot-holders that
+  blocked the real submit → fixed: removed the approval flow from draft cards + edit modal — the **Pilot
+  Console is the only approve+submit surface**. Also: the SUBMIT flow now auto-rejects a stale slot-holder
+  and retries once.
+- **Approval/submit intent mismatch** — each preflight makes a NEW intent; approving one then submitting
+  a freshly-preflighted other = "approval missing". The one-action SUBMIT (request-approval → web-approve
+  → execute on the same intent) is the fix; operators must not re-preflight between approve and submit.
+- **Stale order status (KNOWN GAP, not yet fixed):** the Pilot Orders list shows submit-time `submitted`
+  and does NOT reconcile against Schwab's live status (`canceled`). The broker is the source of truth.
+- **Console ▸ numbering vs lower-card numbering mismatch** (console ▸2/5 = real fill, lower RUN 2/5 = $0
+  bracket) was a real foot-gun → resolved by paring the battery to ONE $0 preset.
+
+**🎚️ DECOUPLED / SIMPLIFIED.** `CANARY_BATTERY` reduced from the rigid 5-step sequence to a single
+"$0 PLACE → CANCEL test" preset; "Canary battery · run 1→5" relabeled "Quick test"; 16 stale draft cards
+cleared. One path now: tap the preset (or fill the manual symbol/qty/limit form) → type the ticker →
+SUBMIT (chains preflight + 2FA + execute).
+
+**📈 HOW TO WIDEN THE CANARY NEXT (the levers, each fail-closed):**
+1. **Prove a real FILL + close** — the one untested capability (fill capture + read-back + clean exit).
+   Manual form: GRAB / 10 / limit @ live ask → SUBMIT → let fill → SELL 10 to close. Real ~$36.
+2. **Prove other order SHAPES** — stop / trailing-stop / bracket (all place-below-can't-trigger → cancel).
+3. **Symbols:** `brokers/canary_gate.CANARY_SYMBOL_ALLOWLIST` (now GRAB, XRX) + commit `CANARY_SESSION_DATE`
+   (single-day auto-expiry — re-commit for a new session).
+4. **Price cap:** `schwab_stage2b_canary_preflight.STAGE2B_MAX_PRICE_USD` ($4.00 → higher).
+5. **Qty / notional envelope** (≤10 sh / ≤$40) and **pilot order cap** (5) — `brokers/pilot_caps`.
+6. **Accounts:** `brokers/pilot_caps.PILOT_ACCOUNT_ALLOWLIST` (taxable only → add accounts; IRAs excluded).
+7. Promotion past the canary (lift `BROKER_DISABLED` fail-closed default) is the final, separate gate.
+
 ## 2026-06-15 - Journal edge-analytics + AI Q&A, Schwab sync repair, proposal generation fixes
 
 **Journal analytics (TradeZella-style, incremental — no migration).** `journal_analytics_engine.py`
