@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-06-15 - Journal edge-analytics + AI Q&A, Schwab sync repair, proposal generation fixes
+
+**Journal analytics (TradeZella-style, incremental — no migration).** `journal_analytics_engine.py`
+(read-only) computes what the Analytics tab was missing, all from data already captured
+(`schwab_round_trips` + `journal_trade_reviews`): win-rate/P&L by **day-of-week, hour, and trading
+session**; **equity curve + max drawdown + per-trade Sharpe + recovery factor**; **realized-R
+distribution**; and **per-strategy/setup/emotion/mistake** edge. `journal_ask.py` answers
+natural-language questions over that analytics via Grok (local fallback). Endpoints
+`GET /api/v2/journal/edge-analytics` and `POST /api/v2/journal/ask`. v3 Journal → Analytics tab gains
+the risk-KPI row, day/session bar charts, edge-by-strategy table, R-distribution, and a "💬 Ask your
+journal" box. Live on 119 real trades (+$36.5K, recovery 13.4) — surfaced a real **edge** (Mon 66.7%,
+midday 68.4%) and **leak** (Thu −$2.4K, after-hours 16.7%). MFE/MAE deferred (needs intratrade capture).
+
+**Schwab → journal sync repaired + monitored.** Root cause of an empty journal: `schwab_transaction_ingest`
+/ `journal_builder` / `journal_classifier` never loaded `.env`, and cron runs them bare — so
+`SCHWAB_APP_KEY/SECRET` were absent, the transport returned `NOT_PROVEN`, and the 18:15 nightly ingest
+pulled **zero rows for weeks**. All three now load `.env`. Added `_emit_health_alert` → urgent SIEM +
+Telegram if auth fails or a weekday ingest is empty. Added a **15-min trading-hours sync**
+(`*/15 9-16 * * 1-5`) so trades hit the journal within 15 min, not once a day. (Recovered the operator's
+CAST scalp +$110.80 into the journal.)
+
+**Proposal generation fixes.** (1) Swing/breakout plans now generate proposals: `_liquidity_prescreen`
+is strategy-aware (only intraday scalps are gated; swing/breakout/fib/earnings hold longer and pass —
+approval-time readiness stays the backstop), and the per-symbol dedup now picks the highest-priority
+strategy that **clears** liquidity (so a too-thin-to-scalp name falls back to its swing_breakout plan).
+(2) Fixed a miscount where a pre-promotion-gate-blocked proposal (e.g. rr 1.99 < 2.0) was logged as
+"CREATED #None" and counted as created (and passed a null id to enrichment) — now recorded as
+SKIPPED_PREPROMOTION. (3) Added a monitor: a weekday run with 0 proposals from >0 eligible signals fires
+a warning → SIEM/Telegram with the filter breakdown.
+
+**Stage 2b canary console (operator UX).** Per-order approval relaxed to either channel; canary step
+buttons auto-run preflight; one-action "type ticker → SUBMIT" submit; fixed a server-side hung Schwab
+quote that made preflight time out (HTTP 000). Live execution still requires the operator's own
+arm + typed-ticker + submit (the AI cannot place a live brokerage order — hard safety line).
+
 ## 2026-06-15 - Stage 2b approval: either channel (web ticker OR telegram), not both
 
 Operator directive 2026-06-15: typing the ticker is enough fat-finger protection on its own — don't force
