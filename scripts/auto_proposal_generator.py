@@ -1077,6 +1077,17 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 proposal_id = create_auto_proposal(conn, sig, sizing, rg, auto_run_id, proposal_cols,
                                                    auto_context={"execution_label": execution_label})
                 conn.commit()
+                if not proposal_id:
+                    # create_auto_proposal returns None when the pre-promotion gate blocks the insert
+                    # (e.g. rr_below_minimum: 1.99 < 2.0). It was NOT created — count it as skipped, log
+                    # honestly, and do NOT enrich/alert a null id. (bugfix 2026-06-15: QMCO #None)
+                    stats["proposals_skipped"] += 1
+                    log.info(f"  {sym}: SKIPPED_PREPROMOTION — gate blocked the insert (no proposal created)")
+                    record_decision(conn, run_label, sig, "SKIPPED_PREPROMOTION",
+                                    ["pre-promotion gate blocked"], None, sizing, rg)
+                    conn.commit()
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_PREPROMOTION", "strategy_id": sid})
+                    continue
                 record_decision(conn, run_label, sig, "CREATED", [], proposal_id, sizing, rg)
                 conn.commit()
                 stats["proposals_created"] += 1
@@ -1139,6 +1150,26 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
              f"(dup={stats['duplicates_skipped']} risk={stats['risk_rejected']} "
              f"quality={stats['quality_rejected']} source_cap={stats['source_cap_rejected']} "
              f"sizing_adj={stats['sizing_adjusted']})")
+
+    # MONITOR (operator 2026-06-15): surface "0 proposals on a trading day despite eligible signals" so
+    # an empty proposal queue never goes unnoticed — fires a warning → SIEM/Telegram with the filter
+    # breakdown (why each candidate was dropped). Only on weekdays; quiet when there were no candidates.
+    try:
+        import datetime as _dt
+        if (not dry_run and stats.get("proposals_created", 0) == 0
+                and stats.get("signals_checked", 0) > 0 and _dt.datetime.now().weekday() < 5):
+            bd = {k: stats.get(k, 0) for k in ("liquidity_rejected", "risk_rejected", "quality_rejected",
+                                               "source_cap_rejected", "duplicates_skipped") if stats.get(k, 0)}
+            msg = (f"[auto-proposals] 0 proposals from {stats['signals_checked']} eligible signal(s) "
+                   f"(run {run_label}) — all filtered: {bd or 'pre-promotion/sizing/strategy-criteria'}")
+            from alert_event_writer import save_alert_event
+            save_alert_event(alert_type="strategic_alert", severity="warning",
+                             source_script="auto_proposal_generator.py", symbol=None, raw_text=msg,
+                             parsed_payload={"kind": "zero_proposals", "run_label": run_label,
+                                             "signals_checked": stats["signals_checked"], "breakdown": bd})
+            log.info(f"  [monitor] {msg}")
+    except Exception:
+        pass
     return stats
 
 
