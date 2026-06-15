@@ -471,6 +471,34 @@ rule: a name with a live quote IS public (the model's training may be stale — 
 insiders can sell, by tranche. `ipo_lockup_alert.py` fires Telegram 14d before each unlock;
 `update_lockup_earnings_dates.py` auto-snaps earnings-tied tranches to the real report date when announced.
 
+### Per-surface external "second-read" lanes + alert-noise fixes (2026-06-14)
+
+**Enhancement engine** — `hermes_subject_enhance.py` runs a free-OAuth Grok "second read" over each site
+surface and stores it in `hermes_external_research` (`trigger_reason=enh_<type>`); the `✦ Grok` badges
+(Home brief, Open Trades, Proposals, Sectors, Closed trades) read it via
+`/api/v2/hermes/subject-intel-map?type=<type>`. Gatherers per type: `report` (the daily morning brief),
+`position`, `proposal`, `closed_trade`, `sector`, `scalp`. `FRESH_HOURS=12` (scalp 4) de-dupes re-runs.
+Cron: scalp/proposal/position/sector/closed_trade scheduled in the enh block; **`report` added
+`0 8,20 * * *`** (was unscheduled — the lane sat stale at a June-9 one-off).
+- **Gatherer robustness** — `gather_report` globbed `reports/*` and picked the newest path by mtime, which
+  became the `weekly/` **directory**; `read_text()` → `IsADirectoryError` swallowed by a bare except,
+  silently zeroing the lane. Now files-only + prefers `aegis_morning_brief_*.md` + `errors="ignore"`. Audit:
+  this was the ONLY gatherer with the trap (the rest are DB-query-only or read fixed paths).
+
+**Home → Morning Brief rendering** — `HomeHub.tsx` formerly dumped `action_items` / `strategy_health` /
+`overnight_activity` via `JSON.stringify`. Now formatted (severity-colored action rows + code chips,
+strategy stat chips, overnight metric grid with a quiet-night empty state).
+
+**SIEM stop-echo de-noise** — `_system_siem_dashboard` re-ingested `notification_log` (our own outbound
+Telegram messages) at source severity, so every stop alert we SENT counted as a P1 `STOP_TRIGGERED` event
+(38/1 group). Echoes are now demoted to **P3** + tagged `echo:true` + separate dedupe group (every P0–P2 is
+detected upstream first). Reminder: stops on Schwab/Fidelity holdings are **advisory only** (no trading API),
+not executed orders.
+
+**Weekend-aware staleness** — the orchestrator's 26h staleness page fired on the expected Fri→Sun
+market-closed gap. Threshold now extends **+24h per weekend calendar date** in the gap (61h weekend gap
+suppressed; a real 97h outage still fires).
+
 ### Daily Intelligence Workflow (End-to-End)
 
 This is the complete day-in-the-life showing how data flows from raw ingestion through agent analysis, LLM curation, and back into smarter searches:
