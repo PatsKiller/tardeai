@@ -14402,12 +14402,19 @@ def _system_siem_dashboard():
     for r in nl_rows:
         text = (r.get("subject") or "") + " " + (r.get("body") or "")
         etype, esev = _classify(text)
+        # notification_log is our OWN outbound delivery record — every alert worth a
+        # P0/P1/P2 is detected upstream (alert_events / open_trade_alerts / system_health)
+        # and written there first, then dispatched to telegram. Counting the telegram echo
+        # at the source severity double-counts it (e.g. STOP_TRIGGERED showing 38 P1 events
+        # that are really our own stop notifications). Demote echoes to P3 noise tier and tag
+        # them so they group separately and never inflate the immediate/P1 view.
+        esev = "P3"
         events.append({
             "id": f"nl-{r['id']}", "timestamp": _json_clean(r["created_at"]),
             "source": "notification_log", "event_type": etype, "severity": esev,
-            "symbol": None, "component": "telegram",
+            "symbol": None, "component": "telegram", "echo": True,
             "message": text[:150],
-            "dedupe_key": f"{etype}:sys:telegram",
+            "dedupe_key": f"{etype}:echo:telegram",
         })
 
     for r in ha_rows:
