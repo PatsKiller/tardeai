@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-14 - Stage 2b draft list: ordered canary battery + scratch cleanup
+
+Pre-canary tidy of the Manual ToS Desk → Broker Orders draft list. The "Draft order intents" list dumped
+all saved drafts in store order, so the canary battery (GRAB 10sh, tagged `CANARY n/5` in `meta.thesis`)
+was interleaved with 7 leftover ad-hoc "Active Trader panel" scratch drafts (3× V no-limit BLOCKED, 2× V
+short BLOCKED by the long-only gate, 2× GRAB 2sh dupes) and showed no run order. (1) Deleted the 7 scratch
+drafts via `/api/v2/broker-orders/delete` — only the canary 1→5 remain. (2) `BrokerOrders.tsx` now sorts the
+list by `CANARY n/5` (battery first, in run order; scratch after) and renders a green **`RUN n/5`** step
+badge so the execution sequence is unmistakable (only step 4 fills; 1/2/3 place→cancel, 5 closes flat).
+
 ## 2026-06-14 - Home Morning Brief render + SIEM stop-echo de-noise + weekend-aware staleness + Hermes report lane
 
 Operator-reported broken Home page and a weekend alert burst (SIEM P1 STOP_TRIGGERED, 61h staleness page,
