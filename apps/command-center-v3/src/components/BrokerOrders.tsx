@@ -877,9 +877,10 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
                 </div>
               )
             })()}
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: T.text }}>③ Approval — either channel (web ticker OR telegram)</div>
-              <ApprovalPanel intentId={it.intent_id} symbol={it.instrument?.symbol ?? ''} />
+            <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.25)', fontSize: 9.5, color: T.dim }}>
+              📋 This is a DRAFT editor — it never sends, and approving here would only block the real
+              submit. To place a canary order, use the <b style={{ color: '#60a5fa' }}>top Pilot Console</b>:
+              tap a <b>▸ step</b> → type the ticker → <b>SUBMIT</b> (it handles the 2FA approval itself).
             </div>
           </div>
         )}
@@ -1025,7 +1026,13 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
                     {JSON.stringify(d.translation_json, null, 1)}</pre>
                 </div>
               </details>
-              <ApprovalPanel intentId={d.intent_id} symbol={d.symbol ?? d.intent_json?.instrument?.symbol ?? ''} />
+              {/* Draft cards are DRAFT-ONLY and never execute. Approving here used to create a 2FA
+                  slot-holder that blocked the real Pilot Console submit ("one order at a time"). Removed
+                  the approval flow from drafts — approval + submit happen ONLY in the top Pilot Console,
+                  which handles 2FA itself. (workflow fix 2026-06-15) */}
+              <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.25)', fontSize: 9.5, color: T.dim }}>
+                📋 Draft only — does not execute. To place this canary order, use the <b style={{ color: '#60a5fa' }}>top Pilot Console</b>: tap its <b>▸ step</b> → type the ticker → <b>SUBMIT</b> (it does the approval for you).
+              </div>
             </div>
           )}
         </div>
