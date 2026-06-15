@@ -16922,6 +16922,41 @@ def _pilot_status(query=None):
     rows = _db_query("""SELECT id, correlation_id, intent_id, account_key, symbol, side, qty, limit_price,
                           status, broker_order_id, detail, created_at, updated_at
                         FROM schwab_pilot_orders ORDER BY id DESC LIMIT 20""") or []
+    # Reconcile against the broker (source of truth): the local status is captured at SUBMIT time and
+    # never reflected a later cancel/fill made in ToS. For rows still in a non-terminal local status that
+    # carry a broker_order_id, read Schwab's live order status (best-effort, fail-open) and overlay it as
+    # `live_status` — and persist it back so a terminal status sticks without re-polling. (2026-06-15)
+    _TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "replaced"}
+    _pending = [r for r in rows if r.get("broker_order_id")
+                and str(r.get("status") or "").lower() not in _TERMINAL]
+    if _pending:
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import schwab_transport as _st
+            accts = {r.get("account_key") for r in _pending if r.get("account_key")} or {"schwab_taxable"}
+            live = {}
+            for ak in accts:
+                raw = _st.get_orders_raw(ak)
+                if isinstance(raw, dict) and raw.get("status") in ("NOT_PROVEN", "degraded", "error"):
+                    continue
+                for o in (_st.normalize_orders(raw) or []):
+                    oid = o.get("id") or o.get("orderId") or o.get("broker_order_id")
+                    if oid is not None and o.get("status"):
+                        live[str(oid)] = str(o["status"]).lower()
+            for r in rows:
+                ls = live.get(str(r.get("broker_order_id") or ""))
+                if ls:
+                    r["live_status"] = ls
+                    if ls != str(r.get("status") or "").lower():
+                        try:
+                            _db_write("UPDATE schwab_pilot_orders SET status=%s, updated_at=NOW() WHERE id=%s",
+                                      (ls, r["id"]))
+                            r["status"] = ls
+                        except Exception:
+                            pass
+        except Exception:
+            pass  # fail-open: keep the local submit-time status if the broker read is unavailable
     # active 2FA slot (one order at a time)
     slot = _db_query("""SELECT DISTINCT intent_id FROM trade_approvals
                         WHERE status IN ('pending','confirmed') AND expires_at > NOW()""") or []
