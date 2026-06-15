@@ -2445,6 +2445,29 @@ def ops_summary():
     }
 
 
+def _journal_edge_analytics(query=None):
+    """GET /api/v2/journal/edge-analytics?account=&days= — time-of-day/day-of-week/session breakdowns,
+    equity curve + drawdown/Sharpe, R-distribution, and per-strategy/setup/emotion edge from the real
+    round-trip journal (read-only). Complements /journal/analytics (review-based)."""
+    q = query or {}
+    def _one(k):
+        v = q.get(k)
+        return (v[0] if isinstance(v, list) else v)
+    acct = _one("account") or None
+    try:
+        days = int(_one("days") or 180)
+    except Exception:
+        days = 180
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import importlib, journal_analytics_engine as _eng
+        importlib.reload(_eng)
+        return _json_clean(_eng.run(acct, days))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def journal_analytics():
     """GET /api/v2/journal/analytics — aggregated review metrics from journal_trade_reviews."""
     # Setup performance
@@ -17790,6 +17813,7 @@ ROUTES = {
     "/api/v2/journal/backtest-summary": _journal_backtest_summary,
     "/api/v2/journal/backtest-analytics": _journal_backtest_analytics,
     "/api/v2/journal/analytics": journal_analytics,
+    "/api/v2/journal/edge-analytics": _journal_edge_analytics,
     "/api/v2/journal/report": _journal_report,
     "/api/v2/journal/agent-coaching": _journal_agent_coaching,
     "/api/v2/journal/closed-trades/action-dashboard": _journal_closed_action_dashboard,
@@ -18429,6 +18453,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 return 200, {"ok": True, **_pa.ask(q)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/journal/ask":
+            # natural-language Q&A over the trade journal analytics ("why do I lose on Thursdays?")
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import importlib, journal_ask as _ja
+                importlib.reload(_ja)
+                b = body or {}
+                q = (b.get("question") or "").strip()
+                if not q:
+                    return 400, {"ok": False, "error": "no question"}
+                return 200, {"ok": True, **_ja.ask(q, account=b.get("account"), days=int(b.get("days") or 180))}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/portfolio/ask-alert":
