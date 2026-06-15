@@ -3,12 +3,13 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import ResearchTopicsModal from '../components/ResearchTopicsModal'
 import IntelligenceWorkflow from '../components/IntelligenceWorkflow'
+import CentralIntelligencePages from '../components/CentralIntelligencePages'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['News', 'Research', 'Sources', 'Workflow'] as const
+const TABS = ['Command Center', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow'] as const
 
 export default function IntelligenceHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('News')
+  const [tab, setTab] = useState<typeof TABS[number]>('Command Center')
   const [showTopics, setShowTopics] = useState(false)
   const { data: intel } = useApi<any>('/api/v2/market-intelligence', 120_000)
   const { data: researchData } = useApi<any>('/api/v2/research-topics', 120_000)
@@ -22,9 +23,9 @@ export default function IntelligenceHub({ onDrill }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Intelligence</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{totalArticles} articles · {topSymbols.length} symbols mentioned</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{totalArticles} articles · {topSymbols.length} symbols mentioned · consolidated command + signal quality</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -40,6 +41,9 @@ export default function IntelligenceHub({ onDrill }: Props) {
       </div>
 
       {showTopics && <ResearchTopicsModal onClose={() => setShowTopics(false)} />}
+
+      {tab === 'Command Center' && <CentralIntelligencePages mode="command" onDrill={onDrill} />}
+      {tab === 'Signal Quality' && <CentralIntelligencePages mode="quality" onDrill={onDrill} />}
 
       {tab === 'News' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -107,7 +111,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/research-topics · Brave depleted — SearXNG at :18888</div>
         </div>
       )}
-      {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit</div>}
+      {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit · consolidated pages use morning brief, command, risk, trade AI, watchlist, open trades, market intelligence, research topics, and Hermes report reads.</div>}
       {tab === 'Workflow' && <IntelligenceWorkflow onDrill={onDrill} />}
     </div>
   )
