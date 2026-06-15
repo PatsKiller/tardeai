@@ -6970,7 +6970,9 @@ def journal_review_write(body: dict):
 
         sql = f"UPDATE journal_trade_reviews SET {', '.join(set_parts)} WHERE trade_key = %s RETURNING id"
         result = _db_write(sql, vals)
-        return 200, {"ok": True, "action": "updated", "id": result["id"] if result else existing["id"]}
+        if not result:
+            return 500, {"ok": False, "error": "review update rejected (check field ranges: confidence/stress are 1-5)"}
+        return 200, {"ok": True, "action": "updated", "id": result["id"]}
     else:
         # INSERT
         fields["trade_key"] = trade_key
@@ -6995,7 +6997,11 @@ def journal_review_write(body: dict):
 
         sql = f"INSERT INTO journal_trade_reviews ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
         result = _db_write(sql, vals)
-        return 200, {"ok": True, "action": "created", "id": result["id"] if result else None}
+        if not result:
+            # was silently returning ok:true even when the insert was rejected (e.g. a check-constraint
+            # violation like confidence_before out of 1-5). Surface the failure so the UI knows. 2026-06-15.
+            return 500, {"ok": False, "error": "review insert rejected (check field ranges: confidence/stress are 1-5)"}
+        return 200, {"ok": True, "action": "created", "id": result["id"]}
 
 
 # ── Journal Annotation Helpers ─────────────────────────────────────────────
@@ -18470,6 +18476,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, **_ja.ask(q, account=b.get("account"), days=int(b.get("days") or 180))}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/portfolio/ask-alert":
             # persist an alert from an ask ("alert me when I can get SpaceX") — monitor fires to Telegram
             try:

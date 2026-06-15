@@ -87,6 +87,77 @@ function getTimeRangeCutoff(range: string): string {
   return d.toISOString().slice(0, 10)
 }
 
+// ── Inline emotion/psychology tagging form (writes journal_trade_reviews; feeds the by-emotion analytics) ──
+const _PRE = ['calm', 'confident', 'impatient', 'fomo', 'distracted', 'overconfident', 'anxious']
+const _DURING = ['calm', 'hesitation', 'tilt', 'greed', 'fear', 'moved stop', 'added to loser']
+const _POST = ['satisfied', 'relieved', 'regret', 'frustrated', 'indifferent']
+const _MISTAKES = ['FOMO', 'Revenge', 'Oversize', 'Chased', 'Moved Stop', 'Early Exit (fear)', 'No Stop', 'Overtrading']
+const _STRENGTHS = ['Patient Entry', 'Good Size', 'Let Winner Run', 'Cut Loss Fast', 'Followed Plan', 'Waited for Setup']
+
+function TradeReviewForm({ tradeKey, symbol, account, closedDate, onClose }: any) {
+  const [eb, setEb] = useState(''); const [ed, setEd] = useState(''); const [ea, setEa] = useState('')
+  const [conf, setConf] = useState(0); const [stress, setStress] = useState(0); const [fp, setFp] = useState<boolean | null>(null)
+  const [mis, setMis] = useState<string[]>([]); const [str, setStr] = useState<string[]>([])
+  const [notes, setNotes] = useState(''); const [saving, setSaving] = useState(false); const [msg, setMsg] = useState('')
+  const tog = (arr: string[], set: any, v: string) => set(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v])
+  const Chip = ({ label, active, onClick, color }: any) => (
+    <button onClick={onClick} style={{ fontSize: 8.5, padding: '2px 7px', borderRadius: 11, cursor: 'pointer', border: `1px solid ${active ? color : 'var(--border)'}`, background: active ? color + '22' : 'var(--bg1)', color: active ? color : 'var(--text3)' }}>{label}</button>
+  )
+  const Row = ({ label, opts, val, set, color }: any) => (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{opts.map((o: string) => <Chip key={o} label={o} active={val === o} color={color} onClick={() => set(val === o ? '' : o)} />)}</div>
+    </div>
+  )
+  const Scale = ({ label, val, set, color }: any) => (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>{label} (1–5)</div>
+      <div style={{ display: 'flex', gap: 4 }}>{[1, 2, 3, 4, 5].map(n => <button key={n} onClick={() => set(val === n ? 0 : n)} style={{ width: 24, height: 22, fontSize: 10, borderRadius: 4, cursor: 'pointer', border: `1px solid ${val === n ? color : 'var(--border)'}`, background: val === n ? color + '22' : 'var(--bg1)', color: val === n ? color : 'var(--text3)' }}>{n}</button>)}</div>
+    </div>
+  )
+  const save = async () => {
+    setSaving(true); setMsg('')
+    try {
+      const body: any = { trade_key: tradeKey, symbol, account, closed_date: closedDate, mistake_tags: mis, strength_tags: str }
+      if (eb) body.emotion_before = eb; if (ed) body.emotion_during = ed; if (ea) body.emotion_after = ea
+      if (conf) body.confidence_before = conf; if (stress) body.stress_level = stress
+      if (fp !== null) body.followed_plan = fp; if (notes.trim()) body.review_notes = notes.trim()
+      const r = await fetch('/api/v2/journal/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
+      if (r.ok) { setMsg('✓ saved'); setTimeout(onClose, 700) } else setMsg('⛔ ' + (r.error || 'failed'))
+    } catch (e: any) { setMsg('⛔ ' + e.message) } finally { setSaving(false) }
+  }
+  return (
+    <div style={{ marginTop: 8, padding: 9, background: 'var(--bg1)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 7 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: '#c084fc', marginBottom: 2 }}>📝 Tag this trade — emotions & execution</div>
+      <Row label="Pre-trade mood" opts={_PRE} val={eb} set={setEb} color="#60a5fa" />
+      <div style={{ display: 'flex', gap: 14 }}><Scale label="Confidence" val={conf} set={setConf} color="#60a5fa" /><Scale label="Stress" val={stress} set={setStress} color="#f59e0b" /></div>
+      <Row label="During trade" opts={_DURING} val={ed} set={setEd} color="#f59e0b" />
+      <Row label="Post-trade" opts={_POST} val={ea} set={setEa} color="#22c55e" />
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>Followed plan?</div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <Chip label="✓ yes" active={fp === true} color="#22c55e" onClick={() => setFp(fp === true ? null : true)} />
+          <Chip label="✗ no" active={fp === false} color="#ef4444" onClick={() => setFp(fp === false ? null : false)} />
+        </div>
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 8, color: '#ef4444', textTransform: 'uppercase', marginBottom: 3 }}>Mistakes (one-tap)</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{_MISTAKES.map(m => <Chip key={m} label={m} active={mis.includes(m)} color="#ef4444" onClick={() => tog(mis, setMis, m)} />)}</div>
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 8, color: '#22c55e', textTransform: 'uppercase', marginBottom: 3 }}>Strengths (one-tap)</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{_STRENGTHS.map(s => <Chip key={s} label={s} active={str.includes(s)} color="#22c55e" onClick={() => tog(str, setStr, s)} />)}</div>
+      </div>
+      <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="note (optional)" style={{ width: '100%', marginTop: 7, fontSize: 10, padding: '5px 7px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+        <button disabled={saving} onClick={save} style={{ fontSize: 10, fontWeight: 700, padding: '5px 14px', borderRadius: 5, border: 'none', cursor: 'pointer', background: '#a855f7', color: '#fff' }}>{saving ? 'saving…' : 'Save tags'}</button>
+        <button onClick={onClose} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text3)', cursor: 'pointer' }}>cancel</button>
+        {msg && <span style={{ fontSize: 9, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 export default function JournalHub({ onDrill }: Props) {
   const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
@@ -110,6 +181,7 @@ export default function JournalHub({ onDrill }: Props) {
   const [jq, setJq] = useState('')          // journal Ask box
   const [jAns, setJAns] = useState<any>(null)
   const [jBusy, setJBusy] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState<string | null>(null)  // trade_key whose emotion form is open
   const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
   const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
   // R-multiple: paper = real (planned stop); schwab = PROXY (reward / max adverse excursion), flagged ~
@@ -551,7 +623,15 @@ export default function JournalHub({ onDrill }: Props) {
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
                       <button onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na] ?? t.account} · ${t.strat ?? t.source}`, endpoint: t.source === 'schwab' ? '/api/v2/journal' : '/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
+                      {t.status !== 'open' && (() => { const trk = `${t.symbol}:${t.account ?? t.na}:${t.exitDate}`; return (
+                        <button onClick={() => setReviewOpen(reviewOpen === trk ? null : trk)}
+                          style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: reviewOpen === `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` ? 'rgba(168,85,247,.2)' : 'var(--bg1)', color: '#c084fc', cursor: 'pointer' }}>📝 Tag</button>
+                      ) })()}
                     </div>
+                    {t.status !== 'open' && reviewOpen === `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` && (
+                      <TradeReviewForm tradeKey={`${t.symbol}:${t.account ?? t.na}:${t.exitDate}`} symbol={t.symbol}
+                        account={t.account ?? t.na} closedDate={t.exitDate} onClose={() => setReviewOpen(null)} />
+                    )}
                   </div>
                 )
               })}
