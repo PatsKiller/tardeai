@@ -1611,6 +1611,27 @@ Agents vote with historical context → better decisions
 | `journal_trade_reviews` | Human-readable review + tags | `agent_curation_hooks.py` | Journal UI |
 | `trade_thesis_outcomes` | Thesis confirmed/invalidated | `post_trade_thesis_reviewer.py` | Journal UI |
 
+### Journal Edge-Analytics + AI Q&A (2026-06-15)
+
+`journal_analytics_engine.py` (read-only) computes TradeZella-style edge analytics from data already
+captured — `schwab_round_trips` (trade facts + entry/exit timestamps) left-joined to
+`journal_trade_reviews` (setup/emotion/R enrichment). No new tables/migration. Sections:
+- **time_analysis** — win-rate / net-P&L / count by day-of-week, hour, and trading session
+  (premarket / open 9:30-11 / midday 11-14 / close 14-16 / after-hours, ET).
+- **equity_curve** — cumulative net-P&L series + max drawdown + per-trade Sharpe + recovery factor.
+- **r_distribution** — realized-R histogram + planned-vs-realized (sparse until trades are reviewed).
+- **setup_breakdown** — edge by `strategy_tag` (always populated: scalp/swing/momentum/…), plus
+  setup_family / emotion / mistake-tag overlays from reviews.
+
+`journal_ask.py` answers natural-language questions over that analytics via the free Grok lane
+(local-gemma fallback) — "why do I lose on Thursdays?", "best session for my scalps?". Endpoints:
+`GET /api/v2/journal/edge-analytics?account=&days=` and `POST /api/v2/journal/ask {question,account,days}`.
+Surfaced in v3 **Journal → Analytics** (risk KPIs, day/session bar charts, edge-by-strategy, R-dist, Ask
+box). Complements the existing review-based `/api/v2/journal/analytics`. MFE/MAE deferred (needs new
+intratrade excursion capture). Schwab→journal ingest itself: `schwab_transaction_ingest` →
+`schwab_journal_builder` → `schwab_journal_classifier`, now `.env`-loaded (was silently NOT_PROVEN under
+cron) + auth-monitored, run nightly 18:15 and every 15 min in trading hours.
+
 ### API: Professional Trade Journal Entry
 
 **Endpoint:** `GET /api/v2/journal/trade-detail/{id}`
