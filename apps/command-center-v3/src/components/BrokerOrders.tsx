@@ -380,13 +380,22 @@ function PilotConsole() {
           {(s.pilot_orders ?? []).map((o: any) => (
             <div key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 9.5, padding: '4px 0', borderTop: `1px solid ${T.border}` }}>
               <span style={{ ...mono, fontWeight: 800, color: T.text }}>#{o.id} {o.side} {o.qty} {o.symbol} @{o.limit_price}</span>
-              <span style={{ color: o.status === 'submitted' ? '#66bb6a' : o.status?.startsWith('cancel') ? T.amber : T.dim }}>{o.status}</span>
+              <span style={{ color: o.status?.startsWith('cancel') ? T.amber : o.status === 'filled' ? '#66bb6a' : ['submitted', 'working', 'accepted', 'queued'].includes(String(o.status || '').toLowerCase()) ? '#60a5fa' : T.dim }}
+                title={o.live_status ? 'broker-confirmed live status' : 'submit-time status (not yet reconciled)'}>{o.status}{o.live_status ? ' ✓' : ''}</span>
               {o.broker_order_id && <span style={{ color: T.dim, ...mono }}>id {o.broker_order_id}</span>}
               <span style={{ color: T.dim }}>{String(o.created_at ?? '').slice(0, 16)}</span>
               <span style={{ flex: 1 }} />
-              {o.broker_order_id && o.status === 'submitted' && (
-                <button disabled={busy} onClick={async () => { const r = await post('/api/v2/broker-orders/pilot/cancel', { broker_order_id: o.broker_order_id }); setExecMsg(JSON.stringify(r).slice(0, 180)); refetch() }}
-                  style={btn('#b71c1c')}>cancel</button>
+              {/* Cancel from the Command Center: show for any CANCELLABLE (non-terminal) status, and
+                  CONFIRM first (operator 2026-06-15). Hits Schwab's live cancel via pilot/cancel. */}
+              {o.broker_order_id && !['canceled', 'cancelled', 'filled', 'rejected', 'expired', 'replaced'].includes(String(o.status || '').toLowerCase()) && (
+                <button disabled={busy} onClick={async () => {
+                  if (!confirm(`Cancel this LIVE Schwab order?\n\n${o.side} ${o.qty} ${o.symbol} @ ${o.limit_price}\nbroker id ${o.broker_order_id}\n\nThis sends a cancel to Schwab.`)) return
+                  setExecMsg('cancelling…')
+                  const r = await post('/api/v2/broker-orders/pilot/cancel', { broker_order_id: o.broker_order_id })
+                  setExecMsg(r?.ok ? `✅ cancel sent — ${JSON.stringify(r).slice(0, 160)}` : `⛔ ${r?.reason ?? r?.error ?? JSON.stringify(r).slice(0, 160)}`)
+                  refetch()
+                }}
+                  style={btn('#b71c1c')}>cancel order</button>
               )}
             </div>
           ))}
