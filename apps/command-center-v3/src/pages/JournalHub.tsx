@@ -102,6 +102,14 @@ export default function JournalHub({ onDrill }: Props) {
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: rawLessonsResp } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
   const { data: eqResp } = useApi<any>('/api/v2/journal/execution-quality?limit=500', 120_000)
+  // edge analytics (time-of-day / session / equity-drawdown / R / strategy) — follows account + range
+  const _edgeDays: Record<string, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'YTD': 365, 'ALL': 1095 }
+  const { data: edgeResp } = useApi<any>(
+    `/api/v2/journal/edge-analytics?days=${_edgeDays[timeRange] ?? 365}${acctFilter ? '&account=' + acctFilter : ''}`, 120_000)
+  const edge = ((edgeResp as any)?.data ?? edgeResp) || {}
+  const [jq, setJq] = useState('')          // journal Ask box
+  const [jAns, setJAns] = useState<any>(null)
+  const [jBusy, setJBusy] = useState(false)
   const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
   const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
   // R-multiple: paper = real (planned stop); schwab = PROXY (reward / max adverse excursion), flagged ~
@@ -638,6 +646,105 @@ export default function JournalHub({ onDrill }: Props) {
             ))}
             {kpis.closed < 30 && <div style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>Sample size {kpis.closed} is below 30-trade gate minimum — need {30 - kpis.closed} more</div>}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Insights derived from {closed.length} closed trades in the {timeRange} range across {acctFilter ? (ACCT_LABEL[acctFilter] ?? acctFilter) : 'all accounts'}</div>
+          </div>
+
+          {/* ═══ Edge analytics (real round-trips: time/session/equity/R/strategy) ═══ */}
+          {edge.ok && edge.overall?.trades > 0 && (() => {
+            const ta = edge.time_analysis || {}; const ec = edge.equity_curve || {}; const sb = edge.setup_breakdown || {}
+            const barColor = (v: number) => (v >= 0 ? '#22c55e' : '#ef4444')
+            const Bars = ({ title, rows, xk }: any) => (
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>{title}</div>
+                <ResponsiveContainer width="100%" height={150}>
+                  <BarChart data={rows}><XAxis dataKey={xk} tick={{ fontSize: 9, fill: 'var(--text3)' }} />
+                    <YAxis tick={{ fontSize: 9, fill: 'var(--text3)' }} width={42} />
+                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }}
+                      formatter={(v: any, n: any) => [n === 'net_pnl' ? fmt$(v, 0) : v, n]} />
+                    <Bar dataKey="net_pnl">{rows.map((r: any, i: number) => <Cell key={i} fill={barColor(r.net_pnl)} />)}</Bar>
+                  </BarChart></ResponsiveContainer>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  {rows.map((r: any) => <span key={r.label} style={{ fontSize: 8.5, color: 'var(--text3)' }}>{r.label}: <b style={{ color: r.win_rate >= 50 ? '#22c55e' : '#f59e0b' }}>{r.win_rate}%</b> ({r.trades}t)</span>)}
+                </div>
+              </div>
+            )
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, margin: '14px 0' }}>
+                  {[
+                    { l: 'Net P&L (round-trips)', v: fmt$(ec.net_pnl ?? 0, 0), c: (ec.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
+                    { l: 'Max Drawdown', v: fmt$(-(ec.max_drawdown ?? 0), 0), c: '#ef4444' },
+                    { l: 'Recovery Factor', v: ec.recovery_factor != null ? ec.recovery_factor.toFixed(1) : '—', c: (ec.recovery_factor ?? 0) >= 3 ? '#22c55e' : '#f59e0b' },
+                    { l: 'Sharpe (per-trade)', v: (ec.sharpe_per_trade ?? 0).toFixed(2), c: (ec.sharpe_per_trade ?? 0) >= 0.2 ? '#22c55e' : '#f59e0b' },
+                  ].map(k => (
+                    <div key={k.l} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: k.c, fontFamily: 'monospace' }}>{k.v}</div>
+                      <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                  {(ta.by_day_of_week?.length > 0) && <Bars title="P&L by Day of Week" rows={ta.by_day_of_week} xk="label" />}
+                  {(ta.by_session?.length > 0) && <Bars title="P&L by Session (ET)" rows={ta.by_session} xk="label" />}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                  {/* By strategy */}
+                  <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Edge by Strategy</div>
+                    {(sb.by_strategy || []).map((s: any) => (
+                      <div key={s.strategy} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                        <span style={{ color: 'var(--text2)' }}>{s.strategy}</span>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <span style={{ color: 'var(--text3)' }}>{s.trades}t</span>
+                          <span style={{ color: s.win_rate >= 50 ? '#22c55e' : '#f59e0b' }}>{s.win_rate}%</span>
+                          <span style={{ color: s.net_pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600, width: 64, textAlign: 'right' }}>{fmt$(s.net_pnl, 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* R distribution */}
+                  <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Realized-R Distribution
+                      <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>avg {edge.r_distribution?.avg_realized_r ?? '—'}R · n={edge.r_distribution?.sample ?? 0}</span></div>
+                    {(edge.r_distribution?.sample ?? 0) === 0 ? <div style={{ fontSize: 10, color: 'var(--text3)' }}>No R data yet — reviewed trades with planned/realized R will populate this.</div> : (
+                      <ResponsiveContainer width="100%" height={150}>
+                        <BarChart data={edge.r_distribution.histogram}><XAxis dataKey="bucket" tick={{ fontSize: 8, fill: 'var(--text3)' }} />
+                          <YAxis tick={{ fontSize: 9, fill: 'var(--text3)' }} width={28} allowDecimals={false} />
+                          <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} />
+                          <Bar dataKey="count">{edge.r_distribution.histogram.map((b: any, i: number) => <Cell key={i} fill={b.bucket.includes('-') && !b.bucket.includes('..') ? '#ef4444' : b.bucket.startsWith('-') || b.bucket.startsWith('<') ? '#ef4444' : '#22c55e'} />)}</Bar>
+                        </BarChart></ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+
+          {/* ═══ Ask the journal (AI Q&A) ═══ */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>💬 Ask your journal</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Natural-language Q&A over your real trade analytics — e.g. "Why do I lose on Thursdays?", "Best session for my scalps?", "Which strategy should I cut?"</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={jq} onChange={e => setJq(e.target.value)} placeholder="ask about your trading…"
+                onKeyDown={e => { if (e.key === 'Enter' && jq.trim() && !jBusy) { (document.getElementById('jask-btn') as any)?.click() } }}
+                style={{ flex: 1, fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
+              <button id="jask-btn" disabled={jBusy || !jq.trim()}
+                onClick={async () => {
+                  setJBusy(true); setJAns(null)
+                  try {
+                    const r = await fetch('/api/v2/journal/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ question: jq, account: acctFilter || undefined, days: _edgeDays[timeRange] ?? 365 }) }).then(x => x.json())
+                    setJAns(r)
+                  } catch (e: any) { setJAns({ answer: 'error: ' + e.message }) } finally { setJBusy(false) }
+                }}
+                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 12, cursor: jBusy ? 'wait' : 'pointer', background: jBusy || !jq.trim() ? 'var(--bg2)' : '#60a5fa', color: jBusy || !jq.trim() ? 'var(--text3)' : '#fff' }}>
+                {jBusy ? '…' : 'Ask'}</button>
+            </div>
+            {jAns && (
+              <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 6, fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {jAns.answer}
+                {jAns.model && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>via {jAns.model} · over your {acctFilter ? (ACCT_LABEL[acctFilter] ?? acctFilter) : 'all-account'} journal ({timeRange})</div>}
+              </div>
+            )}
           </div>
         </>
       )}
