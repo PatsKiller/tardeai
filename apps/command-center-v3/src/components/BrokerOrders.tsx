@@ -285,16 +285,26 @@ function PilotConsole() {
         <div style={{ fontSize: 10, fontWeight: 800, color: T.text, marginBottom: 5 }}>Canary battery <span style={{ fontWeight: 400, color: T.dim }}>· run 1→5 in order · all execute via this console (single-leg, envelope-bounded)</span></div>
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {CANARY_BATTERY.map((b) => (
-            <button key={b.n} onClick={() => {
+            <button key={b.n} onClick={async () => {
+              // Select the step AND auto-run preflight, so the ✓-passed box (with the approval field
+              // + EXECUTE button) appears in ONE click. Previously you had to manually click the
+              // greyed-out "Run preflight" — if the form wasn't populated it silently no-op'd and the
+              // EXECUTE button never rendered. (operator UX 2026-06-15)
               setStep(b); setSymbol(b.symbol); setQty(String(b.qty)); setPf(null); setExecMsg('')
+              const preflight = async (p: string) => {
+                const body: any = { symbol: b.symbol, qty: b.qty, account_key: 'schwab_taxable' }
+                if (b.shape) { body.shape = b.shape; body[b.pkey] = p } else { body.limit_price = p }
+                if (p) setPf(await post('/api/v2/broker-orders/pilot/preflight', body))
+              }
               if (b.live) {
                 setParam('')
-                fetch(`/api/v2/schwab/quotes?symbols=${b.symbol}`).then(r => r.json()).then(j => {
+                try {
+                  const j = await fetch(`/api/v2/schwab/quotes?symbols=${b.symbol}`).then(r => r.json())
                   const q = ((j?.data ?? j)?.quotes ?? {})[b.symbol]
                   const px = b.live === 'ask' ? q?.ask : q?.bid
-                  if (px != null) setParam(String(px))
-                }).catch(() => {})
-              } else setParam(b.pdef ?? '')
+                  if (px != null) { setParam(String(px)); await preflight(String(px)) }
+                } catch { /* leave param empty; operator can fill + click Run preflight */ }
+              } else { setParam(b.pdef ?? ''); await preflight(b.pdef ?? '') }
             }} style={{
               ...btn(step?.n === b.n ? '#1565c0' : '#222', step?.n === b.n ? '#fff' : '#90caf9'),
               fontSize: 9.5, padding: '5px 9px' }}>▸ {b.n} · {b.title}</button>
