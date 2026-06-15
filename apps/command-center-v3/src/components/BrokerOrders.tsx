@@ -107,7 +107,7 @@ function TickerConfirmModal({ intentId, symbol, onClose, onDone }:
           Anti-fat-finger check: type the ticker <b style={{ color: T.text, ...mono }}>{symbol}</b> to enable
           Confirm. This <b style={{ color: T.text }}>or</b> the Telegram code is enough — you don't need both.
           Single-use, expires with the approval TTL, one order at a time.
-          <b style={{ color: '#ef5350' }}> Execution remains BLOCKED this phase even when fully approved.</b>
+          <b style={{ color: '#90caf9' }}> Draft approval only. Draft cards never submit; use the top Stage 2b Pilot Console preflight box to submit.</b>
         </div>
         <input autoFocus value={typed} onChange={e => setTyped(e.target.value)}
           placeholder={`type ${symbol} here`}
@@ -150,7 +150,7 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
         <span style={{ fontSize: 10, fontWeight: 700, color: T.text }}>🔐 Approval — either channel</span>
         <span style={{ fontSize: 9, color: T.dim }}>— ① Telegram code (proposals chat, deep-links back here) OR ② web popup where you TYPE the ticker. Either one approves.</span>
         {badge(web, 'web')} {badge(tg, 'telegram')}
-        {s?.fully_approved && <span style={{ fontSize: 9, fontWeight: 800, color: '#66bb6a' }}>FULLY APPROVED (execution still blocked this phase)</span>}
+        {s?.fully_approved && <span style={{ fontSize: 9, fontWeight: 800, color: '#66bb6a' }}>FULLY APPROVED — draft only; submit from top Pilot Console</span>}
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
         <button onClick={() => post('/api/v2/broker-orders/request-approval', { intent_id: intentId })}
@@ -355,7 +355,18 @@ function PilotConsole() {
               onClick={async () => {
                 setBusy(true); setExecMsg('submitting…')
                 try {
-                  await post('/api/v2/broker-orders/request-approval', { intent_id: pf.intent_id })
+                  let ra = await post('/api/v2/broker-orders/request-approval', { intent_id: pf.intent_id })
+                  // Auto-clear a STALE slot-holder: an abandoned earlier intent holding the "one order at a
+                  // time" approval slot blocks every fresh submit. Reject the stale holder(s) — which only
+                  // frees the slot (never approves/executes) — and retry once. (operator 2026-06-15)
+                  if (ra && ra.ok === false && Array.isArray(ra.holder_intent_ids) && ra.holder_intent_ids.length) {
+                    setExecMsg('clearing a stale approval slot…')
+                    for (const hid of ra.holder_intent_ids) {
+                      if (hid && hid !== pf.intent_id) await post('/api/v2/broker-orders/reject', { intent_id: hid })
+                    }
+                    ra = await post('/api/v2/broker-orders/request-approval', { intent_id: pf.intent_id })
+                  }
+                  if (ra && ra.ok === false) { setExecMsg(`⛔ approval: ${ra.reason ?? ra.error ?? 'request failed'}`); return }
                   const ap = await post('/api/v2/broker-orders/approve', { intent_id: pf.intent_id, channel: 'web', code: confirmTicker })
                   if (!ap?.ok && !ap?.fully_approved) { setExecMsg(`approve: ${ap?.reason ?? ap?.error ?? 'failed'}`); return }
                   const r = await post('/api/v2/broker-orders/pilot/execute', { intent_id: pf.intent_id })
@@ -1037,7 +1048,7 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
       {/* safety log + activity capture */}
       <div style={{ fontSize: 12, fontWeight: 700, color: T.text, margin: '14px 0 6px' }}>Safety log — what tried to happen, and what the guard did</div>
       <div style={{ fontSize: 9, color: T.dim, marginBottom: 4 }}>
-        Every action attempt is decided by the guard and logged. Red = blocked (CORRECT this phase — nothing may execute).
+        Every action attempt is decided by the guard and logged. Draft cards never execute; only the top Stage 2b Pilot Console submit path can reach the fenced Schwab transport.
         ACCT-activity capture rows (fills/status from the read poller) appear below the guard events.
       </div>
       <div style={{ maxHeight: 260, overflow: 'auto', border: `1px solid ${T.border}`, borderRadius: 6, padding: 8, background: T.card }}>
