@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 import secrets
 import datetime as dt
+import json
+from dataclasses import asdict, is_dataclass
 
 TTL_MIN = int(os.getenv("TRADE_APPROVAL_TTL_MIN", "10"))
 
@@ -28,18 +30,73 @@ def _conn():
     return _get_conn()
 
 
+
+
+def _json_safe(value):
+    if hasattr(value, "value"):
+        return value.value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _intent_payload(intent) -> dict:
+    try:
+        payload = asdict(intent) if is_dataclass(intent) else dict(getattr(intent, "__dict__", {}))
+    except Exception:
+        payload = {}
+    payload.setdefault("intent_id", str(getattr(intent, "intent_id", "")))
+    payload.setdefault("correlation_id", str(getattr(intent, "correlation_id", "")))
+    payload.setdefault("broker", getattr(intent, "broker", None))
+    payload.setdefault("account_key", getattr(intent, "account_key", None))
+    inst = getattr(intent, "instrument", None)
+    payload.setdefault("instrument", {"symbol": getattr(inst, "symbol", None)})
+    return json.loads(json.dumps(payload, default=_json_safe))
+
+
+def _ensure_intent_persisted(cur, intent) -> None:
+    iid = str(getattr(intent, "intent_id", "") or "").strip()
+    if not iid:
+        return
+    corr = str(getattr(intent, "correlation_id", "") or "").strip() or None
+    broker = getattr(intent, "broker", None) or "schwab"  # hardcode-ok: Stage 2b pilot is Schwab-only; intent.broker is the real source
+    account_key = getattr(intent, "account_key", None)
+    inst = getattr(intent, "instrument", None)
+    symbol = (getattr(inst, "symbol", None) or "").strip().upper() or None
+    payload = _intent_payload(intent)
+
+    cur.execute("""
+        INSERT INTO broker_order_intents
+          (intent_id, correlation_id, broker, account_key, symbol, state, intent_json, updated_at)
+        VALUES (%s, %s, %s, %s, %s, 'PREFLIGHTED', %s::jsonb, NOW())
+        ON CONFLICT (intent_id) DO UPDATE SET
+          correlation_id = EXCLUDED.correlation_id,
+          broker = EXCLUDED.broker,
+          account_key = EXCLUDED.account_key,
+          symbol = EXCLUDED.symbol,
+          state = CASE
+            WHEN broker_order_intents.state IN ('SUBMITTED','FILLED','CANCELLED','REJECTED')
+              THEN broker_order_intents.state
+            ELSE EXCLUDED.state
+          END,
+          intent_json = EXCLUDED.intent_json,
+          updated_at = NOW()
+    """, (iid, corr, broker, account_key, symbol, json.dumps(payload, default=_json_safe)))
+
 def request_approval(intent) -> dict:
     """Create a pending 2FA approval for an intent: web row (requires TYPING THE TICKER to confirm —
     anti-fat-finger, operator-confirmed 2026-06-12) + telegram row w/ one-time code; notify operator
     with a Tailscale deep-link straight to this intent. ONE ORDER AT A TIME: while any OTHER intent
     holds an unexpired pending/confirmed approval, a new request is refused (fail closed)."""
     conn = _conn(); cur = conn.cursor()
+    _ensure_intent_persisted(cur, intent)
     # one-order-at-a-time slot check (operator requirement 2026-06-12)
     cur.execute("""SELECT DISTINCT intent_id FROM trade_approvals
                    WHERE intent_id<>%s AND status IN ('pending','confirmed') AND expires_at > NOW()""",
                 (intent.intent_id,))
     holders = [str(r[0]) for r in cur.fetchall()]
     if holders:
+        conn.rollback()
         return {"ok": False, "reason": "one order at a time: another intent holds an active approval "
                                        "(reject it or let it expire first)", "holder_intent_ids": holders}
     code = f"{secrets.randbelow(1000000):06d}"
@@ -59,7 +116,7 @@ def request_approval(intent) -> dict:
     _send_approval_request(intent, code)
     return {"ok": True, "intent_id": intent.intent_id, "expires_at": expires.isoformat(),
             "channels": ["web", "telegram"], "ttl_min": TTL_MIN,
-            "web_confirm": "type-the-ticker required"}
+            "web_confirm": "type-the-ticker required", "intent_persisted": True}
 
 
 def intent_deep_link(intent_id: str) -> str | None:
@@ -169,12 +226,18 @@ def is_fully_approved(intent_id: str) -> bool:
 
 
 def consume(intent_id: str) -> bool:
-    """Mark an approval set used (would be called at submission time — single-use)."""
+    """Mark an approval set used at submission time (single-use). Burns the confirmed channel(s) AND
+    supersedes any leftover *pending* rows for this intent — with single-channel approval, request_approval
+    still creates both web+telegram pending rows, and the unconfirmed one would otherwise linger in
+    pending and keep holding the one-order-at-a-time slot, blocking the NEXT submit. (bugfix 2026-06-15)"""
     try:
         conn = _conn(); cur = conn.cursor()
         cur.execute("""UPDATE trade_approvals SET status='consumed'
                        WHERE intent_id=%s AND status='confirmed'""", (intent_id,))
-        n = cur.rowcount; conn.commit()
+        n = cur.rowcount
+        cur.execute("""UPDATE trade_approvals SET status='superseded'
+                       WHERE intent_id=%s AND status='pending'""", (intent_id,))
+        conn.commit()
         return n >= REQUIRED_CHANNELS
     except Exception:
         return False
