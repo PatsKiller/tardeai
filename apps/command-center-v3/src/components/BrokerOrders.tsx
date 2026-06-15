@@ -863,6 +863,12 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
   const deepLinkRef = useRef<HTMLDivElement | null>(null)
   const caps = (capsR as any)?.data ?? capsR
   const drafts: any[] = ((draftsR as any)?.data ?? draftsR)?.drafts ?? []
+  // Canary battery drafts carry a "CANARY n/5" tag in meta.thesis — surface their run order so the
+  // list reads as the ordered 1→5 sequence (was unsorted, mixing the battery with ad-hoc scratch drafts).
+  const canaryStep = (d: any): number => {
+    const m = /CANARY\s*(\d)\s*\/\s*5/.exec(d?.intent_json?.meta?.thesis ?? '')
+    return m ? Number(m[1]) : 99
+  }
   const events: any[] = ((eventsR as any)?.data ?? eventsR)?.events ?? []
   const activity: any[] = ((activityR as any)?.data ?? activityR)?.activity ?? []
   const recon = (reconR as any)?.data ?? reconR
@@ -914,6 +920,8 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
           const hit = drafts.find(d => d.intent_id === intentParam)
           if (hit) vals.unshift({ d: hit, n: 1 })
         }
+        // Canary battery first in run order (1→5), then ad-hoc scratch drafts.
+        vals.sort((a, b) => canaryStep(a.d) - canaryStep(b.d))
         return vals.slice(0, 25)
       })().map(({ d, n }: any) => (
         <div key={d.intent_id} ref={d.intent_id === intentParam ? deepLinkRef : undefined}
@@ -921,6 +929,12 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
           {(() => { const h = humanSummary(d.intent_json); return (
           <div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {canaryStep(d) < 99 && (
+                <span style={{ fontSize: 10, fontWeight: 900, padding: '2px 8px', borderRadius: 4,
+                  background: T.buyHi + '22', color: T.buyHi, border: `1px solid ${T.buyHi}66` }}
+                  title="Canary battery run order — execute steps 1→5 in sequence (only step 4 fills; 1/2/3 place→cancel, 5 closes flat)">
+                  RUN {canaryStep(d)}/5</span>
+              )}
               <span style={{ fontSize: 12.5, fontWeight: 800, color: T.text }}>{h.line}</span>
               {/* account badge on every draft card (operator 2026-06-12: per-order account tick) */}
               <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 7px', borderRadius: 3,
