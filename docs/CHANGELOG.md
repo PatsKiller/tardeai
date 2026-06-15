@@ -8,6 +8,16 @@ submitted a real order to Schwab and was cancelled cleanly:
   `orders 1/5`. Limit 50% below market → could not fill; rested, then operator cancelled in ToS →
   Schwab live status `canceled`. Proves the full chain: **arm → preflight → single-channel 2FA →
   execute → schwab_transport → live order → cancel.** This is the core Stage 2b write path validated.
+- **Cancel-FROM-Command-Center proven (later in session):** placed order #4 (`1006763166956`) → rested
+  `working` → clicked **cancel order** in the Pilot Orders list → **confirmation prompt** → cancel sent to
+  Schwab (`guard:cancel:ALLOW`) → `canceled`. The cancel no longer has to be done in ToS.
+
+**🔧 LATER FOLLOW-UPS SHIPPED:**
+- **Order-status reconcile** — `_pilot_status` now reads Schwab's live order status for any non-terminal
+  local order (by `broker_order_id`), overlays `live_status`, and persists it (so `submitted`→`canceled`/
+  `working`/`filled` reflects the broker). Fail-open; stops polling once terminal. Closed the stale-status gap.
+- **Cancel button** now shows for ANY cancellable status (was `submitted`-only, which the reconcile broke
+  by renaming to `working`) and prompts a `confirm()` with the order details before the live cancel.
 
 **🔧 WHAT DIDN'T (and the fixes shipped):**
 - **Preflight hung** (HTTP 000, 20s) — a stuck Schwab quote connection inside the long-lived server
