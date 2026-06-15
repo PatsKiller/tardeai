@@ -124,11 +124,11 @@ def handle_callback_query(cb):
                 if r.get("ok"):
                     full = r.get("fully_approved")
                     answer_callback(cb_id, "Telegram channel approved" +
-                                    (" — FULLY APPROVED" if full else " — web channel still required"))
+                                    (" — APPROVED" if full else " — another channel still required"))
                     edit_message(chat_id, message_id,
                                  f"✅ Telegram approval confirmed by {user_name} {now_short}\n"
                                  f"intent {iid[:8]} · " +
-                                 ("FULLY APPROVED (both channels)" if full else "waiting on web channel") +
+                                 ("APPROVED (telegram alone is enough)" if full else "waiting on another channel") +
                                  "\n(Execution remains DISABLED this phase)")
                 else:
                     answer_callback(cb_id, f"Denied: {r.get('reason','')}"[:180], show_alert=True)

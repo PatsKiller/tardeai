@@ -15,6 +15,13 @@ import datetime as dt
 
 TTL_MIN = int(os.getenv("TRADE_APPROVAL_TTL_MIN", "10"))
 
+# How many of the two channels (web typed-ticker, telegram code) must confirm before a submit is
+# allowed. Operator directive 2026-06-15: EITHER channel is sufficient — typing the ticker is enough
+# fat-finger protection on its own, and the operator does not want to be forced through both. Set to 2
+# to restore strict dual-channel 2FA. Both channels are still REQUESTED and usable; only the threshold
+# to count as approved changes.
+REQUIRED_CHANNELS = int(os.getenv("TRADE_APPROVAL_REQUIRED_CHANNELS", "1"))
+
 
 def _conn():
     from db_adapter import _get_conn
@@ -149,13 +156,14 @@ def confirm(intent_id: str, channel: str, code: str | None = None) -> dict:
 
 
 def is_fully_approved(intent_id: str) -> bool:
-    """True only if BOTH channels confirmed, unexpired, unconsumed."""
+    """True if at least REQUIRED_CHANNELS distinct channel(s) confirmed, unexpired, unconsumed.
+    Default 1 (either web typed-ticker OR telegram code) per operator directive 2026-06-15."""
     try:
         cur = _conn().cursor()
         cur.execute("""SELECT count(DISTINCT channel) FROM trade_approvals
                        WHERE intent_id=%s AND status='confirmed'
                          AND expires_at > NOW()""", (intent_id,))
-        return (cur.fetchone()[0] or 0) >= 2
+        return (cur.fetchone()[0] or 0) >= REQUIRED_CHANNELS
     except Exception:
         return False   # fail closed
 
@@ -167,7 +175,7 @@ def consume(intent_id: str) -> bool:
         cur.execute("""UPDATE trade_approvals SET status='consumed'
                        WHERE intent_id=%s AND status='confirmed'""", (intent_id,))
         n = cur.rowcount; conn.commit()
-        return n >= 2
+        return n >= REQUIRED_CHANNELS
     except Exception:
         return False
 

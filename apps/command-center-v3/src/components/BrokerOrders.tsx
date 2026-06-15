@@ -102,10 +102,11 @@ function TickerConfirmModal({ intentId, symbol, onClose, onDone }:
       alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${T.amber}`,
         borderRadius: 8, padding: 18, width: 'min(380px, 92vw)' }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: T.amber }}>⚠ WEB CONFIRMATION — channel 2 of 2</div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: T.amber }}>⚠ WEB CONFIRMATION — either channel approves</div>
         <div style={{ fontSize: 10, color: '#bdbdbd', marginTop: 6, lineHeight: 1.5 }}>
           Anti-fat-finger check: type the ticker <b style={{ color: T.text, ...mono }}>{symbol}</b> to enable
-          Confirm. Single-use, expires with the approval TTL, one order at a time.
+          Confirm. This <b style={{ color: T.text }}>or</b> the Telegram code is enough — you don't need both.
+          Single-use, expires with the approval TTL, one order at a time.
           <b style={{ color: '#ef5350' }}> Execution remains BLOCKED this phase even when fully approved.</b>
         </div>
         <input autoFocus value={typed} onChange={e => setTyped(e.target.value)}
@@ -146,8 +147,8 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
   return (
     <div style={{ marginTop: 8, padding: 8, background: '#101010', border: `1px solid ${T.border}`, borderRadius: 4 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: T.text }}>🔐 Two-channel approval</span>
-        <span style={{ fontSize: 9, color: T.dim }}>— ① Telegram ✅ (proposals chat, deep-links back here) AND ② web popup where you TYPE the ticker</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: T.text }}>🔐 Approval — either channel</span>
+        <span style={{ fontSize: 9, color: T.dim }}>— ① Telegram code (proposals chat, deep-links back here) OR ② web popup where you TYPE the ticker. Either one approves.</span>
         {badge(web, 'web')} {badge(tg, 'telegram')}
         {s?.fully_approved && <span style={{ fontSize: 9, fontWeight: 800, color: '#66bb6a' }}>FULLY APPROVED (execution still blocked this phase)</span>}
       </div>
@@ -840,7 +841,7 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
               )
             })()}
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: T.text }}>③ Two-channel approval</div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: T.text }}>③ Approval — either channel (web ticker OR telegram)</div>
               <ApprovalPanel intentId={it.intent_id} symbol={it.instrument?.symbol ?? ''} />
             </div>
           </div>

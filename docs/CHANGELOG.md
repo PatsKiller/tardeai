@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-15 - Stage 2b approval: either channel (web ticker OR telegram), not both
+
+Operator directive 2026-06-15: typing the ticker is enough fat-finger protection on its own — don't force
+both channels. The per-order 2FA was `web typed-ticker AND telegram code` (both required). Now **either one
+approves**: `brokers/approval_service.py` gains `REQUIRED_CHANNELS` (default 1, env
+`TRADE_APPROVAL_REQUIRED_CHANNELS`); `is_fully_approved`/`consume` use `>= REQUIRED_CHANNELS` instead of the
+hardcoded `>= 2`. Both channels are still requested and usable — only the threshold to count as approved
+changed (set 2 to restore strict dual-channel). UI copy (`BrokerOrders.tsx`) + the telegram callback
+messaging updated from "channel 2 of 2 / both channels" to "either channel approves". Note: approval is the
+*last* gate — the pilot must still be ARMED (typed phrase) to open the db-control / write-flag / standing
+locks before any submit.
+
 ## 2026-06-14 - Stage 2b draft list: ordered canary battery + scratch cleanup
 
 Pre-canary tidy of the Manual ToS Desk → Broker Orders draft list. The "Draft order intents" list dumped
