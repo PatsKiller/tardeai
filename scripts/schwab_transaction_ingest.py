@@ -18,12 +18,44 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+# Load .env so SCHWAB_APP_KEY/SECRET are present when run from cron (bare subprocess, minimal env).
+# Without this the Schwab transport returns NOT_PROVEN and the nightly ingest silently pulled ZERO
+# rows — the journal had no Schwab trades for weeks. 2026-06-15.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except Exception:
+    pass
 ACCOUNTS = ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"]
 
 
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
+
+
+def _emit_health_alert(report):
+    """MONITOR: fire an urgent data_integrity alert (→ SIEM + Telegram) if Schwab auth failed — the
+    silent NOT_PROVEN bug that zeroed the journal trade-sync for weeks — or a weekday ingest came back
+    empty with every account erroring. This is the watchdog for the failure that previously went unseen."""
+    try:
+        errs = {ak: a.get("error") for ak, a in report.get("accounts", {}).items() if a.get("error")}
+        not_proven = any("NOT_PROVEN" in str(e).upper() or "ABSENT" in str(e).upper() for e in errs.values())
+        weekday = datetime.datetime.now().weekday() < 5
+        empty_all = weekday and report.get("rows_total", 0) == 0 and len(errs) >= len(ACCOUNTS)
+        if not (not_proven or empty_all):
+            return
+        from alert_event_writer import save_alert_event
+        msg = ("[schwab-ingest] AUTH FAILED — Schwab transport NOT_PROVEN (SCHWAB_APP_KEY/SECRET not loaded); "
+               "the journal trade-sync would pull ZERO rows" if not_proven
+               else f"[schwab-ingest] empty weekday ingest — 0 rows, {len(errs)} account error(s)")
+        save_alert_event(alert_type="data_integrity", severity="urgent",
+                         source_script="schwab_transaction_ingest.py", symbol=None, raw_text=msg,
+                         parsed_payload={"kind": "schwab_ingest_health", "errors": errs,
+                                         "rows_total": report.get("rows_total", 0)})
+        print(f"  [monitor] ALERT emitted: {msg}")
+    except Exception:
+        pass
 
 
 def _security_leg(txn):
@@ -141,7 +173,8 @@ def run(apply=False, days=365):
         all_rows.extend(rows)
         report["accounts"][ak] = {"mapped": len(rows), "by_action": dict(collections.Counter(r["action"] for r in rows))}
     if not all_rows:
-        report["mode"] = "no rows"; print(json.dumps(report, indent=2, default=str)); return report
+        report["mode"] = "no rows"; _emit_health_alert(report)
+        print(json.dumps(report, indent=2, default=str)); return report
     # the actual window the API covered (don't delete older CSV the API can't replace)
     window_start = min(r["trade_date"] for r in all_rows)
     report["window_start"] = window_start
@@ -166,6 +199,7 @@ def run(apply=False, days=365):
         report["inserted"] = len(all_rows)
         conn.commit()
     report["mode"] = "APPLIED" if apply else "DRY-RUN (no writes)"
+    _emit_health_alert(report)
     print(json.dumps(report, indent=2, default=str))
     return report
 

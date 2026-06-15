@@ -13,6 +13,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+try:  # load .env so DB/LLM creds resolve under cron's minimal env (2026-06-15)
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except Exception:
+    pass
 
 PROMPT = """You are a sharp trading-journal coach. Classify this CLOSED round-trip, grade it, and write ONE specific lesson. Reply ONLY with JSON.
 
