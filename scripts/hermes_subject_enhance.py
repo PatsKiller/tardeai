@@ -110,15 +110,31 @@ def gather_sector(conn, limit):
 
 
 def gather_report(conn, limit):
-    """Latest daily report summary, if a file exists. Fuzzy/optional."""
+    """Latest daily report summary, if a readable text report exists. Fuzzy/optional.
+    Prefers the aegis morning-brief markdown / daily text summaries; skips directories and
+    binary dashboard dumps (.html/.docx/.pdf) — the old glob picked the newest path by mtime,
+    which became the `weekly/` directory and silently failed read_text(), zeroing the lane."""
     import glob, os
-    cands = sorted(glob.glob(str(PROJECT_ROOT / "data" / "reports" / "*daily*")) +
-                   glob.glob(str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*")), key=os.path.getmtime, reverse=True)
+    patterns = [
+        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*aegis_morning_brief*.md"),
+        str(PROJECT_ROOT / "data" / "reports" / "*daily*.md"),
+        str(PROJECT_ROOT / "data" / "reports" / "*daily*.txt"),
+        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*daily*.md"),
+        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*.md"),
+    ]
+    cands = []
+    for pat in patterns:
+        cands = sorted([p for p in glob.glob(pat) if os.path.isfile(p)],
+                       key=os.path.getmtime, reverse=True)
+        if cands:
+            break
     if not cands:
         return []
     try:
-        txt = Path(cands[0]).read_text()[:2500]
+        txt = Path(cands[0]).read_text(errors="ignore")[:2500]
     except Exception:
+        return []
+    if not txt.strip():
         return []
     key = "REPORT:" + Path(cands[0]).stem[:40]
     return [{"key": key, "question":
