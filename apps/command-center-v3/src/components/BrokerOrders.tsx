@@ -176,22 +176,13 @@ function ApprovalPanel({ intentId, symbol }: { intentId: string; symbol: string 
 //   4 trailing    SELL TRAIL  3% off LAST  → place + CANCEL (won't trigger)· pilot order 4
 //   5 close       SELL LIMIT  @ live bid   → CLOSE the long (back to flat) · pilot order 5
 // pkey = which body field carries the operator value; live = pull bid/ask at load time.
+// Pared down to the ONE proven $0 test (operator 2026-06-15: only the place→cancel worked cleanly; the
+// rigid 2-5 sequence caused confusion). This preset just auto-fills the form below — the manual form
+// (symbol/qty/limit → type ticker → SUBMIT) handles any other allowlisted order ad-hoc, decoupled.
 const CANARY_BATTERY: any[] = [
-  { n: '1/5', shape: 'buy_cancel', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', pdef: '1.70',
-    title: 'PLACE → CANCEL ($0)', spec: 'BUY 10 GRAB LIMIT 1.70 DAY',
-    note: 'BUY ~50% below market — CANNOT fill. Preflight → 2FA → Execute → confirm it RESTS in ToS → Cancel (row button). Proves place + cancel at zero fill risk.' },
-  { n: '2/5', shape: 'real_fill', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', live: 'ask',
-    title: 'THE REAL FILL (~$33)', spec: 'BUY 10 GRAB LIMIT @ live ask',
-    note: 'Limit = live ASK (~$33, under $40). Preflight → 2FA → Execute → DO NOT cancel, let it FILL. Proves fill capture + read-back. You now hold 10 GRAB.' },
-  { n: '3/5', shape: 'protective', symbol: 'GRAB', qty: 10, pkey: 'stop_price', plabel: 'stop $', pdef: '2.90',
-    title: 'PROTECTIVE STOP → CANCEL', spec: 'SELL 10 GRAB STOP 2.90 GTC',
-    note: 'A real protective SELL STOP on your 10 shares, set below market so it WON\'T trigger. Preflight → 2FA → Execute → verify it rests → Cancel. Proves the STOP shape.' },
-  { n: '4/5', shape: 'trailing', symbol: 'GRAB', qty: 10, pkey: 'trail_pct', plabel: 'trail %', pdef: '3',
-    title: 'TRAILING STOP → CANCEL', spec: 'SELL 10 GRAB TRAILING_STOP 3% GTC',
-    note: 'A SELL TRAILING_STOP (3% off LAST) on your 10 shares — wide enough it won\'t trigger now. Preflight → 2FA → Execute → verify → Cancel. Proves stopPriceLink/offset fields.' },
-  { n: '5/5', shape: 'close', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', live: 'bid',
-    title: 'CLOSE FLAT', spec: 'SELL 10 GRAB LIMIT @ live bid',
-    note: '⚠ Verify you are LONG +10 with ZERO working sells FIRST (a stray fill would already be flat — selling flat = an unintended SHORT). Then Execute the SELL @ bid to close. Round-trip lands canary-tagged. Disarm after.' },
+  { n: 'TEST', shape: 'buy_cancel', symbol: 'GRAB', qty: 10, pkey: 'price', plabel: 'limit $', pdef: '1.70',
+    title: '$0 PLACE → CANCEL test', spec: 'BUY 10 GRAB LIMIT 1.70 DAY',
+    note: 'BUY ~50% below market — CANNOT fill. Tap → type the ticker → SUBMIT → confirm it RESTS in ToS → Cancel. Proves the full place + cancel path at zero fill risk. (Proven working 2026-06-15.)' },
 ]
 
 // ── STAGE 2b PILOT CONSOLE — the ONLY surface that can reach the fenced write path. Flow:
@@ -283,7 +274,7 @@ function PilotConsole() {
 
       {/* canary 5-ticket battery presets — all single-leg, all via this console */}
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: T.text, marginBottom: 5 }}>Canary battery <span style={{ fontWeight: 400, color: T.dim }}>· run 1→5 in order · all execute via this console (single-leg, envelope-bounded)</span></div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: T.text, marginBottom: 5 }}>Quick test <span style={{ fontWeight: 400, color: T.dim }}>· one-tap $0 place→cancel preset · or use the form below for any allowlisted order</span></div>
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {CANARY_BATTERY.map((b) => (
             <button key={b.n} onClick={async () => {
