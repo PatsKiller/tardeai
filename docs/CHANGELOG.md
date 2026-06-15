@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-06-14 - Home Morning Brief render + SIEM stop-echo de-noise + weekend-aware staleness + Hermes report lane
+
+Operator-reported broken Home page and a weekend alert burst (SIEM P1 STOP_TRIGGERED, 61h staleness page,
+PFLT stop) — root-caused and fixed:
+
+- **Home → Morning Brief rendered raw JSON.** `HomeHub.tsx` dumped `action_items`, `strategy_health`, and
+  `overnight_activity` via `JSON.stringify` (the API returns clean structured objects). Now formatted:
+  severity-colored action rows with code chips, strategy-health stat chips (Active / New / Stuck + stuck
+  names), and an overnight-activity metric grid with a "quiet overnight" empty state.
+- **SIEM P1 was self-noise.** `notification_log` (our own outbound Telegram messages) was re-ingested and
+  re-classified at source severity — every stop alert we SENT counted as a P1 `STOP_TRIGGERED` event (38
+  events / 1 group). Since every P0–P2 alert is detected upstream first (alert_events / open_trade_alerts /
+  system_health), notification_log echoes are now demoted to **P3** + tagged `echo:true` + given a separate
+  dedupe group. P1 immediate count: inflated → 0. (`api_v2.py` `_system_siem_dashboard`.)
+- **Staleness paged every weekend.** The 26h threshold in `portfolio_orchestrator.py` fired on the expected
+  Fri→Sun market-closed gap. Now schedule-aware: +24h per weekend calendar date in the gap, so a 61h
+  weekend gap is suppressed while a genuine multi-day outage (97h) still fires.
+- **Hermes report second-read lane stale since June 9 (two bugs).** (1) `gather_report` in
+  `hermes_subject_enhance.py` globbed `data/portfolios/reports/*` and picked the newest path by mtime —
+  which became the `weekly/` **directory**; `read_text()` raised `IsADirectoryError`, swallowed by a bare
+  `except → return []`, silently zeroing the lane. Fixed: files-only, prefers the `aegis_morning_brief_*.md`,
+  `errors="ignore"`, skips empty text. (2) There was **no cron schedule** for `--type report` (scalp /
+  proposal / position / sector / closed_trade were scheduled; report was not). Added
+  `0 8,20 * * *` (twice daily; `FRESH_HOURS=12` prevents double-calls). Lane refreshed — the "✦ Grok" Home
+  badge now shows the current day. Audit confirmed `gather_report` was the ONLY gatherer with the
+  glob→mtime→read trap; all others are DB-query-only or read fixed paths, and every other "newest file by
+  mtime" idiom filters by extension first.
+
 ## 2026-06-14 - Portfolio Look-through tab + Ask-the-agents + multi-agent advisory
 
 New Portfolio → **Look-through** tab: true stock-level exposure (funds resolved to underlying holdings via
