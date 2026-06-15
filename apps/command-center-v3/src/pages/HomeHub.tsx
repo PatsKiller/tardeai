@@ -331,18 +331,49 @@ export default function HomeHub({ onDrill }: Props) {
           {briefData.action_items && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Action Items</div>
-              {(Array.isArray(briefData.action_items) ? briefData.action_items : []).map((a: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: `Action ${i+1}`, subtitle: '', endpoint: '/api/v2/morning-brief', rows: [typeof a === 'object' ? a : {item: a}] })}
-                  style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
-                  {typeof a === 'string' ? a : (a.title ?? a.action ?? JSON.stringify(a)).slice(0, 100)}
-                </div>
-              ))}
+              {(Array.isArray(briefData.action_items) ? briefData.action_items : []).map((a: any, i: number) => {
+                const label = typeof a === 'string' ? a : (a.message ?? a.title ?? a.action ?? a.code ?? '')
+                const code = typeof a === 'object' ? (a.code ?? null) : null
+                const sev = (typeof a === 'object' ? (a.severity ?? 'info') : 'info').toLowerCase()
+                const sevColor = sev === 'critical' || sev === 'urgent' || sev === 'p1' ? '#ef4444'
+                  : sev === 'warning' || sev === 'warn' || sev === 'p2' ? '#f59e0b' : 'var(--text3)'
+                return (
+                  <div key={i} onClick={() => onDrill({ title: `Action ${i+1}`, subtitle: code ?? '', endpoint: '/api/v2/morning-brief', rows: [typeof a === 'object' ? a : {item: a}] })}
+                    style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: sevColor, minWidth: 44 }}>{sev}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text1)', flex: 1 }}>{label}{code ? <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 9 }}>· {code}</span> : null}</span>
+                  </div>
+                )
+              })}
             </div>
           )}
           {briefData.strategy_health && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Strategy Health</div>
-              <div style={{ fontSize: 10, color: 'var(--text2)' }}>{typeof briefData.strategy_health === 'string' ? briefData.strategy_health : JSON.stringify(briefData.strategy_health).slice(0, 200)}</div>
+              {(() => {
+                const sh = briefData.strategy_health
+                if (typeof sh === 'string') return <div style={{ fontSize: 10, color: 'var(--text2)' }}>{sh}</div>
+                const stuck = Array.isArray(sh.stuck_strategies) ? sh.stuck_strategies.length : (sh.stuck_strategies ?? 0)
+                const stuckNames = Array.isArray(sh.stuck_strategies) ? sh.stuck_strategies : []
+                const Chip = ({ label, val, color }: any) => (
+                  <div style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 4px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: color ?? 'var(--text0)' }}>{val}</div>
+                    <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+                  </div>
+                )
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Chip label="Active" val={sh.total_active ?? 0} />
+                      <Chip label="New" val={sh.newly_activated ?? 0} color={sh.newly_activated ? '#10b981' : undefined} />
+                      <Chip label="Stuck" val={stuck} color={stuck > 0 ? '#ef4444' : undefined} />
+                    </div>
+                    {stuckNames.length > 0 && (
+                      <div style={{ fontSize: 9, color: '#ef4444', marginTop: 6 }}>Stuck: {stuckNames.join(', ')}</div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
           <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/morning-brief</div>
@@ -354,9 +385,46 @@ export default function HomeHub({ onDrill }: Props) {
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Overnight Activity</div>
           {briefData.overnight_activity ? (
-            <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
-              {typeof briefData.overnight_activity === 'string' ? briefData.overnight_activity : JSON.stringify(briefData.overnight_activity, null, 2).slice(0, 500)}
-            </div>
+            typeof briefData.overnight_activity === 'string'
+              ? <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>{briefData.overnight_activity}</div>
+              : (() => {
+                  const oa = briefData.overnight_activity
+                  const rows: [string, any][] = [
+                    ['Proposals created', oa.proposals_created],
+                    ['Proposals approved', oa.proposals_approved],
+                    ['Trades opened', oa.trades_opened],
+                    ['Trades closed', oa.trades_closed],
+                  ]
+                  const blocks = oa.risk_gate_blocks && Object.keys(oa.risk_gate_blocks).length
+                  const allZero = rows.every(([, v]) => !v) && !blocks
+                  return (
+                    <div>
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Since {oa.since ? new Date(oa.since).toLocaleString() : '—'}</div>
+                      {allZero ? (
+                        <div style={{ fontSize: 11, color: 'var(--text2)' }}>Quiet overnight — no proposals, trades, or risk-gate blocks.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {rows.map(([l, v]) => (
+                            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', background: 'var(--bg2)', borderRadius: 6 }}>
+                              <span style={{ fontSize: 10, color: 'var(--text2)' }}>{l}</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: v ? 'var(--text0)' : 'var(--text3)' }}>{v ?? 0}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {blocks ? (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>Risk-gate blocks</div>
+                          {Object.entries(oa.risk_gate_blocks).map(([k, v]: any) => (
+                            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text2)', padding: '2px 0' }}>
+                              <span>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })()
           ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>No overnight activity data</div>}
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/morning-brief → overnight_activity</div>
         </div>

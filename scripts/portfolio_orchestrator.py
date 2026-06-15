@@ -50,8 +50,20 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         if _sd_fp.exists():
             _sd_fm = json.loads(_sd_fp.read_text())
             _sd_completed = datetime.fromisoformat(_sd_fm.get("completed_at", "2000-01-01"))
-            _sd_age_h = (datetime.now() - _sd_completed).total_seconds() / 3600
-            if _sd_age_h > 26:
+            _sd_now = datetime.now()
+            _sd_age_h = (_sd_now - _sd_completed).total_seconds() / 3600
+            # Schedule-aware threshold: markets are closed Sat/Sun, so a Fri→Mon gap is
+            # expected, not a failure. Allow +24h for each weekend calendar date in the gap
+            # so weekend idle doesn't page; a genuine multi-day outage still exceeds it.
+            from datetime import timedelta as _sd_td
+            _sd_wknd = 0
+            _sd_cur = _sd_completed.date()
+            while _sd_cur <= _sd_now.date():
+                if _sd_cur.weekday() >= 5:  # Sat=5, Sun=6
+                    _sd_wknd += 1
+                _sd_cur += _sd_td(days=1)
+            _sd_threshold = 26 + 24 * _sd_wknd
+            if _sd_age_h > _sd_threshold:
                 from db_adapter import notification_already_logged, save_notification_log_entry
                 _sd_bucket = datetime.now().hour // 6
                 _sd_dk = f"{date_str}:stale_data:telegram:bucket_{_sd_bucket}"
