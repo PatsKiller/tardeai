@@ -24,9 +24,10 @@ PFLT stop) — root-caused and fixed:
   `errors="ignore"`, skips empty text. (2) There was **no cron schedule** for `--type report` (scalp /
   proposal / position / sector / closed_trade were scheduled; report was not). Added
   `0 8,20 * * *` (twice daily; `FRESH_HOURS=12` prevents double-calls). Lane refreshed — the "✦ Grok" Home
-  badge now shows the current day. Audit confirmed `gather_report` was the ONLY gatherer with the
-  glob→mtime→read trap; all others are DB-query-only or read fixed paths, and every other "newest file by
-  mtime" idiom filters by extension first.
+  badge now shows the current day. **Verified end-to-end under cron's exact invocation** (flock + log
+  redirect): the call path produced a fresh Grok read, the skip path correctly de-duped within 12h. Audit
+  confirmed `gather_report` was the ONLY gatherer with the glob→mtime→read trap; all others are
+  DB-query-only or read fixed paths, and every other "newest file by mtime" idiom filters by extension first.
 
 ## 2026-06-14 - Portfolio Look-through tab + Ask-the-agents + multi-agent advisory
 
