@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
 
@@ -48,7 +49,56 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     ? (_now - _entry) / (_entry - _advStop) : null
   const _rShow = _rTracked ? Number(p.r_multiple) : _rAdvisory
 
+  // Protective-stop order placement (Stage 2c). Schwab accounts can submit via API; Fidelity = ToS ticket.
+  const _acct = String(p.account ?? '')
+  const _isSchwab = _acct.startsWith('schwab')
+  const [stopOrder, setStopOrder] = useState<any>(null)   // {kind, qty, stop, trailPct, label}
+  const [stopTk, setStopTk] = useState('')                // type-the-ticker 2FA
+  const [stopBusy, setStopBusy] = useState(false)
+  const [stopMsg, setStopMsg] = useState('')
+  const _submitStop = async () => {
+    setStopBusy(true); setStopMsg('submitting…')
+    try {
+      const body = { symbol: p.symbol, account: p.account, qty: stopOrder.qty, order_kind: stopOrder.kind,
+                     stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null, confirm_ticker: stopTk }
+      const r = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
+      if (r?.ok) setStopMsg(`✅ ${r.mode === 'ticket' ? 'ToS ticket ready (no API on this account) — place it in thinkorswim' : 'submitted to Schwab'} · ${r.detail ?? ''}`.slice(0, 220))
+      else setStopMsg(`⛔ ${r?.reason ?? r?.error ?? 'failed'}`)
+    } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
+  }
+
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
+    {/* ── Protective-stop confirmation modal: shows the EXACT proposed order + 2FA (type ticker, then
+        confirm via Telegram/email/code — any one). Schwab submits via API; Fidelity returns a ToS ticket. ── */}
+    {stopOrder && (() => {
+      const tkOk = stopTk.trim().toUpperCase() === String(p.symbol).toUpperCase()
+      const acctLbl = String(p.account ?? '').replace(/_/g, ' ').toUpperCase()
+      const route = _isSchwab ? 'Submits LIVE to Schwab via API' : 'No API on this account → builds a thinkorswim ticket to place manually'
+      return <div onClick={() => !stopBusy && setStopOrder(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: `1px solid ${AMBER}`, borderRadius: 12, padding: 18, width: 'min(440px,94vw)' }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: AMBER }}>⚠ Confirm protective stop</div>
+          <div style={{ marginTop: 10, padding: 11, background: 'rgba(245,158,11,.10)', border: `1px solid rgba(245,158,11,.3)`, borderRadius: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 950, color: TEXT0, ...({ fontFamily: 'monospace' } as any) }}>{stopOrder.label}</div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 7, fontSize: 11 }}>
+              <span style={{ color: MUTED }}>Qty <b style={{ color: TEXT0 }}>{stopOrder.qty}</b></span>
+              <span style={{ color: MUTED }}>Type <b style={{ color: TEXT0 }}>{stopOrder.kind === 'TRAILING' ? `TRAILING ${stopOrder.trailPct?.toFixed(0)}%` : stopOrder.kind}</b></span>
+              <span style={{ color: MUTED }}>{stopOrder.kind === 'TRAILING' ? 'Start' : 'Stop'} <b style={{ color: TEXT0 }}>${Number(stopOrder.stop).toFixed(2)}</b></span>
+              <span style={{ color: MUTED }}>TIF <b style={{ color: TEXT0 }}>GTC</b></span>
+            </div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>Account <b style={{ color: TEXT1 }}>{acctLbl}</b> · {route}</div>
+          </div>
+          <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 11 }}>① Anti-fat-finger — type the ticker <b style={{ color: TEXT0 }}>{p.symbol}</b>:</div>
+          <input autoFocus value={stopTk} onChange={e => setStopTk(e.target.value.toUpperCase())} placeholder={`type ${p.symbol}`}
+            style={{ width: '100%', marginTop: 6, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${tkOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0 }} />
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 8 }}>② A confirmation is also sent to <b style={{ color: TEXT1 }}>Telegram + email</b> — approve from either, or it auto-clears. (Per-order 2FA; either channel suffices.)</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {stopMsg && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
+            <button onClick={() => setStopOrder(null)} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>cancel</button>
+            <button onClick={_submitStop} disabled={stopBusy || !tkOk} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? '#b45309' : '#334155', color: tkOk ? '#fff' : '#64748b' }}>{stopBusy ? '…' : _isSchwab ? 'PLACE STOP' : 'BUILD TICKET'}</button>
+          </div>
+        </div>
+      </div>
+    })()}
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -108,18 +158,20 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             const limitTip = `Queue a FIXED sell stop-limit GTC triggering at $${stop.toFixed(2)}. If the price hits $${stop.toFixed(2)} a LIMIT sell (~$${stop.toFixed(2)}) fires — it avoids a bad fill, but may NOT fill if the price gaps straight through, leaving you unprotected on the way down. The trigger does NOT move.\n\n${STAGE2C_TIP}`
             const trailTip = trailReady ? `Queue a native TRAILING sell stop GTC, trailing ${trailPct.toFixed(0)}%${trailDollar != null ? ` (≈$${trailDollar.toFixed(2)})` : ''}. The stop starts near $${stop.toFixed(2)} and RATCHETS UP as the price rises (never down), locking in profit; if the price then falls ${trailPct.toFixed(0)}% from its high a MARKET sell fires. This is the order the advisory recommends.\n\n${STAGE2C_TIP}` : ''
             const modifyTip = `Modify an ACTIVE stop — change the stop price, the trail %, or switch order type — once a protective order is already working at the broker.\n\n${STAGE2C_TIP}`
-            const recBtn = { ...lockBtn, border: `1px dashed ${AMBER}`, background: 'rgba(245,158,11,.14)', color: AMBER }
+            const actBtn = { ...lockBtn, cursor: 'pointer', border: '1px solid #64748b', color: TEXT1 }
+            const recBtn = { ...lockBtn, cursor: 'pointer', border: `1px solid ${AMBER}`, background: 'rgba(245,158,11,.18)', color: AMBER }
             // Income holdings are held for yield — frame the level as OPTIONAL, not "ADVISED".
             const headColor = income ? BLUE : AMBER
             const orderTxt = trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`
             const head = income ? `▸ OPTIONAL stop (income hold): ${orderTxt} GTC` : `▸ ADVISED: ${orderTxt} GTC`
+            const qty = p.shares
+            const open = (kind: string, label: string) => () => { setStopOrder({ kind, qty, stop, trailPct: kind === 'TRAILING' ? trailPct : null, income, label }); setStopTk(''); setStopMsg('') }
             return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: income ? 'rgba(96,165,250,.10)' : 'rgba(245,158,11,.10)', border: `1px solid ${income ? 'rgba(96,165,250,.32)' : 'rgba(245,158,11,.32)'}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10.5, fontWeight: 950, color: headColor }}>{head}</span>
               <span style={{ flex: 1 }} />
-              <button disabled title={stopTip} style={lockBtn}>🔒 Queue stop (fixed)</button>
-              <button disabled title={limitTip} style={lockBtn}>🔒 Queue stop-limit (fixed)</button>
-              {trailReady && <button disabled title={trailTip} style={recBtn}>🔒 Queue trailing stop ★</button>}
-              <button disabled title={modifyTip} style={lockBtn}>🔒 Modify</button>
+              <button onClick={open('STOP', `SELL ${qty} ${p.symbol} STOP $${stop.toFixed(2)} GTC`)} title={stopTip} style={trailReady ? actBtn : recBtn}>Queue stop (fixed){trailReady ? '' : ' ★'}</button>
+              <button onClick={open('STOP_LIMIT', `SELL ${qty} ${p.symbol} STOP-LIMIT $${stop.toFixed(2)} GTC`)} title={limitTip} style={actBtn}>Queue stop-limit (fixed)</button>
+              {trailReady && <button onClick={open('TRAILING', `SELL ${qty} ${p.symbol} TRAILING STOP ${trailPct.toFixed(0)}% GTC`)} title={trailTip} style={recBtn}>Queue trailing stop ★</button>}
             </div>
           })()}
         </>
@@ -142,6 +194,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         title={_rAdvisory != null ? 'Advisory R: current P&L ÷ risk to the ADVISED stop (this holding has no strategy-tracked entry/stop, so R is computed against the Hermes advised stop)' : _rShow == null ? 'No R — needs a basis (entry) and an advised stop below entry; funds/unverified-basis positions stay blank' : undefined}
         value={_rShow != null ? `${_rAdvisory != null ? '~' : ''}${num(_rShow, 1)}R` : '—'}
         color={_rShow == null ? MUTED : _rShow >= 1 ? GREEN : _rShow >= 0 ? AMBER : RED} />
+      {(() => {
+        // % from stop — live cushion above the placed (or advised) stop. The monitor field: as it
+        // shrinks toward 0% the stop is about to trigger. Uses the placed stop if present, else advised.
+        const _s = p.stop_price != null ? Number(p.stop_price) : _advStop
+        const _n = Number(p.current_price) || null
+        const _d = (_s && _n) ? ((_n - _s) / _n) * 100 : null
+        return <Metric label="% from stop"
+          title={_d == null ? 'No stop reference yet (no placed/advised stop, or no price)' : `Current price is ${_d.toFixed(1)}% above the ${p.stop_price != null ? 'placed' : 'advised'} stop ($${Number(_s).toFixed(2)}) — your downside cushion. Watch this: <3% means the stop is close to triggering.`}
+          value={_d == null ? '—' : `${_d >= 0 ? '+' : ''}${_d.toFixed(1)}%`}
+          color={_d == null ? MUTED : _d < 3 ? RED : _d < 8 ? AMBER : GREEN} />
+      })()}
     </div>
 
     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>

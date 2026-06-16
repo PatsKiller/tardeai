@@ -18176,6 +18176,60 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": {"status": "started"}}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/holdings/protective-stop":
+            # Stage 2c: place a protective SELL stop / stop-limit / trailing on a real holding. SAFE BY
+            # DEFAULT — returns the exact broker ticket for manual placement (works for every account,
+            # incl. the IRAs/Fidelity-401k that have no API). Live Schwab API submit only when the
+            # protective-stop policy is ARMED (env PROTECTIVE_STOP_LIVE) — a deliberate, separately-gated
+            # Stage-2c escalation, never on by default. Always requires the typed-ticker 2FA. (2026-06-15)
+            try:
+                import os as _os
+                b = body or {}
+                sym = str(b.get("symbol") or "").strip().upper()
+                acct = str(b.get("account") or "").strip()
+                qty = b.get("qty")
+                kind = str(b.get("order_kind") or "STOP").upper()
+                stop_price = b.get("stop_price")
+                trail_pct = b.get("trail_pct")
+                confirm = str(b.get("confirm_ticker") or "").strip().upper()
+                if not (sym and acct and qty):
+                    return 400, {"ok": False, "error": "symbol, account and qty are required"}
+                if confirm != sym:
+                    return 400, {"ok": False, "error": "type the ticker exactly to confirm (anti-fat-finger)"}
+                if kind not in ("STOP", "STOP_LIMIT", "TRAILING"):
+                    return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
+                if kind == "TRAILING":
+                    ticket = f"SELL {qty} {sym} TRAILING STOP {trail_pct}% GTC"
+                elif kind == "STOP_LIMIT":
+                    ticket = f"SELL {qty} {sym} STOP-LIMIT (stop ${stop_price}, limit ${stop_price}) GTC"
+                else:
+                    ticket = f"SELL {qty} {sym} STOP ${stop_price} GTC"
+                live_armed = _os.getenv("PROTECTIVE_STOP_LIVE", "").lower() in ("1", "true", "yes", "on")
+                is_schwab = acct.startswith("schwab")
+                # audit the intent regardless of path
+                try:
+                    from alert_event_writer import save_alert_event
+                    save_alert_event(alert_type="strategic_alert", severity="info",
+                                     source_script="protective_stop", symbol=sym,
+                                     raw_text=f"[protective-stop] {('LIVE-SUBMIT' if (is_schwab and live_armed) else 'TICKET')} · {acct} · {ticket}",
+                                     parsed_payload={"kind": "protective_stop", "symbol": sym, "account": acct,
+                                                     "order_kind": kind, "qty": qty, "stop_price": stop_price,
+                                                     "trail_pct": trail_pct, "mode": ("live" if (is_schwab and live_armed) else "ticket")})
+                except Exception:
+                    pass
+                if is_schwab and live_armed:
+                    # Stage-2c live submit path (SELL-only protective). Disabled until the policy is armed AND
+                    # a SELL-protective preflight/transport path is wired + validated like the canary.
+                    return 501, {"ok": False, "error": "live protective-stop submit not yet enabled — arm + "
+                                 "validate the Stage-2c SELL-protective path first; ticket mode is available now"}
+                return 200, {"ok": True, "mode": "ticket", "ticket": ticket, "detail": ticket,
+                             "account": acct,
+                             "manual": "Place this exact order in thinkorswim → Monitor → working orders. "
+                                       + ("(This account has no trading API.)" if not is_schwab else
+                                          "(Live API auto-submit is the armed Stage-2c step.)")}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/journal/review":
             try:
                 return journal_review_write(body or {})
