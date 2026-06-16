@@ -9,9 +9,13 @@ MARKER = "Stop Management Architecture (Stage 2c, LIVE 2026-06-15)"
 
 
 def h(doc, lvl):
-    for p in doc.paragraphs:
-        if p.style and p.style.name == f"Heading {lvl}":
-            return p.style
+    # Resolve the heading STYLE object by name. Iterate doc.styles (key lookup fails on the doc's
+    # duplicate style names) and don't rely on an existing paragraph already using it — Heading 3 was
+    # defined-but-unused, which made the old paragraph-search return None and drop subsections to body.
+    want = f"Heading {lvl}"
+    for s in doc.styles:
+        if s.name == want:
+            return s
     return None
 
 
