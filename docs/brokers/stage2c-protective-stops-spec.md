@@ -1,7 +1,11 @@
 # Stage 2c — Protective Stops on Holdings (spec)
 
-**Status: DESIGN. Policy lock `brokers/protective_stop_policy.py` committed with `ENABLED=False` —
-nothing can place a stop on a holding until that flips by commit AND the operator arms it.**
+> **✅ SHIPPED 2026-06-15 — this is the original DESIGN spec (historical). For the as-built production
+> architecture (all taxable + IRAs live, standing no-ARM, modify, lifecycle/health/Hermes/Grok monitoring,
+> Alpaca auto-management) see → [`stop-management-architecture.md`](stop-management-architecture.md).**
+
+**Status: DESIGN (historical). Policy lock `brokers/protective_stop_policy.py` was committed with
+`ENABLED=False` — nothing could place a stop until that flipped by commit AND the operator armed it.**
 **Prereq: Stage 2b canary write test (docs/brokers/stage2b-write-pilot-spec.md) must PASS first.**
 
 Operator decisions (2026-06-14): build the buttons now but gated OFF; headline shows the concrete

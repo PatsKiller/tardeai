@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-15 - Stage 2c stop management → FULL PRODUCTION + complete architecture doc
+
+Protective stop management is live across the whole book. New canonical reference:
+**[`docs/brokers/stop-management-architecture.md`](brokers/stop-management-architecture.md)**.
+
+- **Unlock**: `POC_MODE=False` (all taxable, ≤$250k) + both Schwab IRAs enabled (`IRA_PROTECTIVE_ENABLED`
+  + `api_write_enabled`). Fidelity 401k stays ticket-only (no API).
+- **Standing, no-ARM** for protective stops (`_protective_unlocked()` = policy ENABLED +
+  `system_controls['protective_stops_enabled']`); canary BUY pilot still ARM-gated. Manual + per-order 2FA
+  (web ticker OR Telegram/email code) on every Schwab account.
+- **Modify** (one-click cancel-old-then-place, single 2FA; never double-stops) + Cancel (no 2FA).
+- **Monitoring engine** `stop_lifecycle_monitor.py` (lifecycle/coverage/proximity/health, Schwab + Alpaca)
+  → `GET /api/v2/stops/lifecycle`; card ✓ PROTECTED banner + oversized/partial coverage warnings.
+- **Health agent** `stop_health_check.py` → SIEM + Telegram + system_health + **Hermes** findings.
+- **Grok** R:R curation `grok_stop_review.py` (reviewed-by-GROK on the card; advisory).
+- **Alpaca = AUTOMATIC** `alpaca_stop_manager.py` — ratchets paper stops up to the R:R-optimal level
+  (`strategy_trailing_policy`), paper-only, no 2FA; all other accounts manual.
+- Live: 4 Schwab protective stops (DRS/KBR/KTOS fixed + IRDM trailing) + 4 Alpaca, all healthy.
+
 ## 2026-06-15 - Stage 2c: LIVE protective-stop submit wired (DRS POC) + email/telegram either-channel 2FA
 
 **Protective stops on real holdings now place LIVE Schwab orders** (commit `d6598b07`), reusing the proven
