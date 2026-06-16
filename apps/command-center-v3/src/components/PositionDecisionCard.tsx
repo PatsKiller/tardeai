@@ -85,6 +85,20 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       else setStopMsg(`⛔ ${r?.error ?? r?.reason ?? 'confirmation failed'}`)
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
+  // FULL STOP MONITORING — the live broker stop now showing on this card, + cancel ("remove") control.
+  const _bstop = (p as any).broker_stop as any
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [cancelMsg, setCancelMsg] = useState('')
+  const _cancelStop = async () => {
+    if (!_bstop?.order_id) return
+    if (!window.confirm(`Cancel the live ${_bstop.order_type} on ${p.symbol} (#${_bstop.order_id}) at the broker?`)) return
+    setCancelBusy(true); setCancelMsg('cancelling…')
+    try {
+      const r = await fetch('/api/v2/holdings/protective-stop/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: p.account, broker_order_id: _bstop.order_id, symbol: p.symbol }) }).then(x => x.json())
+      if (r?.ok) setCancelMsg(`✅ cancel sent (${r.status}) — refreshing…`)
+      else setCancelMsg(`⛔ ${r?.error ?? r?.hint ?? 'cancel failed'}`)
+    } catch (e: any) { setCancelMsg('⛔ ' + e.message) } finally { setCancelBusy(false) }
+  }
 
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
     {/* ── Protective-stop confirmation modal: shows the EXACT proposed order + 2FA (type ticker, then
@@ -173,7 +187,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       {p.primary_next_review && <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>Next: {p.primary_next_review}</div>}
     </div>
 
-    {(protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
+    {(_bstop || protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
+      {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
+      {_bstop && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker</span>
+        <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {_bstop.qty ?? p.shares} {p.symbol} {String(_bstop.order_type || '').replace('_', ' ')} {_bstop.stop_price != null ? `$${Number(_bstop.stop_price).toFixed(2)}` : ''} GTC</span>
+        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.18)', color: '#22c55e' }}>{String(_bstop.status || 'working')}</span>
+        <span style={{ fontSize: 9, color: MUTED }}>#{_bstop.order_id}</span>
+        <span style={{ flex: 1 }} />
+        {cancelMsg && <span style={{ fontSize: 9.5, color: cancelMsg.startsWith('✅') ? '#22c55e' : cancelMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{cancelMsg}</span>}
+        <button onClick={_cancelStop} disabled={cancelBusy} title="Cancel this live protective stop at the broker (safe direction; no 2FA)" style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: '1px solid #ef4444', background: 'rgba(239,68,68,.12)', color: '#ef4444', cursor: cancelBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>{cancelBusy ? '…' : 'Cancel stop'}</button>
+      </div>}
       {protectionRec && (() => {
         const price = Number(protectionRec.price) || null, stop = Number(protectionRec.stop_price) || null, dist = protectionRec.stop_distance_pct
         const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null, isPct = protectionRec.trail_type === 'PERCENT'

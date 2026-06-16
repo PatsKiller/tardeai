@@ -343,6 +343,55 @@ def _load_base_positions():
     return base, excluded, counts
 
 
+_BSTOP_CACHE = {"ts": 0.0, "map": {}}
+_BSTOP_TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "replaced", "working_rejected"}
+
+
+def _broker_protective_stops(accounts):
+    """Stage 2c FULL STOP MONITORING — read the broker's LIVE working/pending SELL stop orders (source of
+    truth) for the given real accounts and key them by (norm_account, symbol). Captures stops placed via the
+    Command Center AND any placed manually in thinkorswim. Cached 60s; fail-open (empty on any read error so
+    the Open Trades page never blocks on a slow broker call). Returns {(acct, sym): {order_id, stop_price,
+    order_type, status, qty, account}}."""
+    import time
+    if time.time() - _BSTOP_CACHE["ts"] < 60 and _BSTOP_CACHE["map"]:
+        return _BSTOP_CACHE["map"]
+    out = {}
+    try:
+        import schwab_transport as st
+    except Exception:
+        return out
+    for acct in accounts:
+        try:
+            orders = st.get_orders(acct)
+            if not isinstance(orders, list):
+                continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
+            for o in (orders or []):
+                if str(o.get("side", "")).lower() != "sell":
+                    continue
+                otype = str(o.get("type", "")).lower()
+                if "stop" not in otype and "trailing" not in otype:
+                    continue
+                if str(o.get("status", "")).lower() in _BSTOP_TERMINAL:
+                    continue
+                sym = str(o.get("symbol", "")).upper()
+                if not sym:
+                    continue
+                _sp = o.get("stop_price") or o.get("limit_price")
+                try:
+                    sp = float(_sp) if _sp not in (None, "", "0", "0.0") else None
+                except Exception:
+                    sp = None
+                out[(_norm_acct(acct), sym)] = {
+                    "order_id": str(o.get("id") or ""), "stop_price": sp,
+                    "order_type": otype.upper().replace(" ", "_"), "status": str(o.get("status", "")).lower(),
+                    "qty": o.get("qty"), "account": acct}
+        except Exception:
+            continue
+    _BSTOP_CACHE.update(ts=time.time(), map=out)
+    return out
+
+
 def build_intelligence():
     base, excluded, excl_counts = _load_base_positions()
     held_set = {(_norm_acct(p["account"]), p["symbol"]) for p in base}
@@ -542,6 +591,10 @@ def build_intelligence():
 
         # ── assemble ──
         spy = tech.get("SPY") or {}
+        # FULL STOP MONITORING: pull the broker's live working/pending stops once (cached) for every real
+        # Schwab account in view, so a placed protective stop (ours or a manual ToS one) shows as PROTECTED.
+        _bstop_accts = sorted({p["account"] for p in base if str(p.get("account", "")).startswith("schwab")})
+        bmap = _broker_protective_stops(_bstop_accts) if _bstop_accts else {}
         positions = []
         for p in base:
             sym = p["symbol"]
@@ -556,6 +609,12 @@ def build_intelligence():
             _tgt = lot.get("tgt") if lot.get("tgt") is not None else pl.get("tgt")
             stop = p.get("stop_price") if p.get("stop_price") is not None else (float(_stop) if _stop is not None else None)
             tgt = p.get("target_price") if p.get("target_price") is not None else (float(_tgt) if _tgt is not None else None)
+            # FULL STOP MONITORING overlay: a LIVE broker stop is the source of truth — it sets the real stop
+            # price and marks the position PROTECTED regardless of below-entry (a placed stop IS protection).
+            _bstop = bmap.get((_norm_acct(p["account"]), sym))
+            broker_protected = bool(_bstop and _bstop.get("stop_price") is not None)
+            if broker_protected:
+                stop = float(_bstop["stop_price"])
             sh = p["shares"]
             # paper P&L (holdings already has it)
             upnl = p.get("unrealized_pnl")
@@ -607,7 +666,7 @@ def build_intelligence():
             stop_near = bool(cur_px is not None and stop is not None and stop and abs(cur_px - stop) / cur_px < 0.02)
             tp_missing = tgt is None or tgt == 0
             big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing)
-            pr = {"protected": bool(stop and not below), "tp_missing": tp_missing, "stop_near": stop_near,
+            pr = {"protected": broker_protected or bool(stop and not below), "tp_missing": tp_missing, "stop_near": stop_near,
                   "below_entry": below, "trailing_candidate": bool(upnl_pct is not None and upnl_pct > 8 and not stop_near),
                   "top_recommendation": (prot.get(sym) or {}).get("act"), "option_count": (prot.get(sym) or {}).get("n", 0)}
             warns = []
@@ -670,6 +729,7 @@ def build_intelligence():
                 "cost_basis_source": p.get("cost_basis_source"),
                 "current_price": cur_px, "market_value": p.get("market_value") or (cur_px * sh if cur_px else None),
                 "stop_price": stop, "target_price": tgt, "unrealized_pnl": upnl, "unrealized_pnl_pct": upnl_pct,
+                "broker_stop": (_bstop if broker_protected else None),
                 "today_move_pct": today, "r_multiple": float(lot["rmult"]) if lot.get("rmult") is not None else None,
                 "lot_count": lot.get("lot_count", 1), "hold_duration": _hold(ent_date),
                 "price_updated_at": p.get("price_updated_at"),
