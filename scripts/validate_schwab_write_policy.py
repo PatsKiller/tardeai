@@ -264,7 +264,7 @@ except Exception as e:
 #     envelope/caps is a policy violation even if syntactically valid (commit-only means commit-only).
 try:
     gate_files = ["scripts/brokers/canary_gate.py", "scripts/brokers/pilot_caps.py",
-                  "scripts/brokers/execution_guard.py"]
+                  "scripts/brokers/execution_guard.py", "scripts/brokers/protective_stop_policy.py"]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--"] + gate_files,
                        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=20)
     dirty = [l for l in r.stdout.splitlines() if l.strip()]

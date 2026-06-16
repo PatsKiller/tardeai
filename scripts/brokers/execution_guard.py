@@ -78,24 +78,65 @@ def _live_future_unlocked() -> bool:
 
 _MUTATING_ACTIONS = ("submit", "replace")   # cancel stays allowed-in-principle: cancelling is the safe direction
 
+PROTECTIVE_STOP_MARKER = "PROTECTIVE_STOP_2C"   # intent.meta.strategy_id stamp routing through protective_stop_policy
+
+
+def _is_protective_stop(intent: OrderIntent) -> bool:
+    try:
+        return getattr(getattr(intent, "meta", None), "strategy_id", None) == PROTECTIVE_STOP_MARKER
+    except Exception:
+        return False
+
+
+def _protective_gate_reason(intent: OrderIntent) -> str | None:
+    """Evaluate the Stage-2c protective-stop envelope (its OWN committed envelope — sell-to-close a long,
+    drift/qty/notional caps + POC proof layer). Returns None when allowed, else the joined reason(s).
+    Pulls the non-intent fields (advised stop, live price, held qty, order_type) from meta.signal_evidence."""
+    try:
+        from .protective_stop_policy import evaluate as _ps_eval
+        ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+        ok, reasons = _ps_eval(
+            account_key=intent.account_key,
+            instruction=str(ev.get("instruction") or "SELL"),
+            order_type=str(ev.get("order_type") or ""),
+            stop_price=ev.get("stop_price") if ev.get("stop_price") is not None else getattr(intent.entry, "stop_price", None),
+            advised_stop=ev.get("advised_stop"),
+            current_price=ev.get("current_price"),
+            qty=(intent.quantity.qty if intent.quantity else None),
+            held_qty=ev.get("held_qty"),
+            symbol=(intent.instrument.symbol if intent.instrument else None),
+        )
+        return None if ok else "; ".join(reasons)
+    except Exception as e:
+        return f"protective-stop gate unavailable ({str(e)[:60]}) — fail closed"
+
 
 def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
     """The single gate every adapter call must pass. Audited regardless of outcome."""
     mode = mode_for(intent.broker)
+    protective = _is_protective_stop(intent)
     # ── HARDCODED CANARY GATE (Stage 2a Part D, operator 2026-06-12) ──────────────────────────
     # Evaluated BEFORE the mode logic so no present-or-future allow branch can bypass it. Applies
     # to every mutating action on every broker EXCEPT the alpaca paper-training pipeline (Hard
     # Rule 7: paper gate untouched). The envelope lives in canary_gate.py — commit-only literals;
     # any gate failure (including import failure) denies. Redundant this phase by design.
+    #
+    # Stage-2c protective stops (sells-to-close real holdings, far outside the $4/$40 BUY canary) route
+    # through their OWN committed envelope (protective_stop_policy) INSTEAD of the canary gate — selected
+    # by the intent.meta marker. Same fail-closed discipline; neither gate can widen the other.
     if action in _MUTATING_ACTIONS and intent.broker != "alpaca":
-        try:
-            from .canary_gate import evaluate as _canary_evaluate
-            g = _canary_evaluate(intent)
-            gate_reason = None if g.allowed else "; ".join(g.reasons)
-        except Exception as e:
-            gate_reason = f"canary gate unavailable ({str(e)[:60]}) — fail closed"
+        if protective:
+            gate_reason = _protective_gate_reason(intent)
+        else:
+            try:
+                from .canary_gate import evaluate as _canary_evaluate
+                g = _canary_evaluate(intent)
+                gate_reason = None if g.allowed else "; ".join(g.reasons)
+            except Exception as e:
+                gate_reason = f"canary gate unavailable ({str(e)[:60]}) — fail closed"
         if gate_reason:
-            d = GuardDecision(False, mode, f"CANARY_GATE BLOCK: {gate_reason}", intent.correlation_id)
+            _label = "PROTECTIVE_STOP_GATE BLOCK" if protective else "CANARY_GATE BLOCK"
+            d = GuardDecision(False, mode, f"{_label}: {gate_reason}", intent.correlation_id)
             try:
                 from .audit import record_guard_decision
                 record_guard_decision(intent, action, d)
@@ -123,22 +164,30 @@ def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
                 twofa = is_fully_approved(intent.intent_id)
             except Exception:
                 twofa = False
-            try:
-                from .pilot_caps import evaluate as _pilot_eval
-                pilot_ok, pilot_reasons = _pilot_eval(intent.account_key)
-            except Exception as e:
-                pilot_ok, pilot_reasons = False, [f"pilot caps unavailable ({str(e)[:60]}) — fail closed"]
+            # Protective stops are NOT counted against the canary 5-order pilot cap — they carry their own
+            # envelope (protective_stop_policy, already evaluated above as the gate). The canary cap stays
+            # the cap for the BUY canary only.
+            if protective:
+                pilot_ok, pilot_reasons = True, []
+            else:
+                try:
+                    from .pilot_caps import evaluate as _pilot_eval
+                    pilot_ok, pilot_reasons = _pilot_eval(intent.account_key)
+                except Exception as e:
+                    pilot_ok, pilot_reasons = False, [f"pilot caps unavailable ({str(e)[:60]}) — fail closed"]
             if not pilot_ok:
                 d = GuardDecision(False, mode, "PILOT_CAPS BLOCK: " + "; ".join(pilot_reasons),
                                   intent.correlation_id)
             elif not twofa:
                 d = GuardDecision(False, mode,
-                                  "DENIED: per-trade two-factor approval missing/incomplete (web + telegram "
-                                  "both required)", intent.correlation_id)
+                                  "DENIED: per-trade two-factor approval missing/incomplete (web typed-ticker "
+                                  "OR telegram/email code)", intent.correlation_id)
             else:
                 d = GuardDecision(True, mode,
-                                  "GRANTED (Stage 2b pilot): canary envelope + standing locks + pilot caps "
-                                  "+ per-trade 2FA all green", intent.correlation_id)
+                                  ("GRANTED (Stage 2c protective stop): protective envelope + standing locks "
+                                   "+ per-trade 2FA all green" if protective else
+                                   "GRANTED (Stage 2b pilot): canary envelope + standing locks + pilot caps "
+                                   "+ per-trade 2FA all green"), intent.correlation_id)
     else:
         d = GuardDecision(False, BrokerExecutionMode.BROKER_DISABLED,
                           f"broker '{intent.broker}' execution disabled (fail-closed default)",

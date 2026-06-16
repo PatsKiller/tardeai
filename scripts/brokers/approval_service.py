@@ -175,6 +175,33 @@ def _send_approval_request(intent, code: str) -> None:
                             "reply_markup": kb}, timeout=10)
     except Exception:
         pass
+    _send_approval_email(intent, code, is_test)
+
+
+def _send_approval_email(intent, code: str, is_test: bool) -> None:
+    """Deliver the SAME one-time code by email (operator directive 2026-06-15: 'email or telegram, either
+    one'). The operator can confirm from whichever they see first — enter the code in the modal, or type
+    the ticker. Best-effort: any failure is swallowed (Telegram remains the primary channel)."""
+    try:
+        import sys as _sys
+        from pathlib import Path as _P
+        _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+        import email_notifier
+        qty = intent.quantity.qty or intent.quantity.notional or intent.quantity.contracts
+        sym = intent.instrument.symbol
+        subj = f"[Trade AI] Approval code {code} — {intent.direction.value} {qty} {sym}" + (" (SCAFFOLD TEST)" if is_test else "")
+        body = (f"Trade approval requested.\n\n"
+                f"{intent.direction.value} {qty} sh {sym} ({intent.broker})\n"
+                f"entry {intent.entry.method.value}"
+                f"{(' @ ' + str(intent.entry.limit_price)) if intent.entry.limit_price else ''}"
+                f"{(' stop ' + str(intent.entry.stop_price)) if getattr(intent.entry, 'stop_price', None) else ''}\n"
+                f"intent {intent.intent_id[:8]} · expires {TTL_MIN} min\n\n"
+                f"ONE-TIME CODE: {code}\n\n"
+                f"Approve from EITHER channel — enter this code in the Command Center confirm box, "
+                f"reply to the Telegram message, or type the ticker ({sym}) in the web popup. Any one is enough.")
+        email_notifier.send_email(subj, body)
+    except Exception:
+        pass
 
 
 def reject(intent_id: str) -> dict:

@@ -53,6 +53,8 @@ def _pilot_ensure_table(cur):
                      detail TEXT,
                      created_at TIMESTAMPTZ DEFAULT NOW(),
                      updated_at TIMESTAMPTZ DEFAULT NOW())""")
+    # additive: tag the pilot family so the canary 5-order cap counts ONLY canary rows (Stage 2c)
+    cur.execute("ALTER TABLE schwab_pilot_orders ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'canary'")
 
 
 def _pilot_preconditions(account_key):
@@ -71,10 +73,12 @@ def _pilot_preconditions(account_key):
     return conn
 
 
-def place_order(account_key, order_spec, intent):
+def place_order(account_key, order_spec, intent, kind="canary"):
     """Stage 2b pilot submit. Stack: taxable-only assert → api_write_enabled → execution_guard.require
-    (canary gate → standing locks → pilot cap → 2FA) → persist row → POST → consume approval → read-back.
-    Raises NotProvenWrite/ExecutionBlocked on any closed lock; returns a result dict on broker contact."""
+    (canary OR protective gate → standing locks → pilot/protective caps → 2FA) → persist row → POST →
+    consume approval → read-back. `kind` tags the pilot family ('canary' | 'protective_stop') so the
+    canary 5-order cap counts only canary rows. Raises NotProvenWrite/ExecutionBlocked on any closed
+    lock; returns a result dict on broker contact."""
     import json as _json
     from brokers.execution_guard import require           # raises ExecutionBlocked when denied
     from brokers import approval_service
@@ -87,11 +91,11 @@ def place_order(account_key, order_spec, intent):
     legs = (order_spec.get("orderLegCollection") or [{}])[0]
     # persist BEFORE any HTTP — Schwab does not dedupe; this row is the reconcile anchor on timeout
     cur.execute("""INSERT INTO schwab_pilot_orders
-                     (correlation_id, intent_id, account_key, symbol, side, qty, limit_price, order_spec, status)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'submitting') RETURNING id""",
+                     (correlation_id, intent_id, account_key, symbol, side, qty, limit_price, order_spec, status, kind)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'submitting',%s) RETURNING id""",
                 (intent.correlation_id, intent.intent_id, account_key,
                  (legs.get("instrument") or {}).get("symbol"), legs.get("instruction"),
-                 legs.get("quantity"), order_spec.get("price"), _json.dumps(order_spec)))
+                 legs.get("quantity"), order_spec.get("price"), _json.dumps(order_spec), kind))
     row_id = cur.fetchone()[0]
     conn.commit()
     client, err = build_client(account_key)
