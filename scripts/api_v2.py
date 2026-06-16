@@ -72,6 +72,31 @@ def _protective_holding_truth(account_key: str, symbol: str):
     return (None, None)
 
 
+_STOP_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
+
+
+def _stops_lifecycle_api():
+    """GET /api/v2/stops/lifecycle — latest stop lifecycle/proximity/health scan (Schwab + Alpaca).
+    Cached 45s (reads rate-limited broker order APIs); fail-soft to the persisted snapshot."""
+    import time as _t
+    if _t.time() - _STOP_LIFECYCLE_CACHE["ts"] < 45 and _STOP_LIFECYCLE_CACHE["data"]:
+        return {"ok": True, "cached": True, **_STOP_LIFECYCLE_CACHE["data"]}
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import stop_lifecycle_monitor as _slm
+        data = _slm.scan(persist=True)
+        _STOP_LIFECYCLE_CACHE.update(ts=_t.time(), data=data)
+        return {"ok": True, "cached": False, **data}
+    except Exception as e:
+        # fall back to the last persisted snapshot
+        rows = _db_query("SELECT account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,"
+                         "current_price,proximity_pct,coverage,lifecycle,health,flags,snapshot_at "
+                         "FROM stop_lifecycle ORDER BY health DESC, symbol") or []
+        return {"ok": True, "cached": True, "stops": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "error": str(e)[:120]}
+
+
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
     Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
@@ -17960,6 +17985,7 @@ ROUTES = {
     "/api/v2/broker-orders/shadow-recon": _broker_orders_shadow_recon,
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/broker-orders/pilot/status": _pilot_status,
+    "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
