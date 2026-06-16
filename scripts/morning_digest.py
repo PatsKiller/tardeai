@@ -82,36 +82,14 @@ def _get_env_var(key: str, project_root: Path) -> str:
 
 
 def _send_telegram(message: str, project_root: Path) -> bool:
-    """Send Telegram message to all configured chat IDs."""
-    bot_token = _get_env_var("TELEGRAM_BOT_TOKEN", project_root)
-    chat_ids_raw = _get_env_var("TELEGRAM_CHAT_ID", project_root)
-
-    if not bot_token or not chat_ids_raw:
-        print("  [digest] No Telegram creds — printing only")
-        print(message)
-        return False
-
-    success = False
-    for cid in chat_ids_raw.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
-        try:
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            data = urllib.parse.urlencode({
-                "chat_id": cid,
-                "text": message,
-                "parse_mode": "HTML"
-            }).encode()
-            req = urllib.request.Request(url, data=data, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                result = json.loads(resp.read())
-                if result.get("ok"):
-                    print(f"  [digest] Telegram sent to {cid}")
-                    success = True
-        except Exception as e:
-            print(f"  [digest] Telegram error for {cid}: {e}")
-    return success
+    """Send Telegram message via the shared chokepoint (captures to Reports portal)."""
+    from telegram_alert import send_telegram
+    ok = send_telegram(message, bypass_router=True)
+    if ok:
+        print("  [digest] Telegram sent")
+    else:
+        print("  [digest] Telegram not sent")
+    return ok
 
 
 _HERMES_CTX_CACHE = None

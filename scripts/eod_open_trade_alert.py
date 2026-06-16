@@ -133,23 +133,11 @@ def send_eod_alert():
     message = format_message(rows, trail_map)
     log.info(f"Sending EOD alert: {len(rows)} open trades")
 
-    import requests
-    ok = True
-    for chat_id in CHAT_IDS:
-        try:
-            resp = requests.post(
-                f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
-                json={'chat_id': chat_id, 'text': message},
-                timeout=10,
-            )
-            if resp.ok:
-                log.info(f"  Sent to {chat_id}")
-            else:
-                log.error(f"  Failed {chat_id}: {resp.text[:200]}")
-                ok = False
-        except Exception as e:
-            log.error(f"  Error {chat_id}: {e}")
-            ok = False
+    # Route through the central Telegram chokepoint so the report is FQDN-normalized AND
+    # persisted to telegram_outbox for the v3 Reports portal. bypass_router: scheduled report.
+    from telegram_alert import send_telegram
+    ok = send_telegram(message, bypass_router=True)
+    log.info("  Sent" if ok else "  Send failed")
     return ok
 
 
