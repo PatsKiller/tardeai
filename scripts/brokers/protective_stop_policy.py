@@ -33,7 +33,7 @@ MAX_POSITION_NOTIONAL_USD = 250_000.0            # full-envelope per-order ceili
 # (a second, independent DB lock). While the flag is False the IRAs are blocked at BOTH the gate
 # (effective allowlist excludes them) and the transport precondition. Fidelity-401k is never here —
 # broker=fidelity has NO trading API at all (ticket-only forever, no flag can change that).
-IRA_PROTECTIVE_ENABLED = False                   # ← keep False until the operator explicitly says "enable the IRAs"
+IRA_PROTECTIVE_ENABLED = True                    # ← ENABLED 2026-06-15 (operator: "enable the IRAs"). 2nd lock = api_write_enabled on the 2 rows.
 SCHWAB_IRA_ACCOUNTS: tuple[str, ...] = ("schwab_roth_ira", "schwab_rollover_ira")
 
 
@@ -49,7 +49,7 @@ def effective_account_allowlist() -> tuple[str, ...]:
 # single-symbol allowlist, an auto-expiring session window, hard sub-$1k notional cap. While POC_MODE is
 # True every protective submit must ALSO satisfy this layer. Flip POC_MODE=False (commit) once the proofs
 # pass to open the full MAX_POSITION_NOTIONAL_USD envelope to all taxable (and, if enabled, IRA) holdings.
-POC_MODE = True
+POC_MODE = False                                    # ← OPENED 2026-06-15 (operator: "open all taxable"). Full envelope now governs.
 # operator picks (taxable, defensive, WHOLE-share, each < the POC cap so a fat-finger is bounded):
 #   DRS 11@$46.68≈$513 · KBR 15@$34.82≈$522 · KTOS 9@$57≈$513 (all proven live 2026-06-15, fixed STOP)
 #   IRDM 25@$45.39≈$1135 — added 2026-06-15 to prove the native TRAILING_STOP shape (advised trail 5%)
