@@ -76,6 +76,27 @@ def _live_future_unlocked() -> bool:
         return False
 
 
+def _protective_unlocked() -> bool:
+    """Stage 2c protective stops are a STANDING capability (operator 2026-06-15: 'no ARM control around
+    them once unlocked'). Unlike the canary BUY pilot they do NOT require the expiring pilot_armed_until
+    session — a protective SELL stop is the safe direction (sell-to-close only; can't open a position or
+    overspend; bounded by protective_stop_policy: drift, qty<=held, stop-below-price, notional). Standing
+    gate = policy ENABLED (committed) AND a standing DB authorization
+    (system_controls['protective_stops_enabled']='true', set once, cleared to revoke). Per-order 2FA, the
+    policy envelope, and the account's api_write_enabled still gate EVERY submit. Any error => locked."""
+    try:
+        from .protective_stop_policy import ENABLED
+        if not ENABLED:
+            return False
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        cur.execute("SELECT value FROM system_controls WHERE key='protective_stops_enabled'")
+        r = cur.fetchone()
+        return bool(r and str(r[0]).lower() == "true")
+    except Exception:
+        return False
+
+
 _MUTATING_ACTIONS = ("submit", "replace")   # cancel stays allowed-in-principle: cancelling is the safe direction
 
 PROTECTIVE_STOP_MARKER = "PROTECTIVE_STOP_2C"   # intent.meta.strategy_id stamp routing through protective_stop_policy
@@ -149,11 +170,13 @@ def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
         d = GuardDecision(action in ("translate", "preview", "validate"), mode,
                           "dry-run: local translate/validate/audit only — order-endpoint I/O prohibited "
                           "(operator decision 2026-06-11)", intent.correlation_id)
-    elif mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked():
-        # Stage 2b SB-1 (operator-approved 2026-06-12): the gated branch can now GRANT. Stack at this
-        # point: canary gate already passed above (mutating actions) + 3 standing locks open. Remaining
-        # per-order locks: pilot caps (account allowlist + cumulative 5-order cap) and per-trade
-        # TWO-FACTOR approval (web typed-ticker AND telegram code, unexpired, single-use).
+    elif (protective and _protective_unlocked()) or (mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked()):
+        # GRANT branch. Two ways in:
+        #   • protective stop + STANDING protective-unlock (no expiring arm session; operator 2026-06-15), or
+        #   • canary/general write + the arm-session unlock (Stage 2b — still needs ARM).
+        # Either way the gate above already passed (protective_stop_policy for protective, canary_gate else).
+        # Remaining per-order locks: pilot caps (canary only — skipped for protective) and per-trade
+        # TWO-FACTOR approval (web typed-ticker OR telegram/email code, unexpired, single-use).
         # Cancel is the safe direction: allowed under open locks without 2FA (audited).
         if action == "cancel":
             d = GuardDecision(True, mode, "cancel granted (safe direction) under unlocked Stage 2b pilot",
