@@ -18330,9 +18330,55 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                      "account": acct, "result": res})
                 except Exception:
                     pass
+                # bust the broker-stop monitor cache so the Open Trades card flips to PROTECTED promptly
+                if res.get("status") in ("submitted", "filled"):
+                    try:
+                        import open_trades_intelligence as _oti
+                        _oti._BSTOP_CACHE["ts"] = 0.0
+                    except Exception:
+                        pass
                 return 200, {"ok": res.get("status") in ("submitted", "filled"), "stage": "submit",
                              "result": res, "broker_order_id": res.get("broker_order_id"),
                              "status": res.get("status"), "account": acct}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/protective-stop/cancel":
+            # Stage 2c — cancel a LIVE protective stop from the Open Trades card (the "remove" control).
+            # Cancel is the SAFE direction (no 2FA; guard grants cancel under an armed pilot). Only orders
+            # this pilot placed (a schwab_pilot_orders row) can be cancelled here; a stop placed manually in
+            # thinkorswim must be cancelled in ToS (cancel_order refuses non-pilot orders). (2026-06-15)
+            try:
+                b = body or {}
+                acct = str(b.get("account") or "").strip()
+                oid = str(b.get("broker_order_id") or "").strip()
+                if not (acct and oid):
+                    return 400, {"ok": False, "error": "account and broker_order_id are required"}
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import schwab_transport as _st
+                try:
+                    res = _st.cancel_order(acct, oid)
+                except Exception as ce:
+                    return 200, {"ok": False, "error": str(ce)[:200],
+                                 "hint": "if this stop was placed manually in thinkorswim, cancel it there"}
+                try:
+                    from alert_event_writer import save_alert_event
+                    save_alert_event(alert_type="strategic_alert", severity="info",
+                                     source_script="protective_stop", symbol=str(b.get("symbol") or ""),
+                                     raw_text=f"[protective-stop:cancel] {acct} · {oid} · {res.get('status')}",
+                                     parsed_payload={"kind": "protective_stop", "phase": "cancel",
+                                                     "account": acct, "broker_order_id": oid, "result": res})
+                except Exception:
+                    pass
+                # bust the broker-stop cache so the card refreshes immediately
+                try:
+                    import open_trades_intelligence as _oti
+                    _oti._BSTOP_CACHE["ts"] = 0.0
+                except Exception:
+                    pass
+                return 200, {"ok": res.get("status") in ("cancel_requested", "canceled", "cancelled"),
+                             "status": res.get("status"), "result": res, "account": acct, "broker_order_id": oid}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
