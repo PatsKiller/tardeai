@@ -613,8 +613,29 @@ def build_intelligence():
             # price and marks the position PROTECTED regardless of below-entry (a placed stop IS protection).
             _bstop = bmap.get((_norm_acct(p["account"]), sym))
             broker_protected = bool(_bstop and _bstop.get("stop_price") is not None)
+            broker_stop_payload = None
             if broker_protected:
                 stop = float(_bstop["stop_price"])
+                # COVERAGE CHECK: a standalone GTC stop does NOT auto-resize when the position is trimmed.
+                # Compare the stop's share count to shares held now: oversized (stop qty > held → on trigger
+                # it could short the difference in a margin acct / reject in cash) or partial (only some
+                # shares protected). Surfaced so the card can warn + offer resize. (operator Q 2026-06-15)
+                _held = None
+                try:
+                    _held = float(p.get("shares") or 0)
+                except Exception:
+                    _held = None
+                try:
+                    _sq = float(_bstop.get("qty") or 0)
+                except Exception:
+                    _sq = 0.0
+                coverage = "full"
+                if _held and _sq:
+                    if _sq > _held + 1e-6:
+                        coverage = "oversized"
+                    elif _sq < _held - 1e-6:
+                        coverage = "partial"
+                broker_stop_payload = {**_bstop, "held_qty": _held, "coverage": coverage}
             sh = p["shares"]
             # paper P&L (holdings already has it)
             upnl = p.get("unrealized_pnl")
@@ -729,7 +750,7 @@ def build_intelligence():
                 "cost_basis_source": p.get("cost_basis_source"),
                 "current_price": cur_px, "market_value": p.get("market_value") or (cur_px * sh if cur_px else None),
                 "stop_price": stop, "target_price": tgt, "unrealized_pnl": upnl, "unrealized_pnl_pct": upnl_pct,
-                "broker_stop": (_bstop if broker_protected else None),
+                "broker_stop": broker_stop_payload,
                 "today_move_pct": today, "r_multiple": float(lot["rmult"]) if lot.get("rmult") is not None else None,
                 "lot_count": lot.get("lot_count", 1), "hold_duration": _hold(ent_date),
                 "price_updated_at": p.get("price_updated_at"),
