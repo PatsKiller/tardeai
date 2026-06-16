@@ -188,6 +188,7 @@ def send_email(
 ) -> None:
     if not _enabled("ENABLE_EMAIL"):
         return
+    text, html = _norm_urls(text), _norm_urls(html)   # FQDN/v3 normalization chokepoint
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"]    = _env("REPORT_EMAIL_FROM")
@@ -208,12 +209,22 @@ def send_email(
         s.send_message(msg)
 
 
+def _norm_urls(text):
+    """FQDN/v3 normalization for any outbound notification body (internal IPs + legacy /v2/ -> FQDN /v3/)."""
+    try:
+        from notification_url_builder import publicize_message
+        return publicize_message(text)
+    except Exception:
+        return text
+
+
 def send_slack(message: str) -> None:
     if not _enabled("ENABLE_SLACK"):
         return
     url = _env("SLACK_WEBHOOK_URL")
     if not url:
         return
+    message = _norm_urls(message)
     try:
         import requests
         requests.post(url, json={"text": message}, timeout=20)
@@ -231,6 +242,7 @@ def send_whatsapp(message: str) -> None:
     if not all([sid, token, from_, to_]):
         print("[alerting] WhatsApp skipped — Twilio credentials incomplete")
         return
+    message = _norm_urls(message)
     try:
         from twilio.rest import Client
         client = Client(sid, token)

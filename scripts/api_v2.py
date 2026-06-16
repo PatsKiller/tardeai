@@ -7201,7 +7201,7 @@ def _journal_reminder():
             from telegram_alert import send_telegram
             send_telegram(
                 f"*Trade Journal Reminder*\n\n*{unannotated} trades* need annotation ({total} total).\n"
-                f"Coverage: {pct}%\n\nhttps://ms01-openclaw.tail163d14.ts.net/v2/journal"
+                f"Coverage: {pct}%\n\nhttps://ms01-openclaw.tail163d14.ts.net/v3/journal"
             )
         except Exception:
             pass

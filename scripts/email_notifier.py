@@ -24,6 +24,11 @@ def _get_keyring_password():
 def send_email(subject, body, to=None):
     """Send a plain-text email via gog gmail send."""
     to = to or OPERATOR_EMAIL
+    try:  # FQDN/v3 normalization chokepoint (rewrite internal IPs + legacy /v2/ dashboard links)
+        from notification_url_builder import publicize_message
+        body = publicize_message(body)
+    except Exception:
+        pass
     pw = _get_keyring_password()
     if not pw:
         log.warning("No GOG_KEYRING_PASSWORD — skipping email")
@@ -63,7 +68,7 @@ def notify_fill(symbol, shares, fill_price, broker_order_id, trade_id,
         f"Order ID: {broker_order_id}\n"
         f"Trade #{trade_id}\n\n"
         f"Paper mode — no live money.\n"
-        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v2/paper-status"
+        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v3/trading"
     )
     return send_email(f"Trade AI Fill: {symbol} {shares:.0f}sh @ ${fill_price:.2f}", body)
 
@@ -78,7 +83,7 @@ def notify_stop_triggered(symbol, current_price, stop_price, pnl_dollars,
         f"Market regime: {regime}\n"
         f"Total stops triggered: {triggered_count}\n\n"
         f"Action required in Telegram or dashboard.\n"
-        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v2/risk"
+        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v3/risk"
     )
     return send_email(f"Trade AI Stop: {symbol} @ ${current_price:.2f} — decision required", body)
 
@@ -94,7 +99,7 @@ def notify_proposal(symbol, strategy, entry, stop, target, shares, proposal_id):
         f"R:R: {rr:.1f}x  |  Shares: {shares}  |  Risk: ${risk:,.0f}\n"
         f"Proposal #{proposal_id}\n\n"
         f"Approve/reject in Telegram or dashboard.\n"
-        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v2/paper-proposals"
+        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v3/trading"
     )
     return send_email(f"Trade AI Proposal: {symbol} — {strategy}", body)
 
@@ -113,6 +118,6 @@ def notify_approval_result(symbol, shares, entry, stop, target,
         body += f"Order ID: {broker_order_id}\n"
     body += (
         f"\nPaper mode — no live money.\n"
-        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v2/paper-status"
+        f"Dashboard: https://ms01-openclaw.tail163d14.ts.net/v3/trading"
     )
     return send_email(f"Trade AI Approved: {symbol} {shares}sh submitted", body)

@@ -84,7 +84,7 @@ def main(slot, dry_run=False):
         lines.append("")
 
     lines.append(f"Total: {len(items)} items aggregated")
-    lines.append("Full detail: https://ms01-openclaw.tail163d14.ts.net/v2/alerts")
+    lines.append("Full detail: https://ms01-openclaw.tail163d14.ts.net/v3/system")
 
     digest_msg = "\n".join(lines)
 

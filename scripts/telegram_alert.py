@@ -64,6 +64,13 @@ def _smart_split(text: str, limit: int) -> list[str]:
 
 def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     """Low-level Telegram send. No routing — called after router approval."""
+    # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
+    # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
+    try:
+        from notification_url_builder import publicize_message
+        message = publicize_message(message)
+    except Exception:
+        pass
     token = _token()
     targets = chat_ids or _chat_ids()
     if not token or not targets:
