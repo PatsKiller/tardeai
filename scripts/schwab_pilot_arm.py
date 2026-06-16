@@ -105,11 +105,20 @@ def arm(confirm: str) -> dict:
                 (f"stage2b_pilot {today} (typed-phrase confirmed)",))
     cur.execute("UPDATE broker_accounts SET api_write_enabled=true WHERE account_key=%s",
                 (PILOT_ACCOUNT_ALLOWLIST[0],))
-    # UI-armed session = the 'physical key': auto-expires in 6h, never past the canary session day end,
-    # so a forgotten disarm cannot leave writes armed (and any restart resting-state clears it too).
+    # UI-armed session = the 'physical key': auto-expires at the committed protective-POC deadline
+    # (operator 2026-06-15 "set pilot next friday expire") so one arm covers the test window, or at least
+    # 6h. NOTE: the canary self-date-locks to CANARY_SESSION_DATE (today only), so a longer window
+    # practically opens only the protective path; every order still needs per-order 2FA + the DRS/$1k
+    # envelope. Disarm anytime with the DISARM button.
     now = dt.datetime.now(dt.timezone.utc)
-    day_end = dt.datetime.fromisoformat(today).replace(tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
-    armed_until = min(now + dt.timedelta(hours=6), day_end)
+    try:
+        from brokers.protective_stop_policy import POC_SESSION_THROUGH
+        window_end = dt.datetime.fromisoformat(POC_SESSION_THROUGH).replace(
+            tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
+    except Exception:
+        window_end = dt.datetime.fromisoformat(today).replace(tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
+    six_h = now + dt.timedelta(hours=6)
+    armed_until = window_end if window_end > six_h else six_h
     cur.execute("""INSERT INTO system_controls (key, value) VALUES ('pilot_armed_until', %s)
                    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
                 (armed_until.isoformat(),))

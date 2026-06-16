@@ -57,12 +57,21 @@ def _pilot_ensure_table(cur):
     cur.execute("ALTER TABLE schwab_pilot_orders ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'canary'")
 
 
-def _pilot_preconditions(account_key):
-    """Hard structural asserts BEFORE the guard even runs. IRA keys can never reach a write."""
-    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
-    if (account_key or "").strip() not in PILOT_ACCOUNT_ALLOWLIST:
-        raise NotProvenWrite(f"account {account_key!r} is not in the committed pilot allowlist "
-                             f"{PILOT_ACCOUNT_ALLOWLIST} — Schwab writes are taxable-only by commit")
+def _pilot_preconditions(account_key, kind="canary"):
+    """Hard structural asserts BEFORE the guard even runs. The committed account allowlist depends on the
+    order family: canary writes are taxable-only (pilot_caps); protective stops use the protective policy's
+    effective allowlist (taxable always, + the two Schwab IRAs ONLY when IRA_PROTECTIVE_ENABLED is committed
+    True). With the IRA flag off, IRA keys can never reach a write here either."""
+    if kind == "protective_stop":
+        from brokers.protective_stop_policy import effective_account_allowlist
+        allow = effective_account_allowlist()
+        desc = "protective-stop allowlist"
+    else:
+        from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+        allow = PILOT_ACCOUNT_ALLOWLIST
+        desc = "canary pilot allowlist (taxable-only by commit)"
+    if (account_key or "").strip() not in allow:
+        raise NotProvenWrite(f"account {account_key!r} is not in the committed {desc} {allow}")
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("SELECT api_write_enabled FROM broker_accounts WHERE account_key=%s", (account_key,))
@@ -82,7 +91,7 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     import json as _json
     from brokers.execution_guard import require           # raises ExecutionBlocked when denied
     from brokers import approval_service
-    conn = _pilot_preconditions(account_key)
+    conn = _pilot_preconditions(account_key, kind)
     if (intent.account_key or "") != account_key:
         raise NotProvenWrite(f"intent.account_key {intent.account_key!r} != {account_key!r} — refusing")
     require(intent, "submit")
