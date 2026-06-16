@@ -3,8 +3,8 @@
 Advisory rotation intelligence scorer.
 
 Read-only. Produces HOLD / ADD_REVIEW / TRIM_REVIEW / ROTATE_REVIEW ideas from
-portfolio data. It does not connect to external trading systems and does not
-change holdings.
+portfolio data, optionally enriched by a symbol-card export. It does not connect
+to external trading systems and does not change holdings.
 """
 from __future__ import annotations
 
@@ -53,6 +53,13 @@ def as_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def first(d: dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if d.get(k) not in (None, "", [], {}):
+            return d.get(k)
+    return None
+
+
 def account_type(account_key: str | None) -> str | None:
     if not account_key:
         return None
@@ -80,21 +87,72 @@ def rows_from_payload(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def cards_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
+    rows = rows_from_payload(payload)
+    if not rows and isinstance(payload, dict):
+        for key in ("cards", "symbols", "items", "results"):
+            val = payload.get(key)
+            if isinstance(val, list):
+                rows = [x for x in val if isinstance(x, dict)]
+                break
+            if isinstance(val, dict):
+                rows = [dict(v, symbol=v.get("symbol") or k) for k, v in val.items() if isinstance(v, dict)]
+                break
+        if not rows and isinstance(payload.get("data"), dict):
+            rows = cards_from_payload(payload["data"]).values()
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sym = str(first(row, "symbol", "ticker") or "").upper()
+        if sym:
+            out[sym] = row
+    return out
+
+
+def merge_card(row: dict[str, Any], card: dict[str, Any] | None) -> dict[str, Any]:
+    if not card:
+        return dict(row)
+    merged = dict(row)
+    # Fill missing core fields from cards without overriding holdings source of truth.
+    for src_keys, dest_key in [
+        (("sector", "sector_name", "gics_sector"), "sector"),
+        (("analyst_upside_pct", "upside_pct", "target_upside_pct"), "analyst_upside_pct"),
+        (("news_score", "sentiment_score"), "news_score"),
+        (("protection_state", "stop_health"), "protection_state"),
+    ]:
+        if merged.get(dest_key) in (None, "", [], {}):
+            val = first(card, *src_keys)
+            if val not in (None, "", [], {}):
+                merged[dest_key] = val
+    analyst = first(card, "analyst", "analyst_consensus")
+    if isinstance(analyst, dict) and merged.get("analyst_upside_pct") in (None, "", [], {}):
+        val = first(analyst, "upside_pct", "target_upside_pct", "upside")
+        if val not in (None, "", [], {}):
+            merged["analyst_upside_pct"] = val
+    merged["_card_enriched"] = True
+    return merged
+
+
 def score_row(row: dict[str, Any], total_value: float) -> Candidate:
-    symbol = str(row.get("symbol") or row.get("ticker") or "UNKNOWN").upper()
-    account_key = row.get("account_key") or row.get("account")
-    sector = row.get("sector") or row.get("sector_type")
-    value = as_float(row.get("market_value") or row.get("current_value") or row.get("value"))
+    symbol = str(first(row, "symbol", "ticker") or "UNKNOWN").upper()
+    account_key = first(row, "account_key", "account")
+    sector = first(row, "sector", "sector_type", "gics_sector")
+    value = as_float(first(row, "market_value", "current_value", "value"))
     concentration = (value / total_value * 100.0) if total_value else 0.0
-    upside = as_float(row.get("analyst_upside_pct") or row.get("upside_pct"), 0.0)
-    sentiment = as_float(row.get("news_score") or row.get("sentiment_score"), 0.0)
-    income_yield = as_float(row.get("yield") or row.get("dividend_yield") or row.get("income_yield"), 0.0)
-    protection = str(row.get("protection_state") or row.get("stop_health") or "unknown")
-    acct = account_type(account_key)
+    upside = as_float(first(row, "analyst_upside_pct", "upside_pct", "target_upside_pct"), 0.0)
+    sentiment = as_float(first(row, "news_score", "sentiment_score"), 0.0)
+    income_yield = as_float(first(row, "yield", "dividend_yield", "income_yield"), 0.0)
+    protection = str(first(row, "protection_state", "stop_health") or "unknown")
+    acct = account_type(str(account_key) if account_key else None)
 
     trim = 0.0
     add = 0.0
     evidence: dict[str, Any] = {"concentration_pct": round(concentration, 2)}
+    if row.get("_card_enriched"):
+        evidence["symbol_card_enriched"] = True
+    if not sector:
+        evidence["missing_sector"] = True
+    if upside == 0.0:
+        evidence["missing_or_neutral_analyst_upside"] = True
 
     if concentration >= 5.0:
         trim += min(25.0, (concentration - 5.0) * 3.0)
@@ -142,19 +200,19 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
         rec = "HOLD"
         confidence = 0.50
 
-    return Candidate(symbol, account_key, sector, value, acct, trim, add, rec, round(confidence, 3), evidence)
+    return Candidate(symbol, str(account_key) if account_key else None, sector, value, acct, trim, add, rec, round(confidence, 3), evidence)
 
 
-def build_ideas(candidates: list[Candidate]) -> list[RotationIdea]:
-    trims = [c for c in candidates if c.recommendation == "TRIM_REVIEW"]
-    adds = [c for c in candidates if c.recommendation == "ADD_REVIEW"]
+def build_ideas(candidates: list[Candidate], min_pair_score: float) -> list[RotationIdea]:
+    trims = [c for c in candidates if c.recommendation in {"TRIM_REVIEW", "WATCH"} and c.trim_score > 0]
+    adds = [c for c in candidates if c.recommendation in {"ADD_REVIEW", "WATCH"} and c.add_score > 0]
     ideas: list[RotationIdea] = []
     for src in trims:
         for dst in adds:
             if src.symbol == dst.symbol:
                 continue
             score = round(min(100.0, src.trim_score * 0.55 + dst.add_score * 0.65 + (5 if src.sector != dst.sector else 0)), 2)
-            if score < 45:
+            if score < min_pair_score:
                 continue
             amount = round(min(src.current_value * 0.10, 5000.0), 2)
             ideas.append(RotationIdea(
@@ -165,7 +223,7 @@ def build_ideas(candidates: list[Candidate]) -> list[RotationIdea]:
                 action_class="ROTATE_REVIEW" if score >= 70 else "WATCH_PAIR",
                 score=score,
                 review_amount=amount,
-                rationale=f"Review shifting partial exposure from {src.symbol} to {dst.symbol}; evidence favors a human-reviewed rotation, not automatic action.",
+                rationale=f"Review shifting partial exposure from {src.symbol} to {dst.symbol}; evidence favors human review, not automatic action.",
                 evidence={"from": src.evidence, "to": dst.evidence},
             ))
     return sorted(ideas, key=lambda x: x.score, reverse=True)[:20]
@@ -174,21 +232,33 @@ def build_ideas(candidates: list[Candidate]) -> list[RotationIdea]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="data/portfolios/state/holdings.json")
+    ap.add_argument("--cards", help="optional /api/v2/symbol-cards JSON export for analyst/news/sector enrichment")
+    ap.add_argument("--min-pair-score", type=float, default=45.0)
     args = ap.parse_args()
 
     payload = json.loads(Path(args.input).read_text())
     rows = rows_from_payload(payload)
+    cards = cards_from_payload(json.loads(Path(args.cards).read_text())) if args.cards else {}
     total = as_float((payload.get("portfolio_totals", {}) or {}).get("total_value")) if isinstance(payload, dict) else 0.0
     if not total:
-        total = sum(as_float(r.get("market_value") or r.get("current_value") or r.get("value")) for r in rows)
+        total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows)
 
-    candidates = [score_row(r, total) for r in rows]
-    ideas = build_ideas(candidates)
+    enriched_rows = [merge_card(r, cards.get(str(first(r, "symbol", "ticker") or "").upper())) for r in rows]
+    candidates = [score_row(r, total) for r in enriched_rows]
+    ideas = build_ideas(candidates, args.min_pair_score)
+    data_quality = {
+        "holding_rows": len(rows),
+        "symbol_cards_loaded": len(cards),
+        "rows_with_sector": sum(1 for c in candidates if c.sector),
+        "rows_with_add_or_trim_signal": sum(1 for c in candidates if c.add_score > 0 or c.trim_score > 0),
+    }
     report = {
         "ok": True,
         "run_id": f"rotation-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "advisory_only": True,
+        "data_quality": data_quality,
+        "diagnostics": "No rotation ideas usually means no candidate has both a trim signal and another candidate has an add signal; use --cards to enrich analyst/news/sector inputs.",
         "summary": {
             "trim_review": sum(c.recommendation == "TRIM_REVIEW" for c in candidates),
             "add_review": sum(c.recommendation == "ADD_REVIEW" for c in candidates),
