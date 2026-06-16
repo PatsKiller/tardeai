@@ -211,13 +211,18 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     flagged = check_basis_divergence(new_holdings, account_key) if protect_basis else []
     if protect_basis and flagged and HP.exists():
         try:
-            stored = {(_p.get("symbol") or _p.get("ticker") or "").upper():
-                      (_p.get("cost_basis") or _p.get("avg_cost") or _p.get("average_price") or _p.get("basis"))
+            # KEY BY (symbol, account) — NOT symbol alone. A symbol held in >1 account (SCHD/SCHG in both
+            # taxable and the IRAs) has a DIFFERENT basis per account; a symbol-only key cross-contaminated
+            # them (taxable SCHD got the rollover IRA's $127,953 → phantom -90% P&L). 2026-06-16 root fix.
+            def _bk(_p):
+                return ((_p.get("symbol") or _p.get("ticker") or "").upper(),
+                        _p.get("account") or _p.get("account_id") or _p.get("account_key") or "")
+            stored = {_bk(_p): (_p.get("cost_basis") or _p.get("avg_cost") or _p.get("average_price") or _p.get("basis"))
                       for _p in _positions_of(json.load(open(HP)))}
             for p in _positions_of(new_holdings):
-                s = (p.get("symbol") or p.get("ticker") or "").upper()
-                if s in stored and stored[s] and any(f["symbol"] == s for f in flagged):
-                    p["cost_basis"] = stored[s]          # keep the manually-repaired basis
+                k = _bk(p)
+                if k in stored and stored[k] and any(f["symbol"] == k[0] for f in flagged):
+                    p["cost_basis"] = stored[k]          # keep the manually-repaired basis (per account)
                     p["_basis_divergence_flagged"] = True
         except Exception:
             pass
