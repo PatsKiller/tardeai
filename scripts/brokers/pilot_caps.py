@@ -31,7 +31,10 @@ def orders_used() -> int:
         cur.execute("SELECT to_regclass('schwab_pilot_orders')")
         if cur.fetchone()[0] is None:
             return 0
-        cur.execute("SELECT count(*) FROM schwab_pilot_orders WHERE status <> 'blocked_pre_post'")
+        # count ONLY canary-family rows — Stage-2c protective stops carry their own envelope and must
+        # not consume the canary 5-order budget (kind defaults to 'canary'; legacy rows are NULL='canary')
+        cur.execute("SELECT count(*) FROM schwab_pilot_orders WHERE status <> 'blocked_pre_post' "
+                    "AND (kind IS NULL OR kind = 'canary')")
         return int(cur.fetchone()[0] or 0)
     except Exception:
         return MAX_PILOT_ORDERS_TOTAL + 1   # unknown count ⇒ treat as exhausted (fail closed)

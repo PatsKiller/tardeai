@@ -53,17 +53,36 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   const _acct = String(p.account ?? '')
   const _isSchwab = _acct.startsWith('schwab')
   const [stopOrder, setStopOrder] = useState<any>(null)   // {kind, qty, stop, trailPct, label}
-  const [stopTk, setStopTk] = useState('')                // type-the-ticker 2FA
+  const [stopTk, setStopTk] = useState('')                // type-the-ticker (web 2FA channel)
+  const [stopCode, setStopCode] = useState('')            // telegram/email one-time code (other channel)
   const [stopBusy, setStopBusy] = useState(false)
   const [stopMsg, setStopMsg] = useState('')
-  const _submitStop = async () => {
-    setStopBusy(true); setStopMsg('submitting…')
+  const [stopIntent, setStopIntent] = useState<string>('')   // intent_id once 2FA requested (approve phase)
+  const [stopTicket, setStopTicket] = useState<string>('')   // ticket string when account has no API
+  const [stopDone, setStopDone] = useState(false)
+  const _resetStop = () => { setStopOrder(null); setStopTk(''); setStopCode(''); setStopMsg(''); setStopIntent(''); setStopTicket(''); setStopDone(false) }
+  // STEP 1 — request: builds the order + (Schwab/armed) requests per-order 2FA, or returns a ToS ticket.
+  const _requestStop = async () => {
+    setStopBusy(true); setStopMsg('requesting…')
     try {
       const body = { symbol: p.symbol, account: p.account, qty: stopOrder.qty, order_kind: stopOrder.kind,
-                     stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null, confirm_ticker: stopTk }
+                     stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null,
+                     advised_stop: stopOrder.advised ?? null, current_price: stopOrder.cur ?? null }
       const r = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
-      if (r?.ok) setStopMsg(`✅ ${r.mode === 'ticket' ? 'ToS ticket ready (no API on this account) — place it in thinkorswim' : 'submitted to Schwab'} · ${r.detail ?? ''}`.slice(0, 220))
-      else setStopMsg(`⛔ ${r?.reason ?? r?.error ?? 'failed'}`)
+      if (r?.mode === 'awaiting_approval') { setStopIntent(r.intent_id); setStopMsg(r.note || 'Code sent to Telegram + email — approve from either, or type the ticker.') }
+      else if (r?.mode === 'ticket') { setStopTicket(r.ticket); setStopMsg('✅ ToS ticket ready — place it exactly in thinkorswim (no trading API on this account).') }
+      else setStopMsg(`⛔ ${r?.error ?? r?.reason ?? 'blocked'}`)
+    } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
+  }
+  // STEP 2 — confirm the per-order 2FA (EITHER channel) and submit LIVE.
+  const _confirmStop = async (channel: 'web' | 'telegram') => {
+    setStopBusy(true); setStopMsg(channel === 'web' ? 'confirming by ticker…' : 'confirming by code…')
+    try {
+      const code = channel === 'web' ? stopTk.trim().toUpperCase() : stopCode.trim()
+      const r = await fetch('/api/v2/holdings/protective-stop/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent_id: stopIntent, channel, code }) }).then(x => x.json())
+      if (r?.stage === 'submit' && r?.ok) { setStopDone(true); setStopMsg(`✅ LIVE stop placed on Schwab · order #${r.broker_order_id ?? '—'} (${r.status})`) }
+      else if (r?.stage === 'confirm' && r?.fully_approved === false && r?.ok) setStopMsg('channel confirmed — waiting on the other factor')
+      else setStopMsg(`⛔ ${r?.error ?? r?.reason ?? 'confirmation failed'}`)
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
 
@@ -72,11 +91,13 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         confirm via Telegram/email/code — any one). Schwab submits via API; Fidelity returns a ToS ticket. ── */}
     {stopOrder && (() => {
       const tkOk = stopTk.trim().toUpperCase() === String(p.symbol).toUpperCase()
+      const codeOk = /^\d{6}$/.test(stopCode.trim())
       const acctLbl = String(p.account ?? '').replace(/_/g, ' ').toUpperCase()
-      const route = _isSchwab ? 'Submits LIVE to Schwab via API' : 'No API on this account → builds a thinkorswim ticket to place manually'
-      return <div onClick={() => !stopBusy && setStopOrder(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+      const route = _isSchwab ? 'Submits LIVE to Schwab via API (per-order 2FA)' : 'No API on this account → builds a thinkorswim ticket to place manually'
+      const inApprove = !!stopIntent && !stopDone
+      return <div onClick={() => !stopBusy && _resetStop()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
         <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: `1px solid ${AMBER}`, borderRadius: 12, padding: 18, width: 'min(440px,94vw)' }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: AMBER }}>⚠ Confirm protective stop</div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: AMBER }}>{inApprove ? '🔐 Approve to place LIVE' : '⚠ Confirm protective stop'}</div>
           <div style={{ marginTop: 10, padding: 11, background: 'rgba(245,158,11,.10)', border: `1px solid rgba(245,158,11,.3)`, borderRadius: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 950, color: TEXT0, ...({ fontFamily: 'monospace' } as any) }}>{stopOrder.label}</div>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 7, fontSize: 11 }}>
@@ -87,14 +108,43 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             </div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>Account <b style={{ color: TEXT1 }}>{acctLbl}</b> · {route}</div>
           </div>
-          <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 11 }}>① Anti-fat-finger — type the ticker <b style={{ color: TEXT0 }}>{p.symbol}</b>:</div>
-          <input autoFocus value={stopTk} onChange={e => setStopTk(e.target.value.toUpperCase())} placeholder={`type ${p.symbol}`}
-            style={{ width: '100%', marginTop: 6, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${tkOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0 }} />
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 8 }}>② A confirmation is also sent to <b style={{ color: TEXT1 }}>Telegram + email</b> — approve from either, or it auto-clears. (Per-order 2FA; either channel suffices.)</div>
+
+          {/* DONE */}
+          {stopDone && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 12, fontWeight: 700 }}>{stopMsg}</div>}
+
+          {/* TICKET MODE (no API on this account) */}
+          {!stopDone && stopTicket && <div style={{ marginTop: 11 }}>
+            <div style={{ fontSize: 10.5, color: TEXT2 }}>Place this exact order in thinkorswim → Monitor → working orders:</div>
+            <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 6, background: '#1e293b', color: TEXT0, fontSize: 13, ...({ fontFamily: 'monospace' } as any) }}>{stopTicket}</div>
+          </div>}
+
+          {/* APPROVE PHASE (Schwab live) — EITHER channel: type ticker OR enter code from Telegram/email */}
+          {!stopDone && inApprove && <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10.5, color: TEXT2 }}>A one-time code was sent to <b style={{ color: TEXT1 }}>Telegram + email</b>. Approve by <b style={{ color: TEXT0 }}>either</b>:</div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 9 }}>① type the ticker <b style={{ color: TEXT0 }}>{p.symbol}</b></div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              <input autoFocus value={stopTk} onChange={e => setStopTk(e.target.value.toUpperCase())} placeholder={`type ${p.symbol}`}
+                style={{ flex: 1, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${tkOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0 }} />
+              <button onClick={() => _confirmStop('web')} disabled={stopBusy || !tkOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? '#b45309' : '#334155', color: tkOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>place</button>
+            </div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>② or enter the 6-digit code (Telegram / email)</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              <input value={stopCode} onChange={e => setStopCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric"
+                style={{ flex: 1, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${codeOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0, letterSpacing: 3, ...({ fontFamily: 'monospace' } as any) }} />
+              <button onClick={() => _confirmStop('telegram')} disabled={stopBusy || !codeOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !codeOk) ? 'not-allowed' : 'pointer', background: codeOk ? '#b45309' : '#334155', color: codeOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>place</button>
+            </div>
+            <div style={{ fontSize: 9.5, color: MUTED, marginTop: 8 }}>You can also tap ✅ Approve in the Telegram message. Any one is enough.</div>
+          </div>}
+
+          {/* REVIEW PHASE — request the order (Schwab requests 2FA; no-API accounts return a ticket) */}
+          {!stopDone && !inApprove && !stopTicket && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 11 }}>
+            {_isSchwab ? 'Requesting will send a one-time approval to Telegram + email; the order is placed only after you confirm (next step).' : 'This account has no trading API — you’ll get the exact ToS ticket to place manually.'}
+          </div>}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
-            {stopMsg && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
-            <button onClick={() => setStopOrder(null)} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>cancel</button>
-            <button onClick={_submitStop} disabled={stopBusy || !tkOk} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? '#b45309' : '#334155', color: tkOk ? '#fff' : '#64748b' }}>{stopBusy ? '…' : _isSchwab ? 'PLACE STOP' : 'BUILD TICKET'}</button>
+            {stopMsg && !stopDone && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
+            <button onClick={_resetStop} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
+            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: stopBusy ? 'not-allowed' : 'pointer', background: '#b45309', color: '#fff' }}>{stopBusy ? '…' : _isSchwab ? 'REQUEST LIVE STOP' : 'BUILD TICKET'}</button>}
           </div>
         </div>
       </div>
@@ -134,7 +184,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const mf = (p as any).is_unstoppable_fund ?? (p as any).is_mutual_fund   // fund (mutual/401k): no exchange stop possible
         const income = (p as any).holding_family === 'income'  // held for yield — protective stop optional
         const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
-        const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c) — LOCKED until the canary write test passes Monday and you arm the protective-stop policy. Each order will require web + Telegram 2FA.'
+        const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c). Schwab taxable submits LIVE via API after per-order 2FA (type the ticker OR a code sent to Telegram + email — either confirms); the pilot must be ARMED. Accounts with no API (IRAs / Fidelity-401k) return an exact thinkorswim ticket to place manually. POC envelope is committed (DRS, taxable, sub-$1k) until the proof passes.'
         return <>
           <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
@@ -165,7 +215,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             const orderTxt = trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`
             const head = income ? `▸ OPTIONAL stop (income hold): ${orderTxt} GTC` : `▸ ADVISED: ${orderTxt} GTC`
             const qty = p.shares
-            const open = (kind: string, label: string) => () => { setStopOrder({ kind, qty, stop, trailPct: kind === 'TRAILING' ? trailPct : null, income, label }); setStopTk(''); setStopMsg('') }
+            const open = (kind: string, label: string) => () => { _resetStop(); setStopOrder({ kind, qty, stop, trailPct: kind === 'TRAILING' ? trailPct : null, income, label, advised: stop, cur: price ?? (Number(p.current_price) || null) }) }
             return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: income ? 'rgba(96,165,250,.10)' : 'rgba(245,158,11,.10)', border: `1px solid ${income ? 'rgba(96,165,250,.32)' : 'rgba(245,158,11,.32)'}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10.5, fontWeight: 950, color: headColor }}>{head}</span>
               <span style={{ flex: 1 }} />

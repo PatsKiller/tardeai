@@ -53,6 +53,36 @@ def _get_stop_overrides() -> set:
         return _override_cache["symbols"]
 
 
+def _protective_holding_truth(account_key: str, symbol: str):
+    """Server truth for the gate-critical fields of a protective-stop request: (held_shares, current_price)
+    for this symbol in this account, read from canonical holdings.json. Returns (None, None) if not held —
+    the protective policy then fails closed on the qty/price checks. Never trusts the client for these."""
+    try:
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        sym = (symbol or "").strip().upper()
+        acct = (account_key or "").strip()
+        for r in (h.get("holdings", []) or []):
+            if str(r.get("symbol", "")).upper() == sym and str(r.get("account", "")) == acct:
+                sh = r.get("shares", r.get("qty"))
+                px = r.get("current_price", r.get("price"))
+                return (float(sh) if sh is not None else None,
+                        float(px) if px is not None else None)
+    except Exception:
+        pass
+    return (None, None)
+
+
+def _protective_account_api_write(account_key: str) -> bool:
+    """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
+    Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
+    try:
+        rows = _db_query("SELECT api_write_enabled FROM broker_accounts WHERE account_key=%s",
+                         (account_key,), fetch="one")
+        return bool(rows and rows.get("api_write_enabled") is True)
+    except Exception:
+        return False
+
+
 _COUNTRY_FLAGS = {
     "usa": "🇺🇸", "united states": "🇺🇸", "us": "🇺🇸",
     "canada": "🇨🇦", "israel": "🇮🇱", "china": "🇨🇳",
@@ -18177,56 +18207,132 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/holdings/protective-stop":
-            # Stage 2c: place a protective SELL stop / stop-limit / trailing on a real holding. SAFE BY
-            # DEFAULT — returns the exact broker ticket for manual placement (works for every account,
-            # incl. the IRAs/Fidelity-401k that have no API). Live Schwab API submit only when the
-            # protective-stop policy is ARMED (env PROTECTIVE_STOP_LIVE) — a deliberate, separately-gated
-            # Stage-2c escalation, never on by default. Always requires the typed-ticker 2FA. (2026-06-15)
+            # Stage 2c STEP 1 — REQUEST a protective SELL stop / stop-limit / trailing on a real holding.
+            # Two routes (chosen by the account, never by the client):
+            #   • Schwab account with api_write_enabled + protective_stop_policy armed → builds the marked
+            #     intent, runs the protective gate, and on pass REQUESTS per-order 2FA (Telegram + email
+            #     code + web typed-ticker; EITHER confirms). Returns {mode:"awaiting_approval", intent_id}.
+            #     The actual live submit happens at STEP 2 (/protective-stop/confirm).
+            #   • Any account without an API (IRAs / Fidelity-401k) OR policy not armed → ticket mode:
+            #     returns the exact broker ticket to place manually in thinkorswim.
+            # Nothing here can place an order on its own — STEP 1 only messages; STEP 2 needs the 2FA. (2026-06-15)
             try:
-                import os as _os
                 b = body or {}
                 sym = str(b.get("symbol") or "").strip().upper()
                 acct = str(b.get("account") or "").strip()
                 qty = b.get("qty")
                 kind = str(b.get("order_kind") or "STOP").upper()
                 stop_price = b.get("stop_price")
+                limit_price = b.get("limit_price")
                 trail_pct = b.get("trail_pct")
-                confirm = str(b.get("confirm_ticker") or "").strip().upper()
+                advised_stop = b.get("advised_stop")
                 if not (sym and acct and qty):
                     return 400, {"ok": False, "error": "symbol, account and qty are required"}
-                if confirm != sym:
-                    return 400, {"ok": False, "error": "type the ticker exactly to confirm (anti-fat-finger)"}
-                if kind not in ("STOP", "STOP_LIMIT", "TRAILING"):
+                from brokers import protective_stop_pilot as _psp
+                ot = _psp.normalize_kind(kind)
+                if not ot:
                     return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
-                if kind == "TRAILING":
-                    ticket = f"SELL {qty} {sym} TRAILING STOP {trail_pct}% GTC"
-                elif kind == "STOP_LIMIT":
-                    ticket = f"SELL {qty} {sym} STOP-LIMIT (stop ${stop_price}, limit ${stop_price}) GTC"
-                else:
-                    ticket = f"SELL {qty} {sym} STOP ${stop_price} GTC"
-                live_armed = _os.getenv("PROTECTIVE_STOP_LIVE", "").lower() in ("1", "true", "yes", "on")
+                summ = _psp.order_summary(sym, qty, kind, stop_price=stop_price,
+                                          limit_price=limit_price, trail_pct=trail_pct)
+                ticket = summ["ticket"]
+                # server truth for the gate-critical fields (never trust the client for held qty / price)
+                held_qty, current_price = _protective_holding_truth(acct, sym)
+                if current_price is None:
+                    current_price = b.get("current_price")
                 is_schwab = acct.startswith("schwab")
-                # audit the intent regardless of path
+                api_write = _protective_account_api_write(acct)
+                live_route = bool(is_schwab and api_write)
                 try:
                     from alert_event_writer import save_alert_event
                     save_alert_event(alert_type="strategic_alert", severity="info",
                                      source_script="protective_stop", symbol=sym,
-                                     raw_text=f"[protective-stop] {('LIVE-SUBMIT' if (is_schwab and live_armed) else 'TICKET')} · {acct} · {ticket}",
-                                     parsed_payload={"kind": "protective_stop", "symbol": sym, "account": acct,
-                                                     "order_kind": kind, "qty": qty, "stop_price": stop_price,
-                                                     "trail_pct": trail_pct, "mode": ("live" if (is_schwab and live_armed) else "ticket")})
+                                     raw_text=f"[protective-stop:request] {('LIVE' if live_route else 'TICKET')} · {acct} · {ticket}",
+                                     parsed_payload={"kind": "protective_stop", "phase": "request", "symbol": sym,
+                                                     "account": acct, "order_kind": ot, "qty": qty,
+                                                     "stop_price": stop_price, "trail_pct": trail_pct,
+                                                     "mode": ("live" if live_route else "ticket")})
                 except Exception:
                     pass
-                if is_schwab and live_armed:
-                    # Stage-2c live submit path (SELL-only protective). Disabled until the policy is armed AND
-                    # a SELL-protective preflight/transport path is wired + validated like the canary.
-                    return 501, {"ok": False, "error": "live protective-stop submit not yet enabled — arm + "
-                                 "validate the Stage-2c SELL-protective path first; ticket mode is available now"}
+                if live_route:
+                    intent = _psp.build_intent(acct, sym, qty, kind, stop_price=stop_price,
+                                               limit_price=limit_price, trail_pct=trail_pct,
+                                               advised_stop=advised_stop, current_price=current_price,
+                                               held_qty=held_qty)
+                    # dry gate check FIRST — fail before messaging if the protective envelope blocks or the
+                    # pilot is disarmed. The ONLY reason we proceed past here is the expected "2FA missing"
+                    # denial (gate + standing locks all green, only the per-order approval remains).
+                    from brokers.execution_guard import authorize
+                    d = authorize(intent, "submit")
+                    _r = (d.reason or "").lower()
+                    if (not d.allowed) and ("two-factor" not in _r):
+                        err = d.reason
+                        if "execution disabled" in _r or "fail-closed default" in _r:
+                            err = ("Schwab pilot is DISARMED — arm it (Trading → Broker Orders → ARM) before "
+                                   "placing a live protective stop. Ticket mode is available now.")
+                        return 200, {"ok": False, "mode": "blocked", "error": err,
+                                     "ticket": ticket, "account": acct}
+                    req = _psp.request_2fa(intent)
+                    if not req.get("ok"):
+                        return 200, {"ok": False, "mode": "blocked",
+                                     "error": req.get("reason") or "could not request approval",
+                                     "holder_intent_ids": req.get("holder_intent_ids"),
+                                     "ticket": ticket, "account": acct}
+                    return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
+                                 "order": summ, "account": acct, "channels": req.get("channels"),
+                                 "ttl_min": req.get("ttl_min"),
+                                 "note": "Code sent to Telegram + email. Approve from EITHER — enter the code "
+                                         "below, tap Approve in Telegram, or type the ticker. Then it submits LIVE."}
                 return 200, {"ok": True, "mode": "ticket", "ticket": ticket, "detail": ticket,
-                             "account": acct,
+                             "order": summ, "account": acct,
                              "manual": "Place this exact order in thinkorswim → Monitor → working orders. "
-                                       + ("(This account has no trading API.)" if not is_schwab else
-                                          "(Live API auto-submit is the armed Stage-2c step.)")}
+                                       + ("(This account has no trading API — ticket only.)" if not is_schwab
+                                          else "(Account write not enabled — ticket only.)")}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/protective-stop/confirm":
+            # Stage 2c STEP 2 — CONFIRM the per-order 2FA and, once satisfied, SUBMIT the live protective
+            # stop through the proven transport (schwab_transport.place_order, kind='protective_stop', so it
+            # never touches the canary 5-order budget). EITHER channel confirms: web (type the ticker) or
+            # telegram/email (the one-time code). The order_spec is rebuilt server-side from the persisted
+            # intent — the client cannot alter it between request and submit. (2026-06-15)
+            try:
+                b = body or {}
+                intent_id = str(b.get("intent_id") or "").strip()
+                channel = str(b.get("channel") or "").strip().lower()
+                code = b.get("code")
+                if not intent_id or channel not in ("web", "telegram"):
+                    return 400, {"ok": False, "error": "intent_id and channel ('web' or 'telegram') required"}
+                from brokers import protective_stop_pilot as _psp
+                from brokers import approval_service
+                intent = _psp.load_intent(intent_id)
+                if intent is None:
+                    return 404, {"ok": False, "error": "no protective-stop intent for that id (expired?)"}
+                cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
+                if not cr.get("ok"):
+                    return 200, {"ok": False, "stage": "confirm", "error": cr.get("reason")}
+                if not cr.get("fully_approved"):
+                    return 200, {"ok": True, "stage": "confirm", "fully_approved": False,
+                                 "note": "channel confirmed; waiting on the rest"}
+                # fully approved → submit
+                order_spec = _psp.spec_from_intent(intent)
+                acct = intent.account_key
+                try:
+                    res = _psp.submit(acct, order_spec, intent)
+                except Exception as se:
+                    return 200, {"ok": False, "stage": "submit", "error": str(se)[:240]}
+                try:
+                    from alert_event_writer import save_alert_event
+                    save_alert_event(alert_type="strategic_alert", severity="warning",
+                                     source_script="protective_stop", symbol=intent.instrument.symbol,
+                                     raw_text=f"[protective-stop:submit] {acct} · {res.get('status')} · {res.get('broker_order_id')}",
+                                     parsed_payload={"kind": "protective_stop", "phase": "submit",
+                                                     "account": acct, "result": res})
+                except Exception:
+                    pass
+                return 200, {"ok": res.get("status") in ("submitted", "filled"), "stage": "submit",
+                             "result": res, "broker_order_id": res.get("broker_order_id"),
+                             "status": res.get("status"), "account": acct}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
