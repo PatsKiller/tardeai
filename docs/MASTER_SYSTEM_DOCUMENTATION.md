@@ -1939,7 +1939,24 @@ Every critical cron job is wrapped with `pipeline_alert.py` which:
 
 Wrapped pipelines: news_ingestion, youtube_ingest, overnight_batch, sec_data_ingest, event_detector, previously_traded, pipeline_watchdog.
 
-**Scale:** 56 scripts send Telegram alerts across 100+ unique call sites. All sends logged to `notification_log` table with dedupe keys.
+**Scale:** 56 scripts send Telegram alerts across 100+ unique call sites. Structured alerts/briefs log to `notification_log` (dedupe keys); SIEM advisories to `alert_events`; LLM monthly/weekly reports to `ai_reports`. Recurring operator **reports** are additionally captured at the send chokepoint to `telegram_outbox` (see Reports Portal below) so every report the operator receives is also browsable in the dashboard.
+
+### Reports Portal (v3) — every Telegram report persisted & surfaced (2026-06-16)
+
+Recurring operator reports (Incubator LLM Screen, Auto-Research, EOD Open Trades, Trade AI Critique, Strategy/Alex weekly reviews, Portfolio/Monthly reports, CIO & Daily Intelligence, overnight/pre-market briefs, Learning Digest, Stop briefs) were being sent to Telegram but **never persisted**, so the Reports hub could not show them. Fixed by capturing at the source:
+
+- **`report_capture.py`** — `classify_report()` recognizes 20 report headers and `capture()` writes each recognized report to a new **`telegram_outbox`** store. Best-effort: it never raises and never blocks a send; unrecognized/transient messages (already self-logged to `notification_log`/`alert_events`) are skipped to avoid duplication.
+- **Chokepoint** — `telegram_alert._raw_send_telegram()` calls `capture()` for every send. **9 direct-posting senders** (`eod_open_trade_alert`, `scalp_critic_agent`, `portfolio_monthly_report`/`_synthesis`, `portfolio_weekly_report`, `morning_digest`, `send_morning_brief`, `weekly_summary_local`, `stop_decision_brief`) were routed through `send_telegram()` so they are captured **and** FQDN/`/v3`-normalized (their DOCX `sendDocument` paths stay direct — `send_telegram` is text-only).
+- **`reports_portal.py`** — the portal unions four stores (`notification_log`, `alert_events`, `telegram_outbox`, `ai_reports`) into one categorized, searchable, paginated feed with full-article rendering and a purge tool. Categories (17 tabs): Morning Briefs, Digests, **Portfolio Briefs, Monthly Reports, Weekly Reviews, Incubator Screen, Research & Intel, Trade Reports, Trade Critique, Learning Digest**, Alerts, Advisories, Recovery Watch, Dividends, Regime/Rebalance, Paper Trading, System Health. Monthly/Weekly pull real history from `ai_reports`. Served at `GET /api/v2/reports/{categories,list,item}` + `POST /api/v2/reports/purge`; UI on **`/v3/reports`** (news-reader layout).
+- **Link integrity** — report bodies link to dashboard pages; a normalizer (`notification_url_builder._to_v3`) + the portal's `_PAGE` map resolve every legacy `/v2/<slug>` to the **semantically correct** `/v3` page (e.g. `recovery → /v3/risk` where the Recovery Watch section lives, `actions → /v3/` Home Action Inbox, `approvals → /v3/trading`), dropping any slug that would resolve to a dead route.
+
+### Central Intelligence — live LM review & feedback loop (2026-06-16)
+
+The "Agent / Local LM Review & Feedback" widget on the Central Intelligence board previously POSTed to a non-existent endpoint (404 → localStorage fallback). Now `POST /api/v2/agents/intelligence-feedback`:
+
+- Runs the **local gemma LLM** (`llm_lane.generate(lane='local')`) on the operator's question + critique + the visible signals and **returns the review synchronously**.
+- Operator may opt into the **Grok lane** too (`use_grok` → `llm_lane.generate(lane='grok')`, only if the free OAuth proxy is authenticated); the UI shows local + Grok reviews side by side.
+- Persists to `intelligence_feedback` and records one **learning observation per lane** to `llm_feedback_observations` (`workflow='central_intelligence_review'`), so operator critique feeds the self-learning loop.
 
 **Proposal-alert dedup fix (2026-06-04):** `send_telegram_proposal_alert.py` enforces a 30-min
 per-proposal dedup via `paper_trade_proposals.last_alert_at`. The write-back was silently failing —
