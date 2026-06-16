@@ -49,8 +49,10 @@ BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_$TIMESTAMP.sql.gz"
     SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
     echo "[$(date)] Backup complete: $BACKUP_FILE ($SIZE)"
 
-    # Cleanup old backups (>30 days)
-    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +30 -delete
+    # Cleanup old backups (>14 days). Tightened 30->14 on 2026-06-15: each daily dump is ~1.1 GB, so a
+    # 30-day window re-bloated to ~33 GB. 14 daily full dumps (~15 GB) + the daily encrypted offsite
+    # (Drive Trade_AI_Backups) is the retention policy. Raise the number here to widen the window.
+    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +14 -delete
     REMAINING=$(ls -1 "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | wc -l)
     echo "[$(date)] Retention cleanup done. $REMAINING backups retained."
 } >> "$LOG_FILE" 2>&1
