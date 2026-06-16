@@ -62,20 +62,27 @@ def _recently_alerted(symbol: str, condition: str, hours: int = 2) -> bool:
 def _hermes_finding(symbol: str, condition: str, line: str, payload: dict) -> None:
     """Write the stop-health condition into Hermes' research stream so Hermes 'monitors' it — it surfaces
     on the Open Trades card's Hermes section and in the Hermes hub, same as any research finding."""
+    conn = None
     try:
         import json
         from db_adapter import _get_conn
         conn = _get_conn(); cur = conn.cursor()
+        # research_type='stop_health' is the identity; thesis_type/status must satisfy the table's CHECKs
+        # (thesis_type ∈ bullish/bearish/neutral/mixed → 'neutral'; status ∈ staged/.. → 'staged').
         cur.execute("""INSERT INTO hermes_research_intelligence
             (source, hermes_agent_name, research_type, symbol, topic, summary, thesis, thesis_type,
              evidence_json, confidence_score, model_used, status, category_lifecycle, freshness_date, created_at)
-            VALUES (%s,%s,'stop_health',%s,%s,%s,%s,'stop_health',%s::jsonb,%s,'stop_lifecycle_monitor',
-                    'active','stop', CURRENT_DATE, NOW())""",
-            ("stop_health_monitor", "StopHealthMonitor", symbol, f"Stop health: {condition}",
+            VALUES (%s,%s,'stop_health',%s,%s,%s,%s,'neutral',%s::jsonb,%s,'stop_lifecycle_monitor',
+                    'staged','stop', CURRENT_DATE, NOW())""",
+            ("hermes", "StopHealthMonitor", symbol, f"Stop health: {condition}",
              f"{condition} — {line}", line, json.dumps(payload), 0.95))
         conn.commit()
     except Exception:
-        pass
+        if conn is not None:
+            try:
+                conn.rollback()   # never leave the shared connection in an aborted txn
+            except Exception:
+                pass
 
 
 def _log_health_event(ok: bool, summary: dict) -> None:
