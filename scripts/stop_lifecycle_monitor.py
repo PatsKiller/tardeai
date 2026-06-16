@@ -186,11 +186,15 @@ def _classify(stop: dict, held: dict | None) -> dict:
     sp = stop.get("stop_price")
     is_trail = "TRAILING" in (stop.get("order_type") or "")
 
-    # coverage
+    # coverage — only meaningful for a WORKING stop. A filled/cancelled stop legitimately has no holding
+    # (it already closed the position), so don't mis-flag it as 'orphaned'.
+    _is_terminal = status in _TERMINAL_FILL or status in _TERMINAL_CANCEL
     coverage = "full"
-    if held is None or not held_qty:
+    if _is_terminal:
+        coverage = "closed"
+    elif held is None or not held_qty:
         coverage = "orphaned"
-        flags.append("orphaned")            # a stop with no matching held position
+        flags.append("orphaned")            # a WORKING stop with no matching held position (dangerous)
     elif sq and held_qty:
         if sq > held_qty + 1e-6:
             coverage = "oversized"; flags.append("oversized")

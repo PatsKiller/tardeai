@@ -121,8 +121,10 @@ def run(quiet: bool = False) -> dict:
         payload = {"kind": "stop_health", "condition": cond, **{k: r.get(k) for k in
                    ("account", "symbol", "broker", "order_id", "order_type", "stop_price", "qty",
                     "held_qty", "current_price", "proximity_pct", "coverage", "lifecycle", "health")}}
-        _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload)
+        # dedup ALL persistence (SIEM + Telegram + Hermes) to one per (symbol,condition) per 2h — the cron
+        # runs every 10 min, so without this a single stop-out would write a row every run for hours.
         if not _recently_alerted(sym, cond):
+            _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload)
             _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
             fired.append(f"{sym}:{cond}")
