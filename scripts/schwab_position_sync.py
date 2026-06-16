@@ -254,6 +254,29 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 
 
+def _looks_like_cusip(sym):
+    """A 9-char alphanumeric symbol containing digits = a CUSIP, which Schwab returns as the 'symbol' ONLY
+    when there is no active ticker (delisted/closed). Normal tickers are ≤6 letters with no digit run."""
+    return bool(sym) and len(sym) == 9 and sym.isalnum() and not sym.isalpha() and any(c.isdigit() for c in sym)
+
+
+def _mark_delisted(row, sym):
+    """Auto-flag a delisted position (symbol came back as a CUSIP). Self-clearing: if it ever re-prices to
+    a real ticker, the flag/bucket are removed on the next sync."""
+    if _looks_like_cusip(sym):
+        row["delisted"] = True
+        row["market_value"] = 0.0
+        row["price"] = 0.0
+        row["bucket"] = "Delisted/Worthless"
+        if not row.get("name") or row.get("name") == sym:
+            row["name"] = f"DELISTED — CUSIP {sym}"
+    elif row.get("delisted"):                       # was flagged, now a real ticker → un-flag
+        row.pop("delisted", None)
+        if row.get("bucket") == "Delisted/Worthless":
+            row["bucket"] = "US Equity"
+    return row
+
+
 def _build_account_rows(account_key, live, existing_by_key):
     """Build holdings rows for ONE account from live Schwab positions, PRESERVING enrichment (name/bucket/
     cost_basis/sector) on positions we already track; minimal row for genuinely-new buys. Drops sold
@@ -293,7 +316,7 @@ def _build_account_rows(account_key, live, existing_by_key):
             if row.get("cost_basis"):
                 row["gain_loss"] = round(mv - float(row["cost_basis"]), 2)
                 row["gain_loss_pct"] = round((mv - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
-        rows.append(row)
+        rows.append(_mark_delisted(row, sym))   # auto-flag delisted (CUSIP-only) positions; self-clearing
     return rows
 
 
