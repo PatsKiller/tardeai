@@ -20,6 +20,31 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+# Finviz reports EVERY ETF as sector "Financial" (industry "Exchange Traded Fund"), mislabeling
+# industrials/materials/bond/income funds. Correct the worst offenders at ingest so downstream
+# consumers (Open Trades, Sectors, Watchlist) don't inherit a wrong sector. Canonical map mirrors
+# open_trades_intelligence._ETF_SECTOR (reference data, kept in sync).
+_ETF_SECTOR_FIX = {
+    "XLK": "Technology", "XLF": "Financial", "XLV": "Healthcare", "XLE": "Energy",
+    "XLI": "Industrials", "XLB": "Materials", "XLU": "Utilities", "XLP": "Consumer Defensive",
+    "XLY": "Consumer Cyclical", "XLRE": "Real Estate", "XLC": "Communication Services",
+    "BND": "Fixed Income", "AGG": "Fixed Income", "TLT": "Fixed Income", "BNDX": "Fixed Income", "LQD": "Fixed Income",
+    "JEPI": "Income / Covered Call", "JEPQ": "Income / Covered Call",
+    "SCHD": "Dividend Equity", "DGRO": "Dividend Equity", "VYM": "Dividend Equity", "SCHG": "Growth Equity",
+    "SPY": "Broad Equity", "VOO": "Broad Equity", "VTI": "Broad Equity", "QQQ": "Broad Equity", "IWM": "Broad Equity",
+    "ARKG": "Healthcare", "ARKK": "Innovation", "ARKQ": "Innovation", "ARKW": "Innovation", "ARKF": "Innovation",
+}
+
+
+def _corrected_sector(symbol: str, finviz_sector: str, industry: str) -> str:
+    """ETF map wins; otherwise never let a bare Finviz 'Financial' on an ETF stand."""
+    mapped = _ETF_SECTOR_FIX.get((symbol or "").upper())
+    if mapped:
+        return mapped
+    if (industry or "").strip().lower() == "exchange traded fund" and (finviz_sector or "").strip() == "Financial":
+        return ""  # unknown ETF — blank is honest, beats a wrong "Financial"
+    return finviz_sector or ""
+
 # Load .env
 _env_path = PROJECT_ROOT / ".env"
 if _env_path.exists():
@@ -251,7 +276,7 @@ def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict)
             "beta": pick(fv, internal, key="beta"),
             "atr": pick(fv, internal, key="atr"),
             "company": pick(fv, yq, key="company") or "",
-            "sector": pick(fv, internal, key="sector") or "",
+            "sector": _corrected_sector(sym, pick(fv, internal, key="sector") or "", fv.get("industry") or ""),
             "industry": fv.get("industry") or "",
             "market_cap_b": fv.get("market_cap_b"),
             "pe": fv.get("pe"),

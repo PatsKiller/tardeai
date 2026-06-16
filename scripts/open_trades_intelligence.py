@@ -26,7 +26,22 @@ SECTOR_ETF = {"Technology": "XLK", "Financial": "XLF", "Financials": "XLF", "Hea
 
 # Fallback sector for common holdings the sector table lacks (read-only display aid only).
 _SECTOR_FALLBACK = {"AGNC": "Real Estate", "NWG": "Financial", "NUVL": "Healthcare", "TMHC": "Consumer Cyclical",
-                    "AGM": "Financial", "RKLB": "Industrials", "IRDM": "Technology", "SCHD": "Other", "V": "Financial"}
+                    "AGM": "Financial", "RKLB": "Industrials", "IRDM": "Technology", "V": "Financial"}
+
+# Authoritative ETF/fund sector. Finviz reports EVERY ETF as sector "Financial" (industry
+# "Exchange Traded Fund"), which mislabels industrials/materials/bond/income funds. This map takes
+# PRECEDENCE over the (Finviz-sourced) sector table: sector SPDRs → their real GICS sector; broad/
+# bond/income funds → an honest asset-class label (no single sector → no vs-sector benchmark).
+_ETF_SECTOR = {
+    "XLK": "Technology", "XLF": "Financial", "XLV": "Healthcare", "XLE": "Energy",
+    "XLI": "Industrials", "XLB": "Materials", "XLU": "Utilities", "XLP": "Consumer Defensive",
+    "XLY": "Consumer Cyclical", "XLRE": "Real Estate", "XLC": "Communication Services",
+    "BND": "Fixed Income", "AGG": "Fixed Income", "TLT": "Fixed Income", "BNDX": "Fixed Income", "LQD": "Fixed Income",
+    "JEPI": "Income / Covered Call", "JEPQ": "Income / Covered Call",
+    "SCHD": "Dividend Equity", "DGRO": "Dividend Equity", "VYM": "Dividend Equity", "SCHG": "Growth Equity",
+    "SPY": "Broad Equity", "VOO": "Broad Equity", "VTI": "Broad Equity", "QQQ": "Broad Equity", "IWM": "Broad Equity",
+    "ARKG": "Healthcare", "ARKK": "Innovation", "ARKQ": "Innovation", "ARKW": "Innovation", "ARKF": "Innovation",
+}
 
 _STRATEGY_PURPOSE_CACHE = None
 
@@ -684,7 +699,7 @@ def build_intelligence():
             sma50 = float(t["sma50_pct"]) if t.get("sma50_pct") is not None else None
             sma200 = float(t["sma200_pct"]) if t.get("sma200_pct") is not None else None
             stale_tech = not t and not cf
-            sec = sector.get(sym) or _SECTOR_FALLBACK.get(sym)
+            sec = _ETF_SECTOR.get(sym) or sector.get(sym) or _SECTOR_FALLBACK.get(sym)
             etf = SECTOR_ETF.get(sec) if sec else None
             et = (tech.get(etf) or {}) if etf else {}
             sym5 = float(t["perf_week_pct"]) if t.get("perf_week_pct") is not None else None
@@ -692,7 +707,11 @@ def build_intelligence():
             spy5 = float(spy["perf_week_pct"]) if spy.get("perf_week_pct") is not None else None
             vs_sec5 = (sym5 - sec5) if (sym5 is not None and sec5 is not None) else None
             vs_spy5 = (sym5 - spy5) if (sym5 is not None and spy5 is not None) else None
-            sec_label = "unavailable" if sec is None else ("outperforming sector" if (vs_sec5 or 0) > 1 else "lagging sector" if (vs_sec5 or 0) < -1 else "in-line")
+            # No vs-sector benchmark (asset-class ETF, or no sector ETF perf) → don't fake an "in-line" call.
+            sec_label = ("unavailable" if sec is None else
+                         "no sector benchmark" if vs_sec5 is None else
+                         "outperforming sector" if vs_sec5 > 1 else
+                         "lagging sector" if vs_sec5 < -1 else "in-line")
             below = bool(cur_px is not None and ent is not None and cur_px < ent)
             stop_near = bool(cur_px is not None and stop is not None and stop and abs(cur_px - stop) / cur_px < 0.02)
             tp_missing = tgt is None or tgt == 0
