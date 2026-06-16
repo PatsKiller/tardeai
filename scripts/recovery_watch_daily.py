@@ -758,7 +758,7 @@ def send_notifications(escalated: list[dict]):
             body_parts.append(f"Analyst: {e['summary'][:120]}")
         if e.get("trigger"):
             body_parts.append(f"Trigger: {e['trigger'][:100]}")
-        body_parts.append(f"Next step: review at /v2/recovery")
+        body_parts.append(f"Next step: review at /v3/retirement")
         body_text = " ".join(body_parts)
 
         try:
@@ -798,7 +798,7 @@ def send_notifications(escalated: list[dict]):
                 lines.append(f"Invalidated if: {e['invalidation'][:100]}")
             if e.get("allocation"):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
-            lines.append(f"Review at: /v2/recovery")
+            lines.append(f"Review at: /v3/retirement")
             send_telegram("\n".join(lines))
         except Exception as ex:
             print(f"  [recovery] Telegram send failed: {ex}")
@@ -874,7 +874,7 @@ def send_stop_reminders(reminders: list[dict]):
     for r in reminders[:8]:
         lines.append(f"• *{r['symbol']}* — ${r['market_value']:,.0f} ({r['pct']:.1f}%) — reminder #{r['reminder_num']}")
     lines.append(f"\nReply: yes SYMBOL / no / intentional SYMBOL")
-    lines.append(f"Or review at /v2/risk")
+    lines.append(f"Or review at /v3/risk")
     msg = "\n".join(lines)
 
     try:
