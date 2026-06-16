@@ -42,6 +42,11 @@ def _send_telegram(message: str):
     if not token:
         print("  [telegram] No bot token")
         return
+    try:  # FQDN/v3 normalization chokepoint (rewrite internal IPs + legacy /v2/ dashboard links)
+        from notification_url_builder import publicize_message
+        message = publicize_message(message)
+    except Exception:
+        pass
     import urllib.request
     for chat_id in TELEGRAM_CHAT_IDS:
         try:
@@ -55,6 +60,11 @@ def _send_telegram(message: str):
 
 
 def _send_email(subject: str, body: str):
+    try:  # FQDN/v3 normalization chokepoint
+        from notification_url_builder import publicize_message
+        body = publicize_message(body)
+    except Exception:
+        pass
     kr_path = Path.home() / ".openclaw" / "credentials" / "gog_keyring_password"
     if not kr_path.exists():
         print("  [email] No GOG keyring password")

@@ -150,7 +150,7 @@ def format_telegram_message(packet: dict) -> str:
     if packet["approval_allowed"]:
         lines.append(f"`/ptapprove {pid}`")
     lines.append(f"`/ptreject {pid}`")
-    lines.append(f"`paper status`  |  Details: /v2/paper-proposals")
+    lines.append(f"`paper status`  |  Details: https://ms01-openclaw.tail163d14.ts.net/v3/trading")
 
     return "\n".join(lines)
 

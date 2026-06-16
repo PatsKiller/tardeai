@@ -39,6 +39,8 @@ _V2_TO_V3 = [
     (re.compile(r"/v2/agents?[a-z/_-]*\b"), "/v3/agents"),
     (re.compile(r"/v2/strateg(?:y|ies)[a-z/_-]*\b"), "/v3/strategy"),
     (re.compile(r"/v2/symbol/[A-Z.]+/[a-z]+\b"), "/v3/journal"),  # symbol drilldown -> journal
+    # briefs / digests / home / dashboard have no standalone v3 page — they live on the v3 home (/v3/).
+    (re.compile(r"/v2/(?:morning-brief|daily-brief|evening-brief|briefing|brief|digest|home|dashboard|index)\b"), "/v3/"),
     (re.compile(r"/v2/?(?=[\s\")]|$)"), "/v3/"),                   # bare /v2/ -> /v3/ home
     (re.compile(r"/v2/"), "/v3/"),                                 # any remaining /v2/<x> -> /v3/<x>
 ]

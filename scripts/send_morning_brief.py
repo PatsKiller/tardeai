@@ -109,7 +109,7 @@ def format_telegram(data):
             lines.append(f"  {sev} {it.get('message', '')}")
 
     lines.append("")
-    lines.append("Dashboard: https://ms01-openclaw.tail163d14.ts.net/v2/morning-brief")
+    lines.append("Dashboard: https://ms01-openclaw.tail163d14.ts.net/v3/")
 
     return "\n".join(lines)
 
