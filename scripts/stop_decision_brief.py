@@ -341,31 +341,13 @@ Respond with EXACTLY this JSON:
 
 
 def send_stop_brief_telegram(result: Dict):
-    """Send the decision brief via Telegram."""
-    bot_token = _env("TELEGRAM_BOT_TOKEN")
-    chat_id = _env("TELEGRAM_CHAT_ID")
-    if not bot_token or not chat_id:
-        return
-
-    import urllib.request, urllib.parse
+    """Send the decision brief via the shared chokepoint (captures to Reports portal)."""
     msg = result.get("telegram_msg", "")
     if not msg:
         return
 
-    for cid in chat_id.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
-        try:
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            data = urllib.parse.urlencode({
-                "chat_id": cid, "text": msg, "parse_mode": "HTML"
-            }).encode()
-            req = urllib.request.Request(url, data=data, method="POST")
-            with urllib.request.urlopen(req, timeout=15):
-                pass
-        except Exception as e:
-            print(f"  [stop-brief] Telegram error: {e}")
+    from telegram_alert import send_telegram
+    send_telegram(msg, bypass_router=True)
 
 
 def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = ".") -> List[Dict]:

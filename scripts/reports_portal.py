@@ -21,12 +21,28 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # ── Portal categories: friendly tab → (label, icon, member notification_types / alert filters) ──────
 # Order here is the tab order in the UI.
 CATEGORIES = [
-    {"key": "morning_briefs", "label": "Morning Briefs", "icon": "🛡", "nl_types": ["aegis_morning_brief"], "ae": None},
-    {"key": "digests",        "label": "Digests",        "icon": "📰", "nl_types": ["daily_digest"], "ae": None},
+    {"key": "morning_briefs", "label": "Morning Briefs", "icon": "🛡", "nl_types": ["aegis_morning_brief"], "ae": None,
+     "ob_types": ["trade_ai_brief"]},
+    {"key": "digests",        "label": "Digests",        "icon": "📰", "nl_types": ["daily_digest"], "ae": None,
+     "ob_types": ["overnight_brief", "premarket_brief"]},
+    {"key": "portfolio_briefs", "label": "Portfolio Briefs", "icon": "💼", "nl_types": [], "ae": None, "ob_types": ["portfolio_brief"]},
+    {"key": "monthly",        "label": "Monthly Reports", "icon": "🗓", "nl_types": [], "ae": None,
+     "ar_types": ["monthly", "monthly_retirement"], "ob_types": ["monthly_report", "commanders_summary"]},
+    {"key": "weekly_reviews", "label": "Weekly Reviews",  "icon": "📆", "nl_types": [], "ae": None,
+     "ar_types": ["weekly", "weekly_health"], "ob_types": ["strategy_weekly", "alex_review", "weekly_summary"]},
+    {"key": "incubator",      "label": "Incubator Screen", "icon": "🧪", "nl_types": [], "ae": None, "ob_types": ["incubator_screen"]},
+    {"key": "research",       "label": "Research & Intel", "icon": "🔬", "nl_types": [], "ae": None,
+     "ob_types": ["auto_research", "daily_intel", "cio_summary"]},
+    {"key": "eod_trades",     "label": "Trade Reports",   "icon": "📈", "nl_types": [], "ae": None,
+     "ob_types": ["eod_open_trades", "closed_trade_digest"]},
+    {"key": "critique",       "label": "Trade Critique",  "icon": "⚖️", "nl_types": [], "ae": None, "ob_types": ["trade_critique"]},
+    {"key": "learning",       "label": "Learning Digest", "icon": "🧠", "nl_types": [], "ae": None, "ob_types": ["learning_digest"]},
     {"key": "alerts",         "label": "Alerts",         "icon": "🚨", "nl_types": ["urgent_alert", "info", "draft_alert", "alert_fatigue_meta", "stale_data_alert"],
      "ae": {"alert_type": ["strategic_alert", "analyst_alert"], "exclude_source": ["protective_stop", "protection_alerts", "stop_health", "portfolio_alerts"]}},
-    {"key": "advisories",     "label": "Advisories",     "icon": "🧭", "nl_types": [], "ae": {"source_script": ["protective_stop", "protection_alerts", "stop_health", "portfolio_alerts"]}},
-    {"key": "recovery",       "label": "Recovery Watch", "icon": "♻️", "nl_types": ["recovery_escalation"], "ae": None},
+    {"key": "advisories",     "label": "Advisories",     "icon": "🧭", "nl_types": [], "ob_types": ["stop_brief"],
+     "ae": {"source_script": ["protective_stop", "protection_alerts", "stop_health", "portfolio_alerts"]}},
+    {"key": "recovery",       "label": "Recovery Watch", "icon": "♻️", "nl_types": ["recovery_escalation"], "ae": None,
+     "ob_types": ["recovery_reminder"]},
     {"key": "dividends",      "label": "Dividends",      "icon": "💰", "nl_types": ["dividend_alert"], "ae": None},
     {"key": "regime",         "label": "Regime / Rebalance", "icon": "📊", "nl_types": ["regime_change", "rebalance_stale"], "ae": None},
     {"key": "paper",          "label": "Paper Trading",  "icon": "📝", "nl_types": ["paper_trade_monitor"], "ae": None},
@@ -118,6 +134,22 @@ def _ae_where(cat) -> tuple[str, list] | None:
     return ((" AND ".join(clauses) or "TRUE"), params)
 
 
+def _ob_where(cat) -> tuple[str, list] | None:
+    """telegram_outbox filter (recognized reports captured at the Telegram send chokepoint)."""
+    types = cat.get("ob_types") or []
+    if not types:
+        return None
+    return ("report_type = ANY(%s)", [types])
+
+
+def _ar_where(cat) -> tuple[str, list] | None:
+    """ai_reports filter (LLM-generated monthly/weekly reports)."""
+    types = cat.get("ar_types") or []
+    if not types:
+        return None
+    return ("report_type = ANY(%s)", [types])
+
+
 def categories() -> dict:
     """All portal categories with counts + last-activity date (cheap GROUP BY queries)."""
     cur = _conn().cursor()
@@ -139,6 +171,24 @@ def categories() -> dict:
         if aw:
             try:
                 cur.execute(f"SELECT count(*), max(created_at) FROM alert_events WHERE {aw[0]}", aw[1])
+                n, l = cur.fetchone()
+                total += int(n or 0)
+                last = max(last, l) if (last and l) else (last or l)
+            except Exception:
+                pass
+        ow = _ob_where(c)
+        if ow:
+            try:
+                cur.execute(f"SELECT count(*), max(sent_at) FROM telegram_outbox WHERE {ow[0]}", ow[1])
+                n, l = cur.fetchone()
+                total += int(n or 0)
+                last = max(last, l) if (last and l) else (last or l)
+            except Exception:
+                pass
+        rw = _ar_where(c)
+        if rw:
+            try:
+                cur.execute(f"SELECT count(*), max(generated_at) FROM ai_reports WHERE {rw[0]}", rw[1])
                 n, l = cur.fetchone()
                 total += int(n or 0)
                 last = max(last, l) if (last and l) else (last or l)
@@ -200,6 +250,48 @@ def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, da
         except Exception:
             pass
 
+    # telegram_outbox (reports captured at the send chokepoint)
+    ow = _ob_where(cat)
+    if ow:
+        obcut = f" AND sent_at > NOW() - INTERVAL '{int(days)} days'" if days else ""
+        sql = (f"SELECT id, sent_at, report_type, title, body, channel, ok FROM telegram_outbox "
+               f"WHERE {ow[0]}{obcut}")
+        op = list(ow[1])
+        if like:
+            sql += " AND (title ILIKE %s OR body ILIKE %s)"; op += [like, like]
+        sql += " ORDER BY sent_at DESC LIMIT 500"
+        try:
+            cur.execute(sql, op)
+            for r in cur.fetchall():
+                body = r[4] or ""
+                rows.append({"source": "ob", "id": r[0], "created_at": r[1], "category": category,
+                             "type": r[2], "channel": r[5] or "telegram", "title": r[3] or r[2], "summary": body,
+                             "severity": "info", "symbol": None, "status": ("sent" if r[6] else "failed"),
+                             "actions": _action_links(body), "acknowledged": True})
+        except Exception:
+            pass
+
+    # ai_reports (LLM-generated monthly/weekly reports)
+    rw = _ar_where(cat)
+    if rw:
+        arcut = f" AND generated_at > NOW() - INTERVAL '{int(days)} days'" if days else ""
+        sql = (f"SELECT id, generated_at, report_type, title, content, provider FROM ai_reports "
+               f"WHERE {rw[0]}{arcut}")
+        rp = list(rw[1])
+        if like:
+            sql += " AND (title ILIKE %s OR content ILIKE %s)"; rp += [like, like]
+        sql += " ORDER BY generated_at DESC LIMIT 500"
+        try:
+            cur.execute(sql, rp)
+            for r in cur.fetchall():
+                content = r[4] or ""
+                rows.append({"source": "ar", "id": r[0], "created_at": r[1], "category": category,
+                             "type": r[2], "channel": r[5] or "local", "title": r[3] or r[2], "summary": content,
+                             "severity": "info", "symbol": None, "status": "generated",
+                             "actions": _action_links(content), "acknowledged": True})
+        except Exception:
+            pass
+
     rows.sort(key=lambda x: x["created_at"] or "", reverse=True)
     total = len(rows)
     start = (page - 1) * per_page
@@ -223,6 +315,25 @@ def get_item(source: str, item_id) -> dict:
             return {"source": "nl", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[3],
                     "title": r[4], "summary": full, "status": r[6], "payload": r[7], "sent_at": str(r[8]),
                     "actions": _action_links(full)}
+        elif source == "ob":
+            cur.execute("SELECT id, sent_at, report_type, title, body, channel, ok FROM telegram_outbox WHERE id=%s",
+                        (int(item_id),))
+            r = cur.fetchone()
+            if not r:
+                return {"error": "not found"}
+            body = r[4] or ""
+            return {"source": "ob", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[5] or "telegram",
+                    "title": r[3], "summary": body, "status": ("sent" if r[6] else "failed"),
+                    "actions": _action_links(body)}
+        elif source == "ar":
+            cur.execute("SELECT id, generated_at, report_type, title, content, provider FROM ai_reports WHERE id=%s",
+                        (int(item_id),))
+            r = cur.fetchone()
+            if not r:
+                return {"error": "not found"}
+            content = r[4] or ""
+            return {"source": "ar", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[5] or "local",
+                    "title": r[3], "summary": content, "status": "generated", "actions": _action_links(content)}
         else:
             cur.execute("SELECT id, created_at, alert_type, source_script, symbol, severity, raw_text, "
                         "parsed_payload, lifecycle_state, acknowledged_at FROM alert_events WHERE id=%s", (int(item_id),))
@@ -241,26 +352,36 @@ def purge(category: str | None = None, older_than_days: int = 90, apply: bool = 
     cat = _BY_KEY.get(category) if category else None
     conn = _conn(); cur = conn.cursor()
     cut = f"created_at < NOW() - INTERVAL '{int(older_than_days)} days'"
-    deleted = {"notification_log": 0, "alert_events": 0}
+    deleted = {"notification_log": 0, "alert_events": 0, "telegram_outbox": 0, "ai_reports": 0}
+
+    def _do(table, where, params, ts_col):
+        tcut = f"{ts_col} < NOW() - INTERVAL '{int(older_than_days)} days'"
+        if apply:
+            cur.execute(f"DELETE FROM {table} WHERE {where} AND {tcut}", params)
+            return cur.rowcount
+        cur.execute(f"SELECT count(*) FROM {table} WHERE {where} AND {tcut}", params)
+        return cur.fetchone()[0]
+
     try:
         # notification_log
         nlw, nlp = _nl_where(cat) if cat else ("TRUE", [])
         if nlw != "FALSE":
-            if apply:
-                cur.execute(f"DELETE FROM notification_log WHERE {nlw} AND {cut}", nlp)
-                deleted["notification_log"] = cur.rowcount
-            else:
-                cur.execute(f"SELECT count(*) FROM notification_log WHERE {nlw} AND {cut}", nlp)
-                deleted["notification_log"] = cur.fetchone()[0]
+            deleted["notification_log"] = _do("notification_log", nlw, nlp, "created_at")
         # alert_events
         aw = _ae_where(cat) if cat else ("TRUE", [])
         if aw:
-            if apply:
-                cur.execute(f"DELETE FROM alert_events WHERE {aw[0]} AND {cut}", aw[1])
-                deleted["alert_events"] = cur.rowcount
-            else:
-                cur.execute(f"SELECT count(*) FROM alert_events WHERE {aw[0]} AND {cut}", aw[1])
-                deleted["alert_events"] = cur.fetchone()[0]
+            deleted["alert_events"] = _do("alert_events", aw[0], aw[1], "created_at")
+        # telegram_outbox (only if category targets it, or purging all)
+        ow = _ob_where(cat) if cat else ("TRUE", [])
+        if ow:
+            try:
+                deleted["telegram_outbox"] = _do("telegram_outbox", ow[0], ow[1], "sent_at")
+            except Exception:
+                pass  # table may not exist yet (no captures)
+        # ai_reports
+        rw = _ar_where(cat) if cat else ("TRUE", [])
+        if rw:
+            deleted["ai_reports"] = _do("ai_reports", rw[0], rw[1], "generated_at")
         if apply:
             conn.commit()
     except Exception as e:

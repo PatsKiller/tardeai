@@ -115,44 +115,22 @@ def format_telegram(data):
 
 
 def send_telegram(text, chat_ids=None, dry_run=False):
-    """Send text to Telegram chat IDs."""
-    import requests
-    # FQDN/v3 normalization chokepoint (this script posts to Telegram directly, bypassing telegram_alert)
-    try:
-        from notification_url_builder import publicize_message
-        text = publicize_message(text)
-    except Exception:
-        pass
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        log.error("TELEGRAM_BOT_TOKEN not set")
-        return False
-
-    if chat_ids is None:
-        chat_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-
+    """Send text to Telegram via the shared chokepoint (captures to Reports portal)."""
     if dry_run:
-        log.info(f"DRY RUN — would send to {chat_ids}:")
+        targets = chat_ids if chat_ids is not None else [
+            c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()
+        ]
+        log.info(f"DRY RUN — would send to {targets}:")
         print(text)
         return True
 
-    success = True
-    for cid in chat_ids:
-        try:
-            r = requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": cid, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
-                timeout=10
-            )
-            if r.ok:
-                log.info(f"Sent to {cid}")
-            else:
-                log.error(f"Telegram failed for {cid}: {r.text[:200]}")
-                success = False
-        except Exception as e:
-            log.error(f"Telegram error for {cid}: {e}")
-            success = False
-    return success
+    from telegram_alert import send_telegram as _send
+    ok = _send(text, bypass_router=True)
+    if ok:
+        log.info("Sent")
+    else:
+        log.error("Telegram send failed")
+    return ok
 
 
 def main():

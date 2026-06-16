@@ -126,25 +126,12 @@ def _get_env(key: str) -> str:
 
 
 def _send_telegram(message: str) -> None:
-    import urllib.request, urllib.parse
-    bot_token = _get_env("TELEGRAM_BOT_TOKEN")
-    chat_id = _get_env("TELEGRAM_CHAT_ID")
-    if not bot_token or not chat_id:
-        print("  [weekly-report] No Telegram creds")
-        return
-    try:
-        for cid in str(chat_id).split(","):
-            cid = cid.strip()
-            if not cid: continue
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            data = urllib.parse.urlencode({
-                "chat_id": cid, "text": message, "parse_mode": "HTML"
-            }).encode()
-            req = urllib.request.Request(url, data=data, method="POST")
-            with urllib.request.urlopen(req, timeout=15):
-                print(f"  [weekly-report] Telegram sent to {cid}")
-    except Exception as e:
-        print(f"  [weekly-report] Telegram error: {e}")
+    from telegram_alert import send_telegram
+    ok = send_telegram(message, bypass_router=True)
+    if ok:
+        print("  [weekly-report] Telegram sent")
+    else:
+        print("  [weekly-report] Telegram not sent")
 
 
 def _send_telegram_doc(bot_token, chat_id, doc_path, caption=""):

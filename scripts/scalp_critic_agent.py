@@ -299,24 +299,20 @@ def critique_scored_tickers(scored: list, only_go_wait: bool = True, max_tickers
 
 def send_telegram_summary(summary: dict):
     """Send Telegram alert for blocked/downgraded tickers."""
-    token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    chats = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-    if not token or not chats: return
     if summary.get('blocked', 0) == 0 and summary.get('downgraded', 0) == 0: return
 
-    import requests
     lines = [f"Trade AI Critique: {summary['critiqued']} reviewed"]
     lines.append(f"Confirmed: {summary['confirmed']} | Blocked: {summary['blocked']} | Downgraded: {summary['downgraded']}")
     for c in summary.get('changes', []):
         lines.append(f"  {c['symbol']}: {c['from']} -> {c['to']} -- {c['reason']}")
     msg = '\n'.join(lines)
 
-    for cid in chats:
-        try:
-            requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
-                          json={'chat_id': cid, 'text': msg}, timeout=10)
-        except Exception:
-            pass
+    # Central chokepoint: FQDN-normalized + persisted to telegram_outbox for the v3 Reports portal.
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg, bypass_router=True)
+    except Exception:
+        pass
 
 
 # ── Standalone test mode ─────────────────────────────────────────────────────

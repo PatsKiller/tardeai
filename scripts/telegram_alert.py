@@ -75,6 +75,7 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     targets = chat_ids or _chat_ids()
     if not token or not targets:
         return False
+    ok = True
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
@@ -92,10 +93,17 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
                     )
                     if not resp2.ok:
                         print(f"[telegram] Error to {cid}: {resp2.status_code}")
-        return True
+                        ok = False
     except Exception as e:
         print(f"[telegram] Error: {e}")
-        return False
+        ok = False
+    # Persist recognized reports so the v3 Reports portal can surface them (best-effort, never blocks).
+    try:
+        from report_capture import capture
+        capture(message, ok=ok, channel="telegram")
+    except Exception:
+        pass
+    return ok
 
 
 def send_telegram(message: str, bypass_router: bool = False) -> bool:

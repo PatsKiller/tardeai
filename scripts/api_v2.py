@@ -18475,6 +18475,109 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/agents/intelligence-feedback":
+            # Operator → agents/LM critique on Central Intelligence signals.
+            # Runs the LOCAL LLM (free gemma) by default and returns the review synchronously;
+            # operator may opt into the GROK lane too (use_grok=true). Everything is persisted AND
+            # recorded as a learning observation so it feeds back into the self-learning loop.
+            try:
+                import json as _json, time as _t
+                b = body or {}
+                question = (b.get("question") or "").strip()
+                feedback = (b.get("feedback") or "").strip()
+                if not question and not feedback:
+                    return 400, {"ok": False, "error": "question or feedback required"}
+                items = b.get("visible_items") or []
+                page = b.get("page")
+                req_review = b.get("requested_review") or "quality accuracy usefulness and actionability"
+                use_grok = bool(b.get("use_grok"))
+
+                prompt = (
+                    "You are a trading-intelligence reviewer for a prop desk. The operator is reviewing the "
+                    f"signals shown on the '{page}' board.\n\n"
+                    f"OPERATOR QUESTION: {question or '(none)'}\n"
+                    f"OPERATOR CRITIQUE/FEEDBACK: {feedback or '(none)'}\n"
+                    f"REQUESTED REVIEW: {req_review}\n\n"
+                    f"SIGNALS UNDER REVIEW (JSON, up to 12):\n{_json.dumps(items)[:6000]}\n\n"
+                    "Critique these signals for quality, accuracy, source freshness, conflict risk, and "
+                    "actionability. Answer the operator's question directly. Call out any signal that should "
+                    "NOT be acted on and why. Be concise, specific, and decision-useful."
+                )
+
+                import sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import llm_lane
+
+                reviews, t0 = {}, _t.time()
+                # Local lane (always — primary, free)
+                try:
+                    reviews["local"] = {"provider": "local-gemma", "text": llm_lane.generate(prompt, lane="local", timeout=120)}
+                except Exception as le:
+                    reviews["local"] = {"provider": "local-gemma", "error": str(le)[:160]}
+                # Grok lane (operator option; only if proxy authenticated)
+                if use_grok:
+                    try:
+                        if llm_lane.available("grok"):
+                            reviews["grok"] = {"provider": "grok-3-mini", "text": llm_lane.generate(prompt, lane="grok", timeout=120)}
+                        else:
+                            reviews["grok"] = {"provider": "grok-3-mini", "error": "grok proxy not authenticated"}
+                    except Exception as ge:
+                        reviews["grok"] = {"provider": "grok-3-mini", "error": str(ge)[:160]}
+                latency_ms = int((_t.time() - t0) * 1000)
+
+                from db_adapter import _get_conn
+                conn = _get_conn(); cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS intelligence_feedback (
+                        id          BIGSERIAL PRIMARY KEY,
+                        created_at  TIMESTAMPTZ DEFAULT now(),
+                        page        TEXT,
+                        question    TEXT,
+                        feedback    TEXT,
+                        requested_review TEXT,
+                        visible_items    JSONB,
+                        local_review     TEXT,
+                        grok_review      TEXT,
+                        used_grok        BOOLEAN DEFAULT FALSE,
+                        status      TEXT DEFAULT 'reviewed'
+                    )""")
+                cur.execute(
+                    "INSERT INTO intelligence_feedback "
+                    "(page, question, feedback, requested_review, visible_items, local_review, grok_review, used_grok, status) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'reviewed') RETURNING id",
+                    (page, question, feedback, req_review, _json.dumps(items),
+                     reviews.get("local", {}).get("text"), reviews.get("grok", {}).get("text"), use_grok),
+                )
+                fid = cur.fetchone()[0]
+                # Feed the self-learning loop: one observation per lane that produced a review.
+                for role, rv in reviews.items():
+                    if not rv.get("text"):
+                        continue
+                    try:
+                        cur.execute(
+                            "INSERT INTO llm_feedback_observations "
+                            "(source_table, source_id, workflow, model_role, model_name, decision_action, "
+                            " human_review_label, latency_ms, notes, metadata_json) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            ("intelligence_feedback", str(fid), "central_intelligence_review", role,
+                             rv.get("provider"), "operator_feedback_review", (feedback or question)[:120],
+                             latency_ms, (feedback or question)[:500],
+                             _json.dumps({"page": page, "question": question, "requested_review": req_review,
+                                          "review_chars": len(rv.get("text") or "")})),
+                        )
+                    except Exception:
+                        pass  # learning-loop write is best-effort
+                conn.commit()
+                return 200, {"ok": True, "status": "reviewed", "id": fid, "latency_ms": latency_ms,
+                             "local_review": reviews.get("local", {}).get("text"),
+                             "local_error": reviews.get("local", {}).get("error"),
+                             "grok_review": reviews.get("grok", {}).get("text"),
+                             "grok_error": reviews.get("grok", {}).get("error"),
+                             "used_grok": use_grok,
+                             "message": "Reviewed by local LLM" + (" + Grok" if use_grok else "") + "; recorded to learning loop"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/journal/review":
             try:
                 return journal_review_write(body or {})
