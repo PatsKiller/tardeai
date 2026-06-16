@@ -25,8 +25,8 @@ const VALID = new Set(['portfolio', 'risk', 'trading', 'strategy', 'agents', 'in
 // every legacy/brief page slug → a REAL v3 route + friendly label (no dead links)
 const PAGE: Record<string, { label: string; route: string }> = {
   risk: { label: 'Risk', route: '/v3/risk' }, approvals: { label: 'Approvals', route: '/v3/trading' },
-  recovery: { label: 'Recovery', route: '/v3/retirement' }, reco: { label: 'Recovery', route: '/v3/retirement' },
-  actions: { label: 'Actions', route: '/v3/trading' }, trading: { label: 'Trading', route: '/v3/trading' },
+  recovery: { label: 'Recovery', route: '/v3/risk' }, reco: { label: 'Recovery', route: '/v3/risk' },   // Recovery Watch lives in the Risk hub
+  actions: { label: 'Actions', route: '/v3/' }, trading: { label: 'Trading', route: '/v3/trading' },     // Action Inbox is on Home
   journal: { label: 'Journal', route: '/v3/journal' }, system: { label: 'System', route: '/v3/system' },
   portfolio: { label: 'Portfolio', route: '/v3/portfolio' }, 'research-topics': { label: 'Research', route: '/v3/intelligence' },
   research: { label: 'Research', route: '/v3/intelligence' }, proposals: { label: 'Proposals', route: '/v3/trading' },

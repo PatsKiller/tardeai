@@ -54,7 +54,7 @@ PAGES = [
         "alert_categories": ["risk_breach", "drawdown_warning", "system_health"],
     },
     {
-        "route": "/v3/retirement",
+        "route": "/v3/risk",
         "menu_tab": "Recovery",
         "purpose": "Recovery plans for stopped-out or failed trades, re-entry conditions",
         "alert_categories": ["recovery_candidate", "recovery_triggered"],
