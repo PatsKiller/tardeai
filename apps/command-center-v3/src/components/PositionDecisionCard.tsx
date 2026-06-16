@@ -198,6 +198,14 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         {cancelMsg && <span style={{ fontSize: 9.5, color: cancelMsg.startsWith('✅') ? '#22c55e' : cancelMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{cancelMsg}</span>}
         <button onClick={_cancelStop} disabled={cancelBusy} title="Cancel this live protective stop at the broker (safe direction; no 2FA)" style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: '1px solid #ef4444', background: 'rgba(239,68,68,.12)', color: '#ef4444', cursor: cancelBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>{cancelBusy ? '…' : 'Cancel stop'}</button>
       </div>}
+      {/* COVERAGE MISMATCH — a standalone GTC stop does NOT auto-resize when you trim/add. Warn so the
+          operator cancels + re-places sized to the shares held now. */}
+      {_bstop && _bstop.coverage === 'oversized' && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.4)', fontSize: 10, fontWeight: 800, color: '#f87171' }}>
+        ⚠ OVERSIZED — stop covers {_bstop.qty} sh but you hold {_bstop.held_qty}. On trigger it may short the extra {Number(_bstop.qty) - Number(_bstop.held_qty)} (margin) or reject (cash). Cancel & re-place at {_bstop.held_qty} sh.
+      </div>}
+      {_bstop && _bstop.coverage === 'partial' && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.4)', fontSize: 10, fontWeight: 800, color: AMBER }}>
+        ⚠ PARTIAL — stop covers only {_bstop.qty} of {_bstop.held_qty} sh held. {Number(_bstop.held_qty) - Number(_bstop.qty)} sh are unprotected. Re-place at {_bstop.held_qty} sh for full cover.
+      </div>}
       {protectionRec && (() => {
         const price = Number(protectionRec.price) || null, stop = Number(protectionRec.stop_price) || null, dist = protectionRec.stop_distance_pct
         const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null, isPct = protectionRec.trail_type === 'PERCENT'
