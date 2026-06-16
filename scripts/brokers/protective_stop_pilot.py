@@ -63,7 +63,7 @@ def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
 
 def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_price=None,
                  limit_price=None, trail_pct=None, advised_stop=None, current_price=None,
-                 held_qty=None):
+                 held_qty=None, replace_order_id=None):
     """Gate-consistent OrderIntent stamped PROTECTIVE_STOP_2C. Direction stays LONG (the SELL closes the
     long). The non-intent envelope fields (advised stop, live price, held qty, order_type) ride in
     meta.signal_evidence where the guard's protective gate reads them."""
@@ -86,7 +86,8 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
                                        "advised_stop": float(advised_stop) if advised_stop is not None else None,
                                        "current_price": float(current_price) if current_price is not None else None,
                                        "held_qty": float(held_qty) if held_qty is not None else None,
-                                       "trail_pct": float(trail_pct) if trail_pct is not None else None})
+                                       "trail_pct": float(trail_pct) if trail_pct is not None else None,
+                                       "replace_order_id": (str(replace_order_id) if replace_order_id else None)})
     return OrderIntent(
         instrument=Instrument(symbol.upper()), direction=Direction.LONG, entry=entry,
         quantity=Quantity(qty=float(qty)), broker="schwab", account_key=account_key,

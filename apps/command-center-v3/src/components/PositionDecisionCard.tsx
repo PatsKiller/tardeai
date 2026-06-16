@@ -67,7 +67,8 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     try {
       const body = { symbol: p.symbol, account: p.account, qty: stopOrder.qty, order_kind: stopOrder.kind,
                      stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null,
-                     advised_stop: stopOrder.advised ?? null, current_price: stopOrder.cur ?? null }
+                     advised_stop: stopOrder.advised ?? null, current_price: stopOrder.cur ?? null,
+                     replace_order_id: stopOrder.replace_order_id ?? null }
       const r = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
       if (r?.mode === 'awaiting_approval') { setStopIntent(r.intent_id); setStopMsg(r.note || 'Code sent to Telegram + email — approve from either, or type the ticker.') }
       else if (r?.mode === 'ticket') { setStopTicket(r.ticket); setStopMsg('✅ ToS ticket ready — place it exactly in thinkorswim (no trading API on this account).') }
@@ -98,6 +99,22 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       if (r?.ok) setCancelMsg(`✅ cancel sent (${r.status}) — refreshing…`)
       else setCancelMsg(`⛔ ${r?.error ?? r?.hint ?? 'cancel failed'}`)
     } catch (e: any) { setCancelMsg('⛔ ' + e.message) } finally { setCancelBusy(false) }
+  }
+  // MODIFY = cancel the existing stop + place a new one at the current advised level, in one 2FA step.
+  const _openModify = () => {
+    if (!_bstop) return
+    const rec: any = protectionRec || {}
+    const advStop = Number(rec.stop_price) || (Number(_bstop.stop_price) || null)
+    const recPrice = Number(rec.price) || (Number(p.current_price) || null)
+    const off = rec.trail_recommended ? Number(rec.trail_offset) : null
+    const isTrail = !!rec.trail_recommended || String(_bstop.order_type || '').includes('TRAILING')
+    const trailPct = off == null ? null : rec.trail_type === 'PERCENT' ? off : (recPrice ? off / recPrice * 100 : null)
+    const kind = isTrail && trailPct != null ? 'TRAILING' : 'STOP'
+    const label = kind === 'TRAILING'
+      ? `MODIFY → SELL ${p.shares} ${p.symbol} TRAILING STOP ${trailPct?.toFixed(0)}% GTC`
+      : `MODIFY → SELL ${p.shares} ${p.symbol} STOP $${(advStop ?? 0).toFixed(2)} GTC`
+    _resetStop()
+    setStopOrder({ kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label, advised: advStop, cur: recPrice, replace_order_id: _bstop.order_id })
   }
 
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
@@ -196,6 +213,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         <span style={{ fontSize: 9, color: MUTED }}>#{_bstop.order_id}</span>
         <span style={{ flex: 1 }} />
         {cancelMsg && <span style={{ fontSize: 9.5, color: cancelMsg.startsWith('✅') ? '#22c55e' : cancelMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{cancelMsg}</span>}
+        <button onClick={_openModify} disabled={cancelBusy} title="Cancel this stop + place a new one at the current advised level — one 2FA. Use after the price moves up." style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: `1px solid ${AMBER}`, background: 'rgba(245,158,11,.12)', color: AMBER, cursor: cancelBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>Modify</button>
         <button onClick={_cancelStop} disabled={cancelBusy} title="Cancel this live protective stop at the broker (safe direction; no 2FA)" style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: '1px solid #ef4444', background: 'rgba(239,68,68,.12)', color: '#ef4444', cursor: cancelBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>{cancelBusy ? '…' : 'Cancel stop'}</button>
       </div>}
       {/* COVERAGE MISMATCH — a standalone GTC stop does NOT auto-resize when you trim/add. Warn so the

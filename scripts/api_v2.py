@@ -18226,6 +18226,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 limit_price = b.get("limit_price")
                 trail_pct = b.get("trail_pct")
                 advised_stop = b.get("advised_stop")
+                replace_order_id = b.get("replace_order_id")   # MODIFY: cancel this existing stop, then place the new one (one 2FA)
                 if not (sym and acct and qty):
                     return 400, {"ok": False, "error": "symbol, account and qty are required"}
                 from brokers import protective_stop_pilot as _psp
@@ -18257,7 +18258,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     intent = _psp.build_intent(acct, sym, qty, kind, stop_price=stop_price,
                                                limit_price=limit_price, trail_pct=trail_pct,
                                                advised_stop=advised_stop, current_price=current_price,
-                                               held_qty=held_qty)
+                                               held_qty=held_qty, replace_order_id=replace_order_id)
                     # dry gate check FIRST — fail before messaging if the protective envelope blocks or the
                     # pilot is disarmed. The ONLY reason we proceed past here is the expected "2FA missing"
                     # denial (gate + standing locks all green, only the per-order approval remains).
@@ -18314,13 +18315,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not cr.get("fully_approved"):
                     return 200, {"ok": True, "stage": "confirm", "fully_approved": False,
                                  "note": "channel confirmed; waiting on the rest"}
-                # fully approved → submit
+                # fully approved → (MODIFY: cancel the old stop first) → submit the new
                 order_spec = _psp.spec_from_intent(intent)
                 acct = intent.account_key
+                _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+                _replace_id = _ev.get("replace_order_id")
+                replace_result = None
+                if _replace_id:
+                    try:
+                        import sys as _sys
+                        _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                        import schwab_transport as _st
+                        replace_result = _st.cancel_order(acct, str(_replace_id))
+                    except Exception as ce:
+                        # don't place a second stop if we couldn't cancel the first (avoid a double/oversized stop)
+                        return 200, {"ok": False, "stage": "modify_cancel",
+                                     "error": f"could not cancel the existing stop #{_replace_id}: {str(ce)[:160]} — "
+                                              "new stop NOT placed (avoiding a double stop). Try again or cancel in ToS."}
                 try:
                     res = _psp.submit(acct, order_spec, intent)
                 except Exception as se:
-                    return 200, {"ok": False, "stage": "submit", "error": str(se)[:240]}
+                    return 200, {"ok": False, "stage": "submit", "error": str(se)[:240],
+                                 "modify_cancel_result": replace_result}
                 try:
                     from alert_event_writer import save_alert_event
                     save_alert_event(alert_type="strategic_alert", severity="warning",
@@ -18339,7 +18355,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         pass
                 return 200, {"ok": res.get("status") in ("submitted", "filled"), "stage": "submit",
                              "result": res, "broker_order_id": res.get("broker_order_id"),
-                             "status": res.get("status"), "account": acct}
+                             "status": res.get("status"), "account": acct,
+                             "replaced_order_id": _replace_id, "modify_cancel_result": replace_result}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
