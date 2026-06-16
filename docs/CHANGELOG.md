@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-16 - Reports Portal: every Telegram report surfaced + live LM feedback loop
+
+Operator reports were sent to Telegram but never stored, so the v3 Reports hub couldn't show them.
+Fixed by capturing at the send source and adding a live LM-review loop. Commits `0471ee51` (+ `e550d8ca`
+link-mapping fix). Full detail integrated into MASTER §15 (Notification & Alerting → Reports Portal).
+
+- **Capture at source**: `report_capture.py` `classify_report()` recognizes 20 report headers →
+  persists to a new **`telegram_outbox`** store at the `telegram_alert._raw_send_telegram` chokepoint
+  (best-effort; never blocks a send; skips already-self-logged transient alerts).
+- **Routed 9 direct senders** through the chokepoint (`eod_open_trade_alert`, `scalp_critic_agent`,
+  `portfolio_monthly_report`/`_synthesis`, `portfolio_weekly_report`, `morning_digest`,
+  `send_morning_brief`, `weekly_summary_local`, `stop_decision_brief`) so they're captured + FQDN/`/v3`-
+  normalized (DOCX `sendDocument` paths left direct).
+- **Reports portal** (`reports_portal.py`) now unions 4 stores (`notification_log`, `alert_events`,
+  `telegram_outbox`, `ai_reports`). New tabs: Portfolio Briefs, Monthly Reports, Weekly Reviews,
+  Incubator Screen, Research & Intel, Trade Reports, Trade Critique, Learning Digest (17 total).
+  Monthly (14) + Weekly (10) pull real history from `ai_reports`. Verified live post-restart.
+- **Link integrity (`e550d8ca`)**: validated each report link lands on the page that actually contains
+  the content (not just a valid route) — `recovery→/v3/risk`, `actions→/v3/` (Home), `approvals→/v3/trading`,
+  added missing `approvals`/`intelligence-sources` normalizer rules; all 40 brief slugs resolve valid.
+- **Central Intelligence LM feedback loop**: `POST /api/v2/agents/intelligence-feedback` (was a dead 404)
+  runs the **local gemma LLM** and returns the review synchronously; operator **"also ask Grok"** option
+  (`use_grok`, free OAuth proxy) shows local + Grok side by side. Both lanes recorded to
+  `llm_feedback_observations` (learning loop) + persisted to `intelligence_feedback`. Verified end-to-end
+  (local review 1061 chars + learning observation written).
+
 ## 2026-06-15 - Stage 2c stop management → FULL PRODUCTION + complete architecture doc
 
 Protective stop management is live across the whole book. New canonical reference:
