@@ -29,8 +29,11 @@ _V2_TO_V3 = [
     (re.compile(r"/v2/(?:automated-trade-journal|paper-journal|journal)\b"), "/v3/journal"),
     (re.compile(r"/v2/(?:system-health|system_health|alerts|siem|jobs|crons)\b"), "/v3/system"),
     (re.compile(r"/v2/risk(?:-regime[a-z/_-]*|[_-][a-z/_-]*)?\b"), "/v3/risk"),
+    (re.compile(r"/v2/(?:recovery|reco)[a-z/_-]*\b"), "/v3/risk"),     # Recovery Watch section lives in Risk hub
+    (re.compile(r"/v2/(?:next-actions?|action-inbox|actions?)[a-z/_-]*\b"), "/v3/"),  # Action Inbox is on Home (longest-first; consume hyphen tails)
+    (re.compile(r"/v2/(?:approvals?|pending[_-]proposals?|proposals?)[a-z/_-]*\b"), "/v3/trading"),  # approvals/proposals live on Trading
     (re.compile(r"/v2/(?:retirement[a-z_-]*|tax-lots|tax_lots)\b"), "/v3/retirement"),
-    (re.compile(r"/v2/(?:overnight[a-z-]*|intelligence)\b"), "/v3/intelligence"),
+    (re.compile(r"/v2/(?:overnight[a-z-]*|intelligence[a-z-]*)\b"), "/v3/intelligence"),
     (re.compile(r"/v2/hermes[a-z/_-]*\b"), "/v3/hermes"),
     (re.compile(r"/v2/watchpool\b"), "/v3/watchpool"),
     (re.compile(r"/v2/watchlist\b"), "/v3/watchlist"),

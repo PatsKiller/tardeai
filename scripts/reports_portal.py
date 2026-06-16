@@ -39,8 +39,8 @@ _BY_KEY = {c["key"]: c for c in CATEGORIES}
 _VALID_V3 = {"portfolio", "risk", "trading", "strategy", "agents", "intelligence", "hermes", "retirement",
              "journal", "watchlist", "watchpool", "sectors", "reports", "system", "manual-execution"}
 _PAGE = {"risk": ("Risk", "/v3/risk"), "approvals": ("Approvals", "/v3/trading"),
-         "recovery": ("Recovery", "/v3/retirement"), "reco": ("Recovery", "/v3/retirement"),
-         "actions": ("Actions", "/v3/trading"), "trading": ("Trading", "/v3/trading"),
+         "recovery": ("Recovery", "/v3/risk"), "reco": ("Recovery", "/v3/risk"),   # Recovery Watch section lives in Risk hub
+         "actions": ("Actions", "/v3/"), "trading": ("Trading", "/v3/trading"),    # Action Inbox is on Home
          "journal": ("Journal", "/v3/journal"), "system": ("System", "/v3/system"),
          "portfolio": ("Portfolio", "/v3/portfolio"), "research-topics": ("Research", "/v3/intelligence"),
          "research": ("Research", "/v3/intelligence"), "proposals": ("Proposals", "/v3/trading"),

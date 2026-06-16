@@ -758,7 +758,7 @@ def send_notifications(escalated: list[dict]):
             body_parts.append(f"Analyst: {e['summary'][:120]}")
         if e.get("trigger"):
             body_parts.append(f"Trigger: {e['trigger'][:100]}")
-        body_parts.append(f"Next step: review at /v3/retirement")
+        body_parts.append(f"Next step: review at /v3/risk")
         body_text = " ".join(body_parts)
 
         try:
@@ -798,7 +798,7 @@ def send_notifications(escalated: list[dict]):
                 lines.append(f"Invalidated if: {e['invalidation'][:100]}")
             if e.get("allocation"):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
-            lines.append(f"Review at: /v3/retirement")
+            lines.append(f"Review at: /v3/risk")
             send_telegram("\n".join(lines))
         except Exception as ex:
             print(f"  [recovery] Telegram send failed: {ex}")
