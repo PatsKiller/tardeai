@@ -300,16 +300,22 @@ def _pi_score(d: dict) -> int:
 
 
 def _weighted_beta(positions):
-    """Compute market-value-weighted beta from enrichment cache."""
+    """Compute market-value-weighted beta from enrichment cache. Null-safe: a new/unpriced position
+    (e.g. just-bought SPCX or a delisted CUSIP) may carry beta=None and/or market_value=None — default
+    beta to 1.0 and treat missing market_value as 0 so one new holding can't crash the whole overview."""
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
-    total_mv = sum(p.get("market_value", 0) for p in positions)
+    total_mv = sum((p.get("market_value") or 0) for p in positions)
     if total_mv <= 0:
         return 0
-    beta_sum = 0
+    beta_sum = 0.0
     for p in positions:
         sym = p.get("symbol", "")
-        beta = (ec.get(sym, {}) or {}).get("beta", 1.0) if isinstance(ec.get(sym), dict) else 1.0
-        weight = p.get("market_value", 0) / total_mv
+        raw = (ec.get(sym) or {}).get("beta") if isinstance(ec.get(sym), dict) else None
+        try:
+            beta = float(raw) if raw is not None else 1.0
+        except (TypeError, ValueError):
+            beta = 1.0
+        weight = (p.get("market_value") or 0) / total_mv
         beta_sum += beta * weight
     return round(beta_sum, 3)
 
