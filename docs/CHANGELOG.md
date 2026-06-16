@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-06-15 - Stage 2c: LIVE protective-stop submit wired (DRS POC) + email/telegram either-channel 2FA
+
+**Protective stops on real holdings now place LIVE Schwab orders** (commit `d6598b07`), reusing the proven
+canary write plumbing end-to-end. Operator-scoped to a one-ticker proof — **DRS · taxable · 1 share · fixed
+STOP** — with the full path wired for every account.
+
+- **Account-chosen routing (never the client):** Schwab + `api_write_enabled` + policy armed → builds a
+  marked `OrderIntent`, runs the protective gate, **requests per-order 2FA, then submits LIVE on confirm**.
+  Accounts with no trading API (IRAs / Fidelity-401k) or a disarmed pilot → exact thinkorswim ticket.
+- **Either-channel 2FA** (`REQUIRED_CHANNELS=1`): web typed-ticker **OR** a 6-digit one-time code now
+  delivered to **both Telegram and email** (`approval_service._send_approval_email`). Any one confirms.
+- **Own committed envelope — never the BUY canary's.** `protective_stop_policy.ENABLED=True` + a POC layer
+  in front of the full envelope: `POC_SYMBOL_ALLOWLIST=('DRS',)`, `POC_SESSION_DATE` auto-expiry,
+  `POC_MAX_NOTIONAL_USD=$1k`; SELL-to-close only, stop-below-price, qty≤held, ±8% drift. `execution_guard`
+  routes `PROTECTIVE_STOP_2C`-marked intents through this policy **instead of** the $4/$40 canary gate and
+  **skips the canary 5-order cap** (protective orders tagged `kind='protective_stop'`; `pilot_caps` counts
+  only canary rows, so the canary budget is untouched).
+- **New:** `scripts/brokers/protective_stop_pilot.py` (spec/intent builders for STOP/STOP_LIMIT/
+  TRAILING_STOP + request/submit + server-side spec rebuild on confirm). **Endpoints:** `POST
+  /api/v2/holdings/protective-stop` (request) and `/protective-stop/confirm` (2FA + submit). **UI:**
+  two-phase modal (review → REQUEST LIVE STOP → approve by ticker OR code) echoing qty/type/price.
+- **Validation:** `protective_stop_policy.py` added to the write-policy tamper-evidence list → **26/26
+  green**; canary gate 26/26, two-channel approval 11/11; gate logic dry-tested (DRS allowed; KBR / >$1k /
+  IRA / stop-above-price all blocked); confirm-path spec round-trip verified.
+- **To fire the proof:** ARM via v3 Trading → Broker Orders, then DRS card → Queue stop (fixed) → REQUEST
+  LIVE STOP → approve. (Not yet proven live — needs the operator arm + confirm.)
+
 ## 2026-06-15 - Stage 2b canary: FIRST live order proven (place→cancel) + workflow fixes
 
 **✅ WHAT WORKED — first live Command Center → Schwab write, end-to-end.** The $0 place→cancel canary
