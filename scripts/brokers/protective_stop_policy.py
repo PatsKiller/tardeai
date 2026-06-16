@@ -50,13 +50,14 @@ def effective_account_allowlist() -> tuple[str, ...]:
 # True every protective submit must ALSO satisfy this layer. Flip POC_MODE=False (commit) once the proofs
 # pass to open the full MAX_POSITION_NOTIONAL_USD envelope to all taxable (and, if enabled, IRA) holdings.
 POC_MODE = True
-# operator picks (taxable, defensive, WHOLE-share, each < the $1k POC cap so a fat-finger is bounded):
-#   DRS  11 sh @ $46.68 ≈ $513 (proven live 2026-06-15) · KBR 15 sh @ $34.82 ≈ $522 · KTOS 9 sh @ $57 ≈ $513
-POC_SYMBOL_ALLOWLIST: tuple[str, ...] = ("DRS", "KBR", "KTOS")
+# operator picks (taxable, defensive, WHOLE-share, each < the POC cap so a fat-finger is bounded):
+#   DRS 11@$46.68≈$513 · KBR 15@$34.82≈$522 · KTOS 9@$57≈$513 (all proven live 2026-06-15, fixed STOP)
+#   IRDM 25@$45.39≈$1135 — added 2026-06-15 to prove the native TRAILING_STOP shape (advised trail 5%)
+POC_SYMBOL_ALLOWLIST: tuple[str, ...] = ("DRS", "KBR", "KTOS", "IRDM")
 # VALID-THROUGH window (operator 2026-06-15: "set pilot next friday expire"). The POC is live on every
 # date up to AND INCLUDING this Friday, then auto-expires fail-closed. Reschedule = commit a new date.
 POC_SESSION_THROUGH = "2026-06-19"                  # YYYY-MM-DD inclusive deadline (Fri); any later date ⇒ allowlist EMPTY
-POC_MAX_NOTIONAL_USD = 1_000.0                      # hard sub-$1k ceiling for the proof
+POC_MAX_NOTIONAL_USD = 1_200.0                      # POC ceiling — bumped $1k→$1.2k 2026-06-15 to fit IRDM (~$1135) for the trailing-shape proof
 
 
 def _today() -> str:
