@@ -45,6 +45,22 @@ def _conn():
     return _get_conn()
 
 
+def _full_body(payload, fallback: str) -> str:
+    """The FULL report text. Briefs/digests store only a short body_summary in the DB; the complete
+    readable markdown is written to payload.export — load it so the news reader shows the whole thing."""
+    try:
+        import os, json as _j
+        p = payload if isinstance(payload, dict) else _j.loads(payload or "{}")
+        exp = p.get("export") or p.get("export_path") or p.get("file")
+        if exp and os.path.exists(exp):
+            txt = open(exp, encoding="utf-8").read().strip()
+            if txt:
+                return txt
+    except Exception:
+        pass
+    return fallback or ""
+
+
 def _sev_from_nl(ntype: str) -> str:
     if ntype in ("urgent_alert", "recovery_escalation"):
         return "urgent"
@@ -142,11 +158,11 @@ def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, da
         try:
             cur.execute(sql, nlp)
             for r in cur.fetchall():
-                body = r[5] or ""
+                full = _full_body(r[7], r[5] or "")   # load the complete brief/digest from payload.export
                 rows.append({"source": "nl", "id": r[0], "created_at": r[1], "category": category,
-                             "type": r[2], "channel": r[3], "title": r[4] or r[2], "summary": body,
+                             "type": r[2], "channel": r[3], "title": r[4] or r[2], "summary": full,
                              "severity": _sev_from_nl(r[2]), "symbol": None, "status": r[6],
-                             "actions": _action_links(str(r[7]) + " " + body), "acknowledged": (r[6] == "read")})
+                             "actions": _action_links(full), "acknowledged": (r[6] == "read")})
         except Exception:
             pass
 
@@ -190,9 +206,10 @@ def get_item(source: str, item_id) -> dict:
             r = cur.fetchone()
             if not r:
                 return {"error": "not found"}
+            full = _full_body(r[7], r[5] or "")
             return {"source": "nl", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[3],
-                    "title": r[4], "summary": r[5], "status": r[6], "payload": r[7], "sent_at": str(r[8]),
-                    "actions": _action_links(str(r[7]) + " " + (r[5] or ""))}
+                    "title": r[4], "summary": full, "status": r[6], "payload": r[7], "sent_at": str(r[8]),
+                    "actions": _action_links(full)}
         else:
             cur.execute("SELECT id, created_at, alert_type, source_script, symbol, severity, raw_text, "
                         "parsed_payload, lifecycle_state, acknowledged_at FROM alert_events WHERE id=%s", (int(item_id),))
