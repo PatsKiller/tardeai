@@ -42,21 +42,44 @@ XAI_API_KEY=<key>
 #TWITTER_BEARER_TOKEN=
 ```
 
-## 3. Database Backup & Restore
+## 3. Backup topology & restore (current as of 2026-06-15)
 
-**Backup location:** `backups/db/trade_ai_YYYYMMDD.sql.gz`
-**Size:** ~3.7 MB compressed (105 MB uncompressed, 334 tables)
-**Schedule:** Daily at 2 AM, keeps 7 days
+Four independent backup streams cover the full system. **The legacy `backups/db/` location is RETIRED** —
+do not look there.
 
-### Restore DB from backup:
+| Stream | What | Where | Schedule | Retention |
+|---|---|---|---|---|
+| **SQL (full PostgreSQL)** | `pg_dump` of `trade_ai` (gzip, ~1.1 GB/day, 300+ tables) | **`/home/johnclaw/db_backups/trade_ai_YYYYMMDD_HHMMSS.sql.gz`** | systemd cadence daily ~02:30 (`run_pg_backup.sh`) | **14 daily** dumps (`-mtime +14`) |
+| **Secrets / .env** | `.env` + `.env.bak*` bundled, GPG AES-256 encrypted | Google Drive **Trade_AI_Backups** (`1GYbZyM8nTfwuh-h2EsWTxbMpXlEUA6Qi`) | daily (`backup_secrets_state.sh env`) | rolling window |
+| **Data/state** | `data/` state, GPG-encrypted | Google Drive **Trade_AI_Backups** | weekly-gated (≥6 days) | rolling window |
+| **Code + docs** | the whole repo | GitHub `PatsKiller/tardeai` (private) + Drive docs mirror (`Trade_AI_Docs_v2`, hourly) | every commit / hourly | git history |
+
+Orchestration: systemd user timer **`tradeai-portfolio-backup-cadence.timer`** runs the
+`run_portfolio_maintenance_pipeline.sh --cadence backup --apply` pipeline (steps: `portfolio_backup` (pg) +
+`secrets_backup_env` daily, `secrets_backup_data` weekly-gated). Monthly verify: `backup_verify.py`
+(`0 6 1 * *`).
+
+### Run a fresh backup on demand
 ```bash
-gunzip < backups/db/trade_ai_20260429.sql.gz | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
+bash linux_launchers/run_pg_backup.sh                          # SQL dump → /home/johnclaw/db_backups/
+bash scripts/backup_secrets_state.sh env                       # encrypt .env → Drive Trade_AI_Backups
+# or the full cadence (pg + secrets):
+bash scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence backup --apply
 ```
 
-### Create fresh backup:
+### Restore the database from the latest dump
 ```bash
 DB_PW=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
-PGPASSWORD="$DB_PW" pg_dump -h localhost -U trade_ai trade_ai | gzip > backups/db/trade_ai_$(date +%Y%m%d).sql.gz
+LATEST=$(ls -t /home/johnclaw/db_backups/trade_ai_*.sql.gz | head -1)
+gunzip < "$LATEST" | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
+```
+
+### Restore secrets/.env from the encrypted offsite backup
+```bash
+# pull the newest env_backup_*.tar.gz.gpg from Drive Trade_AI_Backups, then:
+PASS=/home/johnclaw/.openclaw/credentials/env_data_backup.pass      # passphrase also in the password manager
+gpg --batch --pinentry-mode loopback --passphrase-file "$PASS" -d env_backup_YYYYMMDD_HHMMSS.tar.gz.gpg \
+  | tar xz                                                            # restores .env in place
 ```
 
 ---
@@ -187,9 +210,10 @@ Must pass 21+ of 23 checks. Known acceptable fail: portfolio-server (nohup, not 
 ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/
 ├── .env                                    ← API keys, DB password, cookies (NOT in git — manual restore)
 ├── crontab_backup.txt                      ← Full crontab (restore: crontab crontab_backup.txt)
+├── /home/johnclaw/db_backups/             ← SQL dumps (~1.1 GB/day, 14-day retention) — NOT in git
+│   └── trade_ai_YYYYMMDD_HHMMSS.sql.gz     ← latest = newest mtime (restore: gunzip | psql)
+│   (Drive Trade_AI_Backups holds the daily GPG-encrypted .env + weekly data state)
 ├── backups/
-│   ├── db/
-│   │   └── trade_ai_20260429.sql.gz        ← DB dump 3.7 MB (restore: gunzip | psql)
 │   ├── openclaw/
 │   │   ├── openclaw.json                   ← Gateway + agents + models config
 │   │   ├── jobs.json                       ← 3 OpenClaw cron jobs
@@ -212,8 +236,8 @@ Must pass 21+ of 23 checks. Known acceptable fail: portfolio-server (nohup, not 
 ```
 
 ### What is NOT in git (must restore manually):
-- `.env` file (API keys, passwords — keep a secure copy elsewhere)
-- PostgreSQL data (restore from `backups/db/` dump)
+- `.env` file (API keys, passwords — restore from the daily GPG-encrypted backup on Drive Trade_AI_Backups, or a secure copy)
+- PostgreSQL data (restore from the newest `/home/johnclaw/db_backups/` dump — see §3)
 - OpenClaw live configs (restore from `backups/openclaw/` to `~/.openclaw/`)
 - Systemd services (restore from `backups/systemd/` to `~/.config/systemd/user/`)
 - Crontab (restore: `crontab crontab_backup.txt`)
@@ -231,9 +255,10 @@ cp /path/to/secure/.env .env
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt  # or pip install psycopg2 yfinance requests pyyaml youtube-transcript-api
 
-# 4. Restore DB
+# 4. Restore DB (newest dump from the active location; legacy backups/db/ is retired)
 DB_PW=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
-gunzip < backups/db/trade_ai_20260429.sql.gz | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
+LATEST=$(ls -t /home/johnclaw/db_backups/trade_ai_*.sql.gz | head -1)
+gunzip < "$LATEST" | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
 
 # 5. Restore crontab
 crontab crontab_backup.txt
