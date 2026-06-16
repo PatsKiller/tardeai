@@ -82,6 +82,14 @@ def classify(conn, snapshot_id=None):
     elif not vix:
         missing.append("no_vix_data")
 
+    # VIX coherence guard: VIX is the canonical volatility gauge. Don't declare a "high_volatility"
+    # regime off a gap proxy alone while the fear gauge is calm (low/normal) — that reads as a
+    # contradiction to the operator (e.g. "high volatility" with VIX ~16). Dampen the gap-only signal.
+    if vix.get("signal") in ("low", "normal") and scores["high_volatility"] > 0:
+        scores["high_volatility"] = max(0, scores["high_volatility"] - 3)
+        if vix.get("signal") == "low":
+            scores["low_volatility_grind"] += 1
+
     # Source health
     finviz = indicators.get("finviz_health", {})
     if finviz.get("signal") == "risk_off":

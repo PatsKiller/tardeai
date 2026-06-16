@@ -450,16 +450,23 @@ def build_intelligence():
     except Exception:
         pass
 
-    def _card_enrichment(sym):
+    def _card_enrichment(sym, cur_px=None):
         out = {}
         pl = _pills_by_sym.get(sym)
         if pl:
+            # Recompute upside vs the LIVE price — the stored upside_to_mean_target_pct is frozen at
+            # analyst-fetch time and goes stale fast on a moving name (e.g. SPCX +11% intraday).
+            _tm = pl.get("target_mean_price")
+            try:
+                _upside = ((float(_tm) - cur_px) / cur_px * 100) if (_tm and cur_px) else pl.get("upside_to_mean_target_pct")
+            except (TypeError, ValueError, ZeroDivisionError):
+                _upside = pl.get("upside_to_mean_target_pct")
             out["analyst"] = {
                 "rating": pl.get("recommendation_key"), "rating_mean": pl.get("recommendation_mean"),
                 "opinions": pl.get("number_of_analyst_opinions"),
                 "target_mean": pl.get("target_mean_price"), "target_high": pl.get("target_high_price"),
                 "target_low": pl.get("target_low_price"),
-                "target_upside_pct": pl.get("upside_to_mean_target_pct"),
+                "target_upside_pct": round(_upside, 1) if _upside is not None else None,
                 "source": pl.get("analyst_rating_source"),
                 "latest_event": pl.get("latest_event_headline"),
             }
@@ -713,6 +720,13 @@ def build_intelligence():
                          "outperforming sector" if vs_sec5 > 1 else
                          "lagging sector" if vs_sec5 < -1 else "in-line")
             below = bool(cur_px is not None and ent is not None and cur_px < ent)
+            # Worthless / likely-delisted equity: a real ticker (not a fund) that has collapsed to ~zero.
+            # Its cached technicals (RSI/SMA) are meaningless noise — don't present them as live signals.
+            worthless = bool(_is_ticker(sym) and not p.get("is_fund") and cur_px is not None
+                             and cur_px < 0.05 and upnl_pct is not None and upnl_pct < -90)
+            if worthless:
+                stale_tech = True
+                rsi = sma50 = sma200 = None
             stop_near = bool(cur_px is not None and stop is not None and stop and abs(cur_px - stop) / cur_px < 0.02)
             tp_missing = tgt is None or tgt == 0
             # a live broker stop (incl. a trailing one) IS protection → not "large gain UNPROTECTED"
@@ -721,6 +735,8 @@ def build_intelligence():
                   "below_entry": below, "trailing_candidate": bool(upnl_pct is not None and upnl_pct > 8 and not stop_near),
                   "top_recommendation": (prot.get(sym) or {}).get("act"), "option_count": (prot.get(sym) or {}).get("n", 0)}
             warns = []
+            if worthless:
+                warns.append("delisted/worthless — verify & write off")
             if tp_missing and p["src"] != "holdings":
                 warns.append("TP missing")
             if stop_near:
@@ -769,9 +785,10 @@ def build_intelligence():
                 family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected)
             positions.append({
                 **_decision,
-                **_card_enrichment(sym),
+                **_card_enrichment(sym, cur_px),
                 "trade_id": None, "symbol": sym, "company_name": p.get("company_name"),
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
+                "worthless": worthless,
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
                 "holding_family": _fam, "is_mutual_fund": _is_mf, "is_unstoppable_fund": _is_mf, "stop_eligible": (not _is_mf),
                 "entry_price": ent, "avg_cost": p.get("avg_cost"), "cost_basis": p.get("cost_basis"),
