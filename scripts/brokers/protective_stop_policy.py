@@ -20,20 +20,40 @@ Envelope (operator decisions 2026-06-14, build-now-gated-off):
 from __future__ import annotations
 
 ENABLED = True                                   # ← MASTER GATE (commit to flip). ARMED 2026-06-15 for the POC.
-PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)
+PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)   # base: taxable only (IRAs wired-but-off below)
 ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP")   # native trailing per operator 2026-06-14
 ALLOWED_INSTRUCTION = "SELL"                     # sell-to-close a long; never SELL_SHORT
 MAX_STOP_DRIFT_PCT = 8.0                          # placed stop must be within ±8% of the advised stop
 MAX_POSITION_NOTIONAL_USD = 250_000.0            # full-envelope per-order ceiling (a held lot's value)
 
+# ── IRA EXTENSION — WIRED BUT DISABLED (operator 2026-06-15) ───────────────────────────────────────
+# The two Schwab IRAs are kept structurally excluded (operator decision 2026-06-12). The code path to
+# include them is fully wired so enabling is ONE deliberate, explicitly-approved step: flip
+# IRA_PROTECTIVE_ENABLED=True (commit) AND set broker_accounts.api_write_enabled=true on the two rows
+# (a second, independent DB lock). While the flag is False the IRAs are blocked at BOTH the gate
+# (effective allowlist excludes them) and the transport precondition. Fidelity-401k is never here —
+# broker=fidelity has NO trading API at all (ticket-only forever, no flag can change that).
+IRA_PROTECTIVE_ENABLED = False                   # ← keep False until the operator explicitly says "enable the IRAs"
+SCHWAB_IRA_ACCOUNTS: tuple[str, ...] = ("schwab_roth_ira", "schwab_rollover_ira")
+
+
+def effective_account_allowlist() -> tuple[str, ...]:
+    """The accounts a protective stop may target right now: taxable always, plus the two Schwab IRAs
+    ONLY when IRA_PROTECTIVE_ENABLED is committed True. Single source of truth for the gate AND the
+    transport precondition, so the two can never drift."""
+    return PROTECTIVE_ACCOUNT_ALLOWLIST + (SCHWAB_IRA_ACCOUNTS if IRA_PROTECTIVE_ENABLED else ())
+
+
 # ── POC PROOF LAYER (operator 2026-06-15) — a tighter committed envelope IN FRONT of the full one, so
-# the first LIVE protective stop is a near-zero-risk proof. Same canary discipline: commit-only literals,
-# single-symbol allowlist, single session date with auto-expiry, hard sub-$1k notional cap. While
-# POC_MODE is True every protective submit must ALSO satisfy this layer. Flip POC_MODE=False (commit)
-# once the proof passes to open the full MAX_POSITION_NOTIONAL_USD envelope to all taxable holdings.
+# the first LIVE protective stops are near-zero-risk proofs. Same canary discipline: commit-only literals,
+# single-symbol allowlist, an auto-expiring session window, hard sub-$1k notional cap. While POC_MODE is
+# True every protective submit must ALSO satisfy this layer. Flip POC_MODE=False (commit) once the proofs
+# pass to open the full MAX_POSITION_NOTIONAL_USD envelope to all taxable (and, if enabled, IRA) holdings.
 POC_MODE = True
 POC_SYMBOL_ALLOWLIST: tuple[str, ...] = ("DRS",)   # operator pick 2026-06-15 (taxable, defensive, whole-share)
-POC_SESSION_DATE = "2026-06-15"                     # YYYY-MM-DD single day; any other date ⇒ POC allowlist EMPTY
+# VALID-THROUGH window (operator 2026-06-15: "set pilot next friday expire"). The POC is live on every
+# date up to AND INCLUDING this Friday, then auto-expires fail-closed. Reschedule = commit a new date.
+POC_SESSION_THROUGH = "2026-06-19"                  # YYYY-MM-DD inclusive deadline (Fri); any later date ⇒ allowlist EMPTY
 POC_MAX_NOTIONAL_USD = 1_000.0                      # hard sub-$1k ceiling for the proof
 
 
@@ -41,6 +61,14 @@ def _today() -> str:
     """Date source only — never config/env (mirrors canary_gate discipline)."""
     import datetime
     return datetime.date.today().isoformat()
+
+
+def _poc_window_open() -> bool:
+    """True while today is on/before the committed POC deadline (fail-closed on any error)."""
+    try:
+        return _today() <= POC_SESSION_THROUGH
+    except Exception:
+        return False
 
 
 def evaluate(*, account_key: str | None, instruction: str, order_type: str,
@@ -53,8 +81,10 @@ def evaluate(*, account_key: str | None, instruction: str, order_type: str,
         return (False, ["Stage 2c protective-stop policy is DISABLED (commit ENABLED=True to arm "
                         "after the canary test passes)"])
     try:
-        if (account_key or "").strip() not in PROTECTIVE_ACCOUNT_ALLOWLIST:
-            reasons.append(f"account {account_key!r} not in protective-stop allowlist {PROTECTIVE_ACCOUNT_ALLOWLIST}")
+        _allow = effective_account_allowlist()
+        if (account_key or "").strip() not in _allow:
+            reasons.append(f"account {account_key!r} not in protective-stop allowlist {_allow}"
+                           + ("" if IRA_PROTECTIVE_ENABLED else " (IRAs wired but DISABLED — flip IRA_PROTECTIVE_ENABLED + api_write)"))
         if (instruction or "").upper() != ALLOWED_INSTRUCTION:
             reasons.append(f"instruction {instruction!r} not allowed (SELL-to-close only)")
         if (order_type or "").upper() not in ALLOWED_ORDER_TYPES:
@@ -75,16 +105,13 @@ def evaluate(*, account_key: str | None, instruction: str, order_type: str,
         if qty is not None and held_qty is not None and float(qty) > float(held_qty) + 1e-6:
             reasons.append(f"qty {qty:g} exceeds held shares {held_qty:g} (would open a short)")
 
-        # ── POC proof layer: single committed symbol, single committed date (auto-expiry) ──────────
+        # ── POC proof layer: single committed symbol, valid-through-deadline window (auto-expiry) ──
         if POC_MODE:
             sym = (symbol or "").strip().upper()
-            try:
-                allowlist = POC_SYMBOL_ALLOWLIST if _today() == POC_SESSION_DATE else ()
-            except Exception:
-                allowlist = ()
+            allowlist = POC_SYMBOL_ALLOWLIST if _poc_window_open() else ()
             if not allowlist:
-                reasons.append(f"POC envelope EXPIRED/EMPTY — committed for {POC_SESSION_DATE} "
-                               f"(today {_today()}); recommit POC_SESSION_DATE to re-arm the proof")
+                reasons.append(f"POC window EXPIRED — committed valid through {POC_SESSION_THROUGH} "
+                               f"(today {_today()}); recommit POC_SESSION_THROUGH to extend the proof window")
             elif sym not in allowlist:
                 reasons.append(f"symbol {sym!r} not in committed POC allowlist {allowlist}")
     except Exception as e:                       # malformed input ⇒ fail closed
