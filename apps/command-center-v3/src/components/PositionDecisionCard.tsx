@@ -191,7 +191,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
       {_bstop && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker</span>
-        <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {_bstop.qty ?? p.shares} {p.symbol} {String(_bstop.order_type || '').replace('_', ' ')} {_bstop.stop_price != null ? `$${Number(_bstop.stop_price).toFixed(2)}` : ''} GTC</span>
+        <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {_bstop.qty ?? p.shares} {p.symbol} {String(_bstop.order_type || '').replace('_', ' ')} {_bstop.stop_price != null ? `$${Number(_bstop.stop_price).toFixed(2)}` : _bstop.trail_offset != null ? (_bstop.trail_link === 'PERCENT' ? `${_bstop.trail_offset}%` : `$${_bstop.trail_offset}`) : ''} GTC</span>
         <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.18)', color: '#22c55e' }}>{String(_bstop.status || 'working')}</span>
         <span style={{ fontSize: 9, color: MUTED }}>#{_bstop.order_id}</span>
         <span style={{ flex: 1 }} />

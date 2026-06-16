@@ -363,29 +363,37 @@ def _broker_protective_stops(accounts):
         return out
     for acct in accounts:
         try:
-            orders = st.get_orders(acct)
-            if not isinstance(orders, list):
+            raw = st.get_orders_raw(acct)   # RAW so we capture trailing fields (offset/link), not just a fixed price
+            if not isinstance(raw, list):
                 continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
-            for o in (orders or []):
-                if str(o.get("side", "")).lower() != "sell":
+            for o in (raw or []):
+                leg = (o.get("orderLegCollection") or [{}])[0]
+                if str(leg.get("instruction", "")).upper() not in ("SELL", "SELL_SHORT"):
                     continue
-                otype = str(o.get("type", "")).lower()
-                if "stop" not in otype and "trailing" not in otype:
+                otype = str(o.get("orderType", "")).upper()
+                if "STOP" not in otype and "TRAILING" not in otype:
                     continue
                 if str(o.get("status", "")).lower() in _BSTOP_TERMINAL:
                     continue
-                sym = str(o.get("symbol", "")).upper()
+                sym = str((leg.get("instrument") or {}).get("symbol", "")).upper()
                 if not sym:
                     continue
-                _sp = o.get("stop_price") or o.get("limit_price")
+                _sp = o.get("stopPrice")
                 try:
-                    sp = float(_sp) if _sp not in (None, "", "0", "0.0") else None
+                    sp = float(_sp) if _sp not in (None, "", 0, "0", "0.0") else None  # fixed stop level (None for trailing — it's dynamic)
                 except Exception:
                     sp = None
+                _to = o.get("stopPriceOffset")
+                try:
+                    trail_offset = float(_to) if _to not in (None, "") else None
+                except Exception:
+                    trail_offset = None
+                # A live SELL stop/trailing order IS protection regardless of whether it carries a fixed price.
                 out[(_norm_acct(acct), sym)] = {
-                    "order_id": str(o.get("id") or ""), "stop_price": sp,
-                    "order_type": otype.upper().replace(" ", "_"), "status": str(o.get("status", "")).lower(),
-                    "qty": o.get("qty"), "account": acct}
+                    "order_id": str(o.get("orderId") or ""), "stop_price": sp,
+                    "trail_offset": trail_offset, "trail_link": o.get("stopPriceLinkType"),
+                    "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
+                    "qty": leg.get("quantity"), "account": acct}
         except Exception:
             continue
     _BSTOP_CACHE.update(ts=time.time(), map=out)
@@ -612,10 +620,11 @@ def build_intelligence():
             # FULL STOP MONITORING overlay: a LIVE broker stop is the source of truth — it sets the real stop
             # price and marks the position PROTECTED regardless of below-entry (a placed stop IS protection).
             _bstop = bmap.get((_norm_acct(p["account"]), sym))
-            broker_protected = bool(_bstop and _bstop.get("stop_price") is not None)
+            broker_protected = bool(_bstop)   # ANY live SELL stop/trailing order = protected (trailing has no fixed price)
             broker_stop_payload = None
             if broker_protected:
-                stop = float(_bstop["stop_price"])
+                if _bstop.get("stop_price") is not None:
+                    stop = float(_bstop["stop_price"])   # fixed stop → real level; trailing → dynamic, leave advised/None
                 # COVERAGE CHECK: a standalone GTC stop does NOT auto-resize when the position is trimmed.
                 # Compare the stop's share count to shares held now: oversized (stop qty > held → on trigger
                 # it could short the difference in a margin acct / reject in cash) or partial (only some
