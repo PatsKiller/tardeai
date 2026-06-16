@@ -22,8 +22,8 @@ const BASIS_C: Record<string, string> = { broker: GREEN, tax_grade: GREEN, verif
 const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED, none: MUTED }
 const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
 
-function Metric({ label, value, color = TEXT0 }: any) {
-  return <div style={metric}><div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', fontWeight: 850, letterSpacing: '.05em' }}>{label}</div><div style={{ fontSize: 13, color, fontWeight: 900, marginTop: 3 }}>{value}</div></div>
+function Metric({ label, value, color = TEXT0, title }: any) {
+  return <div style={metric} title={title}><div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', fontWeight: 850, letterSpacing: '.05em' }}>{label}</div><div style={{ fontSize: 13, color, fontWeight: 900, marginTop: 3, cursor: title ? 'help' : undefined }}>{value}</div></div>
 }
 
 export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec, symCard }: any) {
@@ -36,6 +36,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   const paper = p.environment === 'paper' || String(p.account ?? '').toLowerCase().includes('paper')
   const pnlColor = (p.unrealized_pnl ?? 0) >= 0 ? GREEN : RED
   const basis = p.basis_reliable ? num(p.entry_price) : 'n/a'
+  // R-multiple fallback: imported holdings have no tracked R (no strategy entry+stop). When the stored
+  // r_multiple is null but we have a reliable basis (entry), a current price, and an advised stop BELOW
+  // entry (real downside risk), express current P&L in R units against that advised stop. Marked "~"
+  // (advisory). The "Stop" field falls back to the advised stop (marked "*"). Funds (no basis/price) stay '—'.
+  const _advStop = protectionRec ? (Number(protectionRec.stop_price) || null) : null
+  const _entry = p.basis_reliable ? (Number(p.entry_price) || null) : null
+  const _now = Number(p.current_price) || null
+  const _rTracked = p.r_multiple != null
+  const _rAdvisory = (!_rTracked && _entry && _now && _advStop && (_entry - _advStop) > 0)
+    ? (_now - _entry) / (_entry - _advStop) : null
+  const _rShow = _rTracked ? Number(p.r_multiple) : _rAdvisory
 
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
@@ -124,8 +135,13 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       <Metric label="Market Value" value={fmt$(p.market_value ?? 0, 0)} color={TEXT0} />
       <Metric label="Basis" value={basis} color={BASIS_C[p.basis_quality] || TEXT2} />
       <Metric label="Now" value={num(p.current_price)} color={TEXT0} />
-      <Metric label="Stop" value={p.stop_price != null ? num(p.stop_price) : '—'} color={p.stop_price != null ? RED : MUTED} />
-      <Metric label="R multiple" value={p.r_multiple != null ? `${num(p.r_multiple, 1)}R` : '—'} color={p.r_multiple != null && p.r_multiple >= 1 ? GREEN : AMBER} />
+      <Metric label="Stop" title={p.stop_price == null && _advStop != null ? 'Advised stop (no protective stop placed at the broker yet)' : undefined}
+        value={p.stop_price != null ? num(p.stop_price) : _advStop != null ? `${num(_advStop)}*` : '—'}
+        color={p.stop_price != null ? RED : _advStop != null ? AMBER : MUTED} />
+      <Metric label="R multiple"
+        title={_rAdvisory != null ? 'Advisory R: current P&L ÷ risk to the ADVISED stop (this holding has no strategy-tracked entry/stop, so R is computed against the Hermes advised stop)' : _rShow == null ? 'No R — needs a basis (entry) and an advised stop below entry; funds/unverified-basis positions stay blank' : undefined}
+        value={_rShow != null ? `${_rAdvisory != null ? '~' : ''}${num(_rShow, 1)}R` : '—'}
+        color={_rShow == null ? MUTED : _rShow >= 1 ? GREEN : _rShow >= 0 ? AMBER : RED} />
     </div>
 
     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
