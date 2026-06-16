@@ -58,7 +58,8 @@ def _trades(account=None, days=180):
         SELECT srt.symbol, srt.account, srt.entry_time, srt.exit_time, srt.hold_minutes,
                srt.net_pnl, srt.pnl_pct, srt.strategy_tag, srt.entry_grade, srt.exit_grade,
                jtr.setup_family, jtr.realized_r, jtr.planned_r, jtr.market_regime,
-               jtr.mistake_tags, jtr.emotion_during, jtr.followed_plan
+               jtr.mistake_tags, jtr.strength_tags, jtr.emotion_before, jtr.emotion_during,
+               jtr.confidence_before, jtr.stress_level, jtr.followed_plan
         FROM schwab_round_trips srt
         LEFT JOIN journal_trade_reviews jtr
           ON jtr.symbol = srt.symbol AND jtr.account = srt.account
