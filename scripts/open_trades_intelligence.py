@@ -56,7 +56,7 @@ def _strategy_purposes():
 def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, below, stop_near, rsi,
                      stale_tech, basis_reliable, cost_basis_source, basis_kind, market_value, strategy,
                      trend_label, sec_label, vs_sec5, latest_news_age_h, last_hermes_at, on_watchlist,
-                     directive, is_fund, family="position", mutual_fund=False):
+                     directive, is_fund, family="position", mutual_fund=False, broker_protected=False):
     """Derive the read-only operator-decision fields. Pure function of already-computed signals — no writes,
     no source-of-truth changes. Action language is review/consider only, never execute."""
     high_value = (market_value or 0) >= 50000
@@ -93,7 +93,8 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         news_freshness = "aging"
     else:
         news_freshness = "stale"
-    protection_state = "protected" if (protected and stop) else ("partial" if stop else "unprotected")
+    # broker_protected covers TRAILING stops, which protect without a fixed `stop` level (it's dynamic).
+    protection_state = "protected" if (broker_protected or (protected and stop)) else ("partial" if stop else "unprotected")
     basis_quality = ("broker" if cost_basis_source in ("broker", "schwab", "alpaca", "broker_api") else
                      "tax_grade" if cost_basis_source in ("csv", "tax", "documented", "csv_lot") else
                      "owner_provided" if cost_basis_source in ("owner", "owner_provided", "manual") else
@@ -695,7 +696,8 @@ def build_intelligence():
             below = bool(cur_px is not None and ent is not None and cur_px < ent)
             stop_near = bool(cur_px is not None and stop is not None and stop and abs(cur_px - stop) / cur_px < 0.02)
             tp_missing = tgt is None or tgt == 0
-            big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing)
+            # a live broker stop (incl. a trailing one) IS protection → not "large gain UNPROTECTED"
+            big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing and not broker_protected)
             pr = {"protected": broker_protected or bool(stop and not below), "tp_missing": tp_missing, "stop_near": stop_near,
                   "below_entry": below, "trailing_candidate": bool(upnl_pct is not None and upnl_pct > 8 and not stop_near),
                   "top_recommendation": (prot.get(sym) or {}).get("act"), "option_count": (prot.get(sym) or {}).get("n", 0)}
@@ -745,7 +747,7 @@ def build_intelligence():
                 latest_news_age_h=(round(_news_age_h, 1) if _news_age_h is not None else None),
                 last_hermes_at=herm.get(sym, {}).get("research_at"),
                 on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False),
-                family=_fam, mutual_fund=_is_mf)
+                family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected)
             positions.append({
                 **_decision,
                 **_card_enrichment(sym),
