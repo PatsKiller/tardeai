@@ -21,21 +21,38 @@ const fmtDate = (s?: string) => {
 }
 
 const FQDN = 'https://ms01-openclaw.tail163d14.ts.net'
-const V3 = (p: string) => ({ risk: '/v3/risk', approvals: '/v3/trading', recovery: '/v3/retirement', actions: '/v3/trading', trading: '/v3/trading', journal: '/v3/journal', system: '/v3/system', portfolio: '/v3/portfolio' } as any)[p] || `/v3/${p}`
+const VALID = new Set(['portfolio', 'risk', 'trading', 'strategy', 'agents', 'intelligence', 'hermes', 'retirement', 'journal', 'watchlist', 'watchpool', 'sectors', 'reports', 'system', 'manual-execution'])
+// every legacy/brief page slug → a REAL v3 route + friendly label (no dead links)
+const PAGE: Record<string, { label: string; route: string }> = {
+  risk: { label: 'Risk', route: '/v3/risk' }, approvals: { label: 'Approvals', route: '/v3/trading' },
+  recovery: { label: 'Recovery', route: '/v3/retirement' }, reco: { label: 'Recovery', route: '/v3/retirement' },
+  actions: { label: 'Actions', route: '/v3/trading' }, trading: { label: 'Trading', route: '/v3/trading' },
+  journal: { label: 'Journal', route: '/v3/journal' }, system: { label: 'System', route: '/v3/system' },
+  portfolio: { label: 'Portfolio', route: '/v3/portfolio' }, 'research-topics': { label: 'Research', route: '/v3/intelligence' },
+  research: { label: 'Research', route: '/v3/intelligence' }, proposals: { label: 'Proposals', route: '/v3/trading' },
+  'paper-proposals': { label: 'Proposals', route: '/v3/trading' }, 'paper-status': { label: 'Trading', route: '/v3/trading' },
+  alerts: { label: 'System', route: '/v3/system' }, siem: { label: 'System', route: '/v3/system' },
+}
+function pageLink(path: string) {
+  const seg = (path.split('/')[2] || '').toLowerCase()
+  if (PAGE[seg]) return PAGE[seg]
+  if (VALID.has(seg)) return { label: seg.charAt(0).toUpperCase() + seg.slice(1), route: `/v3/${seg}` }
+  return { label: 'Open', route: '/v3/' }   // unknown slug → home, never a dead /v3/<x>
+}
 
-// ── markdown/Telegram → React: **bold** *bold* _italic_ `code`, /v2|/v3 dashboard links, urls ──
+// ── markdown/Telegram → React: **bold** *bold* `code`, dashboard links, urls. NOTE: NO _italic_ rule —
+// the data is full of snake_case (reentry_candidate, hold_for_reentry) and underscore-italic ate them. ──
 function inline(text: string): ReactNode[] {
   const parts: ReactNode[] = []
-  const re = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|`[^`\n]+`|https?:\/\/[^\s)]+|\/v[23]\/[a-z-]+)/g
+  const re = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|https?:\/\/[^\s)]+|\/v[23]\/[a-z0-9-]+)/g
   let last = 0, m: RegExpExecArray | null, key = 0
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index))
     const tok = m[0]
     if (tok.startsWith('**')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(2, -2)}</b>)
     else if (tok.startsWith('*')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(1, -1)}</b>)
-    else if (tok.startsWith('_')) parts.push(<i key={key++} style={{ color: 'var(--text2)' }}>{tok.slice(1, -1)}</i>)
     else if (tok.startsWith('`')) parts.push(<code key={key++} style={{ fontFamily: 'monospace', fontSize: '.92em', background: 'var(--bg0)', padding: '1px 5px', borderRadius: 4, color: '#a5d6ff' }}>{tok.slice(1, -1)}</code>)
-    else if (tok.startsWith('/v')) { const v3 = V3(tok.split('/')[2]); parts.push(<a key={key++} href={FQDN + v3} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', fontWeight: 700, textDecoration: 'none' }}>{tok.replace(/v2/, 'v3').replace(/^\//, '')} ↗</a>) }
+    else if (tok.startsWith('/v')) { const { label, route } = pageLink(tok); parts.push(<a key={key++} href={FQDN + route} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: '#60a5fa18', color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{label} ↗</a>) }
     else parts.push(<a key={key++} href={tok} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', wordBreak: 'break-all' }}>{tok}</a>)
     last = m.index + tok.length
   }
@@ -135,9 +152,11 @@ export default function ReportsHub({ onDrill }: Props) {
         {items.map((it: any) => {
           const id = `${it.source}-${it.id}`
           const body = it.summary || ''
-          const long = body.length > 900
+          const long = body.length > 1100
           const expanded = open[id]
-          const shown = long && !expanded ? body.slice(0, 900) : body
+          // cut the preview at a LINE boundary so a link/word is never truncated mid-token (e.g. "reco")
+          const cut = long ? (body.lastIndexOf('\n', 1100) > 400 ? body.lastIndexOf('\n', 1100) : 1100) : body.length
+          const shown = long && !expanded ? body.slice(0, cut) : body
           return (
             <article key={id} style={{ ...card, borderTop: `3px solid ${sevColor(it.severity)}`, padding: '16px 20px' }}>
               <header style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border-subtle)' }}>

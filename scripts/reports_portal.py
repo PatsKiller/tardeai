@@ -35,9 +35,17 @@ CATEGORIES = [
 ]
 _BY_KEY = {c["key"]: c for c in CATEGORIES}
 
-# v2/legacy path → v3 hub, so a report's action button always lands on a real page.
-_V3 = {"risk": "/v3/risk", "approvals": "/v3/trading", "recovery": "/v3/retirement", "actions": "/v3/trading",
-       "trading": "/v3/trading", "journal": "/v3/journal", "system": "/v3/system", "portfolio": "/v3/portfolio"}
+# legacy/brief page slug → a REAL v3 route (label, route). Never a dead /v3/<x>.
+_VALID_V3 = {"portfolio", "risk", "trading", "strategy", "agents", "intelligence", "hermes", "retirement",
+             "journal", "watchlist", "watchpool", "sectors", "reports", "system", "manual-execution"}
+_PAGE = {"risk": ("Risk", "/v3/risk"), "approvals": ("Approvals", "/v3/trading"),
+         "recovery": ("Recovery", "/v3/retirement"), "reco": ("Recovery", "/v3/retirement"),
+         "actions": ("Actions", "/v3/trading"), "trading": ("Trading", "/v3/trading"),
+         "journal": ("Journal", "/v3/journal"), "system": ("System", "/v3/system"),
+         "portfolio": ("Portfolio", "/v3/portfolio"), "research-topics": ("Research", "/v3/intelligence"),
+         "research": ("Research", "/v3/intelligence"), "proposals": ("Proposals", "/v3/trading"),
+         "paper-proposals": ("Proposals", "/v3/trading"), "paper-status": ("Trading", "/v3/trading"),
+         "alerts": ("System", "/v3/system"), "siem": ("System", "/v3/system")}
 
 
 def _conn():
@@ -72,15 +80,20 @@ def _sev_from_nl(ntype: str) -> str:
 
 
 def _action_links(text: str) -> list[dict]:
-    """Extract dashboard links from a report body, mapped to v3 routes → actionable buttons."""
+    """Extract dashboard links from a report body, mapped to REAL v3 routes → dedup'd action buttons."""
     import re
     out, seen = [], set()
-    for m in re.finditer(r"/v[23]/([a-z-]+)", text or ""):
-        page = m.group(1)
-        v3 = _V3.get(page, f"/v3/{page}")
-        if v3 not in seen:
-            seen.add(v3)
-            out.append({"label": "Open " + page.replace("-", " ").title(), "url": "https://ms01-openclaw.tail163d14.ts.net" + v3})
+    for m in re.finditer(r"/v[23]/([a-z0-9-]+)", text or ""):
+        seg = m.group(1).lower()
+        if seg in _PAGE:
+            label, route = _PAGE[seg]
+        elif seg in _VALID_V3:
+            label, route = seg.capitalize(), f"/v3/{seg}"
+        else:
+            continue   # unknown slug → don't emit a dead button
+        if route not in seen:
+            seen.add(route)
+            out.append({"label": "Open " + label, "url": "https://ms01-openclaw.tail163d14.ts.net" + route})
     return out
 
 
