@@ -113,7 +113,7 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
 
     This closes the pipeline gap where pre-market StockTwits surge data was
     only sent to Telegram but never written to the database, making it
-    invisible to the /v2/trade-ai dashboard.
+    invisible to the /v3/trading dashboard.
     """
     cur = conn.cursor()
     total = result['recent_count']
@@ -148,7 +148,7 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
         except Exception:
             pass
 
-    # 2. Upsert surge data into trade_ai_scans (makes it visible on /v2/trade-ai)
+    # 2. Upsert surge data into trade_ai_scans (makes it visible on /v3/trading)
     run_date = datetime.now().date()
     run_id = f"premarket_{run_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M')}"
     sentiment_label = 'Very Bullish' if bullish_pct >= 70 else ('Bullish' if bullish_pct >= 55 else ('Bearish' if bearish > bullish else 'Neutral'))

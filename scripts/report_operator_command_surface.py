@@ -25,10 +25,10 @@ def _q(conn, sql, params=None, fetch="all"):
 HEALTH_FILE = PROJ / "data" / "portfolios" / "state" / "system_health_alert.json"
 
 PAGE_DESTINATIONS = {
-    "pending_proposals": "/v2/approvals",
-    "open_trades": "/v2/paper-journal",
-    "watchpool_candidates": "/v2/trade-ai",
-    "system_health": "/v2/risk",
+    "pending_proposals": "/v3/trading",
+    "open_trades": "/v3/journal",
+    "watchpool_candidates": "/v3/trading",
+    "system_health": "/v3/risk",
 }
 
 

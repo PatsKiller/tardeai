@@ -216,10 +216,10 @@ def process_replies():
         try:
             from telegram_alert import send_telegram
             ack_map = {
-                "confirmed": f"\u2705 Stop confirmed for *{symbol}*. Status updated. Check /v2/risk for full view.",
+                "confirmed": f"\u2705 Stop confirmed for *{symbol}*. Status updated. Check /v3/risk for full view.",
                 "not_yet": f"\u26a0 Noted — *{symbol}* stop not yet placed. Will remind again tomorrow. Set stop in broker when ready.",
                 "intentional_no_stop": f"\U0001f6e1 *{symbol}* marked intentionally unprotected. Won't remind again unless you ask.",
-                "needs_recommendation": f"\U0001f4cb Noted — Aegis will generate stop recommendation for *{symbol}*. Check /v2/risk after next run.",
+                "needs_recommendation": f"\U0001f4cb Noted — Aegis will generate stop recommendation for *{symbol}*. Check /v3/risk after next run.",
             }
             send_telegram(ack_map.get(response_type, f"Processed: {response_type} {symbol}"))
         except Exception:

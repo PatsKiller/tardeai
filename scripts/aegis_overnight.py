@@ -273,7 +273,7 @@ def main():
             f"Escalations: {synth.get('steph_escalations',0)}\n"
             f"Steph reviews: {synth.get('steph_reviews',0)} | "
             f"Evidence: {synth.get('evidence_entries',0)}\n"
-            f"Check: /v2/trade-ai"
+            f"Check: /v3/trading"
         )
     except Exception:
         pass

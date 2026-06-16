@@ -1620,7 +1620,7 @@ def run_library_audit(dry_run=False):
                 except Exception:
                     recs.append(f"  {cat.replace('_',' ')}: (LLM unavailable)")
             if recs:
-                _send_telegram_msg("Iris Weekly Content Recommendations\n\nGaps found:\n" + "\n".join(recs) + "\n\nAdd channels: /v2/intelligence-sources → YouTube → + Channel")
+                _send_telegram_msg("Iris Weekly Content Recommendations\n\nGaps found:\n" + "\n".join(recs) + "\n\nAdd channels: /v3/intelligence → YouTube → + Channel")
 
     # 3h. Intelligence Entity Curation
     print("\n  [3h] Intelligence Entity Curation...")

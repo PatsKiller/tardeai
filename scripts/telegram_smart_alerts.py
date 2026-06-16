@@ -174,7 +174,7 @@ def check_stop_proximity(send: bool = False) -> dict:
                 dist = float(s["distance_pct"])
                 emoji = "\U0001F534" if dist < 1.5 else "\U0001F7E1"
                 lines.append(f"{emoji} *{s['symbol']}*: {dist:.1f}% from stop (${float(s['stop_price']):.2f})")
-            lines.append(f"\n_Review at /v2/risk_")
+            lines.append(f"\n_Review at /v3/risk_")
             alerts.append("\n".join(lines))
 
         result = {"alert": len(alerts) > 0, "count": len(close_stops)}

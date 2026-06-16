@@ -187,7 +187,7 @@ def send_verdict_change_telegram(changes: list):
         if c.get('reasoning'):
             lines.append(f"   💬 _{c['reasoning'][:80]}_")
         lines.append("")
-    lines.append("_http://192.168.50.16:7777/v2/trade-ai_")
+    lines.append("_http://192.168.50.16:7777/v3/trading_")
     msg = '\n'.join(lines)
     for cid in TELEGRAM_CHATS:
         try:
