@@ -117,6 +117,12 @@ def format_telegram(data):
 def send_telegram(text, chat_ids=None, dry_run=False):
     """Send text to Telegram chat IDs."""
     import requests
+    # FQDN/v3 normalization chokepoint (this script posts to Telegram directly, bypassing telegram_alert)
+    try:
+        from notification_url_builder import publicize_message
+        text = publicize_message(text)
+    except Exception:
+        pass
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not token:
         log.error("TELEGRAM_BOT_TOKEN not set")

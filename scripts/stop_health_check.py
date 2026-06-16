@@ -109,20 +109,21 @@ def run(quiet: bool = False) -> dict:
     for r in alerts:
         sym, acct = r["symbol"], r["account"]
         # the single most severe condition for the message
+        # severity MUST be one of the alert_events constraint values: info|warning|urgent|critical
         if "orphaned" in r["flags"]:
-            cond, sev, line = "ORPHANED", "high", f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
+            cond, sev, line = "ORPHANED", "urgent", f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
         elif "oversized" in r["flags"]:
-            cond, sev, line = "OVERSIZED", "high", f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh."
+            cond, sev, line = "OVERSIZED", "urgent", f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh."
         elif "filled" in r["flags"]:
-            cond, sev, line = "TRIGGERED", "high", f"stop FILLED (#{r['order_id']}) — position may be flat; review."
+            cond, sev, line = "TRIGGERED", "urgent", f"stop FILLED (#{r['order_id']}) — position may be flat; review."
         else:
-            cond, sev, line = "NEAR_TRIGGER", "medium", f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire."
+            cond, sev, line = "NEAR_TRIGGER", "warning", f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire."
         payload = {"kind": "stop_health", "condition": cond, **{k: r.get(k) for k in
                    ("account", "symbol", "broker", "order_id", "order_type", "stop_price", "qty",
                     "held_qty", "current_price", "proximity_pct", "coverage", "lifecycle", "health")}}
         _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload)
         if not _recently_alerted(sym, cond):
-            _send_telegram(f"{'🚨' if sev == 'high' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
+            _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
             fired.append(f"{sym}:{cond}")
     _log_health_event(ok=(not alerts), summary=summary)
