@@ -1,0 +1,149 @@
+# Command Center v3 KPI Metric Registry
+#
+# Purpose: make every visible headline metric explainable, scoped, and auditable.
+# The UI should not invent or recompute headline values outside the canonical
+# endpoint/query named here. This registry is intentionally data-only and has no
+# broker execution behavior.
+
+version: 2026-06-16
+owner: command-center-v3
+status: active
+
+rules:
+  - Every headline KPI must have a metric_id in this file.
+  - Every metric must declare source, scope, denominator, refresh_cadence, stale_after, owner, and display_label.
+  - If two UI surfaces show different values, they must use different metric_id values and labels.
+  - Validation warnings are acceptable during migration; silent drift is not.
+
+metrics:
+  portfolio_value:
+    display_label: Portfolio value
+    scope: total portfolio, all accounts currently included in holdings state
+    source: /api/v2/system-health or holdings state portfolio_totals.total_value
+    denominator: dollars
+    refresh_cadence: intraday
+    stale_after: 24h
+    owner: portfolio_server
+    ui_surfaces: [v3_header, home_snapshot, portfolio]
+    trust_note: Broker/holdings sync is authoritative when available; stale holdings must show WARN.
+
+  today_pnl:
+    display_label: Today P&L
+    scope: mark-to-market portfolio day change
+    source: holdings state / portfolio summary endpoint
+    denominator: dollars and percent
+    refresh_cadence: intraday
+    stale_after: 4h market-hours
+    owner: portfolio_server
+    ui_surfaces: [v3_header, home_snapshot]
+    trust_note: Must show timestamp/source if computed from cached holdings.
+
+  journal_pnl:
+    display_label: Journal P&L
+    scope: realized journal-tracked trade P&L
+    source: journal API / paper and closed trade aggregates
+    denominator: dollars
+    refresh_cadence: daily
+    stale_after: 24h
+    owner: journal_engine
+    ui_surfaces: [v3_header, journal]
+    trust_note: Must not be blended with unrealized portfolio P&L.
+
+  journal_win_rate:
+    display_label: Journal win rate
+    scope: all journal-counted closed trades used by the Journal surface
+    source: journal summary endpoint
+    denominator: journal_closed_trade_count
+    refresh_cadence: daily
+    stale_after: 24h
+    owner: journal_engine
+    ui_surfaces: [v3_header, journal]
+    trust_note: Label must include denominator, for example '55.3% · 121 journal trades'.
+
+  paper_validation_win_rate:
+    display_label: Paper validation win rate
+    scope: closed paper trades eligible for validation gate
+    source: paper validation / paper_trades closed subset
+    denominator: closed_paper_trade_count
+    refresh_cadence: daily
+    stale_after: 24h
+    owner: paper_trading_engine
+    ui_surfaces: [system, trading, validation]
+    trust_note: Distinct from journal_win_rate. Do not show as generic WIN RATE.
+
+  setup_counts:
+    display_label: Setups
+    scope: current GO / WAIT / NOGO setup counts
+    source: trade_ai_orchestrator latest run / setup summary endpoint
+    denominator: count by setup state
+    refresh_cadence: market-hours pipeline
+    stale_after: 4h market-hours
+    owner: trade_ai_orchestrator
+    ui_surfaces: [v3_header, strategy, watchlist]
+    trust_note: Must show last pipeline run time.
+
+  market_regime:
+    display_label: Regime
+    scope: current market regime classification
+    source: regime engine / market summary endpoint
+    denominator: classification + confidence percent
+    refresh_cadence: intraday
+    stale_after: 24h
+    owner: regime_engine
+    ui_surfaces: [v3_header, home_snapshot]
+    trust_note: Must include confidence or mark confidence unavailable.
+
+  vix:
+    display_label: VIX
+    scope: latest VIX reading
+    source: FRED / market data provider cache
+    denominator: index level
+    refresh_cadence: intraday or daily provider refresh
+    stale_after: 24h
+    owner: market_data_ingestion
+    ui_surfaces: [v3_header, risk]
+    trust_note: Stale VIX must display WARN, not a bare number.
+
+  last_pipeline_run:
+    display_label: Last run
+    scope: latest successful pipeline/scoring run visible to v3
+    source: pipeline_runs / pipeline-health endpoint
+    denominator: timestamp or HHMM marker
+    refresh_cadence: pipeline controlled
+    stale_after: 4h market-hours
+    owner: pipeline_controller
+    ui_surfaces: [v3_header, system]
+    trust_note: Must specify which pipeline produced the marker.
+
+  live_blocked_state:
+    display_label: Live trading status
+    scope: global live trading interlock, not Schwab protective-stop standing authorization
+    source: live_trading_interlock / safety state
+    denominator: enum
+    refresh_cadence: on request
+    stale_after: 1h
+    owner: execution_governance
+    ui_surfaces: [v3_header, trading, broker_orders]
+    trust_note: General live trading may be blocked while protective stop workflows are enabled. Label precisely.
+
+  broker_protective_stop_state:
+    display_label: Protective stop status
+    scope: standing protective-stop authorization and broker stop lifecycle health
+    source: /api/v2/stops/lifecycle and system_controls.protective_stops_enabled
+    denominator: protected / warn / alert counts
+    refresh_cadence: 45s-10m depending surface
+    stale_after: 15m market-hours
+    owner: stop_lifecycle_monitor
+    ui_surfaces: [open_trades, risk, hermes]
+    trust_note: Do not confuse with generic live trading status.
+
+  rotation_candidates:
+    display_label: Rotation candidates
+    scope: account-aware trim/add/rotate advisory candidates
+    source: rotation_intelligence_engine summary output
+    denominator: count by action class
+    refresh_cadence: daily or on-demand
+    stale_after: 24h
+    owner: rotation_intelligence_engine
+    ui_surfaces: [portfolio, strategy, intelligence]
+    trust_note: Advisory only. No broker execution path.
