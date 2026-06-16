@@ -97,6 +97,34 @@ def _stops_lifecycle_api():
                 "error": str(e)[:120]}
 
 
+def _reports_categories(query=None):
+    """GET /api/v2/reports/categories — portal tabs with counts + last-activity."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    return _rp.categories()
+
+
+def _reports_list(query=None):
+    """GET /api/v2/reports/list?category=&q=&page=&per_page=&days= — paginated, searchable items."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    q = query or {}
+    return _rp.list_items(q.get("category", "morning_briefs"), q=q.get("q", ""),
+                          page=int(q.get("page", 1) or 1), per_page=int(q.get("per_page", 25) or 25),
+                          days=(int(q["days"]) if q.get("days") else None))
+
+
+def _reports_item(query=None):
+    """GET /api/v2/reports/item?source=nl|ae&id= — single report detail."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    q = query or {}
+    return _rp.get_item(q.get("source", "nl"), q.get("id"))
+
+
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
     Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
@@ -17986,6 +18014,9 @@ ROUTES = {
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/broker-orders/pilot/status": _pilot_status,
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
+    "/api/v2/reports/categories": _reports_categories,
+    "/api/v2/reports/list": _reports_list,
+    "/api/v2/reports/item": _reports_item,
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
@@ -18422,6 +18453,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     pass
                 return 200, {"ok": res.get("status") in ("cancel_requested", "canceled", "cancelled"),
                              "status": res.get("status"), "result": res, "account": acct, "broker_order_id": oid}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/reports/purge":
+            # Reports portal: purge old reports (optionally one category). Preview unless apply=true.
+            try:
+                import sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import reports_portal as _rp
+                b = body or {}
+                return 200, _rp.purge(category=b.get("category"),
+                                      older_than_days=int(b.get("older_than_days", 90) or 90),
+                                      apply=bool(b.get("apply")))
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

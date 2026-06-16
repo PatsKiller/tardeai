@@ -16,6 +16,7 @@ import JournalHub from './pages/JournalHub'
 import WatchlistHub from './pages/WatchlistHub'
 import WatchpoolHub from './pages/WatchpoolHub'
 import SectorsHub from './pages/SectorsHub'
+import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import ManualExecutionHub from './pages/ManualExecutionHub'
 
@@ -43,6 +44,7 @@ function Shell() {
             <Route path="watchlist" element={<WatchlistHub onDrill={setDrill} />} />
             <Route path="watchpool" element={<WatchpoolHub onDrill={setDrill} />} />
             <Route path="sectors" element={<SectorsHub onDrill={setDrill} />} />
+            <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
         </main>
