@@ -30,6 +30,9 @@ _TERMINAL_CANCEL = {"canceled", "cancelled", "rejected", "expired", "replaced"}
 _TERMINAL_FILL = {"filled"}
 _NEAR_TRIGGER_PCT = 2.0     # within 2% of the stop ⇒ near_trigger (warn); within 0.75% ⇒ alert
 _NEAR_ALERT_PCT = 0.75
+_FILLED_ALERT_HOURS = 12.0  # only a FRESH stop-out (filled within this window) is alert-worthy; older fills
+                            # stay lifecycle='filled' but health<alert so the broker's recent-order window
+                            # can't re-ping a days-old stop-out.
 
 
 def _holdings_map() -> dict:
@@ -118,7 +121,8 @@ def _schwab_stops() -> list[dict]:
                              "order_id": str(o.get("orderId") or ""), "order_type": otype.replace(" ", "_"),
                              "stop_price": sp, "trail_offset": o.get("stopPriceOffset"),
                              "trail_link": o.get("stopPriceLinkType"), "qty": qty,
-                             "status": str(o.get("status", "")).lower()})
+                             "status": str(o.get("status", "")).lower(),
+                             "closed_at": o.get("closeTime")})
     except Exception:
         pass
     return rows
@@ -149,10 +153,27 @@ def _alpaca_stops() -> list[dict]:
                          "order_type": otype.upper(), "stop_price": sp,
                          "trail_offset": o.get("trail_percent") or o.get("trail_price"),
                          "trail_link": "PERCENT" if o.get("trail_percent") else ("VALUE" if o.get("trail_price") else None),
-                         "qty": qty, "status": str(o.get("status", "")).lower()})
+                         "qty": qty, "status": str(o.get("status", "")).lower(),
+                         "closed_at": o.get("filled_at") or o.get("updated_at")})
     except Exception:
         pass
     return rows
+
+
+def _age_hours(ts) -> float | None:
+    """Hours since an ISO timestamp (Schwab closeTime / Alpaca filled_at). None if unparseable — callers
+    treat None as 'recent' (fail-open: never miss a fresh stop-out)."""
+    if not ts:
+        return None
+    try:
+        import datetime as _dt
+        s = str(ts).replace("Z", "+00:00")
+        dt = _dt.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dt.timezone.utc)
+        return (_dt.datetime.now(_dt.timezone.utc) - dt).total_seconds() / 3600.0
+    except Exception:
+        return None
 
 
 def _classify(stop: dict, held: dict | None) -> dict:
@@ -183,7 +204,14 @@ def _classify(stop: dict, held: dict | None) -> dict:
 
     # lifecycle
     if status in _TERMINAL_FILL:
-        lifecycle = "filled"; flags.append("filled")
+        lifecycle = "filled"
+        # only a FRESH stop-out is alert-worthy ("filled" flag → alert). The broker's recent-order window
+        # can include days-old fills; gate the flag on fill recency so a stale fill can't re-ping.
+        age_h = _age_hours(stop.get("closed_at"))
+        if age_h is None or age_h <= _FILLED_ALERT_HOURS:
+            flags.append("filled")
+        else:
+            flags.append("filled_stale")   # informational only; not in the alert set below
     elif status in _TERMINAL_CANCEL:
         lifecycle = "cancelled"
     elif coverage == "orphaned":
