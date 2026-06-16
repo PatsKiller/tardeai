@@ -18267,8 +18267,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if (not d.allowed) and ("two-factor" not in _r):
                         err = d.reason
                         if "execution disabled" in _r or "fail-closed default" in _r:
-                            err = ("Schwab pilot is DISARMED — arm it (Trading → Broker Orders → ARM) before "
-                                   "placing a live protective stop. Ticket mode is available now.")
+                            err = ("Protective stops are not enabled (standing authorization off). "
+                                   "Ticket mode is available now.")
                         return 200, {"ok": False, "mode": "blocked", "error": err,
                                      "ticket": ticket, "account": acct}
                     req = _psp.request_2fa(intent)
