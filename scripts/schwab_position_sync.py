@@ -254,25 +254,94 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 
 
-def sync_schwab_positions(account_key):
-    """Read-only entry point. Fail-closed: degraded token OR missing portal creds => NO-OP (holdings
-    untouched). Live fetch + Alpaca-preserving merge land here once the portal is connected."""
-    import schwab_token_manager as tm
-    h = tm.health(account_key)
-    if h.get("degraded") or not h.get("refresh_valid"):
-        _record(account_key, "degraded_noop", f"token degraded/expired: {h.get('last_error')}")
-        return {"status": "degraded_noop", "reason": h.get("last_error"), "wrote": False}
-    token = tm.get_access_token(account_key)
-    if not token:
-        _record(account_key, "degraded_noop", "no usable access token (fail closed)")
-        return {"status": "degraded_noop", "wrote": False}
-    # Live Schwab fetch + normalize + MERGE-with-non-Schwab (preserve Alpaca) → protected_holdings_write.
-    # Requires portal app creds + proven read entitlement (architect open-item).
-    _record(account_key, "degraded_noop", "live Schwab fetch NOT_PROVEN (portal app creds + read entitlement pending)")
-    return {"status": "degraded_noop", "reason": "live fetch NOT_PROVEN (architect open-item)", "wrote": False}
+def _build_account_rows(account_key, live, existing_by_key):
+    """Build holdings rows for ONE account from live Schwab positions, PRESERVING enrichment (name/bucket/
+    cost_basis/sector) on positions we already track; minimal row for genuinely-new buys. Drops sold
+    positions (absent from `live`). The repricer/basis-sync refine prices/basis afterward."""
+    as_of = datetime.now(timezone.utc).date().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for p in live:
+        sym = (p.get("symbol") or "").upper()
+        if not sym:
+            continue
+        try:
+            qty = float(p.get("qty") or 0)
+        except Exception:
+            qty = 0.0
+        if abs(qty) < 1e-9:
+            continue
+        def _f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
+        price = _f(p.get("current_price")) or None
+        mv = _f(p.get("market_value")) or 0.0
+        avg = _f(p.get("avg_entry_price")) or None
+        row = dict(existing_by_key.get((sym, account_key), {}))   # preserve enrichment if tracked
+        is_new = (sym, account_key) not in existing_by_key
+        row.update({"account": account_key, "account_id": account_key, "symbol": sym,
+                    "shares": qty, "price": price, "market_value": round(mv, 2),
+                    "as_of": as_of, "updated_at": now, "is_cash": (sym == "CASH")})
+        if is_new:
+            row.setdefault("name", sym)
+            row.setdefault("bucket", "US Equity")
+            if avg and qty:
+                row.setdefault("cost_basis", round(avg * qty, 2))
+                row.setdefault("cost_basis_source", "broker_api")
+            if row.get("cost_basis"):
+                row["gain_loss"] = round(mv - float(row["cost_basis"]), 2)
+                row["gain_loss_pct"] = round((mv - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
+        rows.append(row)
+    return rows
+
+
+# the broker account_key vs the holdings.json account label (the roth IRA is stored as 'schwab_roth')
+_HOLDINGS_ACCT = {"schwab_roth_ira": "schwab_roth"}
+
+
+def sync_schwab_positions(account_key, dry_run=True):
+    """LIVE Schwab position sync → holdings.json (auto-surface trades). Fetches live positions, replaces
+    ONLY this account's equity rows (preserving every other account, the account's CASH row, and per-
+    position enrichment), and writes through protected_holdings_write (GATE B: sane + catastrophic-drop
+    guard + basis shield + backup/atomic/post-assert). dry_run=True returns the add/remove diff without
+    writing. CASH is preserved as-is (Schwab's positions endpoint excludes cash)."""
+    import schwab_transport as st
+    label = _HOLDINGS_ACCT.get(account_key, account_key)   # write/read under the holdings.json label
+    live = st.get_positions(account_key)
+    if not isinstance(live, list):
+        _record(account_key, "degraded_noop", f"live fetch unavailable: {str(live)[:120]}")
+        return {"status": "degraded_noop", "reason": str(live)[:120], "wrote": False}
+    if not HOLDINGS_PATH.exists():
+        return {"status": "no_holdings_file", "wrote": False}
+    cur = json.loads(HOLDINGS_PATH.read_text())
+    hold = cur.get("holdings", [])
+    existing_by_key = {((r.get("symbol") or "").upper(), label): r
+                       for r in hold if r.get("account") == label}
+    equity_rows = _build_account_rows(label, live, existing_by_key)
+    # PRESERVE the account's cash row(s) — the positions endpoint omits cash; dropping it would erase cash.
+    cash_rows = [r for r in hold if r.get("account") == label
+                 and ((r.get("symbol") or "").upper() == "CASH" or r.get("is_cash"))]
+    new_rows = equity_rows + cash_rows
+    old_syms = {(r.get("symbol") or "").upper() for r in hold if r.get("account") == label}
+    new_syms = {(r.get("symbol") or "").upper() for r in new_rows}
+    added, removed = sorted(new_syms - old_syms), sorted(old_syms - new_syms)
+    if dry_run:
+        return {"status": "dry_run", "broker_account": account_key, "holdings_label": label,
+                "live_positions": len(equity_rows), "added": added, "removed": removed, "wrote": False}
+    cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
+    res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True)
+    res.update({"added": added, "removed": removed})
+    return res
 
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(); ap.add_argument("account", nargs="?", default="schwab_rollover_ira")
-    print(json.dumps(sync_schwab_positions(ap.parse_args().account), indent=2))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("account", nargs="?", default=None, help="one account, or omit for all 3 Schwab accounts")
+    ap.add_argument("--apply", action="store_true", help="write (default is dry-run diff)")
+    a = ap.parse_args()
+    accts = [a.account] if a.account else ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"]
+    for acct in accts:
+        print(json.dumps({acct: sync_schwab_positions(acct, dry_run=not a.apply)}, indent=2, default=str))
