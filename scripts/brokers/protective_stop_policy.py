@@ -50,7 +50,9 @@ def effective_account_allowlist() -> tuple[str, ...]:
 # True every protective submit must ALSO satisfy this layer. Flip POC_MODE=False (commit) once the proofs
 # pass to open the full MAX_POSITION_NOTIONAL_USD envelope to all taxable (and, if enabled, IRA) holdings.
 POC_MODE = True
-POC_SYMBOL_ALLOWLIST: tuple[str, ...] = ("DRS",)   # operator pick 2026-06-15 (taxable, defensive, whole-share)
+# operator picks (taxable, defensive, WHOLE-share, each < the $1k POC cap so a fat-finger is bounded):
+#   DRS  11 sh @ $46.68 ≈ $513 (proven live 2026-06-15) · KBR 15 sh @ $34.82 ≈ $522 · KTOS 9 sh @ $57 ≈ $513
+POC_SYMBOL_ALLOWLIST: tuple[str, ...] = ("DRS", "KBR", "KTOS")
 # VALID-THROUGH window (operator 2026-06-15: "set pilot next friday expire"). The POC is live on every
 # date up to AND INCLUDING this Friday, then auto-expires fail-closed. Reschedule = commit a new date.
 POC_SESSION_THROUGH = "2026-06-19"                  # YYYY-MM-DD inclusive deadline (Fri); any later date ⇒ allowlist EMPTY
