@@ -6,10 +6,10 @@ Ask account-aware rotation questions against real holdings + optional symbol-car
 context. Safe by design: advisory only, no broker calls, no broker action, no
 account changes.
 
-The script now includes a deterministic grounding answer and a post-check for
-local LLM overreach. If the model invents trim percentages, tax effects, or
-"no missing data" when the evidence disagrees, the user-facing answer is
-replaced with the grounded answer and the raw model answer is preserved.
+The script includes a deterministic grounding answer and a post-check for local
+LLM overreach. If the model invents trim percentages, tax effects, account
+locations, or "no missing data" when the evidence disagrees, the user-facing
+answer is replaced with the grounded answer and the raw model answer is preserved.
 """
 from __future__ import annotations
 
@@ -50,6 +50,21 @@ SECTOR_WORDS = {
     "materials", "industrials", "technology", "energy", "healthcare", "financials",
     "utilities", "real estate", "communication services", "consumer staples",
     "consumer discretionary", "broad market", "fixed income", "space", "private growth",
+}
+
+# Uppercase words that often appear in natural-language questions but are not symbols.
+SYMBOL_STOPWORDS = {
+    "THE", "AND", "FOR", "HOW", "MUCH", "SHOULD", "WHICH", "FUNDS", "ETFS", "ETF",
+    "HEAVY", "TRIM", "TRIMMING", "REDUCE", "ADD", "ROTATE", "ROTATION", "REVIEW", "HELP",
+    "SOME", "WHAT", "WHEN", "WHERE", "WHY", "WITH", "FROM", "INTO", "OUT", "OF", "MY",
+    "MAG", "MAG7", "SEVEN", "LOCAL", "OAUTH", "LLM",
+}
+
+ACCOUNT_ALIASES = {
+    "taxable": ("taxable", "schwab taxable"),
+    "roth": ("roth", "roth ira", "schwab roth"),
+    "rollover": ("rollover", "rollover ira", "traditional ira", "schwab rollover"),
+    "401k": ("401k", "401(k)", "fidelity", "manual-only", "manual only"),
 }
 
 
@@ -132,10 +147,14 @@ def cards_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
     return {symbol_of(r): r for r in rows if symbol_of(r) != "UNKNOWN"}
 
 
-def extract_symbols(question: str) -> list[str]:
+def extract_symbols(question: str, known_symbols: set[str] | None = None) -> list[str]:
     tokens = re.findall(r"\b[A-Z0-9]{2,6}\b", question.upper())
-    stop = {"THE", "AND", "FOR", "HOW", "MUCH", "SHOULD", "WHICH", "FUNDS", "ETFS", "HEAVY"}
-    return sorted({t for t in tokens if t not in stop})
+    raw = {t for t in tokens if t not in SYMBOL_STOPWORDS}
+    if known_symbols:
+        known = {s.upper() for s in known_symbols}
+        # Keep known symbols plus plausible ticker-like tokens not in the stoplist.
+        raw = {t for t in raw if t in known or re.fullmatch(r"[A-Z]{1,5}|[0-9]{3,6}", t)}
+    return sorted(raw)
 
 
 def run_rotation_engine(holdings: Path, cards: Path | None, min_pair_score: float) -> dict[str, Any]:
@@ -177,11 +196,19 @@ def card_fact(symbol: str, cards: dict[str, dict[str, Any]], sym_overrides: dict
     }
 
 
+def _known_symbols(holdings_payload: Any, cards_payload: Any, sym_overrides: dict[str, dict[str, Any]], fund_map: dict[str, dict[str, Any]]) -> set[str]:
+    known = {symbol_of(r) for r in rows_from_payload(holdings_payload) if symbol_of(r) != "UNKNOWN"}
+    known.update(cards_from_payload(cards_payload).keys())
+    known.update(sym_overrides.keys())
+    known.update(fund_map.keys())
+    return known
+
+
 def grounding_report(question: str, holdings_payload: Any, cards_payload: Any, rotation_report: dict[str, Any]) -> dict[str, Any]:
-    symbols = extract_symbols(question)
     cards = cards_from_payload(cards_payload)
     sym_overrides = load_symbol_overrides(DEFAULT_ETF_OVERRIDES)
     fund_map = load_fund_codes(DEFAULT_FUND_MAP)
+    symbols = extract_symbols(question, _known_symbols(holdings_payload, cards_payload, sym_overrides, fund_map))
     account_rows = account_rows_for_symbols(holdings_payload, symbols)
     summary = rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {}
     data_quality = rotation_report.get("data_quality", {}) if isinstance(rotation_report, dict) else {}
@@ -198,12 +225,21 @@ def grounding_report(question: str, holdings_payload: Any, cards_payload: Any, r
     facts = []
     for sym in symbols:
         rows = account_rows.get(sym, [])
+        held_accounts = [first(r, "account_key", "account") for r in rows]
         facts.append({
             **card_fact(sym, cards, sym_overrides, fund_map),
-            "held_accounts": [first(r, "account_key", "account") for r in rows],
+            "held_accounts": held_accounts,
+            "held_account_aliases": [_account_alias_for(a) for a in held_accounts if a],
             "held_market_value_total": round(sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows), 2),
             "holding_row_count": len(rows),
         })
+        fact = facts[-1]
+        if fact.get("holding_row_count") == 0:
+            missing_flags.append(f"{sym} is not currently present in holdings context")
+        if not fact.get("sector"):
+            missing_flags.append(f"{sym} sector is missing")
+        if fact.get("analyst_required") is not False and not fact.get("analyst_upside_pct"):
+            missing_flags.append(f"{sym} analyst upside is missing")
 
     no_actionable = not summary.get("trim_review") and not summary.get("add_review") and not summary.get("rotation_ideas")
     return {
@@ -214,6 +250,19 @@ def grounding_report(question: str, holdings_payload: Any, cards_payload: Any, r
         "missing_flags": sorted(set(missing_flags)),
         "no_model_supported_action": bool(no_actionable),
     }
+
+
+def _account_alias_for(account_name: Any) -> str | None:
+    text = str(account_name or "").lower()
+    if "taxable" in text:
+        return "taxable"
+    if "roth" in text:
+        return "roth"
+    if "rollover" in text or "ira" in text:
+        return "rollover"
+    if "401" in text or "fidelity" in text:
+        return "401k"
+    return None
 
 
 def deterministic_answer(question: str, report: dict[str, Any]) -> str:
@@ -295,6 +344,7 @@ You are the Trade AI Rotation Advisor for a single owner/operator portfolio.
 {SAFETY_BLOCK}
 
 FACTS YOU MUST OBEY:
+- Only these are symbols from the question: {', '.join(grounding.get('symbols_in_question') or [])}.
 - If grounding_report.no_model_supported_action is true, say no evidence-supported trim amount is available.
 - If any grounding_report.missing_flags exist, do not say "no missing data".
 - If a symbol fact says sector=Materials, do not call it Industrials.
@@ -344,16 +394,29 @@ def validate_llm_answer(answer: str, grounding: dict[str, Any]) -> dict[str, Any
         issues.append("claimed_no_missing_data_despite_missing_flags")
     if "positive tax impact" in lower or "would have a positive tax" in lower:
         issues.append("claimed_tax_impact_without_cost_basis")
+
+    allowed_symbols = set(grounding.get("symbols_in_question") or [])
+    for token in re.findall(r"\b[A-Z0-9]{2,6}\b", answer.upper()):
+        if token in SYMBOL_STOPWORDS:
+            continue
+        # Unknown uppercase tokens in the answer are suspicious when they are not in the grounded question symbols.
+        if token not in allowed_symbols and token in {"TRIM", "REVIEW"}:
+            issues.append(f"answer_treated_action_word_as_symbol_{token}")
+
     for fact in grounding.get("symbol_facts", []):
         sym = str(fact.get("symbol") or "")
         sector = str(fact.get("sector") or "").lower()
-        if sym and sector:
-            if sym.lower() in lower:
-                for wrong in SECTOR_WORDS:
-                    if wrong != sector and wrong in lower and sector not in lower:
-                        issues.append(f"possible_wrong_sector_for_{sym}: expected {sector}")
-                        break
-    return {"ok": not issues, "issues": issues}
+        if sym and sector and sym.lower() in lower:
+            for wrong in SECTOR_WORDS:
+                if wrong != sector and wrong in lower and sector not in lower:
+                    issues.append(f"possible_wrong_sector_for_{sym}: expected {sector}")
+                    break
+        held_aliases = {a for a in (fact.get("held_account_aliases") or []) if a}
+        if sym and sym.lower() in lower:
+            for alias, words in ACCOUNT_ALIASES.items():
+                if alias not in held_aliases and any(w in lower for w in words):
+                    issues.append(f"claimed_{sym}_applies_to_unheld_account_{alias}")
+    return {"ok": not issues, "issues": sorted(set(issues))}
 
 
 def main() -> int:
