@@ -475,6 +475,18 @@ while explicitly-uppercase tokens still pass for not-yet-held names. The positio
 live price, basis, and a per-account breakdown** so the model can answer "how many shares to trim"; analyst
 upside is recomputed against the live holdings price, not the stale analyst-snapshot price.
 
+**Strategy Planner** (Strategy hub → **Planner** tab, `/v3/strategy`; `strategy_planner.py`;
+`POST /api/v2/strategy/{plan,approve}`) — interactive "declare → impact → advise → approve→sync" loop
+(2026-06-17). (1) **Declare** an intent (roll account→cash, trim, deploy cash, rebalance). (2) **Impact**
+(what-if, read-only): exact **look-through theme delta** computed from `lookthrough_themes.json`
+`accounts_detail` (per-account exposure), account refactor, cash freed + cash-% shift, and income/goal hit
+vs the **$55k** target. (3) **Advise**: goal-aligned redeploy plan via the free LLM lane (income-gap / Roth
+golden-window / defense-thesis aware) + Hermes-ranked watchlist candidates. (4) **Approve** → persists to
+`strategy_plans` **and syncs both ways**: LEARNING (`llm_feedback_observations`, `workflow=strategy_plan`)
+so the approved direction trains the models, and DISCOVERY (auto-creates operator **`watch_directives`**
+that seed the discovery engine + watchlist sweep). Closes the loop **strategy → discovery → watchlist →
+proposal**. Advisory + read-only — approval seeds discovery, never places a trade.
+
 **IPO lockups** (`config/ipo_lockups.json` from the primary **S-1 on SEC EDGAR**; `ipo_lockups.py`) — when
 insiders can sell, by tranche. `ipo_lockup_alert.py` fires Telegram 14d before each unlock;
 `update_lockup_earnings_dates.py` auto-snaps earnings-tied tranches to the real report date when announced.
