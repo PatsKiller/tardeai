@@ -4,18 +4,23 @@ Validate symbol-card intelligence coverage.
 
 Read-only. Accepts several common API shapes and reports useful diagnostics
 when an endpoint returns an error, empty object, or unexpected payload shape.
+
+ETF/fund symbols are handled differently from individual equities: analyst
+coverage is not required when an override marks the symbol as analyst_not_applicable.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 REQUIRED_FIELDS = ["symbol", "description", "sector", "analyst", "news"]
 STALE_DAYS = {"quote": 1, "news": 14, "analyst": 45, "profile": 90}
+DEFAULT_ETF_OVERRIDES = Path("config/etf_classification_overrides.json")
 
 
 def parse_dt(value: Any) -> datetime | None:
@@ -40,6 +45,17 @@ def age_days(value: Any) -> float | None:
     if not dt:
         return None
     return (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0
+
+
+def load_overrides(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    symbols = data.get("symbols", {}) if isinstance(data, dict) else {}
+    return {str(k).upper(): v for k, v in symbols.items() if isinstance(v, dict)}
 
 
 def _dict_values_to_cards(d: dict[str, Any]) -> list[dict[str, Any]]:
@@ -96,16 +112,55 @@ def normalize_payload(data: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return [], diag
 
 
-def is_present(card: dict[str, Any], field: str) -> bool:
+def first(card: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if card.get(key) not in (None, "", [], {}):
+            return card.get(key)
+    return None
+
+
+def symbol_for(card: dict[str, Any]) -> str:
+    return str(first(card, "symbol", "ticker") or "UNKNOWN").upper()
+
+
+def override_for(card: dict[str, Any], overrides: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return overrides.get(symbol_for(card), {})
+
+
+def instrument_type(card: dict[str, Any], overrides: dict[str, dict[str, Any]]) -> str:
+    ov = override_for(card, overrides)
+    asset_class = first(card, "asset_class", "instrument_type", "security_type") or ov.get("asset_class")
+    if asset_class:
+        text = str(asset_class).lower()
+        if "etf" in text or "fund" in text or "index" in text:
+            return str(asset_class)
+        return str(asset_class)
+    return "equity"
+
+
+def analyst_not_applicable(card: dict[str, Any], overrides: dict[str, dict[str, Any]]) -> bool:
+    ov = override_for(card, overrides)
+    if ov.get("analyst_required") is False:
+        return True
+    return bool(first(card, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"))
+
+
+def sector_value(card: dict[str, Any], overrides: dict[str, dict[str, Any]]) -> Any:
+    return first(card, "sector", "sector_name", "gics_sector", "sector_etf") or override_for(card, overrides).get("sector")
+
+
+def is_present(card: dict[str, Any], field: str, overrides: dict[str, dict[str, Any]]) -> bool:
+    if field == "sector":
+        return sector_value(card, overrides) not in (None, "", [], {})
+    if field == "analyst" and analyst_not_applicable(card, overrides):
+        return True
     aliases = {
         "description": ("description", "company_description", "business_summary", "summary"),
-        "sector": ("sector", "sector_name", "gics_sector", "sector_etf"),
         "analyst": ("analyst", "analyst_consensus", "analyst_rating", "target_price", "price_target", "upside_pct"),
         "news": ("news", "top_news", "articles", "headlines"),
         "symbol": ("symbol", "ticker"),
     }
-    keys = aliases.get(field, (field,))
-    for key in keys:
+    for key in aliases.get(field, (field,)):
         value = card.get(key)
         if value in (None, "", [], {}):
             continue
@@ -117,15 +172,8 @@ def is_present(card: dict[str, Any], field: str) -> bool:
     return False
 
 
-def first(card: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        if card.get(key) not in (None, "", [], {}):
-            return card.get(key)
-    return None
-
-
-def quality_for(card: dict[str, Any]) -> dict[str, Any]:
-    missing = [f for f in REQUIRED_FIELDS if not is_present(card, f)]
+def quality_for(card: dict[str, Any], overrides: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    missing = [f for f in REQUIRED_FIELDS if not is_present(card, f, overrides)]
     score = 100 - len(missing) * 15
     news_list = first(card, "news", "top_news", "articles", "headlines")
     analyst_obj = first(card, "analyst", "analyst_consensus")
@@ -137,17 +185,47 @@ def quality_for(card: dict[str, Any]) -> dict[str, Any]:
         "profile": first(card, "profile_updated_at", "description_updated_at"),
     }
     for key, max_days in STALE_DAYS.items():
+        if key == "analyst" and analyst_not_applicable(card, overrides):
+            continue
         days = age_days(stamps.get(key))
         if days is not None and days > max_days:
             freshness_warnings.append(f"{key}_stale_{days:.1f}d")
             score -= 5
     score = max(0, min(100, score))
+    status = "ACTIONABLE" if score >= 85 and not missing else "WATCH" if score >= 70 else "MISSING_DATA"
     return {
-        "symbol": first(card, "symbol", "ticker") or "UNKNOWN",
+        "symbol": symbol_for(card),
+        "instrument_type": instrument_type(card, overrides),
+        "sector": sector_value(card, overrides),
         "score": score,
-        "status": "ACTIONABLE" if score >= 85 and not missing else "WATCH" if score >= 70 else "MISSING_DATA",
+        "status": status,
         "missing": missing,
         "freshness_warnings": freshness_warnings,
+        "analyst_not_applicable": analyst_not_applicable(card, overrides),
+    }
+
+
+def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
+    missing_by_field = Counter()
+    missing_by_symbol: dict[str, list[str]] = {}
+    by_status = Counter(r["status"] for r in results)
+    by_type = Counter(str(r.get("instrument_type") or "unknown") for r in results)
+    missing_by_type: dict[str, Counter] = defaultdict(Counter)
+    for r in results:
+        if r["missing"]:
+            missing_by_symbol[r["symbol"]] = r["missing"]
+        for f in r["missing"]:
+            missing_by_field[f] += 1
+            missing_by_type[str(r.get("instrument_type") or "unknown")][f] += 1
+    return {
+        "by_status": dict(by_status),
+        "by_instrument_type": dict(by_type),
+        "missing_by_field": dict(missing_by_field),
+        "missing_by_type": {k: dict(v) for k, v in missing_by_type.items()},
+        "symbols_missing_sector": [r["symbol"] for r in results if "sector" in r["missing"]],
+        "symbols_missing_analyst": [r["symbol"] for r in results if "analyst" in r["missing"]],
+        "symbols_missing_news": [r["symbol"] for r in results if "news" in r["missing"]],
+        "missing_by_symbol": missing_by_symbol,
     }
 
 
@@ -156,6 +234,7 @@ def main() -> int:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--input")
     src.add_argument("--stdin", action="store_true")
+    ap.add_argument("--etf-overrides", default=str(DEFAULT_ETF_OVERRIDES))
     ap.add_argument("--min-actionable-coverage", type=float, default=0.95)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -168,8 +247,9 @@ def main() -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 1
 
+    overrides = load_overrides(Path(args.etf_overrides))
     cards, diag = normalize_payload(payload)
-    results = [quality_for(c) for c in cards]
+    results = [quality_for(c, overrides) for c in cards]
     actionable = [r for r in results if r["status"] == "ACTIONABLE"]
     coverage = (len(actionable) / len(results)) if results else 0.0
     report = {
@@ -178,8 +258,9 @@ def main() -> int:
         "actionable_count": len(actionable),
         "actionable_coverage": round(coverage, 4),
         "min_actionable_coverage": args.min_actionable_coverage,
-        "diagnostics": diag,
-        "hint": "card_count=0 means the endpoint returned an error/empty/unexpected shape; inspect diagnostics.top_level_keys and payload_error.",
+        "diagnostics": {**diag, "etf_overrides_loaded": len(overrides)},
+        "coverage_report": summarize(results),
+        "hint": "For ETFs/funds, add config/etf_classification_overrides.json entries. For small caps without coverage, emit analyst_unavailable=true or no_analyst_coverage=true.",
         "worst": sorted(results, key=lambda r: r["score"])[:25],
     }
     print(json.dumps(report, indent=2, sort_keys=True) if args.json else report)
