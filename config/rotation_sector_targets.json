@@ -1,0 +1,18 @@
+{
+  "_comment": "Advisory sleeve/theme comfort targets for rotation OVERWEIGHT detection. A theme whose portfolio look-through pct exceeds its target is flagged overweight; the excess (in % and $) seeds an advisory trim RANGE. A theme below its floor is flagged underweight (a redeploy gap). Targets are operator comfort lines, NOT a model output — edit freely. Advisory only; nothing is ever placed.",
+  "default_comfort_pct": 18,
+  "trim_band": { "low_frac": 0.05, "high_frac": 0.15, "_note": "advisory trim of a position = 5-15% of its value, capped at the sleeve excess; operator confirms" },
+  "themes": {
+    "Magnificent 7":         { "target": 15, "floor": 0 },
+    "AI mega-cap":           { "target": 12, "floor": 0 },
+    "Semiconductors":        { "target": 7,  "floor": 0 },
+    "AI datacenter & power": { "target": 8,  "floor": 0 },
+    "Nasdaq 100":            { "target": 22, "floor": 0 },
+    "S&P 500":               { "target": 45, "floor": 0 },
+    "Defense / Aerospace":   { "target": 6,  "floor": 3 },
+    "Energy":                { "target": 5,  "floor": 2 },
+    "Nuclear / power gen":   { "target": 3,  "floor": 0 },
+    "Cybersecurity":         { "target": 4,  "floor": 0 },
+    "China / EM":            { "target": 3,  "floor": 0 }
+  }
+}

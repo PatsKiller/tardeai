@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-17 - Rotation Intelligence: sleeve balance + amount ranges + continuous loop
+
+Made the rotation advisor **sector-aware, range-aware, and continuous** — all advisory only, no broker
+action, no API keys, no paid Grok/xAI API, no amount ever auto-executed.
+
+- **Sleeve balance (overweight/underweight detection):** `GET /api/v2/rotation/summary` reads the portfolio
+  look-through vs operator comfort targets in new `config/rotation_sector_targets.json`, returning
+  `sector_overweights[]` (theme, pct, target, excess_pct, **excess_dollars**, top_holdings),
+  `sector_underweights[]` (theme, pct, floor, gap_pct), and `portfolio_total`. New **Sleeve Balance** section
+  on `/v3/rotation`. (Live: Mag 7 21.4% vs 15% ≈ +$81k, AI mega-cap +$71k, Nasdaq 100 +$53k, Semis +$19k;
+  underweight Defense 1.23% / Energy 0.95%.)
+- **Advisory amount ranges (operator-confirmed):** each `research_rotation_ideas[]` carries
+  `review_amount_range {low, high, basis}` = 5–15% of the trim holding; shown on each idea card as a review
+  range with "advisory, operator-confirmed, not auto-placed". Nothing is sized or placed automatically.
+- **Continuous loop + TradeAI/Hermes research wiring:** `POST /api/v2/rotation/research-gaps` seeds
+  `watch_directives` (created_by `rotation_advisor`, deduped) for underweight sleeves (trend) + rotate-in
+  candidates (ticker) so **TradeAI + Hermes research the gaps**; "Have TradeAI + Hermes research these gaps"
+  button. `POST /api/v2/rotation/feedback` writes operator review into `llm_feedback_observations` (learning
+  loop); **Reviewed / Dismiss** buttons per idea. `scripts/rotation_rebalance_digest.py` weekly cron
+  (Sun 18:00) computes the summary, seeds the gaps, and sends a Telegram digest — localhost-only, places
+  nothing.
+
 ## 2026-06-17 - Rotation Intelligence: Command Center v3 feature + polish
 
 New advisory-only Rotation Intelligence feature in v3 (commits `d419d240` → `d7f6c699`). Grounded local

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
+type AmountRange = { low?: number; high?: number; basis?: string }
 type RotationPair = {
   action_class?: string
   from_symbol?: string
@@ -9,13 +10,25 @@ type RotationPair = {
   to_account?: string
   score?: number
   review_amount?: number
+  review_amount_range?: AmountRange
   rationale?: string
 }
+
+type SectorOverweight = {
+  theme?: string
+  pct?: number
+  target?: number
+  excess_pct?: number
+  excess_dollars?: number
+  top_holdings?: string[]
+}
+type SectorUnderweight = { theme?: string; pct?: number; floor?: number; gap_pct?: number }
 
 type RotationData = {
   ok?: boolean
   advisory_only?: boolean
   error?: string
+  portfolio_total?: number
   summary?: {
     trim_review?: number
     add_review?: number
@@ -25,6 +38,8 @@ type RotationData = {
   data_quality?: Record<string, any>
   missing_sector?: number
   missing_analyst_upside?: number
+  sector_overweights?: SectorOverweight[]
+  sector_underweights?: SectorUnderweight[]
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
   top_candidates?: any[]
@@ -116,6 +131,8 @@ export default function RotationIntelligence() {
   const [askError, setAskError] = useState<string>('')
   const [grokPrompt, setGrokPrompt] = useState<GrokPromptResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const [gapsResult, setGapsResult] = useState<{ ok?: boolean; created?: any[]; note?: string; error?: string } | null>(null)
+  const [feedbackState, setFeedbackState] = useState<Record<string, string>>({})  // ideaKey -> action label
 
   async function loadSummary() {
     setSummaryWarn('')
@@ -210,6 +227,44 @@ export default function RotationIntelligence() {
     }
   }
 
+  // Seed TradeAI + Hermes research directives for the underweight sleeves + named rotate-in candidates.
+  // Advisory wiring only — directives queue research; nothing is bought or sold.
+  async function researchGaps() {
+    setBusy('Research Gaps'); setGapsResult(null)
+    try {
+      const res = await fetch('/api/v2/rotation/research-gaps', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      })
+      const text = await res.text()
+      let json: any
+      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — try again.' } }
+      catch { json = { ok: false, error: 'Non-JSON response — try again.' } }
+      setGapsResult(json)
+    } catch (err) {
+      setGapsResult({ ok: false, error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // Record operator feedback on a rebalance idea into the learning loop (llm_feedback_observations).
+  async function sendFeedback(idea: any, action: 'reviewed' | 'dismissed' | 'acted') {
+    const key = `${idea.from_symbol}-${idea.to_symbol}`
+    setFeedbackState(prev => ({ ...prev, [key]: '…' }))
+    try {
+      const res = await fetch('/api/v2/rotation/feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, idea }),
+      })
+      const text = await res.text()
+      let json: any = {}
+      try { json = text ? JSON.parse(text) : {} } catch { /* noop */ }
+      setFeedbackState(prev => ({ ...prev, [key]: json?.ok ? action : 'error' }))
+    } catch {
+      setFeedbackState(prev => ({ ...prev, [key]: 'error' }))
+    }
+  }
+
   // prefill from ?question= on mount
   useEffect(() => {
     try {
@@ -228,6 +283,11 @@ export default function RotationIntelligence() {
   const candidates = (data?.top_candidates ?? []) as any[]
   const researchIdeas = (data?.research_rotation_ideas ?? []) as any[]
   const researchCands = (data?.research_candidates ?? []) as any[]
+  const overweights = (data?.sector_overweights ?? []) as SectorOverweight[]
+  const underweights = (data?.sector_underweights ?? []) as SectorUnderweight[]
+  const hasSleeveImbalance = overweights.length > 0 || underweights.length > 0
+  const rangeText = (r?: AmountRange) =>
+    r && r.low != null ? `${money(r.low)} – ${money(r.high)}` : 'review range unavailable'
 
   const grokAnswer = grokPrompt?.grok_answer
   const grokNote = grokPrompt?.note
@@ -274,6 +334,82 @@ export default function RotationIntelligence() {
         <SummaryCard label="Missing Sector" value={data?.missing_sector ?? '—'} color="#a855f7" />
         <SummaryCard label="Missing Analyst Upside" value={missingAnalyst ?? '—'} color="#a855f7" />
       </section>
+
+      {/* B2. Sleeve Balance — sector/theme overweight & underweight detection */}
+      {hasSleeveImbalance && (
+        <section style={{ ...card, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>
+              Sleeve Balance <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · comfort targets, not a model signal</span>
+            </div>
+            <span style={{ flex: 1 }} />
+            {data?.portfolio_total != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>portfolio {money(data.portfolio_total)}</span>}
+            {underweights.length > 0 && (
+              <button disabled={!!busy} onClick={researchGaps} style={btn(!!busy)} title="Queue TradeAI + Hermes research directives for the underweight sleeves and rotate-in names">
+                {busy === 'Research Gaps' ? 'Seeding…' : 'Have TradeAI + Hermes research these gaps'}
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
+            Look-through theme weights vs your comfort targets (<span style={{ fontFamily: 'monospace' }}>config/rotation_sector_targets.json</span>).
+            Excess $ and trim ranges are <b>review ranges only</b> — operator confirms sizing/tax; nothing is placed.
+          </div>
+
+          {gapsResult && (
+            <div style={{ marginBottom: 12, padding: '8px 11px', borderRadius: 8, fontSize: 11,
+              background: gapsResult.ok ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)',
+              border: `1px solid ${gapsResult.ok ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+              color: gapsResult.ok ? '#22c55e' : '#ef4444' }}>
+              {gapsResult.ok
+                ? `Seeded ${gapsResult.created?.length ?? 0} research directive(s) → TradeAI + Hermes will research these${(gapsResult.created?.length ?? 0) === 0 ? ' (already queued — deduped)' : ''}.`
+                : `Could not seed research: ${gapsResult.error ?? gapsResult.note ?? 'unknown'}`}
+              {(gapsResult.created?.length ?? 0) > 0 && (
+                <span style={{ color: 'var(--text3)', fontWeight: 400 }}> {' · '}{gapsResult.created!.map((c: any) => `${c.kind}:${c.label}`).join(', ')}</span>
+              )}
+            </div>
+          )}
+
+          {overweights.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>Overweight — review trimming toward target</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: underweights.length ? 16 : 0 }}>
+                {overweights.map((o, idx) => (
+                  <article key={`ow-${o.theme}-${idx}`} style={{ ...card, borderColor: 'rgba(239,68,68,.3)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 4 }}>{o.theme}</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 6 }}>
+                      <span style={{ fontSize: 20, fontWeight: 800, color: '#ef4444' }}>{o.pct}%</span>
+                      <span style={{ fontSize: 10, color: 'var(--text3)' }}>vs {o.target}% target · +{o.excess_pct}%</span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text2)' }}>
+                      Over target by <b style={{ color: '#ef4444' }}>{money(o.excess_dollars)}</b> <span style={{ color: 'var(--text3)' }}>(review range)</span>
+                    </div>
+                    {(o.top_holdings ?? []).length > 0 && (
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5, fontFamily: 'monospace' }}>{(o.top_holdings ?? []).join(' · ')}</div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          {underweights.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', marginBottom: 6 }}>Underweight — redeploy gap (being researched)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                {underweights.map((u, idx) => (
+                  <article key={`uw-${u.theme}-${idx}`} style={{ ...card, borderColor: 'rgba(34,197,94,.3)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 4 }}>{u.theme}</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 20, fontWeight: 800, color: '#22c55e' }}>{u.pct}%</span>
+                      <span style={{ fontSize: 10, color: 'var(--text3)' }}>vs {u.floor}% floor · gap {u.gap_pct}%</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       {/* C. Ask Advisor */}
       <section style={{ ...card, marginBottom: 20 }}>
@@ -512,17 +648,38 @@ export default function RotationIntelligence() {
 
           {researchIdeas.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12, marginBottom: 14 }}>
-              {researchIdeas.map((idea: any, idx: number) => (
-                <article key={`${idea.from_symbol}-${idea.to_symbol}-${idx}`} style={{ ...card, borderColor: 'rgba(96,165,250,.3)' }}>
+              {researchIdeas.map((idea: any, idx: number) => {
+                const fk = `${idea.from_symbol}-${idea.to_symbol}`
+                const fb = feedbackState[fk]
+                return (
+                <article key={`${fk}-${idx}`} style={{ ...card, borderColor: 'rgba(96,165,250,.3)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <ActionBadge cls={idea.action_class} />
                     <span style={{ flex: 1 }} />
                     {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span>}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 6 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
-                  {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{idea.rationale}</div>}
+                  {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 8 }}>{idea.rationale}</div>}
+                  {idea.review_amount_range && (
+                    <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 8 }}>
+                      Review range: <b style={{ color: 'var(--text1)' }}>{rangeText(idea.review_amount_range)}</b>
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{idea.review_amount_range.basis ?? '5–15% of the position — advisory, operator-confirmed, not auto-placed'}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                    {fb && fb !== 'error' && fb !== '…' ? (
+                      <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 700 }}>✓ {fb} — logged to learning loop</span>
+                    ) : (
+                      <>
+                        <button disabled={fb === '…'} onClick={() => sendFeedback(idea, 'reviewed')} style={{ ...btn(fb === '…'), padding: '4px 10px', fontSize: 10.5 }}>Reviewed</button>
+                        <button disabled={fb === '…'} onClick={() => sendFeedback(idea, 'dismissed')} style={{ ...btn(fb === '…'), padding: '4px 10px', fontSize: 10.5, borderColor: '#6b728055', background: 'rgba(107,114,128,.15)', color: '#9ca3af' }}>Dismiss</button>
+                        {fb === '…' && <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>saving…</span>}
+                        {fb === 'error' && <span style={{ fontSize: 9.5, color: '#ef4444' }}>save failed — retry</span>}
+                      </>
+                    )}
+                  </div>
                 </article>
-              ))}
+              )})}
             </div>
           )}
 
