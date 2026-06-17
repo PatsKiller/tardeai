@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-17 - Interactive Strategy Planner (declare → impact → advise → approve→sync)
+
+New **Strategy hub → Planner tab** (`/v3/strategy`) — the operator's "interactive strategy" loop.
+Commit `f58cda6e`. Full detail in MASTER (Portfolio Look-through & Ask-the-Agents section).
+
+- **Declare** an intent: roll account→cash, trim a holding, deploy new cash, or rebalance.
+- **Impact (what-if, read-only):** exact **look-through theme delta** from `lookthrough_themes.json`
+  `accounts_detail` (per-account exposure) + account refactor + cash freed/cash-% shift + income/goal hit
+  vs the $55k target. Example (roll fidelity_401k→cash): $574k freed, S&P -17% / Nasdaq -16% / Mag7 -14%,
+  income gap +$7.5k.
+- **Advise:** goal-aligned redeploy plan via the free LLM lane (income-gap / Roth golden-window /
+  defense-thesis aware) + Hermes-ranked watchlist candidates.
+- **Approve → sync both ways:** persists to `strategy_plans`, records a LEARNING observation
+  (`llm_feedback_observations`, `workflow=strategy_plan`), and seeds DISCOVERY by auto-creating operator
+  `watch_directives` → discovery engine + watchlist sweep source candidates. Closes the loop
+  strategy → discovery → watchlist → proposal.
+- Backend `strategy_planner.py` + `POST /api/v2/strategy/{plan,approve}`; frontend `StrategyPlanner.tsx`.
+  Advisory + read-only — approval seeds discovery, never places a trade.
+
 ## 2026-06-17 - Unified card enrichment: 2-line blurbs, fund sectors, Hermes-rank sweep priority
 
 Watchlist & Portfolio card-layer improvements. Commits `25fc0d70` + `84533b02` (profiles),
