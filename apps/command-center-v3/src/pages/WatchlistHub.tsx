@@ -40,6 +40,8 @@ function ago(v: any) {
   return `${Math.round(h / 24)}d ago`
 }
 function freshnessColor(v: any) { if (!v) return DIM; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return DIM; const h = (Date.now() - t) / 36e5; if (h <= 4) return GREEN; if (h <= 24) return AMBER; return RED }
+// AI enrichment runs every ~30 min (market hrs) — green only within 1h, matching the stale flag. (Validated is daily → keeps freshnessColor.)
+function enrichColor(v: any) { if (!v) return DIM; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return DIM; const h = (Date.now() - t) / 36e5; if (h <= 1) return GREEN; if (h <= 24) return AMBER; return RED }
 function recColor(v: any) { const s = String(v ?? '').toUpperCase(); if (s.includes('BUY') || s.includes('ACCUMULATE') || s.includes('WATCH')) return GREEN; if (s.includes('HOLD') || s.includes('WAIT')) return AMBER; if (s.includes('AVOID') || s.includes('SELL')) return RED; return MUTED }
 function money(v: any) { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—' }
 function num(v: any) { const n = Number(v); return Number.isFinite(n) ? n : null }
@@ -196,7 +198,7 @@ export default function WatchlistHub({ onDrill }: Props) {
               const a = advMap[it.symbol]
               const fr = freshness(it)
               const enriched = !!it.last_enriched_at
-              const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 2 * 3600 * 1000
+              const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 1 * 3600 * 1000
               const rsi = it.rsi != null ? Number(it.rsi) : null
               const tcol = trendBadge(it.trend)
               const sc = cardMap[it.symbol]
@@ -227,7 +229,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(110px, 1fr))', gap: 8, padding: 10, background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10 }}>
                     <Metric label="CIO View" value={it.latest_recommendation || (pa.rec ? String(pa.rec).replace('_', ' ') : 'watch')} color={recColor(it.latest_recommendation || pa.rec)} />
                     <Metric label="Confidence" value={it.research_confidence != null ? Number(it.research_confidence).toFixed(2) : it.hermes_score_components?._confidence ?? '—'} color={BLUE} />
-                    <Metric label="AI Enriched" value={ago(it.last_enriched_at) || 'pending'} color={freshnessColor(it.last_enriched_at)} />
+                    <Metric label="AI Enriched" value={ago(it.last_enriched_at) || 'pending'} color={enrichColor(it.last_enriched_at)} />
                     <Metric label="Validated" value={ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.last_validated_at)} />
                     <Metric label="Entry Model" value={it.entry_model || '—'} color={PURPLE} />
                     <Metric label="R:R" value={rr != null ? rr.toFixed(2) : '—'} color={rr != null && rr >= 2 ? GREEN : AMBER} />
