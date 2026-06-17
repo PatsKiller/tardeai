@@ -39,14 +39,28 @@ def _load(p, d):
         return d
 
 
-def _tickers(q: str) -> list[str]:
-    # uppercase 1-5 letter tokens + known private names
-    cand = set(re.findall(r"\b[A-Z]{1,5}\b", q))
+_STOP = {"R", "RR", "AI", "USD", "IRA", "ETF", "CIO", "BUY", "SELL", "P", "L", "RR"}
+
+
+def _tickers(q: str, known: set | None = None) -> list[str]:
+    """Extract ticker symbols. Case-INSENSITIVE: the operator types lowercase ('xlb', 'spcx').
+    A lowercase token only counts as a ticker if it matches a symbol the operator actually holds /
+    has analyst data for (the `known` set) — that filters out common words like 'trim'/'some'/'look'.
+    An explicitly UPPERCASE-typed token (≥2 chars) is kept even if not held, so the operator can ask
+    about a new name by capitalizing it."""
+    known = known or set()
+    tokens = set(t.upper() for t in re.findall(r"\b[A-Za-z]{1,5}\b", q))
+    upper_typed = set(re.findall(r"\b[A-Z]{2,5}\b", q))   # symbols the operator capitalized themselves
     for k in _PRIVATE:
         if k in q.upper():
-            cand.add(k)
-    stop = {"R", "RR", "AI", "USD", "IRA", "ETF", "CIO", "BUY", "SELL", "P", "L"}
-    return [c for c in cand if c not in stop]
+            tokens.add(k)
+    out = []
+    for c in tokens:
+        if c in _STOP:
+            continue
+        if c in known or c in _PRIVATE or c in upper_typed:
+            out.append(c)
+    return out
 
 
 def _position(sym, holdings, total):
@@ -54,8 +68,16 @@ def _position(sym, holdings, total):
     if not rows:
         return None
     val = sum(float(r.get("market_value") or 0) for r in rows)
-    return {"value": round(val), "pct": round(val / total * 100, 2) if total else 0,
-            "accounts": sorted({r.get("account") for r in rows})}
+    sh = sum(float(r.get("shares") or 0) for r in rows)
+    cb = sum(float(r.get("cost_basis") or 0) for r in rows)
+    px = next((float(r["price"]) for r in rows if r.get("price")), None)
+    by_acct = [{"account": r.get("account"), "shares": round(float(r.get("shares") or 0), 4),
+                "value": round(float(r.get("market_value") or 0)),
+                "price": (round(float(r["price"]), 2) if r.get("price") else None)} for r in rows]
+    return {"value": round(val), "shares": round(sh, 4), "price": (round(px, 2) if px else None),
+            "cost_basis": round(cb), "unrealized_pnl": round(val - cb),
+            "pct": round(val / total * 100, 2) if total else 0,
+            "accounts": sorted({r.get("account") for r in rows}), "by_account": by_acct}
 
 
 def gather_context(question: str) -> dict:
@@ -65,9 +87,14 @@ def gather_context(question: str) -> dict:
     lt = _load(STATE / "lookthrough_themes.json", {})
     lt_top = {t["symbol"]: t for t in lt.get("top_underlying", [])}
 
+    # symbols the operator actually has data for — lets lowercase tokens ('xlb') resolve to real tickers
+    known = {(h.get("symbol") or "").upper() for h in holdings if h.get("symbol")}
+    known |= set(pills.keys())
+    known |= {str(s).upper() for s in lt_top.keys()}
+
     positions = []
     seen_private = set()
-    for sym in _tickers(question):
+    for sym in _tickers(question, known):
         if sym in _PRIVATE:
             if _PRIVATE[sym] in seen_private:
                 continue
@@ -80,7 +107,8 @@ def gather_context(question: str) -> dict:
         pa = pills.get(sym)
         analyst = None
         if pa:
-            cur = pa.get("current_price"); tgt = pa.get("target_mean_price")
+            # prefer the live holdings price over the analyst snapshot's (stale) current_price for upside
+            cur = (pos or {}).get("price") or pa.get("current_price"); tgt = pa.get("target_mean_price")
             analyst = {"rating": pa.get("recommendation_key"), "n": pa.get("number_of_analyst_opinions"),
                        "current": cur, "target_mean": tgt, "target_low": pa.get("target_low_price"),
                        "target_high": pa.get("target_high_price"),
