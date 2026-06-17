@@ -1,0 +1,29 @@
+{
+  "version": "2026-06-16",
+  "purpose": "ETF and fund classification overrides used by symbol-card validation and rotation intelligence. Advisory metadata only; no broker execution behavior.",
+  "symbols": {
+    "XLI": {"asset_class": "sector_etf", "sector": "Industrials", "analyst_required": false, "notes": "SPDR Select Sector Fund - Industrials"},
+    "XLE": {"asset_class": "sector_etf", "sector": "Energy", "analyst_required": false, "notes": "SPDR Select Sector Fund - Energy"},
+    "XLK": {"asset_class": "sector_etf", "sector": "Technology", "analyst_required": false, "notes": "SPDR Select Sector Fund - Technology"},
+    "XLF": {"asset_class": "sector_etf", "sector": "Financials", "analyst_required": false, "notes": "SPDR Select Sector Fund - Financials"},
+    "XLV": {"asset_class": "sector_etf", "sector": "Healthcare", "analyst_required": false, "notes": "SPDR Select Sector Fund - Healthcare"},
+    "XLY": {"asset_class": "sector_etf", "sector": "Consumer Discretionary", "analyst_required": false, "notes": "SPDR Select Sector Fund - Consumer Discretionary"},
+    "XLP": {"asset_class": "sector_etf", "sector": "Consumer Staples", "analyst_required": false, "notes": "SPDR Select Sector Fund - Consumer Staples"},
+    "XLU": {"asset_class": "sector_etf", "sector": "Utilities", "analyst_required": false, "notes": "SPDR Select Sector Fund - Utilities"},
+    "XLB": {"asset_class": "sector_etf", "sector": "Materials", "analyst_required": false, "notes": "SPDR Select Sector Fund - Materials"},
+    "XLRE": {"asset_class": "sector_etf", "sector": "Real Estate", "analyst_required": false, "notes": "SPDR Select Sector Fund - Real Estate"},
+    "XLC": {"asset_class": "sector_etf", "sector": "Communication Services", "analyst_required": false, "notes": "SPDR Select Sector Fund - Communication Services"},
+    "SPY": {"asset_class": "broad_index_etf", "sector": "Broad Market", "analyst_required": false},
+    "QQQ": {"asset_class": "broad_index_etf", "sector": "Technology / Growth", "analyst_required": false},
+    "DIA": {"asset_class": "broad_index_etf", "sector": "Broad Market", "analyst_required": false},
+    "IWM": {"asset_class": "broad_index_etf", "sector": "Small Cap", "analyst_required": false},
+    "VTI": {"asset_class": "broad_index_etf", "sector": "Broad Market", "analyst_required": false},
+    "VOO": {"asset_class": "broad_index_etf", "sector": "Broad Market", "analyst_required": false},
+    "AGG": {"asset_class": "bond_etf", "sector": "Fixed Income", "analyst_required": false},
+    "BND": {"asset_class": "bond_etf", "sector": "Fixed Income", "analyst_required": false},
+    "TLT": {"asset_class": "bond_etf", "sector": "Fixed Income", "analyst_required": false},
+    "VCIT": {"asset_class": "bond_etf", "sector": "Fixed Income", "analyst_required": false},
+    "VGSH": {"asset_class": "bond_etf", "sector": "Fixed Income", "analyst_required": false},
+    "SPCX": {"asset_class": "thematic_interval_fund", "sector": "Space / Private Growth", "analyst_required": false, "notes": "Private/space exposure proxy; use fund thesis and risk memo instead of equity analyst consensus"}
+  }
+}
