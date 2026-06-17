@@ -20,13 +20,28 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
-def _first_sentence(text, maxlen=180):
+# ETFs have no sector in yfinance .info — give the card a real sector so it shows sector + vs-sector.
+# Mirrors open_trades_intelligence._ETF_SECTOR (reference data, kept in sync).
+_ETF_SECTOR = {
+    "XLK": "Technology", "XLF": "Financial", "XLV": "Healthcare", "XLE": "Energy",
+    "XLI": "Industrials", "XLB": "Materials", "XLU": "Utilities", "XLP": "Consumer Defensive",
+    "XLY": "Consumer Cyclical", "XLRE": "Real Estate", "XLC": "Communication Services",
+    "BND": "Fixed Income", "AGG": "Fixed Income", "TLT": "Fixed Income", "BNDX": "Fixed Income", "LQD": "Fixed Income",
+    "JEPI": "Income / Covered Call", "JEPQ": "Income / Covered Call",
+    "SCHD": "Dividend Equity", "DGRO": "Dividend Equity", "VYM": "Dividend Equity", "DIV": "Dividend Equity", "SCHG": "Growth Equity",
+    "SPY": "Broad Equity", "VOO": "Broad Equity", "VTI": "Broad Equity", "QQQ": "Broad Equity", "IWM": "Broad Equity",
+    "ARKG": "Healthcare", "ARKK": "Innovation", "ARKQ": "Innovation", "ARKW": "Innovation", "ARKF": "Innovation",
+}
+
+
+def _two_line_summary(text, maxlen=300):
+    """First TWO sentences of the business summary — a ~two-line 'what the company does' blurb."""
     if not text:
         return None
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    s = parts[0]
-    if len(s) < 40 and len(parts) > 1:      # "Visa Inc." alone says nothing — take the next sentence too
-        s = f"{s} {parts[1]}"
+    s = " ".join(parts[:2]).strip() if parts else ""
+    if not s:
+        return None
     return (s[: maxlen - 1] + "…") if len(s) > maxlen else s
 
 
@@ -61,9 +76,9 @@ def run(symbols=None, force=False):
             info = yf.Ticker(sym).info or {}
         except Exception:
             info = {}
-        desc = _first_sentence(info.get("longBusinessSummary"))
-        sector = info.get("sector") or None
-        industry = info.get("industry") or None
+        desc = _two_line_summary(info.get("longBusinessSummary"))
+        sector = info.get("sector") or _ETF_SECTOR.get(sym) or None   # ETFs have no yfinance sector
+        industry = info.get("industry") or ("Exchange Traded Fund" if sym in _ETF_SECTOR else None)
         if not (desc or sector):
             missed += 1
             continue
