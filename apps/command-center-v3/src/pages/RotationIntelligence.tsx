@@ -137,7 +137,15 @@ export default function RotationIntelligence() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, backend }),
       })
-      const json: AskResult = await res.json()   // RAW advisor JSON (not wrapped)
+      // RAW advisor JSON (not wrapped). Parse defensively — a slow local-model call can return an
+      // empty/truncated body; never surface "Unexpected end of JSON input".
+      const text = await res.text()
+      let json: AskResult
+      try {
+        json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — the local model likely timed out under GPU load. Try again, or use Build Grok OAuth Prompt (instant).' }
+      } catch {
+        json = { ok: false, error: 'Advisor returned a non-JSON / truncated response (local model busy). Use Build Grok OAuth Prompt for an instant result.' }
+      }
       if (json && json.ok === false) {
         setAskError(`Advisor error: ${json.error ?? `HTTP ${res.status}`}`)
       }
@@ -161,7 +169,10 @@ export default function RotationIntelligence() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question }),
       })
-      const json: GrokPromptResult = await res.json()   // RAW (not wrapped)
+      const text = await res.text()   // RAW (not wrapped); parse defensively
+      let json: GrokPromptResult
+      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — try again.' } }
+      catch { json = { ok: false, error: 'Non-JSON response — try again.' } }
       if (json && json.ok === false) setAskError(`Grok prompt error: ${json.error ?? `HTTP ${res.status}`}`)
       setGrokPrompt(json)
     } catch (err) {
