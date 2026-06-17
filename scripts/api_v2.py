@@ -18937,7 +18937,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "question required"}
                 root = PROJECT_ROOT
                 cards = str(root / "data" / "runtime" / "symbol_cards_latest.json")
-                if backend == "dual_oauth":
+                if backend == "grounded":
+                    # INSTANT grounded answer — dual advisor with --skip-local (no local model wait).
+                    backend = "grounded"
+                    cmd = [sys.executable, str(root / "scripts" / "rotation_dual_llm_advisor.py"),
+                           "--question", question, "--cards", cards, "--skip-local", "--json"]
+                elif backend == "dual_oauth":
                     cmd = [sys.executable, str(root / "scripts" / "rotation_dual_llm_advisor.py"),
                            "--question", question, "--cards", cards, "--json"]
                 elif backend == "oauth_prompt":

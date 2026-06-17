@@ -127,10 +127,10 @@ export default function RotationIntelligence() {
     }
   }
 
-  async function ask(backend: 'local' | 'dual_oauth') {
-    setBusy(backend === 'local' ? 'Ask Local' : 'Run Dual Review')
+  async function ask(backend: 'grounded' | 'local' | 'dual_oauth') {
+    setBusy(backend === 'grounded' ? 'Ask Local (grounded)' : backend === 'local' ? 'Validate with local model' : 'Run Dual Review')
     setAskError('')
-    setResult(null)
+    if (backend !== 'local') setResult(null)   // keep grounded result on screen while local validation runs
     try {
       const res = await fetch('/api/v2/rotation/ask', {
         method: 'POST',
@@ -245,16 +245,16 @@ export default function RotationIntelligence() {
           }}
         />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button disabled={!!busy} onClick={() => ask('local')} style={btn(!!busy)}>Ask Local</button>
+          <button disabled={!!busy} onClick={() => ask('grounded')} style={btn(!!busy)}>Ask Local</button>
           <button disabled={!!busy} onClick={buildGrokPrompt} style={btn(!!busy)}>Build Grok OAuth Prompt</button>
+          <button disabled={!!busy || !result} onClick={() => ask('local')} style={btn(!!busy || !result)} title={!result ? 'Ask Local first, then optionally validate with the local model' : ''}>Validate with local model</button>
           <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
           <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
-          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy === 'Ask Local' || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
+          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy.includes('local model') || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
-          <b>Build Grok OAuth Prompt</b> is instant. <b>Ask Local</b> / <b>Run Dual Review</b> run the local model and can take 1–3 minutes when the GPU is busy.
-          Grok is free / OAuth / manual-paste only — no API key is used. The advisor reviews holdings and offers a second opinion;
-          it never places, buys, or sells anything.
+          <b>Ask Local</b> returns the grounded review instantly. <b>Validate with local model</b> and <b>Run Dual Review</b> run the local model (1–3 min under GPU load) for an extra opinion; <b>Build Grok OAuth Prompt</b> is instant.
+          Grok is free / OAuth / manual-paste only — no API key is used. The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
         </div>
         {askError && (
           <div style={{ marginTop: 10, fontSize: 11, color: '#ef4444' }}>
