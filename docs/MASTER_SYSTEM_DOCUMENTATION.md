@@ -479,8 +479,10 @@ upside is recomputed against the live holdings price, not the stale analyst-snap
 `POST /api/v2/strategy/{plan,approve}`) — interactive "declare → impact → advise → approve→sync" loop
 (2026-06-17). (1) **Declare** an intent (roll account→cash, trim, deploy cash, rebalance). (2) **Impact**
 (what-if, read-only): exact **look-through theme delta** computed from `lookthrough_themes.json`
-`accounts_detail` (per-account exposure), account refactor, cash freed + cash-% shift, and income/goal hit
-vs the **$55k** target. (3) **Advise**: goal-aligned redeploy plan via the free LLM lane (income-gap / Roth
+`accounts_detail` (per-account exposure), account refactor, cash freed + cash-% shift, and a **precise
+per-holding income hit** (Σ market_value × dividend yield% from the authoritative `dividend_calendar`; the
+raw `ticker_dividend_data` feed is rejected for systematically inflated yields, and tax-deferred 401k funds
+correctly show no spendable distribution) vs the **$55k** target. (3) **Advise**: goal-aligned redeploy plan via the free LLM lane (income-gap / Roth
 golden-window / defense-thesis aware) + Hermes-ranked watchlist candidates. (4) **Approve** → persists to
 `strategy_plans` **and syncs both ways**: LEARNING (`llm_feedback_observations`, `workflow=strategy_plan`)
 so the approved direction trains the models, and DISCOVERY (auto-creates operator **`watch_directives`**
