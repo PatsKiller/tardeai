@@ -152,7 +152,6 @@ def extract_symbols(question: str, known_symbols: set[str] | None = None) -> lis
     raw = {t for t in tokens if t not in SYMBOL_STOPWORDS}
     if known_symbols:
         known = {s.upper() for s in known_symbols}
-        # Keep known symbols plus plausible ticker-like tokens not in the stoplist.
         raw = {t for t in raw if t in known or re.fullmatch(r"[A-Z]{1,5}|[0-9]{3,6}", t)}
     return sorted(raw)
 
@@ -388,6 +387,7 @@ def validate_llm_answer(answer: str, grounding: dict[str, Any]) -> dict[str, Any
     issues: list[str] = []
     lower = answer.lower()
     if grounding.get("no_model_supported_action"):
+        issues.append("no_model_supported_action_requires_grounded_answer")
         if re.search(r"\b\d{1,2}\s*[-–]\s*\d{1,2}\s*%", answer) or re.search(r"\b\d{1,2}\s*%", answer):
             issues.append("numeric_range_without_model_supported_action")
     if grounding.get("missing_flags") and "no missing data" in lower:
@@ -399,7 +399,6 @@ def validate_llm_answer(answer: str, grounding: dict[str, Any]) -> dict[str, Any
     for token in re.findall(r"\b[A-Z0-9]{2,6}\b", answer.upper()):
         if token in SYMBOL_STOPWORDS:
             continue
-        # Unknown uppercase tokens in the answer are suspicious when they are not in the grounded question symbols.
         if token not in allowed_symbols and token in {"TRIM", "REVIEW"}:
             issues.append(f"answer_treated_action_word_as_symbol_{token}")
 
@@ -458,6 +457,7 @@ def main() -> int:
 
     if args.backend in {"prompt_only", "oauth_prompt"}:
         result["answer"] = None
+        result["answer_mode"] = "prompt_only"
         result["instructions"] = "Send prompt_path content to the OAuth/cloud LLM channel for external review. No broker action is authorized."
     else:
         raw_answer = call_local_llm(prompt, timeout=args.timeout, fallback=(args.backend == "auto"))
@@ -466,8 +466,10 @@ def main() -> int:
         result["llm_answer_raw"] = raw_answer
         if validation["ok"] or args.allow_ungrounded_llm:
             result["answer"] = raw_answer
+            result["answer_mode"] = "llm_raw"
         else:
             result["answer"] = grounded_answer + "\n\nLocal LLM answer was withheld because validation flagged: " + ", ".join(validation["issues"])
+            result["answer_mode"] = "grounded"
 
     print(json.dumps(result, indent=2, sort_keys=True) if args.json else result.get("answer") or json.dumps(result, indent=2, sort_keys=True))
     return 0
