@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-17 - Unified card enrichment: 2-line blurbs, fund sectors, Hermes-rank sweep priority
+
+Watchlist & Portfolio card-layer improvements. Commits `25fc0d70` + `84533b02` (profiles),
+`2be1d626` (stale flag), `bc985555` (sweep priority).
+
+- **Two-line company blurb + ETF/fund sectors** (`build_symbol_profiles.py`): the unified card layer
+  (`symbol_profiles` → `/api/v2/symbol-cards`, rendered on Watchlist / Portfolio / Open-Trades) now shows
+  a two-sentence "what it does" blurb. ETFs (no yfinance sector) get `_ETF_SECTOR` (SPDRs→GICS sector,
+  broad/bond/income→asset-class label); open-end mutual funds get `_FUND_SECTOR` (Morningstar-style
+  category, e.g. FCNTX→Large-Cap Growth). Profiled screener names (JRSH, SPAI) that had no card data.
+  Refreshed all 94 existing profiles + every held symbol; weekly cron (Sun 19:00) keeps it fresh. Opaque
+  401k fund codes / delisted CUSIPs stay blank (no name source).
+- **AI-enrichment stale flag tightened 2h → 1h** (`WatchlistHub.tsx`): added `enrichColor` (green ≤1h)
+  for the "AI Enriched" metric so its color matches the flag; "Validated" keeps the daily-cadence color.
+- **Hermes-rank sweep priority** (`watchlist_enrichment_sweep.py`): no-directive *researched* cards (e.g.
+  ELVN #3, SNOW) sat behind the 3,300-item stalest-first rotation and went 24–48h stale. Two-tier now —
+  PRIORITY pool (directive/active/`hermes_rank<=150`, ~162 items, ~135/run → ~36-min cycle) keeps visible
+  cards under the 1h flag; reserved TAIL slice (cap//4) rotates the rest so nothing starves (cap 150→180).
+  Verified live: ELVN 21.6h→fresh, SNOW 42h→fresh, sweep enriched 174/174.
+
 ## 2026-06-16 - Data-accuracy fixes: ETF sectors, worthless equities, analyst upside, regime, ask-agents
 
 Position-card and advisor accuracy fixes surfaced from an operator review of Trading → Open Trades.
