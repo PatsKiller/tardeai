@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-17 - Strategy Planner UI redesign (live context + guided before→after flow)
+
+The Planner was a bare form with no context. Rebuilt `StrategyPlanner.tsx` (commit `2eca90e2`):
+- Live **"Current — <account>"** panel (value + top holdings, updates with the account dropdown).
+- Resolved $ amounts ("sell all 10 positions in fidelity_401k = $573,968"); trims get a holding picker
+  with per-position values + a max.
+- Guided **4-step flow** (Declare · Impact · Redeploy plan · Approve) with numbered step chips.
+- Impact rendered as **before→after** metric cards (cash weight, income lost, account-after) + the
+  per-holding income breakdown + look-through delta in a 2-col grid. Fixed a nonsense "$0 →" income render.
+- Frontend-only; backend `/api/v2/strategy/{plan,approve}` unchanged.
+
 ## 2026-06-17 - Interactive Strategy Planner (declare → impact → advise → approve→sync)
 
 New **Strategy hub → Planner tab** (`/v3/strategy`) — the operator's "interactive strategy" loop.

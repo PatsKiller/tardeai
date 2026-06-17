@@ -487,7 +487,11 @@ golden-window / defense-thesis aware) + Hermes-ranked watchlist candidates. (4) 
 `strategy_plans` **and syncs both ways**: LEARNING (`llm_feedback_observations`, `workflow=strategy_plan`)
 so the approved direction trains the models, and DISCOVERY (auto-creates operator **`watch_directives`**
 that seed the discovery engine + watchlist sweep). Closes the loop **strategy → discovery → watchlist →
-proposal**. Advisory + read-only — approval seeds discovery, never places a trade.
+proposal**. Advisory + read-only — approval seeds discovery, never places a trade. **UI (`StrategyPlanner.tsx`,
+redesigned 2026-06-17):** the declare form sits beside a **live "Current — <account>" panel** (value + top
+holdings from `/api/v2/portfolio/holdings`), resolves the dollar amount in place ("sell all 10 positions in
+fidelity_401k = $573,968"), gives trims a holding picker, and renders the result as a guided 4-step flow with
+**before→after** metric cards (cash weight, income lost, account-after) + the per-holding income breakdown.
 
 **IPO lockups** (`config/ipo_lockups.json` from the primary **S-1 on SEC EDGAR**; `ipo_lockups.py`) — when
 insiders can sell, by tranche. `ipo_lockup_alert.py` fires Telegram 14d before each unlock;
