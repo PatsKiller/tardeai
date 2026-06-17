@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-17 - Rotation Intelligence: Command Center v3 feature + polish
+
+New advisory-only Rotation Intelligence feature in v3 (commits `d419d240` → `d7f6c699`). Grounded local
+review + free/OAuth Grok second opinion; no broker action, no API keys, no paid Grok/xAI API.
+
+- **Pages/nav:** `/v3/rotation` (Rotation Intelligence) + `/v3/advisor-changes` (Advisor Changes), nav items
+  Rotation + Advisor Changes; Intelligence-hub Rotation tab; Portfolio-hub Rotation Advisor card + per-holding
+  `?question=` prefill.
+- **API:** `GET /api/v2/rotation/summary` (cached engine run), `POST /api/v2/rotation/ask`
+  (grounded/local/oauth_prompt/dual_oauth, safe subprocess args + timeout), `POST /api/v2/rotation/grok-prompt`
+  (manual prompt), `POST /api/v2/rotation/grok-review` (**inline** free/OAuth Grok via the local proxy —
+  no API key, no paid API; grounding stays authoritative; manual-paste fallback).
+- **Polish:** "Ask Local" is grounded-first (instant ~1s) with optional "Validate with local model";
+  Grok review runs inline (was copy-paste); empty "— → —" idea cards fixed (engine candidates are per-symbol,
+  not pairs → real empty-state + a Review Candidates grid); worthless/delisted ($0) candidates filtered;
+  candidate sectors backfilled from `symbol_profiles`; "Missing Analyst Upside" card wired (held tickers with
+  no `analyst.upside_pct`); defensive JSON parsing so a slow/empty advisor reply never crashes the UI.
+- The hardened `rotation_dual_llm_advisor.py` still never calls Grok over an API — the inline call lives only
+  in the API layer via the free OAuth proxy. Full detail: `docs/project/ROTATION_LLM_ADVISOR.md`.
+
 ## 2026-06-17 - Strategy Planner UI redesign (live context + guided before→after flow)
 
 The Planner was a bare form with no context. Rebuilt `StrategyPlanner.tsx` (commit `2eca90e2`):
