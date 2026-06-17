@@ -51,8 +51,11 @@ type AskResult = {
 type GrokPromptResult = {
   ok?: boolean
   advisory_only?: boolean
+  grok_available?: boolean
+  grok_answer?: string
   prompt_text?: string
   prompt_path?: string
+  note?: string
   error?: string
 }
 
@@ -160,23 +163,25 @@ export default function RotationIntelligence() {
     }
   }
 
-  async function buildGrokPrompt() {
-    setBusy('Build Grok OAuth Prompt')
+  // Inline free/OAuth Grok second opinion (runs via the local OAuth proxy — no API key, no paid API).
+  // Falls back to the manual paste prompt if the proxy is not authenticated.
+  async function runGrokReview() {
+    setBusy('Run Grok Review')
     setAskError('')
     try {
-      const res = await fetch('/api/v2/rotation/grok-prompt', {
+      const res = await fetch('/api/v2/rotation/grok-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question }),
       })
       const text = await res.text()   // RAW (not wrapped); parse defensively
       let json: GrokPromptResult
-      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — try again.' } }
+      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — Grok proxy may be busy. Try again.' } }
       catch { json = { ok: false, error: 'Non-JSON response — try again.' } }
-      if (json && json.ok === false) setAskError(`Grok prompt error: ${json.error ?? `HTTP ${res.status}`}`)
+      if (json && json.ok === false) setAskError(`Grok review error: ${json.error ?? `HTTP ${res.status}`}`)
       setGrokPrompt(json)
     } catch (err) {
-      setAskError(`Grok prompt request failed: ${err instanceof Error ? err.message : String(err)}`)
+      setAskError(`Grok review request failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setBusy('')
     }
@@ -199,9 +204,11 @@ export default function RotationIntelligence() {
   const noIdeas = ideas.length === 0 && pairs.length === 0
   const candidates = (data?.top_candidates ?? []) as any[]
 
+  const grokAnswer = grokPrompt?.grok_answer
+  const grokNote = grokPrompt?.note
   const promptText = grokPrompt?.prompt_text
   const promptPath = grokPrompt?.prompt_path || result?.grok_oauth_prompt_path
-  const hasGrok = Boolean(promptText || promptPath)
+  const hasGrok = Boolean(grokAnswer || promptText || promptPath)
 
   async function copyPrompt() {
     if (!promptText) return
@@ -257,15 +264,15 @@ export default function RotationIntelligence() {
         />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button disabled={!!busy} onClick={() => ask('grounded')} style={btn(!!busy)}>Ask Local</button>
-          <button disabled={!!busy} onClick={buildGrokPrompt} style={btn(!!busy)}>Build Grok OAuth Prompt</button>
+          <button disabled={!!busy} onClick={runGrokReview} style={btn(!!busy)}>Run Grok Review</button>
           <button disabled={!!busy || !result} onClick={() => ask('local')} style={btn(!!busy || !result)} title={!result ? 'Ask Local first, then optionally validate with the local model' : ''}>Validate with local model</button>
           <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
           <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
           {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy.includes('local model') || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
-          <b>Ask Local</b> returns the grounded review instantly. <b>Validate with local model</b> and <b>Run Dual Review</b> run the local model (1–3 min under GPU load) for an extra opinion; <b>Build Grok OAuth Prompt</b> is instant.
-          Grok is free / OAuth / manual-paste only — no API key is used. The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
+          <b>Ask Local</b> returns the grounded review instantly. <b>Run Grok Review</b> gets a second opinion inline via the free Grok OAuth proxy. <b>Validate with local model</b> / <b>Run Dual Review</b> run the local model (1–3 min under GPU load).
+          Grok runs on a free / OAuth session — <b>no API key, no paid API</b> (manual-paste fallback if the proxy is offline). The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
         </div>
         {askError && (
           <div style={{ marginTop: 10, fontSize: 11, color: '#ef4444' }}>
@@ -351,40 +358,36 @@ export default function RotationIntelligence() {
         </section>
       )}
 
-      {/* E. Copy-to-Grok panel */}
+      {/* E. Grok second opinion (inline free/OAuth) — manual paste is the fallback */}
       {hasGrok && (
         <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(245,158,11,.3)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok OAuth Prompt</div>
-          <div style={{ fontSize: 10.5, color: 'var(--text2)', marginBottom: 10 }}>
-            Paste this into Grok using free/OAuth login. No API key is used.
-          </div>
-          {promptPath && (
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
-              Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span>
-            </div>
-          )}
-          {promptText ? (
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok Second Opinion <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· free / OAuth · no API key</span></div>
+          {grokAnswer ? (
             <>
-              <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 10, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>
-                {copied ? 'Copied ✓' : 'Copy Grok Prompt'}
-              </button>
-              <textarea
-                readOnly
-                value={promptText}
-                rows={10}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10.5, fontFamily: 'monospace',
-                  background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical',
-                }}
-              />
+              <div style={{ fontSize: 12.5, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>{grokAnswer}</div>
+              <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 6 }}>{grokNote ?? 'Free/OAuth Grok via the local proxy. Grounding remains authoritative — this is advisory only.'}</div>
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>view / copy the prompt that was sent</summary>
+                {promptPath && <div style={{ fontSize: 9.5, color: 'var(--text3)', margin: '6px 0' }}>Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span></div>}
+                {promptText && <>
+                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 8, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Grok Prompt'}</button>
+                  <textarea readOnly value={promptText} rows={8} style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical' }} />
+                </>}
+              </details>
             </>
           ) : (
-            <div>
-              <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 4 }}>Read the generated prompt with:</div>
-              <pre style={{ fontSize: 10.5, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', padding: 10, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
-                cat "{promptPath}"
-              </pre>
-            </div>
+            <>
+              <div style={{ fontSize: 10.5, color: 'var(--text2)', marginBottom: 10 }}>{grokNote ?? 'Grok proxy offline — paste this into Grok using free/OAuth login. No API key is used.'}</div>
+              {promptPath && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span></div>}
+              {promptText ? (
+                <>
+                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 10, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Grok Prompt'}</button>
+                  <textarea readOnly value={promptText} rows={10} style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10.5, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical' }} />
+                </>
+              ) : (
+                <pre style={{ fontSize: 10.5, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', padding: 10, borderRadius: 8, whiteSpace: 'pre-wrap' }}>cat "{promptPath}"</pre>
+              )}
+            </>
           )}
         </section>
       )}

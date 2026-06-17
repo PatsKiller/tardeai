@@ -251,6 +251,7 @@ fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 | `GET /api/v2/rotation/summary` | Runs the local `rotation_intelligence_engine.py` (cached 5 min) → `{ ok, advisory_only, summary, data_quality, missing_sector, top_rotation_ideas, top_pairs }`. |
 | `POST /api/v2/rotation/ask` | Body `{ question, backend }`, backend ∈ `grounded`/`local`/`oauth_prompt`/`dual_oauth`. Runs the matching advisor script via **safe subprocess list-args + hard timeout**, returns parsed JSON; `stderr_tail` only on error. `grounded` = instant grounded answer (dual advisor `--skip-local`, no local-model wait — this is what the UI "Ask Local" button uses); `local`/`dual_oauth` run the local model (slow under GPU load) for an extra opinion. |
 | `POST /api/v2/rotation/grok-prompt` | Runs `rotation_dual_llm_advisor.py --skip-local --print-grok-prompt` → `{ ok, advisory_only, prompt_text, prompt_path }` for manual paste. |
+| `POST /api/v2/rotation/grok-review` | **Inline** free/OAuth Grok second opinion: builds the grounded prompt, then runs it through the **local Grok OAuth proxy** (`llm_lane lane='grok'`) — **no API key, no paid xAI API**, just the authenticated free OAuth session. Returns `{ ok, advisory_only, grok_answer, prompt_path }`; falls back to `{ grok_available:false, prompt_text }` (manual paste) if the proxy is offline. Grounding stays authoritative; never calls a broker. |
 
 ### Pages
 

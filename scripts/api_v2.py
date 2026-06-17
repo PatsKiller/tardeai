@@ -19005,6 +19005,51 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/rotation/grok-review":
+            # INLINE free/OAuth Grok second opinion via the LOCAL Grok OAuth proxy (llm_lane lane='grok').
+            # NO API key, NO paid xAI API — it rides the authenticated free OAuth session. Grounding stays
+            # authoritative; Grok is an advisory second opinion only. Falls back to manual paste if the proxy
+            # is not authenticated. Never calls a broker.
+            try:
+                import subprocess as _sp, sys
+                b = body or {}
+                question = (b.get("question") or "Should I trim XLB for SPCX? How much should I trim?").strip()
+                root = PROJECT_ROOT
+                cards = str(root / "data" / "runtime" / "symbol_cards_latest.json")
+                # 1) build the grounded prompt (no local model)
+                r = _sp.run([sys.executable, str(root / "scripts" / "rotation_dual_llm_advisor.py"),
+                             "--question", question, "--cards", cards, "--skip-local", "--print-grok-prompt"],
+                            capture_output=True, text=True, timeout=90, cwd=str(root))
+                text = r.stdout or ""
+                path, body_lines, capture = "", [], False
+                for ln in text.splitlines():
+                    if ln.startswith("Prompt file:"):
+                        path = ln.split("Prompt file:", 1)[1].strip()
+                    elif ln.startswith("===== COPY BELOW INTO GROK"):
+                        capture = True
+                    elif ln.startswith("===== END GROK PROMPT"):
+                        capture = False
+                    elif capture:
+                        body_lines.append(ln)
+                prompt = "\n".join(body_lines).strip()
+                if not prompt:
+                    return 200, {"ok": False, "advisory_only": True, "error": "could not build Grok prompt",
+                                 "prompt_text": text, "prompt_path": path}
+                # 2) run via the FREE Grok OAuth proxy; manual-paste fallback if not authenticated
+                import sys as _s
+                _s.path.insert(0, str(root / "scripts"))
+                import llm_lane
+                if not llm_lane.available("grok"):
+                    return 200, {"ok": True, "advisory_only": True, "grok_available": False,
+                                 "prompt_text": text, "prompt_path": path,
+                                 "note": "Grok OAuth proxy not authenticated — paste the prompt into Grok manually (free/OAuth, no API key)."}
+                grok_answer = llm_lane.generate(prompt, lane="grok", timeout=120)
+                return 200, {"ok": True, "advisory_only": True, "grok_available": True,
+                             "grok_answer": str(grok_answer).strip(), "prompt_path": path, "prompt_text": text,
+                             "note": "Free/OAuth Grok second opinion via the local OAuth proxy — no API key, no paid API. Grounding remains authoritative."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/strategy/plan":
             # Interactive strategy planner — what-if impact (+ goal-aligned redeploy advice).
             try:
