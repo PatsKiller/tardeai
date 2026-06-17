@@ -112,6 +112,7 @@ export default function RotationIntelligence() {
   const [question, setQuestion] = useState('Should I trim XLB for SPCX? How much should I trim?')
   const [busy, setBusy] = useState<string>('')   // which action is running
   const [result, setResult] = useState<AskResult | null>(null)
+  const [rebalReview, setRebalReview] = useState<{ grok_answer?: string; note?: string; error?: string } | null>(null)
   const [askError, setAskError] = useState<string>('')
   const [grokPrompt, setGrokPrompt] = useState<GrokPromptResult | null>(null)
   const [copied, setCopied] = useState(false)
@@ -185,6 +186,25 @@ export default function RotationIntelligence() {
       setGrokPrompt(json)
     } catch (err) {
       setAskError(`Grok review request failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // Inline free/OAuth Grok review of the rebalance-from-research ideas.
+  async function runGrokRebalanceReview() {
+    setBusy('Grok Review Ideas'); setRebalReview(null)
+    try {
+      const res = await fetch('/api/v2/rotation/grok-rebalance-review', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      })
+      const text = await res.text()
+      let json: any
+      try { json = text ? JSON.parse(text) : { error: 'Empty response — Grok proxy may be busy. Try again.' } }
+      catch { json = { error: 'Non-JSON response — try again.' } }
+      setRebalReview(json)
+    } catch (err) {
+      setRebalReview({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       setBusy('')
     }
@@ -472,8 +492,23 @@ export default function RotationIntelligence() {
       {/* G. Rebalance from research (rotate into non-held names) — advisory */}
       {(researchIdeas.length > 0 || researchCands.length > 0) && (
         <section>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Rebalance from Research <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · not a model-supported signal</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Rebalance from Research <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · not a model-supported signal</span></div>
+            <span style={{ flex: 1 }} />
+            {researchIdeas.length > 0 && <button disabled={!!busy} onClick={runGrokRebalanceReview} style={btn(!!busy)}>{busy === 'Grok Review Ideas' ? 'Reviewing…' : 'Grok Review These Ideas'}</button>}
+          </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Ideas to rotate from a trim-worthy holding into a high-conviction <b>research name you don't hold</b>. Review only — confirm sizing, tax, and account fit yourself; nothing is placed.</div>
+
+          {rebalReview && (
+            <div style={{ ...card, marginBottom: 12, borderColor: 'rgba(245,158,11,.3)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok review of these ideas <span style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--text3)' }}>· free / OAuth · no API key</span></div>
+              {rebalReview.grok_answer ? (
+                <div style={{ fontSize: 12, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{rebalReview.grok_answer}</div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#ef4444' }}>{rebalReview.error ?? rebalReview.note ?? 'No review returned.'}</div>
+              )}
+            </div>
+          )}
 
           {researchIdeas.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12, marginBottom: 14 }}>
