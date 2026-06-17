@@ -1,0 +1,20 @@
+{
+  "version": "2026-06-16",
+  "purpose": "Manual Fidelity 401k/fund code mapping used by advisory rotation intelligence. Values are metadata only and never imply broker execution capability.",
+  "rules": [
+    "401k/fund codes are manual-only until mapped to a known fund name and exposure profile.",
+    "Unknown fund codes must not be treated as ticker symbols.",
+    "Rotation output using unknown fund codes is WATCH only until mapped by the operator."
+  ],
+  "codes": {
+    "3905": {
+      "display_name": "Fidelity fund code 3905 - mapping required",
+      "asset_class": "manual_401k_fund_unknown",
+      "sector": "Unknown 401k Fund",
+      "analyst_required": false,
+      "manual_only": true,
+      "mapping_status": "needs_operator_mapping",
+      "notes": "Replace this placeholder with the actual Fidelity fund name, ticker/proxy, asset class, sector exposure, Mag 7 exposure, income profile, and risk profile. Until then, recommendations involving 3905 should remain WATCH only."
+    }
+  }
+}
