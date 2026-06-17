@@ -4,25 +4,18 @@ Rotation Dual LLM Advisor
 
 Runs the grounded rotation advisor context through:
 1) the local LLM, and then
-2) Grok via xAI's OpenAI-compatible chat completions API.
+2) a free/OAuth Grok prompt file for manual paste into the Grok web/app channel.
 
-Final answer is still safety-gated by the deterministic grounding rules. Grok is
-used as a second-opinion reviewer, not an execution authority.
+No API keys. No paid xAI API call. No outbound HTTP request.
 
-Requirements:
-  export XAI_API_KEY="..."
-Optional:
-  export XAI_BASE_URL="https://api.x.ai/v1"
-  export XAI_GROK_MODEL="grok-4.3"
+Final answer is still safety-gated by deterministic grounding rules. Grok is a
+manual second-opinion reviewer, not an execution authority.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,74 +38,36 @@ from rotation_llm_advisor import (  # type: ignore
     validate_llm_answer,
 )
 
-DEFAULT_XAI_BASE_URL = "https://api.x.ai/v1"
-DEFAULT_XAI_MODEL = "grok-4.3"
 
+def build_grok_oauth_prompt(question: str, local_answer: str, grounded_answer: str, grounding: dict[str, Any]) -> str:
+    return f"""
+You are Grok acting as a free/OAuth second-opinion reviewer for my personal, advisory-only portfolio rotation workflow.
 
-def call_grok(prompt: str, local_answer: str, grounded_answer: str, grounding: dict[str, Any], timeout: int, model: str) -> dict[str, Any]:
-    api_key = os.getenv("XAI_API_KEY", "").strip()
-    if not api_key:
-        return {
-            "ok": False,
-            "error": "missing_XAI_API_KEY",
-            "answer": "Grok second opinion skipped because XAI_API_KEY is not set.",
-        }
+Rules:
+- Do not provide broker instructions.
+- Do not say an order should be placed.
+- Do not invent tax impact, account placement, position sizes, analyst upside, or trim amounts.
+- If the grounding report shows no supported trim/add/rotation signal, say the review range is unavailable.
+- Final class must be one of: HOLD, WATCH, ADD_REVIEW, TRIM_REVIEW, ROTATE_REVIEW, RESEARCH_MORE.
 
-    base = os.getenv("XAI_BASE_URL", DEFAULT_XAI_BASE_URL).rstrip("/")
-    url = f"{base}/chat/completions"
-    reviewer_prompt = f"""
-You are Grok acting as a second-opinion reviewer for an advisory-only portfolio rotation workflow.
+User question:
+{question}
 
-Do not provide broker instructions. Do not invent tax impact, account placement, position sizes, or trim amounts.
-
-Grounding report:
+Grounding report you must obey:
 {json.dumps(grounding, indent=2, sort_keys=True)}
 
 Deterministic grounded answer:
 {grounded_answer}
 
-Local LLM draft answer:
+Local LLM draft answer to review:
 {local_answer}
 
-Task:
-1. Identify whether the local answer overreaches beyond the grounding report.
+Your task:
+1. Identify where the local answer overreaches beyond the grounding report.
 2. Provide a corrected second-opinion answer.
-3. If no trim/add/rotation signal is supported, say range unavailable and recommend WATCH or RESEARCH_MORE only.
+3. If there is no model-supported action, keep the answer as WATCH or RESEARCH_MORE and state that the range is unavailable.
 4. Keep the answer concise and operator-ready.
 """.strip()
-
-    payload = json.dumps({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a strict second-opinion portfolio rotation reviewer. Advisory only."},
-            {"role": "user", "content": reviewer_prompt},
-        ],
-        "temperature": 0.2,
-    }).encode()
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
-        text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        return {
-            "ok": bool(text),
-            "model": data.get("model", model),
-            "answer": text,
-            "usage": data.get("usage", {}),
-        }
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode(errors="replace")[-2000:]
-        return {"ok": False, "error": f"http_{exc.code}", "answer": body}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc), "answer": "Grok second opinion failed."}
 
 
 def main() -> int:
@@ -122,9 +77,7 @@ def main() -> int:
     ap.add_argument("--cards", default=str(DEFAULT_CARDS))
     ap.add_argument("--min-pair-score", type=float, default=35.0)
     ap.add_argument("--local-timeout", type=int, default=300)
-    ap.add_argument("--grok-timeout", type=int, default=120)
-    ap.add_argument("--grok-model", default=os.getenv("XAI_GROK_MODEL", DEFAULT_XAI_MODEL))
-    ap.add_argument("--skip-local", action="store_true", help="Only build grounded answer and ask Grok")
+    ap.add_argument("--skip-local", action="store_true", help="Only build grounded answer and Grok OAuth prompt")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -140,6 +93,7 @@ def main() -> int:
     PROMPT_DIR.mkdir(parents=True, exist_ok=True)
     slug = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     prompt_path = PROMPT_DIR / f"rotation_dual_prompt_{slug}.md"
+    grok_oauth_prompt_path = PROMPT_DIR / f"rotation_grok_oauth_prompt_{slug}.md"
     prompt_path.write_text(prompt)
 
     if args.skip_local:
@@ -149,43 +103,46 @@ def main() -> int:
         local_answer = call_local_llm(prompt, timeout=args.local_timeout, fallback=False)
         local_validation = validate_llm_answer(local_answer, grounding)
 
-    grok = call_grok(
-        prompt=prompt,
+    grok_oauth_prompt = build_grok_oauth_prompt(
+        question=args.question,
         local_answer=local_answer,
         grounded_answer=grounded_answer,
         grounding=grounding,
-        timeout=args.grok_timeout,
-        model=args.grok_model,
     )
+    grok_oauth_prompt_path.write_text(grok_oauth_prompt)
 
-    # Final answer policy: no-action cases stay grounded. Grok/local are recorded as opinions.
+    # Final answer policy: no-action cases stay grounded. Grok OAuth is a manual second-opinion path.
     if grounding.get("no_model_supported_action"):
         final_answer = grounded_answer
         answer_mode = "grounded_no_supported_action"
-    elif grok.get("ok"):
-        final_answer = grok.get("answer", grounded_answer)
-        answer_mode = "grok_second_opinion"
     elif local_validation.get("ok"):
         final_answer = local_answer
-        answer_mode = "local_validated"
+        answer_mode = "local_validated_pending_grok_oauth_review"
     else:
         final_answer = grounded_answer
-        answer_mode = "grounded_fallback"
+        answer_mode = "grounded_pending_grok_oauth_review"
 
-    result = {
+    result: dict[str, Any] = {
         "ok": True,
         "advisory_only": True,
-        "backend": "local_plus_grok",
+        "backend": "local_plus_grok_oauth_prompt",
         "answer_mode": answer_mode,
         "answer": final_answer,
         "prompt_path": str(prompt_path),
+        "grok_oauth_prompt_path": str(grok_oauth_prompt_path),
+        "grok_oauth_instructions": "Open Grok with free/OAuth login, paste the grok_oauth_prompt_path content, and compare Grok's response to the grounded answer. No API key or paid API call is used.",
         "rotation_summary": rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {},
         "data_quality": rotation_report.get("data_quality", {}) if isinstance(rotation_report, dict) else {},
         "grounding_report": grounding,
         "grounded_answer": grounded_answer,
         "local_answer_raw": local_answer,
         "local_answer_validation": local_validation,
-        "grok_second_opinion": grok,
+        "grok_second_opinion": {
+            "mode": "oauth_prompt_manual",
+            "ok": None,
+            "answer": None,
+            "prompt_path": str(grok_oauth_prompt_path),
+        },
     }
 
     print(json.dumps(result, indent=2, sort_keys=True) if args.json else final_answer)
