@@ -248,7 +248,7 @@ fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 
 | Endpoint | Behavior |
 |---|---|
-| `GET /api/v2/rotation/summary` | Runs the local `rotation_intelligence_engine.py` (cached 5 min) → `{ ok, advisory_only, summary, data_quality, missing_sector, top_rotation_ideas, top_pairs }`. |
+| `GET /api/v2/rotation/summary` | Runs the local `rotation_intelligence_engine.py` (cached 5 min) → `{ ok, advisory_only, summary, data_quality, missing_sector, missing_analyst_upside, top_rotation_ideas, top_pairs, top_candidates }`. `missing_analyst_upside` = held tickers with no `analyst.upside_pct` (parallel to `missing_sector`). `top_pairs` = real from→to pairs only (empty → UI empty-state). `top_candidates` = per-symbol review/WATCH candidates (symbol + recommendation + add/trim scores); worthless/delisted rows (value < $1) are dropped and a missing `sector` is backfilled from `symbol_profiles`. |
 | `POST /api/v2/rotation/ask` | Body `{ question, backend }`, backend ∈ `grounded`/`local`/`oauth_prompt`/`dual_oauth`. Runs the matching advisor script via **safe subprocess list-args + hard timeout**, returns parsed JSON; `stderr_tail` only on error. `grounded` = instant grounded answer (dual advisor `--skip-local`, no local-model wait — this is what the UI "Ask Local" button uses); `local`/`dual_oauth` run the local model (slow under GPU load) for an extra opinion. |
 | `POST /api/v2/rotation/grok-prompt` | Runs `rotation_dual_llm_advisor.py --skip-local --print-grok-prompt` → `{ ok, advisory_only, prompt_text, prompt_path }` for manual paste. |
 | `POST /api/v2/rotation/grok-review` | **Inline** free/OAuth Grok second opinion: builds the grounded prompt, then runs it through the **local Grok OAuth proxy** (`llm_lane lane='grok'`) — **no API key, no paid xAI API**, just the authenticated free OAuth session. Returns `{ ok, advisory_only, grok_answer, prompt_path }`; falls back to `{ grok_available:false, prompt_text }` (manual paste) if the proxy is offline. Grounding stays authoritative; never calls a broker. |
@@ -257,11 +257,15 @@ fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 
 - **`/v3/rotation` — Rotation Intelligence** (`pages/RotationIntelligence.tsx`, nav "Rotation"): summary
   cards (Trim Review / Add Review / Rotation Ideas / Watch / Missing Sector / Missing Analyst Upside),
-  an Ask Advisor panel (Ask Local · Build Grok OAuth Prompt · Run Dual Review · Refresh Summary), a result
-  panel (answer_mode / answer / grounded_answer / validation / raw / grounding report), a Copy-to-Grok panel
-  ("Paste this into Grok using free/OAuth login. No API key is used."), and a Rotation Ideas section with
-  `WATCH/ADD_REVIEW/TRIM_REVIEW/ROTATE_REVIEW/RESEARCH_MORE` badges (empty → "No model-supported rotation
-  ideas. Continue WATCH / RESEARCH_MORE."). Accepts `?question=` to prefill.
+  an Ask Advisor panel — **Ask Local** (grounded-first, instant ~1s), **Run Grok Review** (inline free/OAuth
+  second opinion via the proxy), **Validate with local model** + **Run Dual Review** (optional slow local
+  model), **Refresh Summary** — a result panel (answer_mode / answer / grounded_answer / validation / raw /
+  grounding report), a **Grok Second Opinion** panel that shows Grok's inline answer (with a collapsible
+  view/copy-prompt fallback; full manual-paste view if the proxy is offline), and a Rotation Ideas section
+  with `WATCH/ADD_REVIEW/TRIM_REVIEW/ROTATE_REVIEW/RESEARCH_MORE` badges (empty → "No model-supported rotation
+  ideas. Continue WATCH / RESEARCH_MORE.") plus a **Review Candidates** grid (per-symbol, sector-enriched,
+  $0/delisted rows filtered). All advisor responses are parsed defensively (no JSON-crash on a slow/empty
+  reply). Accepts `?question=` to prefill.
 - **`/v3/advisor-changes` — Advisor Changes** (`pages/AdvisorChangesHub.tsx`, nav "Advisor Changes"): cards
   for the grounded advisor, local-LLM validation, Grok OAuth second opinion, Fidelity fund-code mapping,
   symbol-card quality, and the no-broker-action safety contract, each with source file + how-to-validate.
