@@ -17890,8 +17890,46 @@ def _rotation_summary():
                     break
         except Exception:
             research_candidates, research_ideas = [], []
+        # Sleeve overweight/underweight from the portfolio look-through vs operator comfort targets (advisory).
+        # Overweight excess seeds an advisory trim RANGE (operator-confirmed, never auto-placed).
+        sector_overweights, sector_underweights, pf_total = [], [], 0.0
+        _band = {"low_frac": 0.05, "high_frac": 0.15}
+        try:
+            _lt = _j.loads((root / "data" / "portfolios" / "state" / "lookthrough_themes.json").read_text())
+            pf_total = float(_lt.get("portfolio_total") or 0)
+            _tg = _j.loads((root / "config" / "rotation_sector_targets.json").read_text())
+            _dflt = float(_tg.get("default_comfort_pct") or 18)
+            _band = _tg.get("trim_band") or _band
+            _tmap = _tg.get("themes") or {}
+            for _name, _tv in (_lt.get("themes") or {}).items():
+                _pct = float(_tv.get("pct") or 0)
+                _cfg = _tmap.get(_name) or {}
+                _target = float(_cfg.get("target", _dflt))
+                _floor = float(_cfg.get("floor", 0))
+                if _pct - _target > 1.0:
+                    _ex = round(_pct - _target, 2)
+                    sector_overweights.append({
+                        "theme": _name, "pct": round(_pct, 2), "target": _target,
+                        "excess_pct": _ex, "excess_dollars": round(_ex / 100 * pf_total),
+                        "top_holdings": [s.get("symbol") for s in (_tv.get("by_stock") or [])[:5]]})
+                elif _floor and _pct < _floor - 0.5:
+                    sector_underweights.append({"theme": _name, "pct": round(_pct, 2), "floor": _floor,
+                                                "gap_pct": round(_floor - _pct, 2)})
+            sector_overweights.sort(key=lambda x: -x["excess_dollars"])
+        except Exception:
+            pass
+        # advisory trim RANGE per rebalance idea (5-15% of the trim position, operator-confirmed)
+        _lo_f, _hi_f = float(_band.get("low_frac", 0.05)), float(_band.get("high_frac", 0.15))
+        for _idea in research_ideas:
+            _fv = next((float(c.get("current_value") or 0) for c in cands if c.get("symbol") == _idea.get("from_symbol")), 0.0)
+            if _fv:
+                _idea["review_amount_range"] = {"low": round(_fv * _lo_f), "high": round(_fv * _hi_f),
+                                                "basis": "5-15% of the position — advisory, operator-confirmed, not auto-placed"}
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
+            "portfolio_total": round(pf_total),
+            "sector_overweights": sector_overweights,
+            "sector_underweights": sector_underweights,
             "summary": eng.get("summary", {}) or {},
             "data_quality": dq,
             "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),
@@ -19174,6 +19212,75 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "advisory_only": True, "grok_available": True,
                              "grok_answer": str(ans).strip(), "idea_count": len(ideas),
                              "note": "Free/OAuth Grok review of the rebalance ideas — no API key, no paid API. Advisory only; nothing is placed."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/rotation/research-gaps":
+            # Wire TradeAI + Hermes research toward the UNDERWEIGHT sleeves + named rotate-in candidates by
+            # creating operator watch_directives. The discovery engine + watchlist sweep then research them
+            # and surface candidates, which reappear here as rotate-in candidates. Advisory only; no broker.
+            try:
+                import json as _j
+                summ = _rotation_summary()
+                unders = summ.get("sector_underweights", []) or []
+                cands = summ.get("research_candidates", []) or []
+                from db_adapter import _get_conn
+                conn = _get_conn(); cur = conn.cursor()
+                created = []
+
+                def _mkdir(kind, label, rationale):
+                    spec = {"symbol": label.upper()} if kind == "ticker" else {"term": label}
+                    try:
+                        cur.execute("SELECT id FROM watch_directives WHERE created_by='rotation_advisor' AND label=%s AND status='active' LIMIT 1", (label,))
+                        _ex = cur.fetchone()
+                        if _ex:
+                            return None  # already seeded — don't pile up
+                        cur.execute("""INSERT INTO watch_directives
+                            (kind, label, spec, rationale, created_by, ttl_days, priority, status, trade_ai_enabled, hermes_enabled)
+                            VALUES (%s,%s,%s::jsonb,%s,'rotation_advisor',30,'normal','active',true,true) RETURNING id""",
+                                    (kind, label, _j.dumps(spec), rationale))
+                        _rid = cur.fetchone()[0]; conn.commit(); return _rid
+                    except Exception:
+                        conn.rollback(); return None
+                for u in unders[:6]:
+                    rid = _mkdir("trend", u.get("theme"),
+                                 f"Rotation gap: portfolio underweight {u.get('theme')} "
+                                 f"({u.get('pct')}% vs floor {u.get('floor')}%) — research names to rebalance into.")
+                    if rid:
+                        created.append({"id": rid, "kind": "trend", "label": u.get("theme")})
+                for c in cands[:5]:
+                    rid = _mkdir("ticker", c.get("symbol"),
+                                 f"Rotation rotate-in candidate (Hermes #{c.get('hermes_rank')}) — deepen "
+                                 "TradeAI/Hermes research for a possible rebalance.")
+                    if rid:
+                        created.append({"id": rid, "kind": "ticker", "label": c.get("symbol")})
+                return 200, {"ok": True, "advisory_only": True, "created": created,
+                             "message": (f"Seeded {len(created)} watch directive(s) → TradeAI + Hermes will research "
+                                         "these underweight sleeves / rotate-in names. They surface back here as candidates.")}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/rotation/feedback":
+            # Learning loop: record the operator's action on a rotation idea → llm_feedback_observations,
+            # so the advisor learns which suggestions are reviewed / dismissed / acted on over time.
+            try:
+                import json as _j
+                from db_adapter import _get_conn
+                b = body or {}
+                action = (b.get("action") or "reviewed").strip().lower()
+                if action not in ("reviewed", "dismissed", "acted"):
+                    action = "reviewed"
+                idea = b.get("idea") or {}
+                conn = _get_conn(); cur = conn.cursor()
+                cur.execute("""INSERT INTO llm_feedback_observations
+                    (source_table, workflow, model_role, model_name, decision_action, human_review_label, notes, metadata_json)
+                    VALUES ('rotation_summary','rotation_review','operator','rotation_advisor',%s,%s,%s,%s) RETURNING id""",
+                            (f"rotation_{action}", action,
+                             (f"{idea.get('from_symbol')}->{idea.get('to_symbol')}" if idea.get("from_symbol") else "")[:120],
+                             _j.dumps(idea)[:2000]))
+                oid = cur.fetchone()[0]; conn.commit()
+                return 200, {"ok": True, "advisory_only": True, "observation_id": oid, "action": action,
+                             "message": f"Recorded '{action}' to the learning loop."}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

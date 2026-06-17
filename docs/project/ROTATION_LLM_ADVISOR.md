@@ -277,6 +277,44 @@ fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 An example of the generated Grok OAuth prompt is committed at
 [`docs/project/examples/rotation_grok_oauth_prompt_example.md`](examples/rotation_grok_oauth_prompt_example.md).
 
+## Sleeve balance, advisory amount ranges, continuous loop + research wiring (2026-06-17)
+
+Three additions make the advisor sector-aware, range-aware, and continuous. All advisory only — nothing is
+placed, no broker API is called, no amount is auto-executed.
+
+**1. Sector/theme overweight & underweight detection.** `GET /api/v2/rotation/summary` now reads the
+portfolio look-through (`data/portfolios/state/lookthrough_themes.json`) against operator comfort targets in
+`config/rotation_sector_targets.json` (per-theme `target` + `floor`, a `default_comfort_pct`, and a
+`trim_band`). It returns:
+- `sector_overweights[]` — `{theme, pct, target, excess_pct, excess_dollars, top_holdings[]}` for any theme
+  more than ~1% over target, sorted by excess dollars.
+- `sector_underweights[]` — `{theme, pct, floor, gap_pct}` for any theme below its floor.
+- `portfolio_total` — look-through total used for the dollar math.
+The excess dollars and trim ranges are **review ranges only**; the operator confirms sizing, tax and account
+fit. Surfaced on the page as a **Sleeve Balance** section (overweight cards in red with the excess $ + top
+holdings, underweight cards in green with the gap).
+
+**2. Advisory amount ranges (operator-confirmed, never auto-executed).** Each
+`research_rotation_ideas[]` entry now carries `review_amount_range` = `{low, high, basis}`, computed as
+`trim_band.low_frac`–`high_frac` (default 5–15%) of the trim-holding's current value. The card shows
+"Review range: $low – $high" with the basis line "advisory, operator-confirmed, not auto-placed". No idea is
+ever sized or placed automatically.
+
+**3. Continuous loop + TradeAI/Hermes research wiring.**
+- `POST /api/v2/rotation/research-gaps` seeds `watch_directives` (`created_by='rotation_advisor'`) for the
+  underweight sleeves (kind `trend`) and the top non-held rotate-in candidates (kind `ticker`), deduping
+  against existing active directives. This is how the underweight sleeves + rotate-in names get **researched
+  by TradeAI + Hermes** — the directives feed the discovery/watchlist sweep, and the names come back as
+  rotate-in candidates. The page's **"Have TradeAI + Hermes research these gaps"** button calls it.
+- `POST /api/v2/rotation/feedback` records operator review of an idea into `llm_feedback_observations`
+  (`source_table='rotation_summary'`, `workflow='rotation_review'`, `decision_action='rotation_<action>'`,
+  action ∈ `reviewed|dismissed|acted`) — the learning loop. **Reviewed / Dismiss** buttons on each rebalance
+  idea call it; a confirmed idea shows "✓ logged to learning loop".
+- `scripts/rotation_rebalance_digest.py` (weekly cron, Sun 18:00) fetches the summary, seeds the research
+  gaps, and sends a Telegram digest of overweight sleeves, underweight sleeves being researched, and advisory
+  rebalance ideas with their review ranges. Localhost-only (no external network, no Grok/xAI API); the digest
+  reports ranges to review — it places nothing.
+
 ## A1A note
 
 This workflow changes advisory behavior and documentation, so it is subject to A1A documentation consistency rules.
