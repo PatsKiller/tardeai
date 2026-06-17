@@ -89,8 +89,9 @@ def main() -> int:
     ap.add_argument("--cards", default=str(DEFAULT_CARDS))
     ap.add_argument("--min-pair-score", type=float, default=35.0)
     ap.add_argument("--local-timeout", type=int, default=300)
-    ap.add_argument("--skip-local", action="store_true", help="Only build grounded answer and Grok OAuth prompt")
+    ap.add_argument("--skip-local", action="store_true", help="Only build grounded answer and Grok OAuth prompt (no local LLM)")
     ap.add_argument("--print-grok-prompt-path", action="store_true", help="print only the Grok OAuth prompt path for shell pipelines")
+    ap.add_argument("--print-grok-prompt", action="store_true", help="print the full Grok OAuth prompt with copy markers for manual paste")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -127,6 +128,15 @@ def main() -> int:
 
     if args.print_grok_prompt_path:
         print(str(grok_oauth_prompt_path))
+        return 0
+
+    if args.print_grok_prompt:
+        # Manual free/OAuth Grok path: copy the body below into the Grok web/app channel.
+        # This NEVER calls Grok over an API — it only emits the prompt for manual paste.
+        print("===== COPY BELOW INTO GROK =====")
+        print(grok_oauth_prompt)
+        print("===== END GROK PROMPT =====")
+        print(f"Prompt file: {grok_oauth_prompt_path}")
         return 0
 
     # Final answer policy: no-action cases stay grounded. Grok OAuth is a manual second-opinion path.
