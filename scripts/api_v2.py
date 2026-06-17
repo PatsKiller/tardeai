@@ -17786,8 +17786,43 @@ def _portfolio_lookthrough():
         "note": "not computed yet — run scripts/portfolio_lookthrough_themes.py --grok"}
 
 
+_ROTATION_SUMMARY_CACHE = {"ts": 0.0, "data": None}
+
+
+def _rotation_summary():
+    """GET /api/v2/rotation/summary — advisory-only rotation engine output (cached 5 min). Never calls a
+    broker or any external API; runs the local grounded scorer only."""
+    import time as _t, json as _j, subprocess as _sp, sys
+    if _ROTATION_SUMMARY_CACHE["data"] and (_t.time() - _ROTATION_SUMMARY_CACHE["ts"] < 300):
+        return _ROTATION_SUMMARY_CACHE["data"]
+    root = PROJECT_ROOT
+    try:
+        r = _sp.run([sys.executable, str(root / "scripts" / "rotation_intelligence_engine.py"),
+                     "--input", str(root / "data" / "portfolios" / "state" / "holdings.json"),
+                     "--cards", str(root / "data" / "runtime" / "symbol_cards_latest.json"),
+                     "--min-pair-score", "35"],
+                    capture_output=True, text=True, timeout=90, cwd=str(root))
+        eng = _j.loads(r.stdout)
+        dq = eng.get("data_quality", {}) or {}
+        out = {
+            "ok": bool(eng.get("ok", True)), "advisory_only": True,
+            "summary": eng.get("summary", {}) or {},
+            "data_quality": dq,
+            "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),
+            "top_rotation_ideas": eng.get("top_rotation_ideas", []) or [],
+            "top_pairs": eng.get("top_candidates", []) or eng.get("top_pairs", []) or [],
+            "generated_at": eng.get("generated_at"),
+        }
+        _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
+        return out
+    except Exception as e:
+        return {"ok": False, "advisory_only": True, "error": str(e)[:200],
+                "summary": {}, "data_quality": {}, "top_rotation_ideas": [], "top_pairs": []}
+
+
 ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
+    "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
@@ -18886,6 +18921,67 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _john_decide(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/rotation/ask":
+            # Advisory-only rotation Q&A. Runs the LOCAL grounded advisor or the Grok-OAuth-prompt builder.
+            # NEVER calls Grok/xAI or any broker API. oauth_prompt/dual_oauth only write a prompt file for
+            # MANUAL free/OAuth paste. Safe subprocess list-args, hard timeout, stderr surfaced on error.
+            try:
+                import subprocess as _sp, json as _j, sys
+                b = body or {}
+                question = (b.get("question") or "").strip()
+                backend = (b.get("backend") or "local").strip()
+                if not question:
+                    return 400, {"ok": False, "error": "question required"}
+                root = PROJECT_ROOT
+                cards = str(root / "data" / "runtime" / "symbol_cards_latest.json")
+                if backend == "dual_oauth":
+                    cmd = [sys.executable, str(root / "scripts" / "rotation_dual_llm_advisor.py"),
+                           "--question", question, "--cards", cards, "--json"]
+                elif backend == "oauth_prompt":
+                    cmd = [sys.executable, str(root / "scripts" / "rotation_llm_advisor.py"),
+                           "--question", question, "--backend", "oauth_prompt", "--cards", cards, "--json"]
+                else:  # local (default)
+                    backend = "local"
+                    cmd = [sys.executable, str(root / "scripts" / "rotation_llm_advisor.py"),
+                           "--question", question, "--backend", "local", "--cards", cards, "--json"]
+                try:
+                    r = _sp.run(cmd, capture_output=True, text=True, timeout=330, cwd=str(root))
+                except _sp.TimeoutExpired:
+                    return 200, {"ok": False, "advisory_only": True, "backend": backend, "error": "advisor timed out"}
+                try:
+                    parsed = _j.loads(r.stdout)
+                except Exception:
+                    return 200, {"ok": False, "advisory_only": True, "backend": backend,
+                                 "error": "advisor did not return JSON", "stderr_tail": (r.stderr or "")[-800:]}
+                parsed.setdefault("advisory_only", True)
+                parsed.setdefault("backend", backend)
+                return 200, parsed
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/rotation/grok-prompt":
+            # Build the free/OAuth Grok prompt (manual paste) without waiting on the local LLM.
+            # Returns the full prompt text (with copy markers) + the file path. No Grok/xAI/broker call.
+            try:
+                import subprocess as _sp, sys
+                b = body or {}
+                question = (b.get("question") or "Should I trim XLB for SPCX? How much should I trim?").strip()
+                root = PROJECT_ROOT
+                cards = str(root / "data" / "runtime" / "symbol_cards_latest.json")
+                r = _sp.run([sys.executable, str(root / "scripts" / "rotation_dual_llm_advisor.py"),
+                             "--question", question, "--cards", cards, "--skip-local", "--print-grok-prompt"],
+                            capture_output=True, text=True, timeout=90, cwd=str(root))
+                text = r.stdout or ""
+                path = ""
+                for ln in text.splitlines():
+                    if ln.startswith("Prompt file:"):
+                        path = ln.split("Prompt file:", 1)[1].strip()
+                return 200, {"ok": bool(text.strip()), "advisory_only": True,
+                             "prompt_text": text, "prompt_path": path,
+                             "stderr_tail": (r.stderr or "")[-400:] if not text.strip() else ""}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/strategy/plan":
             # Interactive strategy planner — what-if impact (+ goal-aligned redeploy advice).
             try:

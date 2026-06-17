@@ -6,13 +6,14 @@ import IntelligenceWorkflow from '../components/IntelligenceWorkflow'
 import CentralIntelligencePages from '../components/CentralIntelligencePages'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Command Center', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow'] as const
+const TABS = ['Command Center', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow', 'Rotation'] as const
 
 export default function IntelligenceHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Command Center')
   const [showTopics, setShowTopics] = useState(false)
   const { data: intel } = useApi<any>('/api/v2/market-intelligence', 120_000)
   const { data: researchData } = useApi<any>('/api/v2/research-topics', 120_000)
+  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
 
   const totalArticles = intel?.total_articles ?? 0
   const topSymbols = intel?.top_mentioned_symbols ?? []
@@ -113,6 +114,39 @@ export default function IntelligenceHub({ onDrill }: Props) {
       )}
       {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit · consolidated pages use morning brief, command, risk, trade AI, watchlist, open trades, market intelligence, research topics, and Hermes report reads.</div>}
       {tab === 'Workflow' && <IntelligenceWorkflow onDrill={onDrill} />}
+
+      {tab === 'Rotation' && (() => {
+        const rs = rotation?.summary ?? {}
+        const cells: [string, any, string][] = [
+          ['Trim review', rs.trim_review, '#ef4444'],
+          ['Add review', rs.add_review, '#22c55e'],
+          ['Rotation ideas', rs.rotation_ideas, '#60a5fa'],
+          ['Watch', rs.watch, '#f59e0b'],
+        ]
+        return (
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Rotation Intelligence</div>
+              <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 600 }}>advisory only · no broker action</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+              {cells.map(([label, val, c]) => (
+                <div key={label} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: c }}>{val ?? '—'}</div>
+                  <div style={{ fontSize: 8.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <a href="/v3/rotation" style={{
+              display: 'inline-block', padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+              textDecoration: 'none', background: 'rgba(96,165,250,.15)', color: '#60a5fa', border: '1px solid #60a5fa55',
+            }}>Open Rotation Intelligence →</a>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 10 }}>
+              Local review + Grok OAuth prompt, no API key · source: /api/v2/rotation/summary
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
