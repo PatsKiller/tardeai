@@ -467,7 +467,12 @@ lower bounds.
 to Grok as CIO/risk advisor. Frames R:R from analyst targets; handles private names. **Defer-to-live-data**
 rule: a name with a live quote IS public (the model's training may be stale — e.g. SpaceX/SPCX IPO'd
 2026-06-12). `private_symbols.py` lists only genuinely-private names (OpenAI/Stripe/Anthropic/Databricks).
-"Set alert" → `ask_alerts.py` (IPO-news / price → Telegram).
+"Set alert" → `ask_alerts.py` (IPO-news / price → Telegram). **Ticker resolution is case-INSENSITIVE
+(2026-06-16):** the operator types lowercase ("trim xlb for spcx"), so `_tickers()` validates lowercase
+tokens against the symbols actually held / with analyst data (filtering common words like "trim"/"look"),
+while explicitly-uppercase tokens still pass for not-yet-held names. The position context carries **shares,
+live price, basis, and a per-account breakdown** so the model can answer "how many shares to trim"; analyst
+upside is recomputed against the live holdings price, not the stale analyst-snapshot price.
 
 **IPO lockups** (`config/ipo_lockups.json` from the primary **S-1 on SEC EDGAR**; `ipo_lockups.py`) — when
 insiders can sell, by tranche. `ipo_lockup_alert.py` fires Telegram 14d before each unlock;
@@ -490,6 +495,23 @@ Cron: scalp/proposal/position/sector/closed_trade scheduled in the enh block; **
 **Home → Morning Brief rendering** — `HomeHub.tsx` formerly dumped `action_items` / `strategy_health` /
 `overnight_activity` via `JSON.stringify`. Now formatted (severity-colored action rows + code chips,
 strategy stat chips, overnight metric grid with a quiet-night empty state).
+
+**Position-card & regime data-accuracy fixes (2026-06-16)** — `open_trades_intelligence.py` +
+`aegis_nightly_ingestion.py` + `market_regime_classifier.py`:
+- **ETF sector mislabeling** — Finviz tags EVERY ETF as sector "Financial" (industry "Exchange Traded
+  Fund"), so XLI/XLB/BND/SCHD/SCHG/JEPI/ARKG all showed "Financial (XLF)" on the Open Trades cards. An
+  authoritative `_ETF_SECTOR` map now takes PRECEDENCE (sector SPDRs → real GICS sector; broad/bond/income
+  funds → honest asset-class label, no faked "in-line" when there's no sector ETF to compare). Fixed at
+  ingest too (`_corrected_sector()` refuses a bare Finviz "Financial" on any ETF) + 664 rows backfilled, so
+  Sectors/Watchlist don't re-inherit it.
+- **Worthless/delisted equity** — a real ticker (not a fund) collapsed to ~$0 with <−90% P&L (e.g. SRNE
+  @ $0.0007) was showing cached RSI/SMA technicals as live. Now flagged `worthless`, technicals nulled +
+  marked stale, warning "delisted/worthless — verify & write off".
+- **Analyst target upside** was frozen at analyst-fetch time (SPCX "−14.8% to target" off a stale pre-spike
+  price). Now recomputed against the LIVE price in `_card_enrichment`.
+- **Regime ↔ VIX coherence** — the classifier could declare `high_volatility` off a gap-volatility proxy
+  alone while VIX was calm (operator saw "high volatility 43%" with VIX ~16). A VIX-coherence guard now
+  dampens the gap-only high-vol score when the VIX signal is low/normal.
 
 **SIEM stop-echo de-noise** — `_system_siem_dashboard` re-ingested `notification_log` (our own outbound
 Telegram messages) at source severity, so every stop alert we SENT counted as a P1 `STOP_TRIGGERED` event
