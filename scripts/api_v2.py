@@ -17810,7 +17810,10 @@ def _rotation_summary():
             "data_quality": dq,
             "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),
             "top_rotation_ideas": eng.get("top_rotation_ideas", []) or [],
-            "top_pairs": eng.get("top_candidates", []) or eng.get("top_pairs", []) or [],
+            # real from→to rotation pairs only (engine currently produces none → empty-state in UI)
+            "top_pairs": eng.get("top_pairs", []) or [],
+            # per-symbol review/watch candidates (symbol + recommendation + add/trim scores), NOT pairs
+            "top_candidates": eng.get("top_candidates", []) or [],
             "generated_at": eng.get("generated_at"),
         }
         _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
