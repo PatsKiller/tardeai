@@ -24,6 +24,7 @@ type RotationData = {
   }
   data_quality?: Record<string, any>
   missing_sector?: number
+  missing_analyst_upside?: number
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
   top_candidates?: any[]
@@ -198,7 +199,7 @@ export default function RotationIntelligence() {
 
   const s = data?.summary ?? {}
   const dq = data?.data_quality ?? {}
-  const missingAnalyst = dq.rows_missing_analyst_upside ?? dq.missing_analyst_upside ?? dq.rows_without_analyst_upside
+  const missingAnalyst = data?.missing_analyst_upside ?? dq.rows_missing_analyst_upside ?? dq.missing_analyst_upside ?? dq.rows_without_analyst_upside
   const ideas = data?.top_rotation_ideas ?? []
   const pairs = (data?.top_pairs ?? []).filter((p: any) => p?.from_symbol || p?.to_symbol)
   const noIdeas = ideas.length === 0 && pairs.length === 0

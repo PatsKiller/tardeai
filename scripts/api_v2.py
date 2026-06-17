@@ -17804,6 +17804,20 @@ def _rotation_summary():
                     capture_output=True, text=True, timeout=90, cwd=str(root))
         eng = _j.loads(r.stdout)
         dq = eng.get("data_quality", {}) or {}
+        # Count held tickers with no analyst upside number (parallel to "missing sector"). ETFs/funds have
+        # no analyst coverage by nature, so they count too. Best-effort; None if files can't be read.
+        missing_analyst = None
+        try:
+            import re as _re
+            _hold = _j.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text()).get("holdings", [])
+            _cf = _j.loads((root / "data" / "runtime" / "symbol_cards_latest.json").read_text())
+            _cmap = (_cf.get("data") or {}).get("cards") or _cf.get("cards") or {}
+            _held = {(h.get("symbol") or "").upper() for h in _hold
+                     if h.get("symbol") and not h.get("is_cash")
+                     and _re.fullmatch(r"[A-Z]{1,5}", (h.get("symbol") or "").upper())}
+            missing_analyst = sum(1 for t in _held if (_cmap.get(t) or {}).get("analyst", {}).get("upside_pct") is None)
+        except Exception:
+            missing_analyst = None
         # Clean the per-symbol candidates: drop worthless/delisted rows (≈$0 value, e.g. delisted CUSIPs),
         # and backfill a missing sector from symbol_profiles (same source as the unified card layer).
         cands = [c for c in (eng.get("top_candidates", []) or []) if float(c.get("current_value") or 0) >= 1]
@@ -17824,6 +17838,7 @@ def _rotation_summary():
             "summary": eng.get("summary", {}) or {},
             "data_quality": dq,
             "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),
+            "missing_analyst_upside": missing_analyst,
             "top_rotation_ideas": eng.get("top_rotation_ideas", []) or [],
             # real from→to rotation pairs only (engine currently produces none → empty-state in UI)
             "top_pairs": eng.get("top_pairs", []) or [],
