@@ -17806,7 +17806,7 @@ def _rotation_summary():
         dq = eng.get("data_quality", {}) or {}
         # Count held tickers with no analyst upside number (parallel to "missing sector"). ETFs/funds have
         # no analyst coverage by nature, so they count too. Best-effort; None if files can't be read.
-        missing_analyst = None
+        missing_analyst, _held, _cmap = None, set(), {}
         try:
             import re as _re
             _hold = _j.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text()).get("holdings", [])
@@ -17833,6 +17833,63 @@ def _rotation_summary():
                         c["sector"] = _secmap.get((c.get("symbol") or "").upper())
             except Exception:
                 pass
+        # Research rotate-in candidates (NOT held) + advisory rebalance ideas. Advisory only — these are
+        # NOT model-supported signals; they suggest WHAT to review (no dollar amounts, no broker action).
+        research_candidates, research_ideas = [], []
+        try:
+            import re as _re
+            from db_adapter import _get_conn as _gc2
+            _c2 = _gc2().cursor()
+            _c2.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector
+                           FROM watchlist_items w LEFT JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
+                           WHERE w.status IN ('active','researched') AND w.symbol ~ '^[A-Z]{1,5}$'
+                           ORDER BY w.hermes_rank ASC NULLS LAST LIMIT 80""")
+            _seen = set()
+            for _sym, _rank, _score, _sec in _c2.fetchall():
+                _su = (_sym or "").upper()
+                if _su in _held or _su in _seen:
+                    continue
+                _seen.add(_su)
+                _card = _cmap.get(_su) or {}
+                _an = _card.get("analyst") or {}
+                research_candidates.append({
+                    "symbol": _sym, "hermes_rank": _rank,
+                    "score": float(_score) if _score is not None else None,
+                    "sector": _sec or _card.get("sector"),
+                    "analyst_rating": _an.get("rating"), "analyst_upside_pct": _an.get("upside_pct"),
+                    "description": (_card.get("description") or "")[:140] or None,
+                })
+                if len(research_candidates) >= 10:
+                    break
+            # advisory pairs: most trim-worthy held → top research add (no amounts, ROTATE_REVIEW).
+            # trim source must be a real ticker (exclude 401k fund codes / proxy codes — they can't rotate
+            # into an individual research name).
+            _trims = sorted([c for c in cands if (c.get("trim_score") or 0) >= 9
+                             and _re.fullmatch(r"[A-Z]{1,5}", (c.get("symbol") or "").upper())
+                             and "401k" not in (c.get("account_type") or "").lower()],
+                            key=lambda c: -(c.get("trim_score") or 0))[:3]
+            for _tt in _trims:
+                for _aa in research_candidates[:2]:
+                    _up = _aa.get("analyst_upside_pct")
+                    _conc = (_tt.get("evidence") or {}).get("concentration_pct")
+                    research_ideas.append({
+                        "action_class": "ROTATE_REVIEW",
+                        "from_symbol": _tt.get("symbol"), "to_symbol": _aa.get("symbol"),
+                        "from_account": _tt.get("account_type"), "score": round(float(_tt.get("trim_score") or 0), 1),
+                        "review_amount": None,
+                        "rationale": (f"Advisory: review rotating from {_tt.get('symbol')} "
+                                      f"({_tt.get('sector') or '?'}, trim signal {_tt.get('trim_score')}"
+                                      f"{', conc '+str(_conc)+'%' if _conc is not None else ''}) into research "
+                                      f"candidate {_aa.get('symbol')} (Hermes #{_aa.get('hermes_rank')}"
+                                      f"{', '+str(_up)+'% analyst upside' if _up is not None else ''}). "
+                                      "Not a model-supported signal — confirm sizing, tax, and account fit separately."),
+                    })
+                    if len(research_ideas) >= 5:
+                        break
+                if len(research_ideas) >= 5:
+                    break
+        except Exception:
+            research_candidates, research_ideas = [], []
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "summary": eng.get("summary", {}) or {},
@@ -17844,6 +17901,9 @@ def _rotation_summary():
             "top_pairs": eng.get("top_pairs", []) or [],
             # per-symbol review/watch candidates (symbol + recommendation + add/trim scores), NOT pairs
             "top_candidates": cands,
+            # research rotate-in (not held) — advisory rebalance suggestions, no model-supported signal
+            "research_candidates": research_candidates,
+            "research_rotation_ideas": research_ideas,
             "generated_at": eng.get("generated_at"),
         }
         _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
