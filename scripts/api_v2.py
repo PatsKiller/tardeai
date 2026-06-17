@@ -17804,6 +17804,21 @@ def _rotation_summary():
                     capture_output=True, text=True, timeout=90, cwd=str(root))
         eng = _j.loads(r.stdout)
         dq = eng.get("data_quality", {}) or {}
+        # Clean the per-symbol candidates: drop worthless/delisted rows (≈$0 value, e.g. delisted CUSIPs),
+        # and backfill a missing sector from symbol_profiles (same source as the unified card layer).
+        cands = [c for c in (eng.get("top_candidates", []) or []) if float(c.get("current_value") or 0) >= 1]
+        _need = [(c.get("symbol") or "").upper() for c in cands if not c.get("sector")]
+        if _need:
+            try:
+                from db_adapter import _get_conn as _gc
+                _cur = _gc().cursor()
+                _cur.execute("SELECT upper(symbol), sector FROM symbol_profiles WHERE upper(symbol) = ANY(%s) AND sector IS NOT NULL", (_need,))
+                _secmap = {row[0]: row[1] for row in _cur.fetchall()}
+                for c in cands:
+                    if not c.get("sector"):
+                        c["sector"] = _secmap.get((c.get("symbol") or "").upper())
+            except Exception:
+                pass
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "summary": eng.get("summary", {}) or {},
@@ -17813,7 +17828,7 @@ def _rotation_summary():
             # real from→to rotation pairs only (engine currently produces none → empty-state in UI)
             "top_pairs": eng.get("top_pairs", []) or [],
             # per-symbol review/watch candidates (symbol + recommendation + add/trim scores), NOT pairs
-            "top_candidates": eng.get("top_candidates", []) or [],
+            "top_candidates": cands,
             "generated_at": eng.get("generated_at"),
         }
         _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
