@@ -76,16 +76,36 @@ def sweep(limit=None, dry=False):
     import directive_promotion as dp
 
     conn = _conn(); cur = conn.cursor()
-    # The research pipeline moves items active→researched within hours; the watchlist UI shows both, so
-    # enrich both. Bounded cap (stalest/never-enriched first) so a run never hammers Finviz on all rows;
-    # */30 intraday runs rotate through the set. directive-linked + active surface first.
-    cap = int(limit) if limit else 150
+    # Two-tier selection so the VISIBLE high-rank cards stay fresh (under the 1h stale flag) without
+    # starving the long tail. The research pipeline moves items active→researched within hours; the
+    # watchlist UI shows both, so enrich both.
+    #  • PRIORITY pool = directive-linked OR active OR Hermes top-ranked (rank <= RANK_PRIORITY),
+    #    rotated stalest-first — the cards the operator actually looks at (e.g. ELVN #3, SNOW #135).
+    #  • TAIL = remainder of the cap, stalest-first over everyone else, so nothing is permanently
+    #    starved. */30 intraday + post-close runs cycle the set; bounded cap keeps Finviz happy.
+    cap = int(limit) if limit else 180
+    RANK_PRIORITY = 150               # Hermes rank treated as "front page" / high-value
+    TAIL_MIN = max(30, cap // 4)      # always reserve a fair-rotation slice for the tail
+    top_n = max(cap - TAIL_MIN, 1)
     cur.execute("""SELECT symbol FROM watchlist_items
                    WHERE status IN ('active','researched') AND symbol IS NOT NULL
+                     AND (directive_id IS NOT NULL OR status = 'active'
+                          OR (hermes_rank IS NOT NULL AND hermes_rank <= %s))
                    ORDER BY (directive_id IS NULL), (status <> 'active'),
-                            last_enriched_at ASC NULLS FIRST, updated_at DESC
-                   LIMIT %s""", (cap,))
-    symbols = list(dict.fromkeys([r[0] for r in cur.fetchall() if r[0]]))  # dedup, preserve order
+                            last_enriched_at ASC NULLS FIRST, hermes_rank ASC NULLS LAST
+                   LIMIT %s""", (RANK_PRIORITY, top_n))
+    prio = [r[0] for r in cur.fetchall() if r[0]]
+    tail = []
+    rem = cap - len(prio)
+    if rem > 0:
+        cur.execute("""SELECT symbol FROM watchlist_items
+                       WHERE status IN ('active','researched') AND symbol IS NOT NULL
+                         AND NOT (symbol = ANY(%s))
+                       ORDER BY last_enriched_at ASC NULLS FIRST, updated_at DESC
+                       LIMIT %s""", (prio or [''], rem))
+        tail = [r[0] for r in cur.fetchall() if r[0]]
+    symbols = list(dict.fromkeys(prio + tail))  # priority first, then tail; dedup, preserve order
+    print(f"[sweep] selected {len(symbols)}: {len(prio)} priority (directive/active/rank<={RANK_PRIORITY}) + {len(tail)} tail rotation")
     if not symbols:
         print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}
 
