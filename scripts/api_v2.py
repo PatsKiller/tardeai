@@ -18886,6 +18886,36 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _john_decide(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/strategy/plan":
+            # Interactive strategy planner — what-if impact (+ goal-aligned redeploy advice).
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import strategy_planner as _sp
+                b = body or {}
+                intent = b.get("intent") or b
+                with_advice = b.get("with_advice", True)
+                return 200, _sp.plan(intent, with_advice=bool(with_advice))
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/strategy/approve":
+            # Approve a plan → persist + sync to learning (observation) + discovery (watch_directives).
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent))
+                import strategy_planner as _sp
+                b = body or {}
+                intent = b.get("intent") or {}
+                impact = b.get("impact") or _sp.compute_impact(intent)
+                advice = b.get("advice") or {}
+                directives = b.get("directives") or []
+                if not intent:
+                    return 400, {"ok": False, "error": "intent required"}
+                return 200, _sp.approve(intent, impact, advice, directives)
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/portfolio/ask":
             # contextual "ask the agents" — pulls real positions + analyst + look-through, routes to Grok
             try:
