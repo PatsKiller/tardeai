@@ -3,8 +3,9 @@
 Advisory rotation intelligence scorer.
 
 Read-only. Produces HOLD / ADD_REVIEW / TRIM_REVIEW / ROTATE_REVIEW ideas from
-portfolio data, optionally enriched by a symbol-card export. It does not connect
-to external trading systems and does not change holdings.
+portfolio data, optionally enriched by a symbol-card export and ETF/fund
+classification overrides. It does not connect to external trading systems and
+does not change holdings.
 """
 from __future__ import annotations
 
@@ -16,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+DEFAULT_ETF_OVERRIDES = Path("config/etf_classification_overrides.json")
+
 
 @dataclass
 class Candidate:
@@ -24,6 +27,7 @@ class Candidate:
     sector: str | None
     current_value: float
     account_type: str | None
+    instrument_type: str
     trim_score: float
     add_score: float
     recommendation: str
@@ -58,6 +62,17 @@ def first(d: dict[str, Any], *keys: str) -> Any:
         if d.get(k) not in (None, "", [], {}):
             return d.get(k)
     return None
+
+
+def load_overrides(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    symbols = data.get("symbols", {}) if isinstance(data, dict) else {}
+    return {str(k).upper(): v for k, v in symbols.items() if isinstance(v, dict)}
 
 
 def account_type(account_key: str | None) -> str | None:
@@ -99,7 +114,7 @@ def cards_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
                 rows = [dict(v, symbol=v.get("symbol") or k) for k, v in val.items() if isinstance(v, dict)]
                 break
         if not rows and isinstance(payload.get("data"), dict):
-            rows = cards_from_payload(payload["data"]).values()
+            rows = list(cards_from_payload(payload["data"]).values())
     out: dict[str, dict[str, Any]] = {}
     for row in rows:
         sym = str(first(row, "symbol", "ticker") or "").upper()
@@ -108,34 +123,53 @@ def cards_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-def merge_card(row: dict[str, Any], card: dict[str, Any] | None) -> dict[str, Any]:
-    if not card:
-        return dict(row)
+def symbol_of(row: dict[str, Any]) -> str:
+    return str(first(row, "symbol", "ticker") or "UNKNOWN").upper()
+
+
+def merge_card(row: dict[str, Any], card: dict[str, Any] | None, overrides: dict[str, dict[str, Any]]) -> dict[str, Any]:
     merged = dict(row)
-    # Fill missing core fields from cards without overriding holdings source of truth.
-    for src_keys, dest_key in [
-        (("sector", "sector_name", "gics_sector"), "sector"),
-        (("analyst_upside_pct", "upside_pct", "target_upside_pct"), "analyst_upside_pct"),
-        (("news_score", "sentiment_score"), "news_score"),
-        (("protection_state", "stop_health"), "protection_state"),
-    ]:
-        if merged.get(dest_key) in (None, "", [], {}):
-            val = first(card, *src_keys)
+    sym = symbol_of(merged)
+    ov = overrides.get(sym, {})
+    if card:
+        for src_keys, dest_key in [
+            (("sector", "sector_name", "gics_sector"), "sector"),
+            (("asset_class", "instrument_type", "security_type"), "asset_class"),
+            (("analyst_upside_pct", "upside_pct", "target_upside_pct"), "analyst_upside_pct"),
+            (("news_score", "sentiment_score"), "news_score"),
+            (("protection_state", "stop_health"), "protection_state"),
+        ]:
+            if merged.get(dest_key) in (None, "", [], {}):
+                val = first(card, *src_keys)
+                if val not in (None, "", [], {}):
+                    merged[dest_key] = val
+        analyst = first(card, "analyst", "analyst_consensus")
+        if isinstance(analyst, dict) and merged.get("analyst_upside_pct") in (None, "", [], {}):
+            val = first(analyst, "upside_pct", "target_upside_pct", "upside")
             if val not in (None, "", [], {}):
-                merged[dest_key] = val
-    analyst = first(card, "analyst", "analyst_consensus")
-    if isinstance(analyst, dict) and merged.get("analyst_upside_pct") in (None, "", [], {}):
-        val = first(analyst, "upside_pct", "target_upside_pct", "upside")
-        if val not in (None, "", [], {}):
-            merged["analyst_upside_pct"] = val
-    merged["_card_enriched"] = True
+                merged["analyst_upside_pct"] = val
+        if first(card, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"):
+            merged["analyst_unavailable"] = True
+        merged["_card_enriched"] = True
+    if ov:
+        merged.setdefault("sector", ov.get("sector"))
+        merged.setdefault("asset_class", ov.get("asset_class"))
+        if ov.get("analyst_required") is False:
+            merged["analyst_not_applicable"] = True
+        merged["_override_enriched"] = True
     return merged
 
 
+def instrument_type_for(row: dict[str, Any]) -> str:
+    text = str(first(row, "asset_class", "instrument_type", "security_type") or "equity")
+    return text
+
+
 def score_row(row: dict[str, Any], total_value: float) -> Candidate:
-    symbol = str(first(row, "symbol", "ticker") or "UNKNOWN").upper()
+    symbol = symbol_of(row)
     account_key = first(row, "account_key", "account")
     sector = first(row, "sector", "sector_type", "gics_sector")
+    asset_class = instrument_type_for(row)
     value = as_float(first(row, "market_value", "current_value", "value"))
     concentration = (value / total_value * 100.0) if total_value else 0.0
     upside = as_float(first(row, "analyst_upside_pct", "upside_pct", "target_upside_pct"), 0.0)
@@ -143,16 +177,25 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
     income_yield = as_float(first(row, "yield", "dividend_yield", "income_yield"), 0.0)
     protection = str(first(row, "protection_state", "stop_health") or "unknown")
     acct = account_type(str(account_key) if account_key else None)
+    analyst_na = bool(first(row, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"))
 
     trim = 0.0
     add = 0.0
     evidence: dict[str, Any] = {"concentration_pct": round(concentration, 2)}
     if row.get("_card_enriched"):
         evidence["symbol_card_enriched"] = True
+    if row.get("_override_enriched"):
+        evidence["classification_override"] = True
+    if analyst_na:
+        evidence["analyst_not_applicable"] = True
     if not sector:
         evidence["missing_sector"] = True
-    if upside == 0.0:
+    if upside == 0.0 and not analyst_na:
         evidence["missing_or_neutral_analyst_upside"] = True
+
+    # ETF/fund rules: use concentration and sector thesis; do not penalize analyst absence.
+    asset_l = asset_class.lower()
+    is_fund = "etf" in asset_l or "fund" in asset_l or "index" in asset_l
 
     if concentration >= 5.0:
         trim += min(25.0, (concentration - 5.0) * 3.0)
@@ -183,6 +226,8 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
         evidence["growth_account_fit"] = "roth_ira"
     if acct == "manual_401k":
         evidence["manual_only"] = True
+    if is_fund and sector:
+        evidence["fund_sector"] = sector
 
     trim = round(max(0.0, min(100.0, trim)), 2)
     add = round(max(0.0, min(100.0, add)), 2)
@@ -200,7 +245,7 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
         rec = "HOLD"
         confidence = 0.50
 
-    return Candidate(symbol, str(account_key) if account_key else None, sector, value, acct, trim, add, rec, round(confidence, 3), evidence)
+    return Candidate(symbol, str(account_key) if account_key else None, sector, value, acct, asset_class, trim, add, rec, round(confidence, 3), evidence)
 
 
 def build_ideas(candidates: list[Candidate], min_pair_score: float) -> list[RotationIdea]:
@@ -233,24 +278,28 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="data/portfolios/state/holdings.json")
     ap.add_argument("--cards", help="optional /api/v2/symbol-cards JSON export for analyst/news/sector enrichment")
+    ap.add_argument("--etf-overrides", default=str(DEFAULT_ETF_OVERRIDES))
     ap.add_argument("--min-pair-score", type=float, default=45.0)
     args = ap.parse_args()
 
     payload = json.loads(Path(args.input).read_text())
     rows = rows_from_payload(payload)
+    overrides = load_overrides(Path(args.etf_overrides))
     cards = cards_from_payload(json.loads(Path(args.cards).read_text())) if args.cards else {}
     total = as_float((payload.get("portfolio_totals", {}) or {}).get("total_value")) if isinstance(payload, dict) else 0.0
     if not total:
         total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows)
 
-    enriched_rows = [merge_card(r, cards.get(str(first(r, "symbol", "ticker") or "").upper())) for r in rows]
+    enriched_rows = [merge_card(r, cards.get(symbol_of(r)), overrides) for r in rows]
     candidates = [score_row(r, total) for r in enriched_rows]
     ideas = build_ideas(candidates, args.min_pair_score)
     data_quality = {
         "holding_rows": len(rows),
         "symbol_cards_loaded": len(cards),
+        "etf_overrides_loaded": len(overrides),
         "rows_with_sector": sum(1 for c in candidates if c.sector),
         "rows_with_add_or_trim_signal": sum(1 for c in candidates if c.add_score > 0 or c.trim_score > 0),
+        "fund_or_etf_rows": sum(1 for c in candidates if any(x in c.instrument_type.lower() for x in ("etf", "fund", "index"))),
     }
     report = {
         "ok": True,
@@ -258,7 +307,7 @@ def main() -> int:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "advisory_only": True,
         "data_quality": data_quality,
-        "diagnostics": "No rotation ideas usually means no candidate has both a trim signal and another candidate has an add signal; use --cards to enrich analyst/news/sector inputs.",
+        "diagnostics": "No rotation ideas means no source has a trim signal and no destination has an add signal above thresholds. Use --cards and ETF overrides for enrichment.",
         "summary": {
             "trim_review": sum(c.recommendation == "TRIM_REVIEW" for c in candidates),
             "add_review": sum(c.recommendation == "ADD_REVIEW" for c in candidates),
