@@ -7,9 +7,13 @@ Commit `f58cda6e`. Full detail in MASTER (Portfolio Look-through & Ask-the-Agent
 
 - **Declare** an intent: roll account→cash, trim a holding, deploy new cash, or rebalance.
 - **Impact (what-if, read-only):** exact **look-through theme delta** from `lookthrough_themes.json`
-  `accounts_detail` (per-account exposure) + account refactor + cash freed/cash-% shift + income/goal hit
-  vs the $55k target. Example (roll fidelity_401k→cash): $574k freed, S&P -17% / Nasdaq -16% / Mag7 -14%,
-  income gap +$7.5k.
+  `accounts_detail` (per-account exposure) + account refactor + cash freed/cash-% shift + **precise
+  per-holding income hit** vs the $55k target. Income = Σ(market_value × dividend yield%) per affected
+  holding, yields from the authoritative `dividend_calendar` (the raw `ticker_dividend_data` feed is rejected
+  — it reported SCHD 12.98% / BAH 12.33% vs ~3.6%/1.7% real). Examples: rollover→cash loses $11,073/yr @
+  1.92% (SCHD $4,783 / JEPI $4,246 / BND $932 / V $834); 401k→cash = $0 (tax-deferred funds reinvest, no
+  spendable income); trim SCHD $50k = $1,790 @ 3.58%. Roll fidelity_401k→cash also drops S&P -17% / Nasdaq
+  -16% / Mag7 -14% look-through. (commit `1eaa3648`)
 - **Advise:** goal-aligned redeploy plan via the free LLM lane (income-gap / Roth golden-window /
   defense-thesis aware) + Hermes-ranked watchlist candidates.
 - **Approve → sync both ways:** persists to `strategy_plans`, records a LEARNING observation
