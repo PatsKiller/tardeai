@@ -1,138 +1,418 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
+// ── Types ──────────────────────────────────────────────────────────────────
 type RotationPair = {
-  action_class?: string;
-  from_symbol?: string;
-  to_symbol?: string;
-  from_account?: string;
-  to_account?: string;
-  score?: number;
-  review_amount?: number;
-  rationale?: string;
-  evidence?: Record<string, unknown>;
-};
+  action_class?: string
+  from_symbol?: string
+  to_symbol?: string
+  from_account?: string
+  to_account?: string
+  score?: number
+  review_amount?: number
+  rationale?: string
+}
 
-type RotationSummary = {
-  ok?: boolean;
-  advisory_only?: boolean;
-  data_quality?: Record<string, unknown>;
-  summary?: Record<string, unknown>;
-  top_rotation_ideas?: RotationPair[];
-  top_pairs?: RotationPair[];
-};
+type RotationData = {
+  ok?: boolean
+  advisory_only?: boolean
+  error?: string
+  summary?: {
+    trim_review?: number
+    add_review?: number
+    rotation_ideas?: number
+    watch?: number
+  }
+  data_quality?: Record<string, any>
+  missing_sector?: number
+  top_rotation_ideas?: RotationPair[]
+  top_pairs?: RotationPair[]
+  generated_at?: string
+}
 
-const money = (value?: number) =>
-  typeof value === 'number'
-    ? value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-    : 'review range unavailable';
+type ValidationObj = { ok?: boolean; issues?: string[] }
+type AskResult = {
+  ok?: boolean
+  error?: string
+  stderr_tail?: string
+  advisory_only?: boolean
+  backend?: string
+  answer_mode?: string
+  answer?: string
+  grounded_answer?: string
+  local_answer_validation?: ValidationObj
+  local_answer_raw?: string
+  grok_oauth_prompt_path?: string
+  grok_second_opinion?: { mode?: string;[k: string]: any }
+  rotation_summary?: any
+  grounding_report?: any
+}
 
+type GrokPromptResult = {
+  ok?: boolean
+  advisory_only?: boolean
+  prompt_text?: string
+  prompt_path?: string
+  error?: string
+}
+
+// ── Style helpers ───────────────────────────────────────────────────────────
+const ACCENT = '#60a5fa'
+const card: React.CSSProperties = {
+  background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16,
+}
+const btn = (active: boolean): React.CSSProperties => ({
+  padding: '6px 14px', fontSize: 12, borderRadius: 6, cursor: active ? 'not-allowed' : 'pointer',
+  border: `1px solid ${ACCENT}55`, background: active ? 'var(--bg2)' : 'rgba(96,165,250,.15)',
+  color: active ? 'var(--text3)' : ACCENT, fontWeight: 700,
+})
+
+const ACTION_BADGE: Record<string, { label: string; c: string }> = {
+  WATCH: { label: 'WATCH', c: '#f59e0b' },
+  ADD_REVIEW: { label: 'ADD REVIEW', c: '#22c55e' },
+  TRIM_REVIEW: { label: 'TRIM REVIEW', c: '#ef4444' },
+  ROTATE_REVIEW: { label: 'ROTATE REVIEW', c: '#60a5fa' },
+  RESEARCH_MORE: { label: 'RESEARCH MORE', c: '#6b7280' },
+}
+
+const money = (v?: number) =>
+  typeof v === 'number'
+    ? v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    : 'review range unavailable'
+
+function ActionBadge({ cls }: { cls?: string }) {
+  const m = ACTION_BADGE[(cls || '').toUpperCase()] ?? { label: cls || 'REVIEW', c: '#6b7280' }
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, letterSpacing: 0.4,
+      background: `${m.c}1f`, color: m.c, border: `1px solid ${m.c}44`,
+    }}>{m.label}</span>
+  )
+}
+
+function SummaryCard({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+  return (
+    <div style={{ ...card, textAlign: 'center', padding: '14px 10px' }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color: color ?? 'var(--text0)' }}>{value}</div>
+      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>
+    </div>
+  )
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
 export default function RotationIntelligence() {
-  const [summary, setSummary] = useState<RotationSummary | null>(null);
-  const [question, setQuestion] = useState('Review whether XLB exposure should be reduced to increase SPCX exposure.');
-  const [answer, setAnswer] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>('');
+  const [data, setData] = useState<RotationData | null>(null)
+  const [summaryWarn, setSummaryWarn] = useState<string>('')
+  const [question, setQuestion] = useState('Should I trim XLB for SPCX? How much should I trim?')
+  const [busy, setBusy] = useState<string>('')   // which action is running
+  const [result, setResult] = useState<AskResult | null>(null)
+  const [askError, setAskError] = useState<string>('')
+  const [grokPrompt, setGrokPrompt] = useState<GrokPromptResult | null>(null)
+  const [copied, setCopied] = useState(false)
 
   async function loadSummary() {
-    setError('');
+    setSummaryWarn('')
     try {
-      const res = await fetch('/api/v2/rotation/summary');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSummary(await res.json());
+      const res = await fetch('/api/v2/rotation/summary')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      // ROUTES auto-wraps as { ok, data: {...} } — unwrap .data
+      const inner: RotationData = json?.data ?? json
+      if (inner && inner.ok === false) {
+        setSummaryWarn(`Rotation summary unavailable: ${inner.error ?? 'review data not ready'}`)
+      }
+      setData(inner ?? null)
     } catch (err) {
-      setError(`Rotation summary endpoint not wired yet: ${err instanceof Error ? err.message : String(err)}`);
+      setSummaryWarn(`Rotation summary unavailable: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  async function askAdvisor(mode: 'local' | 'oauth_prompt') {
-    setLoading(true);
-    setError('');
-    setAnswer('');
+  async function ask(backend: 'local' | 'dual_oauth') {
+    setBusy(backend === 'local' ? 'Ask Local' : 'Run Dual Review')
+    setAskError('')
+    setResult(null)
     try {
       const res = await fetch('/api/v2/rotation/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, backend: mode })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setAnswer(data.answer || data.instructions || JSON.stringify(data, null, 2));
+        body: JSON.stringify({ question, backend }),
+      })
+      const json: AskResult = await res.json()   // RAW advisor JSON (not wrapped)
+      if (json && json.ok === false) {
+        setAskError(`Advisor error: ${json.error ?? `HTTP ${res.status}`}`)
+      }
+      setResult(json)
+      if (json?.grok_oauth_prompt_path) {
+        setGrokPrompt(prev => ({ ...(prev ?? {}), prompt_path: json.grok_oauth_prompt_path }))
+      }
     } catch (err) {
-      setError(`Rotation ask endpoint not wired yet: ${err instanceof Error ? err.message : String(err)}`);
+      setAskError(`Advisor request failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      setLoading(false);
+      setBusy('')
     }
   }
 
-  useEffect(() => {
-    loadSummary();
-  }, []);
+  async function buildGrokPrompt() {
+    setBusy('Build Grok OAuth Prompt')
+    setAskError('')
+    try {
+      const res = await fetch('/api/v2/rotation/grok-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      })
+      const json: GrokPromptResult = await res.json()   // RAW (not wrapped)
+      if (json && json.ok === false) setAskError(`Grok prompt error: ${json.error ?? `HTTP ${res.status}`}`)
+      setGrokPrompt(json)
+    } catch (err) {
+      setAskError(`Grok prompt request failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy('')
+    }
+  }
 
-  const ideas = summary?.top_rotation_ideas || summary?.top_pairs || [];
+  // prefill from ?question= on mount
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get('question')
+      if (q) setQuestion(q)
+    } catch { /* noop */ }
+    loadSummary()
+  }, [])
+
+  const s = data?.summary ?? {}
+  const dq = data?.data_quality ?? {}
+  const missingAnalyst = dq.rows_missing_analyst_upside ?? dq.missing_analyst_upside ?? dq.rows_without_analyst_upside
+  const ideas = data?.top_rotation_ideas ?? []
+  const pairs = data?.top_pairs ?? []
+  const noIdeas = ideas.length === 0 && pairs.length === 0
+
+  const promptText = grokPrompt?.prompt_text
+  const promptPath = grokPrompt?.prompt_path || result?.grok_oauth_prompt_path
+  const hasGrok = Boolean(promptText || promptPath)
+
+  async function copyPrompt() {
+    if (!promptText) return
+    try {
+      await navigator.clipboard.writeText(promptText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* clipboard unavailable */ }
+  }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1180, margin: '0 auto' }}>
-      <header style={{ marginBottom: 24 }}>
-        <h1>Rotation Intelligence</h1>
-        <p>
-          Account-aware advisory review for trims, adds, sector shifts, fund/ETF concentration, and local/OAuth LLM second opinions.
-          This page is advisory only and does not create orders.
-        </p>
+    <div style={{ padding: 4 }}>
+      {/* A. Header */}
+      <header style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Rotation Intelligence</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
+          Grounded local review + free/OAuth Grok second opinion
+        </div>
+        <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>
+          Advisory only · human review required · no broker action
+        </div>
       </header>
 
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <div className="card">
-          <h3>Safety</h3>
-          <p>Advisory only · human review required · no broker action</p>
+      {/* B. Summary cards */}
+      {summaryWarn && (
+        <div style={{
+          marginBottom: 14, padding: '8px 12px', borderRadius: 8, fontSize: 11,
+          background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', color: '#f59e0b',
+        }}>
+          {summaryWarn} — page remains usable; counts shown as “—”.
         </div>
-        <div className="card">
-          <h3>Data Quality</h3>
-          <pre>{JSON.stringify(summary?.data_quality || {}, null, 2)}</pre>
-        </div>
-        <div className="card">
-          <h3>Summary</h3>
-          <pre>{JSON.stringify(summary?.summary || {}, null, 2)}</pre>
-        </div>
+      )}
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
+        <SummaryCard label="Trim Review" value={s.trim_review ?? '—'} color="#ef4444" />
+        <SummaryCard label="Add Review" value={s.add_review ?? '—'} color="#22c55e" />
+        <SummaryCard label="Rotation Ideas" value={s.rotation_ideas ?? '—'} color={ACCENT} />
+        <SummaryCard label="Watch" value={s.watch ?? '—'} color="#f59e0b" />
+        <SummaryCard label="Missing Sector" value={data?.missing_sector ?? '—'} color="#a855f7" />
+        <SummaryCard label="Missing Analyst Upside" value={missingAnalyst ?? '—'} color="#a855f7" />
       </section>
 
-      <section className="card" style={{ marginBottom: 24 }}>
-        <h2>Ask Rotation Advisor</h2>
+      {/* C. Ask Advisor */}
+      <section style={{ ...card, marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Ask the Rotation Advisor</div>
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          rows={4}
-          style={{ width: '100%', marginBottom: 12 }}
+          rows={3}
+          style={{
+            width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: 10, fontSize: 12,
+            background: 'var(--bg2)', color: 'var(--text0)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical',
+          }}
         />
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button onClick={() => askAdvisor('local')} disabled={loading}>Ask Local LLM</button>
-          <button onClick={() => askAdvisor('oauth_prompt')} disabled={loading}>Build OAuth Prompt</button>
-          <button onClick={loadSummary}>Refresh Summary</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button disabled={!!busy} onClick={() => ask('local')} style={btn(!!busy)}>Ask Local</button>
+          <button disabled={!!busy} onClick={buildGrokPrompt} style={btn(!!busy)}>Build Grok OAuth Prompt</button>
+          <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
+          <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
+          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…</span>}
         </div>
-        {answer && <pre style={{ whiteSpace: 'pre-wrap', marginTop: 16 }}>{answer}</pre>}
+        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
+          Grok is free / OAuth / manual-paste only — no API key is used. The advisor reviews holdings and offers a second opinion;
+          it never places, buys, or sells anything.
+        </div>
+        {askError && (
+          <div style={{ marginTop: 10, fontSize: 11, color: '#ef4444' }}>
+            {askError}
+            {result?.stderr_tail && (
+              <pre style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', whiteSpace: 'pre-wrap' }}>{result.stderr_tail}</pre>
+            )}
+          </div>
+        )}
       </section>
 
-      {error && <div style={{ color: '#f59e0b', marginBottom: 16 }}>{error}</div>}
+      {/* D. Result panel */}
+      {result && (result.answer || result.grounded_answer || result.answer_mode || result.local_answer_validation || result.rotation_summary) && (
+        <section style={{ ...card, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Advisor Review</div>
+            {result.answer_mode && (
+              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'rgba(96,165,250,.15)', color: ACCENT }}>
+                mode: {result.answer_mode}
+              </span>
+            )}
+            {result.backend && <span style={{ fontSize: 9, color: 'var(--text3)' }}>backend: {result.backend}</span>}
+          </div>
 
+          {result.answer && (
+            <div style={{ fontSize: 12, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginBottom: 12 }}>{result.answer}</div>
+          )}
+
+          {result.grounded_answer && result.grounded_answer !== result.answer && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginBottom: 3 }}>Grounded answer</div>
+              <div style={{ fontSize: 12, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{result.grounded_answer}</div>
+            </div>
+          )}
+
+          {result.local_answer_validation && (
+            <div style={{ marginBottom: 12, padding: '8px 11px', borderRadius: 8, background: 'var(--bg2)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: result.local_answer_validation.ok ? '#22c55e' : '#f59e0b' }}>
+                Local answer validation: {result.local_answer_validation.ok ? 'OK' : 'issues flagged'}
+              </div>
+              {(result.local_answer_validation.issues ?? []).length > 0 && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 10.5, color: 'var(--text2)' }}>
+                  {(result.local_answer_validation.issues ?? []).map((iss, i) => <li key={i}>{iss}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {result.grok_second_opinion?.mode && (
+            <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--text2)' }}>
+              Grok second opinion mode: <b style={{ color: '#f59e0b' }}>{result.grok_second_opinion.mode}</b> (free / OAuth / manual-paste)
+            </div>
+          )}
+
+          {result.rotation_summary && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginBottom: 3 }}>Rotation summary</div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--text2)' }}>
+                {typeof result.rotation_summary === 'object'
+                  ? Object.entries(result.rotation_summary).filter(([, v]) => typeof v !== 'object').map(([k, v]) => (
+                    <span key={k}>{k.replace(/_/g, ' ')}: <b style={{ color: 'var(--text1)' }}>{String(v)}</b></span>
+                  ))
+                  : <span>{String(result.rotation_summary)}</span>}
+              </div>
+            </div>
+          )}
+
+          {result.local_answer_raw && (
+            <details style={{ marginBottom: 10 }}>
+              <summary style={{ fontSize: 10.5, color: 'var(--text3)', cursor: 'pointer' }}>Local answer (raw)</summary>
+              <pre style={{ marginTop: 6, fontSize: 10, color: 'var(--text2)', whiteSpace: 'pre-wrap', background: 'var(--bg2)', padding: 10, borderRadius: 8 }}>{result.local_answer_raw}</pre>
+            </details>
+          )}
+
+          {result.grounding_report && (
+            <details>
+              <summary style={{ fontSize: 10.5, color: 'var(--text3)', cursor: 'pointer' }}>Grounding report (JSON)</summary>
+              <pre style={{ marginTop: 6, fontSize: 9.5, color: 'var(--text2)', whiteSpace: 'pre-wrap', background: 'var(--bg2)', padding: 10, borderRadius: 8, maxHeight: 320, overflow: 'auto' }}>
+                {JSON.stringify(result.grounding_report, null, 2)}
+              </pre>
+            </details>
+          )}
+        </section>
+      )}
+
+      {/* E. Copy-to-Grok panel */}
+      {hasGrok && (
+        <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(245,158,11,.3)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok OAuth Prompt</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text2)', marginBottom: 10 }}>
+            Paste this into Grok using free/OAuth login. No API key is used.
+          </div>
+          {promptPath && (
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
+              Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span>
+            </div>
+          )}
+          {promptText ? (
+            <>
+              <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 10, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>
+                {copied ? 'Copied ✓' : 'Copy Grok Prompt'}
+              </button>
+              <textarea
+                readOnly
+                value={promptText}
+                rows={10}
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10.5, fontFamily: 'monospace',
+                  background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical',
+                }}
+              />
+            </>
+          ) : (
+            <div>
+              <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 4 }}>Read the generated prompt with:</div>
+              <pre style={{ fontSize: 10.5, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', padding: 10, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
+                cat "{promptPath}"
+              </pre>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* F. Rotation Ideas */}
       <section>
-        <h2>Rotation Ideas</h2>
-        {ideas.length === 0 && <p>No rotation ideas are currently available, or the endpoint has not been wired yet.</p>}
-        <div style={{ display: 'grid', gap: 12 }}>
-          {ideas.map((idea, idx) => (
-            <article className="card" key={`${idea.from_symbol}-${idea.to_symbol}-${idx}`}>
-              <h3>{idea.action_class || 'WATCH'} · {idea.from_symbol} → {idea.to_symbol}</h3>
-              <p>{idea.rationale}</p>
-              <p>
-                Score: <strong>{idea.score ?? 'n/a'}</strong> · Review amount: <strong>{money(idea.review_amount)}</strong>
-              </p>
-              <p>From: {idea.from_account || 'n/a'} · To: {idea.to_account || 'n/a'}</p>
-              <details>
-                <summary>Evidence</summary>
-                <pre>{JSON.stringify(idea.evidence || {}, null, 2)}</pre>
-              </details>
-            </article>
-          ))}
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Rotation Ideas</div>
+        {noIdeas ? (
+          <div style={{ ...card, fontSize: 11.5, color: 'var(--text2)' }}>
+            No model-supported rotation ideas. Continue WATCH / RESEARCH_MORE.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+            {[...ideas, ...pairs].map((idea, idx) => (
+              <article key={`${idea.from_symbol}-${idea.to_symbol}-${idx}`} style={card}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <ActionBadge cls={idea.action_class} />
+                  <span style={{ flex: 1 }} />
+                  {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>score {idea.score}</span>}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 4 }}>
+                  {idea.from_symbol ?? '—'} → {idea.to_symbol ?? '—'}
+                </div>
+                {(idea.from_account || idea.to_account) && (
+                  <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>
+                    {(idea.from_account ?? 'n/a').replace(/_/g, ' ')} → {(idea.to_account ?? 'n/a').replace(/_/g, ' ')}
+                  </div>
+                )}
+                {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 6 }}>{idea.rationale}</div>}
+                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>
+                  Suggested review amount: <b style={{ color: 'var(--text1)' }}>{money(idea.review_amount)}</b>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+        {data?.generated_at && (
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>
+            Source: /api/v2/rotation/summary · generated {data.generated_at} · advisory only, no broker action
+          </div>
+        )}
       </section>
     </div>
-  );
+  )
 }

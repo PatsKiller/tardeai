@@ -78,6 +78,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: forecast } = useApi<any>('/api/v2/forecast', 300_000)
   const { data: lookthrough } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000)
+  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
 
   // Allocation follows the account filter: per-account look-through when an account is selected, else global.
   const sectorsByAccount = overview?.sectors_by_account ?? {}
@@ -133,6 +134,35 @@ export default function PortfolioHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {tab === 'Holdings' && (() => {
+        const rs = rotation?.summary ?? {}
+        const noAction = (rs.rotation_ideas ?? 0) === 0 && (rs.trim_review ?? 0) === 0 && (rs.add_review ?? 0) === 0
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12, padding: '10px 14px',
+            background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: '4px solid #60a5fa', borderRadius: 10,
+          }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Rotation Advisor
+                <span style={{ fontSize: 8.5, color: '#f59e0b', fontWeight: 600, marginLeft: 8 }}>advisory only · no broker action</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+                Account-aware rotation review with a local + Grok OAuth second opinion.
+                {rotation && noAction
+                  ? <span style={{ color: '#f59e0b' }}> No model-supported action — WATCH / RESEARCH_MORE.</span>
+                  : rotation
+                    ? <span> {rs.trim_review ?? 0} trim · {rs.add_review ?? 0} add · {rs.rotation_ideas ?? 0} rotation to review.</span>
+                    : null}
+              </div>
+            </div>
+            <a href="/v3/rotation" style={{
+              padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
+              background: 'rgba(96,165,250,.15)', color: '#60a5fa', border: '1px solid #60a5fa55', whiteSpace: 'nowrap',
+            }}>Open Rotation Review →</a>
+          </div>
+        )
+      })()}
 
       {tab === 'Holdings' && accounts.length > 1 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
@@ -218,6 +248,12 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</span>
                       <ProAnalystPill symbol={h.symbol} map={paMap} compact />
                       <span style={{ flex: 1 }} />
+                      <a
+                        href={`/v3/rotation?question=${encodeURIComponent(`Review whether ${h.symbol} exposure should be reduced`)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Review this exposure in the Rotation Advisor (advisory only · no broker action)"
+                        style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3, textDecoration: 'none',
+                          background: 'rgba(96,165,250,.12)', color: '#60a5fa' }}>⤢ review</a>
                       {h.signal
                         ? <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${sc}1f`, color: sc }}>{h.signal}</span>
                         : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}

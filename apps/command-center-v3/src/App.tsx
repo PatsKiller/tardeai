@@ -19,6 +19,8 @@ import SectorsHub from './pages/SectorsHub'
 import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import ManualExecutionHub from './pages/ManualExecutionHub'
+import RotationIntelligence from './pages/RotationIntelligence'
+import AdvisorChangesHub from './pages/AdvisorChangesHub'
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
@@ -45,6 +47,8 @@ function Shell() {
             <Route path="watchpool" element={<WatchpoolHub onDrill={setDrill} />} />
             <Route path="sectors" element={<SectorsHub onDrill={setDrill} />} />
             <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
+            <Route path="rotation" element={<RotationIntelligence />} />
+            <Route path="advisor-changes" element={<AdvisorChangesHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
         </main>

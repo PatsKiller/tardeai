@@ -15,6 +15,8 @@ const HUBS = [
   { to: '/watchpool', label: 'Watchpool' },
   { to: '/sectors', label: 'Sectors' },
   { to: '/reports', label: 'Reports' },
+  { to: '/rotation', label: 'Rotation' },
+  { to: '/advisor-changes', label: 'Advisor Changes' },
   { to: '/system', label: 'System' },
 ]
 

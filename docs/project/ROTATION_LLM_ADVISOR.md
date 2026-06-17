@@ -238,16 +238,38 @@ python3 scripts/rotation_llm_advisor.py \
   --cards data/runtime/symbol_cards_latest.json
 ```
 
-## Frontend/API follow-up
+## Command Center v3 integration (shipped 2026-06-17)
 
-The CLI workflow is the foundation. The next UI/API pass should expose:
+The advisor is a first-class v3 feature. All UI language is advisory-only ("review", "watch",
+"second opinion", "range unavailable") — never "execute/buy/sell/place order". No API-key or Grok-API
+fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 
-- `GET /api/v2/rotation/summary`
-- `GET /api/v2/rotation/pairs`
-- `POST /api/v2/rotation/ask`
-- Command Center v3 `RotationIntelligence` page
-- Rotation question box with local/OAuth prompt mode selector
-- Evidence drawer with holdings, sector, analyst/news, and account notes
+### API endpoints (advisory-only — never call a broker or Grok/xAI API)
+
+| Endpoint | Behavior |
+|---|---|
+| `GET /api/v2/rotation/summary` | Runs the local `rotation_intelligence_engine.py` (cached 5 min) → `{ ok, advisory_only, summary, data_quality, missing_sector, top_rotation_ideas, top_pairs }`. |
+| `POST /api/v2/rotation/ask` | Body `{ question, backend }`, backend ∈ `local`/`oauth_prompt`/`dual_oauth`. Runs the matching advisor script via **safe subprocess list-args + hard timeout**, returns parsed JSON; `stderr_tail` only on error. `dual_oauth` runs the local model then writes the Grok prompt file. |
+| `POST /api/v2/rotation/grok-prompt` | Runs `rotation_dual_llm_advisor.py --skip-local --print-grok-prompt` → `{ ok, advisory_only, prompt_text, prompt_path }` for manual paste. |
+
+### Pages
+
+- **`/v3/rotation` — Rotation Intelligence** (`pages/RotationIntelligence.tsx`, nav "Rotation"): summary
+  cards (Trim Review / Add Review / Rotation Ideas / Watch / Missing Sector / Missing Analyst Upside),
+  an Ask Advisor panel (Ask Local · Build Grok OAuth Prompt · Run Dual Review · Refresh Summary), a result
+  panel (answer_mode / answer / grounded_answer / validation / raw / grounding report), a Copy-to-Grok panel
+  ("Paste this into Grok using free/OAuth login. No API key is used."), and a Rotation Ideas section with
+  `WATCH/ADD_REVIEW/TRIM_REVIEW/ROTATE_REVIEW/RESEARCH_MORE` badges (empty → "No model-supported rotation
+  ideas. Continue WATCH / RESEARCH_MORE."). Accepts `?question=` to prefill.
+- **`/v3/advisor-changes` — Advisor Changes** (`pages/AdvisorChangesHub.tsx`, nav "Advisor Changes"): cards
+  for the grounded advisor, local-LLM validation, Grok OAuth second opinion, Fidelity fund-code mapping,
+  symbol-card quality, and the no-broker-action safety contract, each with source file + how-to-validate.
+- **Intelligence hub** gets a **Rotation** tab (compact summary + "Open Rotation Intelligence").
+- **Portfolio hub** gets a **Rotation Advisor** card linking to `/v3/rotation` (shows WATCH/RESEARCH_MORE
+  when no model-supported action exists; never suggests execution).
+
+An example of the generated Grok OAuth prompt is committed at
+[`docs/project/examples/rotation_grok_oauth_prompt_example.md`](examples/rotation_grok_oauth_prompt_example.md).
 
 ## A1A note
 
