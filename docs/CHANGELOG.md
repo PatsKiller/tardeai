@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-16 - Data-accuracy fixes: ETF sectors, worthless equities, analyst upside, regime, ask-agents
+
+Position-card and advisor accuracy fixes surfaced from an operator review of Trading → Open Trades.
+Commits `bb1f3131` (sectors), `555d8827` (worthless/analyst/regime), `8a00eaeb` (ask-agents).
+
+- **ETF sector mislabeling** — Finviz reports EVERY ETF as sector "Financial" (industry "Exchange Traded
+  Fund"), so XLI (Industrials), XLB (Materials), BND (bonds), SCHD/SCHG, JEPI, ARKG all showed
+  "Financial (XLF)". Authoritative `_ETF_SECTOR` map takes precedence in `open_trades_intelligence.py`;
+  `aegis_nightly_ingestion._corrected_sector()` refuses a bare Finviz "Financial" on any ETF; 664 existing
+  rows backfilled. vs-sector label no longer fakes "in-line" → "no sector benchmark" for asset-class ETFs.
+- **Worthless/delisted equity** — a non-fund ticker collapsed to ~$0 with <−90% P&L (e.g. SRNE @ $0.0007)
+  was showing cached RSI/SMA as live. Now flagged `worthless`, technicals nulled + stale, warning
+  "delisted/worthless — verify & write off".
+- **Analyst target upside** recomputed against the LIVE price (SPCX "−14.8%" was off a stale pre-spike
+  price → correct −18.7%).
+- **Regime ↔ VIX coherence** — `market_regime_classifier.py` could call `high_volatility` off a gap proxy
+  while VIX was calm ("high volatility 43%" with VIX ~16). VIX-coherence guard dampens the gap-only score
+  when VIX is low/normal.
+- **Ask-the-Agents lowercase tickers** — `/api/v2/portfolio/ask` only matched UPPERCASE symbols, so a
+  lowercase question ("trim xlb for spcx") found no positions and the LLM replied "no XLB position".
+  `_tickers()` is now case-insensitive, validated against held/known symbols (filters words like "trim"),
+  and the context carries shares/price/basis/per-account so the model can answer "how many shares to trim".
+- **Restart note**: the service runs as user `johnclaw` with `Restart=always` — restart without sudo via
+  `kill $(systemctl show tradeai-portfolio-server.service -p MainPID --value)`; systemd respawns it. (Earlier
+  `sudo systemctl restart` attempts were failing silently on the password prompt, leaving stale code live.)
+
 ## 2026-06-16 - Reports Portal: every Telegram report surfaced + live LM feedback loop
 
 Operator reports were sent to Telegram but never stored, so the v3 Reports hub couldn't show them.
