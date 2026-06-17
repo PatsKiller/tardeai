@@ -32,13 +32,15 @@ Each answer should include:
 
 ## Grounded-answer validation
 
-The advisor now builds a deterministic grounding report before calling the local model. This report includes:
+The advisor builds a deterministic grounding report before calling the local model. This report includes:
 
 - symbols detected in the question
 - current holding value and accounts for those symbols
 - symbol-card sector / asset class / analyst fields
 - rotation-engine summary
 - data-quality warnings
+
+Natural-language action words such as `TRIM`, `REDUCE`, `ADD`, `ROTATE`, and `REVIEW` are excluded from ticker extraction.
 
 If the local model overreaches, the advisor replaces the model answer with a grounded answer and preserves the raw model answer under `llm_answer_raw` when `--json` is used.
 
@@ -48,6 +50,7 @@ The validator flags common failures:
 - saying `no missing data` when sector or analyst fields are missing
 - claiming tax impact without cost-basis or gain/loss data
 - likely sector mismatch, such as calling XLB Industrials when metadata says Materials
+- applying a symbol-specific recommendation to an account type where that symbol is not held
 
 To inspect a blocked local answer:
 
