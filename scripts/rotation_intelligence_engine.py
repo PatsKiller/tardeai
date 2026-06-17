@@ -3,9 +3,9 @@
 Advisory rotation intelligence scorer.
 
 Read-only. Produces HOLD / ADD_REVIEW / TRIM_REVIEW / ROTATE_REVIEW ideas from
-portfolio data, optionally enriched by a symbol-card export and ETF/fund
-classification overrides. It does not connect to external trading systems and
-does not change holdings.
+portfolio data, optionally enriched by symbol-card exports, ETF/fund overrides,
+and Fidelity/manual fund-code mappings. It does not connect to external trading
+systems and does not change holdings.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ETF_OVERRIDES = Path("config/etf_classification_overrides.json")
+DEFAULT_FUND_MAP = Path("config/fidelity_fund_code_map.json")
 
 
 @dataclass
@@ -64,7 +65,7 @@ def first(d: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def load_overrides(path: Path) -> dict[str, dict[str, Any]]:
+def load_symbol_overrides(path: Path) -> dict[str, dict[str, Any]]:
     if not path.exists():
         return {}
     try:
@@ -73,6 +74,17 @@ def load_overrides(path: Path) -> dict[str, dict[str, Any]]:
         return {}
     symbols = data.get("symbols", {}) if isinstance(data, dict) else {}
     return {str(k).upper(): v for k, v in symbols.items() if isinstance(v, dict)}
+
+
+def load_fund_codes(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    codes = data.get("codes", {}) if isinstance(data, dict) else {}
+    return {str(k).upper(): v for k, v in codes.items() if isinstance(v, dict)}
 
 
 def account_type(account_key: str | None) -> str | None:
@@ -127,10 +139,17 @@ def symbol_of(row: dict[str, Any]) -> str:
     return str(first(row, "symbol", "ticker") or "UNKNOWN").upper()
 
 
-def merge_card(row: dict[str, Any], card: dict[str, Any] | None, overrides: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def merge_metadata(
+    row: dict[str, Any],
+    card: dict[str, Any] | None,
+    symbol_overrides: dict[str, dict[str, Any]],
+    fund_codes: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     merged = dict(row)
     sym = symbol_of(merged)
-    ov = overrides.get(sym, {})
+    sym_ov = symbol_overrides.get(sym, {})
+    fund_ov = fund_codes.get(sym, {})
+
     if card:
         for src_keys, dest_key in [
             (("sector", "sector_name", "gics_sector"), "sector"),
@@ -151,18 +170,27 @@ def merge_card(row: dict[str, Any], card: dict[str, Any] | None, overrides: dict
         if first(card, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"):
             merged["analyst_unavailable"] = True
         merged["_card_enriched"] = True
-    if ov:
-        merged.setdefault("sector", ov.get("sector"))
-        merged.setdefault("asset_class", ov.get("asset_class"))
+
+    for ov, marker in ((sym_ov, "_override_enriched"), (fund_ov, "_fund_code_enriched")):
+        if not ov:
+            continue
+        for key in ("sector", "asset_class", "instrument_type", "display_name"):
+            if merged.get(key) in (None, "", [], {}) and ov.get(key) not in (None, "", [], {}):
+                merged[key] = ov.get(key)
         if ov.get("analyst_required") is False:
             merged["analyst_not_applicable"] = True
-        merged["_override_enriched"] = True
+        if ov.get("manual_only") is True:
+            merged["manual_only"] = True
+        if ov.get("mapping_status"):
+            merged["mapping_status"] = ov.get("mapping_status")
+        if ov.get("mag7_exposure_pct") is not None:
+            merged["mag7_exposure_pct"] = ov.get("mag7_exposure_pct")
+        merged[marker] = True
     return merged
 
 
 def instrument_type_for(row: dict[str, Any]) -> str:
-    text = str(first(row, "asset_class", "instrument_type", "security_type") or "equity")
-    return text
+    return str(first(row, "asset_class", "instrument_type", "security_type") or "equity")
 
 
 def score_row(row: dict[str, Any], total_value: float) -> Candidate:
@@ -178,6 +206,8 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
     protection = str(first(row, "protection_state", "stop_health") or "unknown")
     acct = account_type(str(account_key) if account_key else None)
     analyst_na = bool(first(row, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"))
+    manual_only = bool(first(row, "manual_only")) or acct == "manual_401k"
+    mapping_status = first(row, "mapping_status")
 
     trim = 0.0
     add = 0.0
@@ -186,14 +216,19 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
         evidence["symbol_card_enriched"] = True
     if row.get("_override_enriched"):
         evidence["classification_override"] = True
+    if row.get("_fund_code_enriched"):
+        evidence["fund_code_mapping"] = mapping_status or "mapped"
     if analyst_na:
         evidence["analyst_not_applicable"] = True
     if not sector:
         evidence["missing_sector"] = True
     if upside == 0.0 and not analyst_na:
         evidence["missing_or_neutral_analyst_upside"] = True
+    if manual_only:
+        evidence["manual_only"] = True
+    if mapping_status and mapping_status != "verified":
+        evidence["mapping_status"] = mapping_status
 
-    # ETF/fund rules: use concentration and sector thesis; do not penalize analyst absence.
     asset_l = asset_class.lower()
     is_fund = "etf" in asset_l or "fund" in asset_l or "index" in asset_l
 
@@ -224,10 +259,14 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
     if acct == "roth_ira" and add > 0:
         add += 5
         evidence["growth_account_fit"] = "roth_ira"
-    if acct == "manual_401k":
-        evidence["manual_only"] = True
     if is_fund and sector:
         evidence["fund_sector"] = sector
+
+    # Unknown manual fund codes should not produce strong action classes.
+    if manual_only and mapping_status and mapping_status != "verified":
+        trim = min(trim, 20.0)
+        add = min(add, 0.0)
+        evidence["action_downgraded_until_mapping_verified"] = True
 
     trim = round(max(0.0, min(100.0, trim)), 2)
     add = round(max(0.0, min(100.0, add)), 2)
@@ -279,27 +318,31 @@ def main() -> int:
     ap.add_argument("--input", default="data/portfolios/state/holdings.json")
     ap.add_argument("--cards", help="optional /api/v2/symbol-cards JSON export for analyst/news/sector enrichment")
     ap.add_argument("--etf-overrides", default=str(DEFAULT_ETF_OVERRIDES))
+    ap.add_argument("--fund-map", default=str(DEFAULT_FUND_MAP))
     ap.add_argument("--min-pair-score", type=float, default=45.0)
     args = ap.parse_args()
 
     payload = json.loads(Path(args.input).read_text())
     rows = rows_from_payload(payload)
-    overrides = load_overrides(Path(args.etf_overrides))
+    symbol_overrides = load_symbol_overrides(Path(args.etf_overrides))
+    fund_codes = load_fund_codes(Path(args.fund_map))
     cards = cards_from_payload(json.loads(Path(args.cards).read_text())) if args.cards else {}
     total = as_float((payload.get("portfolio_totals", {}) or {}).get("total_value")) if isinstance(payload, dict) else 0.0
     if not total:
         total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows)
 
-    enriched_rows = [merge_card(r, cards.get(symbol_of(r)), overrides) for r in rows]
+    enriched_rows = [merge_metadata(r, cards.get(symbol_of(r)), symbol_overrides, fund_codes) for r in rows]
     candidates = [score_row(r, total) for r in enriched_rows]
     ideas = build_ideas(candidates, args.min_pair_score)
     data_quality = {
         "holding_rows": len(rows),
         "symbol_cards_loaded": len(cards),
-        "etf_overrides_loaded": len(overrides),
+        "etf_overrides_loaded": len(symbol_overrides),
+        "fund_codes_loaded": len(fund_codes),
         "rows_with_sector": sum(1 for c in candidates if c.sector),
         "rows_with_add_or_trim_signal": sum(1 for c in candidates if c.add_score > 0 or c.trim_score > 0),
         "fund_or_etf_rows": sum(1 for c in candidates if any(x in c.instrument_type.lower() for x in ("etf", "fund", "index"))),
+        "manual_401k_rows": sum(1 for c in candidates if c.account_type == "manual_401k"),
     }
     report = {
         "ok": True,
@@ -307,7 +350,7 @@ def main() -> int:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "advisory_only": True,
         "data_quality": data_quality,
-        "diagnostics": "No rotation ideas means no source has a trim signal and no destination has an add signal above thresholds. Use --cards and ETF overrides for enrichment.",
+        "diagnostics": "No rotation ideas means no source has a trim signal and no destination has an add signal above thresholds. Use --cards, ETF overrides, and fund-map enrichment.",
         "summary": {
             "trim_review": sum(c.recommendation == "TRIM_REVIEW" for c in candidates),
             "add_review": sum(c.recommendation == "ADD_REVIEW" for c in candidates),
