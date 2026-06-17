@@ -19125,6 +19125,58 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/rotation/grok-rebalance-review":
+            # INLINE free/OAuth Grok review of the advisory rebalance-from-research ideas. No API key, no paid
+            # API, no broker call. Grok critiques each idea from the given facts; it must not invent amounts.
+            try:
+                import json as _j
+                summ = _rotation_summary()
+                ideas = summ.get("research_rotation_ideas", []) or []
+                cands = summ.get("research_candidates", []) or []
+                held = [h for h in (summ.get("top_candidates", []) or []) if (h.get("trim_score") or 0) >= 9]
+                if not ideas and not cands:
+                    return 200, {"ok": True, "advisory_only": True, "grok_available": True,
+                                 "grok_answer": "No rebalance-from-research ideas to review right now."}
+                ctx = {
+                    "rebalance_ideas": [{"from": i.get("from_symbol"), "to": i.get("to_symbol"),
+                                         "from_account": i.get("from_account"), "from_trim_score": i.get("score")}
+                                        for i in ideas],
+                    "trim_holdings": [{"symbol": h.get("symbol"), "sector": h.get("sector"),
+                                       "account": h.get("account_type"), "value": h.get("current_value"),
+                                       "trim_score": h.get("trim_score"),
+                                       "concentration_pct": (h.get("evidence") or {}).get("concentration_pct"),
+                                       "analyst_upside_pct": (h.get("evidence") or {}).get("positive_upside_pct")}
+                                      for h in held],
+                    "research_candidates": [{"symbol": c.get("symbol"), "hermes_rank": c.get("hermes_rank"),
+                                             "sector": c.get("sector"), "analyst_rating": c.get("analyst_rating"),
+                                             "analyst_upside_pct": c.get("analyst_upside_pct")} for c in cands],
+                }
+                prompt = (
+                    "You are Grok, a free/OAuth advisory second-opinion reviewer for my personal portfolio "
+                    "rebalance review. ADVISORY ONLY: never tell me to place/buy/sell/route an order, and never "
+                    "invent a specific trim/add dollar amount or any analyst figure not given below.\n\n"
+                    "Below are candidate REBALANCE ideas — trim a holding I own and rotate into a research name "
+                    "I do NOT hold. They are heuristic suggestions, NOT model-supported signals.\n\n"
+                    f"{_j.dumps(ctx, indent=2, default=str)[:5000]}\n\n"
+                    "Your task: for EACH rebalance idea, give a one-line verdict — is it a reasonable rotation to "
+                    "REVIEW, or a poor fit, and why (sector shift, the research name's conviction/analyst upside, "
+                    "the holding's concentration, and account/tax fit such as trimming a taxable vs tax-deferred "
+                    "position, or trimming an income/core holding for a speculative microcap). Flag any idea that "
+                    "doesn't make sense. Then give one overall recommendation (WATCH or RESEARCH_MORE) and what to "
+                    "check next. Do NOT state dollar amounts. Be concise and operator-ready.")
+                import sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import llm_lane
+                if not llm_lane.available("grok"):
+                    return 200, {"ok": True, "advisory_only": True, "grok_available": False,
+                                 "note": "Grok OAuth proxy not authenticated — review the ideas manually.", "context": ctx}
+                ans = llm_lane.generate(prompt, lane="grok", timeout=120)
+                return 200, {"ok": True, "advisory_only": True, "grok_available": True,
+                             "grok_answer": str(ans).strip(), "idea_count": len(ideas),
+                             "note": "Free/OAuth Grok review of the rebalance ideas — no API key, no paid API. Advisory only; nothing is placed."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/strategy/plan":
             # Interactive strategy planner — what-if impact (+ goal-aligned redeploy advice).
             try:
