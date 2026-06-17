@@ -3,18 +3,20 @@
 Rotation LLM Advisor
 
 Ask account-aware rotation questions against real holdings + optional symbol-card
-context. Safe by design: advisory only, no broker calls, no order creation, no
+context. Safe by design: advisory only, no broker calls, no broker action, no
 account changes.
 
-Examples:
-  python3 scripts/rotation_llm_advisor.py --question "Should I trim XLB for SPCX? How much?" --backend local --cards data/runtime/symbol_cards_latest.json
-  python3 scripts/rotation_llm_advisor.py --question "I am heavy in Mag 7. Which funds/ETFs should I trim?" --backend oauth_prompt --cards data/runtime/symbol_cards_latest.json
+The script now includes a deterministic grounding answer and a post-check for
+local LLM overreach. If the model invents trim percentages, tax effects, or
+"no missing data" when the evidence disagrees, the user-facing answer is
+replaced with the grounded answer and the raw model answer is preserved.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -29,22 +31,111 @@ if str(SCRIPTS) not in sys.path:
 PROMPT_DIR = ROOT / "data" / "runtime" / "rotation_prompts"
 DEFAULT_HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 DEFAULT_CARDS = ROOT / "data" / "runtime" / "symbol_cards_latest.json"
+DEFAULT_ETF_OVERRIDES = ROOT / "config" / "etf_classification_overrides.json"
+DEFAULT_FUND_MAP = ROOT / "config" / "fidelity_fund_code_map.json"
 
 SAFETY_BLOCK = """
 NON-NEGOTIABLE SAFETY RULES:
-- Advisory only. Do not say an order has been placed or should be placed automatically.
-- Do not bypass human approval, broker controls, protective-stop gates, or manual review.
-- Give ranges and review steps, not instructions to execute immediately.
-- If data is missing, say what is missing and downgrade confidence.
-- For 401k/Fidelity manual funds, treat recommendations as manual-ticket review only.
-- For taxable accounts, flag tax-impact review before trimming.
+- Advisory only. Do not say any broker action has been taken or should be automatic.
+- Give review ranges only when supported by evidence. Otherwise say range unavailable.
+- If rotation_summary has zero trim_review, zero add_review, and zero rotation_ideas, do not invent a trim percentage.
+- If data is missing, state exactly what is missing and downgrade confidence.
+- Only mention account types that actually hold the symbol or are explicitly being compared.
+- For taxable accounts, tax impact is UNKNOWN unless cost basis or gain/loss data is present.
+- For Roth/IRA accounts, tax treatment is account-dependent but still requires account-specific evidence.
+- For Fidelity/401k manual funds, treat as manual review only.
 """.strip()
+
+SECTOR_WORDS = {
+    "materials", "industrials", "technology", "energy", "healthcare", "financials",
+    "utilities", "real estate", "communication services", "consumer staples",
+    "consumer discretionary", "broad market", "fixed income", "space", "private growth",
+}
 
 
 def load_json(path: Path) -> Any:
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+def as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value in (None, "", "—"):
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def first(d: dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if d.get(k) not in (None, "", [], {}):
+            return d.get(k)
+    return None
+
+
+def load_symbol_overrides(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    symbols = data.get("symbols", {}) if isinstance(data, dict) else {}
+    return {str(k).upper(): v for k, v in symbols.items() if isinstance(v, dict)}
+
+
+def load_fund_codes(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    codes = data.get("codes", {}) if isinstance(data, dict) else {}
+    return {str(k).upper(): v for k, v in codes.items() if isinstance(v, dict)}
+
+
+def rows_from_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        for key in ("holdings", "positions", "rows", "data"):
+            if isinstance(payload.get(key), list):
+                return [x for x in payload[key] if isinstance(x, dict)]
+        if all(isinstance(v, dict) for v in payload.values()):
+            return [dict(v, symbol=v.get("symbol") or k) for k, v in payload.items() if isinstance(v, dict)]
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    return []
+
+
+def symbol_of(row: dict[str, Any]) -> str:
+    return str(first(row, "symbol", "ticker") or "UNKNOWN").upper()
+
+
+def cards_from_payload(payload: Any) -> dict[str, dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if isinstance(payload, dict):
+        data = payload.get("data", payload)
+        for key in ("cards", "symbols", "items", "results", "rows"):
+            value = data.get(key) if isinstance(data, dict) else None
+            if isinstance(value, list):
+                rows = [x for x in value if isinstance(x, dict)]
+                break
+            if isinstance(value, dict):
+                rows = [dict(v, symbol=v.get("symbol") or k) for k, v in value.items() if isinstance(v, dict)]
+                break
+        if not rows and isinstance(data, dict) and all(isinstance(v, dict) for v in data.values()):
+            rows = [dict(v, symbol=v.get("symbol") or k) for k, v in data.items() if isinstance(v, dict)]
+    elif isinstance(payload, list):
+        rows = [x for x in payload if isinstance(x, dict)]
+    return {symbol_of(r): r for r in rows if symbol_of(r) != "UNKNOWN"}
+
+
+def extract_symbols(question: str) -> list[str]:
+    tokens = re.findall(r"\b[A-Z0-9]{2,6}\b", question.upper())
+    stop = {"THE", "AND", "FOR", "HOW", "MUCH", "SHOULD", "WHICH", "FUNDS", "ETFS", "HEAVY"}
+    return sorted({t for t in tokens if t not in stop})
 
 
 def run_rotation_engine(holdings: Path, cards: Path | None, min_pair_score: float) -> dict[str, Any]:
@@ -60,70 +151,140 @@ def run_rotation_engine(holdings: Path, cards: Path | None, min_pair_score: floa
         return {"ok": False, "error": "rotation_engine_invalid_json", "detail": str(exc), "stdout": proc.stdout[-2000:]}
 
 
-def compact_holdings(payload: Any, max_rows: int = 80) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        return {"available": False}
-    rows = []
-    raw_rows = payload.get("holdings") or payload.get("positions") or payload.get("rows") or []
-    if isinstance(raw_rows, list):
-        for r in raw_rows[:max_rows]:
-            if not isinstance(r, dict):
-                continue
-            rows.append({
-                "symbol": r.get("symbol") or r.get("ticker"),
-                "account_key": r.get("account_key") or r.get("account"),
-                "market_value": r.get("market_value") or r.get("current_value") or r.get("value"),
-                "sector": r.get("sector") or r.get("sector_type"),
-                "asset_class": r.get("asset_class") or r.get("instrument_type"),
-                "yield": r.get("yield") or r.get("dividend_yield") or r.get("income_yield"),
-                "protection_state": r.get("protection_state") or r.get("stop_health"),
-            })
+def account_rows_for_symbols(holdings_payload: Any, symbols: list[str]) -> dict[str, list[dict[str, Any]]]:
+    rows = rows_from_payload(holdings_payload)
+    out: dict[str, list[dict[str, Any]]] = {s: [] for s in symbols}
+    for row in rows:
+        sym = symbol_of(row)
+        if sym in out:
+            out[sym].append(row)
+    return out
+
+
+def card_fact(symbol: str, cards: dict[str, dict[str, Any]], sym_overrides: dict[str, dict[str, Any]], fund_map: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    card = cards.get(symbol, {})
+    ov = sym_overrides.get(symbol, {})
+    fund = fund_map.get(symbol, {})
+    analyst = first(card, "analyst", "analyst_consensus") or {}
     return {
-        "available": True,
-        "portfolio_totals": payload.get("portfolio_totals", {}),
-        "row_count": len(raw_rows) if isinstance(raw_rows, list) else None,
-        "sample_rows": rows,
+        "symbol": symbol,
+        "sector": first(card, "sector", "sector_name", "gics_sector") or ov.get("sector") or fund.get("sector"),
+        "asset_class": first(card, "asset_class", "instrument_type", "security_type") or ov.get("asset_class") or fund.get("asset_class"),
+        "analyst_upside_pct": first(card, "analyst_upside_pct", "upside_pct", "target_upside_pct") or (analyst.get("upside_pct") if isinstance(analyst, dict) else None),
+        "analyst_required": ov.get("analyst_required", fund.get("analyst_required", True)),
+        "mapping_status": fund.get("mapping_status"),
+        "manual_only": fund.get("manual_only"),
+    }
+
+
+def grounding_report(question: str, holdings_payload: Any, cards_payload: Any, rotation_report: dict[str, Any]) -> dict[str, Any]:
+    symbols = extract_symbols(question)
+    cards = cards_from_payload(cards_payload)
+    sym_overrides = load_symbol_overrides(DEFAULT_ETF_OVERRIDES)
+    fund_map = load_fund_codes(DEFAULT_FUND_MAP)
+    account_rows = account_rows_for_symbols(holdings_payload, symbols)
+    summary = rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {}
+    data_quality = rotation_report.get("data_quality", {}) if isinstance(rotation_report, dict) else {}
+    candidate_rows = rotation_report.get("top_candidates", []) if isinstance(rotation_report, dict) else []
+
+    missing_flags = []
+    if data_quality.get("rows_with_sector", 0) < data_quality.get("holding_rows", 0):
+        missing_flags.append("some holdings are missing sector")
+    if any((c.get("evidence") or {}).get("missing_or_neutral_analyst_upside") for c in candidate_rows if isinstance(c, dict)):
+        missing_flags.append("some holdings have missing or neutral analyst upside")
+    if any((c.get("evidence") or {}).get("missing_sector") for c in candidate_rows if isinstance(c, dict)):
+        missing_flags.append("some scored candidates are missing sector")
+
+    facts = []
+    for sym in symbols:
+        rows = account_rows.get(sym, [])
+        facts.append({
+            **card_fact(sym, cards, sym_overrides, fund_map),
+            "held_accounts": [first(r, "account_key", "account") for r in rows],
+            "held_market_value_total": round(sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows), 2),
+            "holding_row_count": len(rows),
+        })
+
+    no_actionable = not summary.get("trim_review") and not summary.get("add_review") and not summary.get("rotation_ideas")
+    return {
+        "symbols_in_question": symbols,
+        "symbol_facts": facts,
+        "rotation_summary": summary,
+        "data_quality": data_quality,
+        "missing_flags": sorted(set(missing_flags)),
+        "no_model_supported_action": bool(no_actionable),
+    }
+
+
+def deterministic_answer(question: str, report: dict[str, Any]) -> str:
+    symbols = ", ".join(report.get("symbols_in_question") or []) or "the requested symbols"
+    lines = [
+        "Grounded advisory answer:",
+        f"- Question reviewed: {question}",
+        f"- Symbols detected: {symbols}",
+    ]
+    if report.get("no_model_supported_action"):
+        lines.append("- The rotation engine does not currently show a model-supported TRIM_REVIEW, ADD_REVIEW, or ROTATE_REVIEW for this question.")
+        lines.append("- Therefore, no numeric trim amount is supported by the current evidence pack.")
+    for fact in report.get("symbol_facts", []):
+        lines.append(
+            f"- {fact.get('symbol')}: sector={fact.get('sector') or 'UNKNOWN'}, "
+            f"asset_class={fact.get('asset_class') or 'UNKNOWN'}, held_value=${fact.get('held_market_value_total', 0):,.2f}, "
+            f"accounts={fact.get('held_accounts') or []}, analyst_upside={fact.get('analyst_upside_pct') or 'n/a'}, "
+            f"mapping_status={fact.get('mapping_status') or 'n/a'}"
+        )
+    if report.get("missing_flags"):
+        lines.append("- Missing data warnings: " + "; ".join(report["missing_flags"]))
+    lines += [
+        "- Account notes: tax impact is UNKNOWN unless cost basis / realized gain-loss data is present. Do not assume positive or negative tax impact.",
+        "- Recommended class: RESEARCH_MORE if you need a dollar/percent trim range; WATCH if you only want to monitor the pair.",
+    ]
+    return "\n".join(lines)
+
+
+def compact_holdings(payload: Any, max_rows: int = 80) -> dict[str, Any]:
+    rows = rows_from_payload(payload)[:max_rows]
+    return {
+        "available": isinstance(payload, dict),
+        "portfolio_totals": payload.get("portfolio_totals", {}) if isinstance(payload, dict) else {},
+        "row_count": len(rows_from_payload(payload)),
+        "sample_rows": [
+            {
+                "symbol": symbol_of(r),
+                "account_key": first(r, "account_key", "account"),
+                "market_value": first(r, "market_value", "current_value", "value"),
+                "sector": first(r, "sector", "sector_type"),
+                "asset_class": first(r, "asset_class", "instrument_type"),
+                "yield": first(r, "yield", "dividend_yield", "income_yield"),
+                "protection_state": first(r, "protection_state", "stop_health"),
+            }
+            for r in rows
+        ],
     }
 
 
 def compact_symbol_cards(payload: Any, max_rows: int = 80) -> dict[str, Any]:
-    if payload is None:
-        return {"available": False}
-    rows: list[dict[str, Any]] = []
-    if isinstance(payload, dict):
-        data = payload.get("data", payload)
-        for key in ("cards", "symbols", "items", "results", "rows"):
-            value = data.get(key) if isinstance(data, dict) else None
-            if isinstance(value, list):
-                rows = [x for x in value if isinstance(x, dict)]
-                break
-            if isinstance(value, dict):
-                rows = [dict(v, symbol=v.get("symbol") or k) for k, v in value.items() if isinstance(v, dict)]
-                break
-        if not rows and isinstance(data, dict) and all(isinstance(v, dict) for v in data.values()):
-            rows = [dict(v, symbol=v.get("symbol") or k) for k, v in data.items()]
-    elif isinstance(payload, list):
-        rows = [x for x in payload if isinstance(x, dict)]
-
+    cards = cards_from_payload(payload)
     compact = []
-    for r in rows[:max_rows]:
-        analyst = r.get("analyst") or r.get("analyst_consensus") or {}
+    for r in list(cards.values())[:max_rows]:
+        analyst = first(r, "analyst", "analyst_consensus") or {}
         compact.append({
-            "symbol": r.get("symbol") or r.get("ticker"),
-            "sector": r.get("sector") or r.get("sector_name") or r.get("gics_sector"),
-            "asset_class": r.get("asset_class") or r.get("instrument_type"),
-            "analyst_upside_pct": r.get("analyst_upside_pct") or r.get("upside_pct") or (analyst.get("upside_pct") if isinstance(analyst, dict) else None),
-            "analyst_rating": r.get("analyst_rating") or (analyst.get("rating") if isinstance(analyst, dict) else None),
-            "news_score": r.get("news_score") or r.get("sentiment_score"),
-            "top_news_count": len(r.get("news") or r.get("top_news") or []),
+            "symbol": symbol_of(r),
+            "sector": first(r, "sector", "sector_name", "gics_sector"),
+            "asset_class": first(r, "asset_class", "instrument_type"),
+            "analyst_upside_pct": first(r, "analyst_upside_pct", "upside_pct") or (analyst.get("upside_pct") if isinstance(analyst, dict) else None),
+            "analyst_rating": first(r, "analyst_rating") or (analyst.get("rating") if isinstance(analyst, dict) else None),
+            "news_score": first(r, "news_score", "sentiment_score"),
+            "top_news_count": len(first(r, "news", "top_news") or []),
         })
-    return {"available": True, "card_count": len(rows), "sample_cards": compact}
+    return {"available": payload is not None, "card_count": len(cards), "sample_cards": compact}
 
 
-def build_prompt(question: str, holdings_payload: Any, cards_payload: Any, rotation_report: dict[str, Any]) -> str:
+def build_prompt(question: str, holdings_payload: Any, cards_payload: Any, rotation_report: dict[str, Any], grounding: dict[str, Any]) -> str:
     context = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "user_question": question,
+        "grounding_report": grounding,
         "holdings_context": compact_holdings(holdings_payload),
         "symbol_card_context": compact_symbol_cards(cards_payload),
         "rotation_engine_report": rotation_report,
@@ -133,15 +294,22 @@ You are the Trade AI Rotation Advisor for a single owner/operator portfolio.
 
 {SAFETY_BLOCK}
 
+FACTS YOU MUST OBEY:
+- If grounding_report.no_model_supported_action is true, say no evidence-supported trim amount is available.
+- If any grounding_report.missing_flags exist, do not say "no missing data".
+- If a symbol fact says sector=Materials, do not call it Industrials.
+- If a symbol fact says tax impact is not available, do not claim a positive tax impact.
+- If a symbol is not held in an account type, do not say the recommendation applies to that account type.
+
 User question:
 {question}
 
 Use the JSON context below. Answer with:
 1. Direct answer in plain English.
-2. What to trim, if anything, and why.
+2. What to reduce, if anything, and why.
 3. What to add, if anything, and why.
-4. Suggested review amount or percent range. Use ranges, not order instructions.
-5. Account-specific notes: taxable, Roth, rollover IRA, Fidelity/401k manual-only.
+4. Suggested review amount or percent range. If unsupported, say range unavailable.
+5. Account-specific notes only for accounts supported by the data.
 6. Missing data / confidence warnings.
 7. Final recommendation class: HOLD / WATCH / ADD_REVIEW / TRIM_REVIEW / ROTATE_REVIEW / RESEARCH_MORE.
 
@@ -166,6 +334,28 @@ def call_local_llm(prompt: str, timeout: int, fallback: bool) -> str:
             os.environ["LOCAL_LLM_NUM_PREDICT"] = old_num_predict
 
 
+def validate_llm_answer(answer: str, grounding: dict[str, Any]) -> dict[str, Any]:
+    issues: list[str] = []
+    lower = answer.lower()
+    if grounding.get("no_model_supported_action"):
+        if re.search(r"\b\d{1,2}\s*[-–]\s*\d{1,2}\s*%", answer) or re.search(r"\b\d{1,2}\s*%", answer):
+            issues.append("numeric_range_without_model_supported_action")
+    if grounding.get("missing_flags") and "no missing data" in lower:
+        issues.append("claimed_no_missing_data_despite_missing_flags")
+    if "positive tax impact" in lower or "would have a positive tax" in lower:
+        issues.append("claimed_tax_impact_without_cost_basis")
+    for fact in grounding.get("symbol_facts", []):
+        sym = str(fact.get("symbol") or "")
+        sector = str(fact.get("sector") or "").lower()
+        if sym and sector:
+            if sym.lower() in lower:
+                for wrong in SECTOR_WORDS:
+                    if wrong != sector and wrong in lower and sector not in lower:
+                        issues.append(f"possible_wrong_sector_for_{sym}: expected {sector}")
+                        break
+    return {"ok": not issues, "issues": issues}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--question", required=True, help="Rotation/allocation question to ask")
@@ -175,6 +365,7 @@ def main() -> int:
     ap.add_argument("--min-pair-score", type=float, default=35.0)
     ap.add_argument("--timeout", type=int, default=300)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--allow-ungrounded-llm", action="store_true", help="return raw LLM answer even if validation flags issues")
     args = ap.parse_args()
 
     holdings_path = Path(args.holdings)
@@ -182,7 +373,9 @@ def main() -> int:
     holdings_payload = load_json(holdings_path)
     cards_payload = load_json(cards_path) if cards_path and cards_path.exists() else None
     rotation_report = run_rotation_engine(holdings_path, cards_path if cards_path and cards_path.exists() else None, args.min_pair_score)
-    prompt = build_prompt(args.question, holdings_payload, cards_payload, rotation_report)
+    grounding = grounding_report(args.question, holdings_payload, cards_payload, rotation_report)
+    grounded_answer = deterministic_answer(args.question, grounding)
+    prompt = build_prompt(args.question, holdings_payload, cards_payload, rotation_report, grounding)
 
     PROMPT_DIR.mkdir(parents=True, exist_ok=True)
     slug = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -194,16 +387,24 @@ def main() -> int:
         "advisory_only": True,
         "backend": args.backend,
         "prompt_path": str(prompt_path),
-        "rotation_summary": rotation_report.get("summary", {}),
-        "data_quality": rotation_report.get("data_quality", {}),
+        "rotation_summary": rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {},
+        "data_quality": rotation_report.get("data_quality", {}) if isinstance(rotation_report, dict) else {},
+        "grounding_report": grounding,
+        "grounded_answer": grounded_answer,
     }
 
     if args.backend in {"prompt_only", "oauth_prompt"}:
         result["answer"] = None
         result["instructions"] = "Send prompt_path content to the OAuth/cloud LLM channel for external review. No broker action is authorized."
     else:
-        answer = call_local_llm(prompt, timeout=args.timeout, fallback=(args.backend == "auto"))
-        result["answer"] = answer
+        raw_answer = call_local_llm(prompt, timeout=args.timeout, fallback=(args.backend == "auto"))
+        validation = validate_llm_answer(raw_answer, grounding)
+        result["answer_validation"] = validation
+        result["llm_answer_raw"] = raw_answer
+        if validation["ok"] or args.allow_ungrounded_llm:
+            result["answer"] = raw_answer
+        else:
+            result["answer"] = grounded_answer + "\n\nLocal LLM answer was withheld because validation flagged: " + ", ".join(validation["issues"])
 
     print(json.dumps(result, indent=2, sort_keys=True) if args.json else result.get("answer") or json.dumps(result, indent=2, sort_keys=True))
     return 0
