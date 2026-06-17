@@ -17,7 +17,17 @@ review + free/OAuth Grok second opinion; no broker action, no API keys, no paid 
   not pairs → real empty-state + a Review Candidates grid); worthless/delisted ($0) candidates filtered;
   candidate sectors backfilled from `symbol_profiles`; "Missing Analyst Upside" card wired (held tickers with
   no `analyst.upside_pct`); defensive JSON parsing so a slow/empty advisor reply never crashes the UI.
-- The hardened `rotation_dual_llm_advisor.py` still never calls Grok over an API — the inline call lives only
+- **Substantive Grok** (`7ca44039`): the Grok prompt now asks for a real qualitative read (sectors, analyst
+  upside present/missing/negative, concentration, taxable vs tax-deferred, factors for/against, what to check
+  next) instead of just "range unavailable" — while still never inventing a numeric trim amount.
+- **Rebalance from research** (`5c36bbd0`): the summary also returns `research_candidates` (top non-held
+  watchlist names with conviction — Hermes rank, sector, analyst rating/upside) and `research_rotation_ideas`
+  (advisory `ROTATE_REVIEW` pairs: a trim-worthy real-ticker holding → a research name; no dollar amount, not
+  a model-supported signal; 401k fund codes excluded; deduped). New "Rebalance from Research" UI section.
+- **Grok reviews the rebalance ideas** (`9eda4e68`): `POST /api/v2/rotation/grok-rebalance-review` gives a
+  per-idea verdict (reasonable to review vs poor fit, and why) + overall WATCH/RESEARCH_MORE, inline via the
+  free OAuth proxy. "Grok Review These Ideas" button in the rebalance section.
+- The hardened `rotation_dual_llm_advisor.py` still never calls Grok over an API — the inline calls live only
   in the API layer via the free OAuth proxy. Full detail: `docs/project/ROTATION_LLM_ADVISOR.md`.
 
 ## 2026-06-17 - Strategy Planner UI redesign (live context + guided before→after flow)
