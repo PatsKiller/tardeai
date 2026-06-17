@@ -4,10 +4,11 @@ import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import BacktestPanel from '../components/BacktestPanel'
+import StrategyPlanner from '../components/StrategyPlanner'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Analytics', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
+const TABS = ['Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
 
 export default function StrategyHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Analytics')
@@ -322,6 +323,7 @@ export default function StrategyHub({ onDrill }: Props) {
         )
       })()}
 
+      {tab === 'Planner' && <StrategyPlanner />}
       {tab === 'Backtest' && <BacktestPanel onDrill={onDrill} />}
     </div>
   )
