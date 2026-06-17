@@ -28,6 +28,8 @@ type RotationData = {
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
   top_candidates?: any[]
+  research_candidates?: any[]
+  research_rotation_ideas?: RotationPair[]
   generated_at?: string
 }
 
@@ -204,6 +206,8 @@ export default function RotationIntelligence() {
   const pairs = (data?.top_pairs ?? []).filter((p: any) => p?.from_symbol || p?.to_symbol)
   const noIdeas = ideas.length === 0 && pairs.length === 0
   const candidates = (data?.top_candidates ?? []) as any[]
+  const researchIdeas = (data?.research_rotation_ideas ?? []) as any[]
+  const researchCands = (data?.research_candidates ?? []) as any[]
 
   const grokAnswer = grokPrompt?.grok_answer
   const grokNote = grokPrompt?.note
@@ -462,6 +466,55 @@ export default function RotationIntelligence() {
             })}
           </div>
           {candidates.length > 24 && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>+{candidates.length - 24} more</div>}
+        </section>
+      )}
+
+      {/* G. Rebalance from research (rotate into non-held names) — advisory */}
+      {(researchIdeas.length > 0 || researchCands.length > 0) && (
+        <section>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Rebalance from Research <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · not a model-supported signal</span></div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Ideas to rotate from a trim-worthy holding into a high-conviction <b>research name you don't hold</b>. Review only — confirm sizing, tax, and account fit yourself; nothing is placed.</div>
+
+          {researchIdeas.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12, marginBottom: 14 }}>
+              {researchIdeas.map((idea: any, idx: number) => (
+                <article key={`${idea.from_symbol}-${idea.to_symbol}-${idx}`} style={{ ...card, borderColor: 'rgba(96,165,250,.3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <ActionBadge cls={idea.action_class} />
+                    <span style={{ flex: 1 }} />
+                    {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span>}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 6 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
+                  {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{idea.rationale}</div>}
+                </article>
+              ))}
+            </div>
+          )}
+
+          {researchCands.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>Research candidates to rotate into (not held)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+                {researchCands.map((c: any, idx: number) => (
+                  <article key={`${c.symbol}-${idx}`} style={card}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol}</span>
+                      {c.hermes_rank != null && <span style={{ fontSize: 9.5, color: '#a855f7' }}>★#{c.hermes_rank}</span>}
+                      <span style={{ flex: 1 }} />
+                      {c.analyst_rating && <ActionBadge cls={String(c.analyst_rating).includes('buy') ? 'ADD_REVIEW' : 'WATCH'} />}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>{c.sector ?? '—'}</div>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
+                      {c.analyst_upside_pct != null && <span>upside {c.analyst_upside_pct}%</span>}
+                      {c.analyst_rating && <span>{String(c.analyst_rating).replace(/_/g, ' ')}</span>}
+                      {c.score != null && <span>score {Math.round(c.score)}</span>}
+                    </div>
+                    {c.description && <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.4 }}>{c.description}</div>}
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
 
