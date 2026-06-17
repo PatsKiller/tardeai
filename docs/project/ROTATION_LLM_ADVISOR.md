@@ -18,7 +18,7 @@ Example question types:
 
 ## Safety contract
 
-The advisor cannot place, cancel, submit, route, or approve orders. It cannot change holdings. It produces review notes only.
+The advisor cannot place, cancel, submit, route, or approve broker actions. It cannot change holdings. It produces review notes only.
 
 Each answer should include:
 
@@ -29,6 +29,45 @@ Each answer should include:
 5. Account-specific notes
 6. Missing data and confidence warnings
 7. Advisory class: `HOLD`, `WATCH`, `ADD_REVIEW`, `TRIM_REVIEW`, `ROTATE_REVIEW`, or `RESEARCH_MORE`
+
+## Grounded-answer validation
+
+The advisor now builds a deterministic grounding report before calling the local model. This report includes:
+
+- symbols detected in the question
+- current holding value and accounts for those symbols
+- symbol-card sector / asset class / analyst fields
+- rotation-engine summary
+- data-quality warnings
+
+If the local model overreaches, the advisor replaces the model answer with a grounded answer and preserves the raw model answer under `llm_answer_raw` when `--json` is used.
+
+The validator flags common failures:
+
+- numeric trim percentages when the rotation engine has no supported trim/add/rotation idea
+- saying `no missing data` when sector or analyst fields are missing
+- claiming tax impact without cost-basis or gain/loss data
+- likely sector mismatch, such as calling XLB Industrials when metadata says Materials
+
+To inspect a blocked local answer:
+
+```bash
+python3 scripts/rotation_llm_advisor.py \
+  --question "Review whether XLB exposure should be reduced to increase SPCX exposure." \
+  --backend local \
+  --cards data/runtime/symbol_cards_latest.json \
+  --json
+```
+
+Look at:
+
+```text
+answer_validation
+llm_answer_raw
+grounded_answer
+```
+
+Use `--allow-ungrounded-llm` only for debugging, not for operator decisions.
 
 ## Local LLM usage
 
