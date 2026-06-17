@@ -85,9 +85,11 @@ export default function StrategyPlanner() {
           <Stat label="Cash freed" value={`$${(imp.cash_freed ?? 0).toLocaleString()}`} color={BLUE} />
           <Stat label="Cash %" value={`${imp.cash_pct_before}% → ${imp.cash_pct_after}%`} color={imp.cash_pct_after > 20 ? AMBER : T0} />
           <Stat label="Account after" value={imp.account_refactor?.after} color={T0} />
-          <Stat label="Est. income lost / yr" value={`$${(imp.income?.est_annual_income_lost ?? 0).toLocaleString()}`} color={RED} sub={`target $${(imp.income?.target ?? 0).toLocaleString()}`} />
+          <Stat label="Income lost / yr" value={`$${(imp.income?.annual_income_lost ?? 0).toLocaleString()}`} color={RED} sub={`${imp.income?.blended_yield_pct ?? 0}% yield · target $${(imp.income?.target ?? 0).toLocaleString()}`} />
         </div>
-        <div style={{ fontSize: 11, color: AMBER }}>{imp.income?.note}</div>
+        {(imp.income?.by_holding ?? []).length > 0 && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>{(imp.income.by_holding).slice(0, 8).map((b: any) => (
+          <span key={b.symbol} style={{ fontSize: 10, background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '2px 6px', color: T2 }}>{b.symbol} <b style={{ color: RED }}>${b.annual_income.toLocaleString()}</b> <span style={{ color: T3 }}>{b.yield_pct}%</span></span>))}</div>}
+        <div style={{ fontSize: 10.5, color: AMBER, lineHeight: 1.4 }}>{imp.income?.note}</div>
       </div>
       <div style={card}>
         <div style={{ fontSize: 12, fontWeight: 800, color: T0, marginBottom: 8 }}>Look-through exposure change</div>

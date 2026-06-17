@@ -41,6 +41,51 @@ def _lookthrough():
     return _load(STATE / "lookthrough_themes.json", {"themes": {}, "accounts_detail": {}})
 
 
+_YIELD_SANE_MAX = 25.0   # reject feed garbage (e.g. ticker_dividend_data had SCHD at 12.98%)
+
+
+def _yield_map(symbols) -> dict:
+    """Per-symbol dividend yield % from the computed dividend_calendar — the authoritative source: it is
+    derived from the operator's actual holdings + real distributions ($14.5k/yr reconciled) and covers every
+    meaningful payer (SCHD, JEPI, BDCs, BND, defense divs, …). The raw ticker_dividend_data feed is NOT used —
+    it reported systematically inflated yields (SCHD 12.98%, BAH 12.33% vs ~3.6%/1.7% real). Symbols absent
+    from the calendar are non-payers (growth stocks, accumulating/tax-deferred funds) → 0.0."""
+    syms = {(s or "").upper() for s in symbols if s}
+    out = {}
+    if not syms:
+        return out
+    try:
+        for p in _load(STATE / "dividend_calendar.json", {}).get("payers", []):
+            sym = (p.get("symbol") or "").upper()
+            y = p.get("yield_pct")
+            if sym in syms and y is not None and 0 <= float(y) <= _YIELD_SANE_MAX:
+                out[sym] = max(out.get(sym, 0.0), float(y))
+    except Exception:
+        pass
+    return out
+
+
+def _holding_income(rows, fraction=1.0) -> tuple[int, list, dict]:
+    """Precise annual income for holding rows = sum(market_value × yield%) × fraction.
+    Returns (total_income, per-symbol breakdown high→low, coverage{priced, no_yield_value})."""
+    ymap = _yield_map([r.get("symbol") for r in rows])
+    by_sym, covered_val, uncovered_val = {}, 0.0, 0.0
+    for r in rows:
+        sym = (r.get("symbol") or "").upper()
+        mv = float(r.get("market_value") or 0) * fraction
+        if sym in ymap:
+            covered_val += mv
+            inc = mv * (ymap[sym] / 100.0)
+            if inc:
+                by_sym[sym] = by_sym.get(sym, 0.0) + inc
+        else:
+            uncovered_val += mv
+    breakdown = [{"symbol": s, "annual_income": round(v), "yield_pct": round(ymap.get(s, 0.0), 2)}
+                 for s, v in sorted(by_sym.items(), key=lambda kv: -kv[1])]
+    coverage = {"priced_value": round(covered_val), "no_yield_data_value": round(uncovered_val)}
+    return round(sum(by_sym.values())), breakdown, coverage
+
+
 # ── intent ──────────────────────────────────────────────────────────────────
 def normalize_intent(intent: dict) -> dict:
     """Coerce the operator's intent into a canonical shape."""
@@ -63,12 +108,14 @@ def compute_impact(intent: dict) -> dict:
     acct = it["account"]
     ad = (lt.get("accounts_detail") or {}).get(acct or "", {})
 
-    # what's being freed
+    # what's being freed (income_rows + income_fraction drive the precise per-holding income math)
+    income_rows, income_fraction = [], 1.0
     if it["action"] == "liquidate" and acct:
         rows = [h for h in holdings if h.get("account") == acct and not h.get("is_cash")]
         cash_freed = sum(float(h.get("market_value") or 0) for h in rows)
         before_positions = [{"symbol": h.get("symbol"), "value": round(float(h.get("market_value") or 0))}
                             for h in sorted(rows, key=lambda r: -(float(r.get("market_value") or 0)))]
+        income_rows = rows                       # whole account liquidated → full income of every row
     elif it["action"] == "trim" and it["symbol"]:
         rows = [h for h in holdings if (h.get("symbol") or "").upper() == it["symbol"]
                 and (not acct or h.get("account") == acct)]
@@ -77,10 +124,22 @@ def compute_impact(intent: dict) -> dict:
         cash_freed = held_val if amt in ("all", None) else float(str(amt).replace("$", "").replace(",", ""))
         cash_freed = min(cash_freed, held_val)
         before_positions = [{"symbol": it["symbol"], "value": round(held_val), "trimming": round(cash_freed)}]
+        income_rows = rows                        # trimming a fraction loses that fraction of the income
+        income_fraction = (cash_freed / held_val) if held_val else 0.0
     else:  # add / rebalance — cash deployed in, not freed
         amt = it["amount"] or 0
         cash_freed = float(str(amt).replace("$", "").replace(",", "")) if amt else 0
         before_positions = []
+
+    # precise annual income lost = sum(market_value * dividend yield%), per affected holding
+    income_lost, income_breakdown, income_coverage = _holding_income(income_rows, income_fraction)
+    blended_yield = round(income_lost / cash_freed * 100, 2) if cash_freed else 0.0
+    _uncov = income_coverage.get("no_yield_data_value", 0)
+    income_note = ("freed cash earns ~0 until redeployed — income gap widens until you reinvest"
+                   if income_lost else
+                   (f"no dividend data for ${_uncov:,} of these holdings (e.g. tax-deferred 401k funds — "
+                    "their distributions reinvest and don't count toward the spendable income goal)"
+                    if _uncov else "these holdings pay no distributions"))
 
     # look-through theme delta (per-account exposure is pre-computed)
     theme_delta = []
@@ -102,8 +161,6 @@ def compute_impact(intent: dict) -> dict:
     cash_now = sum(float(h.get("market_value") or 0) for h in holdings if h.get("is_cash"))
     cash_after = cash_now + (cash_freed if it["action"] in ("liquidate", "trim") else 0)
 
-    # income / goal impact — rough: equity sleeve cashed yields ~0 vs a ~1.3% blended equity yield
-    est_income_lost = round(cash_freed * 0.013) if it["action"] in ("liquidate", "trim") else 0
 
     return {
         "intent": it,
@@ -116,8 +173,11 @@ def compute_impact(intent: dict) -> dict:
                                        else f"-{round(cash_freed)} from {it['symbol']}" if it["action"] == "trim"
                                        else f"+{round(cash_freed)} deployed")},
         "lookthrough_delta": theme_delta[:12],
-        "income": {"target": INCOME_TARGET, "est_annual_income_lost": est_income_lost,
-                   "note": "freed cash earns ~0 until redeployed — income gap widens until you reinvest"},
+        "income": {"target": INCOME_TARGET, "annual_income_lost": income_lost,
+                   "blended_yield_pct": blended_yield, "by_holding": income_breakdown,
+                   "coverage": income_coverage,
+                   "method": "precise: sum(market_value × dividend yield% per holding)",
+                   "note": income_note},
         "underweight_themes": [name for name, _ in
                                sorted(pf_themes.items(), key=lambda kv: float(kv[1].get("pct") or 0))[:5]],
     }
