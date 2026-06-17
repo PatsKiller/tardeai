@@ -33,6 +33,14 @@ _ETF_SECTOR = {
     "ARKG": "Healthcare", "ARKK": "Innovation", "ARKQ": "Innovation", "ARKW": "Innovation", "ARKF": "Innovation",
 }
 
+# Open-end mutual funds have no single GICS sector in yfinance either — give them an asset-class label
+# so the card's sector slot isn't blank (Morningstar-style category, not a GICS sector → no vs-sector).
+_FUND_SECTOR = {
+    "FCNTX": "Large-Cap Growth Fund", "TILCX": "Large-Cap Growth Fund",
+    "AMANX": "Equity Income Fund", "VFTNX": "Large-Cap Equity Fund (ESG)",
+    "ABSZX": "Small/Mid-Cap Equity Fund",
+}
+
 
 def _two_line_summary(text, maxlen=300):
     """First TWO sentences of the business summary — a ~two-line 'what the company does' blurb."""
@@ -77,8 +85,10 @@ def run(symbols=None, force=False):
         except Exception:
             info = {}
         desc = _two_line_summary(info.get("longBusinessSummary"))
-        sector = info.get("sector") or _ETF_SECTOR.get(sym) or None   # ETFs have no yfinance sector
-        industry = info.get("industry") or ("Exchange Traded Fund" if sym in _ETF_SECTOR else None)
+        # ETFs/mutual funds have no GICS sector in yfinance — fall back to the fund maps.
+        sector = info.get("sector") or _ETF_SECTOR.get(sym) or _FUND_SECTOR.get(sym) or None
+        industry = info.get("industry") or ("Exchange Traded Fund" if sym in _ETF_SECTOR
+                                            else "Mutual Fund" if sym in _FUND_SECTOR else None)
         if not (desc or sector):
             missed += 1
             continue
