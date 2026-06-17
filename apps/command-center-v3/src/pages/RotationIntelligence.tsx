@@ -26,6 +26,7 @@ type RotationData = {
   missing_sector?: number
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
+  top_candidates?: any[]
   generated_at?: string
 }
 
@@ -183,8 +184,9 @@ export default function RotationIntelligence() {
   const dq = data?.data_quality ?? {}
   const missingAnalyst = dq.rows_missing_analyst_upside ?? dq.missing_analyst_upside ?? dq.rows_without_analyst_upside
   const ideas = data?.top_rotation_ideas ?? []
-  const pairs = data?.top_pairs ?? []
+  const pairs = (data?.top_pairs ?? []).filter((p: any) => p?.from_symbol || p?.to_symbol)
   const noIdeas = ideas.length === 0 && pairs.length === 0
+  const candidates = (data?.top_candidates ?? []) as any[]
 
   const promptText = grokPrompt?.prompt_text
   const promptPath = grokPrompt?.prompt_path || result?.grok_oauth_prompt_path
@@ -247,9 +249,10 @@ export default function RotationIntelligence() {
           <button disabled={!!busy} onClick={buildGrokPrompt} style={btn(!!busy)}>Build Grok OAuth Prompt</button>
           <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
           <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
-          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…</span>}
+          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy === 'Ask Local' || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
+          <b>Build Grok OAuth Prompt</b> is instant. <b>Ask Local</b> / <b>Run Dual Review</b> run the local model and can take 1–3 minutes when the GPU is busy.
           Grok is free / OAuth / manual-paste only — no API key is used. The advisor reviews holdings and offers a second opinion;
           it never places, buys, or sells anything.
         </div>
@@ -407,12 +410,51 @@ export default function RotationIntelligence() {
             ))}
           </div>
         )}
-        {data?.generated_at && (
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>
-            Source: /api/v2/rotation/summary · generated {data.generated_at} · advisory only, no broker action
-          </div>
-        )}
       </section>
+
+      {/* Review candidates (per-symbol, not pairs) */}
+      {candidates.length > 0 && (
+        <section>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Review Candidates</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Per-symbol review candidates from the grounded scorer — not buy/sell instructions. Each is a WATCH / review item only.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {candidates.slice(0, 24).map((c: any, idx: number) => {
+              const ev = c.evidence ?? {}
+              return (
+                <article key={`${c.symbol}-${c.account_key}-${idx}`} style={card}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol ?? '—'}</span>
+                    <span style={{ flex: 1 }} />
+                    <ActionBadge cls={c.recommendation} />
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>
+                    {(c.sector ?? '—')} · {(c.account_type ?? c.account_key ?? '—').toString().replace(/_/g, ' ')}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
+                    {c.current_value != null && <span>value {money(c.current_value)}</span>}
+                    {c.trim_score != null && <span>trim {c.trim_score}</span>}
+                    {c.add_score != null && <span>add {c.add_score}</span>}
+                    {c.confidence != null && <span>conf {c.confidence}</span>}
+                  </div>
+                  {(ev.positive_upside_pct != null || ev.concentration_pct != null) && (
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+                      {ev.positive_upside_pct != null && <>upside {ev.positive_upside_pct}% </>}
+                      {ev.concentration_pct != null && <>· conc {ev.concentration_pct}%</>}
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+          {candidates.length > 24 && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>+{candidates.length - 24} more</div>}
+        </section>
+      )}
+
+      {data?.generated_at && (
+        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>
+          Source: /api/v2/rotation/summary · generated {data.generated_at} · advisory only, no broker action
+        </div>
+      )}
     </div>
   )
 }
