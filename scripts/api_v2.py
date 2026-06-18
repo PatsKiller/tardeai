@@ -3384,13 +3384,26 @@ def _wl_items(query: dict = None):
                    ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
                    ep.model_used AS entry_model,
                    fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
-                   fs.model_used AS cio_model_used
+                   fs.model_used AS cio_model_used,
+                   sp.sector AS profile_sector, sp.industry AS profile_industry,
+                   sp.description_1s AS profile_description,
+                   cat.catalyst_type, cat.headline AS catalyst_headline,
+                   cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
+                   cat.ts AS catalyst_at, cat.source_url AS catalyst_url
             FROM watchlist_items wi
             LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
             LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
             LEFT JOIN watchlist_final_synthesis fs ON fs.symbol = wi.symbol
             LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
             LEFT JOIN watchlist_symbol_master sm ON sm.symbol = wi.symbol
+            LEFT JOIN symbol_profiles sp ON upper(sp.symbol) = upper(wi.symbol)
+            LEFT JOIN LATERAL (
+                SELECT catalyst_type, headline, severity, impact_score, source_url,
+                       COALESCE(published_at, created_at) AS ts
+                FROM catalyst_events ce
+                WHERE upper(ce.symbol) = upper(wi.symbol) AND ce.catalyst_type <> 'other'
+                  AND COALESCE(ce.published_at, ce.created_at) > now() - interval '45 days'
+                ORDER BY COALESCE(ce.published_at, ce.created_at) DESC LIMIT 1) cat ON true
             LEFT JOIN LATERAL (
                 SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
                        target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used

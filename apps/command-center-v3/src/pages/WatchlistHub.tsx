@@ -107,8 +107,12 @@ export default function WatchlistHub({ onDrill }: Props) {
 
   const visible = useMemo(() => {
     const seen = new Set<string>()
+    const q = search.trim().toUpperCase()
     return items.filter(it => {
       if (seen.has(it.symbol)) return false
+      // Search is a DIRECT symbol lookup — it bypasses the other filters so a specific ticker is always
+      // findable (operator 2026-06-18: "can't filter HPE" — HPE is CIO=IGNORE and the Buy-side filter hid it).
+      if (q) { if (!String(it.symbol).toUpperCase().includes(q)) return false; seen.add(it.symbol); return true }
       if (fStatus !== 'all' && it.status !== fStatus) return false
       if (fOrigin !== 'all') {
         if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
@@ -126,7 +130,6 @@ export default function WatchlistHub({ onDrill }: Props) {
         else if (fCio === 'none') { if (cv) return false }
         else if (cv !== fCio) return false
       }
-      if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
       seen.add(it.symbol)
       return true
     })
@@ -245,7 +248,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                     } />
                     <Metric label="Confidence" value={it.research_confidence != null ? Number(it.research_confidence).toFixed(2) : it.hermes_score_components?._confidence ?? '—'} color={BLUE} />
                     <Metric label="AI Enriched" value={ago(it.last_enriched_at) || 'pending'} color={enrichColor(it.last_enriched_at)} />
-                    <Metric label="Validated" value={ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.last_validated_at)} />
+                    <Metric label="Plan validated" value={ago(it.entry_planned_at) || ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.entry_planned_at || it.last_validated_at)} />
                     <Metric label="Entry Model" value={it.entry_model || '—'} color={PURPLE} />
                     <Metric label="R:R" value={rr != null ? rr.toFixed(2) : '—'} color={rr != null && rr >= 2 ? GREEN : AMBER} />
                     <Metric label="Limit" value={money(it.entry_limit)} color={hasPlan ? GREEN : MUTED} />
@@ -270,6 +273,8 @@ export default function WatchlistHub({ onDrill }: Props) {
                   {(it.analysis_stage || it.maria_status || it.steph_status || it.risk_status || it.final_synthesis_status) && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>{it.analysis_stage && <Pill text={`stage ${it.analysis_stage}`} color={BLUE} />}{it.maria_status && <Pill text={`Maria ${it.maria_status}`} color={it.maria_status === 'completed' ? GREEN : AMBER} />}{it.steph_status && <Pill text={`Steph ${it.steph_status}`} color={it.steph_status === 'completed' ? GREEN : AMBER} />}{it.risk_status && <Pill text={`Risk ${it.risk_status}`} color={it.risk_status === 'completed' ? GREEN : AMBER} />}{it.final_synthesis_status && <Pill text={`Final ${it.final_synthesis_status}`} color={it.final_synthesis_status === 'completed' ? GREEN : AMBER} />}</div>}
 
                   {sc && <div style={{ borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>{sc.description && <div style={{ fontSize: 11.5, color: TEXT2, lineHeight: 1.45 }}>{sc.description}</div>}<div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>{sc.sector && <Pill text={`${sc.sector}${sc.sector_etf ? ` (${sc.sector_etf})` : ''}`} color={BLUE} tip={sc.industry || undefined} />}{sc.vs_sector_week != null && <Pill text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`} color={sc.vs_sector_week >= 0 ? GREEN : RED} />}{sc.analyst?.rating && <Pill text={`${String(sc.analyst.rating).replace('_', ' ')} · ${sc.analyst.opinions} analysts · target $${sc.analyst.target}${sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}`} color={String(sc.analyst.rating).includes('buy') ? GREEN : sc.analyst.rating === 'hold' ? AMBER : MUTED} />}</div>{(sc.news ?? []).slice(0, 4).map((n: any, i: number) => <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4 }}><span style={{ color: MUTED }}>{n.source} · {n.at ? `${Math.round((Date.now() - new Date(n.at).getTime()) / 36e5)}h` : ''} </span>{n.url ? <a href={n.url} target="_blank" rel="noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>{n.title}</a> : <span style={{ color: TEXT2 }}>{n.title}</span>}</div>)}</div>}
+                  {!sc && (it.profile_description || it.profile_sector) && <div style={{ borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>{it.profile_description && <div style={{ fontSize: 11.5, color: TEXT2, lineHeight: 1.45 }}>{it.profile_description}</div>}{it.profile_sector && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}><Pill text={it.profile_sector} color={BLUE} tip={it.profile_industry || undefined} />{it.profile_industry && <Pill text={it.profile_industry} color={MUTED} />}</div>}</div>}
+                  {it.catalyst_headline && <div style={{ fontSize: 10.5, color: TEXT2, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}><Pill text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`} color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? GREEN : AMBER} tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`} />{it.catalyst_url ? <a href={it.catalyst_url} target="_blank" rel="noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>{it.catalyst_headline}</a> : <span>{it.catalyst_headline}</span>}{it.catalyst_at && <span style={{ color: MUTED, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10.5, color: MUTED }}><span>{it.origin_system === 'agent_discovery' ? 'AI-discovered' : originLabel(it.origin_system)}</span><span style={{ color: BLUE, fontWeight: 800 }}>more intelligence →</span></div>
                 </div>
               )
