@@ -45,7 +45,7 @@ def build_weekly_prompt(perf, account_summaries, totals, trade_journal):
     # Per-account 1W
     acct_lines = []
     for key, label in [
-        ("fidelity_401k", "Fidelity 401k"),
+        ("fidelity_rollover_ira", "Fidelity Rollover IRA"),
         ("schwab_rollover_ira", "Rollover IRA"),
         ("schwab_roth", "Roth IRA"),
         ("schwab_taxable", "Taxable"),

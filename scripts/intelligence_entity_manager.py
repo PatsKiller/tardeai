@@ -55,7 +55,7 @@ SUBJECT_DISPLAY_NAMES = {
     'MFS_Filing': 'Married Filing Separately Tax Rules',
     '401k_Loan': '401k Loan — Omnicom (Deadline ~634 days)',
     'Medicaid_Lookback': 'Medicaid 5-Year Lookback Rules',
-    'Omnicom_Rollover': 'Omnicom 401k → Rollover IRA (2027)',
+    'Omnicom_Rollover': 'Omnicom 401k → Fidelity Rollover IRA (COMPLETE 2026-06-18)',
     'Private_Disability': 'Private Disability Insurance (to age 68.5)',
     'Schedule_C': 'Schedule C Business Income (~$20K/yr)',
 }

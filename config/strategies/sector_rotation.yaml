@@ -74,7 +74,7 @@ paper_trade_rules:
 live_trade_rules:
   dollar_risk: 500
   max_hold_weeks: 8
-fidelity_401k_note: Limited to available 401k funds. Map sector to closest available fund.
+fidelity_rollover_ira_note: Self-directed Rollover IRA (#***199, funded by the Omnicom 401k rollover). Full ETF/stock access — not limited to a 401k fund menu. READ-ONLY (no trading API) → advisory/rotation suggestions only, never auto-executed. As of 2026-06-18 holds ~$568K uninvested cash awaiting deployment.
 outcome_learning_fields:
   - sector_rank_at_entry
   - spy_relative_performance
@@ -173,7 +173,7 @@ technical_indicators_required:
     - opening_range
     - rsi_5
 performance_context:
-  last_updated: '2026-06-11T15:36:52+00:00'
+  last_updated: '2026-06-18T06:30:03+00:00'
   closed_paper_trades: 1
   win_rate: 0.0
   avg_r_realized: 0.0

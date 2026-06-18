@@ -623,7 +623,7 @@ def _parse_csv_to_import(body: dict) -> dict:
     elif "individual" in fname_lower or "taxable" in fname_lower or "brokerage" in fname_lower:
         account_key = "schwab_taxable"
     elif "fidelity" in fname_lower or "401" in fname_lower or import_type == "fidelity_positions":
-        account_key = "fidelity_401k"
+        account_key = "fidelity_rollover_ira"
     else:
         account_key = "schwab_rollover_ira"
 

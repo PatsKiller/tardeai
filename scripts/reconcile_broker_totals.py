@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 ACCOUNT_MAP = {
-    "fidelity": "fidelity_401k",
+    "fidelity": "fidelity_rollover_ira",
     "rollover": "schwab_rollover_ira",
     "roth": "schwab_roth",
     "taxable": "schwab_taxable",
