@@ -53,13 +53,33 @@ def _two_line_summary(text, maxlen=300):
     return (s[: maxlen - 1] + "…") if len(s) > maxlen else s
 
 
-def run(symbols=None, force=False):
+def _finviz_map(symbols, root="."):
+    """Batch Finviz sector/industry/company for plain tickers — the fallback when yfinance is
+    rate-limited (it provides no business summary, so we synthesize a one-liner from company+industry)."""
+    plain = [s for s in symbols if re.fullmatch(r"[A-Z]{1,5}", s)]
+    if not plain:
+        return {}
+    try:
+        import finviz_enrichment as fe
+        return fe.enrich_tickers(plain, project_root=root) or {}
+    except Exception as e:
+        print(f"  [finviz fallback] error: {str(e)[:80]}")
+        return {}
+
+
+def run(symbols=None, force=False, watchlist_top=0):
     from db_adapter import _get_conn
     import watch_universe as wu
     from holding_proxies import HOLDING_PROXY_MAP
     conn = _get_conn(); cur = conn.cursor()
-    uni = sorted(set(s.upper() for s in symbols) if symbols
-                 else wu.symbols(cur) | set(HOLDING_PROXY_MAP))
+    uni = set(s.upper() for s in symbols) if symbols else (wu.symbols(cur) | set(HOLDING_PROXY_MAP))
+    # operator 2026-06-18: also cover the top watchlist names so their cards get sector/description
+    # (the unified card layer was blank for AI-discovered names — only watch_universe was profiled).
+    if watchlist_top and not symbols:
+        cur.execute("""SELECT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'
+                       ORDER BY hermes_rank ASC NULLS LAST LIMIT %s""", (watchlist_top,))
+        uni |= {r[0].upper() for r in cur.fetchall()}
+    uni = sorted(uni)
     if not force:
         cur.execute("""SELECT symbol FROM symbol_profiles
                        WHERE updated_at > now() - interval '30 days' AND description_1s IS NOT NULL""")
@@ -69,7 +89,8 @@ def run(symbols=None, force=False):
         print(json.dumps({"status": "fresh", "updated": 0}))
         return
     import yfinance as yf
-    updated = missed = 0
+    fvz = _finviz_map(uni)                      # batch Finviz once (sector/industry/company)
+    updated = missed = fvz_used = 0
     for sym in uni:
         if sym in HOLDING_PROXY_MAP and not re.fullmatch(r"[A-Z]{1,5}", sym):
             etf, label = HOLDING_PROXY_MAP[sym]
@@ -85,26 +106,40 @@ def run(symbols=None, force=False):
         except Exception:
             info = {}
         desc = _two_line_summary(info.get("longBusinessSummary"))
-        # ETFs/mutual funds have no GICS sector in yfinance — fall back to the fund maps.
         sector = info.get("sector") or _ETF_SECTOR.get(sym) or _FUND_SECTOR.get(sym) or None
         industry = info.get("industry") or ("Exchange Traded Fund" if sym in _ETF_SECTOR
                                             else "Mutual Fund" if sym in _FUND_SECTOR else None)
+        source = "yfinance"
+        # ── Finviz fallback (yfinance rate-limited / empty): sector + industry + a synthesized one-liner ──
+        if not (desc or sector):
+            fd = fvz.get(sym) or {}
+            f_sector, f_industry, f_company = fd.get("sector"), fd.get("industry"), fd.get("company")
+            if f_sector or f_industry:
+                sector = sector or f_sector
+                industry = industry or f_industry
+                if not desc:
+                    bits = [b for b in (f_company, f_industry) if b]
+                    desc = " — ".join(bits) + "." if bits else None
+                source = "finviz"
+                fvz_used += 1
         if not (desc or sector):
             missed += 1
             continue
         cur.execute("""INSERT INTO symbol_profiles (symbol, description_1s, sector, industry, source, updated_at)
-                       VALUES (%s,%s,%s,%s,'yfinance',now())
+                       VALUES (%s,%s,%s,%s,%s,now())
                        ON CONFLICT (symbol) DO UPDATE SET description_1s=EXCLUDED.description_1s,
-                         sector=EXCLUDED.sector, industry=EXCLUDED.industry, source='yfinance', updated_at=now()""",
-                    (sym, desc, sector, industry))
+                         sector=EXCLUDED.sector, industry=EXCLUDED.industry, source=EXCLUDED.source, updated_at=now()""",
+                    (sym, desc, sector, industry, source))
         updated += 1
     conn.commit()
-    print(json.dumps({"checked": len(uni), "updated": updated, "no_profile": missed}))
+    print(json.dumps({"checked": len(uni), "updated": updated, "finviz_fallback": fvz_used, "no_profile": missed}))
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--watchlist-top", type=int, default=0,
+                    help="also profile the top-N watchlist names by hermes_rank")
     a = ap.parse_args()
-    run(symbols=a.symbols.split(",") if a.symbols else None, force=a.force)
+    run(symbols=a.symbols.split(",") if a.symbols else None, force=a.force, watchlist_top=a.watchlist_top)
