@@ -18,6 +18,7 @@ type RotationPair = {
   sell_shares_range?: ShareRange
   buy_shares_range?: ShareRange
   from_degradation?: Degradation | null
+  entry_plan?: any
   rationale?: string
 }
 
@@ -918,6 +919,15 @@ export default function RotationIntelligence() {
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 4 }}>
                   {idea.from_symbol ?? '—'} → {idea.to_symbol ?? '—'}
                 </div>
+                {idea.entry_plan?.limit_price != null && (
+                  <div style={{ fontSize: 9.5, fontFamily: 'monospace', marginBottom: 6, padding: '3px 6px', borderRadius: 5, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)', lineHeight: 1.5 }}>
+                    <span style={{ fontWeight: 800, color: '#22c55e' }}>🎯 {idea.to_symbol} entry {px(idea.entry_plan.limit_price)}</span>
+                    {idea.entry_plan.entry_zone_low != null && <span style={{ color: 'var(--text2)' }}> · zone {px(idea.entry_plan.entry_zone_low)}–{px(idea.entry_plan.entry_zone_high)}</span>}
+                    {idea.entry_plan.stop_price != null && <span style={{ color: '#ef4444' }}> · stop {px(idea.entry_plan.stop_price)}</span>}
+                    {idea.entry_plan.risk_reward != null && <span style={{ color: 'var(--text3)' }}> · R:R {idea.entry_plan.risk_reward}</span>}
+                    {(idea.entry_plan.urgency || idea.entry_plan.proposal_tag) && <span style={{ marginLeft: 5, fontWeight: 800, color: idea.entry_plan.urgency === 'ready' ? '#22c55e' : idea.entry_plan.urgency === 'near_entry' ? '#f59e0b' : '#9ca3af' }}>{idea.entry_plan.urgency === 'ready' ? 'READY' : idea.entry_plan.urgency === 'near_entry' ? 'NEAR-ENTRY' : (idea.entry_plan.proposal_tag || 'WATCH')}</span>}
+                  </div>
+                )}
                 {(idea.from_account || idea.to_account) && (
                   <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>
                     {(idea.from_account ?? 'n/a').replace(/_/g, ' ')} → {(idea.to_account ?? 'n/a').replace(/_/g, ' ')}
@@ -1093,9 +1103,22 @@ export default function RotationIntelligence() {
                     {/* uniform rows so every card carries the same fields (placeholders when data is pending) */}
                     <div style={{ fontSize: 9.5, color: c.sector ? 'var(--text3)' : 'var(--text3)', opacity: c.sector ? 1 : 0.6, marginBottom: 6 }}>{c.sector ?? 'sector pending'}</div>
                     <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                      {c.price != null ? px(c.price) : '—'}
+                      <span style={{ color: 'var(--text3)', fontSize: 9 }}>live </span>{c.price != null ? px(c.price) : '—'}
                       {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
                     </div>
+                    {/* Disciplined target entry (operator: no blind market buys). Plan from watchlist_entry_planner. */}
+                    {c.entry_plan?.limit_price != null ? (
+                      <div style={{ fontSize: 9.5, fontFamily: 'monospace', marginBottom: 5, padding: '3px 6px', borderRadius: 5, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)', lineHeight: 1.5 }}>
+                        <span style={{ fontWeight: 800, color: '#22c55e' }}>🎯 entry {px(c.entry_plan.limit_price)}</span>
+                        {c.entry_plan.entry_zone_low != null && <span style={{ color: 'var(--text2)' }}> · zone {px(c.entry_plan.entry_zone_low)}–{px(c.entry_plan.entry_zone_high)}</span>}
+                        {c.entry_plan.stop_price != null && <span style={{ color: '#ef4444' }}> · stop {px(c.entry_plan.stop_price)}</span>}
+                        {c.entry_plan.target_price != null && <span style={{ color: 'var(--text2)' }}> · tgt {px(c.entry_plan.target_price)}</span>}
+                        {c.entry_plan.risk_reward != null && <span style={{ color: 'var(--text3)' }}> · R:R {c.entry_plan.risk_reward}</span>}
+                        {(c.entry_plan.urgency || c.entry_plan.proposal_tag) && <span style={{ marginLeft: 5, fontWeight: 800, color: c.entry_plan.urgency === 'ready' ? '#22c55e' : c.entry_plan.urgency === 'near_entry' ? '#f59e0b' : '#9ca3af' }}>{c.entry_plan.urgency === 'ready' ? 'READY' : c.entry_plan.urgency === 'near_entry' ? 'NEAR-ENTRY' : (c.entry_plan.proposal_tag || 'WATCH')}</span>}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 5, opacity: 0.85 }}>⏳ target entry pending — review before buying (no blind market buy)</div>
+                    )}
                     <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ opacity: hasAnalyst ? 1 : 0.55 }}>{c.analyst_upside_pct != null ? `upside ${c.analyst_upside_pct}%` : 'analyst pending'}</span>
                       {c.analyst_opinions != null && <span style={{ color: c.thin_coverage ? '#f59e0b' : 'var(--text3)' }}>{c.analyst_opinions} analyst{c.analyst_opinions === 1 ? '' : 's'}{c.thin_coverage ? ' ⚠ thin' : ''}</span>}

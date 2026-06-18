@@ -90,11 +90,12 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fDir, setFDir] = useState('all')
   const [fStatus, setFStatus] = useState('all')
   const [fRating, setFRating] = useState('all')
+  const [fCio, setFCio] = useState('all')
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const PER_PAGE = 24
-  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, search])   // reset to page 1 on any filter change
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, search])   // reset to page 1 on any filter change
 
   const runChatgptTop20 = async () => {
     if (curateRunning) return
@@ -118,11 +119,18 @@ export default function WatchlistHub({ onDrill }: Props) {
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
+      if (fCio !== 'all') {
+        const cv = String(it.latest_recommendation || '').toUpperCase()
+        if (fCio === 'buy_side') { if (!['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK'].includes(cv)) return false }
+        else if (fCio === 'avoid_side') { if (!['AVOID', 'IGNORE', 'SELL', 'TRIM'].includes(cv)) return false }
+        else if (fCio === 'none') { if (cv) return false }
+        else if (cv !== fCio) return false
+      }
       if (search && !String(it.symbol).toUpperCase().includes(search.toUpperCase())) return false
       seen.add(it.symbol)
       return true
     })
-  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, search, paMap, advMap])
+  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, search, paMap, advMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -145,7 +153,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFKind('all'); setFDir('all'); setSearch('') } },
+          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFKind('all'); setFDir('all'); setSearch('') } },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
           { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
           { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
@@ -173,6 +181,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Origin<select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>CIO view<select style={SEL} value={fCio} onChange={e => setFCio(e.target.value)}><option value="all">All</option><option value="buy_side">Buy-side (BUY/ADD/pullback)</option><option value="BUY">BUY</option><option value="STRONG_BUY">STRONG_BUY</option><option value="ADD">ADD</option><option value="ADD_ON_PULLBACK">ADD_ON_PULLBACK</option><option value="HOLD">HOLD</option><option value="RESEARCH_MORE">RESEARCH_MORE</option><option value="TRIM">TRIM</option><option value="avoid_side">Avoid-side (AVOID/IGNORE/SELL/TRIM)</option><option value="AVOID">AVOID</option><option value="IGNORE">IGNORE</option><option value="none">No CIO view</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Kind<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="directive">Directive-sourced</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{d.label}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Search<input style={SEL} value={search} onChange={e => setSearch(e.target.value)} placeholder="symbol" /></label>
