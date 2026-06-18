@@ -18414,6 +18414,47 @@ def _rotation_summary():
                         "price": _pe.get("price"), "day_change_pct": _pe.get("day_change_pct")})
         except Exception:
             etf_candidates = []
+        # ── Entry-plan attach (operator 2026-06-18: "rotation buys are blind — no target entry prices").
+        # Latest watchlist_entry_plans row per BUY-SIDE symbol → advisory entry zone/limit/stop/target/R:R/
+        # urgency/tag. Replaces the blind live price with a disciplined target entry. Advisory only. ──
+        try:
+            _buy_syms = set()
+            for _rc in research_candidates:
+                _buy_syms.add((_rc.get("symbol") or "").upper())
+            for _idea in research_ideas:
+                _buy_syms.add((_idea.get("to_symbol") or "").upper())
+            for _e in etf_candidates:
+                if _e.get("direction") == "long":
+                    _buy_syms.add((_e.get("symbol") or "").upper())
+            _buy_syms.discard("")
+            _plans = {}
+            if _buy_syms:
+                from db_adapter import _get_conn as _gcp
+                _cp = _gcp().cursor()
+                _cp.execute("""SELECT DISTINCT ON (symbol) symbol, setup_type, entry_zone_low, entry_zone_high,
+                                  limit_price, stop_price, target_price, risk_reward, urgency, proposal_tag, created_at
+                               FROM watchlist_entry_plans WHERE upper(symbol) = ANY(%s)
+                               ORDER BY symbol, created_at DESC""", (list(_buy_syms),))
+                for _r in _cp.fetchall():
+                    _plans[(_r[0] or "").upper()] = {
+                        "setup_type": _r[1],
+                        "entry_zone_low": float(_r[2]) if _r[2] is not None else None,
+                        "entry_zone_high": float(_r[3]) if _r[3] is not None else None,
+                        "limit_price": float(_r[4]) if _r[4] is not None else None,
+                        "stop_price": float(_r[5]) if _r[5] is not None else None,
+                        "target_price": float(_r[6]) if _r[6] is not None else None,
+                        "risk_reward": float(_r[7]) if _r[7] is not None else None,
+                        "urgency": _r[8], "proposal_tag": _r[9],
+                        "planned_at": _r[10].isoformat() if _r[10] else None}
+            for _o in research_candidates:
+                _o["entry_plan"] = _plans.get((_o.get("symbol") or "").upper())
+            for _o in research_ideas:
+                _o["entry_plan"] = _plans.get((_o.get("to_symbol") or "").upper())
+            for _o in etf_candidates:
+                if _o.get("direction") == "long":
+                    _o["entry_plan"] = _plans.get((_o.get("symbol") or "").upper())
+        except Exception:
+            pass
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "portfolio_total": round(pf_total),

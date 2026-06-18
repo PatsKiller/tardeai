@@ -68,15 +68,59 @@ OUTPUT (strict JSON):
                "suggested_entry": <number>, "sizing_rationale": "<max 25 words>"}}}}"""
 
 
-def _bars(symbol, days=70):
-    import yfinance as yf
+def _alpaca_creds():
+    """ALPACA_API_KEY / ALPACA_SECRET_KEY from env, falling back to the repo .env."""
+    import os
+    k, s = os.getenv("ALPACA_API_KEY", ""), os.getenv("ALPACA_SECRET_KEY", "")
+    if k and s:
+        return k, s
     try:
-        h = yf.Ticker(symbol).history(period="1y")
-        bars = [{"high": float(hi), "low": float(lo), "close": float(c)}
-                for hi, lo, c in zip(h["High"], h["Low"], h["Close"])]
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("ALPACA_API_KEY=") and not k:
+                k = line.split("=", 1)[1].strip()
+            elif line.startswith("ALPACA_SECRET_KEY=") and not s:
+                s = line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return k, s
+
+
+def _bars_alpaca(symbol, days=70):
+    """Daily OHLC from the Alpaca data API (IEX feed — works on paper keys, NOT rate-limited like
+    yfinance). Fallback bars source so entry plans keep generating when Yahoo is throttled."""
+    import requests
+    from datetime import datetime, timedelta, timezone
+    k, s = _alpaca_creds()
+    if not (k and s):
+        return None
+    start = (datetime.now(timezone.utc) - timedelta(days=max(days, 70) * 2 + 20)).date().isoformat()
+    try:
+        r = requests.get(
+            f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",
+            params={"timeframe": "1Day", "start": start, "limit": 500, "adjustment": "raw", "feed": "iex"},
+            headers={"APCA-API-KEY-ID": k, "APCA-API-SECRET-KEY": s}, timeout=15)
+        if r.status_code != 200:
+            return None
+        bars = [{"high": float(b["h"]), "low": float(b["l"]), "close": float(b["c"])}
+                for b in (r.json().get("bars") or [])]
         return bars[-days:] if len(bars) >= 50 else None
     except Exception:
         return None
+
+
+def _bars(symbol, days=70):
+    """yfinance first; on rate-limit/empty, fall back to Alpaca (IEX). Either returns the last `days`
+    of {high,low,close} (≥50 bars) or None."""
+    try:
+        import yfinance as yf
+        h = yf.Ticker(symbol).history(period="1y")
+        bars = [{"high": float(hi), "low": float(lo), "close": float(c)}
+                for hi, lo, c in zip(h["High"], h["Low"], h["Close"])]
+        if len(bars) >= 50:
+            return bars[-days:]
+    except Exception:
+        pass
+    return _bars_alpaca(symbol, days)
 
 
 def _tech(bars):
@@ -169,6 +213,18 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                          AND symbol ~ '^[A-Z]{1,5}$'
                        ORDER BY symbol, created_at DESC""")
     else:
+        # ON-DEMAND (operator 2026-06-18): an explicit --symbols request plans those exact watchlist
+        # names REGARDLESS of status (researched/active/directive) — "I want to buy FATN/HPE, give me
+        # an entry". Bypasses the active-only base + the buy-rated rotation cap below.
+        if symbols:
+            want = tuple(s.upper() for s in symbols)
+            cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
+                             NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
+                             NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
+                           FROM watchlist_items
+                           WHERE upper(symbol) IN %s AND status <> 'removed'
+                           ORDER BY symbol, hermes_composite_score DESC NULLS LAST""", (want,))
+            return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
         # PRIORITY 1: directive-watch + active names (always planned)
         cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
@@ -183,10 +239,13 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
             rows = [r for r in rows if r["symbol"] in want]
         rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
         rows = rows[:limit]
-        # PRIORITY 2 (operator 2026-06-14): give the strongest BUY-rated RESEARCHED names an entry
-        # plan BEFORE promotion — bounded HARD: BUY/STRONG_BUY · CIO confidence ≥0.80 · top-N by score
-        # · NOT planned in the last 3 days (so the cron ROTATES coverage instead of re-planning the
-        # same top names). Skipped entirely when a --symbols filter is in play.
+        # PRIORITY 2 (operator 2026-06-18: "entry plan for buy strong buy wait and anything operator
+        # entered ... not all"): plan every buy-side-rated RESEARCHED name — recommendation
+        # BUY/STRONG_BUY/ADD/ADD_ON_PULLBACK ("wait"=pullback) from EITHER the research card OR the CIO
+        # final synthesis. No confidence gate. Operator-entered (directive/active) names are already
+        # covered by Priority 1 above. NOT planned in the last 3 days → the overnight cron DRAINS the
+        # qualifying set resumably (buy_rated_cap = per-run batch size) instead of re-planning. Skipped
+        # only when a --symbols filter is in play.
         if buy_rated_cap > 0 and not symbols:
             have = {r["symbol"] for r in rows}
             cur.execute("""SELECT * FROM (
@@ -195,11 +254,14 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
                                NULL::numeric AS proposed_target1, NULL::text AS strategy_id
                              FROM watchlist_items wi
-                             JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
                              WHERE wi.symbol ~ '^[A-Z]{1,5}$' AND wi.status <> 'removed'
                                AND NOT (wi.in_directive_watch OR wi.status='active')
-                               AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY')
-                               AND rc.confidence >= 0.80
+                               AND (
+                                 EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol = wi.symbol
+                                         AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
+                                 OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs WHERE UPPER(fs.symbol) = UPPER(wi.symbol)
+                                            AND UPPER(fs.recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
+                               )
                                AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
                                                WHERE ep.symbol = wi.symbol
                                                  AND ep.created_at > now() - interval '3 days')
