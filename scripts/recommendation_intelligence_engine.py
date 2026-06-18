@@ -61,6 +61,28 @@ CREATE TABLE IF NOT EXISTS rec_rotation_links (
 );
 CREATE INDEX IF NOT EXISTS idx_rrl_from ON rec_rotation_links(from_symbol);
 CREATE INDEX IF NOT EXISTS idx_rrl_to ON rec_rotation_links(to_symbol);
+
+-- Phase 2: rotation-outcome measurement (did rotating beat holding the original?)
+ALTER TABLE rec_rotation_links ADD COLUMN IF NOT EXISTS from_return_pct numeric;
+ALTER TABLE rec_rotation_links ADD COLUMN IF NOT EXISTS to_return_pct numeric;
+ALTER TABLE rec_rotation_links ADD COLUMN IF NOT EXISTS rotation_alpha_pct numeric;  -- to_return - from_return
+ALTER TABLE rec_rotation_links ADD COLUMN IF NOT EXISTS outcome_measured_at timestamptz;
+
+-- Phase 3: per-source learning — realized quality of each ORIGIN source -> a bounded ranking multiplier.
+CREATE TABLE IF NOT EXISTS rec_source_quality (
+  id            bigserial PRIMARY KEY,
+  source_key    text NOT NULL,            -- discovery_source / origin grouping (e.g. screener, incubator)
+  sample_size   int NOT NULL,
+  wins          int NOT NULL,
+  win_rate      numeric,
+  avg_return_pct numeric,
+  total_pnl     numeric,
+  expectancy_pct numeric,
+  quality_multiplier numeric NOT NULL,     -- bounded 0.50-1.50; 1.0 until min sample
+  basis         text,
+  computed_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rsq_key ON rec_source_quality(source_key, computed_at DESC);
 """
 
 UPSERT = """
@@ -279,6 +301,169 @@ def ingest(cur, dry):
     return counts
 
 
+def emit_lifecycle_events(cur):
+    """Phase 2: append immutable lineage events to the existing lifecycle_events spine — one per meaningful
+    transition (promoted to proposal / executed / rotated). Idempotent via NOT EXISTS on (symbol, event_type,
+    source_table='rec_intel', source_pk). Bulk INSERT...SELECT — fast + auditable. Returns counts."""
+    out = {}
+    # promoted_to_proposal — one per proposal
+    cur.execute("""
+      INSERT INTO lifecycle_events (lifecycle_id, event_ts, stage, event_type, status, symbol, strategy_id,
+                                    proposal_id, source_script, source_table, source_pk, payload)
+      SELECT 'lc-rec-'||p.id, p.created_at, 'lineage', 'rec_promoted_to_proposal', p.status, upper(p.symbol),
+             p.strategy_id, p.id, 'recommendation_intelligence_engine', 'rec_intel', p.id::text,
+             jsonb_build_object('discovery_source', p.discovery_source, 'proposed_by', p.proposed_by)
+      FROM paper_trade_proposals p
+      WHERE p.symbol ~ '^[A-Z]{1,5}$' AND NOT EXISTS (
+        SELECT 1 FROM lifecycle_events e WHERE e.source_table='rec_intel'
+          AND e.event_type='rec_promoted_to_proposal' AND e.source_pk=p.id::text)""")
+    out["promoted"] = cur.rowcount
+    # executed — one per paper_trade
+    cur.execute("""
+      INSERT INTO lifecycle_events (lifecycle_id, event_ts, stage, event_type, status, symbol, strategy_id,
+                                    proposal_id, paper_trade_id, source_script, source_table, source_pk, payload)
+      SELECT 'lc-rec-t'||t.id, t.entry_time, 'lineage', 'rec_executed', t.status, upper(t.symbol),
+             t.strategy_id, t.proposal_id, t.id, 'recommendation_intelligence_engine', 'rec_intel', 't'||t.id,
+             jsonb_build_object('account', t.account, 'pnl', t.pnl, 'pnl_pct', t.pnl_pct)
+      FROM paper_trades t
+      WHERE t.symbol ~ '^[A-Z]{1,5}$' AND t.entry_time IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM lifecycle_events e WHERE e.source_table='rec_intel'
+          AND e.event_type='rec_executed' AND e.source_pk='t'||t.id)""")
+    out["executed"] = cur.rowcount
+    # rotated — one per rotation link
+    cur.execute("""
+      INSERT INTO lifecycle_events (lifecycle_id, event_ts, stage, event_type, status, symbol,
+                                    source_script, source_table, source_pk, payload)
+      SELECT 'lc-rec-r'||r.id, r.occurred_at, 'lineage', 'rec_rotated',
+             CASE WHEN r.executed THEN 'executed' ELSE 'advisory' END, r.from_symbol,
+             'recommendation_intelligence_engine', 'rec_intel', 'r'||r.id,
+             jsonb_build_object('from', r.from_symbol, 'to', r.to_symbol, 'executed', r.executed)
+      FROM rec_rotation_links r WHERE NOT EXISTS (
+        SELECT 1 FROM lifecycle_events e WHERE e.source_table='rec_intel'
+          AND e.event_type='rec_rotated' AND e.source_pk='r'||r.id)""")
+    out["rotated"] = cur.rowcount
+    cur.connection.commit()
+    return out
+
+
+def _price_on_or_before(cur, symbol, when):
+    """Latest cached close at/before `when` (price_cache.json history is per-day). Returns float or None."""
+    try:
+        import json as _j
+        pc = _j.loads((ROOT / "data" / "portfolios" / "state" / "price_cache.json").read_text())
+        hist = pc.get(symbol.upper())
+        if not isinstance(hist, dict):
+            return None
+        day = str(when)[:10]
+        keys = sorted(k for k in hist if k <= day)
+        return float(hist[keys[-1]]) if keys else None
+    except Exception:
+        return None
+
+
+def measure_rotations(cur):
+    """Phase 2: for each executed rotation edge, measure from_return vs to_return since the rotation, so we
+    can tell whether rotating beat holding the original. Uses cached prices. Returns count measured."""
+    n = 0
+    cur.execute("SELECT id, from_symbol, to_symbol, occurred_at FROM rec_rotation_links WHERE executed=true")
+    for rid, frm, to, when in cur.fetchall():
+        fp0 = _price_on_or_before(cur, frm, when)
+        tp0 = _price_on_or_before(cur, to, when)
+        cur.execute("SELECT price FROM market_quotes WHERE symbol=ANY(%s) ORDER BY symbol, fetched_at DESC", ([frm, to],))
+        latest = {}
+        cur.execute("""SELECT DISTINCT ON (symbol) symbol, price FROM market_quotes
+                       WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""", ([frm, to],))
+        for s, p in cur.fetchall():
+            latest[s.upper()] = float(p) if p is not None else None
+        fp1, tp1 = latest.get(frm.upper()), latest.get(to.upper())
+        if fp0 and fp1 and tp0 and tp1:
+            fr = round((fp1 - fp0) / fp0 * 100, 2)
+            tr = round((tp1 - tp0) / tp0 * 100, 2)
+            cur.execute("""UPDATE rec_rotation_links SET from_return_pct=%s, to_return_pct=%s,
+                             rotation_alpha_pct=%s, outcome_measured_at=now() WHERE id=%s""",
+                        (fr, tr, round(tr - fr, 2), rid))
+            n += 1
+    cur.connection.commit()
+    return n
+
+
+def compute_source_quality(cur):
+    """Phase 3 (learning): turn each ORIGIN source's REALIZED outcomes into a bounded ranking multiplier
+    (0.50-1.50; 1.0 until a minimum sample). Append-only history in rec_source_quality. Advisory — consumers
+    opt in via get_source_quality(). Returns the latest multipliers."""
+    MIN_SAMPLE = 5
+    cur.execute("""
+      SELECT COALESCE(NULLIF(p.discovery_source,''), CASE WHEN pt.proposal_id IS NULL THEN '(direct/manual)'
+             ELSE '(proposal/other)' END) src,
+             count(*) n, count(*) FILTER (WHERE pt.pnl>0) wins,
+             avg(pt.pnl_pct) avg_ret, sum(pt.pnl) total_pnl
+      FROM paper_trades pt LEFT JOIN paper_trade_proposals p ON pt.proposal_id=p.id
+      WHERE pt.status='closed' AND pt.pnl IS NOT NULL GROUP BY 1""")
+    rows = cur.fetchall()
+    latest = []
+    for src, n, wins, avg_ret, total_pnl in rows:
+        wr = (wins / n) if n else 0.0
+        ar = float(avg_ret) if avg_ret is not None else 0.0
+        expectancy = ar  # avg return per trade is the expectancy proxy
+        if n < MIN_SAMPLE:
+            mult, basis = 1.0, f"neutral (sample {n} < {MIN_SAMPLE})"
+        else:
+            # bounded blend of win-rate edge and avg return; clamp 0.5-1.5
+            raw = 1.0 + 0.8 * (wr - 0.5) + 0.03 * ar
+            mult = round(max(0.5, min(1.5, raw)), 3)
+            basis = f"win {round(wr*100,1)}% + avg {round(ar,2)}% over {n} trades"
+        cur.execute("""INSERT INTO rec_source_quality
+            (source_key, sample_size, wins, win_rate, avg_return_pct, total_pnl, expectancy_pct,
+             quality_multiplier, basis) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (src, n, wins, round(wr, 4), round(ar, 2),
+                     float(total_pnl) if total_pnl is not None else None, round(expectancy, 2), mult, basis))
+        latest.append({"source": src, "sample": n, "win_rate_pct": round(wr * 100, 1),
+                       "avg_return_pct": round(ar, 2), "quality_multiplier": mult, "basis": basis})
+    cur.connection.commit()
+    latest.sort(key=lambda x: -x["quality_multiplier"])
+    # Integration contract: write the latest multipliers to a file any ranking/proposal layer can read.
+    try:
+        f = ROOT / "data" / "runtime" / "rec_source_quality_latest.json"
+        f.write_text(json.dumps({"multipliers": {x["source"]: x["quality_multiplier"] for x in latest},
+                                 "detail": latest}, indent=2))
+    except Exception:
+        pass
+    return latest
+
+
+def get_source_quality(source_key):
+    """Advisory helper for ranking/proposal consumers: latest learned quality multiplier for a source
+    (defaults to 1.0 / neutral if unknown). Bounded 0.5-1.5. Read-only."""
+    try:
+        cur = _get_conn().cursor()
+        cur.execute("""SELECT quality_multiplier FROM rec_source_quality WHERE source_key=%s
+                       ORDER BY computed_at DESC LIMIT 1""", (source_key,))
+        r = cur.fetchone()
+        return float(r[0]) if r else 1.0
+    except Exception:
+        return 1.0
+
+
+def build_chains(cur):
+    """Phase 2: assemble multi-hop rotation chains (A->B->C) from rec_rotation_links edges."""
+    cur.execute("SELECT from_symbol, to_symbol, occurred_at FROM rec_rotation_links ORDER BY occurred_at")
+    edges = cur.fetchall()
+    nxt = {}
+    for f, t, _ in edges:
+        nxt.setdefault(f, []).append(t)
+    starts = {f for f, _, _ in edges} - {t for _, t, _ in edges}
+    chains = []
+    for s in starts:
+        chain, cur_sym, guard = [s], s, 0
+        while cur_sym in nxt and guard < 12:
+            cur_sym = nxt[cur_sym][0]
+            chain.append(cur_sym)
+            guard += 1
+        if len(chain) > 1:
+            chains.append(chain)
+    return chains
+
+
 def analytics(cur):
     """Reporting metrics over the lineage layer — coverage, multi-source attribution, return-by-origin,
     return-after-execution, holding period, and rotation chains. Read-only."""
@@ -324,9 +509,31 @@ def analytics(cur):
     a["performance_by_strategy"] = [{"strategy": r[0], "resolved": r[1], "wins": r[2],
         "win_rate_pct": round(r[2] / r[1] * 100, 1) if r[1] else None,
         "avg_return_pct": float(r[3]) if r[3] is not None else None} for r in cur.fetchall()]
-    cur.execute("SELECT from_symbol, to_symbol, executed, occurred_at, source_type FROM rec_rotation_links ORDER BY occurred_at DESC LIMIT 100")
-    a["rotation_links"] = [{"from": r[0], "to": r[1], "executed": r[2], "at": str(r[3]), "via": r[4]} for r in cur.fetchall()]
+    cur.execute("""SELECT from_symbol, to_symbol, executed, occurred_at, source_type,
+                          from_return_pct, to_return_pct, rotation_alpha_pct
+                   FROM rec_rotation_links ORDER BY occurred_at DESC LIMIT 100""")
+    a["rotation_links"] = [{"from": r[0], "to": r[1], "executed": r[2], "at": str(r[3]), "via": r[4],
+                            "from_return_pct": float(r[5]) if r[5] is not None else None,
+                            "to_return_pct": float(r[6]) if r[6] is not None else None,
+                            "rotation_alpha_pct": float(r[7]) if r[7] is not None else None} for r in cur.fetchall()]
     a["rotation_link_count"] = len(a["rotation_links"])
+    a["rotation_chains"] = build_chains(cur)
+    # Phase 3: latest learned source-quality multipliers (one per source)
+    cur.execute("""SELECT DISTINCT ON (source_key) source_key, sample_size, win_rate, avg_return_pct,
+                     quality_multiplier, basis, computed_at
+                   FROM rec_source_quality ORDER BY source_key, computed_at DESC""")
+    a["source_quality"] = sorted([{"source": r[0], "sample": r[1],
+        "win_rate_pct": round(float(r[2]) * 100, 1) if r[2] is not None else None,
+        "avg_return_pct": float(r[3]) if r[3] is not None else None,
+        "quality_multiplier": float(r[4]), "basis": r[5], "computed_at": str(r[6])}
+        for r in cur.fetchall()], key=lambda x: -x["quality_multiplier"])
+    # rotation outcome summary: did executed rotations beat holding the original?
+    cur.execute("""SELECT count(*), avg(rotation_alpha_pct), count(*) FILTER (WHERE rotation_alpha_pct>0)
+                   FROM rec_rotation_links WHERE rotation_alpha_pct IS NOT NULL""")
+    rc, ralpha, rwin = cur.fetchone()
+    a["rotation_outcomes"] = {"measured": rc or 0,
+                              "avg_alpha_pct": round(float(ralpha), 2) if ralpha is not None else None,
+                              "rotations_that_beat_holding": rwin or 0}
     return a
 
 
@@ -341,8 +548,23 @@ def main():
         cur.execute(DDL)
         conn.commit()
     counts = ingest(cur, dry)
+    events = rot_measured = sq = None
     if not dry:
         conn.commit()
+        # Phase 2: append lineage events + measure rotation outcomes
+        try:
+            events = emit_lifecycle_events(cur)
+        except Exception as e:
+            conn.rollback(); print("  lifecycle events skipped:", str(e)[:90])
+        try:
+            rot_measured = measure_rotations(cur)
+        except Exception as e:
+            conn.rollback(); print("  rotation measure skipped:", str(e)[:90])
+        # Phase 3: learn per-source quality multipliers
+        try:
+            sq = compute_source_quality(cur)
+        except Exception as e:
+            conn.rollback(); print("  source quality skipped:", str(e)[:90])
         cur.execute("SELECT count(DISTINCT symbol), count(*) , count(*) FILTER (WHERE executed) FROM rec_ticker_attribution")
         usyms, total, execd = cur.fetchone()
         cur.execute("SELECT count(*) FROM rec_rotation_links")
@@ -351,7 +573,8 @@ def main():
         usyms = total = execd = rlinks = "(dry-run)"
     out = {"ok": True, "dry_run": dry, "ingested_by_source": counts,
            "distinct_symbols": usyms, "attribution_rows": total, "executed_rows": execd,
-           "rotation_links": rlinks}
+           "rotation_links": rlinks, "lifecycle_events_added": events,
+           "rotations_measured": rot_measured, "source_quality": sq}
     print(json.dumps(out, indent=2, default=str))
     return 0
 

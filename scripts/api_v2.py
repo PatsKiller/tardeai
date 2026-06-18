@@ -17894,6 +17894,28 @@ def _rec_intel_summary():
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _rec_intel_lifecycle(query=None):
+    """GET /api/v2/rec-intel/lifecycle — recent recommendation-lineage journal events (Phase 2): the
+    immutable add→promote→execute→rotate transitions from lifecycle_events. Read-only."""
+    try:
+        from db_adapter import _get_conn
+        q = query or {}
+        sym = q.get("symbol")
+        sym = (sym[0] if isinstance(sym, list) else sym or "").upper().strip()
+        cur = _get_conn().cursor()
+        if sym:
+            cur.execute("""SELECT event_ts, event_type, status, symbol, payload FROM lifecycle_events
+                           WHERE source_table='rec_intel' AND symbol=%s ORDER BY event_ts DESC LIMIT 100""", (sym,))
+        else:
+            cur.execute("""SELECT event_ts, event_type, status, symbol, payload FROM lifecycle_events
+                           WHERE source_table='rec_intel' ORDER BY event_ts DESC LIMIT 60""")
+        ev = [{"at": str(r[0]), "event": r[1], "status": r[2], "symbol": r[3], "payload": _json_clean(r[4])}
+              for r in cur.fetchall()]
+        return {"ok": True, "advisory_only": True, "events": ev, "count": len(ev)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _rec_intel_ticker(query=None):
     """GET /api/v2/rec-intel/ticker?symbol=X — full lineage for one ticker: every source that introduced it,
     earliest + most-recent source, executed flag, and any rotation edges. Read-only."""
@@ -18296,6 +18318,7 @@ ROUTES = {
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
     "/api/v2/rec-intel/ticker": _rec_intel_ticker,
+    "/api/v2/rec-intel/lifecycle": _rec_intel_lifecycle,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),

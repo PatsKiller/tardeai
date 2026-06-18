@@ -413,7 +413,22 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
     sql += " ORDER BY signal_score DESC NULLS LAST"
     cur.execute(sql, params)
     cols = [d[0] for d in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
+    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    # Phase 3 learning hook (opt-in, default OFF via REC_SOURCE_WEIGHTING=1): re-rank candidates by
+    # signal_score x the LEARNED quality multiplier of their discovery_source, so sources with better
+    # realized outcomes surface first. Advisory RANKING only — does not change risk gates, sizing, or
+    # whether a proposal can execute; default-off means normal runs are unchanged.
+    if os.getenv("REC_SOURCE_WEIGHTING") == "1":
+        try:
+            import recommendation_intelligence_engine as _rie
+            for r in rows:
+                m = _rie.get_source_quality(r.get("discovery_source") or "(direct/manual)")
+                r["_rec_quality_multiplier"] = m
+                r["_effective_score"] = (r.get("signal_score") or 0) * m
+            rows.sort(key=lambda r: r.get("_effective_score", 0), reverse=True)
+        except Exception:
+            pass
+    return rows
 
 
 def check_duplicate(conn, signal_id: int, symbol: str, strategy_id: str) -> dict | None:
