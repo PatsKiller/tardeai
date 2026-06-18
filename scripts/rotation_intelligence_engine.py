@@ -193,7 +193,7 @@ def instrument_type_for(row: dict[str, Any]) -> str:
     return str(first(row, "asset_class", "instrument_type", "security_type") or "equity")
 
 
-def score_row(row: dict[str, Any], total_value: float) -> Candidate:
+def score_row(row: dict[str, Any], total_value: float, stops: dict[str, Any] | None = None) -> Candidate:
     symbol = symbol_of(row)
     account_key = first(row, "account_key", "account")
     sector = first(row, "sector", "sector_type", "gics_sector")
@@ -268,6 +268,19 @@ def score_row(row: dict[str, Any], total_value: float) -> Candidate:
         add = min(add, 0.0)
         evidence["action_downgraded_until_mapping_verified"] = True
 
+    # Stop-risk overlay (Aegis nightly thesis) — a deteriorating/triggered protective stop adds trim
+    # regardless of concentration/valuation, and is NOT softened by the income/taxable reductions above.
+    # This is how a small high-upside name with a BROKEN stop still becomes a rotate-out review, instead of
+    # the engine (blind to stop state) scoring it trim=0. Deterministic stop math dominates valuation here.
+    _STOP_TRIM = {"triggered": 40.0, "danger": 40.0, "broken": 40.0, "warning": 20.0, "weakening": 10.0}
+    stop = (stops or {}).get(symbol.upper()) if symbol else None
+    if stop:
+        _stt = _STOP_TRIM.get(str(stop.get("status", "")).lower(), 0.0)
+        if _stt:
+            trim += _stt
+            evidence["stop_status"] = stop.get("status")
+            evidence["stop_trim"] = _stt
+
     trim = round(max(0.0, min(100.0, trim)), 2)
     add = round(max(0.0, min(100.0, add)), 2)
 
@@ -320,6 +333,8 @@ def main() -> int:
     ap.add_argument("--etf-overrides", default=str(DEFAULT_ETF_OVERRIDES))
     ap.add_argument("--fund-map", default=str(DEFAULT_FUND_MAP))
     ap.add_argument("--min-pair-score", type=float, default=45.0)
+    ap.add_argument("--stops", help="optional JSON map {SYMBOL: {status, severity}} of Aegis stop/thesis "
+                                    "deterioration; adds trim so a broken stop drives a rotate-out review")
     args = ap.parse_args()
 
     payload = json.loads(Path(args.input).read_text())
@@ -331,8 +346,14 @@ def main() -> int:
     if not total:
         total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows)
 
+    stops = {}
+    if args.stops:
+        try:
+            stops = {k.upper(): v for k, v in json.loads(Path(args.stops).read_text()).items()}
+        except Exception:
+            stops = {}
     enriched_rows = [merge_metadata(r, cards.get(symbol_of(r)), symbol_overrides, fund_codes) for r in rows]
-    candidates = [score_row(r, total) for r in enriched_rows]
+    candidates = [score_row(r, total, stops) for r in enriched_rows]
     ideas = build_ideas(candidates, args.min_pair_score)
     data_quality = {
         "holding_rows": len(rows),

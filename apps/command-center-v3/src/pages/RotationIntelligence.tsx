@@ -400,6 +400,27 @@ export default function RotationIntelligence() {
   const dayColor = (v?: number) => (v == null ? 'var(--text3)' : v >= 0 ? '#22c55e' : '#ef4444')
   const dayText = (v?: number) => (v == null ? '' : `${v >= 0 ? '+' : ''}${v}%`)
   const degraded = (data?.degraded_holdings ?? []) as DegradedHolding[]
+  // Plain-English, one-sentence recommendation for a rebalance idea card.
+  function plainRec(idea: RotationPair): string {
+    const from = idea.from_symbol ?? '—'
+    const to = idea.to_symbol ?? '—'
+    const deg = idea.from_degradation
+    const posVal = (idea.from_price && idea.from_shares_held) ? idea.from_price * idea.from_shares_held : undefined
+    const small = posVal != null && posVal < 2000
+    const toUp = (data?.research_candidates ?? []).find((c: any) => c.symbol === to)?.analyst_upside_pct
+    const toPart = `If you want to redeploy the proceeds, ${to} is a high-conviction research idea${toUp != null ? ` (analysts see ${toUp}% upside)` : ''} — but you confirm sizing, tax and account fit.`
+    if (deg?.thesis_status) {
+      const st = deg.thesis_status.toUpperCase()
+      const why = deg.escalation_reason || deg.what_changed || 'its protective stop deteriorated'
+      const action = small
+        ? `Review reducing or closing this small ${posVal != null ? money(posVal) + ' ' : ''}position.`
+        : `Review trimming this position toward your stop discipline.`
+      return `${from} tripped its protective stop (${st} — ${why}). ${action} ${toPart}`
+    }
+    const r = idea.review_amount_range
+    const amt = r?.low != null ? ` about ${money(r.low)}–${money(r.high)}` : ''
+    return `${from} is flagged as a trim candidate (concentration/valuation). Review trimming${amt}. ${toPart}`
+  }
   const DEG_COLOR: Record<string, string> = { triggered: '#ef4444', danger: '#ef4444', broken: '#ef4444', warning: '#f59e0b', weakening: '#f59e0b' }
 
   const grokAnswer = grokPrompt?.grok_answer
@@ -905,7 +926,11 @@ export default function RotationIntelligence() {
                   <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace', marginBottom: 6 }}>
                     {px(idea.from_price)}{idea.from_shares_held != null && <span> · {Math.round(idea.from_shares_held).toLocaleString()} sh held</span>} → {px(idea.to_price)}
                   </div>
-                  {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 8 }}>{idea.rationale}</div>}
+                  <div style={{ fontSize: 11.5, color: 'var(--text0)', lineHeight: 1.5, marginBottom: 8, padding: '7px 9px', background: 'rgba(96,165,250,.08)', borderLeft: '3px solid #60a5fa', borderRadius: 4 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: 0.4 }}>In plain English</span>
+                    <div style={{ marginTop: 2 }}>{plainRec(idea)}</div>
+                  </div>
+                  {idea.rationale && <details style={{ marginBottom: 8 }}><summary style={{ fontSize: 9.5, color: 'var(--text3)', cursor: 'pointer' }}>technical detail</summary><div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{idea.rationale}</div></details>}
                   {idea.review_amount_range && (
                     <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 8 }}>
                       Review range: <b style={{ color: 'var(--text1)' }}>{rangeText(idea.review_amount_range)}</b>
