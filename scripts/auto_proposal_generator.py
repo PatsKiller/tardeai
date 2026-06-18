@@ -732,6 +732,18 @@ def check_quality(signal: dict, sizing: dict) -> tuple:
     return len(reasons) == 0, reasons
 
 
+def _proposal_instrument_type(conn, symbol):
+    """Stamp the proposal with the symbol's instrument_type (stock/etf/fund/inverse_etf) so the pipeline is
+    instrument-aware. Defaults to 'stock' if unknown."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT instrument_type FROM symbol_profiles WHERE upper(symbol)=%s", ((symbol or "").upper(),))
+        r = cur.fetchone()
+        return (r[0] if r and r[0] else "stock")
+    except Exception:
+        return "stock"
+
+
 def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
                          auto_run_id: int, available_cols: set,
                          auto_context: dict = None) -> int | None:
@@ -815,6 +827,8 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "risk_gate_codes": json.dumps(risk_gate.get("codes", [])),
         "proposed_by": "auto_proposal_generator",
         "status": "PENDING",
+        "instrument_type": _proposal_instrument_type(conn, signal.get("symbol")),
+        "side": "long",  # screener momentum signals are long; ETF/short proposals come via the rotation path
         "expires_at": expires,
         "base_expires_at": _base_expires,
         "max_expires_at": _max_expires,
