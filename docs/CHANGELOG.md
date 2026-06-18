@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-18 - CIO verdict: Grok + ChatGPT dual-consensus (was Grok-only)
+
+The CIO final synthesis (the "CIO View" AVOID/BUY verdict) ran on free Grok OAuth primary / gemma fallback.
+Now it runs BOTH free-OAuth lanes — Grok + ChatGPT — and reconciles (`process_watchlist_agent_jobs.py`
+`_synthesis_dual`): if they AGREE → that verdict at the higher confidence; if they DISAGREE → take the MORE
+CAUTIOUS verdict (conservatism rank: AVOID/SELL > IGNORE > TRIM > RESEARCH_MORE > HOLD > ADD > BUY), lower
+confidence ×0.8, and flag "MODEL DISAGREEMENT" in conflicts + narrative. Per-model verdicts + agreement
+stored (`grok_recommendation`/`chatgpt_recommendation`/`models_agree`/`dual_consensus_json`). Verified live —
+DGXX: Grok AVOID(0.7) vs ChatGPT RESEARCH_MORE(0.28) → consensus AVOID, conf 0.22. Specialists (Maria/Steph/
+Risk) stay local gemma; only the final verdict is dual. Both free OAuth (no metered API); ChatGPT capped
+(`CIO_DUAL_CHATGPT_CAP=40`/run) to bound codex latency; gemma fallback if a lane is down. synthesis_version→3.
+
 ## 2026-06-18 - Methodology audit: close the rank≠conviction gap across all surfaces
 
 Audited every surface that ranks tickers by Hermes/momentum or analyst upside for the same gap. Fixed the 3
