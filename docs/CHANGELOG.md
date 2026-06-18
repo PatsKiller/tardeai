@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-17 - Rotation Intelligence: independent Grok + ChatGPT oversight layers
+
+`POST /api/v2/rotation/oversight` runs two independent oversight models over the rotate-out flags, rebalance
+ideas, and sector overweights — a second + third opinion on the engine. Both **free OAuth, no API key, no
+paid API, no broker action**: Grok (local xAI-OAuth proxy) + ChatGPT (openai-codex OAuth, free under the
+ChatGPT subscription — NOT the metered API). Lanes hard-restricted to grok/chatgpt (paid claude/openai paths
+skipped). ChatGPT codex needs a TTY → may return available:false headlessly; endpoint returns the prompt for
+a manual free-web paste fallback. UI: purple **Independent Oversight** panel, "Run Grok + ChatGPT Oversight",
+both verdicts (AGREE/CAUTION/DISAGREE) side by side. Verified: Grok returned a substantive CAUTION verdict
+(flagged PFLT income→microcap as a poor fit; noted missing Mag7/AI overweight rebalance proposals).
+
 ## 2026-06-17 - Rotation Intelligence: holdings-degradation rotate-out signals
 
 "What to rotate OUT" is now driven by **real deterioration**, not just concentration. Summary joins each

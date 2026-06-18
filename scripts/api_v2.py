@@ -19381,6 +19381,65 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/rotation/oversight":
+            # INDEPENDENT OVERSIGHT LAYERS — free/OAuth Grok (xAI OAuth proxy) + free/OAuth ChatGPT
+            # (openai-codex OAuth, NOT the metered OpenAI API) each review the system's rotate-OUT reasoning
+            # + rebalance ideas + sector overweights. No API key, no paid API, no broker call. Advisory only.
+            try:
+                import json as _j, sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                b = body or {}
+                lanes = b.get("lanes") or ["grok", "chatgpt"]
+                summ = _rotation_summary()
+                degraded = summ.get("degraded_holdings", []) or []
+                ideas = summ.get("research_rotation_ideas", []) or []
+                over = summ.get("sector_overweights", []) or []
+                ctx = {
+                    "deteriorating_holdings": [{"symbol": d.get("symbol"), "status": d.get("thesis_status"),
+                        "signal_source": d.get("signal_source"), "deterministic": d.get("deterministic"),
+                        "reason": d.get("escalation_reason") or d.get("what_changed"),
+                        "value": d.get("current_value"), "sector": d.get("sector"),
+                        "account": d.get("account_type")} for d in degraded[:12]],
+                    "rebalance_ideas": [{"from": i.get("from_symbol"), "to": i.get("to_symbol"),
+                        "from_status": (i.get("from_degradation") or {}).get("thesis_status"),
+                        "review_range_usd": i.get("review_amount_range")} for i in ideas[:8]],
+                    "sector_overweights": [{"theme": o.get("theme"), "pct": o.get("pct"),
+                        "target": o.get("target"), "excess_usd": o.get("excess_dollars")} for o in over[:6]],
+                }
+                prompt = (
+                    "You are an INDEPENDENT OVERSIGHT reviewer for my personal portfolio's rotation engine. "
+                    "ADVISORY ONLY: never tell me to place/buy/sell/route an order and never invent a dollar "
+                    "amount or analyst figure not given below.\n\n"
+                    "My system flags holdings to ROTATE OUT of using two signal types: (1) DETERMINISTIC "
+                    "stop-distance math (status triggered/danger/warning — high confidence, NOT an LLM), and "
+                    "(2) a local-LLM thesis read (status weakening). It then proposes advisory rebalance ideas "
+                    "into research names I do not hold, and tracks sector overweights vs comfort targets.\n\n"
+                    f"{_j.dumps(ctx, indent=2, default=str)[:5000]}\n\n"
+                    "As an oversight layer, answer concisely: (a) Do the rotate-OUT flags look reasonable, or "
+                    "is the system over-reacting to a stop wiggle on a tiny position? (b) Any rebalance idea "
+                    "that is a poor fit (e.g. trimming an income/core holding into a speculative microcap, or "
+                    "a tax-inefficient trim)? (c) Anything the system is MISSING. End with an overall oversight "
+                    "verdict — AGREE / CAUTION / DISAGREE — and what to check next. Do NOT state dollar amounts.")
+                from hermes_external_researcher import call_external, LANE_CFG
+                results = {}
+                for _lane in lanes:
+                    if _lane not in ("grok", "chatgpt"):
+                        continue
+                    _model = (LANE_CFG.get(_lane) or {}).get("default_model")
+                    try:
+                        _ans = call_external(_lane, _model, prompt, max_tokens=1200)
+                        results[_lane] = {"ok": True, "answer": str(_ans).strip()[:6000], "model": _model}
+                    except Exception as _le:
+                        _msg = str(_le)
+                        _auth = any(t in _msg for t in ("AUTH_PENDING", "CODEX_HEADLESS", "not logged in", "not reachable"))
+                        results[_lane] = {"ok": False, "available": not _auth, "error": _msg[:240],
+                                          "auth_hint": (LANE_CFG.get(_lane) or {}).get("auth_hint")}
+                return 200, {"ok": True, "advisory_only": True, "lanes": results, "context": ctx,
+                             "prompt": prompt[:6000],
+                             "note": "Independent oversight via FREE OAuth lanes (Grok xAI-OAuth proxy + ChatGPT openai-codex OAuth). No API key, no paid API, no broker action. If a lane is unavailable, paste the prompt into that model's free web session. Advisory only."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/rotation/research-gaps":
             # Wire TradeAI + Hermes research toward the UNDERWEIGHT sleeves + named rotate-in candidates by
             # creating operator watch_directives. The discovery engine + watchlist sweep then research them

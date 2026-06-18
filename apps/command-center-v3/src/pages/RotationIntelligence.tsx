@@ -176,6 +176,8 @@ export default function RotationIntelligence() {
   const [copied, setCopied] = useState(false)
   const [gapsResult, setGapsResult] = useState<{ ok?: boolean; created?: any[]; note?: string; error?: string } | null>(null)
   const [feedbackState, setFeedbackState] = useState<Record<string, string>>({})  // ideaKey -> action label
+  const [oversight, setOversight] = useState<{ lanes?: Record<string, any>; prompt?: string; note?: string; error?: string } | null>(null)
+  const [oversightCopied, setOversightCopied] = useState(false)
 
   async function loadSummary() {
     setSummaryWarn('')
@@ -306,6 +308,30 @@ export default function RotationIntelligence() {
     } catch {
       setFeedbackState(prev => ({ ...prev, [key]: 'error' }))
     }
+  }
+
+  // Independent oversight layers — free/OAuth Grok + ChatGPT (codex). Advisory only.
+  async function runOversight() {
+    setBusy('Run Oversight'); setOversight(null)
+    try {
+      const res = await fetch('/api/v2/rotation/oversight', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lanes: ['grok', 'chatgpt'] }),
+      })
+      const text = await res.text()
+      let json: any
+      try { json = text ? JSON.parse(text) : { error: 'Empty response — try again.' } }
+      catch { json = { error: 'Non-JSON response — try again.' } }
+      setOversight(json)
+    } catch (err) {
+      setOversight({ error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy('')
+    }
+  }
+  async function copyOversightPrompt() {
+    if (!oversight?.prompt) return
+    try { await navigator.clipboard.writeText(oversight.prompt); setOversightCopied(true); setTimeout(() => setOversightCopied(false), 2000) } catch { /* noop */ }
   }
 
   // prefill from ?question= on mount
@@ -537,6 +563,50 @@ export default function RotationIntelligence() {
               <pre style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', whiteSpace: 'pre-wrap' }}>{result.stderr_tail}</pre>
             )}
           </div>
+        )}
+      </section>
+
+      {/* C2. Independent Oversight — free/OAuth Grok + ChatGPT review the rotate-out reasoning */}
+      <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(168,85,247,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#a855f7' }}>Independent Oversight <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· Grok + ChatGPT · free / OAuth · no API key</span></div>
+          <span style={{ flex: 1 }} />
+          <button disabled={!!busy} onClick={runOversight} style={btn(!!busy)}>{busy === 'Run Oversight' ? 'Reviewing… (ChatGPT can take ~1–4 min)' : 'Run Grok + ChatGPT Oversight'}</button>
+        </div>
+        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: oversight ? 12 : 0 }}>
+          Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via openai-codex OAuth — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.
+        </div>
+        {oversight?.error && <div style={{ fontSize: 11, color: '#ef4444' }}>{oversight.error}</div>}
+        {oversight?.lanes && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+            {(['grok', 'chatgpt'] as const).map((lane) => {
+              const r = oversight.lanes?.[lane]
+              if (!r) return null
+              const label = lane === 'grok' ? 'Grok (xAI OAuth)' : 'ChatGPT (openai-codex OAuth)'
+              return (
+                <div key={lane} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: r.ok ? '#a855f7' : '#f59e0b', marginBottom: 6 }}>
+                    {label} {r.ok ? <span style={{ fontSize: 9, color: 'var(--text3)' }}>· {r.model}</span> : <span style={{ fontSize: 9, color: '#f59e0b' }}>· unavailable</span>}
+                  </div>
+                  {r.ok ? (
+                    <div style={{ fontSize: 12, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{r.answer}</div>
+                  ) : (
+                    <div style={{ fontSize: 10.5, color: 'var(--text2)' }}>
+                      {r.available === false ? 'This lane is authed but can’t finalize headlessly — paste the prompt below into its free web session.' : 'Lane offline.'}
+                      {r.auth_hint && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, fontFamily: 'monospace' }}>{r.auth_hint}</div>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {oversight?.prompt && (
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>view / copy the oversight prompt (manual paste fallback for any unavailable lane)</summary>
+            <button onClick={copyOversightPrompt} style={{ ...btn(false), margin: '8px 0', borderColor: '#a855f755', background: 'rgba(168,85,247,.15)', color: '#a855f7' }}>{oversightCopied ? 'Copied ✓' : 'Copy Oversight Prompt'}</button>
+            <textarea readOnly value={oversight.prompt} rows={8} style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical' }} />
+          </details>
         )}
       </section>
 
