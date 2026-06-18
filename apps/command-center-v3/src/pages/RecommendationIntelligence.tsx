@@ -219,14 +219,25 @@ export default function RecommendationIntelligence() {
         </div>
       </section>
 
-      {/* Rotation chains */}
-      {rot.length > 0 && (
+      {/* Rotation chains + edges (with measured alpha) */}
+      {(rot.length > 0 || (d?.rotation_chains ?? []).length > 0) && (
         <section style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Rotation Links</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Rotation Chains &amp; Edges</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Detected from the executed trade history (close X → open Y, same account). Each edge's <b>alpha</b> = the to-leg return minus the from-leg return since the rotation — green means rotating beat holding the original.</div>
+          {(d?.rotation_chains ?? []).length > 0 && (
+            <div style={{ ...card, marginBottom: 10 }}>
+              {(d?.rotation_chains ?? []).map((ch, i) => (
+                <div key={i} style={{ fontSize: 12, fontFamily: 'monospace', padding: '3px 0', color: 'var(--text1)' }}>
+                  {ch.map((s, j) => <span key={j}>{j > 0 && <span style={{ color: 'var(--text3)' }}> → </span>}<span style={{ color: j === 0 ? 'var(--text3)' : j === ch.length - 1 ? '#22c55e' : 'var(--text1)' }}>{s}</span></span>)}
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ ...card, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {rot.map((r, i) => (
-              <span key={i} style={{ fontSize: 11, fontFamily: 'monospace', padding: '3px 8px', borderRadius: 4, background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                {r.from} → <span style={{ color: '#22c55e' }}>{r.to}</span>{r.executed && <span style={{ color: '#22c55e' }}> ✓</span>}
+            {[...rot].sort((a, b) => (b.rotation_alpha_pct ?? -999) - (a.rotation_alpha_pct ?? -999)).map((r, i) => (
+              <span key={i} title={r.at} style={{ fontSize: 11, fontFamily: 'monospace', padding: '3px 8px', borderRadius: 4, background: 'var(--bg2)', border: `1px solid ${r.rotation_alpha_pct == null ? 'var(--border)' : r.rotation_alpha_pct >= 0 ? '#22c55e44' : '#ef444444'}` }}>
+                {r.from} → <span style={{ color: 'var(--text1)' }}>{r.to}</span>
+                {r.rotation_alpha_pct != null && <span style={{ color: rcol(r.rotation_alpha_pct), fontWeight: 700 }}> {pct(r.rotation_alpha_pct)}</span>}
               </span>
             ))}
           </div>
