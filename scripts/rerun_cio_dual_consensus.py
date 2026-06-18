@@ -21,18 +21,25 @@ from db_adapter import _get_conn
 
 
 def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+    # N: integer cap, or 'all'/0 for no cap. --skip-done: only names not yet dual-populated (resumable).
+    arg = next((a for a in sys.argv[1:] if not a.startswith("--")), "200")
+    n = None if arg in ("all", "0") else int(arg)
+    skip_done = "--skip-done" in sys.argv
     conn = _get_conn()
     cur = conn.cursor()
-    cur.execute("""SELECT s.symbol, s.recommendation, s.confidence,
+    where_done = "AND s.models_agree IS NULL" if skip_done else ""
+    limit_sql = "LIMIT %s" if n is not None else ""
+    params = (n,) if n is not None else ()
+    cur.execute(f"""SELECT s.symbol, s.recommendation, s.confidence,
                           COALESCE(s.synthesis_narrative,''), COALESCE(s.action,''), min(w.hermes_rank)
                    FROM watchlist_final_synthesis s
                    JOIN watchlist_items w ON upper(w.symbol)=upper(s.symbol)
-                   WHERE w.status IN ('active','researched') AND s.symbol ~ '^[A-Z]{1,5}$'
+                   WHERE w.status IN ('active','researched') AND s.symbol ~ '^[A-Z]{{1,5}}$' {where_done}
                    GROUP BY s.symbol, s.recommendation, s.confidence, s.synthesis_narrative, s.action
-                   ORDER BY min(w.hermes_rank) ASC NULLS LAST LIMIT %s""", (n,))
+                   ORDER BY min(w.hermes_rank) ASC NULLS LAST {limit_sql}""", params)
     rows = cur.fetchall()
-    print(f"re-running dual-consensus on {len(rows)} names (top {n} by hermes_rank)…", flush=True)
+    print(f"re-running dual-consensus on {len(rows)} names "
+          f"(cap={n or 'all'}, skip_done={skip_done}, by hermes_rank)…", flush=True)
     agree = disagree = onelane = 0
     t0 = time.time()
     for i, (sym, rec, conf, narr, action, hr) in enumerate(rows, 1):
