@@ -23,10 +23,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERMES = os.environ.get("HERMES_BIN", os.path.expanduser("~/.local/bin/hermes"))
 HOST = os.environ.get("CHATGPT_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CHATGPT_PROXY_PORT", "8646"))
-DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-5")
+DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-5.4")
 AUTH_JSON = os.path.expanduser("~/.hermes/auth.json")
-TIMEOUT = int(os.environ.get("CHATGPT_PROXY_TIMEOUT", "220"))
-MODELS = ["gpt-5", "gpt-5-codex", "gpt-5-mini", "o4-mini"]
+TIMEOUT = int(os.environ.get("CHATGPT_PROXY_TIMEOUT", "240"))
+# ChatGPT-account Codex backend model slugs (others like gpt-5/gpt-5-codex are 400-rejected).
+MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.3-codex"]
+_SESSION_LINE = re.compile(r"\n?session_id:\s*\S+\s*$")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 _RELOGIN = "hermes auth add openai-codex --type oauth   (free under your ChatGPT subscription)"
@@ -69,21 +71,22 @@ def _flatten(messages):
 
 
 def _run_codex(prompt, model):
-    """One-shot codex completion inside a real PTY (pexpect). Stateless per request. Hermes owns the OAuth."""
-    import pexpect
-    cmd = (f"{shlex.quote(HERMES)} -z {shlex.quote(prompt)} "
-           f"--provider openai-codex -m {shlex.quote(model)}")
-    out, status = pexpect.run(cmd, timeout=TIMEOUT, withexitstatus=True, encoding="utf-8",
-                              env={**os.environ, "TERM": "dumb"})
-    clean = _ANSI.sub("", out or "").replace("\r", "").strip()
-    low = clean.lower()
+    """One-shot codex completion via `hermes chat -q ... -Q` (non-interactive programmatic mode). Plain
+    subprocess — no TTY needed. Stateless per request. Hermes owns the OAuth (no raw token handling here)."""
+    import subprocess
+    r = subprocess.run([HERMES, "chat", "-q", prompt, "-Q", "-m", model, "--provider", "openai-codex"],
+                       capture_output=True, text=True, timeout=TIMEOUT,
+                       env={**os.environ, "TERM": "dumb"})
+    out = _ANSI.sub("", r.stdout or "").replace("\r", "").strip()
+    out = _SESSION_LINE.sub("", out).strip()  # drop the trailing "session_id: ..." line hermes appends
+    err = (r.stderr or "").strip()
+    low = (out + " " + err).lower()
     if any(s in low for s in ("session has ended", "please log in again", "token refresh failed",
-                              "auth_pending", "not logged in")):
+                              "not logged in", "auth_pending")):
         raise RuntimeError("AUTH_EXPIRED")
-    if (status not in (0, None) or not clean or low.startswith("hermes -z:")
-            or "no final response" in low or "agent failed" in low):
-        raise RuntimeError(f"CODEX_RUN_FAILED: {clean[-300:] or 'empty response'}")
-    return clean
+    if r.returncode != 0 or not out:
+        raise RuntimeError(f"CODEX_RUN_FAILED: {(err or out)[-300:] or 'empty response'}")
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):

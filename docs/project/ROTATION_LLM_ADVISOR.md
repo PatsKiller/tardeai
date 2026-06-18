@@ -372,13 +372,22 @@ flags, rebalance ideas, and sector overweights — a second + third opinion on t
 - **Grok** — via the local xAI-OAuth proxy (`call_xai_proxy`, port 8645). Fast, inline.
 - **ChatGPT** — via the **ChatGPT OAuth proxy** (`scripts/chatgpt_oauth_proxy.py`, `:8646`), which mirrors
   the Grok proxy: an OpenAI-compatible local server (`/health`, `/v1/models`, `/v1/chat/completions`) that
-  drives the operator's already-authenticated `hermes` codex CLI inside a real pseudo-TTY (pexpect). **Hermes
-  owns the OAuth — the proxy never reads or refreshes raw tokens.** Free under the ChatGPT subscription, NOT
-  the metered OpenAI API. `llm_lane` lane `chatgpt` calls it (lane `grok` calls :8645). Runs as a user
-  systemd service (`config/systemd/chatgpt-oauth-proxy.service`, `Restart=always`). If the ChatGPT OAuth
-  session has expired, `/health` reports `token_expired:true`, `available()` returns false, and the endpoint
-  degrades to the **manual free-web paste** fallback with the re-login hint
-  (`hermes auth add openai-codex --type oauth`). One-shot per request (stateless; ~CLI spin-up latency).
+  shells `hermes chat -q PROMPT -Q -m gpt-5.4 --provider openai-codex` (programmatic quiet mode, plain
+  subprocess — no TTY needed). **Hermes owns the OAuth — the proxy never reads or refreshes raw tokens.**
+  Free under the ChatGPT subscription, NOT the metered OpenAI API. Model MUST be a ChatGPT-account Codex slug
+  (`gpt-5.4` default / `gpt-5.4-mini` / `gpt-5.5` / `gpt-5.3-codex`); `gpt-5`/`gpt-5-codex` are 400-rejected.
+  `llm_lane` lane `chatgpt` calls it (lane `grok` calls :8645); `hermes_external_researcher.call_codex_cli`
+  prefers it so ALL Hermes tasks use it. Runs as a user systemd service
+  (`config/systemd/chatgpt-oauth-proxy.service`, `Restart=always`). If the ChatGPT OAuth session expires,
+  `/health` reports `token_expired:true` and the endpoint degrades to the **manual free-web paste** fallback
+  with the re-login hint (`hermes auth add openai-codex --type oauth`).
+
+**Lane keepalive + monitor/control.** `scripts/oauth_lane_keepalive.py` (daily cron 09:00) sends a tiny real
+generate to Grok + ChatGPT to roll their OAuth tokens forward (an idle lane never lapses), and Telegram-alerts
+(deduped 12h) when a previously-healthy lane goes stale. `GET /api/v2/llm/oauth-lanes` (monitor, with last-ok
+freshness) + `POST /api/v2/llm/oauth-lanes/keepalive` (control) power a **Free OAuth LLM Lanes** control card
+in the Independent Oversight panel — per-lane status + last-ok + re-login hint, with Run-keepalive / Re-check
+buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma.
 
 The endpoint hard-restricts lanes to `grok`/`chatgpt` (any other lane, incl. the paid `claude`/`openai`
 paths in `hermes_external_researcher`, is skipped). Body: `{lanes?: ["grok","chatgpt"]}`. Response:

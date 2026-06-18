@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-17 - OAuth lane keepalive + stale alert + monitor/control panel; ChatGPT proxy now LIVE
+
+- **ChatGPT proxy fixed + working end-to-end.** Root cause of the earlier "no final response": `hermes -z`
+  one-shot does NOT finalize codex headlessly, and the model slug was wrong. Switched to
+  `hermes chat -q PROMPT -Q -m gpt-5.4 --provider openai-codex` (programmatic quiet mode) via **plain
+  subprocess — no PTY** — and the correct ChatGPT-account Codex model `gpt-5.4` (gpt-5/gpt-5-codex/etc. are
+  400-rejected). Verified: real generation returns clean output in ~13s. Default model updated to gpt-5.4 in
+  the proxy, llm_lane, hermes_external_researcher, and rotation oversight.
+- **Keepalive + stale alert:** `scripts/oauth_lane_keepalive.py` (daily cron 09:00) sends a tiny real
+  generate to Grok + ChatGPT to **roll their OAuth tokens forward** (so an idle lane never lapses), checks
+  Hermes/Nous + local gemma, writes `data/runtime/oauth_lane_status.json`, and sends a **deduped Telegram
+  alert** (12h window) when a previously-healthy lane goes stale/expired, with the one-line re-login fix.
+- **Monitor + control in the Command Center:** `GET /api/v2/llm/oauth-lanes` (now with last-ok freshness) +
+  `POST /api/v2/llm/oauth-lanes/keepalive`. The rotation Independent Oversight panel has a **Free OAuth LLM
+  Lanes** control card — per-lane status + last-ok + re-login hint, with **Run keepalive** and **Re-check**
+  buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma. Live: 3/4 ready (Hermes/Nous not logged in).
+
 ## 2026-06-17 - ChatGPT OAuth proxy (free openai-codex) — inline ChatGPT lane
 
 Built `scripts/chatgpt_oauth_proxy.py` (:8646), an OpenAI-compatible proxy mirroring the Grok xAI-OAuth proxy
