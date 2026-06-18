@@ -418,7 +418,7 @@ export default function RotationIntelligence() {
     r && r.low != null ? `${money(r.low)} – ${money(r.high)}` : 'review range unavailable'
   const px = (v?: number) =>
     typeof v === 'number' ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
-  const sh = (r?: ShareRange) => (r && r.low != null ? `${r.low.toLocaleString()}–${r.high?.toLocaleString()} sh` : null)
+  const sh = (r?: ShareRange) => (r && r.low != null ? `${r.low.toLocaleString()}–${r.high?.toLocaleString()} shares` : null)
   const dayColor = (v?: number) => (v == null ? 'var(--text3)' : v >= 0 ? '#22c55e' : '#ef4444')
   const dayText = (v?: number) => (v == null ? '' : `${v >= 0 ? '+' : ''}${v}%`)
   const degraded = (data?.degraded_holdings ?? []) as DegradedHolding[]
@@ -596,7 +596,7 @@ export default function RotationIntelligence() {
                   </div>
                   {h.price != null && (
                     <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                      {px(h.price)}{h.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {h.est_shares.toLocaleString()} sh</span>}
+                      {px(h.price)}{h.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {h.est_shares.toLocaleString()} shares</span>}
                       {h.day_change_pct != null && <span style={{ color: dayColor(h.day_change_pct), marginLeft: 6 }}>{dayText(h.day_change_pct)}</span>}
                       {h.current_value != null && <span style={{ color: 'var(--text3)', marginLeft: 6 }}>· {money(h.current_value)}</span>}
                     </div>
@@ -888,7 +888,7 @@ export default function RotationIntelligence() {
                   </div>
                   {c.price != null && (
                     <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                      {px(c.price)}{c.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {c.est_shares.toLocaleString()} sh</span>}
+                      {px(c.price)}{c.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {c.est_shares.toLocaleString()} shares</span>}
                       {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
                     </div>
                   )}
@@ -953,7 +953,7 @@ export default function RotationIntelligence() {
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 2 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
                   <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace', marginBottom: 6 }}>
-                    {px(idea.from_price)}{idea.from_shares_held != null && <span> · {Math.round(idea.from_shares_held).toLocaleString()} sh held</span>} → {px(idea.to_price)}
+                    {px(idea.from_price)}{idea.from_shares_held != null && <span> · {Math.round(idea.from_shares_held).toLocaleString()} shares held</span>} → {px(idea.to_price)}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--text0)', lineHeight: 1.5, marginBottom: 8, padding: '7px 9px', background: 'rgba(96,165,250,.08)', borderLeft: '3px solid #60a5fa', borderRadius: 4 }}>
                     <span style={{ fontSize: 9, fontWeight: 800, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: 0.4 }}>In plain English</span>
