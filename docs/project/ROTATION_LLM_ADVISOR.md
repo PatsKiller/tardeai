@@ -319,6 +319,23 @@ ever sized or placed automatically.
   rebalance ideas with their review ranges. Localhost-only (no external network, no Grok/xAI API); the digest
   reports ranges to review — it places nothing.
 
+## Live prices + advisory review quantities (2026-06-17)
+
+`GET /api/v2/rotation/summary` enriches every idea/candidate with a **live price** and an **advisory review
+share quantity** so the operator can see what a trim/add would actually look like. Read-only sources: the
+latest `market_quotes` row per symbol (DB; populated by the existing quote-ingest pipeline — Alpaca →
+finviz → yfinance) with a fallback to the `price`/`shares` already in the holdings snapshot. **No broker
+call, no order, and no live HTTP is made from the summary request.** Quantities are review RANGES derived
+from the advisory $ range; nothing is sized or placed.
+
+- `research_rotation_ideas[]` gain `from_price`, `to_price`, `from_shares_held`, plus `sell_shares_range`
+  and `buy_shares_range` (`{low, high}`) = the $ review range divided by each leg's price. The card shows
+  "`from_price · N sh held → to_price`" and two chips: "review trimming ~206–618 sh SCHD" (red) and
+  "≈ 985–2,956 sh DGXX" (green). Language stays advisory ("review trimming", "≈"), never "sell"/"buy now".
+- `research_candidates[]` and `top_candidates[]` gain `price` and `day_change_pct` (and `est_shares` =
+  `current_value / price` for held review candidates). Day change is colored green/red.
+- Symbols with no quote (e.g. the `3905` 401k fund code) simply omit price — no fabricated number.
+
 ## A1A note
 
 This workflow changes advisory behavior and documentation, so it is subject to A1A documentation consistency rules.

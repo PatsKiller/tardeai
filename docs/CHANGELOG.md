@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-17 - Rotation Intelligence: live prices + advisory review quantities
+
+Every rotation idea/candidate now carries a **live price** and an **advisory review share quantity** so the
+operator sees what a trim/add would look like. Read-only (`market_quotes` DB + holdings snapshot); no broker
+call, no order, no live HTTP from the request; quantities are review RANGES — nothing is sized or placed.
+
+- `research_rotation_ideas[]`: `from_price`, `to_price`, `from_shares_held`, `sell_shares_range`,
+  `buy_shares_range`. UI shows "`$31.93 · 403 sh held → $6.68`" + chips "review trimming ~206–618 sh SCHD"
+  / "≈ 985–2,956 sh DGXX". Advisory language only ("review trimming", "≈"), never "sell/buy now".
+- `top_candidates[]` + `research_candidates[]`: `price`, `day_change_pct` (green/red), `est_shares` for held
+  review candidates. Symbols without a quote (e.g. `3905` 401k fund code) omit price — no fabricated number.
+
 ## 2026-06-17 - Rotation Intelligence: sleeve balance + amount ranges + continuous loop
 
 Made the rotation advisor **sector-aware, range-aware, and continuous** — all advisory only, no broker

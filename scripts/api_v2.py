@@ -17925,6 +17925,78 @@ def _rotation_summary():
             if _fv:
                 _idea["review_amount_range"] = {"low": round(_fv * _lo_f), "high": round(_fv * _hi_f),
                                                 "basis": "5-15% of the position — advisory, operator-confirmed, not auto-placed"}
+        # ── Live prices + advisory review QUANTITIES (shares). Read-only: latest market_quotes (DB) + the
+        # holdings snapshot. No broker, no order, no live HTTP from this request. Quantities are review
+        # RANGES derived from the advisory $ range — operator confirms; nothing is sized or placed. ──
+        import re as _re3
+        _price, _hmap = {}, {}
+        try:
+            _hold_rows = _j.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text()).get("holdings", [])
+            _syms = set()
+            for _c in cands:
+                _syms.add((_c.get("symbol") or "").upper())
+            for _rc in research_candidates:
+                _syms.add((_rc.get("symbol") or "").upper())
+            for _id in research_ideas:
+                _syms.add((_id.get("from_symbol") or "").upper())
+                _syms.add((_id.get("to_symbol") or "").upper())
+            _syms = [s for s in _syms if _re3.fullmatch(r"[A-Z]{1,5}", s or "")]
+            if _syms:
+                from db_adapter import _get_conn as _gc3
+                _c3 = _gc3().cursor()
+                _c3.execute("""SELECT DISTINCT ON (symbol) symbol, price, day_change_pct
+                               FROM market_quotes WHERE symbol = ANY(%s)
+                               ORDER BY symbol, fetched_at DESC""", (_syms,))
+                for _s, _p, _dc in _c3.fetchall():
+                    if _p is not None:
+                        _price[_s.upper()] = {"price": round(float(_p), 2),
+                                              "day_change_pct": round(float(_dc), 2) if _dc is not None else None}
+            # holdings fallback (covers ETFs/funds market_quotes may lack) + held share counts
+            for _h in _hold_rows:
+                _hs = (_h.get("symbol") or "").upper()
+                if _hs and not _h.get("is_cash") and float(_h.get("price") or 0) > 0:
+                    _hmap.setdefault(_hs, _h)
+                    _price.setdefault(_hs, {"price": round(float(_h.get("price")), 2),
+                                            "day_change_pct": _h.get("day_change_pct")})
+        except Exception:
+            _price, _hmap = {}, {}
+
+        def _shares_range(_al, _ah, _pp):
+            if not _pp or _pp <= 0:
+                return None
+            return {"low": int(float(_al) // _pp), "high": max(1, round(float(_ah) / _pp))}
+
+        # Review Candidates: live price, day change, est. share count
+        for _c in cands:
+            _pe = _price.get((_c.get("symbol") or "").upper())
+            if _pe:
+                _c["price"] = _pe["price"]
+                _c["day_change_pct"] = _pe.get("day_change_pct")
+                _cv = float(_c.get("current_value") or 0)
+                if _cv and _pe["price"]:
+                    _c["est_shares"] = round(_cv / _pe["price"], 2)
+        # Research rotate-in candidates: live price + day change
+        for _rc in research_candidates:
+            _pe = _price.get((_rc.get("symbol") or "").upper())
+            if _pe:
+                _rc["price"] = _pe["price"]
+                _rc["day_change_pct"] = _pe.get("day_change_pct")
+        # Rebalance ideas: from/to price + advisory sell/buy SHARE ranges (review only)
+        for _idea in research_ideas:
+            _fp = _price.get((_idea.get("from_symbol") or "").upper())
+            _tp = _price.get((_idea.get("to_symbol") or "").upper())
+            _rng = _idea.get("review_amount_range") or {}
+            if _fp:
+                _idea["from_price"] = _fp["price"]
+                _fh = _hmap.get((_idea.get("from_symbol") or "").upper())
+                if _fh:
+                    _idea["from_shares_held"] = _fh.get("shares")
+                if _rng.get("low") is not None:
+                    _idea["sell_shares_range"] = _shares_range(_rng["low"], _rng["high"], _fp["price"])
+            if _tp:
+                _idea["to_price"] = _tp["price"]
+                if _rng.get("low") is not None:
+                    _idea["buy_shares_range"] = _shares_range(_rng["low"], _rng["high"], _tp["price"])
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "portfolio_total": round(pf_total),
