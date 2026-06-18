@@ -18095,27 +18095,46 @@ def _rotation_summary():
             import re as _re
             from db_adapter import _get_conn as _gc2
             _c2 = _gc2().cursor()
-            _c2.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector, p.instrument_type
-                           FROM watchlist_items w LEFT JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
+            # Join the CIO holistic view (watchlist_final_synthesis.recommendation) + analyst coverage depth
+            # so rotate-in candidates RESPECT the system's own buy/avoid decision and flag thin coverage —
+            # a name the CIO says AVOID must not be surfaced as a buy, and a +79% upside from 1 analyst is not
+            # the same as from 9.
+            _c2.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector, p.instrument_type,
+                                  fs.recommendation AS cio_view, an.nop AS analyst_opinions
+                           FROM watchlist_items w
+                           LEFT JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
+                           LEFT JOIN LATERAL (SELECT recommendation FROM watchlist_final_synthesis f
+                                              WHERE upper(f.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
+                           LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
+                                              WHERE upper(y.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
                            WHERE w.status IN ('active','researched') AND w.symbol ~ '^[A-Z]{1,5}$'
-                           ORDER BY w.hermes_rank ASC NULLS LAST LIMIT 80""")
+                           ORDER BY w.hermes_rank ASC NULLS LAST LIMIT 120""")
+            _CIO_BUY = {"BUY", "ADD", "ADD_ON_PULLBACK"}
+            _CIO_AVOID = {"AVOID", "IGNORE", "REBALANCE_TRIM"}
             _seen = set()
-            for _sym, _rank, _score, _sec, _itype in _c2.fetchall():
+            for _sym, _rank, _score, _sec, _itype, _cio, _nop in _c2.fetchall():
                 _su = (_sym or "").upper()
                 if _su in _held or _su in _seen:
                     continue
                 _seen.add(_su)
                 _card = _cmap.get(_su) or {}
                 _an = _card.get("analyst") or {}
+                _cv = (_cio or "").upper()
+                _nopi = int(_nop) if _nop is not None else None
                 research_candidates.append({
                     "symbol": _sym, "hermes_rank": _rank,
                     "score": float(_score) if _score is not None else None,
                     "sector": _sec or _card.get("sector"),
                     "instrument_type": _itype or "stock",
                     "analyst_rating": _an.get("rating"), "analyst_upside_pct": _an.get("upside_pct"),
+                    "analyst_opinions": _nopi,
+                    "thin_coverage": (_nopi is None or _nopi < 3) and _itype not in ("etf", "fund", "inverse_etf"),
+                    "cio_view": _cv or None,
+                    "cio_endorsed": _cv in _CIO_BUY,
+                    "cio_avoid": _cv in _CIO_AVOID,
                     "description": (_card.get("description") or "")[:140] or None,
                 })
-                if len(research_candidates) >= 10:
+                if len(research_candidates) >= 18:
                     break
             # advisory pairs: most rotate-worthy held → top research add (no amounts, ROTATE_REVIEW).
             # trim source must be a real ticker (exclude 401k fund codes / proxy codes — they can't rotate
@@ -18130,8 +18149,12 @@ def _rotation_summary():
                                   and (c.get("trim_score") or 0) >= 9],
                                  key=lambda c: -(c.get("trim_score") or 0))
             _trims = (_deg_trims + _conc_trims)[:4]
+            # Rotate-in targets must be names the CIO would actually BUY (not AVOID/IGNORE) — prefer real
+            # analyst coverage. If none qualify, we suggest NO rotate-in (honest) rather than an avoided name.
+            _endorsed = sorted([a for a in research_candidates if a.get("cio_endorsed")],
+                               key=lambda a: (a.get("thin_coverage", True), a.get("hermes_rank") or 999))
             for _tt in _trims:
-                for _aa in research_candidates[:2]:
+                for _aa in _endorsed[:2]:
                     _up = _aa.get("analyst_upside_pct")
                     _conc = (_tt.get("evidence") or {}).get("concentration_pct")
                     _dg = _tt.get("degradation") or {}
@@ -18145,10 +18168,12 @@ def _rotation_summary():
                         "from_account": _tt.get("account_type"), "score": round(float(_tt.get("trim_score") or 0), 1),
                         "review_amount": None,
                         "from_degradation": _dg or None,
+                        "to_cio_view": _aa.get("cio_view"), "to_analyst_opinions": _aa.get("analyst_opinions"),
                         "rationale": (f"Advisory: review rotating from {_tt.get('symbol')} "
                                       f"({_tt.get('sector') or '?'}, {_why}) into research "
-                                      f"candidate {_aa.get('symbol')} (Hermes #{_aa.get('hermes_rank')}"
-                                      f"{', '+str(_up)+'% analyst upside' if _up is not None else ''}). "
+                                      f"candidate {_aa.get('symbol')} (Hermes #{_aa.get('hermes_rank')}, "
+                                      f"CIO {_aa.get('cio_view') or 'n/a'}"
+                                      f"{', '+str(_up)+'% upside from '+str(_aa.get('analyst_opinions'))+' analysts' if _up is not None else ''}). "
                                       "Not a model-supported signal — confirm sizing, tax, and account fit separately."),
                     })
                     if len(research_ideas) >= 6:
