@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-18 - Methodology fix: rotate-in respects CIO view + analyst depth
+
+Validated a systemic flaw (operator-reported via DGXX "watchlist says AVOID but rotation says buy"): rotation
+rotate-in candidates were ranked purely by `hermes_rank` (momentum/setup/social composite) and **ignored the
+CIO holistic decision + analyst coverage depth**. Every top rotate-in (DGXX/SKK/BDSX/ELVN/GCTS…) had CIO
+recommendation = AVOID/IGNORE with 0–1 analysts, yet was suggested as a buy (DGXX: CIO AVOID, +79% "upside"
+from a single analyst). Two parallel rankings — Hermes (rewards momentum/hype) and the CIO synthesis (the
+considered buy/avoid verdict) — were unreconciled. Fix: `research_candidates` now join
+`watchlist_final_synthesis.recommendation` (CIO view) + analyst opinion count; rotate-in **ideas only target
+CIO-endorsed names** (BUY/ADD/ADD_ON_PULLBACK) — never AVOID; UI shows the CIO badge + analyst depth + "thin
+coverage ⚠" so a high Hermes rank with CIO AVOID / 1 analyst reads as hype, not conviction.
+
 ## 2026-06-18 - ETF/short proposal-side support
 
 `paper_trade_proposals` + `paper_trades` gain `instrument_type` + `side` (default stock/long; backward
