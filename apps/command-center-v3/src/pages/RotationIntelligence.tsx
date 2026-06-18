@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type AmountRange = { low?: number; high?: number; basis?: string }
+type ShareRange = { low?: number; high?: number }
 type RotationPair = {
   action_class?: string
   from_symbol?: string
@@ -11,6 +12,11 @@ type RotationPair = {
   score?: number
   review_amount?: number
   review_amount_range?: AmountRange
+  from_price?: number
+  to_price?: number
+  from_shares_held?: number
+  sell_shares_range?: ShareRange
+  buy_shares_range?: ShareRange
   rationale?: string
 }
 
@@ -288,6 +294,11 @@ export default function RotationIntelligence() {
   const hasSleeveImbalance = overweights.length > 0 || underweights.length > 0
   const rangeText = (r?: AmountRange) =>
     r && r.low != null ? `${money(r.low)} – ${money(r.high)}` : 'review range unavailable'
+  const px = (v?: number) =>
+    typeof v === 'number' ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
+  const sh = (r?: ShareRange) => (r && r.low != null ? `${r.low.toLocaleString()}–${r.high?.toLocaleString()} sh` : null)
+  const dayColor = (v?: number) => (v == null ? 'var(--text3)' : v >= 0 ? '#22c55e' : '#ef4444')
+  const dayText = (v?: number) => (v == null ? '' : `${v >= 0 ? '+' : ''}${v}%`)
 
   const grokAnswer = grokPrompt?.grok_answer
   const grokNote = grokPrompt?.note
@@ -605,6 +616,12 @@ export default function RotationIntelligence() {
                   <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>
                     {(c.sector ?? '—')} · {(c.account_type ?? c.account_key ?? '—').toString().replace(/_/g, ' ')}
                   </div>
+                  {c.price != null && (
+                    <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
+                      {px(c.price)}{c.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {c.est_shares.toLocaleString()} sh</span>}
+                      {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
                     {c.current_value != null && <span>value {money(c.current_value)}</span>}
                     {c.trim_score != null && <span>trim {c.trim_score}</span>}
@@ -658,12 +675,29 @@ export default function RotationIntelligence() {
                     <span style={{ flex: 1 }} />
                     {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span>}
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 6 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 2 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace', marginBottom: 6 }}>
+                    {px(idea.from_price)}{idea.from_shares_held != null && <span> · {Math.round(idea.from_shares_held).toLocaleString()} sh held</span>} → {px(idea.to_price)}
+                  </div>
                   {idea.rationale && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 8 }}>{idea.rationale}</div>}
                   {idea.review_amount_range && (
                     <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 8 }}>
                       Review range: <b style={{ color: 'var(--text1)' }}>{rangeText(idea.review_amount_range)}</b>
-                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{idea.review_amount_range.basis ?? '5–15% of the position — advisory, operator-confirmed, not auto-placed'}</div>
+                      {(sh(idea.sell_shares_range) || sh(idea.buy_shares_range)) && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          {sh(idea.sell_shares_range) && (
+                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,.12)', color: '#ef4444', border: '1px solid #ef444433', fontWeight: 700 }}>
+                              review trimming ~{sh(idea.sell_shares_range)} {idea.from_symbol}
+                            </span>
+                          )}
+                          {sh(idea.buy_shares_range) && (
+                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(34,197,94,.12)', color: '#22c55e', border: '1px solid #22c55e33', fontWeight: 700 }}>
+                              ≈ {sh(idea.buy_shares_range)} {idea.to_symbol}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{idea.review_amount_range.basis ?? '5–15% of the position — advisory, operator-confirmed, not auto-placed'}</div>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
@@ -696,6 +730,12 @@ export default function RotationIntelligence() {
                       {c.analyst_rating && <ActionBadge cls={String(c.analyst_rating).includes('buy') ? 'ADD_REVIEW' : 'WATCH'} />}
                     </div>
                     <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>{c.sector ?? '—'}</div>
+                    {c.price != null && (
+                      <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
+                        {px(c.price)}
+                        {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
                       {c.analyst_upside_pct != null && <span>upside {c.analyst_upside_pct}%</span>}
                       {c.analyst_rating && <span>{String(c.analyst_rating).replace(/_/g, ' ')}</span>}
