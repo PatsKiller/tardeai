@@ -20,6 +20,7 @@ import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import ManualExecutionHub from './pages/ManualExecutionHub'
 import RotationIntelligence from './pages/RotationIntelligence'
+import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
 
 function Shell() {
@@ -48,6 +49,7 @@ function Shell() {
             <Route path="sectors" element={<SectorsHub onDrill={setDrill} />} />
             <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
             <Route path="rotation" element={<RotationIntelligence />} />
+            <Route path="rec-intel" element={<RecommendationIntelligence />} />
             <Route path="advisor-changes" element={<AdvisorChangesHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
