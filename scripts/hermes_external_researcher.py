@@ -126,15 +126,40 @@ def _codex_authed():
         return False
 
 
+def _call_codex_proxy(model, prompt, timeout=240):
+    """ChatGPT via the local ChatGPT OAuth proxy (scripts/chatgpt_oauth_proxy.py, :8646) — the same free
+    openai-codex OAuth, served OpenAI-compatible so ALL Hermes tasks can use it headless. Returns None if the
+    proxy is unreachable/unauthenticated (caller falls back to the CLI)."""
+    import os as _os
+    base = _os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
+    try:
+        import requests
+        h = requests.get(base + "/health", timeout=4).json()
+        if not h.get("authenticated") or h.get("token_expired"):
+            return None  # proxy up but session not usable → let caller decide (CLI / auth hint)
+        r = requests.post(base + "/v1/chat/completions",
+                          json={"model": model or "gpt-5", "messages": [{"role": "user", "content": prompt}]},
+                          timeout=timeout)
+        if r.status_code == 401:
+            return None
+        r.raise_for_status()
+        return (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "") or None
+    except Exception:
+        return None
+
+
 def call_codex_cli(model, prompt):
-    """ChatGPT via the FREE openai-codex OAuth (Hermes one-shot). No OpenAI API key, no metered billing."""
+    """ChatGPT via the FREE openai-codex OAuth (no API key, no metered billing). Prefers the local ChatGPT
+    OAuth proxy (:8646, works headless for any Hermes task); falls back to the pseudo-TTY one-shot CLI."""
+    # 1) Proxy first — works headless and is shared by all Hermes tasks.
+    via_proxy = _call_codex_proxy(model, prompt)
+    if via_proxy:
+        return via_proxy
+    # 2) Fallback: direct CLI under a pseudo-TTY.
     import subprocess
     if not _codex_authed():
         raise RuntimeError("AUTH_PENDING: openai-codex not logged in. Operator must run: "
                            "hermes auth add openai-codex --type oauth (free under ChatGPT subscription).")
-    # Hermes v0.16 codex one-shot only finalizes with a real terminal; the bare `hermes -z` returns
-    # "no final response" headless. Attaching a pseudo-TTY via util-linux `script` fixes it — still the
-    # FREE openai-codex OAuth, no API key, no metered billing.
     import shlex, re
     inner = f"{shlex.quote(HERMES_CLI)} -z {shlex.quote(prompt)} --provider openai-codex"
     if model:
@@ -144,7 +169,8 @@ def call_codex_cli(model, prompt):
     out = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", r.stdout or "").replace("\r", "").strip()
     if (not out) or out.lower().startswith("hermes -z:") or "no final response" in out.lower() or "treating the run as failed" in out.lower():
         raise RuntimeError("CODEX_HEADLESS_UNAVAILABLE: openai-codex is authed but did not finalize a "
-                           "response even under a pseudo-TTY. Try interactive `hermes -p dev chat`.")
+                           "response even under a pseudo-TTY (proxy at :8646 also unavailable — re-login: "
+                           "hermes auth add openai-codex --type oauth).")
     return out
 
 

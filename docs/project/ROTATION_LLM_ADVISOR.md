@@ -370,10 +370,15 @@ flags, rebalance ideas, and sector overweights — a second + third opinion on t
 **free OAuth, no API key, no paid API, no broker action**:
 
 - **Grok** — via the local xAI-OAuth proxy (`call_xai_proxy`, port 8645). Fast, inline.
-- **ChatGPT** — via `openai-codex` OAuth (`call_codex_cli`, free under the operator's ChatGPT subscription —
-  **NOT** the metered OpenAI API). The Hermes Codex CLI needs a real TTY, so in the headless server it may
-  return `available:false` ("authed but didn't finalize headlessly"); the endpoint degrades gracefully and
-  returns the `prompt` for a **manual free-web paste** fallback (same pattern as the Grok manual fallback).
+- **ChatGPT** — via the **ChatGPT OAuth proxy** (`scripts/chatgpt_oauth_proxy.py`, `:8646`), which mirrors
+  the Grok proxy: an OpenAI-compatible local server (`/health`, `/v1/models`, `/v1/chat/completions`) that
+  drives the operator's already-authenticated `hermes` codex CLI inside a real pseudo-TTY (pexpect). **Hermes
+  owns the OAuth — the proxy never reads or refreshes raw tokens.** Free under the ChatGPT subscription, NOT
+  the metered OpenAI API. `llm_lane` lane `chatgpt` calls it (lane `grok` calls :8645). Runs as a user
+  systemd service (`config/systemd/chatgpt-oauth-proxy.service`, `Restart=always`). If the ChatGPT OAuth
+  session has expired, `/health` reports `token_expired:true`, `available()` returns false, and the endpoint
+  degrades to the **manual free-web paste** fallback with the re-login hint
+  (`hermes auth add openai-codex --type oauth`). One-shot per request (stateless; ~CLI spin-up latency).
 
 The endpoint hard-restricts lanes to `grok`/`chatgpt` (any other lane, incl. the paid `claude`/`openai`
 paths in `hermes_external_researcher`, is skipped). Body: `{lanes?: ["grok","chatgpt"]}`. Response:

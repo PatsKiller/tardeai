@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-06-17 - ChatGPT OAuth proxy (free openai-codex) — inline ChatGPT lane
+
+Built `scripts/chatgpt_oauth_proxy.py` (:8646), an OpenAI-compatible proxy mirroring the Grok xAI-OAuth proxy
+(:8645), so ChatGPT becomes an inline oversight lane like Grok. It drives the operator's already-authenticated
+`hermes` openai-codex CLI in a real pseudo-TTY (pexpect) — **Hermes owns the OAuth; the proxy never reads or
+refreshes raw tokens**. Free under the ChatGPT subscription, NOT the metered API. `/health` + `/v1/models` +
+`/v1/chat/completions`; `token_expired` flag; clean 401 + re-login hint when the session is dead. Runs as a
+user systemd service (`config/systemd/chatgpt-oauth-proxy.service`, Restart=always). `llm_lane` gains a
+`chatgpt` lane; rotation oversight routes both lanes through their proxies.
+
+**Shared across all Hermes tasks:** `hermes_external_researcher.call_codex_cli` now PREFERS the proxy
+(falls back to the pseudo-TTY CLI), so every Hermes task using the ChatGPT/codex lane — external research,
+curation, oversight — works headless through it. Grok was already proxy-backed (`call_xai_proxy` → :8645).
+
+**Command-Center monitor:** new `GET /api/v2/llm/oauth-lanes` probes all free OAuth lanes — Grok (:8645),
+ChatGPT (:8646), Hermes/Nous portal, and local gemma (ollama) — returning per-lane reachable/authenticated/
+token_expired/status/hint. Surfaced as a live lane-health strip in the rotation Independent Oversight panel
+(green ready / amber needs-login / red offline, with refresh). Live: Grok ready, ChatGPT session-expired,
+Hermes not-logged-in, local gemma ready (2/4).
+
+NOTE: the ChatGPT OAuth session is currently expired — operator must `hermes auth add openai-codex --type
+oauth` to activate; until then the lane reports unavailable and oversight uses Grok inline + the ChatGPT
+manual-paste fallback.
+
 ## 2026-06-17 - Rotation Intelligence: independent Grok + ChatGPT oversight layers
 
 `POST /api/v2/rotation/oversight` runs two independent oversight models over the rotate-out flags, rebalance
