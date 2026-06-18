@@ -398,6 +398,27 @@ tax-inefficient trim), what's missing, and an overall **AGREE / CAUTION / DISAGR
 amount, never an order. The page's **"Run Grok + ChatGPT Oversight"** button (purple Independent Oversight
 panel) shows both verdicts side by side, with a copy-prompt fallback for any unavailable lane.
 
+## Stop-risk in the engine + plain-English clarity + card freshness (2026-06-18)
+
+- **Stop risk drives the trim score.** The engine was blind to stop state (holdings.json carries none), so
+  a broken-stop name scored trim=0. Now `rotation_intelligence_engine.py` takes `--stops {SYMBOL:{status,
+  severity}}`; `_rotation_summary` builds it from the latest Aegis nightly thesis and passes it. A
+  triggered/danger/broken stop adds **+40** trim (warning +20, weakening +10), applied AFTER the
+  income/taxable reductions so a broken stop isn't softened. Result: deteriorating names become TRIM_REVIEW
+  with real scores (summary went from 0/0/0 to Trim Review 9 / Rotation Ideas 8 / Watch 4). The engine and
+  the stop signal are now reconciled in one number instead of disagreeing across columns.
+- **Plain-English + context-aware sizing.** Each rebalance card leads with an "In plain English" sentence;
+  the review size is context-aware — a 5–15% trim for concentration flags, but **reduce/close (50–100%)**
+  for a broken-stop name, with the chip verb "review reducing/closing" instead of a nonsensical "trim ~0–1
+  share" on a tiny position. Technical rationale moved to a collapsible. "shares" is spelled out.
+- **Clickable summary drill-down.** The summary cards (Trim Review / Add Review / Watch / Missing Sector /
+  Missing Analyst) filter the Review Candidates grid; Rotation Ideas scrolls to that section.
+- **Card freshness.** `data/runtime/symbol_cards_latest.json` (read by the engine `--cards` + the summary's
+  card layer) had no refresh job and went stale, so new research candidates showed "sector/analyst pending".
+  New `scripts/refresh_symbol_cards.py` (weekday cron 06:40) refreshes `symbol_profiles` for watch-grade
+  names then materializes the cards file from `/api/v2/symbol-cards` (atomic). Research candidates now carry
+  sector + description uniformly, with analyst upside where coverage exists.
+
 ## A1A note
 
 This workflow changes advisory behavior and documentation, so it is subject to A1A documentation consistency rules.
