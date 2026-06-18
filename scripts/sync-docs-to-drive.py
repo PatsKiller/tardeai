@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SRC_ROOT = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
-# Drive sync root is resolved by NAME at runtime (see resolve_root_folder) so the sync self-heals if the
-# folder is ever trashed/recreated out-of-band. ROOT_FOLDER_NAME is the source of truth; the ID below is
-# only a last-known hint and is re-validated every run.
+# NOTE: the PRODUCTION hourly Drive sync is scripts/sync-docs-to-drive.sh (cron :05) → the same canonical
+# Trade_AI_Docs_v2 folder below. This .py is a manual/secondary tool that targets the SAME folder so it can
+# never create a duplicate. resolve_root_folder() validates the canonical id first and only falls back to a
+# by-name lookup / create if it has truly been removed (self-healing without forking a new folder).
 ROOT_FOLDER_NAME = 'Trade_AI_Docs_v2'
-ROOT_FOLDER_ID = ''  # populated by resolve_root_folder() at startup
+ROOT_FOLDER_ID = '1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR'  # canonical, shared with sync-docs-to-drive.sh; re-validated each run
 ACCOUNT = 'john@jwwhiting.com'
 MANIFEST = Path('/home/johnclaw/.local/state/drive-sync-manifest.json')
 FOLDER_CACHE = Path('/home/johnclaw/.local/state/drive-folder-cache.json')
@@ -87,20 +88,32 @@ def gog_delete(file_id):
     gog('drive', 'delete', file_id, '--force')
 
 def resolve_root_folder():
-    """Find the sync root folder by name at the Drive root, creating it if absent. Self-healing: if the
-    folder was trashed/recreated out-of-band, this re-resolves to the live one. Returns its id."""
+    """Resolve the canonical sync root folder, preferring the known ROOT_FOLDER_ID (shared with the .sh
+    cron) so we never fork a duplicate. Order: (1) validate ROOT_FOLDER_ID is live; (2) fall back to the
+    OLDEST by-name match at the Drive root (the canonical one, not a freshly-created dup); (3) only create
+    if none exists. Returns the folder id."""
+    # 1. Canonical id still alive?
+    ok, out, _ = gog('drive', 'get', ROOT_FOLDER_ID, '-j')
+    if ok and out:
+        try:
+            d = json.loads(out)
+            if not d.get('trashed') and 'folder' in d.get('mimeType', ''):
+                return ROOT_FOLDER_ID
+        except Exception:
+            pass
+    # 2. By-name fallback — pick the earliest-created match so a stray duplicate can't win.
     q = (f"name = '{ROOT_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' "
          "and trashed = false and 'root' in parents")
     ok, out, _ = gog('drive', 'search', q, '-j')
     if ok and out:
         try:
-            files = json.loads(out).get('files', [])
-            folders = [f for f in files if 'folder' in f.get('mimeType', '')]
+            folders = [f for f in json.loads(out).get('files', []) if 'folder' in f.get('mimeType', '')]
+            folders.sort(key=lambda f: f.get('createdTime', f.get('modifiedTime', '')))
             if folders:
                 return folders[0]['id']
         except Exception:
             pass
-    # Not found — create it at the Drive root.
+    # 3. Nothing exists — create it.
     ok, out, err = gog('drive', 'mkdir', ROOT_FOLDER_NAME, '-j')
     if ok:
         d = json.loads(out)
