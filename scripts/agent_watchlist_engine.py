@@ -14,7 +14,7 @@ Usage:
     python3 scripts/agent_watchlist_engine.py --test
     python3 scripts/agent_watchlist_engine.py --status
 """
-import json, sys
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +30,10 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+# Advisory cloud-review cap (ADDITIVE — gated behind CLOUD_REVIEW=1)
+_CLOUD_REVIEW_CAP = 5
+_cloud_review_count = 0
 
 
 def _get_conn():
@@ -600,6 +604,47 @@ Keep total under 150 words."""
                 conn.commit()
             except Exception:
                 pass
+
+        # ── ADVISORY: free-OAuth cloud models review the LOCAL LLM's debate ──
+        # Additive + advisory only — never changes consensus/confidence/escalation.
+        # Gated behind CLOUD_REVIEW=1; capped per run.
+        cloud_verdict = None
+        global _cloud_review_count
+        if os.getenv("CLOUD_REVIEW") == "1" and _cloud_review_count < _CLOUD_REVIEW_CAP:
+            try:
+                import cloud_review
+                if cloud_review.available():
+                    _cloud_review_count += 1
+                    cr = cloud_review.review(
+                        "watchlist_pick_review",
+                        local_output=(
+                            f"Debate consensus: {final_consensus} at {final_confidence}% confidence.\n"
+                            + full_transcript[:3000]),
+                        context={
+                            "symbol": symbol,
+                            "trigger": str(trigger_title)[:160],
+                            "consensus": final_consensus,
+                            "confidence_pct": final_confidence,
+                            "divergence_pct": r1_divergence,
+                            "rounds": rounds_run,
+                        },
+                        symbol=symbol,
+                        source="agent_watchlist_engine",
+                    )
+                    cloud_verdict = (cr.get("consensus") or {}).get("verdict")
+                    if cloud_verdict:
+                        # attach advisory verdict into the stored transcript field
+                        try:
+                            cur.execute(
+                                "UPDATE agent_debate_log SET debate_transcript = LEFT(%s, 2000) WHERE id=%s",
+                                (full_transcript + f"\n\n[cloud_review_verdict={cloud_verdict}]", debate_id))
+                            conn.commit()
+                        except Exception:
+                            conn.rollback()
+                        print(f"  [debate] {symbol}: cloud_review consensus={cloud_verdict}")
+            except Exception as e:
+                print(f"  [debate] {symbol}: cloud_review skipped — {e}")
+
         conn.close()
 
         print(f"  [debate] {symbol}: {final_consensus} ({final_confidence}%) "
@@ -616,6 +661,7 @@ Keep total under 150 words."""
             "rounds": rounds_run,
             "divergence": r1_divergence,
             "provider": r1.get("provider"),
+            "cloud_review_verdict": cloud_verdict,
         }
 
     except Exception as e:

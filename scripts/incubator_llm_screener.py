@@ -34,6 +34,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 MIN_SCORE = 40
 
+# Advisory cloud-review cap (ADDITIVE — gated behind CLOUD_REVIEW=1)
+_CLOUD_REVIEW_CAP = 5
+_cloud_review_count = 0
+
 # ── Strategy group constants for strategy-aware grading ──────────────────
 
 INCOME_STRATEGIES = {
@@ -458,9 +462,54 @@ def screen_one(conn, candidate, dry_run=False):
         conn.commit()
 
         log.info(f"  {symbol}: grade={grade} verdict={verdict} conf={confidence} model={model}")
+
+        # ── ADVISORY: free-OAuth cloud models review the LOCAL LLM's pick ──
+        # Additive + advisory only — never changes grade/verdict/selection.
+        # Gated behind CLOUD_REVIEW=1; only PROMOTE/HOLD picks; capped per run.
+        cloud_verdict = None
+        global _cloud_review_count
+        if (os.getenv("CLOUD_REVIEW") == "1" and verdict in ("PROMOTE", "HOLD")
+                and _cloud_review_count < _CLOUD_REVIEW_CAP):
+            try:
+                import cloud_review
+                if cloud_review.available():
+                    _cloud_review_count += 1
+                    cr = cloud_review.review(
+                        "incubator_pick_review",
+                        local_output=(result.get("reasoning") or "")
+                            + f" [local: grade={grade} verdict={verdict} conf={confidence}]",
+                        context={
+                            "symbol": symbol,
+                            "sector": candidate.get("sector"),
+                            "strategy_id": candidate.get("strategy_id"),
+                            "score": candidate.get("latest_score"),
+                            "scan_decision": candidate.get("scan_decision"),
+                            "catalyst": str(candidate.get("catalyst") or "")[:120],
+                            "catalyst_verified": candidate.get("catalyst_verified"),
+                            "grade": grade, "verdict": verdict,
+                        },
+                        symbol=symbol,
+                        source="incubator_llm_screener",
+                    )
+                    cloud_verdict = (cr.get("consensus") or {}).get("verdict")
+                    if cloud_verdict:
+                        result["cloud_review_verdict"] = cloud_verdict
+                        try:
+                            cur.execute("""
+                                UPDATE incubator_universe
+                                SET llm_screen_result = %s
+                                WHERE symbol = %s AND status = 'ACTIVE'
+                            """, [json.dumps(result, default=str), symbol])
+                            conn.commit()
+                        except Exception:
+                            conn.rollback()
+                        log.info(f"  {symbol}: cloud_review consensus={cloud_verdict}")
+            except Exception as e:
+                log.debug(f"  {symbol}: cloud_review skipped — {e}")
+
         return {'symbol': symbol, 'status': 'screened', 'grade': grade,
                 'verdict': verdict, 'confidence': confidence, 'model': model,
-                'result': result}
+                'result': result, 'cloud_review_verdict': cloud_verdict}
 
     except Exception as e:
         log.warning(f"  {symbol}: screen failed — {e}")
