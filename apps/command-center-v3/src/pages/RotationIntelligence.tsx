@@ -844,8 +844,9 @@ export default function RotationIntelligence() {
                   )}
                   <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
                     {c.current_value != null && <span>value {money(c.current_value)}</span>}
-                    {c.trim_score != null && <span>trim {c.trim_score}</span>}
-                    {c.add_score != null && <span>add {c.add_score}</span>}
+                    {c.trim_score ? <span>trim {c.trim_score}</span> : null}
+                    {c.add_score ? <span style={{ color: '#22c55e' }}>add {c.add_score}</span> : null}
+                    {!c.trim_score && c.degradation && <span style={{ color: '#ef4444' }} title="Valuation trim score is 0; the rotate-out signal is the stop/thesis status">stop-driven</span>}
                     {c.confidence != null && <span>conf {c.confidence}</span>}
                   </div>
                   {(ev.positive_upside_pct != null || ev.concentration_pct != null) && (
@@ -870,7 +871,9 @@ export default function RotationIntelligence() {
             <span style={{ flex: 1 }} />
             {researchIdeas.length > 0 && <button disabled={!!busy} onClick={runGrokRebalanceReview} style={btn(!!busy)}>{busy === 'Grok Review Ideas' ? 'Reviewing…' : 'Grok Review These Ideas'}</button>}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Ideas to rotate from a trim-worthy holding into a high-conviction <b>research name you don't hold</b>. Review only — confirm sizing, tax, and account fit yourself; nothing is placed.</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Ideas to rotate from a trim-worthy holding into a high-conviction <b>research name you don't hold</b>. Review only — confirm sizing, tax, and account fit yourself; nothing is placed.
+            <div style={{ marginTop: 4, color: '#f59e0b' }}><b>"stop-driven"</b> = the rotate-out reason is the Aegis stop/thesis signal, not the valuation trim score. These names have <b>trim score 0</b> on purpose — they're small positions with positive analyst upside, so the valuation engine wouldn't trim them; the broken stop is what flags them. (The engine doesn't see stop state, so the two signals can disagree — that's the point of showing both.)</div>
+          </div>
 
           {rebalReview && (
             <div style={{ ...card, marginBottom: 12, borderColor: 'rgba(245,158,11,.3)' }}>
@@ -894,7 +897,9 @@ export default function RotationIntelligence() {
                     <ActionBadge cls={idea.action_class} />
                     {idea.from_degradation && <DegBadge d={idea.from_degradation} />}
                     <span style={{ flex: 1 }} />
-                    {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span>}
+                    {idea.from_degradation
+                      ? <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }} title="Driven by the stop-risk signal, not the valuation trim score (which is 0 for this small/high-upside name)">stop-driven</span>
+                      : (idea.score ? <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span> : null)}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 2 }}>{idea.from_symbol ?? '—'} → <span style={{ color: '#22c55e' }}>{idea.to_symbol ?? '—'}</span></div>
                   <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace', marginBottom: 6 }}>
