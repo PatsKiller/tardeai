@@ -3382,10 +3382,13 @@ def _wl_items(query: dict = None):
                    ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
                    ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
                    ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
-                   ep.model_used AS entry_model
+                   ep.model_used AS entry_model,
+                   fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
+                   fs.model_used AS cio_model_used
             FROM watchlist_items wi
             LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
             LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+            LEFT JOIN watchlist_final_synthesis fs ON fs.symbol = wi.symbol
             LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
             LEFT JOIN watchlist_symbol_master sm ON sm.symbol = wi.symbol
             LEFT JOIN LATERAL (

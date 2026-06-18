@@ -227,7 +227,13 @@ export default function WatchlistHub({ onDrill }: Props) {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(110px, 1fr))', gap: 8, padding: 10, background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10 }}>
-                    <Metric label="CIO View" value={it.latest_recommendation || (pa.rec ? String(pa.rec).replace('_', ' ') : 'watch')} color={recColor(it.latest_recommendation || pa.rec)} />
+                    <Metric label="CIO View" color={recColor(it.latest_recommendation || pa.rec)} value={
+                      <span>
+                        {it.latest_recommendation || (pa.rec ? String(pa.rec).replace('_', ' ') : 'watch')}
+                        {it.models_agree === true && <span title={`Grok + ChatGPT agree (${it.grok_recommendation})`} style={{ fontSize: 8.5, color: GREEN, marginLeft: 5, fontWeight: 800 }}>✓ 2 models</span>}
+                        {it.models_agree === false && <span title={`Grok: ${it.grok_recommendation} · ChatGPT: ${it.chatgpt_recommendation} — took the more cautious`} style={{ fontSize: 8.5, color: AMBER, marginLeft: 5, fontWeight: 800 }}>⚠ models split</span>}
+                      </span>
+                    } />
                     <Metric label="Confidence" value={it.research_confidence != null ? Number(it.research_confidence).toFixed(2) : it.hermes_score_components?._confidence ?? '—'} color={BLUE} />
                     <Metric label="AI Enriched" value={ago(it.last_enriched_at) || 'pending'} color={enrichColor(it.last_enriched_at)} />
                     <Metric label="Validated" value={ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.last_validated_at)} />
