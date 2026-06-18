@@ -17870,6 +17870,61 @@ def _portfolio_lookthrough():
 
 
 _ROTATION_SUMMARY_CACHE = {"ts": 0.0, "data": None}
+_REC_INTEL_CACHE = {"ts": 0.0, "data": None}
+
+
+def _rec_intel_summary():
+    """GET /api/v2/rec-intel/summary — recommendation-lineage analytics (coverage, return-by-origin-source,
+    multi-source attribution, strategy outcomes, rotation chains). Read-only; cached 5 min."""
+    import time as _t
+    if _REC_INTEL_CACHE["data"] and (_t.time() - _REC_INTEL_CACHE["ts"] < 300):
+        return _REC_INTEL_CACHE["data"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import recommendation_intelligence_engine as _rie
+        from db_adapter import _get_conn
+        out = _rie.analytics(_get_conn().cursor())
+        out["ok"] = True
+        out["advisory_only"] = True
+        out["generated_at"] = _t.strftime("%Y-%m-%dT%H:%M:%S")
+        _REC_INTEL_CACHE.update(ts=_t.time(), data=out)
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _rec_intel_ticker(query=None):
+    """GET /api/v2/rec-intel/ticker?symbol=X — full lineage for one ticker: every source that introduced it,
+    earliest + most-recent source, executed flag, and any rotation edges. Read-only."""
+    try:
+        q = query or {}
+        sym = q.get("symbol")
+        sym = (sym[0] if isinstance(sym, list) else sym or "").upper().strip()
+        if not sym:
+            return {"ok": False, "error": "symbol required"}
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        cur.execute("""SELECT source_type, source_ref_table, source_ref_id, source_detail, rationale, account,
+                         first_seen_at, last_seen_at, occurrences, executed
+                       FROM rec_ticker_attribution WHERE symbol=%s ORDER BY first_seen_at""", (sym,))
+        cols = ["source_type", "source_ref_table", "source_ref_id", "source_detail", "rationale", "account",
+                "first_seen_at", "last_seen_at", "occurrences", "executed"]
+        rows = [{c: _json_clean(v) for c, v in zip(cols, r)} for r in cur.fetchall()]
+        if not rows:
+            return {"ok": True, "symbol": sym, "found": False, "sources": []}
+        earliest = min(rows, key=lambda r: str(r["first_seen_at"]))
+        latest = max(rows, key=lambda r: str(r["last_seen_at"]))
+        cur.execute("""SELECT from_symbol, to_symbol, executed, occurred_at, source_type FROM rec_rotation_links
+                       WHERE from_symbol=%s OR to_symbol=%s ORDER BY occurred_at""", (sym, sym))
+        rot = [{"from": r[0], "to": r[1], "executed": r[2], "at": str(r[3]), "via": r[4]} for r in cur.fetchall()]
+        return {"ok": True, "symbol": sym, "found": True, "advisory_only": True,
+                "source_count": len({r["source_type"] for r in rows}),
+                "earliest_source": earliest["source_type"], "earliest_at": str(earliest["first_seen_at"]),
+                "latest_source": latest["source_type"], "latest_at": str(latest["last_seen_at"]),
+                "executed": any(r["executed"] for r in rows), "sources": rows, "rotation_links": rot}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def _rotation_summary():
@@ -18239,6 +18294,8 @@ def _rotation_summary():
 ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/rotation/summary": _rotation_summary,
+    "/api/v2/rec-intel/summary": _rec_intel_summary,
+    "/api/v2/rec-intel/ticker": _rec_intel_ticker,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
