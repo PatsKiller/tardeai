@@ -174,8 +174,8 @@ _llm._last_cost = 0
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
 # one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
 # back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
-SYNTHESIS_PROMPT_VERSION = "cio_synth_v2_grok_2026-06-14"   # descriptive (prompt stamp / audit)
-SYNTHESIS_VERSION_NUM = 2                                    # integer for the synthesis_version column (bump on prompt change)
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v3_dual_grok_chatgpt_2026-06-18"   # descriptive (prompt stamp / audit)
+SYNTHESIS_VERSION_NUM = 3                                    # integer for the synthesis_version column (bump on prompt/method change)
 
 
 def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
@@ -194,6 +194,77 @@ def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
     return out
+
+
+# ── CIO dual-consensus: Grok + ChatGPT (both free OAuth) cross-check the final verdict (operator 2026-06-18).
+# Disagreement → take the MORE CAUTIOUS verdict + lower confidence + flag, instead of trusting one model. ──
+_DUAL_CHATGPT_CAP = int(os.getenv("CIO_DUAL_CHATGPT_CAP", "40"))  # bound ChatGPT codex latency per batch run
+_dual_chatgpt_count = 0
+# conservatism rank — lower = more cautious; on disagreement the more cautious verdict wins a buy decision.
+_CONSERV = {"SELL": 0, "AVOID": 0, "IGNORE": 1, "TRIM": 2, "RESEARCH_MORE": 3, "NEUTRAL": 3,
+            "HOLD": 4, "ADD_ON_PULLBACK": 5, "ADD": 6, "BUY": 7}
+
+
+def _rec_from(raw):
+    """Pull (recommendation, confidence) from an LLM synthesis response (JSON preferred, keyword fallback)."""
+    try:
+        j = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
+        return str(j.get("recommendation", "")).upper().strip(), float(j.get("confidence") or 0)
+    except Exception:
+        up = (raw or "").upper()
+        for r in ("AVOID", "SELL", "TRIM", "ADD_ON_PULLBACK", "BUY", "ADD", "HOLD", "RESEARCH_MORE", "NEUTRAL", "IGNORE"):
+            if r in up:
+                return r, 0.5
+        return "", 0.0
+
+
+def _synthesis_dual(prompt: str, max_tokens: int = 1000):
+    """Run the CIO final synthesis on BOTH free-OAuth lanes (Grok + ChatGPT) and reconcile. Returns
+    (raw_text_for_narrative, dual_meta). dual_meta = {grok, chatgpt, agree, consensus, consensus_confidence}.
+    Falls back to Grok-only, then local gemma, when a lane is unavailable. ChatGPT is capped per run."""
+    global _dual_chatgpt_count
+    import llm_lane
+    grok_raw = chatgpt_raw = None
+    grok_rec = chatgpt_rec = None
+    grok_conf = chatgpt_conf = 0.0
+    try:
+        if llm_lane.available("grok"):
+            grok_raw = llm_lane.generate(prompt, lane="grok", timeout=120)
+            if grok_raw and not str(grok_raw).startswith("LLM error"):
+                grok_rec, grok_conf = _rec_from(grok_raw)
+    except Exception:
+        pass
+    try:
+        if _dual_chatgpt_count < _DUAL_CHATGPT_CAP and llm_lane.available("chatgpt"):
+            _dual_chatgpt_count += 1
+            chatgpt_raw = llm_lane.generate(prompt, lane="chatgpt", timeout=180)
+            if chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
+                chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
+    except Exception:
+        pass
+    meta = {"grok": ({"recommendation": grok_rec, "confidence": grok_conf} if grok_rec else None),
+            "chatgpt": ({"recommendation": chatgpt_rec, "confidence": chatgpt_conf} if chatgpt_rec else None)}
+    if grok_rec and chatgpt_rec:
+        if grok_rec == chatgpt_rec:
+            meta.update(agree=True, consensus=grok_rec, consensus_confidence=round(max(grok_conf, chatgpt_conf), 2))
+            _llm._last_model = "grok+chatgpt(agree)"
+            return grok_raw, meta
+        cautious = grok_rec if _CONSERV.get(grok_rec, 9) <= _CONSERV.get(chatgpt_rec, 9) else chatgpt_rec
+        meta.update(agree=False, consensus=cautious, consensus_confidence=round(min(grok_conf, chatgpt_conf) * 0.8, 2))
+        _llm._last_model = "grok+chatgpt(disagree)"
+        return (grok_raw if cautious == grok_rec else chatgpt_raw), meta
+    if grok_rec:
+        _llm._last_model = "grok-3-mini"
+        meta.update(agree=None, consensus=grok_rec, consensus_confidence=round(grok_conf, 2))
+        return grok_raw, meta
+    if chatgpt_rec:
+        _llm._last_model = "gpt-5.4"
+        meta.update(agree=None, consensus=chatgpt_rec, consensus_confidence=round(chatgpt_conf, 2))
+        return chatgpt_raw, meta
+    out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
+    _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    meta.update(agree=None, consensus=None, consensus_confidence=None)
+    return out, meta
 
 
 def _get_context(conn, symbol: str) -> dict:
@@ -1522,7 +1593,7 @@ Respond in JSON format:
 """
 
     prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
-    raw = _synthesis_llm(prompt, max_tokens=1000)   # free Grok primary, local fallback
+    raw, dual_meta = _synthesis_dual(prompt, max_tokens=1000)   # Grok + ChatGPT dual-consensus, gemma fallback
     parsed = _parse_result(raw)
 
     # Extract synthesis-specific fields
@@ -1539,6 +1610,21 @@ Respond in JSON format:
         action = parsed.get("next_action", "")
         next_review = None
         synthesis_narrative = parsed["full_narrative"]
+
+    # ── DUAL-CONSENSUS reconciliation: apply the Grok+ChatGPT verdict BEFORE gating. On disagreement we
+    # already chose the more cautious recommendation + lowered confidence; surface it as a conflict. ──
+    if dual_meta.get("consensus"):
+        parsed["recommendation"] = dual_meta["consensus"]
+        if dual_meta.get("consensus_confidence") is not None:
+            parsed["confidence"] = dual_meta["consensus_confidence"]
+        if dual_meta.get("agree") is False:
+            conflicts.append(
+                f"MODEL DISAGREEMENT — Grok={dual_meta['grok']['recommendation']} vs "
+                f"ChatGPT={dual_meta['chatgpt']['recommendation']}; took the more cautious "
+                f"({dual_meta['consensus']}) and lowered confidence.")
+            synthesis_narrative = (f"[DUAL-CONSENSUS] Grok and ChatGPT disagreed "
+                                   f"(Grok={dual_meta['grok']['recommendation']}, "
+                                   f"ChatGPT={dual_meta['chatgpt']['recommendation']}). " + synthesis_narrative)
 
     # ── POST-LLM GATING RULES (hard overrides) ──────────────────────
     rec = parsed["recommendation"].upper()
@@ -1580,11 +1666,14 @@ Respond in JSON format:
 
     # Store synthesis — record the ACTUAL model that ran + the prompt version (not the hardcoded local)
     actual_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    _grok_rec = (dual_meta.get("grok") or {}).get("recommendation")
+    _cgpt_rec = (dual_meta.get("chatgpt") or {}).get("recommendation")
     cur.execute("""
         INSERT INTO watchlist_final_synthesis
             (symbol, recommendation, confidence, action, reason_codes, conflicts, unresolved,
-             next_review_date, synthesis_narrative, input_agents, model_used, raw_response, synthesis_version)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             next_review_date, synthesis_narrative, input_agents, model_used, raw_response, synthesis_version,
+             grok_recommendation, chatgpt_recommendation, models_agree, dual_consensus_json)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (symbol) DO UPDATE SET
             recommendation=EXCLUDED.recommendation, confidence=EXCLUDED.confidence,
             action=EXCLUDED.action, reason_codes=EXCLUDED.reason_codes,
@@ -1592,11 +1681,14 @@ Respond in JSON format:
             next_review_date=EXCLUDED.next_review_date,
             synthesis_narrative=EXCLUDED.synthesis_narrative,
             input_agents=EXCLUDED.input_agents, model_used=EXCLUDED.model_used,
-            raw_response=EXCLUDED.raw_response, synthesis_version=EXCLUDED.synthesis_version, updated_at=now()
+            raw_response=EXCLUDED.raw_response, synthesis_version=EXCLUDED.synthesis_version,
+            grok_recommendation=EXCLUDED.grok_recommendation, chatgpt_recommendation=EXCLUDED.chatgpt_recommendation,
+            models_agree=EXCLUDED.models_agree, dual_consensus_json=EXCLUDED.dual_consensus_json, updated_at=now()
     """, (symbol, parsed["recommendation"], parsed["confidence"], action,
           parsed.get("reason_codes", []), conflicts, unresolved,
           next_review, synthesis_narrative,
-          [r["agent"] for r in results], actual_model, raw, SYNTHESIS_VERSION_NUM))
+          [r["agent"] for r in results], actual_model, raw, SYNTHESIS_VERSION_NUM,
+          _grok_rec, _cgpt_rec, dual_meta.get("agree"), json.dumps(dual_meta)))
 
     # Record decision inputs (data lineage — what influenced this synthesis)
     try:
