@@ -19936,6 +19936,47 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/lookthrough/design-fill":
+            # LLM "ask agent → design a fill plan for approval" (operator 2026-06-18): for the 0%/underweight
+            # theme gaps, produce a CONCRETE sized, fundable rebalance design (which ETF, $ size, funded by
+            # which trim). Advisory only — returns a design for the operator to review; nothing is
+            # proposed/executed here (approving an ETF buy goes through /rotation/propose-etf as PENDING).
+            try:
+                import json as _j
+                import llm_lane
+                lt = _load_json(STATE_DIR / "lookthrough_themes.json") or {}
+                gaps = lt.get("theme_gaps") or []
+                if not gaps:
+                    return 200, {"ok": True, "advisory_only": True, "gaps": [], "design": None,
+                                 "message": "No theme gaps detected — diversification sleeves are at/above target."}
+                top = lt.get("top_underlying") or []
+                total = lt.get("portfolio_total") or 0
+                over = [t for t in top if (t.get("pct") or 0) >= 8.0][:5]
+                gap_txt = "; ".join(
+                    f"{g['theme']} {g['current_pct']}%->{g['target_pct']}% (gap ~${g['gap_dollars']:,.0f}; "
+                    f"ETFs: {', '.join(e['symbol'] for e in g['suggested_etfs'])})" for g in gaps)
+                over_txt = "; ".join(f"{t['symbol']} {t['pct']}% (${t['value']:,.0f})" for t in over) or "none above 8%"
+                prompt = (
+                    f"You are a portfolio CIO. Portfolio ${total:,.0f}. DIVERSIFICATION GAPS to fill: {gap_txt}. "
+                    f"OVER-CONCENTRATED names (the funding source for trims): {over_txt}. "
+                    "Design a concrete, fundable rebalance: for EACH gap pick ONE ETF from its listed candidates, "
+                    "a dollar size (<= the gap), and name the over-concentrated position to TRIM to fund it so the "
+                    "plan is roughly cash-neutral. Reply ONLY JSON: {\"steps\":[{\"action\":\"BUY\",\"symbol\":"
+                    "\"CIBR\",\"theme\":\"Cybersecurity\",\"dollars\":50000,\"funded_by\":\"trim V ~$50k\","
+                    "\"rationale\":\"one line\"}],\"summary\":\"2 sentences\",\"net_cash_note\":\"...\"}")
+                lane = "grok" if llm_lane.available("grok") else "local"
+                raw = llm_lane.generate(prompt, lane=lane, timeout=120)
+                design = None
+                try:
+                    design = _j.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+                except Exception:
+                    design = {"raw": (raw or "")[:1500], "parse_error": True}
+                return 200, {"ok": True, "advisory_only": True, "lane": lane, "gaps": gaps, "design": design,
+                             "message": "Advisory design for review. Approve an ETF buy to create a PENDING "
+                                        "proposal (manual review + all gates still required before any execution)."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/rotation/feedback":
             # Learning loop: record the operator's action on a rotation idea → llm_feedback_observations,
             # so the advisor learns which suggestions are reviewed / dismissed / acted on over time.

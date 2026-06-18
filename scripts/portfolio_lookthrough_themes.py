@@ -159,6 +159,36 @@ def _advisories(themes, top, total):
     return adv
 
 
+def _theme_gaps(themes, total):
+    """Underweight/0% DIVERSIFICATION sleeves that have a long ETF available — concrete fill candidates
+    (operator 2026-06-18: "why is this not recommending tickers/ETFs for the 0% gaps"). A themed sleeve
+    below its floor (config/etf_fund_universe.json sleeve_targets) becomes a gap with named ETF picks +
+    a target-fill $ size. Overweight growth sleeves are trim-side (rotation engine), not here. Advisory."""
+    uni = _load(ROOT / "config" / "etf_fund_universe.json", {})
+    targets = uni.get("sleeve_targets", {})
+    long_etfs = {}
+    for it in uni.get("instruments", []):
+        if it.get("direction") == "long":
+            long_etfs.setdefault(it.get("sleeve"), []).append(
+                {"symbol": it.get("symbol"), "name": it.get("name"), "type": it.get("type")})
+    gaps = []
+    for sleeve, target in targets.items():
+        etfs = long_etfs.get(sleeve) or []
+        if not etfs or sleeve not in themes:           # only sleeves we actually measure as a theme
+            continue
+        cur = float((themes.get(sleeve) or {}).get("pct") or 0)
+        if cur < float(target):
+            gap_pct = round(float(target) - cur, 2)
+            gaps.append({
+                "theme": sleeve, "current_pct": round(cur, 2), "target_pct": float(target),
+                "gap_pct": gap_pct, "gap_dollars": round(gap_pct / 100 * total, 0),
+                "suggested_etfs": etfs,
+                "severity": "high" if cur == 0 else "medium" if cur < float(target) / 2 else "low",
+            })
+    gaps.sort(key=lambda g: -g["gap_pct"])
+    return gaps
+
+
 def run(account: str | None = None) -> dict:
     holdings = _load(STATE / "holdings.json", {}).get("holdings", [])
     if account:
@@ -176,6 +206,7 @@ def run(account: str | None = None) -> dict:
         "themes": themes,
         "top_underlying": top,
         "advisories": _advisories(themes, top, total),
+        "theme_gaps": _theme_gaps(themes, total),
     }
 
 

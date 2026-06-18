@@ -1,35 +1,276 @@
 {
   "_comment": "Curated ETF/Fund research universe. Makes ETFs + funds first-class instruments for research, proposals, and rotations (long OR short). 'sleeve' maps to config/rotation_sector_targets.json themes so an UNDERWEIGHT sleeve surfaces its ETF as a long rotate-in, and an OVERWEIGHT sleeve can surface an inverse/short hedge. direction: long = own it; short = inverse exposure (own an inverse ETF or short the long ETF). Advisory only; nothing is auto-placed.",
   "instruments": [
-    {"symbol": "SPY",  "name": "SPDR S&P 500",                "type": "etf",  "category": "broad",    "sleeve": "S&P 500",            "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "VOO",  "name": "Vanguard S&P 500",            "type": "etf",  "category": "broad",    "sleeve": "S&P 500",            "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "QQQ",  "name": "Invesco Nasdaq 100",          "type": "etf",  "category": "broad",    "sleeve": "Nasdaq 100",         "direction": "long",  "benchmark": "NDX"},
-    {"symbol": "MAGS", "name": "Roundhill Magnificent 7",     "type": "etf",  "category": "thematic", "sleeve": "Magnificent 7",      "direction": "long",  "benchmark": "NDX"},
-    {"symbol": "SMH",  "name": "VanEck Semiconductor",        "type": "etf",  "category": "sector",   "sleeve": "Semiconductors",     "direction": "long",  "benchmark": "SOX"},
-    {"symbol": "SOXX", "name": "iShares Semiconductor",       "type": "etf",  "category": "sector",   "sleeve": "Semiconductors",     "direction": "long",  "benchmark": "SOX"},
-    {"symbol": "ITA",  "name": "iShares US Aerospace&Defense","type": "etf",  "category": "sector",   "sleeve": "Defense / Aerospace","direction": "long",  "benchmark": "SPX"},
-    {"symbol": "XAR",  "name": "SPDR Aerospace & Defense",    "type": "etf",  "category": "sector",   "sleeve": "Defense / Aerospace","direction": "long",  "benchmark": "SPX"},
-    {"symbol": "PPA",  "name": "Invesco Aerospace & Defense", "type": "etf",  "category": "sector",   "sleeve": "Defense / Aerospace","direction": "long",  "benchmark": "SPX"},
-    {"symbol": "XLE",  "name": "Energy Select Sector SPDR",   "type": "etf",  "category": "sector",   "sleeve": "Energy",             "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "XOP",  "name": "SPDR Oil & Gas E&P",          "type": "etf",  "category": "sector",   "sleeve": "Energy",             "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "VDE",  "name": "Vanguard Energy",             "type": "etf",  "category": "sector",   "sleeve": "Energy",             "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "NLR",  "name": "VanEck Uranium+Nuclear",      "type": "etf",  "category": "thematic", "sleeve": "Nuclear / power gen","direction": "long",  "benchmark": "SPX"},
-    {"symbol": "URA",  "name": "Global X Uranium",            "type": "etf",  "category": "thematic", "sleeve": "Nuclear / power gen","direction": "long",  "benchmark": "SPX"},
-    {"symbol": "CIBR", "name": "First Trust Cybersecurity",   "type": "etf",  "category": "thematic", "sleeve": "Cybersecurity",      "direction": "long",  "benchmark": "NDX"},
-    {"symbol": "BUG",  "name": "Global X Cybersecurity",      "type": "etf",  "category": "thematic", "sleeve": "Cybersecurity",      "direction": "long",  "benchmark": "NDX"},
-    {"symbol": "FXI",  "name": "iShares China Large-Cap",     "type": "etf",  "category": "region",   "sleeve": "China / EM",         "direction": "long",  "benchmark": "MCHI"},
-    {"symbol": "MCHI", "name": "iShares MSCI China",          "type": "etf",  "category": "region",   "sleeve": "China / EM",         "direction": "long",  "benchmark": "MCHI"},
-    {"symbol": "SCHD", "name": "Schwab US Dividend Equity",   "type": "etf",  "category": "income",   "sleeve": "Dividend / income",  "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "JEPI", "name": "JPMorgan Equity Premium Inc", "type": "etf",  "category": "income",   "sleeve": "Dividend / income",  "direction": "long",  "benchmark": "SPX"},
-    {"symbol": "SCHG", "name": "Schwab US Large-Cap Growth",  "type": "etf",  "category": "broad",    "sleeve": "Nasdaq 100",         "direction": "long",  "benchmark": "NDX"},
-    {"symbol": "BND",  "name": "Vanguard Total Bond",         "type": "etf",  "category": "bond",     "sleeve": "Bonds",              "direction": "long",  "benchmark": "AGG"},
-    {"symbol": "TLT",  "name": "iShares 20+ Year Treasury",   "type": "etf",  "category": "bond",     "sleeve": "Bonds",              "direction": "long",  "benchmark": "AGG"},
-
-    {"symbol": "SH",   "name": "ProShares Short S&P 500",     "type": "inverse_etf", "category": "inverse", "sleeve": "S&P 500",     "direction": "short", "inverse_of": "SPY"},
-    {"symbol": "PSQ",  "name": "ProShares Short QQQ",         "type": "inverse_etf", "category": "inverse", "sleeve": "Nasdaq 100",  "direction": "short", "inverse_of": "QQQ"},
-    {"symbol": "SQQQ", "name": "ProShares UltraPro Short QQQ","type": "inverse_etf", "category": "inverse", "sleeve": "Nasdaq 100",  "direction": "short", "inverse_of": "QQQ", "leverage": 3},
-    {"symbol": "DOG",  "name": "ProShares Short Dow30",       "type": "inverse_etf", "category": "inverse", "sleeve": "S&P 500",     "direction": "short", "inverse_of": "DIA"},
-    {"symbol": "SARK", "name": "AXS Short Innovation (ARKK)", "type": "inverse_etf", "category": "inverse", "sleeve": "AI mega-cap", "direction": "short", "inverse_of": "ARKK"},
-    {"symbol": "REW",  "name": "ProShares UltraShort Tech",   "type": "inverse_etf", "category": "inverse", "sleeve": "Semiconductors","direction": "short","inverse_of": "XLK", "leverage": 2}
-  ]
+    {
+      "symbol": "SPY",
+      "name": "SPDR S&P 500",
+      "type": "etf",
+      "category": "broad",
+      "sleeve": "S&P 500",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "VOO",
+      "name": "Vanguard S&P 500",
+      "type": "etf",
+      "category": "broad",
+      "sleeve": "S&P 500",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Invesco Nasdaq 100",
+      "type": "etf",
+      "category": "broad",
+      "sleeve": "Nasdaq 100",
+      "direction": "long",
+      "benchmark": "NDX"
+    },
+    {
+      "symbol": "MAGS",
+      "name": "Roundhill Magnificent 7",
+      "type": "etf",
+      "category": "thematic",
+      "sleeve": "Magnificent 7",
+      "direction": "long",
+      "benchmark": "NDX"
+    },
+    {
+      "symbol": "SMH",
+      "name": "VanEck Semiconductor",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Semiconductors",
+      "direction": "long",
+      "benchmark": "SOX"
+    },
+    {
+      "symbol": "SOXX",
+      "name": "iShares Semiconductor",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Semiconductors",
+      "direction": "long",
+      "benchmark": "SOX"
+    },
+    {
+      "symbol": "ITA",
+      "name": "iShares US Aerospace&Defense",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Defense / Aerospace",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "XAR",
+      "name": "SPDR Aerospace & Defense",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Defense / Aerospace",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "PPA",
+      "name": "Invesco Aerospace & Defense",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Defense / Aerospace",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "XLE",
+      "name": "Energy Select Sector SPDR",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Energy",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "XOP",
+      "name": "SPDR Oil & Gas E&P",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Energy",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "VDE",
+      "name": "Vanguard Energy",
+      "type": "etf",
+      "category": "sector",
+      "sleeve": "Energy",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "NLR",
+      "name": "VanEck Uranium+Nuclear",
+      "type": "etf",
+      "category": "thematic",
+      "sleeve": "Nuclear / power gen",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "URA",
+      "name": "Global X Uranium",
+      "type": "etf",
+      "category": "thematic",
+      "sleeve": "Nuclear / power gen",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "CIBR",
+      "name": "First Trust Cybersecurity",
+      "type": "etf",
+      "category": "thematic",
+      "sleeve": "Cybersecurity",
+      "direction": "long",
+      "benchmark": "NDX"
+    },
+    {
+      "symbol": "BUG",
+      "name": "Global X Cybersecurity",
+      "type": "etf",
+      "category": "thematic",
+      "sleeve": "Cybersecurity",
+      "direction": "long",
+      "benchmark": "NDX"
+    },
+    {
+      "symbol": "FXI",
+      "name": "iShares China Large-Cap",
+      "type": "etf",
+      "category": "region",
+      "sleeve": "China / EM",
+      "direction": "long",
+      "benchmark": "MCHI"
+    },
+    {
+      "symbol": "MCHI",
+      "name": "iShares MSCI China",
+      "type": "etf",
+      "category": "region",
+      "sleeve": "China / EM",
+      "direction": "long",
+      "benchmark": "MCHI"
+    },
+    {
+      "symbol": "SCHD",
+      "name": "Schwab US Dividend Equity",
+      "type": "etf",
+      "category": "income",
+      "sleeve": "Dividend / income",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "JEPI",
+      "name": "JPMorgan Equity Premium Inc",
+      "type": "etf",
+      "category": "income",
+      "sleeve": "Dividend / income",
+      "direction": "long",
+      "benchmark": "SPX"
+    },
+    {
+      "symbol": "SCHG",
+      "name": "Schwab US Large-Cap Growth",
+      "type": "etf",
+      "category": "broad",
+      "sleeve": "Nasdaq 100",
+      "direction": "long",
+      "benchmark": "NDX"
+    },
+    {
+      "symbol": "BND",
+      "name": "Vanguard Total Bond",
+      "type": "etf",
+      "category": "bond",
+      "sleeve": "Bonds",
+      "direction": "long",
+      "benchmark": "AGG"
+    },
+    {
+      "symbol": "TLT",
+      "name": "iShares 20+ Year Treasury",
+      "type": "etf",
+      "category": "bond",
+      "sleeve": "Bonds",
+      "direction": "long",
+      "benchmark": "AGG"
+    },
+    {
+      "symbol": "SH",
+      "name": "ProShares Short S&P 500",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "S&P 500",
+      "direction": "short",
+      "inverse_of": "SPY"
+    },
+    {
+      "symbol": "PSQ",
+      "name": "ProShares Short QQQ",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "Nasdaq 100",
+      "direction": "short",
+      "inverse_of": "QQQ"
+    },
+    {
+      "symbol": "SQQQ",
+      "name": "ProShares UltraPro Short QQQ",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "Nasdaq 100",
+      "direction": "short",
+      "inverse_of": "QQQ",
+      "leverage": 3
+    },
+    {
+      "symbol": "DOG",
+      "name": "ProShares Short Dow30",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "S&P 500",
+      "direction": "short",
+      "inverse_of": "DIA"
+    },
+    {
+      "symbol": "SARK",
+      "name": "AXS Short Innovation (ARKK)",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "AI mega-cap",
+      "direction": "short",
+      "inverse_of": "ARKK"
+    },
+    {
+      "symbol": "REW",
+      "name": "ProShares UltraShort Tech",
+      "type": "inverse_etf",
+      "category": "inverse",
+      "sleeve": "Semiconductors",
+      "direction": "short",
+      "inverse_of": "XLK",
+      "leverage": 2
+    }
+  ],
+  "sleeve_targets": {
+    "Cybersecurity": 4.0,
+    "China / EM": 3.0,
+    "Defense / Aerospace": 4.0,
+    "Energy": 4.0,
+    "Nuclear / power gen": 2.0
+  },
+  "_sleeve_targets_note": "Diversification floor % per sleeve. portfolio_lookthrough_themes flags a sleeve below its floor (with a long ETF in this universe) as a fillable theme gap. Advisory only; operator confirms sizing."
 }

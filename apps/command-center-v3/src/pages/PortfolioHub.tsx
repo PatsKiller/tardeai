@@ -67,6 +67,26 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const [sigTab, setSigTab] = useState('All')
   const [page, setPage] = useState(0)
+  // Diversification gap-fill: LLM design-for-approval + per-ETF propose state
+  const [gapDesign, setGapDesign] = useState<any>(null)
+  const [gapBusy, setGapBusy] = useState(false)
+  const [gapPropose, setGapPropose] = useState<Record<string, string>>({})
+  async function designFill() {
+    setGapBusy(true); setGapDesign(null)
+    try {
+      const r = await fetch('/api/v2/lookthrough/design-fill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      setGapDesign(await r.json())
+    } catch { setGapDesign({ ok: false, error: 'request failed' }) }
+    setGapBusy(false)
+  }
+  async function proposeGapEtf(symbol: string, sleeve: string, rationale: string) {
+    setGapPropose(p => ({ ...p, [symbol]: '…' }))
+    try {
+      const r = await fetch('/api/v2/rotation/propose-etf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, direction: 'long', instrument_type: 'etf', sleeve, rationale }) })
+      const j = await r.json()
+      setGapPropose(p => ({ ...p, [symbol]: j?.ok ? (j.already_exists ? 'exists' : 'proposed ✓') : 'error' }))
+    } catch { setGapPropose(p => ({ ...p, [symbol]: 'error' })) }
+  }
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
@@ -388,6 +408,50 @@ export default function PortfolioHub({ onDrill }: Props) {
                 <div style={{ fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.55 }}>{lt.grok_narrative}</div>
               </div>
             )}
+            {(view.theme_gaps ?? lt.theme_gaps ?? []).length > 0 && (() => {
+              const gaps = view.theme_gaps ?? lt.theme_gaps ?? []
+              const ds = gapDesign?.design
+              return (
+                <div style={{ background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 10, padding: '11px 13px', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#34d399' }}>🎯 Diversification gaps — fill suggestions</div>
+                    <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>{gaps.length} underweight/0% sleeve{gaps.length === 1 ? '' : 's'} with a long-ETF candidate · advisory only</span>
+                    <span style={{ flex: 1 }} />
+                    <button disabled={gapBusy} onClick={designFill} style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #a855f7', background: gapBusy ? 'var(--bg2)' : 'rgba(168,85,247,.18)', color: '#c084fc', cursor: gapBusy ? 'wait' : 'pointer' }}>{gapBusy ? 'designing…' : '🤖 Design fill plan (AI)'}</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
+                    {gaps.map((g: any, i: number) => (
+                      <div key={i} style={{ background: 'var(--bg2)', border: `1px solid ${g.severity === 'high' ? '#ef4444' : '#f59e0b'}44`, borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)' }}>{g.theme} <span style={{ color: g.severity === 'high' ? '#ef4444' : '#f59e0b' }}>{g.current_pct}%</span> <span style={{ color: 'var(--text3)' }}>→ {g.target_pct}%</span></div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>gap ≈ ${Math.round(g.gap_dollars).toLocaleString()}</div>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                          {(g.suggested_etfs ?? []).map((e: any) => (
+                            <button key={e.symbol} onClick={() => proposeGapEtf(e.symbol, g.theme, `Fill ${g.theme} gap (${g.current_pct}%→${g.target_pct}%) — advisory ETF candidate`)} title={`${e.name} — propose a PENDING review (no execution)`} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '1px solid #22c55e66', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}>{e.symbol}{gapPropose[e.symbol] ? ` · ${gapPropose[e.symbol]}` : ' + propose'}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {gapDesign && (
+                    <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8 }}>
+                      {ds?.summary && <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, marginBottom: 6 }}><b style={{ color: '#c084fc' }}>AI design ({gapDesign.lane}):</b> {ds.summary}</div>}
+                      {(ds?.steps ?? []).map((s: any, i: number) => (
+                        <div key={i} style={{ fontSize: 10.5, color: 'var(--text2)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#34d399' }}>{s.action} {s.symbol}</span>
+                          <span>${Number(s.dollars || 0).toLocaleString()}</span>
+                          <span style={{ color: 'var(--text3)' }}>· {s.funded_by}</span>
+                          <span style={{ color: 'var(--text3)' }}>— {s.rationale}</span>
+                          {s.symbol && <button onClick={() => proposeGapEtf(s.symbol, s.theme || '', s.rationale || 'AI fill design')} style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid #22c55e66', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}>{gapPropose[s.symbol] || '+ propose'}</button>}
+                        </div>
+                      ))}
+                      {ds?.parse_error && <div style={{ fontSize: 10, color: '#f59e0b' }}>AI returned unstructured text: {ds.raw}</div>}
+                      {gapDesign.ok === false && <div style={{ fontSize: 10, color: '#ef4444' }}>{gapDesign.error}</div>}
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>Proposing creates a PENDING review item — manual approval + all gates still required. Nothing is executed.</div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             {(lt.agent_advisories ?? []).length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8, marginBottom: 12 }}>
                 {lt.agent_advisories.map((a: any, i: number) => {
