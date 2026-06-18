@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-18 - Symbol-card freshness: enrich research candidates + auto-refresh
+
+Root cause of "sector/analyst pending" research candidates: `data/runtime/symbol_cards_latest.json` (read by
+the rotation engine + card layer) had **no refresh job** and went 2 days stale, so newly-surfaced research
+names had no card. Fixed:
+- Enriched the pending names (SKK/BDSX/FLNC/BLZE/ELMT/AI/SPAI) — `build_symbol_profiles.py --symbols ...`
+  (sector + description + industry) + targeted analyst fetch; all research candidates now show sector +
+  description uniformly (analyst upside where coverage exists; honest "none" for no-coverage microcaps).
+- New `scripts/refresh_symbol_cards.py` (weekday cron 06:40): refreshes symbol_profiles for watch-grade
+  names, then materializes symbol_cards_latest.json from `/api/v2/symbol-cards` (atomic; refuses a broken
+  payload). So new research/watchlist names get cards automatically and the file never goes stale again.
+- Fixed working-dir on the rotation-digest + oauth-keepalive crons (added `cd $PROJ`, use `$PY`).
+
 ## 2026-06-17 - OAuth lane keepalive + stale alert + monitor/control panel; ChatGPT proxy now LIVE
 
 - **ChatGPT proxy fixed + working end-to-end.** Root cause of the earlier "no final response": `hermes -z`
