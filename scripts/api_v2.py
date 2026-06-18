@@ -17833,6 +17833,68 @@ def _rotation_summary():
                         c["sector"] = _secmap.get((c.get("symbol") or "").upper())
             except Exception:
                 pass
+        # ── Holdings DEGRADATION signals from the Aegis nightly briefs (thesis health) — advisory. Drives the
+        # "what to rotate OUT" side from REAL deterioration (thesis weakening/danger/triggered, technical drift,
+        # near 52wk-low), not just concentration. Read-only DB; no broker, no order. ──
+        import re as _re0
+        _degrade = {}
+        try:
+            from db_adapter import _get_conn as _gc4
+            _c4 = _gc4().cursor()
+            _SEV = {"triggered": 4, "danger": 4, "warning": 3, "weakening": 2, "broken": 4}
+            # signal provenance — accuracy matters: triggered/danger/warning come from DETERMINISTIC stop-
+            # distance math (aegis_surveillance, conf 0.90-0.95); weakening/broken come from the local LLM
+            # (gemma3 thesis read, conf ~0.55). Label each so the operator knows hard vs soft.
+            _STOP = {"triggered", "danger", "warning"}
+            _c4.execute("""SELECT symbol, thesis_status, escalation_reason, technical_drift, what_changed, needs_steph_review
+                           FROM aegis_portfolio_briefs
+                           WHERE run_id=(SELECT run_id FROM aegis_portfolio_briefs ORDER BY observed_at DESC LIMIT 1)
+                             AND thesis_status IS NOT NULL""")
+            for _s, _st, _er, _td, _wc, _ns in _c4.fetchall():
+                _stl = (_st or "").lower()
+                if _stl in _SEV:
+                    _src = "stop_distance" if _stl in _STOP else "llm_gemma3"
+                    _degrade[(_s or "").upper()] = {
+                        "thesis_status": _stl, "severity": _SEV[_stl],
+                        "signal_source": _src,
+                        "deterministic": _src == "stop_distance",
+                        "escalation_reason": _er or None, "technical_drift": _td or None,
+                        "what_changed": (_wc or "")[:160] or None, "needs_review": bool(_ns)}
+        except Exception:
+            _degrade = {}
+        # supplementary (separate try so a bad row can't wipe the thesis map): near 52-wk low + poor analyst
+        # recom from the nightly snapshot. analyst_recom is a TEXT column → parse defensively.
+        def _f(_v):
+            try:
+                return float(_v)
+            except (TypeError, ValueError):
+                return None
+        try:
+            _c4.execute("""SELECT symbol, analyst_recom, pct_from_52wk_high
+                           FROM aegis_symbol_snapshot_nightly
+                           WHERE run_id=(SELECT run_id FROM aegis_symbol_snapshot_nightly ORDER BY observed_at DESC LIMIT 1)""")
+            for _s, _ar, _p52 in _c4.fetchall():
+                _su = (_s or "").upper()
+                _flags = {}
+                _p52f, _arf = _f(_p52), _f(_ar)
+                if _p52f is not None and _p52f <= -40:
+                    _flags["near_52wk_low_pct"] = round(_p52f, 1)
+                if _arf is not None and _arf >= 3.0:  # finviz scale: 1=strong buy … 5=strong sell
+                    _flags["analyst_recom"] = round(_arf, 2)
+                if _flags:
+                    _e = _degrade.get(_su) or {"thesis_status": "weakening", "severity": 1,
+                                               "signal_source": "snapshot_data", "deterministic": True,
+                                               "escalation_reason": None, "technical_drift": None,
+                                               "what_changed": None, "needs_review": False}
+                    _e.update(_flags)
+                    _degrade[_su] = _e
+        except Exception:
+            pass
+        # attach degradation to each held review candidate
+        for _c in cands:
+            _dg = _degrade.get((_c.get("symbol") or "").upper())
+            if _dg:
+                _c["degradation"] = _dg
         # Research rotate-in candidates (NOT held) + advisory rebalance ideas. Advisory only — these are
         # NOT model-supported signals; they suggest WHAT to review (no dollar amounts, no broker action).
         research_candidates, research_ideas = [], []
@@ -17861,32 +17923,43 @@ def _rotation_summary():
                 })
                 if len(research_candidates) >= 10:
                     break
-            # advisory pairs: most trim-worthy held → top research add (no amounts, ROTATE_REVIEW).
+            # advisory pairs: most rotate-worthy held → top research add (no amounts, ROTATE_REVIEW).
             # trim source must be a real ticker (exclude 401k fund codes / proxy codes — they can't rotate
-            # into an individual research name).
-            _trims = sorted([c for c in cands if (c.get("trim_score") or 0) >= 9
-                             and _re.fullmatch(r"[A-Z]{1,5}", (c.get("symbol") or "").upper())
-                             and "401k" not in (c.get("account_type") or "").lower()],
-                            key=lambda c: -(c.get("trim_score") or 0))[:3]
+            # into an individual research name). Rotate-OUT pool prioritizes REAL deterioration (Aegis thesis
+            # weakening/danger/triggered) FIRST, then concentration-trim names.
+            _real = lambda c: bool(_re.fullmatch(r"[A-Z]{1,5}", (c.get("symbol") or "").upper())
+                                   and "401k" not in (c.get("account_type") or "").lower())
+            _deg_trims = sorted([c for c in cands if _real(c) and c.get("degradation")],
+                                key=lambda c: (-(c.get("degradation") or {}).get("severity", 0),
+                                               -(c.get("trim_score") or 0)))
+            _conc_trims = sorted([c for c in cands if _real(c) and not c.get("degradation")
+                                  and (c.get("trim_score") or 0) >= 9],
+                                 key=lambda c: -(c.get("trim_score") or 0))
+            _trims = (_deg_trims + _conc_trims)[:4]
             for _tt in _trims:
                 for _aa in research_candidates[:2]:
                     _up = _aa.get("analyst_upside_pct")
                     _conc = (_tt.get("evidence") or {}).get("concentration_pct")
+                    _dg = _tt.get("degradation") or {}
+                    _why = (f"thesis {_dg['thesis_status']}"
+                            f"{' — '+_dg['escalation_reason'] if _dg.get('escalation_reason') else ''}"
+                            if _dg else f"trim signal {_tt.get('trim_score')}"
+                            f"{', conc '+str(_conc)+'%' if _conc is not None else ''}")
                     research_ideas.append({
                         "action_class": "ROTATE_REVIEW",
                         "from_symbol": _tt.get("symbol"), "to_symbol": _aa.get("symbol"),
                         "from_account": _tt.get("account_type"), "score": round(float(_tt.get("trim_score") or 0), 1),
                         "review_amount": None,
+                        "from_degradation": _dg or None,
                         "rationale": (f"Advisory: review rotating from {_tt.get('symbol')} "
-                                      f"({_tt.get('sector') or '?'}, trim signal {_tt.get('trim_score')}"
-                                      f"{', conc '+str(_conc)+'%' if _conc is not None else ''}) into research "
+                                      f"({_tt.get('sector') or '?'}, {_why}) into research "
                                       f"candidate {_aa.get('symbol')} (Hermes #{_aa.get('hermes_rank')}"
                                       f"{', '+str(_up)+'% analyst upside' if _up is not None else ''}). "
                                       "Not a model-supported signal — confirm sizing, tax, and account fit separately."),
                     })
-                    if len(research_ideas) >= 5:
+                    if len(research_ideas) >= 6:
                         break
-                if len(research_ideas) >= 5:
+                if len(research_ideas) >= 6:
                     break
         except Exception:
             research_candidates, research_ideas = [], []
@@ -17997,11 +18070,32 @@ def _rotation_summary():
                 _idea["to_price"] = _tp["price"]
                 if _rng.get("low") is not None:
                     _idea["buy_shares_range"] = _shares_range(_rng["low"], _rng["high"], _tp["price"])
+        # Deteriorating holdings — held names Aegis flags as weakening/warning/danger/triggered. Advisory
+        # rotate-OUT review list (sorted by severity then value); also fed to the weekly digest/alert.
+        degraded_holdings = []
+        for _c in cands:
+            _dg = _c.get("degradation")
+            if not _dg:
+                continue
+            degraded_holdings.append({
+                "symbol": _c.get("symbol"), "thesis_status": _dg.get("thesis_status"),
+                "severity": _dg.get("severity"),
+                "signal_source": _dg.get("signal_source"), "deterministic": _dg.get("deterministic"),
+                "escalation_reason": _dg.get("escalation_reason"),
+                "technical_drift": _dg.get("technical_drift"), "what_changed": _dg.get("what_changed"),
+                "near_52wk_low_pct": _dg.get("near_52wk_low_pct"), "analyst_recom": _dg.get("analyst_recom"),
+                "needs_review": _dg.get("needs_review"),
+                "sector": _c.get("sector"), "account_type": _c.get("account_type") or _c.get("account_key"),
+                "current_value": _c.get("current_value"), "price": _c.get("price"),
+                "day_change_pct": _c.get("day_change_pct"), "est_shares": _c.get("est_shares"),
+            })
+        degraded_holdings.sort(key=lambda x: (-(x.get("severity") or 0), -float(x.get("current_value") or 0)))
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "portfolio_total": round(pf_total),
             "sector_overweights": sector_overweights,
             "sector_underweights": sector_underweights,
+            "degraded_holdings": degraded_holdings,
             "summary": eng.get("summary", {}) or {},
             "data_quality": dq,
             "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),

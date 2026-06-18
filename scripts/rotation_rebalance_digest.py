@@ -34,9 +34,22 @@ def main() -> int:
     over = summ.get("sector_overweights", []) or []
     under = summ.get("sector_underweights", []) or []
     ideas = summ.get("research_rotation_ideas", []) or []
+    degraded = summ.get("degraded_holdings", []) or []
     seeded = _post("/research-gaps").get("created", []) if (over or under or ideas) else []
 
     lines = ["📊 *Rotation Rebalance Digest* — advisory only, no broker action"]
+    if degraded:
+        # Lead with deteriorating holdings — the rotate-OUT signal driven by real deterioration.
+        _hard = [d for d in degraded if d.get("deterministic")]
+        _soft = [d for d in degraded if not d.get("deterministic")]
+        lines.append("\n⚠️ Deteriorating holdings (review rotating out):")
+        for d in degraded[:8]:
+            _src = "stop math" if d.get("deterministic") else "LLM read"
+            _why = d.get("escalation_reason") or d.get("what_changed") or ""
+            _val = f" ${d.get('current_value'):,.0f}" if d.get("current_value") else ""
+            lines.append(f"  • {d.get('symbol')}: {d.get('thesis_status','').upper()} ({_src}){_val}"
+                         + (f" — {_why}" if _why else ""))
+        lines.append(f"  ({len(_hard)} deterministic stop signals, {len(_soft)} LLM/soft)")
     if over:
         lines.append("\nOverweight sleeves (review trimming toward target):")
         for o in over[:5]:

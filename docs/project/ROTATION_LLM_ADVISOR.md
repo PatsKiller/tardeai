@@ -336,6 +336,33 @@ from the advisory $ range; nothing is sized or placed.
   `current_value / price` for held review candidates). Day change is colored green/red.
 - Symbols with no quote (e.g. the `3905` 401k fund code) simply omit price — no fabricated number.
 
+## Holdings-degradation rotate-out signals (2026-06-17)
+
+The "what to rotate OUT" side is now driven by **real deterioration**, not just concentration. `GET
+/api/v2/rotation/summary` joins each held name to the latest **Aegis nightly brief** (`aegis_portfolio_briefs`)
+and exposes:
+
+- `degraded_holdings[]` — `{symbol, thesis_status, severity, signal_source, deterministic, escalation_reason,
+  technical_drift, what_changed, near_52wk_low_pct, analyst_recom, sector, account_type, current_value,
+  price, day_change_pct, est_shares}`, sorted by severity then value. Surfaced as the **Deteriorating
+  Holdings** section.
+- Each `top_candidates[]` / `research_rotation_ideas[]` from-leg gains a `degradation` / `from_degradation`
+  object, and the rebalance **trim pool is reordered to put deteriorating names first**, then concentration
+  trims. A degradation badge appears on the candidate + idea cards.
+
+**Signal accuracy (important).** `thesis_status` has two distinct producers, labeled per row:
+- `triggered` / `danger` / `warning` → `signal_source: "stop_distance"`, `deterministic: true`. These come
+  from `aegis_surveillance.py` — **deterministic stop-distance math** (price vs the protective-stop level),
+  confidence 0.90–0.95. **Not LLM.** These are the high-severity (4/3) rotate-out drivers.
+- `weakening` / `broken` → `signal_source: "llm_gemma3"`, `deterministic: false`. These come from
+  `aegis_synthesis.py`, a **local-LLM thesis read** (ollama `gemma3:12b` primary / `gemma3:4b` fallback per
+  the model policy), confidence ~0.55 — softer, advisory.
+- `near_52wk_low_pct` / `analyst_recom` come from the nightly finviz/yahoo snapshot (not LLM).
+The UI badge shows "TRIGGERED · stop math" vs "WEAKENING · LLM read" so the operator knows hard vs soft.
+
+`scripts/rotation_rebalance_digest.py` leads the weekly digest with the deteriorating holdings (symbol,
+status, signal source, value, reason), split into deterministic-stop vs LLM/soft counts.
+
 ## A1A note
 
 This workflow changes advisory behavior and documentation, so it is subject to A1A documentation consistency rules.
