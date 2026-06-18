@@ -32,6 +32,12 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 log = logging.getLogger("multi_tier_reviewer")
 
+# ── Advisory cloud review (ChatGPT+Grok) gating ──────────────────────────
+# OFF by default; opt in with CLOUD_REVIEW=1. Capped per run to avoid slow fan-out.
+CLOUD_REVIEW_ENABLED = os.getenv("CLOUD_REVIEW", "0") == "1"
+CLOUD_REVIEW_MAX = 5
+_cloud_review_count = 0
+
 # ── Model configuration ──────────────────────────────────────────────────
 
 TIER_CONFIG = {
@@ -361,6 +367,47 @@ def _save_weekly_summary(conn, tier, model, summary_text, trades_reviewed, raw_r
     conn.commit()
 
 
+def _cloud_review_trade(trade, summary, parsed):
+    """ADVISORY ONLY: free-OAuth ChatGPT+Grok review of the LOCAL model's trade-review
+    conclusion. Additive — never affects tier scores or any decision. Gated by
+    CLOUD_REVIEW=1, guarded by availability, capped per run, and never raises."""
+    global _cloud_review_count
+    if not CLOUD_REVIEW_ENABLED or _cloud_review_count >= CLOUD_REVIEW_MAX:
+        return None
+    try:
+        import cloud_review
+        if not cloud_review.available():
+            return None
+        _cloud_review_count += 1
+        symbol = trade.get('symbol')
+        # Safe facts only — no dollar amounts, account ids, or P&L.
+        context = {
+            "symbol": symbol,
+            "strategy": trade.get('strategy_id'),
+            "setup": trade.get('setup_type'),
+            "outcome_verdict": trade.get('outcome_verdict'),
+            "market_regime": trade.get('market_regime'),
+            "signal_grade": trade.get('signal_grade'),
+            "catalyst_verified": trade.get('catalyst_verified'),
+            "rvol_at_entry": trade.get('rvol_at_entry'),
+            "exit_reason": trade.get('exit_reason'),
+        }
+        r = cloud_review.review(
+            "trade_review",
+            local_output=str(summary)[:4000] if summary else json.dumps(parsed, default=str)[:4000],
+            context=context, symbol=symbol, source="multi_tier_trade_reviewer",
+        )
+        cons = (r or {}).get("consensus") or {}
+        concerns = []
+        for lane in (r or {}).get("lanes", {}).values():
+            concerns.extend(lane.get("concerns") or [])
+        return {"verdict": cons.get("verdict", "UNKNOWN"), "concerns": concerns[:8],
+                "lanes_ok": cons.get("lanes_ok", 0)}
+    except Exception as e:
+        log.warning(f"cloud_review skipped: {e}")
+        return None
+
+
 def review_trade(conn, trade, tier, dry_run=False):
     """Review a single trade at the specified tier."""
     trade_id = trade['id']
@@ -404,7 +451,15 @@ def review_trade(conn, trade, tier, dry_run=False):
 
     _save_review(conn, trade_id, tier, cfg['model'], summary, agent_commentaries, raw[:2000])
     log.info(f"Review saved for {symbol} #{trade_id} ({tier}, {cfg['model']})")
-    return {"success": True, "symbol": symbol, "tier": tier, "model": cfg['model'], "parsed": parsed is not None}
+    result = {"success": True, "symbol": symbol, "tier": tier, "model": cfg['model'], "parsed": parsed is not None}
+
+    # ADVISORY extra tier: free-OAuth cloud review of the local model's conclusion.
+    # Additive only — does not alter tier scoring or any pass/fail decision.
+    cloud = _cloud_review_trade(trade, summary, parsed)
+    if cloud:
+        result["cloud_review"] = cloud
+        log.info(f"Cloud review for {symbol} #{trade_id}: {cloud['verdict']} ({cloud['lanes_ok']} lanes)")
+    return result
 
 
 def run_tier(tier, trade_id=None, dry_run=False):

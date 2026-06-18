@@ -107,6 +107,13 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
     """For each symbol, gather all Aegis intel and produce a brief."""
     written = 0
 
+    # ── ADVISORY cloud review of local-LLM theses (additive, never gates) ──
+    # Gated behind CLOUD_REVIEW=1 (default OFF). Reviews only weakening/broken
+    # theses, capped at first 8 per run to bound latency/cost.
+    cloud_review_enabled = os.environ.get("CLOUD_REVIEW") == "1"
+    cloud_reviewed = 0
+    CLOUD_REVIEW_CAP = 8
+
     for sym in symbols:
         # Gather inputs
         snap = _db_query(
@@ -225,6 +232,37 @@ Be concise. No disclaimers."""
         )
         if ok:
             written += 1
+
+        # ── ADVISORY: cloud review of weakening/broken local-LLM theses ──
+        # Additive + advisory only. The helper persists each review to
+        # llm_feedback_observations; nothing here gates or alters the brief.
+        if (cloud_review_enabled
+                and thesis_status in ("weakening", "broken")
+                and cloud_reviewed < CLOUD_REVIEW_CAP):
+            try:
+                import cloud_review
+                if cloud_review.available():
+                    cr = cloud_review.review(
+                        task="aegis_thesis_review",
+                        local_output=f"thesis {thesis_status}: {what_changed} | {why_matters}",
+                        context={
+                            "symbol": sym,
+                            "rsi": rsi,
+                            "sma200": sma200,
+                            "pct_from_52wk_high": snap.get("pct_from_52wk_high"),
+                            "news": news_titles[:200] if news_titles else None,
+                        },
+                        symbol=sym,
+                        source="aegis_synthesis",
+                    )
+                    cloud_reviewed += 1
+                    consensus = (cr or {}).get("consensus") or {}
+                    verdict = consensus.get("verdict", "?")
+                    print(f"  [cloud-review] {sym} ({thesis_status}) → consensus {verdict} "
+                          f"(agree={consensus.get('agree')}, caution={consensus.get('caution')}, "
+                          f"disagree={consensus.get('disagree')})")
+            except Exception as e:
+                print(f"  [cloud-review] {sym} skipped: {e}")
 
     return written
 

@@ -128,6 +128,55 @@ def _enrich_proposal_async(proposal_id: int, symbol: str):
     return t
 
 
+def _cloud_review_proposal(signal: dict, sizing: dict, proposal_id: int):
+    """ADVISORY-ONLY: free-OAuth cloud lanes (ChatGPT+Grok) review the LOCAL model's proposal reasoning.
+
+    Additive + advisory: the verdict is ONLY recorded (cloud_review persists each lane to
+    llm_feedback_observations) + logged. It NEVER gates, blocks, or modifies the proposal — the row is
+    already created and queued before this runs. Gated behind CLOUD_REVIEW=1 (default OFF) and called only
+    for newly-generated proposals, capped per run by the caller. Wrapped + guarded so a down lane is a no-op.
+    """
+    try:
+        import cloud_review
+        if not cloud_review.available():
+            return
+        sym = signal.get("symbol")
+        # local_output = the rationale/thesis text the local model produced for this proposal.
+        rationale = (signal.get("setup_description") or signal.get("setup_type")
+                     or signal.get("catalyst") or "").strip()
+        if not rationale:
+            return
+        # context = SMALL dict of SAFE fields only. Deliberately NO dollar amounts, account ids, or
+        # position sizes (per advisory-review safety policy) — just symbol/setup/entry-logic/signal scores.
+        context = {
+            "symbol": sym,
+            "strategy": signal.get("strategy_id"),
+            "setup": signal.get("setup_description"),
+            "entry_logic": {
+                "entry_high": signal.get("entry_high"),
+                "entry_low": signal.get("entry_low"),
+                "stop_loss": signal.get("stop_loss"),
+                "target_1": signal.get("target_1"),
+                "rr": sizing.get("rr") if sizing else None,
+            },
+            "signal_scores": {
+                "signal_score": signal.get("signal_score"),
+                "signal_grade": signal.get("signal_grade"),
+                "rvol": signal.get("rvol"),
+                "gap_pct": signal.get("gap_pct"),
+                "catalyst_verified": signal.get("catalyst_verified"),
+            },
+        }
+        r = cloud_review.review("paper_proposal_review", local_output=rationale, context=context,
+                                symbol=sym, source="auto_proposal_generator")
+        verdict = (r.get("consensus") or {}).get("verdict", "UNKNOWN")
+        log.info(f"  {sym}: cloud review of local proposal reasoning (proposal #{proposal_id}) "
+                 f"-> consensus={verdict} (lanes_ok={(r.get('consensus') or {}).get('lanes_ok', 0)}); "
+                 f"advisory only, recorded to llm_feedback_observations")
+    except Exception as _e:
+        log.warning(f"  cloud review skipped for proposal #{proposal_id}: {_e}")
+
+
 def _send_proposal_alert_async(proposal_id: int, symbol: str):
     """Send Telegram alert immediately after proposal creation. Non-blocking."""
     import threading
@@ -847,6 +896,13 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
         auto_run_id = cur.fetchone()[0]
         conn.commit()
 
+    # ADVISORY cloud-review gate (default OFF — normal runs unchanged). When CLOUD_REVIEW=1, the first few
+    # NEWLY-created proposals this run get an additive ChatGPT+Grok second-opinion on the local model's
+    # reasoning (recorded only, never gates). Capped to bound latency (~10-30s/lane/call).
+    _cloud_review_on = os.environ.get("CLOUD_REVIEW") == "1"
+    _cloud_review_cap = 5
+    _cloud_reviewed = 0
+
     signals = get_eligible_signals(conn, run_label=run_label, symbol=symbol, min_score=min_score)
     log.info(f"Found {len(signals)} eligible signals for auto-proposal")
 
@@ -1101,6 +1157,12 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
 
                 # Real-time Telegram alert — fire immediately, non-blocking
                 _send_proposal_alert_async(proposal_id, sym)
+
+                # ADVISORY cloud review of the LOCAL model's proposal reasoning (additive, recorded only).
+                # Gated by CLOUD_REVIEW=1, capped per run, newly-created proposals only. Never gates/blocks.
+                if _cloud_review_on and _cloud_reviewed < _cloud_review_cap:
+                    _cloud_reviewed += 1
+                    _cloud_review_proposal(sig, sizing, proposal_id)
 
         except Exception as e:
             stats["errors"] += 1
