@@ -57,6 +57,9 @@ type RotationData = {
   ok?: boolean
   advisory_only?: boolean
   error?: string
+  cached_at?: string
+  cache_age_sec?: number
+  stale?: boolean
   portfolio_total?: number
   summary?: {
     trim_review?: number
@@ -495,6 +498,11 @@ export default function RotationIntelligence() {
         <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>
           Advisory only · human review required · no broker action
         </div>
+        {data?.cache_age_sec != null && (
+          <div style={{ fontSize: 10, color: data?.stale ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
+            ⟳ refreshed {data.cache_age_sec < 60 ? `${data.cache_age_sec}s` : `${Math.round(data.cache_age_sec / 60)}m`} ago{data?.stale ? ' · stale, refreshing in background' : ''} · heavy engine pre-warmed every 8 min (no page wait)
+          </div>
+        )}
       </header>
 
       {/* B. Summary cards */}

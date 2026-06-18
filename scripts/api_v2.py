@@ -17990,12 +17990,33 @@ def _rec_intel_ticker(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
-def _rotation_summary():
-    """GET /api/v2/rotation/summary — advisory-only rotation engine output (cached 5 min). Never calls a
-    broker or any external API; runs the local grounded scorer only."""
+def _rotation_summary(force=False):
+    """GET /api/v2/rotation/summary — advisory-only rotation engine output. The engine subprocess is heavy
+    (~50s), so the REQUEST PATH never runs it: it serves a disk-persisted cache (data/runtime/
+    rotation_summary_cache.json) that the warm cron (warm_caches.py, force=True) refreshes. Stale is served
+    (flagged) rather than blocking the single-threaded server — which previously let one cold request hang
+    long enough for the health-probe watchdog to kill+restart-loop the server. Never calls a broker."""
     import time as _t, json as _j, subprocess as _sp, sys
-    if _ROTATION_SUMMARY_CACHE["data"] and (_t.time() - _ROTATION_SUMMARY_CACHE["ts"] < 300):
-        return _ROTATION_SUMMARY_CACHE["data"]
+    import datetime as _dt
+    _disk = PROJECT_ROOT / "data" / "runtime" / "rotation_summary_cache.json"
+    _now = _t.time()
+    if not force:
+        # 1) in-memory fresh
+        if _ROTATION_SUMMARY_CACHE["data"] and (_now - _ROTATION_SUMMARY_CACHE["ts"] < 300):
+            return _ROTATION_SUMMARY_CACHE["data"]
+        # 2) disk cache — serve it (fresh OR stale) without a 52s recompute in the request path
+        try:
+            if _disk.exists():
+                _d = _j.loads(_disk.read_text())
+                _age = _now - (_d.get("_cached_ts") or 0)
+                _d["cached_at"] = _d.get("_cached_at")
+                _d["cache_age_sec"] = round(_age)
+                _d["stale"] = _age > 900
+                _ROTATION_SUMMARY_CACHE.update(ts=_now - min(_age, 299), data=_d)
+                return _d
+        except Exception:
+            pass
+        # 3) no disk cache at all (first ever run) — fall through and compute once to bootstrap
     root = PROJECT_ROOT
     try:
         # Build the stop-risk map from the latest Aegis nightly thesis and hand it to the engine so
@@ -18489,7 +18510,16 @@ def _rotation_summary():
             "research_rotation_ideas": research_ideas,
             "generated_at": eng.get("generated_at"),
         }
+        out["_cached_ts"] = _t.time()
+        out["_cached_at"] = _dt.datetime.now().isoformat(timespec="seconds")
+        out["cached_at"] = out["_cached_at"]
+        out["cache_age_sec"] = 0
+        out["stale"] = False
         _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
+        try:
+            _disk.write_text(_j.dumps(out, default=str))
+        except Exception:
+            pass
         return out
     except Exception as e:
         return {"ok": False, "advisory_only": True, "error": str(e)[:200],
