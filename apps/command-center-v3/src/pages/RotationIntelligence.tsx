@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type AmountRange = { low?: number; high?: number; basis?: string }
+type AmountRange = { low?: number; high?: number; basis?: string; action?: string }
 type ShareRange = { low?: number; high?: number }
 type RotationPair = {
   action_class?: string
@@ -154,11 +154,17 @@ function DegBadge({ d }: { d?: { thesis_status?: string; deterministic?: boolean
   )
 }
 
-function SummaryCard({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+function SummaryCard({ label, value, color, onClick, active }: { label: string; value: React.ReactNode; color?: string; onClick?: () => void; active?: boolean }) {
+  const clickable = !!onClick
   return (
-    <div style={{ ...card, textAlign: 'center', padding: '14px 10px' }}>
+    <div onClick={onClick} title={clickable ? `Show ${label}` : undefined}
+      style={{ ...card, textAlign: 'center', padding: '14px 10px',
+        cursor: clickable ? 'pointer' : 'default',
+        borderColor: active ? (color ?? '#60a5fa') : 'var(--border)',
+        boxShadow: active ? `0 0 0 1px ${color ?? '#60a5fa'}` : undefined,
+        transition: 'border-color .15s' }}>
       <div style={{ fontSize: 24, fontWeight: 800, color: color ?? 'var(--text0)' }}>{value}</div>
-      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}{clickable && <span style={{ color: color ?? '#60a5fa' }}> ▾</span>}</div>
     </div>
   )
 }
@@ -181,6 +187,7 @@ export default function RotationIntelligence() {
   const [laneHealth, setLaneHealth] = useState<{ lanes?: any[]; ready_count?: number; total?: number } | null>(null)
   const [laneBusy, setLaneBusy] = useState(false)
   const [laneMsg, setLaneMsg] = useState('')
+  const [drill, setDrill] = useState<string>('')   // active summary-card drill filter
 
   async function loadSummary() {
     setSummaryWarn('')
@@ -387,6 +394,21 @@ export default function RotationIntelligence() {
   const pairs = (data?.top_pairs ?? []).filter((p: any) => p?.from_symbol || p?.to_symbol)
   const noIdeas = ideas.length === 0 && pairs.length === 0
   const candidates = (data?.top_candidates ?? []) as any[]
+  function clickDrill(key: string, sectionId: string) {
+    const next = drill === key ? '' : key
+    setDrill(next)
+    setTimeout(() => document.getElementById(next ? sectionId : '')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+  }
+  const drillLabel: Record<string, string> = {
+    TRIM_REVIEW: 'Trim Review', ADD_REVIEW: 'Add Review', WATCH: 'Watch',
+    missing_sector: 'Missing Sector', missing_analyst: 'Missing Analyst Upside',
+  }
+  const drillCands = (() => {
+    if (!drill || drill === 'rotation_ideas') return candidates
+    if (drill === 'missing_sector') return candidates.filter((c: any) => !c.sector)
+    if (drill === 'missing_analyst') return candidates.filter((c: any) => c.evidence?.missing_or_neutral_analyst_upside === true || (c.evidence?.positive_upside_pct == null && c.evidence?.analyst_not_applicable !== true))
+    return candidates.filter((c: any) => (c.recommendation || '').toUpperCase() === drill)
+  })()
   const researchIdeas = (data?.research_rotation_ideas ?? []) as any[]
   const researchCands = (data?.research_candidates ?? []) as any[]
   const overweights = (data?.sector_overweights ?? []) as SectorOverweight[]
@@ -461,12 +483,12 @@ export default function RotationIntelligence() {
         </div>
       )}
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
-        <SummaryCard label="Trim Review" value={s.trim_review ?? '—'} color="#ef4444" />
-        <SummaryCard label="Add Review" value={s.add_review ?? '—'} color="#22c55e" />
-        <SummaryCard label="Rotation Ideas" value={s.rotation_ideas ?? '—'} color={ACCENT} />
-        <SummaryCard label="Watch" value={s.watch ?? '—'} color="#f59e0b" />
-        <SummaryCard label="Missing Sector" value={data?.missing_sector ?? '—'} color="#a855f7" />
-        <SummaryCard label="Missing Analyst Upside" value={missingAnalyst ?? '—'} color="#a855f7" />
+        <SummaryCard label="Trim Review" value={s.trim_review ?? '—'} color="#ef4444" active={drill === 'TRIM_REVIEW'} onClick={() => clickDrill('TRIM_REVIEW', 'review-candidates')} />
+        <SummaryCard label="Add Review" value={s.add_review ?? '—'} color="#22c55e" active={drill === 'ADD_REVIEW'} onClick={() => clickDrill('ADD_REVIEW', 'review-candidates')} />
+        <SummaryCard label="Rotation Ideas" value={s.rotation_ideas ?? '—'} color={ACCENT} active={drill === 'rotation_ideas'} onClick={() => clickDrill('rotation_ideas', 'rotation-ideas')} />
+        <SummaryCard label="Watch" value={s.watch ?? '—'} color="#f59e0b" active={drill === 'WATCH'} onClick={() => clickDrill('WATCH', 'review-candidates')} />
+        <SummaryCard label="Missing Sector" value={data?.missing_sector ?? '—'} color="#a855f7" active={drill === 'missing_sector'} onClick={() => clickDrill('missing_sector', 'review-candidates')} />
+        <SummaryCard label="Missing Analyst Upside" value={missingAnalyst ?? '—'} color="#a855f7" active={drill === 'missing_analyst'} onClick={() => clickDrill('missing_analyst', 'review-candidates')} />
       </section>
 
       {/* B2. Sleeve Balance — sector/theme overweight & underweight detection */}
@@ -805,7 +827,7 @@ export default function RotationIntelligence() {
       )}
 
       {/* F. Rotation Ideas */}
-      <section>
+      <section id="rotation-ideas" style={{ scrollMarginTop: 80 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Rotation Ideas</div>
         {noIdeas ? (
           <div style={{ ...card, fontSize: 11.5, color: 'var(--text2)' }}>
@@ -840,11 +862,18 @@ export default function RotationIntelligence() {
 
       {/* Review candidates (per-symbol, not pairs) */}
       {candidates.length > 0 && (
-        <section>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Review Candidates</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Per-symbol review candidates from the grounded scorer — not buy/sell instructions. Each is a WATCH / review item only.</div>
+        <section id="review-candidates" style={{ scrollMarginTop: 80 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Review Candidates</div>
+            {drill && drill !== 'rotation_ideas' && (
+              <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 12, background: 'rgba(96,165,250,.15)', color: ACCENT, border: `1px solid ${ACCENT}55`, fontWeight: 700 }}>
+                filtered: {drillLabel[drill] ?? drill} ({drillCands.length}) · <span onClick={() => setDrill('')} style={{ cursor: 'pointer', textDecoration: 'underline' }}>clear</span>
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Per-symbol review candidates from the grounded scorer — not buy/sell instructions. Each is a WATCH / review item only. {drill ? 'Showing your selected filter (within the top scored candidates).' : 'Tip: click a summary card above to filter.'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-            {candidates.slice(0, 24).map((c: any, idx: number) => {
+            {(drill && drill !== 'rotation_ideas' ? drillCands : candidates).slice(0, 24).map((c: any, idx: number) => {
               const ev = c.evidence ?? {}
               return (
                 <article key={`${c.symbol}-${c.account_key}-${idx}`} style={card}>
@@ -938,7 +967,7 @@ export default function RotationIntelligence() {
                         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           {sh(idea.sell_shares_range) && (
                             <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,.12)', color: '#ef4444', border: '1px solid #ef444433', fontWeight: 700 }}>
-                              review trimming ~{sh(idea.sell_shares_range)} {idea.from_symbol}
+                              {idea.review_amount_range?.action === 'reduce_or_close' ? 'review reducing/closing' : idea.review_amount_range?.action === 'reduce' ? 'review reducing' : 'review trimming'} ~{sh(idea.sell_shares_range)} {idea.from_symbol}
                             </span>
                           )}
                           {sh(idea.buy_shares_range) && (
@@ -972,29 +1001,35 @@ export default function RotationIntelligence() {
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>Research candidates to rotate into (not held)</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-                {researchCands.map((c: any, idx: number) => (
+                {researchCands.map((c: any, idx: number) => {
+                  const hasAnalyst = c.analyst_upside_pct != null || c.analyst_rating
+                  const enriched = !!(c.sector && hasAnalyst && c.description)
+                  return (
                   <article key={`${c.symbol}-${idx}`} style={card}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol}</span>
                       {c.hermes_rank != null && <span style={{ fontSize: 9.5, color: '#a855f7' }}>★#{c.hermes_rank}</span>}
                       <span style={{ flex: 1 }} />
-                      {c.analyst_rating && <ActionBadge cls={String(c.analyst_rating).includes('buy') ? 'ADD_REVIEW' : 'WATCH'} />}
+                      {c.analyst_rating
+                        ? <ActionBadge cls={String(c.analyst_rating).includes('buy') ? 'ADD_REVIEW' : 'WATCH'} />
+                        : <span style={{ fontSize: 8, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px' }}>{enriched ? '' : 'enriching'}</span>}
                     </div>
-                    <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>{c.sector ?? '—'}</div>
-                    {c.price != null && (
-                      <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                        {px(c.price)}
-                        {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
-                      </div>
-                    )}
+                    {/* uniform rows so every card carries the same fields (placeholders when data is pending) */}
+                    <div style={{ fontSize: 9.5, color: c.sector ? 'var(--text3)' : 'var(--text3)', opacity: c.sector ? 1 : 0.6, marginBottom: 6 }}>{c.sector ?? 'sector pending'}</div>
+                    <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
+                      {c.price != null ? px(c.price) : '—'}
+                      {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
+                    </div>
                     <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
-                      {c.analyst_upside_pct != null && <span>upside {c.analyst_upside_pct}%</span>}
+                      <span style={{ opacity: hasAnalyst ? 1 : 0.55 }}>{c.analyst_upside_pct != null ? `upside ${c.analyst_upside_pct}%` : 'analyst pending'}</span>
                       {c.analyst_rating && <span>{String(c.analyst_rating).replace(/_/g, ' ')}</span>}
                       {c.score != null && <span>score {Math.round(c.score)}</span>}
                     </div>
-                    {c.description && <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.4 }}>{c.description}</div>}
+                    <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.4, opacity: c.description ? 1 : 0.55 }}>
+                      {c.description || 'Company profile pending — Hermes research queued for this name.'}
+                    </div>
                   </article>
-                ))}
+                )})}
               </div>
             </>
           )}

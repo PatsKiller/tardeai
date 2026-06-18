@@ -18101,8 +18101,22 @@ def _rotation_summary():
         for _idea in research_ideas:
             _fv = next((float(c.get("current_value") or 0) for c in cands if c.get("symbol") == _idea.get("from_symbol")), 0.0)
             if _fv:
-                _idea["review_amount_range"] = {"low": round(_fv * _lo_f), "high": round(_fv * _hi_f),
-                                                "basis": "5-15% of the position — advisory, operator-confirmed, not auto-placed"}
+                # Context-aware review size: a 5-15% trim only makes sense for a concentration/valuation
+                # flag. When the rotate-out reason is a BROKEN STOP, the action is reduce/exit, not a token
+                # trim — so size it to a meaningful reduction (up to the full position), with a plain basis.
+                _dg = _idea.get("from_degradation") or {}
+                _sev = _dg.get("severity") or 0
+                if _sev >= 3:  # triggered / danger / warning — stop hit
+                    _idea["review_amount_range"] = {"low": round(_fv * 0.5), "high": round(_fv),
+                        "basis": "stop hit — review reducing or closing this position (not a 5-15% trim)",
+                        "action": "reduce_or_close"}
+                elif _dg:  # weakening — thesis softening
+                    _idea["review_amount_range"] = {"low": round(_fv * 0.25), "high": round(_fv * 0.5),
+                        "basis": "thesis weakening — review reducing this position", "action": "reduce"}
+                else:  # concentration / valuation trim
+                    _idea["review_amount_range"] = {"low": round(_fv * _lo_f), "high": round(_fv * _hi_f),
+                        "basis": "5-15% of the position — advisory, operator-confirmed, not auto-placed",
+                        "action": "trim"}
         # ── Live prices + advisory review QUANTITIES (shares). Read-only: latest market_quotes (DB) + the
         # holdings snapshot. No broker, no order, no live HTTP from this request. Quantities are review
         # RANGES derived from the advisory $ range — operator confirms; nothing is sized or placed. ──
