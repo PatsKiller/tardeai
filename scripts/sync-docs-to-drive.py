@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SRC_ROOT = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
-ROOT_FOLDER_ID = '1oL_OxjCF-q1pq9c-8GCa8YS3TFeQOv41'
+# Drive sync root is resolved by NAME at runtime (see resolve_root_folder) so the sync self-heals if the
+# folder is ever trashed/recreated out-of-band. ROOT_FOLDER_NAME is the source of truth; the ID below is
+# only a last-known hint and is re-validated every run.
+ROOT_FOLDER_NAME = 'Trade_AI_Docs_v2'
+ROOT_FOLDER_ID = ''  # populated by resolve_root_folder() at startup
 ACCOUNT = 'john@jwwhiting.com'
 MANIFEST = Path('/home/johnclaw/.local/state/drive-sync-manifest.json')
 FOLDER_CACHE = Path('/home/johnclaw/.local/state/drive-folder-cache.json')
@@ -82,6 +86,28 @@ def gog_ls(parent_id):
 def gog_delete(file_id):
     gog('drive', 'delete', file_id, '--force')
 
+def resolve_root_folder():
+    """Find the sync root folder by name at the Drive root, creating it if absent. Self-healing: if the
+    folder was trashed/recreated out-of-band, this re-resolves to the live one. Returns its id."""
+    q = (f"name = '{ROOT_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' "
+         "and trashed = false and 'root' in parents")
+    ok, out, _ = gog('drive', 'search', q, '-j')
+    if ok and out:
+        try:
+            files = json.loads(out).get('files', [])
+            folders = [f for f in files if 'folder' in f.get('mimeType', '')]
+            if folders:
+                return folders[0]['id']
+        except Exception:
+            pass
+    # Not found — create it at the Drive root.
+    ok, out, err = gog('drive', 'mkdir', ROOT_FOLDER_NAME, '-j')
+    if ok:
+        d = json.loads(out)
+        return d.get('folder', {}).get('id') or d.get('id', '')
+    raise RuntimeError(f"could not resolve or create root folder '{ROOT_FOLDER_NAME}': {err}")
+
+
 def ensure_folder(parts, cache):
     parent = ROOT_FOLDER_ID
     for part in parts:
@@ -108,9 +134,21 @@ def find_existing_file(parent_id, name):
     return None
 
 def main():
+    global ROOT_FOLDER_ID
     log("=== sync start ===")
+    ROOT_FOLDER_ID = resolve_root_folder()
+    log(f"root folder '{ROOT_FOLDER_NAME}' = {ROOT_FOLDER_ID}")
     manifest = load_json(MANIFEST, {})
     folder_cache = load_json(FOLDER_CACHE, {})
+
+    # If the root folder changed (e.g. the old one was trashed), every cached subfolder id + manifest hash
+    # is stale — reset both so we recreate the tree cleanly under the live root.
+    if folder_cache.get('__root__') != ROOT_FOLDER_ID:
+        log(f"root changed (was {folder_cache.get('__root__')}) — resetting folder cache + manifest")
+        folder_cache = {'__root__': ROOT_FOLDER_ID}
+        save_json(FOLDER_CACHE, folder_cache)
+        manifest = {}
+        save_json(MANIFEST, manifest)
 
     # Collect candidates
     candidates = []
