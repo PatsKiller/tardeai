@@ -363,6 +363,27 @@ The UI badge shows "TRIGGERED · stop math" vs "WEAKENING · LLM read" so the op
 `scripts/rotation_rebalance_digest.py` leads the weekly digest with the deteriorating holdings (symbol,
 status, signal source, value, reason), split into deterministic-stop vs LLM/soft counts.
 
+## Independent oversight layers — Grok + ChatGPT (free OAuth) (2026-06-17)
+
+`POST /api/v2/rotation/oversight` runs **two independent oversight models** over the system's rotate-OUT
+flags, rebalance ideas, and sector overweights — a second + third opinion on the engine itself. Both are
+**free OAuth, no API key, no paid API, no broker action**:
+
+- **Grok** — via the local xAI-OAuth proxy (`call_xai_proxy`, port 8645). Fast, inline.
+- **ChatGPT** — via `openai-codex` OAuth (`call_codex_cli`, free under the operator's ChatGPT subscription —
+  **NOT** the metered OpenAI API). The Hermes Codex CLI needs a real TTY, so in the headless server it may
+  return `available:false` ("authed but didn't finalize headlessly"); the endpoint degrades gracefully and
+  returns the `prompt` for a **manual free-web paste** fallback (same pattern as the Grok manual fallback).
+
+The endpoint hard-restricts lanes to `grok`/`chatgpt` (any other lane, incl. the paid `claude`/`openai`
+paths in `hermes_external_researcher`, is skipped). Body: `{lanes?: ["grok","chatgpt"]}`. Response:
+`{lanes:{grok:{ok,answer,model}|{ok:false,available,auth_hint}, chatgpt:{…}}, prompt, note}`. Each model is
+asked, as an oversight layer, whether the rotate-out flags are reasonable (or over-reacting to a stop wiggle
+on a tiny position), whether any rebalance idea is a poor fit (income/core → speculative microcap,
+tax-inefficient trim), what's missing, and an overall **AGREE / CAUTION / DISAGREE** verdict — never a dollar
+amount, never an order. The page's **"Run Grok + ChatGPT Oversight"** button (purple Independent Oversight
+panel) shows both verdicts side by side, with a copy-prompt fallback for any unavailable lane.
+
 ## A1A note
 
 This workflow changes advisory behavior and documentation, so it is subject to A1A documentation consistency rules.
