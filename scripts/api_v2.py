@@ -5897,6 +5897,16 @@ def _llm_oauth_lanes():
                   "reachable": o is not None, "authenticated": o is not None, "token_expired": None,
                   "status": "ready" if o is not None else "offline", "models": _models,
                   "hint": None if o is not None else "start ollama"})
+    # Merge keepalive history (last successful ping / last check) so the control panel shows freshness.
+    try:
+        _ks = _j.loads((PROJECT_ROOT / "data" / "runtime" / "oauth_lane_status.json").read_text())
+        for ln in lanes:
+            k = _ks.get(ln["lane"]) or {}
+            ln["last_ok"] = k.get("last_ok")
+            ln["last_check"] = k.get("last_check")
+            ln["consec_fail"] = k.get("consec_fail")
+    except Exception:
+        pass
     _ready = sum(1 for ln in lanes if ln["status"] == "ready")
     return {"ok": True, "advisory_only": True, "lanes": lanes, "ready_count": _ready, "total": len(lanes),
             "generated_at": _t.strftime("%Y-%m-%dT%H:%M:%S")}
@@ -19499,7 +19509,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import llm_lane
                 _HINT = {"grok": "hermes proxy start --provider xai  (free xAI OAuth proxy)",
                          "chatgpt": "hermes auth add openai-codex --type oauth  then start chatgpt_oauth_proxy.py (free ChatGPT OAuth)"}
-                _MODELS = {"grok": "grok-3-mini", "chatgpt": "gpt-5"}
+                _MODELS = {"grok": "grok-3-mini", "chatgpt": "gpt-5.4"}
                 results = {}
                 for _lane in lanes:
                     if _lane not in ("grok", "chatgpt"):
@@ -19589,6 +19599,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 oid = cur.fetchone()[0]; conn.commit()
                 return 200, {"ok": True, "advisory_only": True, "observation_id": oid, "action": action,
                              "message": f"Recorded '{action}' to the learning loop."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/llm/oauth-lanes/keepalive":
+            # Control: run the OAuth-lane keepalive now (rolls Grok/ChatGPT tokens, alerts on stale).
+            # Read-only ops/advisory — no broker, no paid API. Bounded subprocess.
+            try:
+                import subprocess as _sp, json as _j, sys as _sys2
+                b = body or {}
+                _lanes = b.get("lanes")
+                _cmd = [_sys2.executable, str(PROJECT_ROOT / "scripts" / "oauth_lane_keepalive.py")]
+                if _lanes and isinstance(_lanes, list):
+                    _cmd.append(",".join(str(x) for x in _lanes))
+                r = _sp.run(_cmd, capture_output=True, text=True, timeout=240, cwd=str(PROJECT_ROOT))
+                try:
+                    _out = _j.loads(r.stdout[r.stdout.index("{"):])
+                except Exception:
+                    _out = {"ok": r.returncode == 0, "raw": (r.stdout or r.stderr or "")[-400:]}
+                _out.setdefault("ok", True)
+                _out["advisory_only"] = True
+                return 200, _out
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

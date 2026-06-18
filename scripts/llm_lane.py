@@ -42,7 +42,7 @@ def generate(prompt, lane="grok", timeout=90, model=None):
     if lane == "chatgpt":
         import requests
         r = requests.post(_CHATGPT_URL + "/v1/chat/completions",
-                          json={"model": model or "gpt-5", "messages": [{"role": "user", "content": prompt}]},
+                          json={"model": model or "gpt-5.4", "messages": [{"role": "user", "content": prompt}]},
                           timeout=timeout)
         if r.status_code == 401:
             raise RuntimeError("AUTH_EXPIRED: " + (r.json().get("error", {}) or {}).get("message", "ChatGPT session ended"))

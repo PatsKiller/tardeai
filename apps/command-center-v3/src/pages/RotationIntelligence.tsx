@@ -179,6 +179,8 @@ export default function RotationIntelligence() {
   const [oversight, setOversight] = useState<{ lanes?: Record<string, any>; prompt?: string; note?: string; error?: string } | null>(null)
   const [oversightCopied, setOversightCopied] = useState(false)
   const [laneHealth, setLaneHealth] = useState<{ lanes?: any[]; ready_count?: number; total?: number } | null>(null)
+  const [laneBusy, setLaneBusy] = useState(false)
+  const [laneMsg, setLaneMsg] = useState('')
 
   async function loadSummary() {
     setSummaryWarn('')
@@ -318,6 +320,30 @@ export default function RotationIntelligence() {
       const json = await res.json()
       setLaneHealth(json?.data ?? json ?? null)
     } catch { /* noop */ }
+  }
+  // Control: run keepalive now (rolls Grok/ChatGPT OAuth tokens, alerts on stale).
+  async function runKeepalive() {
+    setLaneBusy(true); setLaneMsg('')
+    try {
+      const res = await fetch('/api/v2/llm/oauth-lanes/keepalive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const text = await res.text()
+      let j: any = {}
+      try { j = text ? JSON.parse(text) : {} } catch { /* noop */ }
+      setLaneMsg(j?.ok ? `Keepalive ran — ${j.ok_ ?? j.ok}/${j.checked ?? '?'} lanes ok, ${j.alerts_sent ?? 0} alert(s) sent.` : 'Keepalive failed — retry.')
+      await loadLaneHealth()
+    } catch {
+      setLaneMsg('Keepalive request failed.')
+    } finally {
+      setLaneBusy(false)
+    }
+  }
+  const sinceText = (ts?: number) => {
+    if (!ts) return 'never'
+    const s = Math.max(0, Math.floor(Date.now() / 1000 - ts))
+    if (s < 90) return 'just now'
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+    return `${Math.floor(s / 86400)}d ago`
   }
 
   // Independent oversight layers — free/OAuth Grok + ChatGPT (codex). Advisory only.
@@ -587,21 +613,32 @@ export default function RotationIntelligence() {
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 10 }}>
           Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via the openai-codex OAuth proxy — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.
         </div>
-        {/* Live OAuth-lane health monitor (Grok / ChatGPT / Hermes / local) */}
+        {/* OAuth-lane monitor + control (Grok / ChatGPT / Hermes / local) — command-center commander */}
         {laneHealth?.lanes && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: oversight ? 12 : 0 }}>
-            <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Lanes {laneHealth.ready_count}/{laneHealth.total} ready:</span>
-            {laneHealth.lanes.map((l: any) => {
-              const ready = l.status === 'ready'
-              const offline = l.status === 'offline'
-              const col = ready ? '#22c55e' : offline ? '#ef4444' : '#f59e0b'
-              return (
-                <span key={l.lane} title={l.hint || l.status} style={{ fontSize: 9.5, padding: '2px 8px', borderRadius: 4, background: `${col}1f`, color: col, border: `1px solid ${col}44`, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                  <span style={{ marginRight: 4 }}>{ready ? '●' : offline ? '○' : '◐'}</span>{l.label}: {l.status}
-                </span>
-              )
-            })}
-            <button onClick={loadLaneHealth} style={{ ...btn(false), padding: '2px 8px', fontSize: 9 }}>↻</button>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginBottom: oversight ? 12 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>Free OAuth LLM Lanes</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{laneHealth.ready_count}/{laneHealth.total} ready</span>
+              <span style={{ flex: 1 }} />
+              <button disabled={laneBusy} onClick={runKeepalive} style={{ ...btn(laneBusy), padding: '3px 10px', fontSize: 9.5 }} title="Run keepalive now — rolls the Grok/ChatGPT OAuth tokens forward and alerts on stale">{laneBusy ? 'Running…' : 'Run keepalive'}</button>
+              <button disabled={laneBusy} onClick={loadLaneHealth} style={{ ...btn(laneBusy), padding: '3px 8px', fontSize: 9.5 }}>Re-check ↻</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 6 }}>
+              {laneHealth.lanes.map((l: any) => {
+                const ready = l.status === 'ready'
+                const offline = l.status === 'offline'
+                const col = ready ? '#22c55e' : offline ? '#ef4444' : '#f59e0b'
+                return (
+                  <div key={l.lane} style={{ border: `1px solid ${col}44`, background: `${col}10`, borderRadius: 6, padding: '5px 8px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: col }}>{ready ? '●' : offline ? '○' : '◐'} {l.label}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text2)' }}>{l.status}{l.last_ok ? ` · ok ${sinceText(l.last_ok)}` : ''}</div>
+                    {!ready && l.hint && <div style={{ fontSize: 8.5, color: 'var(--text3)', fontFamily: 'monospace', marginTop: 2 }}>{l.hint}</div>}
+                  </div>
+                )
+              })}
+            </div>
+            {laneMsg && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>{laneMsg}</div>}
+            <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 6 }}>Keepalive runs daily (cron) to keep the rolling OAuth tokens warm; a stale lane pings Telegram. Monitoring only — no broker, no paid API.</div>
           </div>
         )}
         {oversight?.error && <div style={{ fontSize: 11, color: '#ef4444' }}>{oversight.error}</div>}

@@ -138,7 +138,7 @@ def _call_codex_proxy(model, prompt, timeout=240):
         if not h.get("authenticated") or h.get("token_expired"):
             return None  # proxy up but session not usable → let caller decide (CLI / auth hint)
         r = requests.post(base + "/v1/chat/completions",
-                          json={"model": model or "gpt-5", "messages": [{"role": "user", "content": prompt}]},
+                          json={"model": model or "gpt-5.4", "messages": [{"role": "user", "content": prompt}]},
                           timeout=timeout)
         if r.status_code == 401:
             return None
