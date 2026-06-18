@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-18 - Recommendation Intelligence Engine (Phase 1)
+
+Unified recommendation-lineage layer: trace every ticker from origin source → execution → outcome,
+attributable by source / strategy / account. A unification + activation layer (sources already carry
+attribution; this connects them + adds the cross-source analytics that didn't exist). Full design in
+`docs/project/RECOMMENDATION_INTELLIGENCE.md`.
+
+- `scripts/recommendation_intelligence_engine.py` (daily cron 07:10): self-bootstrapping schema
+  (`rec_ticker_attribution`, `rec_rotation_links`); ingests watchlist/directives/proposals/scans/hermes
+  research/cio/rotation/holdings/executions into per-ticker×source attribution with earliest+latest source,
+  occurrences, executed flag. Idempotent, per-source commit isolation, `--dry-run`/`--analytics`. Live:
+  3,434 tickers, 415 multi-source, 108 executed.
+- Analytics: coverage by source, **return by ORIGIN source** (screener 66.7% win/+7.2% vs incubator
+  15.8%/−0.28%), by-strategy, multi-source chains, rotation links.
+- API: `GET /api/v2/rec-intel/summary` + `/rec-intel/ticker?symbol=X` (full per-ticker provenance).
+- UI: `/v3/rec-intel` (nav "Rec Intelligence") — summary tiles, trace-a-ticker lineage, return-by-source
+  table, coverage bars, strategy performance, multi-source grid.
+- Phases 2–3 (lifecycle/journal events, rotation-outcome measurement, feedback→ranking loop) scoped in the doc.
+
 ## 2026-06-18 - Symbol-card freshness: enrich research candidates + auto-refresh
 
 Root cause of "sector/analyst pending" research candidates: `data/runtime/symbol_cards_latest.json` (read by

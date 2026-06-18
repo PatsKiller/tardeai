@@ -16,6 +16,7 @@ const HUBS = [
   { to: '/sectors', label: 'Sectors' },
   { to: '/reports', label: 'Reports' },
   { to: '/rotation', label: 'Rotation' },
+  { to: '/rec-intel', label: 'Rec Intelligence' },
   { to: '/advisor-changes', label: 'Advisor Changes' },
   { to: '/system', label: 'System' },
 ]
