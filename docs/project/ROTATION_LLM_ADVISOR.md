@@ -277,6 +277,10 @@ fields exist anywhere in the UI; Grok stays free/OAuth/manual-paste.
 An example of the generated Grok OAuth prompt is committed at
 [`docs/project/examples/rotation_grok_oauth_prompt_example.md`](examples/rotation_grok_oauth_prompt_example.md).
 
+A verification screenshot of the live `/v3/rotation` page (headless render, 0 console errors — header,
+advisory banner, summary cards, and the Sleeve Balance overweight/underweight section with live data) is at
+[`docs/architecture/v3_rotation_intelligence.png`](../architecture/v3_rotation_intelligence.png).
+
 ## Sleeve balance, advisory amount ranges, continuous loop + research wiring (2026-06-17)
 
 Three additions make the advisor sector-aware, range-aware, and continuous. All advisory only — nothing is
