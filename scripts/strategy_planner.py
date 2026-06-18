@@ -185,16 +185,35 @@ def compute_impact(intent: dict) -> dict:
 
 # ── stage 3: advise (goal-aligned redeploy) ──────────────────────────────────
 def _candidates(limit=12):
-    """Top watchlist names with analyst conviction — the discovery surface to redeploy into."""
+    """Top watchlist names to redeploy into — reconciled against the CIO holistic verdict + analyst coverage
+    depth so a momentum-ranked name the CIO says AVOID (or with 0-1 analysts) isn't handed to the LLM as a
+    buy. Hermes rank ranks; the CIO view + coverage are the conviction check."""
     try:
         from db_adapter import _get_conn
         cur = _get_conn().cursor()
-        cur.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector
-                       FROM watchlist_items w LEFT JOIN symbol_profiles p ON p.symbol = w.symbol
+        cur.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector,
+                              fs.recommendation AS cio_view, an.nop AS analyst_opinions
+                       FROM watchlist_items w
+                       LEFT JOIN symbol_profiles p ON p.symbol = w.symbol
+                       LEFT JOIN LATERAL (SELECT recommendation FROM watchlist_final_synthesis f
+                                          WHERE upper(f.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
+                       LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
+                                          WHERE upper(y.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
                        WHERE w.status IN ('active','researched') AND w.symbol ~ '^[A-Z]{1,5}$'
-                       ORDER BY w.hermes_rank ASC NULLS LAST LIMIT %s""", (limit,))
-        return [{"symbol": r[0], "rank": r[1], "score": float(r[2]) if r[2] else None, "sector": r[3]}
-                for r in cur.fetchall()]
+                       ORDER BY w.hermes_rank ASC NULLS LAST LIMIT %s""", (limit * 3,))
+        AVOID = {"AVOID", "IGNORE", "REBALANCE_TRIM"}
+        out = []
+        for r in cur.fetchall():
+            cio = (r[4] or "").upper()
+            if cio in AVOID:
+                continue  # CIO rejected — never offer it as a redeploy buy
+            nop = int(r[5]) if r[5] is not None else None
+            out.append({"symbol": r[0], "rank": r[1], "score": float(r[2]) if r[2] else None, "sector": r[3],
+                        "cio_view": cio or None, "analyst_opinions": nop,
+                        "thin_coverage": nop is None or nop < 3})
+            if len(out) >= limit:
+                break
+        return out
     except Exception:
         return []
 
@@ -211,7 +230,8 @@ def advise(intent: dict, impact: dict, lane: str | None = None) -> dict:
             "(Roth golden-window conversions); a standing AI-defense/aerospace thesis tilt.\n\n"
             f"PLANNED MOVE: {json.dumps(impact['intent'])}\n"
             f"WHAT-IF IMPACT (computed):\n{json.dumps({k: impact[k] for k in ('cash_freed','cash_pct_after','lookthrough_delta','income','account_refactor')}, indent=2)[:3500]}\n\n"
-            f"REDEPLOY CANDIDATES (operator watchlist, Hermes-ranked):\n{json.dumps(cands)[:1500]}\n\n"
+            f"REDEPLOY CANDIDATES (Hermes-ranked, CIO-AVOID names already removed; each shows cio_view + "
+            f"analyst_opinions + thin_coverage — DISTRUST a thin-coverage upside):\n{json.dumps(cands)[:1800]}\n\n"
             "Give a SPECIFIC redeploy plan for the freed cash: a sleeve allocation (e.g. income / growth / "
             "defense / cash buffer) with rough %, and 3-6 concrete tickers or ETFs (prefer the candidates "
             "above + broad income/defense ETFs) with one-line rationale each tied to the income gap, the "
