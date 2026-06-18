@@ -182,6 +182,7 @@ export default function RotationIntelligence() {
   const [grokPrompt, setGrokPrompt] = useState<GrokPromptResult | null>(null)
   const [copied, setCopied] = useState(false)
   const [gapsResult, setGapsResult] = useState<{ ok?: boolean; created?: any[]; note?: string; error?: string } | null>(null)
+  const [proposeState, setProposeState] = useState<Record<string, string>>({})  // etf symbol -> status
   const [feedbackState, setFeedbackState] = useState<Record<string, string>>({})  // ideaKey -> action label
   const [oversight, setOversight] = useState<{ lanes?: Record<string, any>; prompt?: string; note?: string; error?: string } | null>(null)
   const [oversightCopied, setOversightCopied] = useState(false)
@@ -280,6 +281,21 @@ export default function RotationIntelligence() {
       setRebalReview({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       setBusy('')
+    }
+  }
+
+  // Create an advisory ETF/short proposal (PENDING, operator-confirmed) from a sleeve play.
+  async function proposeEtf(c: any) {
+    setProposeState(prev => ({ ...prev, [c.symbol]: '…' }))
+    try {
+      const res = await fetch('/api/v2/rotation/propose-etf', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: c.symbol, direction: c.direction, instrument_type: c.instrument_type, sleeve: c.sleeve, rationale: c.rationale }),
+      })
+      const j = await res.json()
+      setProposeState(prev => ({ ...prev, [c.symbol]: j?.ok ? (j.already_exists ? 'exists' : 'proposed') : 'error' }))
+    } catch {
+      setProposeState(prev => ({ ...prev, [c.symbol]: 'error' }))
     }
   }
 
@@ -600,7 +616,23 @@ export default function RotationIntelligence() {
                     {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
                     {c.leverage && <span style={{ color: '#ef4444', marginLeft: 6 }}>{c.leverage}×</span>}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.5 }}>{c.rationale}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 8 }}>{c.rationale}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                    {proposeState[c.symbol] === 'proposed' ? (
+                      <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 700 }}>✓ PENDING {isShort ? 'short' : 'long'} proposal created — review-only</span>
+                    ) : proposeState[c.symbol] === 'exists' ? (
+                      <span style={{ fontSize: 10, color: 'var(--text3)' }}>active proposal already exists</span>
+                    ) : (
+                      <>
+                        <button disabled={proposeState[c.symbol] === '…'} onClick={() => proposeEtf(c)}
+                          style={{ ...btn(proposeState[c.symbol] === '…'), padding: '4px 10px', fontSize: 10.5, borderColor: `${dc}55`, background: `${dc}1f`, color: dc }}>
+                          {proposeState[c.symbol] === '…' ? 'Creating…' : `Propose ${isShort ? 'SHORT' : 'LONG'} (review)`}
+                        </button>
+                        {proposeState[c.symbol] === 'error' && <span style={{ fontSize: 9.5, color: '#ef4444' }}>failed — retry</span>}
+                        <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>PENDING · operator approval + gates required</span>
+                      </>
+                    )}
+                  </div>
                 </article>
               )
             })}

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-18 - ETF/short proposal-side support
+
+`paper_trade_proposals` + `paper_trades` gain `instrument_type` + `side` (default stock/long; backward
+compatible). `auto_proposal_generator` stamps instrument_type + side=long on every proposal. New
+`POST /api/v2/rotation/propose-etf` creates an advisory **PENDING, manual-review-required** ETF/short
+proposal from a sleeve play (long: stop −8%/target +12%; short: stop +8%/target −10%; ~$500 review size;
+deduped per symbol). Paper-only, advisory — never auto-approved/executed; existing gates apply. UI:
+**Propose LONG / SHORT (review)** buttons on the ETF Sleeve Play cards.
+
 ## 2026-06-18 - ETFs & Funds as first-class instruments (research / UI / rotations, long+short)
 
 Closed a major gap — discovery/research surfaced only stocks. Full design in

@@ -19756,6 +19756,58 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/rotation/propose-etf":
+            # Create an ADVISORY, operator-confirmed ETF/short proposal from a rotation sleeve play. Enters the
+            # normal proposal pipeline as PENDING (manual review required) tagged with instrument_type + side.
+            # Paper-only, advisory — never auto-approved, never auto-executed; the existing gates still apply.
+            try:
+                import json as _j, re as _re
+                from db_adapter import _get_conn
+                b = body or {}
+                sym = (b.get("symbol") or "").upper().strip()
+                side = "short" if (b.get("direction") or b.get("side")) == "short" else "long"
+                itype = b.get("instrument_type") or "etf"
+                sleeve = b.get("sleeve") or ""
+                rationale = (b.get("rationale") or f"{side.upper()} {itype} sleeve play for {sleeve}")[:500]
+                if not _re.fullmatch(r"[A-Z]{1,5}", sym):
+                    return 400, {"ok": False, "error": "valid symbol required"}
+                conn = _get_conn(); cur = conn.cursor()
+                cur.execute("""SELECT DISTINCT ON (symbol) price FROM market_quotes WHERE upper(symbol)=%s
+                               ORDER BY symbol, fetched_at DESC""", (sym,))
+                _r = cur.fetchone()
+                px = float(_r[0]) if _r and _r[0] else None
+                if not px or px <= 0:
+                    return 400, {"ok": False, "error": f"no current price for {sym}"}
+                # advisory review levels (placeholders; operator confirms sizing). Short profits when price falls.
+                if side == "short":
+                    stop, tgt = round(px * 1.08, 2), round(px * 0.90, 2)
+                else:
+                    stop, tgt = round(px * 0.92, 2), round(px * 1.12, 2)
+                shares = max(1, round(500.0 / px))  # ~$500 review size
+                import datetime as _dt
+                expires = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=7)
+                # dedup: one active proposal per symbol
+                cur.execute("""SELECT id FROM paper_trade_proposals WHERE upper(symbol)=%s
+                               AND status IN ('PENDING','APPROVED') LIMIT 1""", (sym,))
+                if cur.fetchone():
+                    return 200, {"ok": True, "advisory_only": True, "already_exists": True,
+                                 "message": f"{sym} already has an active proposal."}
+                cur.execute("""INSERT INTO paper_trade_proposals
+                    (symbol, strategy_id, instrument_type, side, proposed_entry, proposed_stop, proposed_target1,
+                     proposed_shares, proposed_by, status, setup_description, discovery_source, expires_at,
+                     manual_review_required)
+                    VALUES (%s,'sector_rotation',%s,%s,%s,%s,%s,%s,'rotation_etf','PENDING',%s,'rotation_etf',%s,true)
+                    RETURNING id""",
+                            (sym, itype, side, px, stop, tgt, shares, rationale, expires))
+                pid = cur.fetchone()[0]; conn.commit()
+                return 200, {"ok": True, "advisory_only": True, "proposal_id": pid, "symbol": sym,
+                             "side": side, "instrument_type": itype, "entry": px, "stop": stop, "target": tgt,
+                             "shares": shares, "status": "PENDING",
+                             "message": f"Created PENDING {side} {itype} proposal for {sym} (review-only; "
+                                        "operator approval + gates required before any execution)."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/rotation/feedback":
             # Learning loop: record the operator's action on a rotation idea → llm_feedback_observations,
             # so the advisor learns which suggestions are reviewed / dismissed / acted on over time.

@@ -57,5 +57,21 @@ only, nothing is placed.
   quoteType; a ~3,000-ETF reference feed would enable thematic ETF *discovery* beyond the curated set).
 - Broader constituent analyst coverage so more ETFs get a look-through (today limited to ETFs whose top
   holdings already have analyst targets in the system).
-- ETF/short proposals in `auto_proposal_generator` (the proposal model would need an `instrument_type` +
-  `side` column; rotations already carry direction).
+## Proposal-side support for ETF + short (done 2026-06-18)
+
+- `paper_trade_proposals` + `paper_trades` gain `instrument_type` (default `stock`) + `side` (default
+  `long`) — backward compatible. `auto_proposal_generator` now stamps each proposal's `instrument_type`
+  (from `symbol_profiles`) + `side=long`, so the screener pipeline is instrument-aware.
+- `POST /api/v2/rotation/propose-etf` creates an **advisory ETF/short proposal** from a sleeve play: it
+  reads the current price, sets review levels (long: stop −8% / target +12%; short: stop +8% / target −10%),
+  a ~$500 review size, and inserts a **PENDING, manual-review-required** proposal tagged with
+  `instrument_type` + `side` (strategy `sector_rotation`, `proposed_by=rotation_etf`). Dedups one active
+  proposal per symbol. **Paper-only, advisory — never auto-approved, never auto-executed; all existing risk
+  gates + operator approval still apply** (verified: rotation_etf proposals are 100% PENDING).
+- UI: each ETF Sleeve Play card has a **Propose LONG / SHORT (review)** button → the proposal enters the
+  pipeline as PENDING with the gate note.
+
+## Roadmap
+
+- Full-market ETF reference feed for thematic ETF *discovery* beyond the curated sleeve universe.
+- Broader constituent analyst coverage so more ETFs get a look-through.
