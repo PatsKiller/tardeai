@@ -17619,12 +17619,26 @@ def _sectors_monitor(query=None):
             rel = round(float(etf_chg) - spy_chg, 2)
             momentum = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
         cons = _db_query("SELECT count(DISTINCT symbol) AS n FROM incubator_universe WHERE sector=%s", (sec,), fetch="one") or {}
+        # Reconcile each per-sector momentum candidate against the CIO verdict + analyst coverage so a
+        # score-ranked "setup" the CIO says AVOID (or with thin coverage) is flagged, not surfaced as a buy.
         cands = _db_query("""SELECT DISTINCT wi.symbol, wi.rsi, wi.trend, wi.score, wi.origin_system,
-                                wi.setup_advisory, wi.watch_score_kind
+                                wi.setup_advisory, wi.watch_score_kind,
+                                fs.recommendation AS cio_view, an.nop AS analyst_opinions
                              FROM watchlist_items wi
+                             LEFT JOIN LATERAL (SELECT recommendation FROM watchlist_final_synthesis f
+                                                WHERE upper(f.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
+                             LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
+                                                WHERE upper(y.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
                              WHERE wi.status='active' AND wi.score IS NOT NULL
                                AND wi.symbol IN (SELECT DISTINCT symbol FROM incubator_universe WHERE sector=%s)
-                             ORDER BY wi.score DESC NULLS LAST LIMIT 8""", (sec,)) or []
+                             ORDER BY wi.score DESC NULLS LAST LIMIT 10""", (sec,)) or []
+        for _c in cands:
+            _cv = (_c.get("cio_view") or "").upper()
+            _c["cio_view"] = _cv or None
+            _c["cio_avoid"] = _cv in ("AVOID", "IGNORE", "REBALANCE_TRIM")
+            _nop = _c.get("analyst_opinions")
+            _c["thin_coverage"] = _nop is None or int(_nop) < 3
+        cands = [c for c in cands if not c["cio_avoid"]][:8]
         out.append({"sector": sec, "etf": etf, "etf_change_pct": _json_clean(etf_chg), "spy_change_pct": spy_chg,
                     "rel_strength": rel, "momentum": momentum, "constituent_count": cons.get("n", 0),
                     "setup_count": len(cands), "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
@@ -18149,10 +18163,42 @@ def _rotation_summary():
                                   and (c.get("trim_score") or 0) >= 9],
                                  key=lambda c: -(c.get("trim_score") or 0))
             _trims = (_deg_trims + _conc_trims)[:4]
-            # Rotate-in targets must be names the CIO would actually BUY (not AVOID/IGNORE) — prefer real
-            # analyst coverage. If none qualify, we suggest NO rotate-in (honest) rather than an avoided name.
-            _endorsed = sorted([a for a in research_candidates if a.get("cio_endorsed")],
-                               key=lambda a: (a.get("thin_coverage", True), a.get("hermes_rank") or 999))
+            # Rotate-in targets must be names the CIO would actually BUY (not AVOID/IGNORE) — the CIO endorses
+            # DIFFERENT names than raw momentum, so search ALL non-held watchlist names for CIO-endorsed ones
+            # (not just the top-hermes_rank display window), preferring real analyst coverage. If none qualify,
+            # we suggest NO rotate-in (honest) rather than an avoided/hype name.
+            _endorsed = []
+            try:
+                _c3 = _gc2().cursor()
+                _c3.execute("""SELECT w.symbol, w.hermes_rank, p.sector, an.nop, fs.recommendation
+                               FROM watchlist_items w
+                               LEFT JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
+                               JOIN LATERAL (SELECT recommendation FROM watchlist_final_synthesis f
+                                             WHERE upper(f.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
+                               LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
+                                                  WHERE upper(y.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
+                               WHERE w.status IN ('active','researched') AND w.symbol ~ '^[A-Z]{1,5}$'
+                                 AND fs.recommendation IN ('BUY','ADD','ADD_ON_PULLBACK')
+                               ORDER BY (an.nop IS NULL OR an.nop < 3), w.hermes_rank ASC NULLS LAST LIMIT 8""")
+                for _es, _er, _esec, _enop, _ecio in _c3.fetchall():
+                    _eu = (_es or "").upper()
+                    if _eu in _held:
+                        continue
+                    _ecard = _cmap.get(_eu) or {}
+                    _ean = _ecard.get("analyst") or {}
+                    _ec = next((a for a in research_candidates if a.get("symbol") == _es), None) or {
+                        "symbol": _es, "hermes_rank": _er, "sector": _esec or _ecard.get("sector"),
+                        "instrument_type": _ecard.get("instrument_type") or "stock",
+                        "analyst_upside_pct": _ean.get("upside_pct"), "analyst_rating": _ean.get("rating"),
+                        "analyst_opinions": int(_enop) if _enop is not None else None,
+                        "cio_endorsed": True, "cio_view": (_ecio or "").upper() or None, "cio_avoid": False,
+                        "thin_coverage": _enop is None or int(_enop) < 3,
+                        "description": (_ecard.get("description") or "")[:140] or None}
+                    if _ec not in research_candidates:
+                        research_candidates.append(_ec)  # ensure endorsed targets are visible too
+                    _endorsed.append(_ec)
+            except Exception:
+                _endorsed = [a for a in research_candidates if a.get("cio_endorsed")]
             for _tt in _trims:
                 for _aa in _endorsed[:2]:
                     _up = _aa.get("analyst_upside_pct")

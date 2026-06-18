@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-18 - Methodology audit: close the rank≠conviction gap across all surfaces
+
+Audited every surface that ranks tickers by Hermes/momentum or analyst upside for the same gap. Fixed the 3
+true gaps + 2 secondary, same pattern (join CIO verdict `watchlist_final_synthesis.recommendation` + analyst
+`number_of_analyst_opinions`; exclude/flag AVOID + thin <3 coverage):
+- `strategy_planner._candidates` (redeploy picks fed to the CIO LLM): CIO-AVOID names removed; each carries
+  cio_view + analyst_opinions + thin_coverage; prompt tells the LLM to distrust thin coverage.
+- `_sectors_monitor` per-sector candidates: CIO-AVOID excluded; cio_view + thin_coverage attached.
+- `rotation_intelligence_engine` ADD side: a high analyst upside from <3 opinions now earns 0.4× the add
+  (a +79% from 1 analyst no longer scores like +34% from 9); `thin_analyst_coverage` evidence flag.
+- `auto_proposal_generator`: proposals now stamped with the latest `cio_view` (advisory visibility; still
+  PENDING + operator-approved, never blocks).
+- Rotation rotate-in pool now searches ALL non-held names for CIO-endorsed targets (not just the top-Hermes
+  display window), so it suggests e.g. AVAV→DLR (CIO ADD_ON_PULLBACK, 29 analysts) not AVAV→DGXX (AVOID, 1).
+  Watchlist grid + watchlist context confirmed already CLEAN (show CIO view).
+
 ## 2026-06-18 - Methodology fix: rotate-in respects CIO view + analyst depth
 
 Validated a systemic flaw (operator-reported via DGXX "watchlist says AVOID but rotation says buy"): rotation

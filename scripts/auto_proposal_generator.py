@@ -744,6 +744,20 @@ def _proposal_instrument_type(conn, symbol):
         return "stock"
 
 
+def _proposal_cio_view(conn, symbol):
+    """Stamp the latest CIO holistic verdict (watchlist_final_synthesis.recommendation) so a momentum proposal
+    for a name the CIO says AVOID is VISIBLE at review — advisory, never blocks (proposals are PENDING +
+    operator-approved). Returns the recommendation string or None."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT recommendation FROM watchlist_final_synthesis WHERE upper(symbol)=%s
+                       ORDER BY created_at DESC LIMIT 1""", ((symbol or "").upper(),))
+        r = cur.fetchone()
+        return (r[0] if r and r[0] else None)
+    except Exception:
+        return None
+
+
 def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
                          auto_run_id: int, available_cols: set,
                          auto_context: dict = None) -> int | None:
@@ -829,6 +843,7 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "status": "PENDING",
         "instrument_type": _proposal_instrument_type(conn, signal.get("symbol")),
         "side": "long",  # screener momentum signals are long; ETF/short proposals come via the rotation path
+        "cio_view": _proposal_cio_view(conn, signal.get("symbol")),  # advisory visibility of the CIO verdict
         "expires_at": expires,
         "base_expires_at": _base_expires,
         "max_expires_at": _max_expires,

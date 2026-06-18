@@ -167,6 +167,10 @@ def merge_metadata(
             val = first(analyst, "upside_pct", "target_upside_pct", "upside")
             if val not in (None, "", [], {}):
                 merged["analyst_upside_pct"] = val
+        if isinstance(analyst, dict):
+            _op = first(analyst, "opinions", "number_of_analyst_opinions")
+            if _op not in (None, "", [], {}):
+                merged["analyst_opinions"] = _op
         if first(card, "analyst_unavailable", "analyst_not_applicable", "no_analyst_coverage"):
             merged["analyst_unavailable"] = True
         merged["_card_enriched"] = True
@@ -239,7 +243,15 @@ def score_row(row: dict[str, Any], total_value: float, stops: dict[str, Any] | N
         trim += 15
         evidence["negative_upside_pct"] = upside
     if upside > 10:
-        add += min(25.0, upside / 2.0)
+        _addc = min(25.0, upside / 2.0)
+        # Thin analyst coverage (<3 opinions) makes a high upside unreliable — discount the add it earns so
+        # a +79% from 1 analyst doesn't score like a +34% from 9.
+        _opinions = first(row, "analyst_opinions")
+        _thin = (_opinions is None) or (as_float(_opinions, 0) < 3)
+        if _thin:
+            _addc *= 0.4
+            evidence["thin_analyst_coverage"] = True
+        add += _addc
         evidence["positive_upside_pct"] = upside
     if sentiment < -0.25:
         trim += 10
