@@ -5829,6 +5829,79 @@ def _llm_health():
         return {"error": str(e), "available": False}
 
 
+def _llm_oauth_lanes():
+    """GET /api/v2/llm/oauth-lanes — health of the FREE OAuth LLM lanes (Grok :8645, ChatGPT codex :8646,
+    Hermes/Nous portal) + the local gemma lane, for Command Center monitoring. Read-only probes (proxy
+    /health + ollama tags); no API key, no paid call. Shared by rotation oversight + all Hermes tasks."""
+    import time as _t, os as _os, json as _j
+    try:
+        import requests as _rq
+    except Exception:
+        return {"ok": False, "error": "requests unavailable", "lanes": []}
+
+    def _get(url, timeout=3):
+        try:
+            r = _rq.get(url, timeout=timeout)
+            return r if r.ok else None
+        except Exception:
+            return None
+
+    lanes = []
+    # Grok — xAI OAuth proxy :8645
+    _gu = _os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions").replace("/v1/chat/completions", "/health")
+    g = _get(_gu)
+    gj = {}
+    try:
+        gj = g.json() if g is not None else {}
+    except Exception:
+        gj = {}
+    lanes.append({"lane": "grok", "label": "Grok (xAI OAuth)", "kind": "oauth_proxy", "port": 8645,
+                  "reachable": g is not None, "authenticated": bool(gj.get("authenticated")),
+                  "token_expired": gj.get("token_expired"),
+                  "status": "ready" if gj.get("authenticated") else ("offline" if g is None else "not authenticated"),
+                  "hint": None if gj.get("authenticated") else "hermes proxy start --provider xai"})
+    # ChatGPT — openai-codex OAuth proxy :8646
+    _cu = _os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/") + "/health"
+    c = _get(_cu)
+    cj = {}
+    try:
+        cj = c.json() if c is not None else {}
+    except Exception:
+        cj = {}
+    _cok = bool(cj.get("authenticated")) and not cj.get("token_expired")
+    lanes.append({"lane": "chatgpt", "label": "ChatGPT (openai-codex OAuth)", "kind": "oauth_proxy", "port": 8646,
+                  "reachable": c is not None, "authenticated": bool(cj.get("authenticated")),
+                  "token_expired": cj.get("token_expired"),
+                  "status": ("ready" if _cok else ("session expired — re-login" if cj.get("token_expired")
+                             else ("offline" if c is None else "not authenticated"))),
+                  "hint": None if _cok else "hermes auth add openai-codex --type oauth"})
+    # Hermes — Nous Portal OAuth (proxy upstream); presence from auth.json
+    _nous = False
+    try:
+        _aj = _j.loads(open(_os.path.expanduser("~/.hermes/auth.json")).read())
+        _nous = any("nous" in k.lower() for k in (_aj.get("providers") or {}))
+    except Exception:
+        pass
+    lanes.append({"lane": "hermes", "label": "Hermes (Nous Portal OAuth)", "kind": "oauth_proxy", "port": 8645,
+                  "reachable": True, "authenticated": _nous, "token_expired": None,
+                  "status": "ready" if _nous else "not logged in",
+                  "hint": None if _nous else "hermes portal login"})
+    # Local gemma (ollama)
+    o = _get("http://127.0.0.1:11434/api/tags", timeout=3)
+    _models = []
+    try:
+        _models = [m.get("name") for m in (o.json().get("models") or [])][:8] if o is not None else []
+    except Exception:
+        _models = []
+    lanes.append({"lane": "local", "label": "Local gemma (ollama)", "kind": "local", "port": 11434,
+                  "reachable": o is not None, "authenticated": o is not None, "token_expired": None,
+                  "status": "ready" if o is not None else "offline", "models": _models,
+                  "hint": None if o is not None else "start ollama"})
+    _ready = sum(1 for ln in lanes if ln["status"] == "ready")
+    return {"ok": True, "advisory_only": True, "lanes": lanes, "ready_count": _ready, "total": len(lanes),
+            "generated_at": _t.strftime("%Y-%m-%dT%H:%M:%S")}
+
+
 def _cio_decisions_enriched():
     """GET /api/v2/cio-decisions — enriched with account from holdings."""
     rows = _db_query("SELECT DISTINCT ON (symbol) * FROM cio_decisions ORDER BY symbol, created_at DESC") or []
@@ -18155,6 +18228,7 @@ ROUTES = {
     "/api/v2/signals/fused": lambda: {"signals": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM fused_signals ORDER BY created_at DESC LIMIT 50") or [])]},
     "/api/v2/agent-performance": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 50") or [])]},
     "/api/v2/llm/health": lambda: _llm_health(),
+    "/api/v2/llm/oauth-lanes": lambda: _llm_oauth_lanes(),
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/data-product-health": lambda: _data_product_health(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
@@ -19420,20 +19494,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "that is a poor fit (e.g. trimming an income/core holding into a speculative microcap, or "
                     "a tax-inefficient trim)? (c) Anything the system is MISSING. End with an overall oversight "
                     "verdict — AGREE / CAUTION / DISAGREE — and what to check next. Do NOT state dollar amounts.")
-                from hermes_external_researcher import call_external, LANE_CFG
+                # Both lanes run through their FREE local OAuth proxies (Grok :8645, ChatGPT codex :8646) —
+                # no API key, no paid API. llm_lane handles the proxy calls.
+                import llm_lane
+                _HINT = {"grok": "hermes proxy start --provider xai  (free xAI OAuth proxy)",
+                         "chatgpt": "hermes auth add openai-codex --type oauth  then start chatgpt_oauth_proxy.py (free ChatGPT OAuth)"}
+                _MODELS = {"grok": "grok-3-mini", "chatgpt": "gpt-5"}
                 results = {}
                 for _lane in lanes:
                     if _lane not in ("grok", "chatgpt"):
                         continue
-                    _model = (LANE_CFG.get(_lane) or {}).get("default_model")
+                    if not llm_lane.available(_lane):
+                        results[_lane] = {"ok": False, "available": False,
+                                          "error": f"{_lane} OAuth proxy not authenticated/reachable",
+                                          "auth_hint": _HINT.get(_lane)}
+                        continue
                     try:
-                        _ans = call_external(_lane, _model, prompt, max_tokens=1200)
-                        results[_lane] = {"ok": True, "answer": str(_ans).strip()[:6000], "model": _model}
+                        _ans = llm_lane.generate(prompt, lane=_lane, timeout=240, model=_MODELS.get(_lane))
+                        results[_lane] = {"ok": True, "answer": str(_ans).strip()[:6000], "model": _MODELS.get(_lane)}
                     except Exception as _le:
                         _msg = str(_le)
-                        _auth = any(t in _msg for t in ("AUTH_PENDING", "CODEX_HEADLESS", "not logged in", "not reachable"))
+                        _auth = any(t in _msg for t in ("AUTH_EXPIRED", "AUTH_PENDING", "session ended", "not logged in", "not reachable"))
                         results[_lane] = {"ok": False, "available": not _auth, "error": _msg[:240],
-                                          "auth_hint": (LANE_CFG.get(_lane) or {}).get("auth_hint")}
+                                          "auth_hint": _HINT.get(_lane)}
                 return 200, {"ok": True, "advisory_only": True, "lanes": results, "context": ctx,
                              "prompt": prompt[:6000],
                              "note": "Independent oversight via FREE OAuth lanes (Grok xAI-OAuth proxy + ChatGPT openai-codex OAuth). No API key, no paid API, no broker action. If a lane is unavailable, paste the prompt into that model's free web session. Advisory only."}

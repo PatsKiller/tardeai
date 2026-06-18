@@ -178,6 +178,7 @@ export default function RotationIntelligence() {
   const [feedbackState, setFeedbackState] = useState<Record<string, string>>({})  // ideaKey -> action label
   const [oversight, setOversight] = useState<{ lanes?: Record<string, any>; prompt?: string; note?: string; error?: string } | null>(null)
   const [oversightCopied, setOversightCopied] = useState(false)
+  const [laneHealth, setLaneHealth] = useState<{ lanes?: any[]; ready_count?: number; total?: number } | null>(null)
 
   async function loadSummary() {
     setSummaryWarn('')
@@ -310,6 +311,15 @@ export default function RotationIntelligence() {
     }
   }
 
+  // Free OAuth LLM lane health (Grok / ChatGPT / Hermes / local) — command-center monitoring.
+  async function loadLaneHealth() {
+    try {
+      const res = await fetch('/api/v2/llm/oauth-lanes')
+      const json = await res.json()
+      setLaneHealth(json?.data ?? json ?? null)
+    } catch { /* noop */ }
+  }
+
   // Independent oversight layers — free/OAuth Grok + ChatGPT (codex). Advisory only.
   async function runOversight() {
     setBusy('Run Oversight'); setOversight(null)
@@ -341,6 +351,7 @@ export default function RotationIntelligence() {
       if (q) setQuestion(q)
     } catch { /* noop */ }
     loadSummary()
+    loadLaneHealth()
   }, [])
 
   const s = data?.summary ?? {}
@@ -573,9 +584,26 @@ export default function RotationIntelligence() {
           <span style={{ flex: 1 }} />
           <button disabled={!!busy} onClick={runOversight} style={btn(!!busy)}>{busy === 'Run Oversight' ? 'Reviewing… (ChatGPT can take ~1–4 min)' : 'Run Grok + ChatGPT Oversight'}</button>
         </div>
-        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: oversight ? 12 : 0 }}>
-          Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via openai-codex OAuth — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.
+        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 10 }}>
+          Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via the openai-codex OAuth proxy — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.
         </div>
+        {/* Live OAuth-lane health monitor (Grok / ChatGPT / Hermes / local) */}
+        {laneHealth?.lanes && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: oversight ? 12 : 0 }}>
+            <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Lanes {laneHealth.ready_count}/{laneHealth.total} ready:</span>
+            {laneHealth.lanes.map((l: any) => {
+              const ready = l.status === 'ready'
+              const offline = l.status === 'offline'
+              const col = ready ? '#22c55e' : offline ? '#ef4444' : '#f59e0b'
+              return (
+                <span key={l.lane} title={l.hint || l.status} style={{ fontSize: 9.5, padding: '2px 8px', borderRadius: 4, background: `${col}1f`, color: col, border: `1px solid ${col}44`, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  <span style={{ marginRight: 4 }}>{ready ? '●' : offline ? '○' : '◐'}</span>{l.label}: {l.status}
+                </span>
+              )
+            })}
+            <button onClick={loadLaneHealth} style={{ ...btn(false), padding: '2px 8px', fontSize: 9 }}>↻</button>
+          </div>
+        )}
         {oversight?.error && <div style={{ fontSize: 11, color: '#ef4444' }}>{oversight.error}</div>}
         {oversight?.lanes && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
@@ -592,7 +620,7 @@ export default function RotationIntelligence() {
                     <div style={{ fontSize: 12, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{r.answer}</div>
                   ) : (
                     <div style={{ fontSize: 10.5, color: 'var(--text2)' }}>
-                      {r.available === false ? 'This lane is authed but can’t finalize headlessly — paste the prompt below into its free web session.' : 'Lane offline.'}
+                      {r.error || 'Lane unavailable.'} {lane === 'chatgpt' ? 'Re-login to activate the ChatGPT OAuth proxy, or paste the prompt below into chatgpt.com (free).' : 'Or paste the prompt below into the model’s free web session.'}
                       {r.auth_hint && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, fontFamily: 'monospace' }}>{r.auth_hint}</div>}
                     </div>
                   )}

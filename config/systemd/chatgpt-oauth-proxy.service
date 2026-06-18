@@ -1,0 +1,21 @@
+[Unit]
+Description=ChatGPT OAuth proxy (free openai-codex OAuth -> OpenAI-compatible :8646) for Trade AI oversight
+After=network.target
+
+# Install (user service, no sudo):
+#   cp config/systemd/chatgpt-oauth-proxy.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now chatgpt-oauth-proxy.service
+# Requires the operator's free ChatGPT OAuth session:
+#   hermes auth add openai-codex --type oauth
+# Mirrors the Grok xAI-OAuth proxy (:8645). No API key, no metered API.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/chatgpt_oauth_proxy.py
+Restart=always
+RestartSec=5
+Environment=CHATGPT_PROXY_PORT=8646
+
+[Install]
+WantedBy=default.target
