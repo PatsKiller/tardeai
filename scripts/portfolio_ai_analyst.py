@@ -642,7 +642,7 @@ FRA (SS transition): age {fra}
 Disability insurance ends: age {disability_end}
 Golden Window: {gw_open} to {gw_close} (ages {disability_end}-{rmd})
 RMDs begin: age {rmd}
-401k rollover planned: {rollover_year}
+401k rollover: COMPLETE 2026-06-18 (Omnicom 401k → Fidelity Rollover IRA #270135199, ~$568K, now ~100% cash)
 
 === ROTH CONVERSION STATUS ===
 2026 YTD converted: ${roth_ytd:,.0f}
@@ -727,19 +727,18 @@ def _portfolio_context(portfolio: Dict, analysis: Dict, rebalancing: Dict, perso
 
     # Live account balances from portfolio data (never hardcoded)
     acct = portfolio.get("account_summaries", {}) or {}
-    fidelity_mv = acct.get("fidelity_401k", {}).get("total_value") or 0
+    fidelity_mv = acct.get("fidelity_rollover_ira", {}).get("total_value") or 0
     rollover_mv = acct.get("schwab_rollover_ira", {}).get("total_value") or 0
     roth_mv = acct.get("schwab_roth", {}).get("total_value") or 0
     taxable_mv = acct.get("schwab_taxable", {}).get("total_value") or 0
-    rollover_year = personal.get("plan_401k_rollover_year", 2027)
 
     accounts_block = f"""=== ACCOUNTS (live values) ===
-Fidelity 401k: ${fidelity_mv:,.0f} [rolling to Rollover IRA in {rollover_year}]
+Fidelity Rollover IRA: ${fidelity_mv:,.0f} [Omnicom 401k rollover COMPLETE 2026-06-18; held at Fidelity, ~100% cash awaiting deployment; READ-ONLY in this system]
 Schwab Rollover IRA: ${rollover_mv:,.0f}
 Schwab Roth IRA: ${roth_mv:,.0f} [Roth conversion target account]
 Schwab Taxable: ${taxable_mv:,.0f}
 Total: ${(fidelity_mv + rollover_mv + roth_mv + taxable_mv):,.0f}
-{rollover_year} rollover pool: ~${(fidelity_mv + rollover_mv):,.0f}"""
+Combined traditional-IRA rollover pool (Fidelity + Schwab): ~${(fidelity_mv + rollover_mv):,.0f}"""
 
     return f"""=== PORTFOLIO OVERVIEW ===
 Total Value: ${totals.get('total_value',0):,.0f}
@@ -828,10 +827,9 @@ def _roth_conversion_analysis(portfolio: Dict, personal: Dict = None) -> str:
     if personal is None:
         personal = _load_personal_situation()
     rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value", 0)
-    fidelity_mv = portfolio.get("account_summaries",{}).get("fidelity_401k",{}).get("total_value", 0)
+    fidelity_mv = portfolio.get("account_summaries",{}).get("fidelity_rollover_ira",{}).get("total_value", 0)
     roth_mv     = portfolio.get("account_summaries",{}).get("schwab_roth",{}).get("total_value", 0)
-    rollover_year = personal.get("plan_401k_rollover_year", 2027)
-    total_2027 = fidelity_mv + rollover_mv
+    total_pool = fidelity_mv + rollover_mv
     roth_ytd = personal.get("roth_conversion_ytd_2026", 0) or 0
     sch_c = personal.get("schedule_c_gross", 0) or 0
 
@@ -840,13 +838,15 @@ def _roth_conversion_analysis(portfolio: Dict, personal: Dict = None) -> str:
 {_personal_context(personal)}
 
 IRA POOL (live values):
-  Rollover IRA: ${rollover_mv:,.0f} (current)
-  Fidelity 401k: ${fidelity_mv:,.0f} (rolls to Rollover IRA in {rollover_year})
-  NOTE: Until rollover, Fidelity 401k can ONLY exchange between plan funds
-  listed in the constraint block above. Recommend exchanges within plan to
-  optimize for lowest-cost and best-performing available funds.
-  Current Roth: ${roth_mv:,.0f}
-  {rollover_year} total pool: ~${total_2027:,.0f}
+  Schwab Rollover IRA: ${rollover_mv:,.0f} (current)
+  Fidelity Rollover IRA: ${fidelity_mv:,.0f} (Omnicom 401k rollover COMPLETE 2026-06-18; now a
+    self-directed Rollover IRA held at FIDELITY, ~100% cash. Full ETF/stock universe — the old
+    401k plan-fund constraint NO LONGER APPLIES. READ-ONLY in this system / advisory only.)
+  Current Roth: ${roth_mv:,.0f} (at Schwab)
+  Combined traditional-IRA rollover pool (both custodians): ~${total_pool:,.0f}
+  NOTE: the rollover pool is now SPLIT across two custodians (Fidelity IRA + Schwab IRA). Roth
+  conversions are easiest within a single custodian; flag whether consolidating to one custodian
+  would simplify the conversion sequence.
 
 Schedule C business write-offs (deduct from ${sch_c:,.0f} gross to reduce net taxable):
   Home office, equipment, software, internet, phone, mileage, professional services
@@ -863,9 +863,12 @@ You are a CPA and fee-only financial advisor. Answer these ANNUAL ADVISORY quest
    Rank these in order for Roth: SCHG (0.4%), JEPQ (9.5%), JEPI (7.8%), SCHD (3.58%), O/REIT (5.7%)
    Explain why for his specific situation.
 
-3. {rollover_year} PLAN (401K ROLLS OVER)
-   When ${fidelity_mv:,.0f} 401k moves to Rollover IRA in {rollover_year} (+ existing ${rollover_mv:,.0f}):
-   How much to convert in {rollover_year}? What's the optimal sequence?
+3. ROLLOVER POOL DEPLOYMENT (ROLLOVER COMPLETE 2026-06-18)
+   The Omnicom 401k has ALREADY rolled over into the Fidelity Rollover IRA (${fidelity_mv:,.0f},
+   ~100% cash) — combined with the existing Schwab Rollover IRA (${rollover_mv:,.0f}) the traditional
+   pool (~${total_pool:,.0f}) is available NOW, not in a future year. How much of this pool to convert
+   in 2026 vs. defer to the Golden Window? What's the optimal multi-year sequence, and does the
+   two-custodian split argue for consolidating before converting?
 
 4. GOLDEN WINDOW
    Model the projected balances at disability end and optimal conversion strategy in that window.

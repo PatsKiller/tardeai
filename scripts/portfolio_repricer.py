@@ -371,7 +371,7 @@ def _recalc_totals(portfolio: Dict) -> None:
         source = str(acct.get("source", "")).lower()
         acct_total = derived_total
 
-        if reported_total > 0 and (acct_key == "fidelity_401k" or "fidelity" in source):
+        if reported_total > 0 and (str(acct_key).startswith("fidelity") or "fidelity" in source):
             drift = round(reported_total - derived_total, 2)
             if abs(drift) >= 0.01:
                 anchor = _choose_anchor(ah)
