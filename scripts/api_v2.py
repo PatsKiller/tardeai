@@ -19743,6 +19743,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                  "TradeAI/Hermes research for a possible rebalance.")
                     if rid:
                         created.append({"id": rid, "kind": "ticker", "label": c.get("symbol")})
+                # ETF / Fund sleeve plays — seed the ETFs so Hermes/TradeAI research baskets too (not just stocks).
+                for e in (summ.get("etf_candidates", []) or [])[:6]:
+                    rid = _mkdir("ticker", e.get("symbol"),
+                                 f"Rotation ETF sleeve play ({e.get('direction')} {e.get('instrument_type')}, "
+                                 f"{e.get('sleeve')}) — research this basket for a possible rebalance.")
+                    if rid:
+                        created.append({"id": rid, "kind": "ticker", "label": e.get("symbol"), "etf": True})
                 return 200, {"ok": True, "advisory_only": True, "created": created,
                              "message": (f"Seeded {len(created)} watch directive(s) → TradeAI + Hermes will research "
                                          "these underweight sleeves / rotate-in names. They surface back here as candidates.")}

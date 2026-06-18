@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-18 - ETFs & Funds as first-class instruments (research / UI / rotations, long+short)
+
+Closed a major gap — discovery/research surfaced only stocks. Full design in
+`docs/project/ETF_FUND_INSTRUMENTS.md`.
+- Instrument typing: `classify_instruments.py` gives every symbol `instrument_type` (stock/etf/fund/
+  inverse_etf) via curated universe + heuristics + yfinance `quoteType` (authoritative; 32 ETFs). Captures
+  **expense ratios** (SCHD 0.06%, SQQQ 0.95%). Persisted to symbol_profiles.
+- Analyst for baskets: `etf_analyst_enrich.py` computes a holdings-weighted **look-through analyst upside**
+  (≥2 covered constituents) — ITA +12.8%, PPA +12.1%, SOXX +12.9%. ETFs have no sell-side targets; this is
+  the honest basket view.
+- `config/etf_fund_universe.json`: ETFs/funds mapped to rotation sleeves with direction (long ETFs + inverse
+  shorts). Rotation summary returns `etf_candidates`: LONG ETF for underweight sleeves (ITA/XAR Defense,
+  XLE/XOP Energy), INVERSE/SHORT hedge for overweight (SARK/PSQ). research-gaps seeds the sleeve ETFs for
+  Hermes/TradeAI research. Card layer exposes instrument_type/expense/look-through.
+- UI: **ETF / Fund Sleeve Plays** section (long/short tags, instrument badges, expense, price) + instrument
+  badges on research candidates. Weekly crons for classify + etf-analyst.
+
 ## 2026-06-18 - Recommendation Intelligence: rotation-pair detection feeds rotation outcomes
 
 `detect_rotation_pairs()` infers rotation edges from the executed trade history (close X → open Y, same
