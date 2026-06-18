@@ -17,6 +17,7 @@ type RotationPair = {
   from_shares_held?: number
   sell_shares_range?: ShareRange
   buy_shares_range?: ShareRange
+  from_degradation?: Degradation | null
   rationale?: string
 }
 
@@ -29,6 +30,27 @@ type SectorOverweight = {
   top_holdings?: string[]
 }
 type SectorUnderweight = { theme?: string; pct?: number; floor?: number; gap_pct?: number }
+type Degradation = {
+  thesis_status?: string
+  severity?: number
+  signal_source?: string
+  deterministic?: boolean
+  escalation_reason?: string
+  technical_drift?: string
+  what_changed?: string
+  near_52wk_low_pct?: number
+  analyst_recom?: number
+  needs_review?: boolean
+}
+type DegradedHolding = Degradation & {
+  symbol?: string
+  sector?: string
+  account_type?: string
+  current_value?: number
+  price?: number
+  day_change_pct?: number
+  est_shares?: number
+}
 
 type RotationData = {
   ok?: boolean
@@ -46,6 +68,7 @@ type RotationData = {
   missing_analyst_upside?: number
   sector_overweights?: SectorOverweight[]
   sector_underweights?: SectorUnderweight[]
+  degraded_holdings?: DegradedHolding[]
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
   top_candidates?: any[]
@@ -114,6 +137,20 @@ function ActionBadge({ cls }: { cls?: string }) {
       fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, letterSpacing: 0.4,
       background: `${m.c}1f`, color: m.c, border: `1px solid ${m.c}44`,
     }}>{m.label}</span>
+  )
+}
+
+const DEG_C: Record<string, string> = { triggered: '#ef4444', danger: '#ef4444', broken: '#ef4444', warning: '#f59e0b', weakening: '#f59e0b' }
+function DegBadge({ d }: { d?: { thesis_status?: string; deterministic?: boolean; signal_source?: string } }) {
+  if (!d?.thesis_status) return null
+  const c = DEG_C[d.thesis_status] ?? '#f59e0b'
+  const src = d.deterministic ? 'stop math' : 'LLM read'
+  return (
+    <span title={`Source: ${d.signal_source ?? 'aegis'} (${d.deterministic ? 'deterministic stop-distance' : 'gemma3 thesis read'})`}
+      style={{ fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, letterSpacing: 0.3,
+        background: `${c}1f`, color: c, border: `1px solid ${c}55`, whiteSpace: 'nowrap' }}>
+      {d.thesis_status.toUpperCase()} · {src}
+    </span>
   )
 }
 
@@ -299,6 +336,8 @@ export default function RotationIntelligence() {
   const sh = (r?: ShareRange) => (r && r.low != null ? `${r.low.toLocaleString()}–${r.high?.toLocaleString()} sh` : null)
   const dayColor = (v?: number) => (v == null ? 'var(--text3)' : v >= 0 ? '#22c55e' : '#ef4444')
   const dayText = (v?: number) => (v == null ? '' : `${v >= 0 ? '+' : ''}${v}%`)
+  const degraded = (data?.degraded_holdings ?? []) as DegradedHolding[]
+  const DEG_COLOR: Record<string, string> = { triggered: '#ef4444', danger: '#ef4444', broken: '#ef4444', warning: '#f59e0b', weakening: '#f59e0b' }
 
   const grokAnswer = grokPrompt?.grok_answer
   const grokNote = grokPrompt?.note
@@ -419,6 +458,51 @@ export default function RotationIntelligence() {
               </div>
             </>
           )}
+        </section>
+      )}
+
+      {/* B3. Deteriorating Holdings — Aegis thesis-health rotate-OUT review (real deterioration) */}
+      {degraded.length > 0 && (
+        <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(239,68,68,.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>
+              Deteriorating Holdings <span style={{ fontSize: 10, fontWeight: 400, color: '#ef4444' }}>· advisory rotate-out review · real deterioration</span>
+            </div>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>{degraded.length} flagged · Aegis nightly briefs</span>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
+            Held names Aegis flags as weakening/warning/danger/triggered. <b>TRIGGERED/DANGER/WARNING are deterministic stop-distance math</b> (high confidence, not LLM);
+            WEAKENING is a local-LLM (gemma3) thesis read. These drive the "what to rotate out" side — review only, nothing is placed.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
+            {degraded.slice(0, 18).map((h, idx) => {
+              const c = DEG_COLOR[h.thesis_status ?? ''] ?? '#f59e0b'
+              return (
+                <article key={`${h.symbol}-${idx}`} style={{ ...card, borderColor: `${c}44` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</span>
+                    <span style={{ flex: 1 }} />
+                    <DegBadge d={h} />
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>
+                    {(h.sector ?? '—')} · {(h.account_type ?? '—').toString().replace(/_/g, ' ')}
+                  </div>
+                  {h.price != null && (
+                    <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
+                      {px(h.price)}{h.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {h.est_shares.toLocaleString()} sh</span>}
+                      {h.day_change_pct != null && <span style={{ color: dayColor(h.day_change_pct), marginLeft: 6 }}>{dayText(h.day_change_pct)}</span>}
+                      {h.current_value != null && <span style={{ color: 'var(--text3)', marginLeft: 6 }}>· {money(h.current_value)}</span>}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.4 }}>
+                    {h.escalation_reason || h.what_changed || h.technical_drift || '—'}
+                    {h.near_52wk_low_pct != null && <span style={{ color: '#ef4444' }}> · {h.near_52wk_low_pct}% from 52wk high</span>}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
         </section>
       )}
 
@@ -608,8 +692,9 @@ export default function RotationIntelligence() {
               const ev = c.evidence ?? {}
               return (
                 <article key={`${c.symbol}-${c.account_key}-${idx}`} style={card}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol ?? '—'}</span>
+                    {c.degradation && <DegBadge d={c.degradation} />}
                     <span style={{ flex: 1 }} />
                     <ActionBadge cls={c.recommendation} />
                   </div>
@@ -669,9 +754,10 @@ export default function RotationIntelligence() {
                 const fk = `${idea.from_symbol}-${idea.to_symbol}`
                 const fb = feedbackState[fk]
                 return (
-                <article key={`${fk}-${idx}`} style={{ ...card, borderColor: 'rgba(96,165,250,.3)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <article key={`${fk}-${idx}`} style={{ ...card, borderColor: idea.from_degradation ? 'rgba(239,68,68,.4)' : 'rgba(96,165,250,.3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
                     <ActionBadge cls={idea.action_class} />
+                    {idea.from_degradation && <DegBadge d={idea.from_degradation} />}
                     <span style={{ flex: 1 }} />
                     {idea.score != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>trim {idea.score}</span>}
                   </div>

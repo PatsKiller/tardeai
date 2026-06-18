@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-17 - Rotation Intelligence: holdings-degradation rotate-out signals
+
+"What to rotate OUT" is now driven by **real deterioration**, not just concentration. Summary joins each
+held name to the latest Aegis nightly brief.
+
+- `degraded_holdings[]` (thesis_status/severity/signal_source/escalation/price/value) → **Deteriorating
+  Holdings** UI section; `top_candidates` + `research_rotation_ideas` from-leg gain a `degradation` object;
+  rebalance trim pool reordered to put deteriorating names first. Degradation badge on cards.
+- **Accuracy labeling:** `triggered/danger/warning` = deterministic stop-distance math (`aegis_surveillance`,
+  conf 0.90-0.95, NOT LLM); `weakening/broken` = local-LLM read (`aegis_synthesis`, gemma3:12b/4b, conf
+  ~0.55). Each row carries `signal_source` + `deterministic`; badge shows "TRIGGERED · stop math" vs
+  "WEAKENING · LLM read". `near_52wk_low_pct`/`analyst_recom` from the nightly snapshot.
+- Weekly digest (`rotation_rebalance_digest.py`) leads with deteriorating holdings, split deterministic vs soft.
+
 ## 2026-06-17 - Rotation Intelligence: live prices + advisory review quantities
 
 Every rotation idea/candidate now carries a **live price** and an **advisory review share quantity** so the
