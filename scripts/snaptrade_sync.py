@@ -33,6 +33,21 @@ STATE_PATH = PROJECT_ROOT / "data" / "runtime" / "snaptrade_sync_state.json"
 # confirm it's gone — so a transient API miss never wipes a live account (e.g. the 401k mid-rollover).
 VANISH_CONFIRM_SYNCS = 2
 
+# SnapTrade returns a freshly-linked account with NO holdings for hours after the first link (its data
+# pull from the brokerage is pending). Never overwrite a currently-FUNDED account (in holdings.json)
+# with that empty response — skip it until real data arrives. Below this $ value an "empty" sync is fine.
+EMPTY_SYNC_SKIP_THRESHOLD = 100.0
+
+
+def _current_account_value(account_key: str) -> float:
+    """Sum of market_value for an account_key in the live holdings.json (0 if absent/unreadable)."""
+    try:
+        cur = json.loads(HOLDINGS_PATH.read_text())
+        return round(sum((h.get("market_value") or 0) for h in cur.get("holdings", [])
+                         if h.get("account") == account_key), 2)
+    except Exception:
+        return 0.0
+
 
 def _load_state() -> dict:
     try:
@@ -108,6 +123,14 @@ def run(apply: bool = False) -> dict:
         except Exception as e:
             report.append(f"  {key} ({aid}): read error — {e}")
             continue
+        # data-pull-pending guard: don't wipe a funded account with an empty post-link response
+        synced_val = round(sum((p.get("market_value") or 0) for p in positions), 2)
+        if synced_val <= EMPTY_SYNC_SKIP_THRESHOLD:
+            cur_val = _current_account_value(key)
+            if cur_val > EMPTY_SYNC_SKIP_THRESHOLD:
+                report.append(f"  {key} ({aid}): SnapTrade returned EMPTY (${synced_val:,.0f}) but account "
+                              f"is funded (${cur_val:,.0f}) — SKIP (data pull pending, keeping prior)")
+                continue
         synced[key] = positions
         report.append(f"  {key} ({aid}): {_summary(positions)}")
 
