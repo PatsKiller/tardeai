@@ -52,14 +52,34 @@ performance by strategy, multi-source tickers (earliest→latest source), rotati
 Return-by-Origin-Source table, Coverage-by-Source bars, Performance-by-Strategy, and a clickable
 Multi-Source-Tickers grid (earliest→latest source). Read-only; no broker action.
 
-## Roadmap (phases)
+## Phase 2 — lifecycle journaling + rotation outcomes (done 2026-06-18)
 
-- **Phase 1 (done):** data model, ingestion across all sources, attribution + execution flagging, analytics,
-  API, UI, cron.
-- **Phase 2 (next):** lifecycle/journal events for each transition (added→promoted→executed→rotated→exited)
-  via `lifecycle_event_writer` + the v3 Journal page; richer rotation-chain construction (multi-hop) and
-  rotation-outcome measurement (did the rotation beat holding the original?).
-- **Phase 3:** feedback/learning loop — feed per-source realized outcomes back into Hermes ranking /
-  confidence (adjust `source_performance.scar_factor` + `hermes_weight_calibration`) so good sources rank
-  higher over time. Hooks already exist (`proposal_outcome_chain`, `agent_recommendation_outcomes`,
-  `source_maturity`); Phase 3 closes the loop into ranking.
+- **Lifecycle events.** `emit_lifecycle_events()` appends immutable lineage events to the existing
+  `lifecycle_events` spine — `rec_promoted_to_proposal` (one per proposal), `rec_executed` (one per trade),
+  `rec_rotated` (one per rotation edge) — via bulk `INSERT ... SELECT ... WHERE NOT EXISTS` (idempotent,
+  `source_table='rec_intel'`). Live: 198 promoted + 51 executed events. Exposed at
+  `GET /api/v2/rec-intel/lifecycle[?symbol=X]` and shown as a **Lifecycle Journal** on the page.
+- **Rotation outcomes.** `measure_rotations()` computes, for each executed rotation edge, the from-leg
+  return vs the to-leg return since the rotation (cached prices) → `rotation_alpha_pct` (to − from). Answers
+  "did rotating beat holding the original?" Stored on `rec_rotation_links`; summarized in
+  `rotation_outcomes`. (0 measured today — no executed rotations yet; infra ready.)
+- **Multi-hop chains.** `build_chains()` assembles A→B→C from the rotation edges (`rotation_chains`).
+
+## Phase 3 — feedback / learning loop (done 2026-06-18)
+
+`compute_source_quality()` turns each ORIGIN source's REALIZED outcomes into a bounded ranking multiplier
+(0.50–1.50; 1.0/neutral until 5+ trades), persisted append-only to `rec_source_quality` + written to
+`data/runtime/rec_source_quality_latest.json` (integration contract). Live: **screener 1.349× (boosted),
+direct/manual 0.92×, incubator 0.718× (demoted)** — the system learned the screener earns more rank than the
+incubator. `get_source_quality(source)` is the advisory consumer helper. **Wired into ranking (opt-in):**
+`auto_proposal_generator` re-ranks candidate signals by `signal_score × get_source_quality(discovery_source)`
+when `REC_SOURCE_WEIGHTING=1` (default OFF — advisory ranking only; never changes risk gates, sizing, or
+whether a proposal can execute). Surfaced as the **Source Learning** panel on the page.
+
+## Roadmap (next)
+
+- Construct real rotation edges from executed trade pairs (close X → open Y same account within a window) so
+  rotation-outcome measurement has data; today edges come only from persisted `rotation_pairs` + acted
+  rotation feedback (both currently sparse).
+- Optionally extend the learning multiplier into Hermes watchlist ranking (`hermes_score_weights`), behind
+  the same opt-in flag.

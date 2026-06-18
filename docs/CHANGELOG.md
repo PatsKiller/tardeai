@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-18 - Recommendation Intelligence Engine (Phases 2 + 3)
+
+- **Phase 2 — lifecycle journaling + rotation outcomes.** `emit_lifecycle_events()` appends immutable
+  lineage events to the existing `lifecycle_events` spine (rec_promoted_to_proposal / rec_executed /
+  rec_rotated; idempotent NOT-EXISTS; 198 promoted + 51 executed live). `measure_rotations()` computes
+  from-leg vs to-leg return → `rotation_alpha_pct` ("did rotating beat holding?"). `build_chains()` assembles
+  multi-hop A→B→C. New `GET /api/v2/rec-intel/lifecycle`; **Lifecycle Journal** + **Rotation Outcomes** UI.
+- **Phase 3 — feedback/learning loop.** `compute_source_quality()` turns each origin source's realized
+  outcomes into a bounded ranking multiplier (0.50–1.50), persisted to `rec_source_quality` + a json contract
+  file. Live: screener 1.349× (boosted), incubator 0.718× (demoted). `get_source_quality()` helper; wired
+  into `auto_proposal_generator` candidate ranking behind `REC_SOURCE_WEIGHTING=1` (default OFF — advisory
+  ranking only, never touches risk gates/sizing/execution). **Source Learning** UI panel.
+
 ## 2026-06-18 - Recommendation Intelligence Engine (Phase 1)
 
 Unified recommendation-lineage layer: trace every ticker from origin source → execution → outcome,

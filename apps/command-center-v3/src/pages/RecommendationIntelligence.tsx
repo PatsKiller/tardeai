@@ -4,11 +4,15 @@ type SrcPerf = { source?: string; closed_trades?: number; wins?: number; win_rat
 type StratPerf = { strategy?: string; resolved?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number }
 type BySource = { source?: string; tickers?: number; executed?: number }
 type MultiSrc = { symbol?: string; n_sources?: number; earliest_source?: string; latest_source?: string; first_seen?: string; last_seen?: string; executed?: boolean }
-type RotLink = { from?: string; to?: string; executed?: boolean; at?: string; via?: string }
+type RotLink = { from?: string; to?: string; executed?: boolean; at?: string; via?: string; rotation_alpha_pct?: number }
+type SrcQual = { source?: string; sample?: number; win_rate_pct?: number; avg_return_pct?: number; quality_multiplier?: number; basis?: string }
+type RotOutcome = { measured?: number; avg_alpha_pct?: number; rotations_that_beat_holding?: number }
+type LcEvent = { at?: string; event?: string; status?: string; symbol?: string; payload?: any }
 type Summary = {
   ok?: boolean; error?: string; total_tickers?: number; multi_source_count?: number; executed_attributions?: number
   by_source?: BySource[]; performance_by_source?: SrcPerf[]; performance_by_strategy?: StratPerf[]
   multi_source_examples?: MultiSrc[]; rotation_links?: RotLink[]; rotation_link_count?: number; generated_at?: string
+  source_quality?: SrcQual[]; rotation_chains?: string[][]; rotation_outcomes?: RotOutcome
 }
 type Lineage = {
   ok?: boolean; symbol?: string; found?: boolean; source_count?: number
@@ -45,6 +49,7 @@ export default function RecommendationIntelligence() {
   const [sym, setSym] = useState('')
   const [lin, setLin] = useState<Lineage | null>(null)
   const [linBusy, setLinBusy] = useState(false)
+  const [events, setEvents] = useState<LcEvent[]>([])
 
   async function load() {
     setWarn('')
@@ -55,6 +60,11 @@ export default function RecommendationIntelligence() {
       if (inner?.ok === false) setWarn(inner.error || 'unavailable')
       setD(inner)
     } catch (e) { setWarn(e instanceof Error ? e.message : String(e)) }
+    try {
+      const r = await fetch('/api/v2/rec-intel/lifecycle')
+      const j = await r.json()
+      setEvents((j?.data ?? j)?.events ?? [])
+    } catch { /* noop */ }
   }
   async function lookup(s?: string) {
     const q = (s ?? sym).trim().toUpperCase()
@@ -219,6 +229,68 @@ export default function RecommendationIntelligence() {
                 {r.from} → <span style={{ color: '#22c55e' }}>{r.to}</span>{r.executed && <span style={{ color: '#22c55e' }}> ✓</span>}
               </span>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Source Learning — Phase 3 feedback loop */}
+      {(d?.source_quality ?? []).length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Source Learning <span style={{ fontSize: 10, fontWeight: 400, color: '#a855f7' }}>· feedback loop</span></div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>The engine learns each origin source's realized quality and assigns a ranking multiplier (0.50–1.50, 1.0 = neutral until 5+ trades). Sources with better outcomes get boosted in future ranking. Opt-in: <span style={{ fontFamily: 'monospace' }}>REC_SOURCE_WEIGHTING=1</span> applies it to proposal ranking; advisory by default.</div>
+          <div style={{ ...card }}>
+            {(d?.source_quality ?? []).map((s, i) => {
+              const boost = (s.quality_multiplier ?? 1) > 1.02
+              const demote = (s.quality_multiplier ?? 1) < 0.98
+              const col = boost ? '#22c55e' : demote ? '#ef4444' : 'var(--text2)'
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: i ? '1px solid var(--border)' : undefined }}>
+                  <span style={{ width: 120 }}><SrcTag s={s.source} /></span>
+                  <div style={{ flex: 1, position: 'relative', height: 16, background: 'var(--bg2)', borderRadius: 4 }}>
+                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'var(--text3)' }} />
+                    <div style={{ position: 'absolute', top: 2, bottom: 2, borderRadius: 3, background: `${col}55`,
+                      left: (s.quality_multiplier ?? 1) >= 1 ? '50%' : `${50 - ((1 - (s.quality_multiplier ?? 1)) / 0.5) * 50}%`,
+                      width: `${Math.abs((s.quality_multiplier ?? 1) - 1) / 0.5 * 50}%` }} />
+                  </div>
+                  <span style={{ width: 56, textAlign: 'right', fontWeight: 800, color: col }}>{(s.quality_multiplier ?? 1).toFixed(2)}×</span>
+                  <span style={{ width: 150, fontSize: 9.5, color: 'var(--text3)', textAlign: 'right' }}>{s.basis}</span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Rotation outcomes — Phase 2 */}
+      {(d?.rotation_outcomes?.measured ?? 0) > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Rotation Outcomes</div>
+          <div style={{ ...card, display: 'flex', gap: 24, fontSize: 12 }}>
+            <span>measured: <b>{d!.rotation_outcomes!.measured}</b></span>
+            <span>beat holding: <b style={{ color: '#22c55e' }}>{d!.rotation_outcomes!.rotations_that_beat_holding}</b></span>
+            <span>avg alpha: <b style={{ color: rcol(d!.rotation_outcomes!.avg_alpha_pct) }}>{pct(d!.rotation_outcomes!.avg_alpha_pct)}</b></span>
+          </div>
+        </section>
+      )}
+
+      {/* Lifecycle Journal — Phase 2 immutable events */}
+      {events.length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Lifecycle Journal</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Immutable lineage events appended to the <span style={{ fontFamily: 'monospace' }}>lifecycle_events</span> spine as tickers transition (promoted → executed → rotated).</div>
+          <div style={{ ...card, maxHeight: 320, overflow: 'auto', padding: 0 }}>
+            {events.map((e, i) => {
+              const ec = e.event === 'rec_executed' ? '#22c55e' : e.event === 'rec_rotated' ? '#ef4444' : '#f59e0b'
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderTop: i ? '1px solid var(--border)' : undefined, fontSize: 10.5 }}>
+                  <span style={{ width: 78, color: 'var(--text3)', fontFamily: 'monospace' }}>{String(e.at).slice(0, 10)}</span>
+                  <span style={{ width: 64, fontFamily: 'monospace', fontWeight: 700, color: 'var(--text0)' }}>{e.symbol}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${ec}1f`, color: ec, border: `1px solid ${ec}44` }}>{(e.event || '').replace('rec_', '').replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--text3)' }}>{e.payload?.discovery_source || e.payload?.account || e.status || ''}</span>
+                  {e.payload?.pnl_pct != null && <span style={{ color: rcol(e.payload.pnl_pct) }}>{pct(e.payload.pnl_pct)}</span>}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
