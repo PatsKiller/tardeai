@@ -1072,16 +1072,18 @@ export default function RotationIntelligence() {
 
           {researchCands.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>Research candidates to rotate into (not held)</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 2 }}>Research candidates to rotate into (not held)</div>
+              <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 8 }}>Ranked by Hermes composite (momentum/setup/social) — but the <b>CIO view</b> + <b>analyst coverage depth</b> are now shown on each, and the rotate-into <i>ideas</i> above only target names the CIO would actually BUY. A high Hermes rank with <span style={{ color: '#ef4444' }}>CIO: AVOID</span> or <span style={{ color: '#f59e0b' }}>1 analyst ⚠ thin</span> means hype/coverage outran conviction — not a buy.</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
                 {researchCands.map((c: any, idx: number) => {
                   const hasAnalyst = c.analyst_upside_pct != null || c.analyst_rating
                   const enriched = !!(c.sector && hasAnalyst && c.description)
                   return (
-                  <article key={`${c.symbol}-${idx}`} style={card}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <article key={`${c.symbol}-${idx}`} style={{ ...card, borderColor: c.cio_avoid ? 'rgba(239,68,68,.35)' : c.cio_endorsed ? 'rgba(34,197,94,.3)' : 'var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol}</span>
                       <InstrBadge t={c.instrument_type} />
+                      {c.cio_view && <span title="CIO holistic view (watchlist final synthesis)" style={{ fontSize: 8, fontWeight: 800, padding: '1px 5px', borderRadius: 3, background: c.cio_avoid ? '#ef44441f' : c.cio_endorsed ? '#22c55e1f' : '#6b72801f', color: c.cio_avoid ? '#ef4444' : c.cio_endorsed ? '#22c55e' : '#9ca3af', border: `1px solid ${c.cio_avoid ? '#ef444455' : c.cio_endorsed ? '#22c55e55' : '#6b728055'}` }}>CIO: {c.cio_view}</span>}
                       {c.hermes_rank != null && <span style={{ fontSize: 9.5, color: '#a855f7' }}>★#{c.hermes_rank}</span>}
                       <span style={{ flex: 1 }} />
                       {c.analyst_rating
@@ -1094,9 +1096,10 @@ export default function RotationIntelligence() {
                       {c.price != null ? px(c.price) : '—'}
                       {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
                     </div>
-                    <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ opacity: hasAnalyst ? 1 : 0.55 }}>{c.analyst_upside_pct != null ? `upside ${c.analyst_upside_pct}%` : 'analyst pending'}</span>
-                      {c.analyst_rating && <span>{String(c.analyst_rating).replace(/_/g, ' ')}</span>}
+                      {c.analyst_opinions != null && <span style={{ color: c.thin_coverage ? '#f59e0b' : 'var(--text3)' }}>{c.analyst_opinions} analyst{c.analyst_opinions === 1 ? '' : 's'}{c.thin_coverage ? ' ⚠ thin' : ''}</span>}
+                      {c.analyst_opinions == null && c.instrument_type === 'stock' && <span style={{ color: '#f59e0b' }}>no coverage ⚠</span>}
                       {c.score != null && <span>score {Math.round(c.score)}</span>}
                     </div>
                     <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.4, opacity: c.description ? 1 : 0.55 }}>
