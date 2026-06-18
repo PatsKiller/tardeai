@@ -17880,10 +17880,32 @@ def _rotation_summary():
         return _ROTATION_SUMMARY_CACHE["data"]
     root = PROJECT_ROOT
     try:
+        # Build the stop-risk map from the latest Aegis nightly thesis and hand it to the engine so
+        # trim_score reflects deterministic stop deterioration (triggered/danger/warning), not just
+        # concentration/valuation. Best-effort; engine ignores --stops if the file is absent/empty.
+        _stops_arg = []
+        try:
+            from db_adapter import _get_conn as _gcs
+            _cs = _gcs().cursor()
+            _cs.execute("""SELECT symbol, thesis_status FROM aegis_portfolio_briefs
+                           WHERE run_id=(SELECT run_id FROM aegis_portfolio_briefs ORDER BY observed_at DESC LIMIT 1)
+                             AND thesis_status IS NOT NULL""")
+            _SEVMAP = {"triggered": 4, "danger": 4, "broken": 4, "warning": 3, "weakening": 2}
+            _stops = {}
+            for _s, _st in _cs.fetchall():
+                _stl = (_st or "").lower()
+                if _stl in _SEVMAP:
+                    _stops[(_s or "").upper()] = {"status": _stl, "severity": _SEVMAP[_stl]}
+            if _stops:
+                _sf = root / "data" / "runtime" / "rotation_stops_latest.json"
+                _sf.write_text(_j.dumps(_stops))
+                _stops_arg = ["--stops", str(_sf)]
+        except Exception:
+            _stops_arg = []
         r = _sp.run([sys.executable, str(root / "scripts" / "rotation_intelligence_engine.py"),
                      "--input", str(root / "data" / "portfolios" / "state" / "holdings.json"),
                      "--cards", str(root / "data" / "runtime" / "symbol_cards_latest.json"),
-                     "--min-pair-score", "35"],
+                     "--min-pair-score", "35", *_stops_arg],
                     capture_output=True, text=True, timeout=90, cwd=str(root))
         eng = _j.loads(r.stdout)
         dq = eng.get("data_quality", {}) or {}
