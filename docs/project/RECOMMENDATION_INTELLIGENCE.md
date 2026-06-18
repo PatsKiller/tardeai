@@ -76,10 +76,22 @@ incubator. `get_source_quality(source)` is the advisory consumer helper. **Wired
 when `REC_SOURCE_WEIGHTING=1` (default OFF — advisory ranking only; never changes risk gates, sizing, or
 whether a proposal can execute). Surfaced as the **Source Learning** panel on the page.
 
+## Rotation-pair detection (done 2026-06-18)
+
+`detect_rotation_pairs()` infers rotation edges from the executed trade history: closing position X and
+opening a DIFFERENT position Y in the SAME account 0–3 days later is a rotation (sell X → buy Y). For each
+close it takes the single nearest qualifying open (1:1, deduped per from→to→account→day) and records an
+`executed_pair` edge with the actual exit/entry prices in metadata. `measure_rotations()` then uses those
+trade prices as the baseline (vs current `market_quotes`) to compute `rotation_alpha_pct` per edge, and
+`build_chains()` assembles multi-hop chains with cycle detection. Live: **22 edges, avg +13.7% alpha, 14 of
+22 beat holding the original** (best FLYW→GCTS +85%, worst GCTS→INFU −92%); chains like CMCSA→MRVL→BWEN→INFU→
+GCTS. Surfaced as **Rotation Chains & Edges** (color-coded by alpha) + **Rotation Outcomes** on the page.
+Edges are INFERRED from timing (labeled `executed_pair`); same-day multi-position churn can produce
+ambiguous direction — the metadata carries the day-gap for transparency.
+
 ## Roadmap (next)
 
-- Construct real rotation edges from executed trade pairs (close X → open Y same account within a window) so
-  rotation-outcome measurement has data; today edges come only from persisted `rotation_pairs` + acted
-  rotation feedback (both currently sparse).
 - Optionally extend the learning multiplier into Hermes watchlist ranking (`hermes_score_weights`), behind
   the same opt-in flag.
+- Tighten rotation direction inference with size/funding correlation (proceeds of X ≈ cost of Y) to cut
+  ambiguous same-day pairs.

@@ -346,6 +346,47 @@ def emit_lifecycle_events(cur):
     return out
 
 
+def detect_rotation_pairs(cur):
+    """Phase 2 data: infer rotation edges from the executed trade history — closing position X and opening a
+    DIFFERENT position Y in the SAME account shortly after is a rotation (sell X, buy Y). For each close we
+    take the single NEAREST qualifying open within the window (1:1, no combinatorial blow-up) and record an
+    `executed_pair` edge into rec_rotation_links. Idempotent via the UNIQUE(from,to,account,occurred_at)."""
+    cur.execute("""SELECT id, upper(symbol), account, exit_time, exit_price, dollar_size
+                   FROM paper_trades WHERE status='closed' AND exit_time IS NOT NULL AND symbol ~ '^[A-Z]{1,5}$'""")
+    closes = cur.fetchall()
+    cur.execute("""SELECT id, upper(symbol), account, entry_time, entry_price, dollar_size
+                   FROM paper_trades WHERE entry_time IS NOT NULL AND symbol ~ '^[A-Z]{1,5}$'""")
+    opens = cur.fetchall()
+    n = 0
+    seen = set()  # dedup one edge per (from, to, account, day)
+    for cid, csym, cacct, cexit, cpx, csize in sorted(closes, key=lambda r: r[3]):
+        best = None
+        for oid, osym, oacct, oentry, opx, osize in opens:
+            if oid == cid or oacct != cacct or osym == csym or oentry is None:
+                continue
+            gap = (oentry - cexit).total_seconds() / 86400.0
+            # the open must be AT or AFTER the close (sell X, then buy Y), within 3 days; nearest wins.
+            if -0.1 <= gap <= 3.0 and (best is None or gap < best[0]):
+                best = (gap, oid, osym, opx)
+        if best:
+            gap, oid, osym, opx = best
+            key = (csym, osym, cacct, str(cexit)[:10])
+            if key in seen:
+                continue
+            seen.add(key)
+            cur.execute("""INSERT INTO rec_rotation_links (account, from_symbol, to_symbol, source_type,
+                             executed, rationale, occurred_at, metadata)
+                           VALUES (%s,%s,%s,'executed_pair',true,%s,%s,%s)
+                           ON CONFLICT (from_symbol,to_symbol,account,occurred_at) DO NOTHING""",
+                        (cacct, csym, osym, f"closed {csym} then opened {osym} in {cacct} ({gap:+.1f}d)",
+                         cexit, json.dumps({"from_trade_id": cid, "to_trade_id": oid, "days_gap": round(gap, 2),
+                                            "from_exit_price": float(cpx) if cpx is not None else None,
+                                            "to_entry_price": float(opx) if opx is not None else None})))
+            n += cur.rowcount
+    cur.connection.commit()
+    return n
+
+
 def _price_on_or_before(cur, symbol, when):
     """Latest cached close at/before `when` (price_cache.json history is per-day). Returns float or None."""
     try:
@@ -365,17 +406,20 @@ def measure_rotations(cur):
     """Phase 2: for each executed rotation edge, measure from_return vs to_return since the rotation, so we
     can tell whether rotating beat holding the original. Uses cached prices. Returns count measured."""
     n = 0
-    cur.execute("SELECT id, from_symbol, to_symbol, occurred_at FROM rec_rotation_links WHERE executed=true")
-    for rid, frm, to, when in cur.fetchall():
-        fp0 = _price_on_or_before(cur, frm, when)
-        tp0 = _price_on_or_before(cur, to, when)
-        cur.execute("SELECT price FROM market_quotes WHERE symbol=ANY(%s) ORDER BY symbol, fetched_at DESC", ([frm, to],))
+    cur.execute("SELECT id, from_symbol, to_symbol, occurred_at, metadata FROM rec_rotation_links WHERE executed=true")
+    for rid, frm, to, when, meta in cur.fetchall():
+        meta = meta if isinstance(meta, dict) else {}
+        # Prefer the ACTUAL trade prices at the rotation (from edge metadata); fall back to cached history.
+        fp0 = meta.get("from_exit_price") or _price_on_or_before(cur, frm, when)
+        tp0 = meta.get("to_entry_price") or _price_on_or_before(cur, to, when)
         latest = {}
         cur.execute("""SELECT DISTINCT ON (symbol) symbol, price FROM market_quotes
                        WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""", ([frm, to],))
         for s, p in cur.fetchall():
             latest[s.upper()] = float(p) if p is not None else None
-        fp1, tp1 = latest.get(frm.upper()), latest.get(to.upper())
+        # current price fallback: latest cached close
+        fp1 = latest.get(frm.upper()) or _price_on_or_before(cur, frm, "9999-12-31")
+        tp1 = latest.get(to.upper()) or _price_on_or_before(cur, to, "9999-12-31")
         if fp0 and fp1 and tp0 and tp1:
             fr = round((fp1 - fp0) / fp0 * 100, 2)
             tr = round((tp1 - tp0) / tp0 * 100, 2)
@@ -453,15 +497,18 @@ def build_chains(cur):
         nxt.setdefault(f, []).append(t)
     starts = {f for f, _, _ in edges} - {t for _, t, _ in edges}
     chains = []
-    for s in starts:
-        chain, cur_sym, guard = [s], s, 0
-        while cur_sym in nxt and guard < 12:
-            cur_sym = nxt[cur_sym][0]
-            chain.append(cur_sym)
-            guard += 1
+    for s in sorted(starts):
+        chain, cur_sym = [s], s
+        while cur_sym in nxt:
+            nextsym = nxt[cur_sym][0]
+            if nextsym in chain:  # cycle guard — stop on revisit (GCTS<->INFU ping-pong)
+                break
+            chain.append(nextsym)
+            cur_sym = nextsym
         if len(chain) > 1:
             chains.append(chain)
-    return chains
+    chains.sort(key=len, reverse=True)
+    return chains[:20]
 
 
 def analytics(cur):
@@ -556,6 +603,11 @@ def main():
             events = emit_lifecycle_events(cur)
         except Exception as e:
             conn.rollback(); print("  lifecycle events skipped:", str(e)[:90])
+        try:
+            pairs = detect_rotation_pairs(cur)
+            print(f"  rotation pairs detected from trade history: {pairs}")
+        except Exception as e:
+            conn.rollback(); print("  rotation-pair detection skipped:", str(e)[:90])
         try:
             rot_measured = measure_rotations(cur)
         except Exception as e:

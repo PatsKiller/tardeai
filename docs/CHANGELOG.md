@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-18 - Recommendation Intelligence: rotation-pair detection feeds rotation outcomes
+
+`detect_rotation_pairs()` infers rotation edges from the executed trade history (close X → open Y, same
+account, 0–3d later; nearest 1:1, deduped, directional with cycle-safe chains). `measure_rotations()` uses the
+actual trade exit/entry prices as baselines → `rotation_alpha_pct` per edge. Live: **22 edges, avg +13.7%
+alpha, 14 of 22 beat holding the original** (FLYW→GCTS +85%, GCTS→INFU −92%); multi-hop chains
+(CMCSA→MRVL→BWEN→INFU→GCTS). UI: **Rotation Chains & Edges** (color-coded by alpha) + Rotation Outcomes.
+Edges are inferred from timing (labeled executed_pair); day-gap kept in metadata for transparency.
+
 ## 2026-06-18 - Recommendation Intelligence Engine (Phases 2 + 3)
 
 - **Phase 2 — lifecycle journaling + rotation outcomes.** `emit_lifecycle_events()` appends immutable
