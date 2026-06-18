@@ -73,6 +73,7 @@ type RotationData = {
   top_pairs?: RotationPair[]
   top_candidates?: any[]
   research_candidates?: any[]
+  etf_candidates?: any[]
   research_rotation_ideas?: RotationPair[]
   generated_at?: string
 }
@@ -411,6 +412,12 @@ export default function RotationIntelligence() {
   })()
   const researchIdeas = (data?.research_rotation_ideas ?? []) as any[]
   const researchCands = (data?.research_candidates ?? []) as any[]
+  const etfCands = (data?.etf_candidates ?? []) as any[]
+  const instrLabel = (t?: string) => (t === 'inverse_etf' ? 'INVERSE ETF' : (t || 'stock').toUpperCase())
+  const instrColor = (t?: string) => (t === 'etf' ? '#14b8a6' : t === 'inverse_etf' ? '#ef4444' : t === 'fund' ? '#a855f7' : '#6b7280')
+  const InstrBadge = ({ t }: { t?: string }) => (t && t !== 'stock'
+    ? <span style={{ fontSize: 8, fontWeight: 800, padding: '1px 5px', borderRadius: 3, background: `${instrColor(t)}1f`, color: instrColor(t), border: `1px solid ${instrColor(t)}55`, letterSpacing: 0.3 }}>{instrLabel(t)}</span>
+    : null)
   const overweights = (data?.sector_overweights ?? []) as SectorOverweight[]
   const underweights = (data?.sector_underweights ?? []) as SectorUnderweight[]
   const hasSleeveImbalance = overweights.length > 0 || underweights.length > 0
@@ -564,6 +571,40 @@ export default function RotationIntelligence() {
               </div>
             </>
           )}
+        </section>
+      )}
+
+      {/* B2b. ETF / Fund sleeve plays — long for underweight sleeves, inverse/short hedge for overweight */}
+      {etfCands.length > 0 && (
+        <section style={{ ...card, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>
+            ETF / Fund Sleeve Plays <span style={{ fontSize: 10, fontWeight: 400, color: '#14b8a6' }}>· baskets, not single stocks · long or short</span>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>Direct sleeve exposure via ETFs: a <b>long</b> ETF to fill an underweight sleeve, or an <b>inverse/short</b> ETF as an advisory hedge for an overweight sleeve. Review only — nothing is placed.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            {etfCands.map((c: any, idx: number) => {
+              const isShort = c.direction === 'short'
+              const dc = isShort ? '#ef4444' : '#22c55e'
+              return (
+                <article key={`${c.symbol}-${idx}`} style={{ ...card, borderColor: `${dc}33` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol}</span>
+                    <InstrBadge t={c.instrument_type} />
+                    <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: `${dc}1f`, color: dc, border: `1px solid ${dc}55` }}>{isShort ? 'SHORT / HEDGE' : 'LONG'}</span>
+                    <span style={{ flex: 1 }} />
+                    {c.held && <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>held</span>}
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 4 }}>{c.name} · sleeve: {c.sleeve}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
+                    {c.price != null ? px(c.price) : '—'}
+                    {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
+                    {c.leverage && <span style={{ color: '#ef4444', marginLeft: 6 }}>{c.leverage}×</span>}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.5 }}>{c.rationale}</div>
+                </article>
+              )
+            })}
+          </div>
         </section>
       )}
 
@@ -1008,6 +1049,7 @@ export default function RotationIntelligence() {
                   <article key={`${c.symbol}-${idx}`} style={card}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{c.symbol}</span>
+                      <InstrBadge t={c.instrument_type} />
                       {c.hermes_rank != null && <span style={{ fontSize: 9.5, color: '#a855f7' }}>★#{c.hermes_rank}</span>}
                       <span style={{ flex: 1 }} />
                       {c.analyst_rating

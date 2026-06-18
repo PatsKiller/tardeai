@@ -16876,9 +16876,13 @@ def _symbol_cards(query=None):
     """GET /api/v2/symbol-cards — ONE map powering the unified card layer on Watchlist / Open Trades /
     Portfolio (operator 2026-06-12): per symbol -> {description, sector, industry, sector_etf,
     perf_week, sector_perf_week, vs_sector_week, analyst{...}, news[top 3 relevant]}. Read-only."""
-    profs = _db_query("SELECT symbol, description_1s, sector, industry FROM symbol_profiles") or []
-    out = {p["symbol"]: {"description": p["description_1s"], "sector": p["sector"],
-                         "industry": p["industry"]} for p in profs}
+    profs = _db_query("""SELECT symbol, description_1s, sector, industry, instrument_type, direction_hint,
+                                expense_ratio, analyst_look_through_pct, analyst_basis FROM symbol_profiles""") or []
+    out = {p["symbol"]: {"description": p["description_1s"], "sector": p["sector"], "industry": p["industry"],
+                         "instrument_type": p.get("instrument_type") or "stock", "direction_hint": p.get("direction_hint"),
+                         "expense_ratio": _json_clean(p.get("expense_ratio")),
+                         "analyst_look_through_pct": _json_clean(p.get("analyst_look_through_pct")),
+                         "analyst_basis": p.get("analyst_basis")} for p in profs}
     syms = list(out.keys())
     if not syms:
         return {"cards": {}, "count": 0}
@@ -16927,6 +16931,13 @@ def _symbol_cards(query=None):
                                  if tm and cp and float(cp) > 0 else None,
                                  "distribution": dist_map.get(s),
                                  "sources": ["yahoo"]}
+    # ETFs/funds don't get sell-side price targets; expose the holdings LOOK-THROUGH analyst upside as the
+    # card's analyst signal so rotation candidates + UI show an analyst view for baskets too.
+    for s, c in out.items():
+        if c.get("instrument_type") in ("etf", "fund", "inverse_etf") and not c.get("analyst") \
+                and c.get("analyst_look_through_pct") is not None:
+            c["analyst"] = {"rating": "look-through", "upside_pct": c.get("analyst_look_through_pct"),
+                            "basis": c.get("analyst_basis"), "sources": ["holdings_look_through"]}
     # top 3 latest relevant news per symbol (relevance-weighted recency)
     news = _db_query("""SELECT symbol, title, source, source_url, published_at, sentiment FROM (
                           SELECT symbol, title, source, source_url, published_at, sentiment,
@@ -18084,12 +18095,12 @@ def _rotation_summary():
             import re as _re
             from db_adapter import _get_conn as _gc2
             _c2 = _gc2().cursor()
-            _c2.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector
+            _c2.execute("""SELECT w.symbol, w.hermes_rank, w.score, p.sector, p.instrument_type
                            FROM watchlist_items w LEFT JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
                            WHERE w.status IN ('active','researched') AND w.symbol ~ '^[A-Z]{1,5}$'
                            ORDER BY w.hermes_rank ASC NULLS LAST LIMIT 80""")
             _seen = set()
-            for _sym, _rank, _score, _sec in _c2.fetchall():
+            for _sym, _rank, _score, _sec, _itype in _c2.fetchall():
                 _su = (_sym or "").upper()
                 if _su in _held or _su in _seen:
                     continue
@@ -18100,6 +18111,7 @@ def _rotation_summary():
                     "symbol": _sym, "hermes_rank": _rank,
                     "score": float(_score) if _score is not None else None,
                     "sector": _sec or _card.get("sector"),
+                    "instrument_type": _itype or "stock",
                     "analyst_rating": _an.get("rating"), "analyst_upside_pct": _an.get("upside_pct"),
                     "description": (_card.get("description") or "")[:140] or None,
                 })
@@ -18286,12 +18298,55 @@ def _rotation_summary():
                 "day_change_pct": _c.get("day_change_pct"), "est_shares": _c.get("est_shares"),
             })
         degraded_holdings.sort(key=lambda x: (-(x.get("severity") or 0), -float(x.get("current_value") or 0)))
+        # ── ETF / Fund sleeve instruments (long for UNDERWEIGHT sleeves, inverse/short hedge for OVERWEIGHT).
+        # Makes ETFs first-class rotate-in / hedge candidates, not just individual stocks. Advisory only. ──
+        etf_candidates = []
+        try:
+            _uni = _j.loads((root / "config" / "etf_fund_universe.json").read_text()).get("instruments", [])
+            _long_by, _short_by = {}, {}
+            for _it in _uni:
+                (_short_by if _it.get("direction") == "short" else _long_by).setdefault(_it.get("sleeve"), []).append(_it)
+            _eprice = {}
+            try:
+                from db_adapter import _get_conn as _gce
+                _ce = _gce().cursor()
+                _ce.execute("""SELECT DISTINCT ON (symbol) symbol, price, day_change_pct FROM market_quotes
+                               WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""",
+                            ([i["symbol"] for i in _uni],))
+                for _s, _p, _dc in _ce.fetchall():
+                    _eprice[_s.upper()] = {"price": round(float(_p), 2) if _p is not None else None,
+                                           "day_change_pct": round(float(_dc), 2) if _dc is not None else None}
+            except Exception:
+                pass
+            _heldset = {(h.get("symbol") or "").upper() for h in _hold_rows} if "_hold_rows" in dir() else set()
+            for _uw in sector_underweights:
+                for _it in (_long_by.get(_uw["theme"]) or [])[:2]:
+                    _pe = _eprice.get(_it["symbol"].upper(), {})
+                    etf_candidates.append({"symbol": _it["symbol"], "name": _it.get("name"),
+                        "instrument_type": _it["type"], "direction": "long", "sleeve": _uw["theme"],
+                        "held": _it["symbol"].upper() in _heldset,
+                        "rationale": f"Underweight {_uw['theme']} ({_uw['pct']}% vs {_uw.get('floor')}% floor) — "
+                                     f"{_it['symbol']} ({_it.get('name')}) is direct LONG exposure to the sleeve.",
+                        "price": _pe.get("price"), "day_change_pct": _pe.get("day_change_pct")})
+            for _ow in sector_overweights[:3]:
+                for _it in (_short_by.get(_ow["theme"]) or [])[:1]:
+                    _pe = _eprice.get(_it["symbol"].upper(), {})
+                    etf_candidates.append({"symbol": _it["symbol"], "name": _it.get("name"),
+                        "instrument_type": _it["type"], "direction": "short", "sleeve": _ow["theme"],
+                        "held": False, "leverage": _it.get("leverage"),
+                        "rationale": f"Overweight {_ow['theme']} (+{_ow.get('excess_pct')}% over target ≈ "
+                                     f"${_ow.get('excess_dollars'):,}) — {_it['symbol']} ({_it.get('name')}) is an "
+                                     f"advisory INVERSE/SHORT hedge. Review only; not a model signal.",
+                        "price": _pe.get("price"), "day_change_pct": _pe.get("day_change_pct")})
+        except Exception:
+            etf_candidates = []
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "portfolio_total": round(pf_total),
             "sector_overweights": sector_overweights,
             "sector_underweights": sector_underweights,
             "degraded_holdings": degraded_holdings,
+            "etf_candidates": etf_candidates,
             "summary": eng.get("summary", {}) or {},
             "data_quality": dq,
             "missing_sector": max(0, int(dq.get("holding_rows", 0) or 0) - int(dq.get("rows_with_sector", 0) or 0)),
