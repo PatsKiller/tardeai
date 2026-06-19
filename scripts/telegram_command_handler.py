@@ -131,6 +131,11 @@ def parse_command(text: str) -> dict:
         return {"command": "wl_add", "args": text[6:].strip()}
     if lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower):
         return {"command": "wl_add_phrase", "args": text[4:].strip()}
+    # bare "add SOFI" / "add SOFI HOOD" (uppercase ticker tokens) → general watchlist
+    if lower.startswith("add ") and " to " not in lower and not any(w in lower for w in ("video", "article", "topic ")):
+        _toks = text[4:].split()
+        if _toks and all(t.isalpha() and t.isupper() and len(t) <= 5 for t in _toks):
+            return {"command": "wl_add", "args": text[4:].strip()}
     if lower.startswith("trend ") and not lower.startswith("trends"):
         return {"command": "wl_topic", "args": text[6:].strip()}
     if lower.startswith("ask "):
@@ -2505,8 +2510,25 @@ def poll_and_process():
         print(f"[telegram-cmd] Poll failed: {e}")
         return []
 
+    # Dedup: getUpdates?offset=-5 re-reads recent messages every poll, so track the last handled
+    # update_id and never reply twice. First run (no state) just sets the watermark — it does NOT
+    # reply to old messages. Makes a 1-min cadence safe.
+    _state = PROJECT_ROOT / "data" / "runtime" / "telegram_cmd_state.json"
+    _bootstrap = not _state.exists()
+    try:
+        last_id = json.loads(_state.read_text()).get("last_update_id", 0)
+    except Exception:
+        last_id = 0
+    max_id = last_id
+
     results = []
     for update in data.get("result", []):
+        uid = update.get("update_id", 0)
+        if uid <= last_id:
+            continue                       # already handled in a prior poll
+        max_id = max(max_id, uid)
+        if _bootstrap:
+            continue                       # first run: establish watermark, don't re-reply to old msgs
         msg = update.get("message", {})
         text = msg.get("text", "")
         chat_id = msg.get("chat", {}).get("id")
@@ -2524,6 +2546,11 @@ def poll_and_process():
             "backup", "sync docs",
             "watch ", "ask ", "trends", "trend ", "latest research", "latest trends",
         ]) or (lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower))
+        # bare "add SOFI" / "add SOFI HOOD" (uppercase ticker tokens)
+        if not is_command and lower.startswith("add ") and " to " not in lower and not any(w in lower for w in ("video", "article", "topic ")):
+            _toks = _strip_agent_prefix(text)[4:].split()
+            if _toks and all(t.isalpha() and t.isupper() and len(t) <= 5 for t in _toks):
+                is_command = True
         has_url = "http://" in lower or "https://" in lower
         if not is_command and not has_url:
             continue
@@ -2535,6 +2562,12 @@ def poll_and_process():
         _send_telegram(response)
         results.append({"command": cmd, "response_len": len(response)})
 
+    # persist the high-water mark so the next poll skips everything already handled
+    try:
+        _state.parent.mkdir(parents=True, exist_ok=True)
+        _state.write_text(json.dumps({"last_update_id": max_id}))
+    except Exception:
+        pass
     return results
 
 
