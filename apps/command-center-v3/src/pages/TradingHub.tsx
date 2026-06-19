@@ -12,9 +12,10 @@ import ATMControlPanel from '../components/ATMControlPanel'
 import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import ManualTosDesk from './ManualTosDesk'
+import BrokerProposals from '../components/BrokerProposals'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Broker Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -333,6 +334,7 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Proposals' && <ProposalsRich />}
+      {tab === 'Broker Proposals' && <BrokerProposals />}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
       {tab === 'Schwab Accounts' && (
         <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />

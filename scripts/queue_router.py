@@ -79,6 +79,13 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
         return {"ok": False, "broker": broker, "gated": True, "symbol": symbol,
                 "detail": f"Schwab routing prepared but gated: {gated_reason}. No order placed."}
 
+    # ── Fidelity — no trading API; the proposal IS the record (operator executes at Fidelity) ──
+    if broker.startswith("fidelity"):
+        _set_routing_state(pid, "routed")   # recorded as a manual trade to place at Fidelity
+        _audit({"broker": broker, "record_only": True}, "fidelity record-only (no API)")
+        return {"ok": True, "broker": broker, "symbol": symbol, "record_only": True,
+                "detail": "Fidelity has no trading API — recorded as a manual trade; execute it at Fidelity."}
+
     _audit({"broker": broker, "unknown": True}, "unknown broker")
     return {"ok": False, "broker": broker, "error": f"unknown/disabled broker '{broker}' — fail-closed"}
 
