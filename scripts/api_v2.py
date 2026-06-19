@@ -135,14 +135,16 @@ def _reports_portal_summary(query=None):
 
 
 def _reports_action_items(query=None):
-    """GET /api/v2/reports/action-items?category=&q=&days=7&limit=100 — extracted, routed action items."""
+    """GET /api/v2/reports/action-items?category=&q=&days=7&limit=100&classes=&severity= — extracted,
+    routed action items. classes/severity are optional comma-separated server-side filters."""
     import sys as _s
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
     import reports_portal as _rp
     q = query or {}
     return _rp.action_items(category=(q.get("category") or None), q=q.get("q", ""),
                             days=(int(q["days"]) if q.get("days") else 7),
-                            limit=int(q.get("limit", 100) or 100))
+                            limit=int(q.get("limit", 100) or 100),
+                            classes=(q.get("classes") or None), severity=(q.get("severity") or None))
 
 
 def _protective_account_api_write(account_key: str) -> bool:
