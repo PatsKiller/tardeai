@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-19 - LLM-health observability + strategy gate + doc governance (audit follow-ups)
+
+**LLM review health** (`GET /api/v2/llm-health`, `llm_health_check.py`): 3-lane status (local Ollama /
+Grok :8645 / ChatGPT :8646) by delegating to `llm_lane.available()` + corpus quality from
+paper_trade_multi_reviews. NOTE the audit premise (85% error / 185-of-2102 valid) was false — corpus is
+59 rows, 97.4% valid, all lanes up; this adds the missing observability, not a crisis fix.
+**Strategy-performance gate** (`strategy_utils.is_strategy_promotable`, Task 4): read-only gate in
+auto_proposal_generator + incubator_proposal_promoter — <5 closed=INSUFFICIENT_DATA, >=10 closed at
+<25% WR=blocked; logs to `proposal_suppression_log`; leaderboard exposes `strategy_gate`. DORMANT (no
+strategy qualifies); complements the allocation tilt (tilt steers flow, gate is the hard floor).
+**Audit fixes:** v4_1_deployment_log.md created (A1A P0); CANARY_SESSION_DATE → 2026-06-22 (Monday);
+8 defense/BDC rotate_gap watch directives (real schema) + Watchpool gap chip; DOCUMENTATION_INDEX.md
+(path/status-verified, 14 corrections vs draft); stage2a canary runbook refreshed for the Monday session.
+**Declined (false premise):** Task 3 agent-calibration weighting — calibration is already wired
+(agent_collab injects per-agent accuracy for self-calibration); the named file doesn't aggregate votes.
+
 ## 2026-06-19 - Percent-of-equity sizing, unified queue, mid-trade scaling, broker proposals
 
 Switched automated sizing from fixed-dollar caps to **percent-of-equity** (`account_policy.py` — one
