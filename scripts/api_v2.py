@@ -3389,7 +3389,11 @@ def _wl_items(query: dict = None):
                    sp.description_1s AS profile_description,
                    cat.catalyst_type, cat.headline AS catalyst_headline,
                    cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
-                   cat.ts AS catalyst_at, cat.source_url AS catalyst_url
+                   cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
+                   (SELECT string_agg(DISTINCT wd.label, ' · ' ORDER BY wd.label)
+                    FROM watch_directives wd
+                    WHERE wd.kind='ticker' AND upper(wd.spec->>'symbol')=upper(wi.symbol)
+                      AND wd.label IS NOT NULL AND wd.label <> upper(wi.symbol)) AS watch_lists
             FROM watchlist_items wi
             LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
             LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
