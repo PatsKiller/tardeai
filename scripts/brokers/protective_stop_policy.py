@@ -20,6 +20,14 @@ Envelope (operator decisions 2026-06-14, build-now-gated-off):
 from __future__ import annotations
 
 ENABLED = True                                   # ← MASTER GATE (commit to flip). ARMED 2026-06-15 for the POC.
+# ── ALL STAGE-2c STOP GATES REMOVED (operator 2026-06-19: "all gates for stops and trailing stops
+# stage 2c should be removed"). While True, evaluate() is a PASS-THROUGH: the policy envelope no longer
+# blocks ANY protective/trailing stop (no account allowlist, order-type, notional, drift, stop-below-
+# price, qty, or POC checks). A protective SELL stop is the safe direction (sell-to-close a long), and
+# the universal per-order 2FA (web typed-ticker + Telegram) — enforced in execution_guard, NOT here —
+# still confirms EVERY order before it reaches Schwab. Flip back to False to restore the full envelope
+# below (one-line revert; all gate logic is retained, just bypassed).
+GATES_REMOVED = True
 PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)   # base: taxable only (IRAs wired-but-off below)
 ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP")   # native trailing per operator 2026-06-14
 ALLOWED_INSTRUCTION = "SELL"                     # sell-to-close a long; never SELL_SHORT
@@ -83,6 +91,10 @@ def evaluate(*, account_key: str | None, instruction: str, order_type: str,
     if not ENABLED:
         return (False, ["Stage 2c protective-stop policy is DISABLED (commit ENABLED=True to arm "
                         "after the canary test passes)"])
+    if GATES_REMOVED:
+        # Operator 2026-06-19: all Stage-2c stop gates removed. Pass-through — the universal per-order
+        # 2FA in execution_guard remains the sole confirm before any stop reaches the broker.
+        return (True, [])
     try:
         _allow = effective_account_allowlist()
         if (account_key or "").strip() not in _allow:
