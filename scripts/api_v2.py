@@ -16227,7 +16227,8 @@ def _hermes_catalyst_calibration(query=None):
 def _watch_directives(query=None):
     """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
     directives = _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
-                              last_serviced_at, created_at FROM watch_directives ORDER BY created_at DESC""") or []
+                              last_serviced_at, created_at, spec, created_by, rationale
+                              FROM watch_directives ORDER BY created_at DESC""") or []
     hits = _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
                         h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
                         ORDER BY h.surfaced_at DESC LIMIT 40""") or []
@@ -16248,7 +16249,13 @@ def _watch_directives(query=None):
         pass
     return {"note": "Operator-owned watch directives honored by Trade AI + Hermes (firewall: Hermes proposes via "
                     "staging only). Advisory; no GO/WAIT or scoring change.",
-            "directive_count": len(directives), "directives": [{k: _json_clean(v) for k, v in r.items()} for r in directives],
+            "directive_count": len(directives),
+            # surface the spec context (gap_type/sleeve/symbol) + created_by so the Watchpool can label
+            # rotate-gap directives instead of showing them as generic ticker directives (operator 2026-06-19)
+            "directives": [{**{k: _json_clean(v) for k, v in r.items()},
+                            "symbol": (r.get("spec") or {}).get("symbol"),
+                            "gap_type": (r.get("spec") or {}).get("gap_type"),
+                            "sleeve": (r.get("spec") or {}).get("sleeve")} for r in directives],
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
             "promoted_to_watchlist": promoted.get("c"), "health": health}
