@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useConnectionHealth } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
@@ -23,11 +24,22 @@ import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
 
+function ReconnectingBar() {
+  const { degraded, failing } = useConnectionHealth()
+  if (!degraded) return null
+  return (
+    <div style={{ background: '#f59e0b', color: '#1a1207', fontSize: 11, fontWeight: 800, textAlign: 'center', padding: '3px 8px', letterSpacing: .3 }}>
+      ⟳ Reconnecting to backend… showing last-known data{failing > 1 ? ` · ${failing} feeds` : ''}
+    </div>
+  )
+}
+
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
 
   return (
     <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+      <ReconnectingBar />
       <MetricStrip onDrill={setDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <NavRail />
