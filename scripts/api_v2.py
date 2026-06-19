@@ -11830,6 +11830,83 @@ def _broker_account_readiness():
             "checks": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
+def _strategy_leaderboard():
+    """GET /api/v2/strategy-leaderboard — LIVE strategy ranking blending closed paper trades + the
+    backtest sample (strategy_backtest_results) + the latest assessment snapshot. Ranked by a
+    confidence-weighted expectancy so a 2-trade fluke can't top a proven strategy (operator 2026-06-19)."""
+    try:
+        live = _db_query("""
+            SELECT strategy_id,
+                   count(*) AS n, count(*) FILTER (WHERE pnl>0) AS wins,
+                   round(100.0*count(*) FILTER (WHERE pnl>0)/NULLIF(count(*),0),1) AS win_rate,
+                   round(avg(pnl)::numeric,2) AS avg_pnl, round(sum(pnl)::numeric,2) AS total_pnl,
+                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r
+              FROM paper_trades
+             WHERE status='closed' AND pnl IS NOT NULL
+             GROUP BY strategy_id""") or []
+        bt = _db_query("""
+            SELECT strategy_id, sum(sample_size) AS sample,
+                   round((sum(win_rate*sample_size)/NULLIF(sum(sample_size),0))::numeric,1) AS win_rate,
+                   round((sum(expectancy_r*sample_size)/NULLIF(sum(sample_size),0))::numeric,2) AS expectancy_r,
+                   round(avg(profit_factor)::numeric,2) AS profit_factor
+              FROM strategy_backtest_results GROUP BY strategy_id""") or []
+        snaps = _db_query("""
+            SELECT DISTINCT ON (strategy_id) strategy_id, win_rate, avg_r, profit_factor, total_pnl,
+                   assessment, recommendation, snapshot_date
+              FROM strategy_performance_snapshots ORDER BY strategy_id, snapshot_date DESC""") or []
+        bt_by = {r["strategy_id"]: r for r in bt}
+        sn_by = {r["strategy_id"]: r for r in snaps}
+        R_CLAMP = 3.0   # no real strategy has |expectancy| > ~3R — anything beyond is a data error, not signal
+
+        def _clamp(v):
+            try:
+                return max(-R_CLAMP, min(R_CLAMP, float(v)))
+            except Exception:
+                return None
+
+        out = []
+        for lv in live:
+            sid = lv["strategy_id"]
+            b, s = bt_by.get(sid, {}), sn_by.get(sid, {})
+            n = lv["n"] or 0
+            live_r = float(lv["avg_r"]) if lv["avg_r"] is not None else None
+            bt_r_raw = float(b["expectancy_r"]) if b.get("expectancy_r") is not None else None
+            bt_suspect = bt_r_raw is not None and abs(bt_r_raw) > R_CLAMP   # flag garbage backtest values
+            bt_r = _clamp(bt_r_raw)
+            # Blend is SUPPORTING context only (clamped). RANKING is LIVE-PRIMARY (below) so a single
+            # corrupt backtest row can't crown a live loser. Trust live more as n grows.
+            w = min(1.0, n / 20.0)
+            if live_r is not None and bt_r is not None and not bt_suspect:
+                blended = round(w * live_r + (1 - w) * bt_r, 2)
+            else:
+                blended = live_r if live_r is not None else bt_r
+            conf = "high" if n >= 20 else "medium" if n >= 8 else "low"
+            out.append({
+                "strategy_id": sid,
+                "live": {k: _json_clean(lv[k]) for k in ("n", "wins", "win_rate", "avg_pnl", "total_pnl", "avg_pct", "avg_r")},
+                "backtest": ({k: _json_clean(b.get(k)) for k in ("sample", "win_rate", "expectancy_r", "profit_factor")} | {"data_suspect": bt_suspect}) if b else None,
+                "snapshot": {k: _json_clean(s.get(k)) for k in ("win_rate", "avg_r", "profit_factor", "assessment", "recommendation", "snapshot_date")} if s else None,
+                "blended_expectancy_r": blended,
+                "confidence": conf,
+            })
+        # RANK LIVE-PRIMARY: live expectancy (avg_r) desc, then total P&L, then win-rate. Backtest/snapshot
+        # are context, never the ranking driver (avoids a corrupt backtest crowning a live loser).
+        def _key(x):
+            lv = x["live"]
+            return (lv["avg_r"] if lv["avg_r"] is not None else -99,
+                    lv["total_pnl"] if lv["total_pnl"] is not None else -1e9,
+                    lv["win_rate"] if lv["win_rate"] is not None else -1)
+        out.sort(key=_key, reverse=True)
+        for i, x in enumerate(out):
+            x["rank"] = i + 1
+        return {"leaderboard": out,
+                "note": ("Ranked by LIVE expectancy (avg R per trade), tiebreak total P&L then win-rate. "
+                         "Backtest + assessment shown as context (expectancy clamped at ±3R; data_suspect flags "
+                         "corrupt rows). LOW confidence = <8 live trades — directional only, not proven.")}
+    except Exception as e:
+        return {"error": str(e)[:160], "leaderboard": []}
+
+
 def _broker_proposals():
     """GET /api/v2/broker-proposals — Schwab + Fidelity queue proposals + form options (accounts +
     strategies) for the Trading-hub Broker Proposals tab (operator 2026-06-19)."""
@@ -18650,6 +18727,7 @@ ROUTES = {
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(),
+    "/api/v2/strategy-leaderboard": lambda: _strategy_leaderboard(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
     "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
     "/api/v2/broker-accounts/automation-policy": lambda: _broker_account_policy(),

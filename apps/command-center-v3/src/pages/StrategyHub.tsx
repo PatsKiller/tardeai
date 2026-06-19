@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
-import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import BacktestPanel from '../components/BacktestPanel'
 import StrategyPlanner from '../components/StrategyPlanner'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
+const TABS = ['Leaderboard', 'Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
 
 export default function StrategyHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('Analytics')
+  const [tab, setTab] = useState<typeof TABS[number]>('Leaderboard')
+  const { data: leaderboard } = useApi<any>('/api/v2/strategy-leaderboard', 60_000)
   const { data: intel } = useApi<any>('/api/v2/strategy-intelligence', 120_000)
   const { data: configs } = useApi<any>('/api/v2/strategy-configs', 120_000)
   const { data: desk } = useApi<any>('/api/v2/strategy-desk', 120_000)
@@ -116,6 +117,7 @@ export default function StrategyHub({ onDrill }: Props) {
         </div>
       </div>
 
+      {tab === 'Leaderboard' && <StrategyLeaderboard data={leaderboard} />}
       {tab === 'Analytics' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -327,4 +329,58 @@ export default function StrategyHub({ onDrill }: Props) {
       {tab === 'Backtest' && <BacktestPanel onDrill={onDrill} />}
     </div>
   )
+}
+
+// Live strategy leaderboard (operator 2026-06-19) — ranked by LIVE expectancy (avg R), with backtest +
+// assessment as context. Chart + table. LOW confidence (<8 live trades) flagged as directional only.
+function StrategyLeaderboard({ data }: any) {
+  const rows: any[] = data?.leaderboard ?? []
+  const note: string = data?.note ?? ''
+  const CONF: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#94a3b8' }
+  const chart = rows.map(r => ({ name: r.strategy_id.replace(/_/g, ' ').slice(0, 14), R: r.live?.avg_r ?? 0 }))
+  const th = { fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase' as const, fontWeight: 800, textAlign: 'right' as const, padding: '5px 8px' }
+  const td = { fontSize: 12, padding: '6px 8px', textAlign: 'right' as const, color: 'var(--text1)' }
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{note}</div>
+    {rows.length > 0 && <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text0)', marginBottom: 8 }}>Live expectancy per trade (R)</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chart} margin={{ top: 4, right: 10, bottom: 4, left: 0 }}>
+          <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} interval={0} angle={-18} textAnchor="end" height={48} />
+          <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+          <ReferenceLine y={0} stroke="#475569" />
+          <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', fontSize: 11 }} />
+          <Bar dataKey="R">{chart.map((c, i) => <Cell key={i} fill={c.R >= 0 ? '#22c55e' : '#ef4444'} />)}</Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>}
+    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>
+          <th style={{ ...th, textAlign: 'left' }}>#  Strategy</th>
+          <th style={th}>Live R</th><th style={th}>Win%</th><th style={th}>Trades</th><th style={th}>Total P&L</th>
+          <th style={th}>Conf</th><th style={th}>Backtest (n · expR)</th><th style={{ ...th, textAlign: 'left' }}>Assessment</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(r => {
+            const lv = r.live ?? {}, bt = r.backtest, sn = r.snapshot
+            const rc = (lv.avg_r ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+            return <tr key={r.strategy_id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: 'var(--text0)' }}>
+                <span style={{ color: r.rank <= 2 ? '#fbbf24' : 'var(--text3)', marginRight: 7 }}>{r.rank <= 2 ? '★' : r.rank}</span>{r.strategy_id}
+              </td>
+              <td style={{ ...td, color: rc, fontWeight: 800 }}>{lv.avg_r ?? '—'}</td>
+              <td style={td}>{lv.win_rate ?? '—'}%</td>
+              <td style={td}>{lv.wins ?? 0}/{lv.n ?? 0}</td>
+              <td style={{ ...td, color: (lv.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{lv.total_pnl != null ? fmt$(lv.total_pnl) : '—'}</td>
+              <td style={{ ...td, color: CONF[r.confidence] }}>{r.confidence}</td>
+              <td style={td}>{bt ? <span title={bt.data_suspect ? 'backtest expectancy out of realistic range — data suspect, ignored in ranking' : ''}>{bt.sample ?? '—'} · {bt.expectancy_r ?? '—'}R {bt.data_suspect ? '⚠' : ''}</span> : '—'}</td>
+              <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }}>{sn?.recommendation || sn?.assessment || '—'}</td>
+            </tr>
+          })}
+          {rows.length === 0 && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No closed trades yet.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
 }
