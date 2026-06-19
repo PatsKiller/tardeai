@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-19 - LLM-health dashboard panel + hermes daily auto-commit
+
+**LLM-health on the dashboard:** the `/api/v2/llm-health` endpoint (was headless) is now surfaced on
+System hub → LLM tab as an "LLM Review Lane Health" card (3 lane up/down chips local/grok/chatgpt +
+corpus valid-rate). **Hermes daily auto-commit:** `scripts/commit_hermes_daily.sh` (cron 23:13) captures
+the day's `docs/hermes/` self-learning artifacts (backlog_health / embedding / librarian / observations)
+to git + Drive — scope-locked to that dir, IRON-guarded, secret-hook protected, only commits on change.
+`verify_hermes_daily.py` Telegrams the result. Note re API versioning: backend stays `/api/v2/` (API
+contract version) while the UI is "Command Center v3" (frontend generation) — independent version numbers.
+
 ## 2026-06-19 - LLM-health observability + strategy gate + doc governance (audit follow-ups)
 
 **LLM review health** (`GET /api/v2/llm-health`, `llm_health_check.py`): 3-lane status (local Ollama /
