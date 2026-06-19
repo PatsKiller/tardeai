@@ -34,6 +34,7 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000)
   const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000)
   const { data: llm } = useApi<any>('/api/v2/local-llm-status', 60_000)
+  const { data: llmHealth } = useApi<any>('/api/v2/llm-health', 60_000)
   const { data: pipe } = useApi<any>('/api/v2/system/pipeline-health', 60_000)
   const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000)
   const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000)
@@ -747,7 +748,26 @@ export default function SystemHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'LLM' && (
+      {tab === 'LLM' && (<>
+        {/* 3-lane review health (operator 2026-06-19): live lane availability + corpus quality */}
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>LLM Review Lane Health</div>
+          {llmHealth ? (() => {
+            const lanes = llmHealth.lanes ?? {}, corpus = llmHealth.review_corpus ?? {}
+            return <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                {['local', 'grok', 'chatgpt'].map(k => {
+                  const up = lanes[k]?.available
+                  return <span key={k} style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 7, border: `1px solid ${up ? '#22c55e' : '#ef4444'}`, background: `${up ? '#22c55e' : '#ef4444'}1f`, color: up ? '#22c55e' : '#ef4444' }} title={lanes[k]?.reason || ''}>{k} {up ? '✓ up' : '✗ down'}</span>
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                Review corpus ({corpus.window_days ?? 30}d): <b style={{ color: (corpus.valid_rate ?? 0) >= 0.9 ? '#22c55e' : (corpus.valid_rate ?? 0) >= 0.7 ? '#f59e0b' : '#ef4444' }}>{corpus.valid_rate != null ? `${(corpus.valid_rate * 100).toFixed(1)}% valid` : '—'}</b> ({corpus.valid ?? 0}/{corpus.total ?? 0})
+              </div>
+            </>
+          })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading review health...</div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/llm-health</div>
+        </div>
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Local LLM Status</div>
           {llm ? (
@@ -764,7 +784,7 @@ export default function SystemHub({ onDrill }: Props) {
           ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading LLM status...</div>}
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/local-llm-status</div>
         </div>
-      )}
+      </>)}
     </div>
   )
 }
