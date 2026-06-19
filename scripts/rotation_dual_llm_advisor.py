@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import io
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,9 @@ from rotation_llm_advisor import (  # type: ignore
     run_rotation_engine,
     validate_llm_answer,
 )
+
+SUPPORTED_ACTION_CLASSES = {"ADD_REVIEW", "TRIM_REVIEW", "ROTATE_REVIEW"}
+PAIR_INTENT_WORDS = ("trim", "reduce", "rotate", "swap", "replace", "for", "into")
 
 
 def build_grok_oauth_prompt(question: str, local_answer: str, grounded_answer: str, grounding: dict[str, Any]) -> str:
@@ -101,28 +105,82 @@ def _num(value: Any) -> float:
         return 0.0
 
 
-def infer_no_model_supported_action(grounding: dict[str, Any], rotation_report: dict[str, Any]) -> bool:
+def _symbols_from_row(row: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    for key in ("symbol", "ticker", "from_symbol", "to_symbol", "candidate_symbol", "held_symbol", "trim_symbol", "add_symbol"):
+        val = row.get(key)
+        if isinstance(val, str) and re.fullmatch(r"[A-Z0-9]{1,8}", val.upper()):
+            out.add(val.upper())
+    return out
+
+
+def _action_class(row: dict[str, Any]) -> str:
+    return str(row.get("action_class") or row.get("class") or row.get("recommendation_class") or "").upper()
+
+
+def _iter_action_rows(rotation_report: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not isinstance(rotation_report, dict):
+        return rows
+    for key in (
+        "top_rotation_ideas",
+        "top_pairs",
+        "research_rotation_ideas",
+        "rotation_ideas",
+        "trim_review",
+        "add_review",
+        "top_candidates",
+        "research_candidates",
+        "etf_candidates",
+    ):
+        value = rotation_report.get(key)
+        if isinstance(value, list):
+            rows.extend([x for x in value if isinstance(x, dict)])
+    return rows
+
+
+def has_question_supported_action(question: str, grounding: dict[str, Any], rotation_report: dict[str, Any]) -> bool:
+    """Question-specific action gate.
+
+    Global rotation_summary can be nonzero because there are actionable ideas elsewhere in the portfolio.
+    For a pair question like XLB -> SPCX, we require a supported ADD/TRIM/ROTATE row that references the
+    symbol(s) in the question. WATCH / RESEARCH_MORE rows are not supported actions.
+    """
+    symbols = {str(s).upper() for s in grounding.get("symbols_in_question", []) if str(s).strip()}
+    rows = _iter_action_rows(rotation_report)
+    if symbols:
+        relevant = [r for r in rows if _symbols_from_row(r) & symbols]
+        return any(_action_class(r) in SUPPORTED_ACTION_CLASSES for r in relevant)
+
+    # If no symbols were extracted, fall back to portfolio-wide summary only for broad rotation questions.
+    q = question.lower()
+    if not any(w in q for w in PAIR_INTENT_WORDS):
+        return False
+    s = rotation_summary(rotation_report)
+    return _num(s.get("trim_review")) > 0 or _num(s.get("add_review")) > 0 or _num(s.get("rotation_ideas")) > 0
+
+
+def infer_no_model_supported_action(question: str, grounding: dict[str, Any], rotation_report: dict[str, Any]) -> bool:
     """Fail-safe no-action inference.
 
-    The grounding helper is authoritative when it explicitly says no action, but the
-    rotation summary is also sufficient: if no add, trim, or rotation ideas exist,
-    no downstream LLM may produce a numeric amount or actionable class.
+    The grounding helper is authoritative when it explicitly says no action, but pair-specific questions
+    also need pair-specific gating. A global nonzero rotation summary must not make XLB -> SPCX actionable
+    unless a supported action row actually references XLB or SPCX.
     """
     if bool(grounding.get("no_model_supported_action")):
         return True
-    s = rotation_summary(rotation_report)
-    has_core_counts = any(k in s for k in ("trim_review", "add_review", "rotation_ideas"))
-    if not has_core_counts:
-        return False
-    return _num(s.get("trim_review")) <= 0 and _num(s.get("add_review")) <= 0 and _num(s.get("rotation_ideas")) <= 0
+    if not has_question_supported_action(question, grounding, rotation_report):
+        return True
+    return False
 
 
 def forced_no_action_answer(question: str, rotation_report: dict[str, Any]) -> str:
     s = rotation_summary(rotation_report)
     return (
-        "No model-supported trim, add, or rotation action is available for this question. "
-        f"The rotation summary shows trim_review={int(_num(s.get('trim_review')))}, "
-        f"add_review={int(_num(s.get('add_review')))}, and rotation_ideas={int(_num(s.get('rotation_ideas')))}. "
+        "No model-supported trim, add, or rotation action is available for this specific question. "
+        f"The portfolio-wide rotation summary is trim_review={int(_num(s.get('trim_review')))}, "
+        f"add_review={int(_num(s.get('add_review')))}, and rotation_ideas={int(_num(s.get('rotation_ideas')))}, "
+        "but no supported ADD/TRIM/ROTATE row is grounded to the symbols in this question. "
         "A specific review amount or percent range is unavailable. Keep this as WATCH / RESEARCH_MORE and use the Grok OAuth prompt only as a manual second opinion; no broker action is authorized."
     )
 
@@ -138,7 +196,7 @@ def build_trust_verdict(
     """Machine-readable UI/API trust block for production advisory gating."""
     local_ok = bool(local_validation.get("ok"))
     validation_issues = list(local_validation.get("issues") or [])
-    inferred_no_action_from_summary = no_model_supported_action and not bool(grounding.get("no_model_supported_action"))
+    inferred_no_action_from_question = no_model_supported_action and not bool(grounding.get("no_model_supported_action"))
     return {
         "final_authority": "grounded_rotation_engine",
         "broker_action": "none",
@@ -147,7 +205,8 @@ def build_trust_verdict(
         "model_supported_action": not no_model_supported_action,
         "range_policy": "range_unavailable_when_no_supported_action" if no_model_supported_action else "review_range_allowed_if_grounded",
         "no_model_supported_action": no_model_supported_action,
-        "inferred_no_action_from_summary": inferred_no_action_from_summary,
+        "inferred_no_action_from_summary": inferred_no_action_from_question,
+        "inferred_no_action_from_question_symbols": inferred_no_action_from_question,
         "local_validation_ok": local_ok,
         "local_validation_issue_count": len(validation_issues),
         "local_validation_issues": validation_issues,
@@ -160,7 +219,7 @@ def build_trust_verdict(
         "production_gate": "PASS_ADVISORY_REVIEW" if (no_model_supported_action or local_ok) else "PASS_GROUNDED_FALLBACK",
         "operator_required": True,
         "notes": [
-            "Final answer remains grounded when no supported add/trim/rotation action exists.",
+            "Final answer remains grounded when no supported add/trim/rotation action exists for the question symbols.",
             "Local and Grok outputs are second opinions only; neither creates or authorizes broker action.",
         ],
     }
@@ -185,7 +244,7 @@ def main() -> int:
     cards_payload = load_json(cards_path) if cards_path and cards_path.exists() else None
     rotation_report = run_rotation_engine(holdings_path, cards_path if cards_path and cards_path.exists() else None, args.min_pair_score)
     grounding = grounding_report(args.question, holdings_payload, cards_payload, rotation_report)
-    no_model_supported_action = infer_no_model_supported_action(grounding, rotation_report)
+    no_model_supported_action = infer_no_model_supported_action(args.question, grounding, rotation_report)
     grounded_answer = forced_no_action_answer(args.question, rotation_report) if no_model_supported_action else deterministic_answer(args.question, grounding)
     prompt = build_prompt(args.question, holdings_payload, cards_payload, rotation_report, grounding)
 
