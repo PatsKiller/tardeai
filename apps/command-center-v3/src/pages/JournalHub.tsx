@@ -169,6 +169,7 @@ export default function JournalHub({ onDrill }: Props) {
   const [acctFilter, setAcctFilter] = useState('')
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('6M')
   const { data: journal } = useApi<any>('/api/v2/automated-trade-journal', 60_000)
+  const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // discovery origin per symbol
   const { data: schwabJournal } = useApi<any>('/api/v2/journal', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: rawLessonsResp } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
@@ -599,6 +600,9 @@ export default function JournalHub({ onDrill }: Props) {
                       <div>
                         <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                         <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{t.shares} sh · {hold}</span>
+                        {(() => { const o = outcomesData?.outcomes?.[String(t.symbol).toUpperCase()]; return o?.origin
+                          ? <span title="auto-detected discovery origin — where this trade was first surfaced" style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4, marginLeft: 6, background: 'rgba(96,165,250,.14)', color: '#60a5fa' }}>via {o.origin}</span>
+                          : null })()}
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: `${acctColor(t.na)}22`, color: acctColor(t.na) }}>{ACCT_LABEL[t.na] ?? t.na}</span>
