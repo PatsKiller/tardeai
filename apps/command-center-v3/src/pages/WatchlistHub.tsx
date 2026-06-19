@@ -218,7 +218,17 @@ export default function WatchlistHub({ onDrill }: Props) {
             </div>
           )}
         </div>
-        {visible.length === 0 ? <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>No items match the filters.</div> : (
+        {visible.length === 0 ? (() => {
+          const sd = fDir !== 'all' ? directives.find((d: any) => String(d.id) === fDir) : null
+          const nh = (sd?.hit_symbols ?? []).length
+          const resetAll = () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setSearch('') }
+          const link = (c: string, t: string, fn: () => void) => <span onClick={fn} style={{ color: c, cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}>{t}</span>
+          return <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>
+            {sd
+              ? <>Directive <b style={{ color: TEXT0 }}>{sd.label}</b> has surfaced <b style={{ color: TEXT0 }}>{nh}</b> watchlist item{nh === 1 ? '' : 's'}{nh === 0 ? ` (no hits${sd.status !== 'active' ? `; directive is ${sd.status}` : ''})` : ''}. {link(PURPLE, 'Clear directive filter', () => setFDir('all'))}</>
+              : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}
+          </div>
+        })() : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(620px, 1fr))', gap: 16, paddingRight: 4 }}>
             {pageItems.map((it: any) => {
               const a = advMap[it.symbol]
