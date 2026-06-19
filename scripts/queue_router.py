@@ -84,13 +84,16 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
 
 
 def _schwab_gate_reason(account_key: str | None) -> str:
-    """Why Schwab routing is currently gated. Reuses the live-trading interlock when present."""
+    """Why Schwab routing is currently gated. Reuses the live-trading interlock (fail-closed)."""
     try:
-        from brokers.live_trading_interlock import assert_writable
-        assert_writable(account_key or "")
-        return "interlock open but Schwab queue-routing not yet armed (operator step pending)"
+        from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+        try:
+            assert_writable(_il_conn(), account_key or "", action="write")
+            return "interlock open but Schwab queue-routing not yet armed (operator step pending)"
+        except InterlockRefused as e:
+            return f"live-trading interlock closed ({str(e)[:80]})"
     except Exception as e:
-        return f"live-trading interlock closed ({str(e)[:80]})"
+        return f"interlock unavailable ({str(e)[:60]}) — fail-closed"
 
 
 if __name__ == "__main__":
