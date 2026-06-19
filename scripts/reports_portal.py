@@ -504,21 +504,33 @@ def portal_summary(days: int = 7) -> dict:
     }
 
 
-def action_items(category: str | None = None, q: str = "", days: int | None = 7, limit: int = 100) -> dict:
-    """Flattened, deterministically extracted action items across categories, each routed to a v3 page."""
+def action_items(category: str | None = None, q: str = "", days: int | None = 7, limit: int = 100,
+                 classes: str | None = None, severity: str | None = None) -> dict:
+    """Flattened, deterministically extracted action items across categories, each routed to a v3 page.
+    Optional server-side filters (so quick views stay exact regardless of limit / day range):
+      classes  — comma-separated action_class names (e.g. 'stop_triggered,risk_review')
+      severity — comma-separated severities (e.g. 'urgent,critical')."""
     days = int(days) if days else None
+    want_cls = {c.strip() for c in (classes or "").split(",") if c.strip()} or None
+    want_sev = {s.strip().lower() for s in (severity or "").split(",") if s.strip()} or None
     rows = _gather_rows(category=category, q=q, days=days, per_cat_cap=300)
     actions, by_class = [], {}
     for it in rows:
         ca = it.get("created_at")
         it["created_at"] = ca.isoformat() if (ca and hasattr(ca, "isoformat")) else ca
         for a in extract_action_items(it):
+            if want_cls and a["action_class"] not in want_cls:
+                continue
+            if want_sev and (a.get("severity") or "info").lower() not in want_sev:
+                continue
             actions.append(a)
             by_class[a["action_class"]] = by_class.get(a["action_class"], 0) + 1
     actions.sort(key=lambda a: (_SEV_RANK.get((a.get("severity") or "info").lower(), 1),
                                 a.get("created_at") or ""), reverse=True)
     return {"actions": actions[:int(limit)], "total": len(actions), "by_class": by_class,
-            "category": category or "all", "days": days}
+            "category": category or "all", "days": days,
+            "classes": sorted(want_cls) if want_cls else None,
+            "severity": sorted(want_sev) if want_sev else None}
 
 
 def get_item(source: str, item_id) -> dict:

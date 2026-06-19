@@ -31,8 +31,12 @@ the `ROUTES` dict (~line 18914); purge handled in the POST block (~line 19416). 
 - `GET /api/v2/reports/portal-summary?days=7` — KPI roll-up: totals; counts by category, severity,
   source, and action_class; top mentioned symbols; recent items; and the headline counters
   (critical/urgent, open actions, risk/stop, approvals, system/Hermes).
-- `GET /api/v2/reports/action-items?category=&q=&days=7&limit=100` — flattened, deterministically
-  extracted action items across categories, each routed to a real v3 page.
+- `GET /api/v2/reports/action-items?category=&q=&days=7&limit=100&classes=&severity=` — flattened,
+  deterministically extracted action items across categories, each routed to a real v3 page. Optional
+  server-side `classes` (comma-separated action_class names) and `severity` (comma-separated) filters so a
+  quick view stays **exact at any day range** — a class-based view passes its filter to the server instead
+  of relying on a client-side pass over a severity-capped fetch (e.g. 90d Approvals returns all 52, not a
+  crowded-out subset).
 
 Both are pure read-only aggregations over the existing normalized rows. **No LLMs** — deterministic
 regex/rule classification only.
