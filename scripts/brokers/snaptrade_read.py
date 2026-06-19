@@ -19,6 +19,15 @@ from typing import Optional
 
 from . import snaptrade_credentials as _creds
 
+# Money-market / cash-sweep tickers normalized to $1.00 NAV cash on sync (operator 2026-06-19): these
+# trade at a fixed $1 NAV and are cash, not positions — aggregators sometimes report a drifted price.
+MONEY_MARKET_SYMBOLS = {
+    "SPAXX", "FDRXX", "FZFXX", "FZDXX", "SPRXX", "FGTXX", "FMPXX", "FNSXX",   # Fidelity
+    "SWVXX", "SNVXX", "SNAXX", "SWGXX",                                          # Schwab
+    "VMFXX", "VMRXX", "VUSXX",                                                   # Vanguard
+    "CASH", "USD",                                                               # generic cash sweeps
+}
+
 
 @dataclass(frozen=True)
 class SnapTradeUser:
@@ -118,6 +127,22 @@ def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dic
             avg = float(avg) if avg is not None else None
         except (TypeError, ValueError):
             avg = None
+
+        # Money-market / cash-sweep normalization (fix 2026-06-19): SnapTrade reported SPAXX with a
+        # bogus price ($0.803) + stale units, so it came in as a stock with a phantom -19.7% "loss".
+        # A money market is $1.00 NAV cash — present it as clean cash (no P/L, is_cash=True) using the
+        # implied value (units*price), so it can never be mistreated as a position again.
+        if sym in MONEY_MARKET_SYMBOLS or "MONEY MARKET" in str((symobj or {}).get("description", "")).upper():
+            mv = round(units * price, 2)
+            out.append({
+                "symbol": sym, "account": account_key, "shares": mv,
+                "cost_basis": mv, "avg_cost": 1.0, "market_value": mv,
+                "current_price": 1.0, "price": 1.0, "is_cash": True,
+                "gain_loss": 0, "gain_loss_pct": 0, "sector_type": "Cash",
+                "cost_basis_source": "snaptrade", "position_source": "snaptrade",
+            })
+            continue
+
         out.append({
             "symbol": sym,
             "account": account_key,
