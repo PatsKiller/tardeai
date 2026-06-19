@@ -1,0 +1,10 @@
+
+## 2026-06-19 — Defense/BDC rotate-gap directives seeded (audit Task 5)
+
+Seeded 8 `rotate_gap` watch directives for held Schwab-taxable defense/BDC positions flagged in the
+Aegis brief: LHX, LMT, NOC, BAH, LDOS, KBR, CACI (defense_thesis sleeve) + PFLT (high_yield_bdc).
+Mapped onto the REAL `watch_directives` schema (kind='ticker', label=symbol, spec={symbol,gap_type:
+rotate_gap,sleeve,flagged}, created_by='operator_audit', status='active', priority='high'). The
+rotation/promotion engine consumes active operator directives on its scheduled cycle to surface
+sleeve replacements. Advisory only — no position change, no order writes. Note: these were Aegis-brief
+flags, not recorded broker-stop triggers (stop_lifecycle had no rows; risk_stops table does not exist).
