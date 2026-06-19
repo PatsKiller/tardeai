@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-19 - LLM auto-enhancement of trend/sector watch directives
+
+Root cause of "directives entered but not processed": trend/sector directives created with only a label
+(no spec.keywords / seed_symbols) surface 0 candidates — the Hermes discovery producer phrase-matches
+keywords against research + uses seed symbols, so an empty/long-phrase keyword set finds nothing (AI
+datacenter worked because it had 6 keywords + 4 seeds). Fix: `directive_keyword_enhancer.py` —
+LLM-derives keywords + seed tickers from the theme, **ensembling local gemma + free OAuth lanes (grok
+:8645 / chatgpt :8646)** and merging their coverage (no metered API; advisory metadata only, never a
+trade). Backfilled the 4 keyword-less directives (Defense/Aerospace, Energy, data-center-cooling,
+datacenter-storage → 7-8 keywords + 6-7 seeds each). **Automated** via cron `25,55 * * * *` (runs before
+the */30 discovery; no-op unless a directive lacks keywords) — kept off the single-threaded server's
+request path / shared DB conn for safety. New keyword-less directives now self-enhance within ~30 min and
+start surfacing candidates.
+
 ## 2026-06-19 - Watchlist directive filter + Sector Monitor setups fixes
 
 **Watchlist directive filter:** matched only `it.directive_id`, but trend/sector directives surface items
