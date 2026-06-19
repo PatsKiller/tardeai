@@ -171,6 +171,10 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
             origin_system = COALESCE(origin_system, %s),
             origin_detail = %s::jsonb,
             directive_id = %s, in_directive_watch = true,
+            -- operator explicitly added this as a directive → un-remove it so it's VISIBLE on the
+            -- watchlist (this was the "Maria added it but it's not showing" bug: a previously-removed
+            -- symbol got in_directive_watch=true but kept status='removed', which the UI filters out).
+            status = CASE WHEN status = 'removed' THEN 'active' ELSE status END,
             source_tier = %s,
             first_seen_at = COALESCE(first_seen_at, NOW()),
             last_validated_at = NOW(),
