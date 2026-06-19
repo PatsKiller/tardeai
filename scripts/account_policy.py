@@ -152,11 +152,13 @@ def _equity_from_holdings(account_key: str) -> float | None:
 
 
 def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
-                   desired_shares: int | None = None) -> dict:
+                   desired_shares: int | None = None, tilt: float = 1.0) -> dict:
     """The ONE sizing implementation. Shares = min(desired_shares?, position-cap shares, risk-cap shares).
     percent_equity engine: caps = equity * pct/100; fixed_dollar engine (or missing policy/equity): the
     fail-safe fixed caps. Optional absolute ceilings (max_risk_dollars_per_trade / max_notional_per_trade)
-    clamp the percent caps when the admin sets them. Returns a basis dict for audit/reproducibility."""
+    clamp the percent caps when the admin sets them. `tilt` (per-strategy allocation tilt, default 1.0)
+    scales the RISK budget only — winning strategies risk more, but never beyond the position cap.
+    Returns a basis dict for audit/reproducibility."""
     entry = _f(entry) or 0.0
     stop = _f(stop) or 0.0
     risk_per_share = abs(entry - stop)
@@ -186,6 +188,16 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
     if abs_notional and abs_notional > 0:
         max_dollar_size = min(max_dollar_size, abs_notional)
 
+    # Per-strategy allocation tilt: scale the RISK budget (winning strategies risk more). The position
+    # cap (max_dollar_size) is NOT tilted, so concentration is preserved — a tilt only lets a strategy
+    # use more of its risk budget up to that cap.
+    try:
+        tilt_f = float(tilt) if tilt else 1.0
+    except (TypeError, ValueError):
+        tilt_f = 1.0
+    if tilt_f != 1.0:
+        max_dollar_risk = max_dollar_risk * tilt_f
+
     max_by_risk = int(max_dollar_risk / risk_per_share) if risk_per_share > 0 else 0
     max_by_size = int(max_dollar_size / entry) if entry > 0 else 0
 
@@ -214,6 +226,7 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
         "dollar_size": round(shares * entry, 2),
         "dollar_risk": round(shares * risk_per_share, 2),
         "binding": binding,
+        "tilt": tilt_f,
         "stop_pct": round(risk_per_share / entry, 4) if entry > 0 else 0,
     }
 

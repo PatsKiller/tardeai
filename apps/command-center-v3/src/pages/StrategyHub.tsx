@@ -359,7 +359,7 @@ function StrategyLeaderboard({ data }: any) {
         <thead><tr>
           <th style={{ ...th, textAlign: 'left' }}>#  Strategy</th>
           <th style={th}>Live R</th><th style={th}>Win%</th><th style={th}>Trades</th><th style={th}>Total P&L</th>
-          <th style={th}>Conf</th><th style={th}>Backtest (n · expR)</th><th style={{ ...th, textAlign: 'left' }}>Assessment</th>
+          <th style={th}>Conf</th><th style={th}>Tilt</th><th style={th}>Backtest (n · expR)</th><th style={{ ...th, textAlign: 'left' }}>Assessment</th>
         </tr></thead>
         <tbody>
           {rows.map(r => {
@@ -374,11 +374,12 @@ function StrategyLeaderboard({ data }: any) {
               <td style={td}>{lv.wins ?? 0}/{lv.n ?? 0}</td>
               <td style={{ ...td, color: (lv.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{lv.total_pnl != null ? fmt$(lv.total_pnl) : '—'}</td>
               <td style={{ ...td, color: CONF[r.confidence] }}>{r.confidence}</td>
+              <td style={{ ...td, fontWeight: 800, color: r.excluded ? 'var(--text3)' : (r.tilt > 1.02 ? '#22c55e' : r.tilt < 0.98 ? '#ef4444' : 'var(--text3)') }} title={r.excluded ? 'momentum_scalp — excluded from tilt (pinned 1.0)' : 'allocation tilt: boosts candidate ranking + risk budget'}>{r.tilt != null ? `${r.tilt}×` : '—'}{r.excluded ? ' 🔒' : ''}</td>
               <td style={td}>{bt ? <span title={bt.data_suspect ? 'backtest expectancy out of realistic range — data suspect, ignored in ranking' : ''}>{bt.sample ?? '—'} · {bt.expectancy_r ?? '—'}R {bt.data_suspect ? '⚠' : ''}</span> : '—'}</td>
               <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }}>{sn?.recommendation || sn?.assessment || '—'}</td>
             </tr>
           })}
-          {rows.length === 0 && <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No closed trades yet.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No closed trades yet.</td></tr>}
         </tbody>
       </table>
     </div>
