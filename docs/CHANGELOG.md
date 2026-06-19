@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-19 - Watchlist directive filter + Sector Monitor setups fixes
+
+**Watchlist directive filter:** matched only `it.directive_id`, but trend/sector directives surface items
+via `watch_directive_hits` (by symbol), not by setting directive_id (only 78 of 3437 items carry one) —
+so any trend directive showed ~0 (AI datacenter: 1 instead of 5; archived 0-hit ones: 0). Fix: the
+`/api/v2/watch-directives` endpoint now returns per-directive `hit_symbols`; the filter matches
+directive_id OR symbol-in-hits. Directive card is now a toggle (click to clear). Empty state is
+directive-aware — names the directive, shows its surfaced count, and offers "Clear directive filter" so a
+0-hit directive can't dead-end the list.
+**Sector Monitor setups:** `sectors/monitor` required `wi.status='active'` — only 16 active items, so
+just 1 setup showed across all sectors. Broadened to `status IN ('active','researched')` (3421 researched)
+→ 56 candidates surfaced across 10 sectors (top 12, CIO-AVOID excluded, capped 8/sector). Advisory only.
+
 ## 2026-06-19 - LLM-health dashboard panel + hermes daily auto-commit
 
 **LLM-health on the dashboard:** the `/api/v2/llm-health` endpoint (was headless) is now surfaced on
