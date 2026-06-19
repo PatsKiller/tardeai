@@ -641,6 +641,87 @@ def analytics(cur):
     return a
 
 
+def lifecycle_performance(cur, limit=300):
+    """Auto-detected position lifecycle for REAL closed trades (trade_closed): origin
+    (watchlist / proposal / screener / research / directive ...) → purchase → sale (P&L · R · hold) →
+    journal. Joins rec_ticker_attribution (the discovery origin) + journal_trade_reviews (the review) to
+    each sold position by symbol / account / close-date — no manual tagging. Read-only, advisory."""
+    DOWNSTREAM = ('execution', 'holding', 'rotation')      # not discovery origins
+    SRC_LABEL = {"scan": "screener", "hermes_research": "research", "cio_decision": "cio"}
+    # earliest DISCOVERY origin per symbol
+    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), source_type, first_seen_at
+                   FROM rec_ticker_attribution WHERE source_type NOT IN %s
+                   ORDER BY upper(symbol), first_seen_at ASC""", (DOWNSTREAM,))
+    origin = {r[0]: r[1] for r in cur.fetchall()}
+    cur.execute("SELECT upper(symbol), bool_or(executed) FROM rec_ticker_attribution GROUP BY 1")
+    execd = {r[0]: r[1] for r in cur.fetchall()}
+    # journal reviews, grouped by symbol (matched to a trade by account + close-date below)
+    jrev = {}
+    cur.execute("""SELECT upper(symbol), account, closed_date, realized_r, lesson_learned, setup_family
+                   FROM journal_trade_reviews""")
+    for sym, acct, cdate, rr, lesson, fam in cur.fetchall():
+        jrev.setdefault(sym, []).append({"account": acct, "closed_date": cdate, "realized_r": rr,
+                                         "lesson": lesson, "setup_family": fam})
+    # spine: real closed (sold) trades
+    cur.execute("""SELECT id, upper(symbol), account, open_date, close_date, shares, buy_price, sell_price,
+                          pnl, pnl_pct, r_multiple, hold_days, setup, strategy_id
+                   FROM trade_closed ORDER BY close_date DESC NULLS LAST, id DESC LIMIT %s""", (limit,))
+    out = []
+    for (tid, sym, acct, od, cd, sh, bp, sp, pnl, pnlpct, rmult, hold, setup, strat) in cur.fetchall():
+        org = origin.get(sym)
+        jr, cd10 = None, str(cd)[:10] if cd else None
+        cands = jrev.get(sym, [])
+        if cands:
+            def _score(j):
+                s = 0
+                if acct and j["account"] == acct: s += 2
+                if cd10 and j["closed_date"] and str(j["closed_date"])[:10] == cd10: s += 3
+                return s
+            best = max(cands, key=_score)
+            jr = best if _score(best) > 0 else None
+        out.append({
+            "trade_id": tid, "symbol": sym, "account": acct,
+            "origin": SRC_LABEL.get(org, org), "origin_raw": org,
+            "executed_lineage": bool(execd.get(sym)),
+            "open_date": str(od) if od else None, "close_date": str(cd) if cd else None,
+            "shares": float(sh) if sh is not None else None,
+            "buy_price": float(bp) if bp is not None else None,
+            "sell_price": float(sp) if sp is not None else None,
+            "pnl": float(pnl) if pnl is not None else None,
+            "pnl_pct": float(pnlpct) if pnlpct is not None else None,
+            "r_multiple": float(rmult) if rmult is not None else None,
+            "hold_days": int(hold) if hold is not None else None,
+            "setup": setup, "strategy_id": strat, "journaled": jr is not None,
+            "journal": ({"realized_r": float(jr["realized_r"]) if jr.get("realized_r") is not None else None,
+                         "lesson": jr.get("lesson"), "setup_family": jr.get("setup_family")} if jr else None),
+        })
+    return out
+
+
+def symbol_outcomes(cur, limit=3000):
+    """Per-symbol purchase→sale outcome map (real closed trades), for flagging watchlist / proposal items
+    and enriching journal rows with their discovery origin. Read-only, advisory."""
+    by = {}
+    for r in lifecycle_performance(cur, limit=limit):
+        s = by.setdefault(r["symbol"], {"symbol": r["symbol"], "closed_trades": 0, "wins": 0,
+                                        "total_pnl": 0.0, "last_pnl_pct": None, "last_close": None,
+                                        "origin": r["origin"], "journaled": False})
+        s["closed_trades"] += 1
+        if (r["pnl"] or 0) > 0:
+            s["wins"] += 1
+        s["total_pnl"] += r["pnl"] or 0
+        if s["last_close"] is None or (r["close_date"] or "") > s["last_close"]:
+            s["last_close"], s["last_pnl_pct"] = r["close_date"], r["pnl_pct"]
+        if r["journaled"]:
+            s["journaled"] = True
+        if not s["origin"] and r["origin"]:
+            s["origin"] = r["origin"]
+    for s in by.values():
+        s["win_rate_pct"] = round(s["wins"] / s["closed_trades"] * 100, 1) if s["closed_trades"] else None
+        s["total_pnl"] = round(s["total_pnl"], 2)
+    return by
+
+
 def main():
     if "--analytics" in sys.argv:
         print(json.dumps(analytics(_get_conn().cursor()), indent=2, default=str))
