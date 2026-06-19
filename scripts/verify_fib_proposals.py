@@ -61,6 +61,13 @@ def _self_remove_cron():
 
 
 def main():
+    # Load .env so the Telegram token/chat resolve under cron (the bare cron env omits them) — fixes a
+    # silent "skipped, token not set" miss that would have lost the Monday result (2026-06-19).
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(str(Path(__file__).resolve().parent.parent / ".env"))
+    except Exception:
+        pass
     report = build_report()
     print(report)
     try:
