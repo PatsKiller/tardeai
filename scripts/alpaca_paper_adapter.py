@@ -219,6 +219,18 @@ class AlpacaPaperAdapter:
                     continue
 
             if cur.rowcount == 0:
+                # DEDUP GUARD (2026-06-18): only create an unknown_sync recovery for a TRUE orphan — a
+                # symbol with NO tracked row. If a pending/open/superseded row exists (or one closed in
+                # the last few days), this Alpaca position is already represented; creating unknown_sync
+                # here is what produced the phantom $0 duplicates. Skip it.
+                cur.execute("""SELECT 1 FROM paper_trades WHERE symbol=%s
+                                 AND (status IN ('open','pending','superseded_by_fill')
+                                      OR (status='closed' AND closed_at > NOW() - INTERVAL '3 days')) LIMIT 1""",
+                            [symbol])
+                if cur.fetchone():
+                    log.warning(f"[alpaca] {symbol} held at broker but already tracked — skipping unknown_sync duplicate")
+                    synced += 1
+                    continue
                 # Position exists in Alpaca but not in paper_trades — create a broker-confirmed
                 # record. (Creating here is correct: a position Alpaca holds but the system doesn't
                 # track is real — e.g. ANY, a position the system closed but the broker still held,
@@ -686,6 +698,17 @@ class AlpacaPaperAdapter:
             _prot_status = "PROTECTED_TRACKED" if stop_broker_id else (
                 "PROTECTED_UNRECORDED" if _stop_status in ("STOP_SUBMITTED_UNCONFIRMED", "STOP_BRACKET_CHILD") else "NAKED")
             _prot_defect = None if stop_broker_id else _stop_status
+            # ── ROOT-CAUSE DEDUP (2026-06-18): a proposal first creates a 'pending' placeholder row
+            # (paper_trade_logger.approve_proposal). This broker fill is the single canonical row, so
+            # supersede that placeholder instead of letting it become a duplicate $0/breakeven closed
+            # trade. Excluded from the journal (status not in open/closed); audit trail preserved.
+            if proposal_id:
+                cur.execute("""UPDATE paper_trades SET status='superseded_by_fill', lifecycle_state='superseded',
+                                 notes=COALESCE(notes,'')||' [superseded by broker fill '||COALESCE(%s,'')||']', updated_at=NOW()
+                               WHERE proposal_id=%s AND status IN ('pending','open')
+                                 AND opened_via='proposal_approved'""", [str(order_id or ''), proposal_id])
+                if cur.rowcount:
+                    log.info(f"[alpaca] {symbol}: superseded {cur.rowcount} proposal placeholder row(s) for proposal {proposal_id}")
             cur.execute("""
                 INSERT INTO paper_trades (proposal_id, strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, planned_stop, target_1, planned_entry, entry_price, dollar_risk,
