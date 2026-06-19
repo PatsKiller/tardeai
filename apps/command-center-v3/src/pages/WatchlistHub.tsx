@@ -91,11 +91,16 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fStatus, setFStatus] = useState('all')
   const [fRating, setFRating] = useState('all')
   const [fCio, setFCio] = useState('all')
+  const [fList, setFList] = useState('all')
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const PER_PAGE = 24
-  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, search])   // reset to page 1 on any filter change
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, search])   // reset to page 1 on any filter change
+  // named watch lists (directive labels) present across the items, for the List filter
+  const listOpts = useMemo(() => Array.from(new Set(
+    items.flatMap((i: any) => String(i.watch_lists || '').split(' · ').map(s => s.trim()).filter(Boolean))
+  )).sort(), [items])
 
   const runChatgptTop20 = async () => {
     if (curateRunning) return
@@ -130,10 +135,14 @@ export default function WatchlistHub({ onDrill }: Props) {
         else if (fCio === 'none') { if (cv) return false }
         else if (cv !== fCio) return false
       }
+      if (fList !== 'all') {
+        const lists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim())
+        if (fList === '__none' ? lists.filter(Boolean).length > 0 : !lists.includes(fList)) return false
+      }
       seen.add(it.symbol)
       return true
     })
-  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, search, paMap, advMap])
+  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -156,7 +165,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFKind('all'); setFDir('all'); setSearch('') } },
+          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setSearch('') } },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
           { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
           { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
@@ -185,6 +194,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>CIO view<select style={SEL} value={fCio} onChange={e => setFCio(e.target.value)}><option value="all">All</option><option value="buy_side">Buy-side (BUY/ADD/pullback)</option><option value="BUY">BUY</option><option value="STRONG_BUY">STRONG_BUY</option><option value="ADD">ADD</option><option value="ADD_ON_PULLBACK">ADD_ON_PULLBACK</option><option value="HOLD">HOLD</option><option value="RESEARCH_MORE">RESEARCH_MORE</option><option value="TRIM">TRIM</option><option value="avoid_side">Avoid-side (AVOID/IGNORE/SELL/TRIM)</option><option value="AVOID">AVOID</option><option value="IGNORE">IGNORE</option><option value="none">No CIO view</option></select></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>List<select style={SEL} value={fList} onChange={e => setFList(e.target.value)}><option value="all">All lists</option>{listOpts.map(l => <option key={l} value={l}>{l}</option>)}<option value="__none">— no list —</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Kind<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="directive">Directive-sourced</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{d.label}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Search<input style={SEL} value={search} onChange={e => setSearch(e.target.value)} placeholder="symbol" /></label>
@@ -263,6 +273,7 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
                     {fr && <Pill text={fr} color={BLUE} tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color={PURPLE} />}
+                    {it.watch_lists && String(it.watch_lists).split(' · ').filter(Boolean).map((l: string) => <Pill key={l} text={`☰ ${l}`} color="#22d3ee" tip="watch list — filter by it above" />)}
                     {it.in_portfolio && <Pill text="HELD" color="#ffa726" />}
                     {it.entry_urgency && <Pill text={`${it.entry_urgency === 'ready' ? 'READY' : it.entry_urgency === 'near_entry' ? 'NEAR-ENTRY' : 'planned'} · ${it.entry_setup} · lim ${money(it.entry_limit)}`} color={it.entry_urgency === 'ready' ? GREEN : it.entry_urgency === 'near_entry' ? AMBER : MUTED} strong />}
                     {llms.map((e: any, i: number) => { const m = llmMeta(e.lane); return <Pill key={`llm${i}`} text={`✦ ${m.label}`} color={m.color} tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} /> })}
