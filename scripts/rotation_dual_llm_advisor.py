@@ -89,6 +89,42 @@ def call_local_llm_captured(prompt: str, timeout: int) -> tuple[str, str]:
     return answer, buf.getvalue().strip()
 
 
+def build_trust_verdict(
+    *,
+    grounding: dict[str, Any],
+    local_validation: dict[str, Any],
+    answer_mode: str,
+    grok_oauth_prompt_path: Path,
+) -> dict[str, Any]:
+    """Machine-readable UI/API trust block for production advisory gating."""
+    no_action = bool(grounding.get("no_model_supported_action"))
+    local_ok = bool(local_validation.get("ok"))
+    validation_issues = list(local_validation.get("issues") or [])
+    return {
+        "final_authority": "grounded_rotation_engine",
+        "broker_action": "none",
+        "advisory_only": True,
+        "answer_mode": answer_mode,
+        "model_supported_action": not no_action,
+        "range_policy": "range_unavailable_when_no_supported_action" if no_action else "review_range_allowed_if_grounded",
+        "local_validation_ok": local_ok,
+        "local_validation_issue_count": len(validation_issues),
+        "local_validation_issues": validation_issues,
+        "grok_mode": "free_oauth_manual_prompt",
+        "grok_prompt_path": str(grok_oauth_prompt_path),
+        "grok_can_override_grounding": False,
+        "uses_api_key": False,
+        "uses_paid_xai_api": False,
+        "uses_direct_grok_http": False,
+        "production_gate": "PASS_ADVISORY_REVIEW" if (no_action or local_ok) else "PASS_GROUNDED_FALLBACK",
+        "operator_required": True,
+        "notes": [
+            "Final answer remains grounded when no supported add/trim/rotation action exists.",
+            "Local and Grok outputs are second opinions only; neither creates or authorizes broker action.",
+        ],
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--question", required=True)
@@ -157,12 +193,20 @@ def main() -> int:
         final_answer = grounded_answer
         answer_mode = "grounded_pending_grok_oauth_review"
 
+    trust_verdict = build_trust_verdict(
+        grounding=grounding,
+        local_validation=local_validation,
+        answer_mode=answer_mode,
+        grok_oauth_prompt_path=grok_oauth_prompt_path,
+    )
+
     result: dict[str, Any] = {
         "ok": True,
         "advisory_only": True,
         "backend": "local_plus_grok_oauth_prompt",
         "answer_mode": answer_mode,
         "answer": final_answer,
+        "trust_verdict": trust_verdict,
         "prompt_path": str(prompt_path),
         "grok_oauth_prompt_path": str(grok_oauth_prompt_path),
         "grok_oauth_instructions": "Open Grok with free/OAuth login, paste the grok_oauth_prompt_path content, and compare Grok's response to the grounded answer. No API key or paid API call is used.",
