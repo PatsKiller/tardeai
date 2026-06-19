@@ -5,13 +5,15 @@ import { useApi } from '../hooks/useApi'
 // a manual-submit form (maps to a manual proposal + strategy in the unified queue) and a proposals list
 // with a Submit action — Schwab routes via gated 2FA (prepared, no live order yet), Fidelity is
 // record-only (no trading API; execute at the broker).
-const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa'
+const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa', RED = '#ef4444'
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
 const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, padding: '6px 13px', borderRadius: 7, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
 
 export default function BrokerProposals() {
   const { data, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
+  const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold history per symbol
+  const outMap: Record<string, any> = outcomesData?.outcomes ?? {}
   const accounts: any[] = data?.accounts ?? []
   const strategies: string[] = data?.strategies ?? []
   const proposals: any[] = data?.proposals ?? []
@@ -93,6 +95,11 @@ export default function BrokerProposals() {
           return <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 9, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.18)' }}>
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>{p.symbol}</span>
+            {(() => { const o = outMap[String(p.symbol).toUpperCase()]; if (!o) return null
+              const up = (o.last_pnl_pct ?? 0) >= 0
+              return <span title={`prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ''}`}
+                style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: `${up ? GREEN : RED}1f`, color: up ? GREEN : RED }}>
+                ✓ sold {up ? '+' : ''}{o.last_pnl_pct ?? '?'}%{o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}{o.journaled ? ' 📓' : ''}</span> })()}
             <span style={{ fontSize: 10.5, color: MUTED }}>{p.strategy_id} · {p.account}</span>
             <span style={{ fontSize: 10.5, color: TEXT1 }}>{p.proposed_shares} sh @ ${Number(p.proposed_entry).toFixed(2)} · stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}{p.proposed_rr ? ` · R:R ${Number(p.proposed_rr).toFixed(1)}` : ''}</span>
             <span style={{ fontSize: 9, color: MUTED }}>{p.origin} · {p.routing_state}</span>

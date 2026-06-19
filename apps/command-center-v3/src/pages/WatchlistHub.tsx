@@ -65,6 +65,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: ext, refetch: refetchExt } = useApi<any>('/api/v2/hermes/external-intel-map', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold outcomes (real closed trades)
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const paMap = useProAnalystMap()
 
@@ -81,6 +82,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const cautionN = advisories.filter(a => a.advisory_flag === 'caution').length
   const favorableN = advisories.filter(a => a.advisory_flag === 'favorable').length
   const byStatus = summary?.by_status ?? {}
+  const outMap: Record<string, any> = outcomesData?.outcomes ?? {}   // symbol → purchased→sold outcome
   const directives: any[] = wd?.directives ?? []
   const sectorTrendDirs = directives.filter(d => d.kind === 'sector' || d.kind === 'trend')
 
@@ -301,6 +303,10 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
                     {fr && <Pill text={fr} color={BLUE} tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color={PURPLE} />}
+                    {(() => { const o = outMap[String(it.symbol).toUpperCase()]; if (!o) return null
+                      const up = (o.last_pnl_pct ?? 0) >= 0
+                      return <Pill text={`✓ purchased→sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`} color={up ? GREEN : RED}
+                        tip={`real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ' · not yet journaled'}`} /> })()}
                     {it.watch_lists && String(it.watch_lists).split(' · ').filter(Boolean).map((l: string) => <Pill key={l} text={`☰ ${l}`} color="#22d3ee" tip="watch list — filter by it above" />)}
                     {it.in_portfolio && <Pill text="HELD" color="#ffa726" />}
                     {it.entry_urgency && <Pill text={`${it.entry_urgency === 'ready' ? 'READY' : it.entry_urgency === 'near_entry' ? 'NEAR-ENTRY' : 'planned'} · ${it.entry_setup} · lim ${money(it.entry_limit)}`} color={it.entry_urgency === 'ready' ? GREEN : it.entry_urgency === 'near_entry' ? AMBER : MUTED} strong />}
