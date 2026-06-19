@@ -16251,9 +16251,15 @@ def _watch_directives(query=None):
                         ORDER BY h.surfaced_at DESC LIMIT 40""") or []
     # Per-directive surfaced symbols (fix 2026-06-19): trend/sector directives link items via hits, NOT
     # by setting directive_id on the item — so the Watchlist directive filter must match on these symbols.
-    _hs = _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms
+    _hs = _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms,
+                              count(*) hit_count,
+                              count(*) FILTER (WHERE promotion_status='STAGED_FOR_REVIEW') staged_count
                        FROM watch_directive_hits GROUP BY directive_id""") or []
     _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
+    # Per-directive TOTAL counts (fix 2026-06-19): the chip count must come from here, NOT from the global
+    # recent_hits feed below — that feed is LIMIT 40 (most-recent activity), so older/ticker-tag hits fall
+    # out of the window and the chip wrongly shows "0 hits" for a directive that did surface symbols.
+    _hit_cnt = {r["directive_id"]: (r["hit_count"], r["staged_count"]) for r in _hs}
     staging = _db_query("SELECT count(*) c, count(*) FILTER (WHERE NOT drained) undrained FROM hermes_directive_hits_staging", fetch="one") or {}
     promoted = _db_query("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
     health = {}
@@ -16278,7 +16284,9 @@ def _watch_directives(query=None):
                             "symbol": (r.get("spec") or {}).get("symbol"),
                             "gap_type": (r.get("spec") or {}).get("gap_type"),
                             "sleeve": (r.get("spec") or {}).get("sleeve"),
-                            "hit_symbols": _hit_sym_map.get(r["id"], [])} for r in directives],
+                            "hit_symbols": _hit_sym_map.get(r["id"], []),
+                            "hit_count": _hit_cnt.get(r["id"], (0, 0))[0],
+                            "staged_count": _hit_cnt.get(r["id"], (0, 0))[1]} for r in directives],
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
             "promoted_to_watchlist": promoted.get("c"), "health": health}
