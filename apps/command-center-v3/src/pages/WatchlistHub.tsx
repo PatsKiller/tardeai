@@ -113,6 +113,10 @@ export default function WatchlistHub({ onDrill }: Props) {
   const visible = useMemo(() => {
     const seen = new Set<string>()
     const q = search.trim().toUpperCase()
+    // Directive filter: a ticker directive links items by directive_id, but a trend/sector directive
+    // surfaces them via hits (by symbol). Match on EITHER (fix 2026-06-19 — trend filter showed 0).
+    const selDir = fDir !== 'all' ? directives.find(d => String(d.id) === fDir) : null
+    const selDirSyms = new Set<string>((selDir?.hit_symbols ?? []).map((s: string) => String(s).toUpperCase()))
     return items.filter(it => {
       if (seen.has(it.symbol)) return false
       // Search is a DIRECT symbol lookup — it bypasses the other filters so a specific ticker is always
@@ -124,7 +128,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         else if (it.origin_system !== fOrigin) return false
       }
       if (fKind === 'directive' && !it.directive_id) return false
-      if (fDir !== 'all' && String(it.directive_id) !== fDir) return false
+      if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(String(it.symbol).toUpperCase())) return false
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
@@ -142,7 +146,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       seen.add(it.symbol)
       return true
     })
-  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap])
+  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap, directives])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -183,7 +187,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       {directives.length > 0 && (
         <div style={{ ...panel, marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 900, color: TEXT0, marginBottom: 8 }}>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{directives.map(d => { const dhits = (wd?.recent_hits ?? []).filter((h: any) => h.directive_id === d.id); return <div key={d.id} onClick={() => setFDir(String(d.id))} title="filter list to this directive" style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{d.label}</span><Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{dhits.length} hits · {dhits.filter((h: any) => h.promotion_status === 'STAGED_FOR_REVIEW').length} staged</div></div> })}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{directives.map(d => { const dhits = (wd?.recent_hits ?? []).filter((h: any) => h.directive_id === d.id); return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{d.label}</span><Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{dhits.length} hits · {dhits.filter((h: any) => h.promotion_status === 'STAGED_FOR_REVIEW').length} staged</div></div> })}</div>
           {sectorTrendDirs.length === 0 && <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>No sector/trend directives yet — use “+ Add Watch”.</div>}
         </div>
       )}

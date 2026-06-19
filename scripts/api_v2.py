@@ -16249,6 +16249,11 @@ def _watch_directives(query=None):
     hits = _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
                         h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
                         ORDER BY h.surfaced_at DESC LIMIT 40""") or []
+    # Per-directive surfaced symbols (fix 2026-06-19): trend/sector directives link items via hits, NOT
+    # by setting directive_id on the item — so the Watchlist directive filter must match on these symbols.
+    _hs = _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms
+                       FROM watch_directive_hits GROUP BY directive_id""") or []
+    _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
     staging = _db_query("SELECT count(*) c, count(*) FILTER (WHERE NOT drained) undrained FROM hermes_directive_hits_staging", fetch="one") or {}
     promoted = _db_query("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
     health = {}
@@ -16272,7 +16277,8 @@ def _watch_directives(query=None):
             "directives": [{**{k: _json_clean(v) for k, v in r.items()},
                             "symbol": (r.get("spec") or {}).get("symbol"),
                             "gap_type": (r.get("spec") or {}).get("gap_type"),
-                            "sleeve": (r.get("spec") or {}).get("sleeve")} for r in directives],
+                            "sleeve": (r.get("spec") or {}).get("sleeve"),
+                            "hit_symbols": _hit_sym_map.get(r["id"], [])} for r in directives],
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
             "promoted_to_watchlist": promoted.get("c"), "health": health}
