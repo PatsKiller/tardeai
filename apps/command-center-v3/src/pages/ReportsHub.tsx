@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
-// v3 Reports — a NEWS READER for everything sent to the operator (Telegram / email / SIEM): morning
-// briefs, digests, alerts, advisories, recovery, dividends, regime, paper, system. Tabbed; each item is
-// a fully readable, formatted article (Telegram markdown rendered) — scroll and read, not a dump.
-// Source: /api/v2/reports/* (read-only). Search · date filter · pagination · purge.
+// v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
+// digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
+// action queue + advanced filters/quick-views + split-pane reader. Every report body stays fully readable
+// (Telegram/markdown rendered). Source: /api/v2/reports/* (read-only). Search · filter · paginate · purge.
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -85,113 +85,318 @@ function Article({ text }: { text: string }) {
   )
 }
 
+// ── small visual primitives ──────────────────────────────────────────────────────────────────────────
+function SeverityBadge({ sev }: { sev?: string }) {
+  const c = sevColor(sev)
+  return <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: c + '22', color: c, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{sev || 'info'}</span>
+}
+
+const CLASS_LABEL: Record<string, string> = {
+  stop_triggered: 'Stop triggered', unprotected_position: 'Unprotected', risk_review: 'Risk',
+  approval_needed: 'Approval', broker_manual: 'Broker manual', portfolio_review: 'Portfolio',
+  research_needed: 'Research', hermes_review: 'Hermes', system_health: 'System',
+  cron_or_backup: 'Cron/Backup', llm_review: 'LLM', informational: 'Info',
+}
+const CLASS_COLOR: Record<string, string> = {
+  stop_triggered: '#ef4444', unprotected_position: '#ef4444', risk_review: '#f59e0b',
+  approval_needed: '#a855f7', broker_manual: '#a855f7', portfolio_review: '#eab308',
+  research_needed: '#14b8a6', hermes_review: '#14b8a6', system_health: '#60a5fa',
+  cron_or_backup: '#60a5fa', llm_review: '#60a5fa', informational: 'var(--text3)',
+}
+function ActionPill({ cls }: { cls: string }) {
+  const c = CLASS_COLOR[cls] || '#60a5fa'
+  return <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: c + '1c', color: c, whiteSpace: 'nowrap' }}>{CLASS_LABEL[cls] || cls}</span>
+}
+
+function MiniBarChart({ rows, color }: { rows: { label: string; value: number; color?: string }[]; color?: string }) {
+  const max = Math.max(1, ...rows.map(r => r.value))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: 10, color: 'var(--text2)', width: 78, flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
+          <div style={{ flex: 1, height: 9, background: 'var(--bg2)', borderRadius: 5, overflow: 'hidden' }}>
+            <div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: r.color || color || '#60a5fa', borderRadius: 5 }} />
+          </div>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', width: 30, textAlign: 'right' }}>{r.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── quick views: predicate over a list item + matching action classes / severities ────────────────────
+const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
+const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
+type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
+const QUICK_VIEWS: { key: QV; label: string }[] = [
+  { key: '', label: 'All' }, { key: 'today', label: 'Today' }, { key: 'needs_action', label: 'Needs action' },
+  { key: 'risk', label: 'Risk / Stops' }, { key: 'approvals', label: 'Approvals' }, { key: 'hermes', label: 'Hermes' },
+  { key: 'system', label: 'System' }, { key: 'critical', label: 'Critical' },
+]
+const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
+function qvMatchesItem(qv: QV, it: any): boolean {
+  const cls: string[] = it.action_classes || []
+  switch (qv) {
+    case '': return true
+    case 'today': return isToday(it.created_at)
+    case 'needs_action': return !!it.has_actions
+    case 'risk': return cls.some(c => RISK_CLASSES.includes(c))
+    case 'approvals': return cls.includes('approval_needed') || cls.includes('broker_manual')
+    case 'hermes': return cls.includes('hermes_review')
+    case 'system': return cls.some(c => SYSTEM_CLASSES.includes(c))
+    case 'critical': return ['urgent', 'critical'].includes((it.severity || '').toLowerCase())
+    default: return true
+  }
+}
+function qvMatchesAction(qv: QV, a: any): boolean {
+  switch (qv) {
+    case '': return true
+    case 'today': return isToday(a.created_at)
+    case 'needs_action': return true
+    case 'risk': return RISK_CLASSES.includes(a.action_class)
+    case 'approvals': return ['approval_needed', 'broker_manual'].includes(a.action_class)
+    case 'hermes': return a.action_class === 'hermes_review'
+    case 'system': return SYSTEM_CLASSES.includes(a.action_class)
+    case 'critical': return ['urgent', 'critical'].includes((a.severity || '').toLowerCase())
+    default: return true
+  }
+}
+
+function Kpi({ label, value, color, active, onClick }: { label: string; value: number | string; color?: string; active?: boolean; onClick?: () => void }) {
+  return (
+    <div onClick={onClick} style={{ ...card, padding: '11px 13px', cursor: onClick ? 'pointer' : 'default', borderColor: active ? (color || '#60a5fa') : 'var(--border)', background: active ? (color || '#60a5fa') + '12' : 'var(--bg1)' }}>
+      <div style={{ fontSize: 22, fontWeight: 900, color: color || 'var(--text0)', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, textTransform: 'uppercase', letterSpacing: .3, fontWeight: 700 }}>{label}</div>
+    </div>
+  )
+}
+
 export default function ReportsHub({ onDrill }: Props) {
+  void onDrill
   const { data: cats } = useApi<any>('/api/v2/reports/categories', 60_000)
   const categories = cats?.categories || []
   const [active, setActive] = useState<string>('morning_briefs')
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
-  const [days, setDays] = useState<number | ''>('')
+  const [days, setDays] = useState<number | ''>(7)
+  const [qv, setQv] = useState<QV>('')
   const [purge, setPurge] = useState(false)
-  const [open, setOpen] = useState<Record<string, boolean>>({})   // collapsed long articles
+  const [selId, setSelId] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => { const t = setTimeout(() => { setQ(qInput); setPage(1) }, 350); return () => clearTimeout(t) }, [qInput])
-  useEffect(() => { setPage(1); setOpen({}) }, [active, days, q])
+  useEffect(() => { setPage(1) }, [active, days, q])
+  useEffect(() => { setSelId(null); setExpanded(false) }, [active, days, q, page])
 
+  const effDays = qv === 'today' ? 1 : days
+  const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`
+  const { data: summary } = useApi<any>(summaryPath, 0)
+  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=120`
+  const { data: actionsData } = useApi<any>(actionsPath, 0)
   const listPath = useMemo(() =>
-    `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${days ? `&days=${days}` : ''}`,
-    [active, q, page, days])
+    `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}`,
+    [active, q, page, effDays])
   const { data: list, loading } = useApi<any>(listPath, 0)
-  const items = list?.items || []
+
+  const rawItems = list?.items || []
+  const items = useMemo(() => rawItems.filter((it: any) => qvMatchesItem(qv, it)), [rawItems, qv])
   const total = list?.total ?? 0
   const pages = list?.pages ?? 1
   const activeCat = categories.find((c: any) => c.key === active)
 
+  // auto-select first result when nothing selected
+  const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
+  const allActions = (actionsData?.actions || []).filter((a: any) => qvMatchesAction(qv, a))
+
+  const k = summary?.kpis || {}
+  const sevRows = Object.entries(summary?.by_severity || {}).map(([label, value]: any) => ({ label, value, color: sevColor(label) }))
+    .sort((a: any, b: any) => b.value - a.value)
+  const catRows = (summary?.by_category || []).slice(0, 7).map((c: any) => ({ label: c.label, value: c.count }))
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 980, margin: '0 auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1480, margin: '0 auto' }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>Reports</h1>
-        <span style={{ fontSize: 12, color: 'var(--text3)' }}>your briefs, alerts & advisories — full, readable, in one place</span>
+        <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>Reports Command Portal</h1>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>operator reports, actions, briefings, alerts, and advisories</span>
         <span style={{ flex: 1 }} />
-        <button onClick={() => setPurge(true)} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #ef444455', background: '#ef444412', color: '#f87171', cursor: 'pointer' }}>🗑 Purge old…</button>
+        <button onClick={() => setPurge(true)} style={{ fontSize: 10.5, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Retention / purge old reports</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {/* KPI grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        <Kpi label={`Reports ${effDays || 7}d`} value={k.total ?? '—'} />
+        <Kpi label="Critical / Urgent" value={k.critical_urgent ?? '—'} color="#ef4444" active={qv === 'critical'} onClick={() => setQv(qv === 'critical' ? '' : 'critical')} />
+        <Kpi label="Open actions" value={k.open_actions ?? '—'} color="#a855f7" active={qv === 'needs_action'} onClick={() => setQv(qv === 'needs_action' ? '' : 'needs_action')} />
+        <Kpi label="Risk / Stop" value={k.risk_stop ?? '—'} color="#f59e0b" active={qv === 'risk'} onClick={() => setQv(qv === 'risk' ? '' : 'risk')} />
+        <Kpi label="Approvals" value={k.approvals ?? '—'} color="#a855f7" active={qv === 'approvals'} onClick={() => setQv(qv === 'approvals' ? '' : 'approvals')} />
+        <Kpi label="System / Hermes" value={k.system_hermes ?? '—'} color="#60a5fa" active={qv === 'system'} onClick={() => setQv(qv === 'system' ? '' : 'system')} />
+      </div>
+
+      {/* Quick views */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase' }}>Quick views</span>
+        {QUICK_VIEWS.map(v => {
+          const on = qv === v.key
+          return <button key={v.key || 'all'} onClick={() => setQv(v.key)} style={{ fontSize: 11, fontWeight: on ? 800 : 600, padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? '#a855f7' : 'var(--border)'}`, background: on ? 'rgba(168,85,247,.12)' : 'var(--bg1)', color: on ? '#d8b4fe' : 'var(--text2)' }}>{v.label}</button>
+        })}
+      </div>
+
+      {/* Category chips — compact, scrollable */}
+      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
         {categories.map((c: any) => {
           const on = c.key === active
           return (
             <button key={c.key} onClick={() => setActive(c.key)} style={{
-              fontSize: 12, fontWeight: on ? 800 : 600, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+              fontSize: 11.5, fontWeight: on ? 800 : 600, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               border: `1px solid ${on ? '#60a5fa' : 'var(--border)'}`, background: on ? 'rgba(96,165,250,.10)' : 'var(--bg1)',
-              color: on ? '#60a5fa' : 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6,
+              color: on ? '#60a5fa' : 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5,
             }}>
               <span>{c.icon}</span>{c.label}
-              <span style={{ fontSize: 10, fontWeight: 800, padding: '0 6px', borderRadius: 8, background: on ? '#60a5fa22' : 'var(--bg2)', color: on ? '#60a5fa' : 'var(--text3)' }}>{c.count}</span>
+              <span style={{ fontSize: 9.5, fontWeight: 800, padding: '0 5px', borderRadius: 7, background: on ? '#60a5fa22' : 'var(--bg2)', color: on ? '#60a5fa' : 'var(--text3)' }}>{c.count}</span>
             </button>
           )
         })}
       </div>
 
-      <div style={{ ...card, padding: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 5 }}>
-        <input value={qInput} onChange={e => setQInput(e.target.value)} placeholder={`Search ${activeCat?.label || ''}…`}
-          style={{ flex: 1, minWidth: 200, fontSize: 12, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }} />
-        <div style={{ display: 'flex', gap: 4 }}>
-          {([['', 'All'], [7, '7d'], [30, '30d'], [90, '90d']] as any).map(([v, l]: any) => (
-            <button key={l} onClick={() => setDays(v)} style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 5, cursor: 'pointer',
-              border: `1px solid ${days === v ? '#60a5fa' : 'var(--border)'}`, background: days === v ? 'rgba(96,165,250,.10)' : 'transparent', color: days === v ? '#60a5fa' : 'var(--text3)' }}>{l}</button>
-          ))}
-        </div>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{total} {activeCat?.label?.toLowerCase()}</span>
-      </div>
+      {/* Three-pane body */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-      {/* Article feed — full readable items */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {loading && items.length === 0 && <div style={{ ...card, padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>loading…</div>}
-        {!loading && items.length === 0 && <div style={{ ...card, padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>no reports here {q ? `matching “${q}”` : ''}</div>}
-        {items.map((it: any) => {
-          const id = `${it.source}-${it.id}`
-          const body = it.summary || ''
-          const long = body.length > 1100
-          const expanded = open[id]
-          // cut the preview at a LINE boundary so a link/word is never truncated mid-token (e.g. "reco")
-          const cut = long ? (body.lastIndexOf('\n', 1100) > 400 ? body.lastIndexOf('\n', 1100) : 1100) : body.length
-          const shown = long && !expanded ? body.slice(0, cut) : body
-          return (
-            <article key={id} style={{ ...card, borderTop: `3px solid ${sevColor(it.severity)}`, padding: '16px 20px' }}>
-              <header style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border-subtle)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text0)', lineHeight: 1.3 }}>{it.title}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <span>{fmtDate(it.created_at)}</span>
-                    <span>· {it.channel}</span>
-                    <span>· {it.type}</span>
-                    {it.symbol && <span style={{ fontWeight: 800, color: '#60a5fa' }}>· {it.symbol}</span>}
+        {/* LEFT — filters + list */}
+        <div style={{ flex: '1 1 340px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...card, padding: 9, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={qInput} onChange={e => setQInput(e.target.value)} placeholder={`Search ${activeCat?.label || ''}…`}
+              style={{ flex: 1, minWidth: 140, fontSize: 12, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }} />
+            <div style={{ display: 'flex', gap: 3 }}>
+              {([['', 'All'], [1, '1d'], [7, '7d'], [30, '30d'], [90, '90d']] as any).map(([v, l]: any) => (
+                <button key={l} onClick={() => setDays(v)} style={{ fontSize: 10, fontWeight: 700, padding: '5px 7px', borderRadius: 5, cursor: 'pointer',
+                  border: `1px solid ${days === v ? '#60a5fa' : 'var(--border)'}`, background: days === v ? 'rgba(96,165,250,.10)' : 'transparent', color: days === v ? '#60a5fa' : 'var(--text3)' }}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--text3)', padding: '0 2px', display: 'flex', justifyContent: 'space-between' }}>
+            <span>{items.length} shown{total > items.length ? ` · ${total} total` : ''}{qv ? ` · ${QUICK_VIEWS.find(v => v.key === qv)?.label}` : ''}</span>
+            {qv ? <span onClick={() => setQv('')} style={{ color: '#a855f7', cursor: 'pointer', fontWeight: 700 }}>clear quick view</span> : null}
+          </div>
+
+          {loading && rawItems.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>loading…</div>}
+          {!loading && items.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>no reports here{q ? ` matching “${q}”` : ''}{qv ? ` · ${QUICK_VIEWS.find(v => v.key === qv)?.label}` : ''}</div>}
+
+          {items.map((it: any) => {
+            const id = `${it.source}-${it.id}`
+            const on = selected && `${selected.source}-${selected.id}` === id
+            return (
+              <div key={id} onClick={() => setSelId(id)} style={{ ...card, borderLeft: `3px solid ${sevColor(it.severity)}`, padding: '10px 12px', cursor: 'pointer', outline: on ? '1px solid #60a5fa' : 'none', background: on ? 'rgba(96,165,250,.06)' : 'var(--bg1)' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginBottom: 4 }}>{it.title}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span>{fmtDate(it.created_at)}</span><span>· {it.channel}</span>
+                  {(it.symbols || []).slice(0, 3).map((s: string) => <span key={s} style={{ fontWeight: 800, color: '#60a5fa' }}>{s}</span>)}
+                </div>
+                {(it.has_actions || (it.action_classes || []).length > 0) && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--text2)' }}>{it.action_count} action{it.action_count === 1 ? '' : 's'}</span>
+                    {(it.action_classes || []).slice(0, 3).map((c: string) => <ActionPill key={c} cls={c} />)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {pages > 1 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', margin: '4px 0' }}>
+              <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page <= 1 ? 'var(--text3)' : 'var(--text1)', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>← Newer</button>
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>page {page} of {pages}</span>
+              <button disabled={page >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page >= pages ? 'var(--text3)' : 'var(--text1)', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Older →</button>
+            </div>
+          )}
+        </div>
+
+        {/* CENTER — reader */}
+        <div style={{ flex: '1 1 440px', minWidth: 340 }}>
+          {!selected ? (
+            <div style={{ ...card, padding: 36, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>select a report to read it here</div>
+          ) : (() => {
+            const body = selected.summary || ''
+            const long = body.length > 1400
+            const cut = long ? (body.lastIndexOf('\n', 1400) > 600 ? body.lastIndexOf('\n', 1400) : 1400) : body.length
+            const shown = long && !expanded ? body.slice(0, cut) : body
+            return (
+              <article style={{ ...card, borderTop: `3px solid ${sevColor(selected.severity)}`, padding: '16px 20px' }}>
+                <header style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text0)', lineHeight: 1.3 }}>{selected.title}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <span>{fmtDate(selected.created_at)}</span><span>· {selected.channel}</span><span>· {selected.type}</span>
+                      {selected.symbol && <span style={{ fontWeight: 800, color: '#60a5fa' }}>· {selected.symbol}</span>}
+                    </div>
+                  </div>
+                  <SeverityBadge sev={selected.severity} />
+                </header>
+                <Article text={shown} />
+                {long && <button onClick={() => setExpanded(e => !e)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>{expanded ? '▲ show less' : '▼ read full report'}</button>}
+                {(selected.actions || []).length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
+                    {selected.actions.map((a: any, i: number) => (
+                      <a key={i} href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} ↗</a>
+                    ))}
+                  </div>
+                )}
+              </article>
+            )
+          })()}
+        </div>
+
+        {/* RIGHT — action queue + symbols + bars */}
+        <div style={{ flex: '1 1 240px', minWidth: 230, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...card, padding: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Action Queue</span><span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700 }}>{allActions.length}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+              {allActions.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no open actions in this view</div>}
+              {allActions.slice(0, 40).map((a: any) => (
+                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '7px 8px', borderRadius: 7, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
+                  <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ActionPill cls={a.action_class} />
+                    {a.symbol && <span style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa' }}>{a.symbol}</span>}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{a.text}</div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <a href={FQDN + a.route} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{a.route_label} ↗</a>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
                   </div>
                 </div>
-                <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: sevColor(it.severity) + '22', color: sevColor(it.severity), textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{it.severity}</span>
-              </header>
-              <Article text={shown} />
-              {long && <button onClick={() => setOpen(o => ({ ...o, [id]: !o[id] }))} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>{expanded ? '▲ show less' : '▼ read full report'}</button>}
-              {(it.actions || []).length > 0 && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-                  {it.actions.map((a: any, i: number) => (
-                    <a key={i} href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} ↗</a>
-                  ))}
-                </div>
-              )}
-            </article>
-          )
-        })}
-      </div>
+              ))}
+            </div>
+          </div>
 
-      {pages > 1 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', margin: '6px 0 20px' }}>
-          <button disabled={page <= 1} onClick={() => { setPage(p => Math.max(1, p - 1)); window.scrollTo(0, 0) }} style={{ fontSize: 11, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page <= 1 ? 'var(--text3)' : 'var(--text1)', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>← Newer</button>
-          <span style={{ fontSize: 11, color: 'var(--text3)' }}>page {page} of {pages}</span>
-          <button disabled={page >= pages} onClick={() => { setPage(p => Math.min(pages, p + 1)); window.scrollTo(0, 0) }} style={{ fontSize: 11, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page >= pages ? 'var(--text3)' : 'var(--text1)', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Older →</button>
+          {(summary?.top_symbols || []).length > 0 && (
+            <div style={{ ...card, padding: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Top symbols</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {summary.top_symbols.slice(0, 10).map((s: any) => (
+                  <span key={s.symbol} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'var(--bg2)', color: '#60a5fa' }}>{s.symbol} <span style={{ color: 'var(--text3)', fontWeight: 600 }}>{s.count}</span></span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sevRows.length > 0 && (
+            <div style={{ ...card, padding: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Severity</div>
+              <MiniBarChart rows={sevRows} />
+            </div>
+          )}
+          {catRows.length > 0 && (
+            <div style={{ ...card, padding: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Top categories</div>
+              <MiniBarChart rows={catRows} color="#60a5fa" />
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {purge && <PurgeModal category={active} categoryLabel={activeCat?.label || ''} onClose={() => setPurge(false)} />}
     </div>

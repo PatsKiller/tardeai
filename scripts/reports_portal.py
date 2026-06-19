@@ -113,6 +113,131 @@ def _action_links(text: str) -> list[dict]:
     return out
 
 
+# ── Deterministic action extraction (NO LLMs) ───────────────────────────────────────────────────────
+# Maps a report's text → operator action items, each routed to a REAL v3 page. Rules are ordered by
+# priority (most urgent first); a report can emit several distinct classes.
+import re as _re
+
+_ACT_TICKER = _re.compile(r"\b([A-Z]{2,5})\b")
+_ACT_STOP = {"A", "I", "AM", "PM", "ET", "EST", "EDT", "US", "USD", "CEO", "CFO", "ETF", "IRA", "LLM",
+             "AI", "API", "EOD", "RSI", "ATR", "PNL", "TODO", "FYI", "OK", "NEW", "ALL", "ANY", "TBD",
+             "GO", "WAIT", "BUY", "SELL", "HOLD", "RISK", "STOP", "HIGH", "LOW", "DAY", "WEEK", "NOTE",
+             "NA", "GROK", "CIO", "EPS", "YOY", "QOQ", "ROI", "VIX", "SPY", "QQQ", "THE", "AND", "FOR",
+             "WITH", "FROM", "THIS", "THAT", "WILL", "HAS", "ADD", "TRIM", "SAME"}
+
+# action_class → (v3 route, label)
+_ACT_ROUTE = {
+    "stop_triggered": ("/v3/risk", "Risk"),
+    "unprotected_position": ("/v3/risk", "Risk"),
+    "risk_review": ("/v3/risk", "Risk"),
+    "approval_needed": ("/v3/trading", "Trading"),
+    "broker_manual": ("/v3/trading", "Trading"),
+    "portfolio_review": ("/v3/portfolio", "Portfolio"),
+    "research_needed": ("/v3/intelligence", "Intelligence"),
+    "hermes_review": ("/v3/hermes", "Hermes"),
+    "system_health": ("/v3/system", "System"),
+    "cron_or_backup": ("/v3/system", "System"),
+    "llm_review": ("/v3/system", "System"),
+    "informational": ("/v3/reports", "Reports"),
+}
+
+# ordered (action_class, base_severity, regex) — earlier = higher priority
+_ACT_RULES = [
+    ("stop_triggered", "urgent", _re.compile(r"\bstops?\s+(?:were\s+)?(?:triggered|hit|fired|executed|filled)\b|\btriggered\s+(?:a\s+)?stop\b|\bstop[\s-]?out\b", _re.I)),
+    ("unprotected_position", "urgent", _re.compile(r"\bunprotected\b|\bnaked\s+(?:stop|position)\b|\bno\s+(?:protective\s+)?stop\b|\bmissing\s+(?:protective\s+)?stop\b|\bwithout\s+a\s+stop\b", _re.I)),
+    ("approval_needed", "warning", _re.compile(r"\bapprov(?:e|al|als|ed)\b|\breview\s+queue\b|\bawaiting\s+(?:your\s+)?(?:approval|review|sign-?off)\b|\bpending\s+approval\b|\bone[\s-]?tap\b|\bneeds?\s+(?:your\s+)?(?:approval|sign-?off)\b", _re.I)),
+    ("risk_review", "warning", _re.compile(r"\bprotective\s+stop\b|\bstop[\s-]?loss\b|\brisk\s+review\b|\bdrawdown\b|\bbreach(?:ed|es)?\b|\bstop\s+health\b|\bat\s+risk\b", _re.I)),
+    ("hermes_review", "info", _re.compile(r"\bhermes\b|\bbacklog\b|\blibrarian\b|\bembedding\s+promotion\b|\bchallenger\b", _re.I)),
+    ("cron_or_backup", "warning", _re.compile(r"\bbackup\b|\bcron\b|\bsnapshot\b|\bretention\b", _re.I)),
+    ("system_health", "warning", _re.compile(r"\bsystem\s+health\b|\bhealth\s+check\b|\b(?:failed|failure|blocked|degraded|unhealthy|depleted|warmup\s+failed|stale\s+data)\b", _re.I)),
+    ("llm_review", "info", _re.compile(r"\bLLM\b|\bgemma\b|\bgrok\b|\barbitration\b|\bmodel\s+(?:failed|warmup|coverage|disagree)\b", _re.I)),
+    ("broker_manual", "warning", _re.compile(r"\bmanual\s+(?:execution|order|ticket)\b|\bplace\s+(?:the\s+)?order\b|\bbroker\s+ticket\b|\bToS\s+desk\b|\bSchwab\s+ticket\b", _re.I)),
+    ("portfolio_review", "info", _re.compile(r"\brebalanc\w*\b|\bdividend\b|\ballocation\b|\bdrift\b|\bregime\s+change\b|\blook[\s-]?through\b", _re.I)),
+    ("research_needed", "info", _re.compile(r"\bresearch\b|\bintel\b|\binvestigat\w*\b|\bdue\s+diligence\b|\bcatalyst\b", _re.I)),
+]
+_RISK_CLASSES = {"stop_triggered", "unprotected_position", "risk_review"}
+_SEV_RANK = {"urgent": 3, "critical": 3, "warning": 2, "info": 1}
+
+
+def _is_ticker(s) -> bool:
+    return bool(s) and bool(_re.fullmatch(r"[A-Z]{1,5}", str(s).strip())) and str(s).strip() not in _ACT_STOP
+
+
+def _symbol_near(line: str) -> str | None:
+    """A ticker-like token on the matched line (for risk/stop lines lacking an explicit symbol)."""
+    for m in _ACT_TICKER.finditer(line or ""):
+        tok = m.group(1)
+        if tok not in _ACT_STOP:
+            return tok
+    return None
+
+
+def extract_action_items(item: dict) -> list[dict]:
+    """Deterministically extract operator action items from one normalized report item. NO LLMs.
+    Returns a list of routed action dicts (one per detected class, capped). [] if nothing actionable."""
+    text = f"{item.get('title') or ''}\n{item.get('summary') or ''}"
+    if not text.strip():
+        return []
+    base_sev = (item.get("severity") or "info").lower()
+    item_sym = item.get("symbol") if _is_ticker(item.get("symbol")) else None
+    # a v3 route the report itself links to (existing _action_links) → preferred route for its actions
+    own_route = None
+    for a in (item.get("actions") or []):
+        url = a.get("url") or ""
+        m = _re.search(r"/v3/[a-z0-9-]+", url)
+        if m:
+            own_route = m.group(0)
+            break
+    rid = f"{item.get('source')}-{item.get('id')}"
+    out, used = [], set()
+    for action_class, rule_sev, rx in _ACT_RULES:
+        m = rx.search(text)
+        if not m or action_class in used:
+            continue
+        used.add(action_class)
+        # severity = stronger of the item's own severity and the rule's base severity
+        sev = rule_sev if _SEV_RANK.get(rule_sev, 1) >= _SEV_RANK.get(base_sev, 1) else base_sev
+        if sev == "critical":
+            sev = "urgent"
+        # the matched line, as the action text
+        ls = text.rfind("\n", 0, m.start()) + 1
+        le = text.find("\n", m.end())
+        line = text[ls:(le if le != -1 else len(text))].strip()[:200]
+        sym = item_sym or (_symbol_near(line) if action_class in _RISK_CLASSES else None)
+        route, route_label = _ACT_ROUTE.get(action_class, ("/v3/reports", "Reports"))
+        if action_class == "informational" and own_route:
+            route = own_route
+        out.append({
+            "id": f"{rid}-{action_class}", "report_id": rid, "source": item.get("source"),
+            "category": item.get("category"), "title": item.get("title"), "action_class": action_class,
+            "severity": sev, "symbol": sym, "route": route, "route_label": route_label,
+            "text": line or (item.get("title") or "")[:200],
+            "created_at": item.get("created_at"), "status": "open",
+        })
+        if len(out) >= 4:
+            break
+    return out
+
+
+def _enrich_item(it: dict) -> dict:
+    """Phase 3 — attach cheap action metadata to a list item (computed per-page only)."""
+    acts = extract_action_items(it)
+    classes, syms = [], []
+    routes = set()
+    for a in acts:
+        if a["action_class"] not in classes:
+            classes.append(a["action_class"])
+        if a.get("symbol") and a["symbol"] not in syms:
+            syms.append(a["symbol"])
+        routes.add(a["route"])
+    it["action_count"] = len(acts)
+    it["action_classes"] = classes
+    it["symbols"] = syms or ([it["symbol"]] if it.get("symbol") else [])
+    it["has_actions"] = bool(acts)
+    it["route_count"] = len(routes)
+    return it
+
+
 def _nl_where(cat) -> tuple[str, list]:
     types = cat.get("nl_types") or []
     if not types:
@@ -199,12 +324,10 @@ def categories() -> dict:
     return {"categories": out, "total": sum(c["count"] for c in out)}
 
 
-def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None) -> dict:
-    """Normalized, paginated, searchable items for one category (UNION of both stores)."""
-    cat = _BY_KEY.get(category)
-    if not cat:
-        return {"items": [], "total": 0, "page": 1, "pages": 0, "error": "unknown category"}
-    page = max(1, int(page)); per_page = min(100, max(5, int(per_page)))
+def _category_rows(cat: dict, q: str = "", days: int | None = None) -> list:
+    """Build normalized, UNANNOTATED rows for one category (UNION of all stores). Raw datetime
+    created_at preserved (caller isoformats). Shared by list_items / portal_summary / action_items."""
+    category = cat["key"]
     cur = _conn().cursor()
     rows = []
     daycut = f" AND created_at > NOW() - INTERVAL '{int(days)} days'" if days else ""
@@ -292,14 +415,110 @@ def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, da
         except Exception:
             pass
 
+    return rows
+
+
+def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None) -> dict:
+    """Normalized, paginated, searchable items for one category (UNION of all stores)."""
+    cat = _BY_KEY.get(category)
+    if not cat:
+        return {"items": [], "total": 0, "page": 1, "pages": 0, "error": "unknown category"}
+    page = max(1, int(page)); per_page = min(100, max(5, int(per_page)))
+    rows = _category_rows(cat, q=q, days=days)
     rows.sort(key=lambda x: x["created_at"] or "", reverse=True)
     total = len(rows)
     start = (page - 1) * per_page
     items = rows[start:start + per_page]
     for it in items:
         it["created_at"] = it["created_at"].isoformat() if it["created_at"] else None
+        _enrich_item(it)   # Phase 3: action_count/classes/symbols/has_actions/route_count (per-page only)
     return {"items": items, "total": total, "page": page, "per_page": per_page,
             "pages": (total + per_page - 1) // per_page}
+
+
+def _gather_rows(category: str | None = None, q: str = "", days: int | None = 7, per_cat_cap: int = 200) -> list:
+    """Normalized rows across one or all categories (for summary/action aggregation)."""
+    cats = [_BY_KEY[category]] if (category and category in _BY_KEY) else CATEGORIES
+    out = []
+    for c in cats:
+        try:
+            out.extend(_category_rows(c, q=q, days=days)[:per_cat_cap])
+        except Exception:
+            continue
+    return out
+
+
+def portal_summary(days: int = 7) -> dict:
+    """KPI roll-up for the portal header: totals + counts by category / severity / source / action_class,
+    top mentioned symbols, headline counters, and a few most-recent items. Read-only, deterministic."""
+    days = int(days) if days else 7
+    rows = _gather_rows(category=None, q="", days=days, per_cat_cap=300)
+    by_cat, by_sev, by_src, by_class = {}, {}, {}, {}
+    sym_count = {}
+    open_actions = risk_stop = approvals = system_hermes = crit_urgent = today = 0
+    from datetime import datetime, timezone
+    today_d = datetime.now(timezone.utc).date()
+    recent = []
+    for it in rows:
+        cat = it.get("category"); by_cat[cat] = by_cat.get(cat, 0) + 1
+        sev = (it.get("severity") or "info").lower(); by_sev[sev] = by_sev.get(sev, 0) + 1
+        src = it.get("source"); by_src[src] = by_src.get(src, 0) + 1
+        if sev in ("urgent", "critical"):
+            crit_urgent += 1
+        ca = it.get("created_at")
+        if ca and hasattr(ca, "date") and ca.date() == today_d:
+            today += 1
+        acts = extract_action_items(it)
+        for a in acts:
+            open_actions += 1
+            by_class[a["action_class"]] = by_class.get(a["action_class"], 0) + 1
+            if a["action_class"] in _RISK_CLASSES:
+                risk_stop += 1
+            if a["action_class"] in ("approval_needed", "broker_manual"):
+                approvals += 1
+            if a["action_class"] in ("system_health", "cron_or_backup", "llm_review", "hermes_review"):
+                system_hermes += 1
+            if _is_ticker(a.get("symbol")):
+                sym_count[a["symbol"]] = sym_count.get(a["symbol"], 0) + 1
+        if _is_ticker(it.get("symbol")):
+            sym_count[it["symbol"]] = sym_count.get(it["symbol"], 0) + 1
+    rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    for it in rows[:8]:
+        recent.append({"source": it.get("source"), "id": it.get("id"), "title": it.get("title"),
+                       "category": it.get("category"), "severity": it.get("severity"),
+                       "created_at": it["created_at"].isoformat() if it.get("created_at") else None})
+    cat_label = {c["key"]: c["label"] for c in CATEGORIES}
+    top_symbols = sorted(({"symbol": s, "count": n} for s, n in sym_count.items()),
+                         key=lambda x: x["count"], reverse=True)[:12]
+    return {
+        "days": days, "total": len(rows),
+        "kpis": {"total": len(rows), "critical_urgent": crit_urgent, "open_actions": open_actions,
+                 "risk_stop": risk_stop, "approvals": approvals, "system_hermes": system_hermes,
+                 "today": today},
+        "by_category": [{"key": k, "label": cat_label.get(k, k), "count": v}
+                        for k, v in sorted(by_cat.items(), key=lambda x: x[1], reverse=True)],
+        "by_severity": by_sev, "by_source": by_src,
+        "by_action_class": [{"action_class": k, "count": v}
+                            for k, v in sorted(by_class.items(), key=lambda x: x[1], reverse=True)],
+        "top_symbols": top_symbols, "recent": recent,
+    }
+
+
+def action_items(category: str | None = None, q: str = "", days: int | None = 7, limit: int = 100) -> dict:
+    """Flattened, deterministically extracted action items across categories, each routed to a v3 page."""
+    days = int(days) if days else None
+    rows = _gather_rows(category=category, q=q, days=days, per_cat_cap=300)
+    actions, by_class = [], {}
+    for it in rows:
+        ca = it.get("created_at")
+        it["created_at"] = ca.isoformat() if (ca and hasattr(ca, "isoformat")) else ca
+        for a in extract_action_items(it):
+            actions.append(a)
+            by_class[a["action_class"]] = by_class.get(a["action_class"], 0) + 1
+    actions.sort(key=lambda a: (_SEV_RANK.get((a.get("severity") or "info").lower(), 1),
+                                a.get("created_at") or ""), reverse=True)
+    return {"actions": actions[:int(limit)], "total": len(actions), "by_class": by_class,
+            "category": category or "all", "days": days}
 
 
 def get_item(source: str, item_id) -> dict:
