@@ -157,8 +157,9 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
     percent_equity engine: caps = equity * pct/100; fixed_dollar engine (or missing policy/equity): the
     fail-safe fixed caps. Optional absolute ceilings (max_risk_dollars_per_trade / max_notional_per_trade)
     clamp the percent caps when the admin sets them. `tilt` (per-strategy allocation tilt, default 1.0)
-    scales the RISK budget only — winning strategies risk more, but never beyond the position cap.
-    Returns a basis dict for audit/reproducibility."""
+    scales the RISK budget up AND, for boosted winners (tilt>1.0), TIGHTENS the position cap inversely
+    (÷tilt) — winners get more trades + risk budget, but smaller individual positions (concentration
+    control). Returns a basis dict for audit/reproducibility."""
     entry = _f(entry) or 0.0
     stop = _f(stop) or 0.0
     risk_per_share = abs(entry - stop)
@@ -197,6 +198,11 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
         tilt_f = 1.0
     if tilt_f != 1.0:
         max_dollar_risk = max_dollar_risk * tilt_f
+    # Boosted winners (tilt > 1.0) get a TIGHTER position cap, scaled inversely by tilt (operator
+    # 2026-06-19): allocate to winners via more trades + risk budget, NOT via one oversized position.
+    # e.g. fib 1.5x → 20% ÷ 1.5 = 13.3%; swing 1.11x → 18%. Demoted strategies keep the base cap.
+    if tilt_f > 1.0:
+        max_dollar_size = max_dollar_size / tilt_f
 
     max_by_risk = int(max_dollar_risk / risk_per_share) if risk_per_share > 0 else 0
     max_by_size = int(max_dollar_size / entry) if entry > 0 else 0
