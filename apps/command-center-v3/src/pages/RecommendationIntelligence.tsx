@@ -8,6 +8,12 @@ type RotLink = { from?: string; to?: string; executed?: boolean; at?: string; vi
 type SrcQual = { source?: string; sample?: number; win_rate_pct?: number; avg_return_pct?: number; quality_multiplier?: number; basis?: string }
 type RotOutcome = { measured?: number; avg_alpha_pct?: number; rotations_that_beat_holding?: number }
 type LcEvent = { at?: string; event?: string; status?: string; symbol?: string; payload?: any }
+type LifePos = {
+  symbol?: string; account?: string; origin?: string; executed_lineage?: boolean
+  open_date?: string; close_date?: string; buy_price?: number; sell_price?: number
+  pnl?: number; pnl_pct?: number; r_multiple?: number; hold_days?: number
+  setup?: string; strategy_id?: string; journaled?: boolean; journal?: any
+}
 type Summary = {
   ok?: boolean; error?: string; total_tickers?: number; multi_source_count?: number; executed_attributions?: number
   by_source?: BySource[]; performance_by_source?: SrcPerf[]; performance_by_strategy?: StratPerf[]
@@ -23,8 +29,9 @@ type Lineage = {
 const ACCENT = '#60a5fa'
 const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SRC_COLOR: Record<string, string> = {
-  watchlist: '#60a5fa', scan: '#22c55e', proposal: '#f59e0b', execution: '#a855f7',
-  holding: '#a855f7', directive: '#ec4899', hermes_research: '#14b8a6', cio: '#eab308', rotation: '#ef4444',
+  watchlist: '#60a5fa', scan: '#22c55e', screener: '#22c55e', proposal: '#f59e0b', execution: '#a855f7',
+  holding: '#a855f7', directive: '#ec4899', hermes_research: '#14b8a6', research: '#14b8a6',
+  cio: '#eab308', rotation: '#ef4444',
 }
 const pct = (v?: number) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v}%`)
 const usd = (v?: number) => (v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }))
@@ -50,6 +57,8 @@ export default function RecommendationIntelligence() {
   const [lin, setLin] = useState<Lineage | null>(null)
   const [linBusy, setLinBusy] = useState(false)
   const [events, setEvents] = useState<LcEvent[]>([])
+  const [life, setLife] = useState<LifePos[]>([])
+  const [lifeOnlyOrigin, setLifeOnlyOrigin] = useState(false)
 
   async function load() {
     setWarn('')
@@ -64,6 +73,11 @@ export default function RecommendationIntelligence() {
       const r = await fetch('/api/v2/rec-intel/lifecycle')
       const j = await r.json()
       setEvents((j?.data ?? j)?.events ?? [])
+    } catch { /* noop */ }
+    try {
+      const r = await fetch('/api/v2/rec-intel/lifecycle-performance?limit=300')
+      const j = await r.json()
+      setLife((j?.data ?? j)?.positions ?? [])
     } catch { /* noop */ }
   }
   async function lookup(s?: string) {
@@ -197,6 +211,49 @@ export default function RecommendationIntelligence() {
           </div>
         </section>
       </div>
+
+      {/* Purchased → Sold lifecycle (real closed trades, auto-detected origin + journal) */}
+      <section style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Purchased → Sold Lifecycle</div>
+          <span style={{ fontSize: 10, color: 'var(--text3)' }}>{life.length} real closed positions · {life.filter(p => p.origin).length} with detected origin · {life.filter(p => p.journaled).length} journaled</span>
+          <span style={{ flex: 1 }} />
+          <label style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input type="checkbox" checked={lifeOnlyOrigin} onChange={e => setLifeOnlyOrigin(e.target.checked)} /> only with detected origin
+          </label>
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Each real sold position auto-linked to the recommendation origin that introduced it (watchlist / proposal / screener / research / directive) → entry → exit P&amp;L · R · hold → its journal review. No manual tagging. Click a row to trace full lineage.</div>
+        <div style={{ ...card, padding: 4, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Symbol</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Origin</th>
+              <th style={{ padding: '6px 8px' }}>Buy</th><th style={{ padding: '6px 8px' }}>Sell</th>
+              <th style={{ padding: '6px 8px' }}>Return</th><th style={{ padding: '6px 8px' }}>P&amp;L</th>
+              <th style={{ padding: '6px 8px' }}>R</th><th style={{ padding: '6px 8px' }}>Hold</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Strategy</th>
+              <th style={{ padding: '6px 8px' }}>Journal</th>
+            </tr></thead>
+            <tbody>
+              {life.filter(p => !lifeOnlyOrigin || p.origin).slice(0, 120).map((p, i) => (
+                <tr key={i} onClick={() => lookup(p.symbol)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', textAlign: 'right' }}>
+                  <td style={{ textAlign: 'left', padding: '6px 8px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--text0)' }}>{p.symbol}</td>
+                  <td style={{ textAlign: 'left', padding: '6px 8px' }}>{p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 9, color: 'var(--text3)' }}>direct/manual</span>}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text2)' }}>{p.buy_price != null ? `$${p.buy_price.toFixed(2)}` : '—'}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text2)' }}>{p.sell_price != null ? `$${p.sell_price.toFixed(2)}` : '—'}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: 700, color: rcol(p.pnl_pct) }}>{pct(p.pnl_pct)}</td>
+                  <td style={{ padding: '6px 8px', color: rcol(p.pnl) }}>{usd(p.pnl)}</td>
+                  <td style={{ padding: '6px 8px', color: rcol(p.r_multiple) }}>{p.r_multiple != null ? `${p.r_multiple.toFixed(2)}R` : '—'}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{p.hold_days != null ? `${p.hold_days}d` : '—'}</td>
+                  <td style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontSize: 10 }}>{p.strategy_id || '—'}</td>
+                  <td style={{ padding: '6px 8px' }}>{p.journaled ? <span style={{ color: '#22c55e', fontWeight: 700 }} title={p.journal?.lesson || ''}>✓{p.journal?.realized_r != null ? ` ${p.journal.realized_r}R` : ''}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                </tr>
+              ))}
+              {life.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 18, color: 'var(--text3)' }}>No closed positions yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Multi-source tickers */}
       <section style={{ marginBottom: 20 }}>

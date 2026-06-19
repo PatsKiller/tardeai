@@ -18085,6 +18085,8 @@ def _portfolio_lookthrough():
 
 _ROTATION_SUMMARY_CACHE = {"ts": 0.0, "data": None}
 _REC_INTEL_CACHE = {"ts": 0.0, "data": None}
+_REC_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
+_REC_OUTCOMES_CACHE = {"ts": 0.0, "data": None}
 
 
 def _rec_intel_summary():
@@ -18126,6 +18128,48 @@ def _rec_intel_lifecycle(query=None):
         ev = [{"at": str(r[0]), "event": r[1], "status": r[2], "symbol": r[3], "payload": _json_clean(r[4])}
               for r in cur.fetchall()]
         return {"ok": True, "advisory_only": True, "events": ev, "count": len(ev)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _rec_intel_lifecycle_perf(query=None):
+    """GET /api/v2/rec-intel/lifecycle-performance — auto-detected position lifecycle for REAL closed
+    trades: origin (watchlist/proposal/screener/...) → purchase → sale (P&L·R·hold) → journal. Read-only."""
+    import time as _t
+    if _REC_LIFECYCLE_CACHE["data"] and (_t.time() - _REC_LIFECYCLE_CACHE["ts"] < 300):
+        return _REC_LIFECYCLE_CACHE["data"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import recommendation_intelligence_engine as _rie
+        from db_adapter import _get_conn
+        q = query or {}
+        limit = int((q.get("limit") if not isinstance(q.get("limit"), list) else q["limit"][0]) or 300)
+        positions = _rie.lifecycle_performance(_get_conn().cursor(), limit=limit)
+        out = {"ok": True, "advisory_only": True, "positions": positions, "count": len(positions),
+               "with_origin": sum(1 for p in positions if p.get("origin")),
+               "journaled": sum(1 for p in positions if p.get("journaled"))}
+        _REC_LIFECYCLE_CACHE.update(ts=_t.time(), data=out)
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _rec_intel_outcomes(query=None):
+    """GET /api/v2/rec-intel/outcomes — per-symbol purchase→sale outcome map (real closed trades) for
+    flagging watchlist/proposal items + enriching journal rows with discovery origin. Read-only."""
+    import time as _t
+    if _REC_OUTCOMES_CACHE["data"] and (_t.time() - _REC_OUTCOMES_CACHE["ts"] < 300):
+        return _REC_OUTCOMES_CACHE["data"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import recommendation_intelligence_engine as _rie
+        from db_adapter import _get_conn
+        outcomes = _rie.symbol_outcomes(_get_conn().cursor())
+        out = {"ok": True, "advisory_only": True, "outcomes": outcomes, "count": len(outcomes)}
+        _REC_OUTCOMES_CACHE.update(ts=_t.time(), data=out)
+        return out
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -18704,6 +18748,8 @@ ROUTES = {
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
     "/api/v2/rec-intel/ticker": _rec_intel_ticker,
+    "/api/v2/rec-intel/lifecycle-performance": _rec_intel_lifecycle_perf,
+    "/api/v2/rec-intel/outcomes": _rec_intel_outcomes,
     "/api/v2/rec-intel/lifecycle": _rec_intel_lifecycle,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
