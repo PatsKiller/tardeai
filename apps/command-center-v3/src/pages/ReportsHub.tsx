@@ -193,7 +193,10 @@ export default function ReportsHub({ onDrill }: Props) {
   const effDays = qv === 'today' ? 1 : days
   const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`
   const { data: summary } = useApi<any>(summaryPath, 0)
-  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=120`
+  // Fetch the FULL action set (not a severity-capped 120) so client-side quick views are accurate —
+  // otherwise lower-severity classes (e.g. Approvals = warning) get crowded out by urgent items and a
+  // quick view shows 0 despite real matches (fix 2026-06-19). Render still caps the visible rows at 40.
+  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=1000`
   const { data: actionsData } = useApi<any>(actionsPath, 0)
   const listPath = useMemo(() =>
     `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}`,
