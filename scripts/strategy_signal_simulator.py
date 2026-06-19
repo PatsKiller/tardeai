@@ -177,11 +177,22 @@ def _agg(trades):
     n = len(trades)
     if not n:
         return {"trades": 0}
-    wins = [t for t in trades if t["r_multiple"] > 0]
-    gp = sum(t["r_multiple"] for t in wins)
-    gl = abs(sum(t["r_multiple"] for t in trades if t["r_multiple"] < 0)) or 1e-9
-    return {"trades": n, "win_rate": round(len(wins) / n, 3),
-            "profit_factor": round(gp / gl, 2), "expectancy_r": round(sum(t["r_multiple"] for t in trades) / n, 3),
+
+    # Clamp each per-trade r-multiple to a realistic band before aggregating (fix 2026-06-19): a single
+    # near-zero-risk backtest trade can produce an absurd r (e.g. 27R), which then poisoned expectancy_r
+    # on the leaderboard. ±10R is generous but excludes the data artifacts.
+    def _cr(x):
+        try:
+            return max(-10.0, min(10.0, float(x)))
+        except Exception:
+            return 0.0
+
+    rs = [_cr(t["r_multiple"]) for t in trades]
+    wins_n = sum(1 for r in rs if r > 0)
+    gp = sum(r for r in rs if r > 0)
+    gl = abs(sum(r for r in rs if r < 0)) or 1e-9
+    return {"trades": n, "win_rate": round(wins_n / n, 3),
+            "profit_factor": round(gp / gl, 2), "expectancy_r": round(sum(rs) / n, 3),
             "avg_hold_bars": round(sum(t["hold_bars"] for t in trades) / n, 1)}
 
 
