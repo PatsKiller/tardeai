@@ -97,6 +97,19 @@ def _send_telegram(message: str) -> bool:
 
 _WL_SKILL = os.path.expanduser("~/.openclaw/skills/tradeai-watchlist/scripts/tradeai_watchlist.py")
 _AGENT_NAMES = ("maria", "aegis", "alex", "iris", "steph")
+# common English words that follow "add" but aren't tickers — so "add a note" / "add task" don't get
+# treated as ticker adds (tickers are accepted case-insensitively otherwise).
+_NOT_TICKER = {"the", "and", "for", "you", "list", "watch", "note", "task", "todo", "item", "this",
+               "that", "some", "more", "news", "info", "link", "url", "new", "all", "one", "two", "my"}
+
+
+def _ticker_tokens(s):
+    """Return uppercase ticker tokens if every token in `s` looks like a ticker (2-5 letters, not an
+    English filler word); else []. Lets bare 'add aapl' / 'add AAPL HOOD' work, rejects 'add a note'."""
+    toks = s.split()
+    if toks and len(toks) <= 4 and all(t.isalpha() and 2 <= len(t) <= 5 and t.lower() not in _NOT_TICKER for t in toks):
+        return [t.upper() for t in toks]
+    return []
 
 
 def _strip_agent_prefix(text: str) -> str:
@@ -131,11 +144,11 @@ def parse_command(text: str) -> dict:
         return {"command": "wl_add", "args": text[6:].strip()}
     if lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower):
         return {"command": "wl_add_phrase", "args": text[4:].strip()}
-    # bare "add SOFI" / "add SOFI HOOD" (uppercase ticker tokens) → general watchlist
+    # bare "add aapl" / "add SOFI HOOD" (ticker tokens, any case) → general watchlist
     if lower.startswith("add ") and " to " not in lower and not any(w in lower for w in ("video", "article", "topic ")):
-        _toks = text[4:].split()
-        if _toks and all(t.isalpha() and t.isupper() and len(t) <= 5 for t in _toks):
-            return {"command": "wl_add", "args": text[4:].strip()}
+        _toks = _ticker_tokens(text[4:].strip())
+        if _toks:
+            return {"command": "wl_add", "args": " ".join(_toks)}
     for _v in ("trend ", "tren ", "trnd ", "research topic "):   # tolerate the common 'trend' typos
         if lower.startswith(_v) and not lower.startswith("trends"):
             return {"command": "wl_topic", "args": text[len(_v):].strip()}
@@ -2548,10 +2561,9 @@ def poll_and_process():
             "watch ", "ask ", "trends", "trend ", "tren ", "trnd ", "research topic ",
             "latest research", "latest trends",
         ]) or (lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower))
-        # bare "add SOFI" / "add SOFI HOOD" (uppercase ticker tokens)
+        # bare "add aapl" / "add SOFI HOOD" (ticker tokens, any case)
         if not is_command and lower.startswith("add ") and " to " not in lower and not any(w in lower for w in ("video", "article", "topic ")):
-            _toks = _strip_agent_prefix(text)[4:].split()
-            if _toks and all(t.isalpha() and t.isupper() and len(t) <= 5 for t in _toks):
+            if _ticker_tokens(_strip_agent_prefix(text)[4:].strip()):
                 is_command = True
         has_url = "http://" in lower or "https://" in lower
         if not is_command and not has_url:
