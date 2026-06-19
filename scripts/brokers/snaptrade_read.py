@@ -28,6 +28,14 @@ MONEY_MARKET_SYMBOLS = {
     "CASH", "USD",                                                               # generic cash sweeps
 }
 
+# Operator-pinned cash overrides (2026-06-19): where the aggregator feed is untrustworthy, pin the sweep
+# to the manually-verified amount until the broker feed is reliable. (account_key, symbol) -> dollars.
+# fidelity_rollover_ira: SnapTrade can't be trusted for SPAXX (bad price/stale units); pin to the
+# verified post-deployment cash. REMOVE this entry once SnapTrade reports Fidelity cash correctly.
+PINNED_CASH = {
+    ("fidelity_rollover_ira", "SPAXX"): 452622.73,
+}
+
 
 @dataclass(frozen=True)
 class SnapTradeUser:
@@ -133,7 +141,8 @@ def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dic
         # A money market is $1.00 NAV cash — present it as clean cash (no P/L, is_cash=True) using the
         # implied value (units*price), so it can never be mistreated as a position again.
         if sym in MONEY_MARKET_SYMBOLS or "MONEY MARKET" in str((symobj or {}).get("description", "")).upper():
-            mv = round(units * price, 2)
+            # operator-pinned amount wins over the (untrustworthy) aggregator value when set
+            mv = PINNED_CASH.get((account_key, sym), round(units * price, 2))
             out.append({
                 "symbol": sym, "account": account_key, "shares": mv,
                 "cost_basis": mv, "avg_cost": 1.0, "market_value": mv,
