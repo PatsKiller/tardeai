@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-19 - Auto-detected purchased→sold→journal lifecycle (Rec Intelligence)
+
+Operator: "I don't see the mapping/flagging of performance for watchlist & proposals that were purchased,
+monitored till sale, also noted in journal — these should auto detect." The lineage layer mapped
+source→symbol→executed but stopped there. Added `recommendation_intelligence_engine.lifecycle_performance()`
++ `symbol_outcomes()`: for each REAL closed trade (`trade_closed`) it auto-joins the discovery origin
+(`rec_ticker_attribution`: watchlist / proposal / screener / research / directive) and the journal review
+(`journal_trade_reviews`), matched by symbol/account/close-date — no manual tagging. Endpoints
+`/api/v2/rec-intel/lifecycle-performance` + `/outcomes` (read-only, advisory, 5-min cache). Surfaced on
+three places (operator-chosen): (1) Rec Intelligence "Purchased → Sold Lifecycle" table (origin → buy →
+sell return/P&L/R/hold → journal ✓); (2) a `✓ purchased→sold +X%` badge on Watchlist cards and Broker
+proposals; (3) a `via <origin>` chip on Journal trade rows. Scope = real closed trades only. Auto-refresh:
+engine ingest cron (daily 07:10) keeps attribution fresh; the joins recompute live. Verified: 124
+positions, 115 (93%) with detected origin, journal-matched, 0 console errors.
+
 ## 2026-06-19 - LLM auto-enhancement of trend/sector watch directives
 
 Root cause of "directives entered but not processed": trend/sector directives created with only a label
