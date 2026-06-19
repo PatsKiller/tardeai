@@ -1,8 +1,13 @@
 # Stage 2a — Shadow Validation Protocol (manual orders + read-only API)
 
-**Status:** READY FOR OPERATOR SESSION (rev 2026-06-12, operator risk caps locked) · paperMoney is NOT
-API-visible (operator-confirmed), so tests are tiny REAL orders placed MANUALLY in thinkorswim; the API
-surface stays read-only throughout (no-writes validator green; execution BROKER_DISABLED).
+**Status:** SCHEDULED — session date committed **2026-06-22 (Monday)** in `scripts/brokers/canary_gate.py`
+(`CANARY_SESSION_DATE`; rescheduled 06-12 → 06-13 → 06-15 → 06-22, prior gates auto-expired fail-closed).
+Operator risk caps locked 2026-06-12 (unchanged). Doc rev 2026-06-19. paperMoney is NOT API-visible
+(operator-confirmed), so tests are tiny REAL orders placed MANUALLY in thinkorswim; the API surface stays
+read-only throughout (no-writes validator green; execution BROKER_DISABLED).
+
+> **⛔ PREREQUISITE (P0, before this session runs):** OpenAI + OpenClaw API key rotation (open P0 items)
+> must be completed first. Do NOT run the canary until those are closed.
 
 ## Operator risk caps (locked 2026-06-12 — these supersede all earlier sizing)
 - **1–2 tickers per session**, price **$2–$4**, liquidity-screened **at session time** (spread ≤ ~1%,
@@ -15,17 +20,19 @@ surface stays read-only throughout (no-writes validator green; execution BROKER_
   start; revert/rotate by commit after the session.**
 - ⚠️ The previously screened ITUB ($7.91) / SNAP ($5.33) **violate the $2–$4 cap** — do NOT reuse them.
 
-## SESSION SCREEN — 2026-06-12 (operator-ordered; allowlist COMMITTED)
-| Pick | Px (AH) | Spread (AH) | Avg vol | Why |
+## SESSION SCREEN — carried from 2026-06-12, ⚠️ MUST RE-SCREEN for the 2026-06-22 session
+| Pick | Px (AH, 06-12) | Spread (06-12) | Avg vol | Why |
 |---|---|---|---|---|
 | **PRIMARY: GRAB** | $3.37 | 0.6% | 51.2M | superapp mega-name; deepest book in band; ZERO footprint (never held/watched/papered/journaled) |
 | **FALLBACK: XRX** | $3.45 | 0.9% | 6.3M | NYSE household name; zero footprint |
 | (screened out) | | | | VIDA drifted to $4.20 (above cap) · ABEV/BBD/CIG have footprint · LYG/ERIC > $4 |
 
-Committed: `CANARY_SYMBOL_ALLOWLIST = ("GRAB", "XRX")` · gate verified live (10 sh @ $3.40 passes;
-@ $4.05 blocked "price > $4 cap") · gate tests 23/23 · validator 17/17. **At the session open:
-re-verify spreads (quotes above are after-hours) and confirm GRAB remains in the $2–$4 band.
-ROTATE the allowlist back to `()` by commit after the session.**
+Currently committed: `CANARY_SYMBOL_ALLOWLIST = ("GRAB", "XRX")` (from the deferred 06-12 screen; never
+rotated back since the session kept rescheduling). Gate verified live (10 sh @ $3.40 passes; @ $4.05
+blocked "price > $4 cap"). **⚠️ These quotes are ~10 days stale — at the 2026-06-22 open you MUST re-run
+the $2–$4 liquidity screen and re-verify GRAB/XRX (price still in band, spread ≤ ~1%, vol ≥ ~5M, still
+zero footprint); replace either pick by commit if it has drifted out of band. ROTATE the allowlist back
+to `()` by commit after the session.**
 
 ## Pre-session checklist (system side — all read-only)
 1. Re-run the $2–$4 liquidity screen; **commit** the pick (+fallback) to the hardcoded gate allowlist.
