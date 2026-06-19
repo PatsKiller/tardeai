@@ -11854,6 +11854,9 @@ def _strategy_leaderboard():
             SELECT DISTINCT ON (strategy_id) strategy_id, win_rate, avg_r, profit_factor, total_pnl,
                    assessment, recommendation, snapshot_date
               FROM strategy_performance_snapshots ORDER BY strategy_id, snapshot_date DESC""") or []
+        tilts = _db_query("""SELECT DISTINCT ON (strategy_id) strategy_id, multiplier
+                               FROM strategy_tilt_multipliers ORDER BY strategy_id, computed_at DESC""") or []
+        tilt_by = {r["strategy_id"]: float(r["multiplier"]) for r in tilts}
         bt_by = {r["strategy_id"]: r for r in bt}
         sn_by = {r["strategy_id"]: r for r in snaps}
         R_CLAMP = 3.0   # no real strategy has |expectancy| > ~3R — anything beyond is a data error, not signal
@@ -11888,6 +11891,8 @@ def _strategy_leaderboard():
                 "snapshot": {k: _json_clean(s.get(k)) for k in ("win_rate", "avg_r", "profit_factor", "assessment", "recommendation", "snapshot_date")} if s else None,
                 "blended_expectancy_r": blended,
                 "confidence": conf,
+                "tilt": tilt_by.get(sid, 1.0),
+                "excluded": sid == "momentum_scalp",
             })
         # RANK LIVE-PRIMARY: live expectancy (avg_r) desc, then total P&L, then win-rate. Backtest/snapshot
         # are context, never the ranking driver (avoids a corrupt backtest crowning a live loser).

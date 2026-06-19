@@ -428,6 +428,21 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
             rows.sort(key=lambda r: r.get("_effective_score", 0), reverse=True)
         except Exception:
             pass
+    # Per-strategy allocation tilt (operator 2026-06-19, default ON; STRATEGY_TILT=0 disables): re-rank by
+    # signal_score x the strategy's live-performance multiplier so WINNING strategies' candidates surface
+    # first. Advisory ranking only (sizing tilt is applied separately in account_policy). momentum_scalp
+    # is pinned to 1.0 (excluded). Composes with the source weighting above.
+    try:
+        import strategy_tilt as _stilt
+        if _stilt.enabled():
+            for r in rows:
+                t = _stilt.get_tilt(r.get("strategy_id"))
+                r["_strategy_tilt"] = t
+                base = r.get("_effective_score", (r.get("signal_score") or 0))
+                r["_effective_score"] = base * t
+            rows.sort(key=lambda r: r.get("_effective_score", 0), reverse=True)
+    except Exception:
+        pass
     return rows
 
 
@@ -644,7 +659,16 @@ def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
                           min(float(live_rules.get("max_dollar_risk", _ap.FALLBACK_RISK_DOLLARS)),
                               float(shared_rules.get("risk_limits", {}).get("default_risk_per_trade", _ap.FALLBACK_RISK_DOLLARS))))
 
-    s = _ap.compute_sizing(policy, equity, entry, stop, desired_shares=None)
+    # Per-strategy allocation tilt (operator 2026-06-19): winning strategies risk more (capped at the
+    # position cap; momentum_scalp excluded). Default ON; STRATEGY_TILT=0 disables.
+    _tilt = 1.0
+    try:
+        import strategy_tilt as _stilt
+        if _stilt.enabled():
+            _tilt = _stilt.get_tilt(signal.get("strategy_id"))
+    except Exception:
+        pass
+    s = _ap.compute_sizing(policy, equity, entry, stop, desired_shares=None, tilt=_tilt)
     if not s.get("valid"):
         return {"valid": False, "reason": s.get("reason", "SIZE_TOO_SMALL"),
                 "original_shares": original_shares,
@@ -676,7 +700,7 @@ def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
             "engine": s["engine"], "equity": s["equity"], "equity_source": eq_src,
             "risk_pct": s["risk_pct"], "pos_pct": s["pos_pct"],
             "max_dollar_risk": s["max_dollar_risk"], "max_dollar_size": s["max_dollar_size"],
-            "binding": s["binding"], "account_key": account_key,
+            "binding": s["binding"], "tilt": s.get("tilt", 1.0), "account_key": account_key,
         },
     }
 
