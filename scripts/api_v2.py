@@ -11830,6 +11830,16 @@ def _broker_account_readiness():
             "checks": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
+def _llm_health():
+    """GET /api/v2/llm-health — three-lane LLM review health (operator 2026-06-19): live lane
+    availability (delegates to llm_lane.available via llm_health_check) + review-corpus quality."""
+    try:
+        import llm_health_check as _lhc
+        return _lhc.check_all_lanes(30)
+    except Exception as e:
+        return {"error": str(e)[:160], "lanes": {}, "review_corpus": {}}
+
+
 def _strategy_leaderboard():
     """GET /api/v2/strategy-leaderboard — LIVE strategy ranking blending closed paper trades + the
     backtest sample (strategy_backtest_results) + the latest assessment snapshot. Ranked by a
@@ -18740,6 +18750,7 @@ ROUTES = {
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(),
     "/api/v2/strategy-leaderboard": lambda: _strategy_leaderboard(),
+    "/api/v2/llm-health": lambda: _llm_health(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
     "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
     "/api/v2/broker-accounts/automation-policy": lambda: _broker_account_policy(),
