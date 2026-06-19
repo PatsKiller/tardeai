@@ -11914,7 +11914,14 @@ def _strategy_leaderboard():
         out.sort(key=_key, reverse=True)
         for i, x in enumerate(out):
             x["rank"] = i + 1
+        supp = _db_query("""SELECT strategy_id, count(*) n, max(suppressed_at) last
+                              FROM proposal_suppression_log WHERE suppressed_at > now() - interval '7 days'
+                              GROUP BY strategy_id ORDER BY n DESC""") or []
         return {"leaderboard": out,
+                "strategy_gate": {"active": True, "min_trades_required": 5,
+                                  "wr_gate": "25% at >=10 closed trades",
+                                  "suppressed_last_7d": [{k: _json_clean(v) for k, v in r.items()} for r in supp],
+                                  "note": "Dormant until a strategy reaches >=10 closed trades at <25% WR"},
                 "note": ("Ranked by LIVE expectancy (avg R per trade), tiebreak total P&L then win-rate. "
                          "Backtest + assessment shown as context (expectancy clamped at ±3R; data_suspect flags "
                          "corrupt rows). LOW confidence = <8 live trades — directional only, not proven.")}

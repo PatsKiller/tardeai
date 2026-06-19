@@ -1077,6 +1077,24 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                         stats["details"].append({"symbol": sym, "decision": "SKIPPED_OUTSIDE_RTH", "reason": reason})
                         continue
 
+            # 0b. Strategy performance gate (operator 2026-06-19, Task 4): a strategy with a real losing
+            # record (>=10 closed paper trades at <25% WR) stops generating proposals until its edge
+            # recovers; <5 closed = always eligible. Read-only, fail-open, DORMANT today (no strategy qualifies).
+            try:
+                import strategy_utils as _su
+                _gok, _greason = _su.is_strategy_promotable(sid, conn)
+                if not _gok:
+                    stats["proposals_skipped"] += 1
+                    reason = f"SKIPPED_STRATEGY_GATE ({_greason})"
+                    log.info(f"  {sym}: {reason}")
+                    _su.log_suppression(conn, sym, sid, _greason)
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_STRATEGY_GATE", [_greason], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_STRATEGY_GATE", "reason": reason})
+                    continue
+            except Exception:
+                pass
+
             # 1. Duplicate check
             dup = check_duplicate(conn, sig_id, sym, sid)
             if dup:

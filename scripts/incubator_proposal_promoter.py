@@ -501,6 +501,20 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         symbol = c['symbol']
         strategy_id = c['strategy_id']
 
+        # Strategy performance gate (operator 2026-06-19, Task 4): block promotion from a strategy with a
+        # real losing record (>=10 closed at <25% WR). <5 closed = eligible. Read-only, dormant today.
+        try:
+            import strategy_utils as _su
+            _gok, _greason = _su.is_strategy_promotable(strategy_id, conn)
+            if not _gok:
+                results.append(f"SKIPPED: {symbol} (strategy gate: {_greason})")
+                skipped += 1
+                if not dry_run:
+                    _su.log_suppression(conn, symbol, strategy_id, _greason)
+                continue
+        except Exception:
+            pass
+
         # Strategy-group dedup: max 1 proposal per symbol per strategy group
         group = STRATEGY_GROUPS.get(strategy_id, 'OTHER')
         sym_groups = existing_groups.get(symbol, set()) | symbol_counts.get(symbol, set())
