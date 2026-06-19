@@ -76,7 +76,10 @@ def run(apply: bool = False) -> dict:
         return {"error": f"alpaca read failed: {str(e)[:100]}", "actions": []}
 
     conn = _get_conn(); cur = conn.cursor()
-    cur.execute("""SELECT symbol, entry_price, stop_loss_price, strategy_id, shares, current_price, stop_order_id
+    # COALESCE so a position with only stop_loss set (older entries — the SNOW-era skip bug) is still
+    # managed instead of silently held forever (fix 2026-06-19).
+    cur.execute("""SELECT symbol, entry_price, COALESCE(stop_loss_price, stop_loss) AS planned_stop,
+                          strategy_id, shares, current_price, stop_order_id
                    FROM paper_trades WHERE lifecycle_state='open' OR status='open'""")
     rows = cur.fetchall()
     market_hours = True
@@ -119,9 +122,15 @@ def run(apply: bool = False) -> dict:
                     "symbol": sym, "qty": qty, "side": "sell", "type": "stop",
                     "stop_price": str(round(new_stop, 2)), "time_in_force": "gtc"})
                 new_id = str(resp.get("id") or "")
-                cur.execute("UPDATE paper_trades SET stop_loss_price=%s, stop_order_id=%s, updated_at=NOW() "
+                # Keep EVERY stop column in sync (fix 2026-06-19): the ratchet previously updated only
+                # stop_loss_price, so stop_loss / current_stop and the trailing flags went stale — readers
+                # (journal, scale engine, card trailing-state) saw the OLD stop and trailing_active stayed
+                # NULL (the SNOW symptom). Now stamp the trailing state on every ratchet.
+                cur.execute("UPDATE paper_trades SET stop_loss_price=%s, stop_loss=%s, current_stop=%s, "
+                            "stop_type='trailing', trailing_active=TRUE, stop_order_id=%s, "
+                            "stop_updated_at=NOW(), updated_at=NOW() "
                             "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s",
-                            (round(new_stop, 2), new_id, sym))
+                            (round(new_stop, 2), round(new_stop, 2), round(new_stop, 2), new_id, sym))
                 conn.commit()
                 plan["new_order_id"] = new_id
                 plan["status"] = "ratcheted"
