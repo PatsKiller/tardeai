@@ -89,24 +89,65 @@ def call_local_llm_captured(prompt: str, timeout: int) -> tuple[str, str]:
     return answer, buf.getvalue().strip()
 
 
+def rotation_summary(rotation_report: dict[str, Any]) -> dict[str, Any]:
+    summary = rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {}
+    return summary if isinstance(summary, dict) else {}
+
+
+def _num(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except Exception:
+        return 0.0
+
+
+def infer_no_model_supported_action(grounding: dict[str, Any], rotation_report: dict[str, Any]) -> bool:
+    """Fail-safe no-action inference.
+
+    The grounding helper is authoritative when it explicitly says no action, but the
+    rotation summary is also sufficient: if no add, trim, or rotation ideas exist,
+    no downstream LLM may produce a numeric amount or actionable class.
+    """
+    if bool(grounding.get("no_model_supported_action")):
+        return True
+    s = rotation_summary(rotation_report)
+    has_core_counts = any(k in s for k in ("trim_review", "add_review", "rotation_ideas"))
+    if not has_core_counts:
+        return False
+    return _num(s.get("trim_review")) <= 0 and _num(s.get("add_review")) <= 0 and _num(s.get("rotation_ideas")) <= 0
+
+
+def forced_no_action_answer(question: str, rotation_report: dict[str, Any]) -> str:
+    s = rotation_summary(rotation_report)
+    return (
+        "No model-supported trim, add, or rotation action is available for this question. "
+        f"The rotation summary shows trim_review={int(_num(s.get('trim_review')))}, "
+        f"add_review={int(_num(s.get('add_review')))}, and rotation_ideas={int(_num(s.get('rotation_ideas')))}. "
+        "A specific review amount or percent range is unavailable. Keep this as WATCH / RESEARCH_MORE and use the Grok OAuth prompt only as a manual second opinion; no broker action is authorized."
+    )
+
+
 def build_trust_verdict(
     *,
+    no_model_supported_action: bool,
     grounding: dict[str, Any],
     local_validation: dict[str, Any],
     answer_mode: str,
     grok_oauth_prompt_path: Path,
 ) -> dict[str, Any]:
     """Machine-readable UI/API trust block for production advisory gating."""
-    no_action = bool(grounding.get("no_model_supported_action"))
     local_ok = bool(local_validation.get("ok"))
     validation_issues = list(local_validation.get("issues") or [])
+    inferred_no_action_from_summary = no_model_supported_action and not bool(grounding.get("no_model_supported_action"))
     return {
         "final_authority": "grounded_rotation_engine",
         "broker_action": "none",
         "advisory_only": True,
         "answer_mode": answer_mode,
-        "model_supported_action": not no_action,
-        "range_policy": "range_unavailable_when_no_supported_action" if no_action else "review_range_allowed_if_grounded",
+        "model_supported_action": not no_model_supported_action,
+        "range_policy": "range_unavailable_when_no_supported_action" if no_model_supported_action else "review_range_allowed_if_grounded",
+        "no_model_supported_action": no_model_supported_action,
+        "inferred_no_action_from_summary": inferred_no_action_from_summary,
         "local_validation_ok": local_ok,
         "local_validation_issue_count": len(validation_issues),
         "local_validation_issues": validation_issues,
@@ -116,7 +157,7 @@ def build_trust_verdict(
         "uses_api_key": False,
         "uses_paid_xai_api": False,
         "uses_direct_grok_http": False,
-        "production_gate": "PASS_ADVISORY_REVIEW" if (no_action or local_ok) else "PASS_GROUNDED_FALLBACK",
+        "production_gate": "PASS_ADVISORY_REVIEW" if (no_model_supported_action or local_ok) else "PASS_GROUNDED_FALLBACK",
         "operator_required": True,
         "notes": [
             "Final answer remains grounded when no supported add/trim/rotation action exists.",
@@ -144,7 +185,8 @@ def main() -> int:
     cards_payload = load_json(cards_path) if cards_path and cards_path.exists() else None
     rotation_report = run_rotation_engine(holdings_path, cards_path if cards_path and cards_path.exists() else None, args.min_pair_score)
     grounding = grounding_report(args.question, holdings_payload, cards_payload, rotation_report)
-    grounded_answer = deterministic_answer(args.question, grounding)
+    no_model_supported_action = infer_no_model_supported_action(grounding, rotation_report)
+    grounded_answer = forced_no_action_answer(args.question, rotation_report) if no_model_supported_action else deterministic_answer(args.question, grounding)
     prompt = build_prompt(args.question, holdings_payload, cards_payload, rotation_report, grounding)
 
     PROMPT_DIR.mkdir(parents=True, exist_ok=True)
@@ -183,7 +225,7 @@ def main() -> int:
         return 0
 
     # Final answer policy: no-action cases stay grounded. Grok OAuth is a manual second-opinion path.
-    if grounding.get("no_model_supported_action"):
+    if no_model_supported_action:
         final_answer = grounded_answer
         answer_mode = "grounded_no_supported_action"
     elif local_validation.get("ok"):
@@ -194,6 +236,7 @@ def main() -> int:
         answer_mode = "grounded_pending_grok_oauth_review"
 
     trust_verdict = build_trust_verdict(
+        no_model_supported_action=no_model_supported_action,
         grounding=grounding,
         local_validation=local_validation,
         answer_mode=answer_mode,
@@ -210,7 +253,7 @@ def main() -> int:
         "prompt_path": str(prompt_path),
         "grok_oauth_prompt_path": str(grok_oauth_prompt_path),
         "grok_oauth_instructions": "Open Grok with free/OAuth login, paste the grok_oauth_prompt_path content, and compare Grok's response to the grounded answer. No API key or paid API call is used.",
-        "rotation_summary": rotation_report.get("summary", {}) if isinstance(rotation_report, dict) else {},
+        "rotation_summary": rotation_summary(rotation_report),
         "data_quality": rotation_report.get("data_quality", {}) if isinstance(rotation_report, dict) else {},
         "grounding_report": grounding,
         "grounded_answer": grounded_answer,
