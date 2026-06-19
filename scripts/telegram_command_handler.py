@@ -95,6 +95,20 @@ def _send_telegram(message: str) -> bool:
         return False
 
 
+_WL_SKILL = os.path.expanduser("~/.openclaw/skills/tradeai-watchlist/scripts/tradeai_watchlist.py")
+
+
+def _run_wl_skill(*args) -> str:
+    """Run the tradeai-watchlist bridge skill and return its RAW stdout — the deterministic, honest path
+    for watchlist/research/ask actions (the LLM agents hallucinate these). HTTP-only skill, no deps."""
+    import subprocess
+    try:
+        r = subprocess.run(["python3", _WL_SKILL, *args], capture_output=True, text=True, timeout=90)
+        return ((r.stdout or "").strip() or (r.stderr or "").strip() or "(no output from skill)")
+    except Exception as e:
+        return f"❌ skill error: {str(e)[:140]}"
+
+
 def parse_command(text: str) -> dict:
     """Parse a Telegram message into a command + arguments."""
     text = text.strip()
@@ -104,6 +118,15 @@ def parse_command(text: str) -> dict:
         return {"command": "help", "args": ""}
     if lower == "status":
         return {"command": "status", "args": ""}
+    # Deterministic watchlist / research / LLM actions — run the REAL skill (agents fabricate these).
+    if lower.startswith("watch ") and not lower.startswith("watchlist"):
+        return {"command": "wl_add", "args": text[6:].strip()}
+    if lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower):
+        return {"command": "wl_add_phrase", "args": text[4:].strip()}
+    if lower.startswith("ask "):
+        return {"command": "wl_ask", "args": text[4:].strip()}
+    if lower in ("trends", "research trends", "latest trends", "latest research"):
+        return {"command": "wl_trends", "args": ""}
     if lower == "topics":
         return {"command": "topics", "args": ""}
     if lower.startswith("topic add "):
@@ -2425,6 +2448,25 @@ def process_command(cmd: dict) -> str:
         except Exception as e:
             return f"Error: {e}"
 
+    if command == "wl_add":
+        syms = [s.upper() for s in args.replace(",", " ").split() if s.isalpha() and len(s) <= 5]
+        return _run_wl_skill("add", *syms) if syms else "Usage: watch SYM [SYM2 …]"
+    if command == "wl_add_phrase":
+        import re as _re
+        parts = _re.split(r"\s+to\s+", args, maxsplit=1)
+        syms = [s.upper() for s in parts[0].replace(",", " ").split() if s.isalpha() and len(s) <= 5]
+        listname = ""
+        if len(parts) > 1:
+            listname = _re.sub(r"\b(my|the|watch|watchlist|list)\b", "", parts[1], flags=_re.I).strip()
+        if not syms:
+            return "Usage: add SYM to watchlist (or: add SYM to my Data Center list)"
+        a = ["add", *syms] + (["--label", listname] if listname else [])
+        return _run_wl_skill(*a)
+    if command == "wl_ask":
+        return _run_wl_skill("ask", args)
+    if command == "wl_trends":
+        return _run_wl_skill("trends")
+
     return f"Unknown command: {cmd['args'][:50]}\nType `help` for available commands."
 
 
@@ -2467,7 +2509,8 @@ def poll_and_process():
             "alex ", "retirement ", "iris", "/iris_", "status", "help",
             "topics", "topic ", "add video", "add article",
             "backup", "sync docs",
-        ])
+            "watch ", "ask ", "trends", "latest research", "latest trends",
+        ]) or (lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower))
         has_url = "http://" in lower or "https://" in lower
         if not is_command and not has_url:
             continue
