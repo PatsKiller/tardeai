@@ -20011,6 +20011,64 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/llm/ask":
+            # General LLM Q&A for the Telegram agents — free OAuth lanes (Grok/ChatGPT) preferred, local
+            # gemma fallback. Advisory only. Returns the answer + which lane answered (no metered keys).
+            try:
+                import llm_lane
+                b = body or {}
+                q = (b.get("question") or "").strip()
+                if not q:
+                    return 400, {"ok": False, "error": "question required"}
+                want = (b.get("lane") or "").lower()
+                lanes = [want] if want in ("grok", "chatgpt", "local") else ["grok", "chatgpt", "local"]
+                ans, used = None, None
+                for ln in lanes:
+                    try:
+                        if not llm_lane.available(ln):
+                            continue
+                        ans = llm_lane.generate(q, lane=ln, timeout=90)
+                        if ans and ans.strip():
+                            used = ln
+                            break
+                    except Exception:
+                        continue
+                if not ans:
+                    return 200, {"ok": False, "error": "no LLM lane returned an answer (lanes down?)"}
+                return 200, {"ok": True, "advisory_only": True, "lane": used, "answer": ans.strip()}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/knowledge/add":
+            # Save an operator-vetted fact/finding into Hermes' research intelligence so TradeAI + Hermes
+            # "know" it going forward (RAG/advisory knowledge — not a trade, not auto-acted).
+            try:
+                from db_adapter import _get_conn
+                b = body or {}
+                topic = (b.get("topic") or b.get("title") or "").strip()
+                content = (b.get("content") or b.get("summary") or "").strip()
+                if not content:
+                    return 400, {"ok": False, "error": "content required"}
+                conn = _get_conn(); cur = conn.cursor()
+                try:
+                    # source is CHECK-constrained to 'hermes'; operator origin is marked via
+                    # hermes_agent_name + research_type='operator_knowledge'.
+                    cur.execute("""INSERT INTO hermes_research_intelligence
+                        (created_at, source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
+                         freshness_date, model_used, status)
+                        VALUES (now(), 'hermes', 'operator', 'operator_knowledge', %s, %s, %s, %s,
+                                now()::date, 'operator_telegram', 'staged') RETURNING id""",
+                        ((b.get("symbol") or None), (topic or "operator note")[:200],
+                         content[:4000], (b.get("thesis") or content)[:4000]))
+                    kid = cur.fetchone()[0]; conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                return 200, {"ok": True, "knowledge_id": kid, "topic": topic or "operator note",
+                             "message": "Saved to Hermes + Trade AI research intelligence (knowledge base)."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/rotation/feedback":
             # Learning loop: record the operator's action on a rotation idea → llm_feedback_observations,
             # so the advisor learns which suggestions are reviewed / dismissed / acted on over time.
