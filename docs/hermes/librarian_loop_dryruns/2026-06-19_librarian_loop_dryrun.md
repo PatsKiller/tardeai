@@ -2,7 +2,7 @@
 
 Findings: 0
 Mode: APPLY
-Runtime: 0.4s
+Runtime: 0.3s
 
 
 
