@@ -42,7 +42,9 @@ export default function BrokerProposals() {
     try {
       const r = await fetch('/api/v2/broker-proposals/route', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proposal_id: pid }) }).then(x => x.json())
       const d = r.data ?? r
-      const m = d.ok && d.record_only ? `📝 ${d.detail}` : d.gated ? `🔒 ${d.detail}` : d.ok ? `✅ routed` : `⛔ ${d.error || d.detail || 'failed'}`
+      const leg = d.order_spec?.orderLegCollection?.[0]
+      const wouldSubmit = leg ? ` · would POST: ${leg.instruction} ${leg.quantity} ${leg.instrument?.symbol} ${d.order_spec.orderType} $${d.order_spec.price}` : ''
+      const m = d.ok && d.record_only ? `📝 ${d.detail}` : d.gated ? `🔒 ${d.detail}${wouldSubmit}` : d.ok ? `✅ routed` : `⛔ ${d.error || d.detail || 'failed'}`
       setRouteMsg({ ...routeMsg, [pid]: m }); refetch?.()
     } catch (e: any) { setRouteMsg({ ...routeMsg, [pid]: '⛔ ' + String(e).slice(0, 60) }) }
   }

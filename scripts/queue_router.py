@@ -43,12 +43,13 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
     except Exception:
         _tm = None
     cur = _get_conn().cursor()
-    cur.execute("""SELECT symbol, intended_broker, target_account, status, routing_state
+    cur.execute("""SELECT symbol, intended_broker, target_account, status, routing_state,
+                          proposed_entry, proposed_shares
                      FROM paper_trade_proposals WHERE id=%s""", (pid,))
     r = cur.fetchone()
     if not r:
         return {"ok": False, "error": "proposal not found"}
-    symbol, broker, account, status, routing_state = r
+    symbol, broker, account, status, routing_state, entry, shares = r
     broker = (broker or ALPACA).strip()
 
     def _audit(after, reason):
@@ -71,13 +72,35 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
             _audit({"broker": broker, "error": str(e)[:120]}, "alpaca submit error")
             return {"ok": False, "broker": broker, "error": str(e)[:160]}
 
-    # ── Schwab — PREPARED but GATED (no live order until explicitly armed) ──
+    # ── Schwab — REAL API submit WIRED, but GATED (no live order until explicitly armed) ──
     if broker.startswith(SCHWAB_PREFIX):
-        gated_reason = _schwab_gate_reason(account)
-        _set_routing_state(pid, "queued")  # stays queued; nothing placed
-        _audit({"broker": broker, "gated": True, "reason": gated_reason}, "schwab routing gated")
-        return {"ok": False, "broker": broker, "gated": True, "symbol": symbol,
-                "detail": f"Schwab routing prepared but gated: {gated_reason}. No order placed."}
+        # Build the real Schwab LIMIT-BUY order spec + intent so the submit path is fully wired — what
+        # WOULD be POSTed is returned for transparency. The arm gate is checked BEFORE any submit; while
+        # closed, NOTHING is placed. When armed, the same path calls the fenced transport
+        # (schwab_transport.place_order → execution_guard gate + per-order 2FA).
+        order_spec = _build_schwab_order_spec(symbol, shares, entry)
+        armed, gate_reason = _schwab_routing_armed(account)
+        if not armed:
+            _set_routing_state(pid, "queued")  # stays queued; nothing placed
+            _audit({"broker": broker, "gated": True, "reason": gate_reason, "order_spec": order_spec},
+                   "schwab routing wired but gated")
+            return {"ok": False, "broker": broker, "gated": True, "symbol": symbol, "order_spec": order_spec,
+                    "detail": f"Schwab API submit wired but GATED: {gate_reason}. No order placed."}
+        # ARMED PATH (future flip) — the real fenced submit. Reached only when explicitly armed.
+        try:
+            import schwab_transport as _st
+            intent = _build_schwab_intent(account, symbol, shares, entry)
+            _set_routing_state(pid, "routing")
+            res = _st.place_order(account, order_spec, intent, kind="queue_entry")
+            ok = isinstance(res, dict) and res.get("status") in ("submitted", "filled")
+            _set_routing_state(pid, "routed" if ok else "rejected")
+            _audit({"broker": broker, "ok": ok, "transport": res}, "schwab live submit (armed)")
+            return {"ok": ok, "broker": broker, "symbol": symbol, "order_spec": order_spec, "detail": res}
+        except Exception as e:
+            _set_routing_state(pid, "rejected")
+            _audit({"broker": broker, "error": str(e)[:160]}, "schwab submit blocked/error")
+            return {"ok": False, "broker": broker, "gated": True, "symbol": symbol, "order_spec": order_spec,
+                    "detail": f"Schwab submit blocked: {str(e)[:160]}"}
 
     # ── Fidelity — no trading API; the proposal IS the record (operator executes at Fidelity) ──
     if broker.startswith("fidelity"):
@@ -88,6 +111,58 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
 
     _audit({"broker": broker, "unknown": True}, "unknown broker")
     return {"ok": False, "broker": broker, "error": f"unknown/disabled broker '{broker}' — fail-closed"}
+
+
+def _build_schwab_order_spec(symbol: str, shares, entry) -> dict:
+    """Exact Schwab order JSON for a queued entry: SINGLE LIMIT BUY (mirrors the Stage-2b canary shape)."""
+    return {
+        "session": "NORMAL", "duration": "DAY", "orderType": "LIMIT",
+        "price": f"{float(entry):.2f}",
+        "orderLegCollection": [{
+            "instruction": "BUY", "quantity": int(shares),
+            "instrument": {"symbol": (symbol or "").upper(), "assetType": "EQUITY"},
+        }],
+        "orderStrategyType": "SINGLE",
+    }
+
+
+def _build_schwab_intent(account_key: str, symbol: str, shares, entry):
+    """OrderIntent for the fenced transport (execution_guard runs the gate + per-order 2FA on it)."""
+    import uuid
+    from brokers.order_intent import (OrderIntent, Instrument, Direction, EntrySpec,
+                                       EntryMethod, Quantity, TIF, SessionPolicy)
+    return OrderIntent(
+        instrument=Instrument((symbol or "").upper()), direction=Direction.LONG,
+        entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=float(entry)),
+        quantity=Quantity(qty=int(shares)), broker="schwab", account_key=account_key,
+        tif=TIF.DAY, session=SessionPolicy.NORMAL, correlation_id=str(uuid.uuid4()),
+    )
+
+
+def _schwab_routing_armed(account_key: str | None) -> tuple[bool, str]:
+    """Is Schwab queue-routing armed for LIVE submit? Three independent locks, ALL required (fail-closed):
+      1. system_controls['schwab_queue_routing_enabled'] == 'true'  (the explicit queue-routing arm), AND
+      2. the live-trading interlock passes for this account, AND
+      3. the account is api_write_enabled.
+    Default = NOT armed → the submit path is wired but places nothing. Returns (armed, reason)."""
+    # Lock 1 — the queue-routing arm switch (absent/false by default)
+    try:
+        cur = _get_conn().cursor()
+        cur.execute("SELECT value FROM system_controls WHERE key='schwab_queue_routing_enabled'")
+        row = cur.fetchone()
+        if not (row and str(row[0]).lower() == "true"):
+            return (False, "Schwab queue-routing not armed (system_controls.schwab_queue_routing_enabled != true)")
+    except Exception as e:
+        try:
+            _get_conn().rollback()
+        except Exception:
+            pass
+        return (False, f"arm-state unavailable ({str(e)[:60]}) — fail-closed")
+    # Lock 2 — the live-trading interlock
+    reason = _schwab_gate_reason(account_key)
+    if not reason.startswith("interlock open"):
+        return (False, reason)
+    return (True, "armed")
 
 
 def _schwab_gate_reason(account_key: str | None) -> str:
