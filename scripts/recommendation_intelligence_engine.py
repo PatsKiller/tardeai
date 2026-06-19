@@ -298,6 +298,63 @@ def ingest(cur, dry):
         n += 1
     tag("execution", n)
 
+    # 11) REAL-BROKER EXECUTIONS (trade_transactions) — manual/synced BUYs in real accounts (Schwab,
+    #     Fidelity-via-SnapTrade/manual) that NEVER pass through paper_trades. This is what auto-tags an
+    #     operator's manual buy of a watchlist/rotation pick as EXECUTED — the rec→execution link that
+    #     previously had to be hand-stamped (GCTS 2026-06-18, XAR 2026-06-19). The per-symbol watchlist/
+    #     directive/rotation rows (steps 1-8) already carry the ORIGIN; this flips executed=true and joins
+    #     the realized buy. Idempotent on (symbol,'execution','trade_transactions', txn id).
+    n = 0
+    for txid, sym, acct, action, qty, price, amount, src, ts in _rows(cur, """
+        SELECT id, upper(symbol), account, action, quantity, price, amount, import_source,
+               COALESCE(trade_time, trade_date::timestamptz)
+        FROM trade_transactions
+        WHERE upper(action) IN ('BUY','BOUGHT','REINVESTMENT') AND symbol ~ %s
+          AND COALESCE(trade_time, trade_date::timestamptz) IS NOT NULL""", (RE_TICKER,)):
+        _upsert(cur, dry, symbol=sym, source_type="execution", source_ref_table="trade_transactions",
+                source_ref_id=str(txid), account=acct, executed=True,
+                first_seen_at=ts, last_seen_at=ts,
+                detail={"action": action, "quantity": float(qty) if qty is not None else None,
+                        "price": float(price) if price is not None else None,
+                        "amount": float(amount) if amount is not None else None,
+                        "import_source": src, "venue": "real_broker"})
+        n += 1
+    tag("real_execution", n)
+
+    # 12) DERIVED ROTATION EXECUTIONS — AUTO-link a real buy to its ROTATION origin (no hand-stamping;
+    #     replaces the manual XAR/GCTS tags, operator 2026-06-19 "this linkage should be automatic").
+    #     A real buy is a rotation execution when the symbol carries a rotation-origin signal:
+    #       • a ticker directive whose rationale flags rotation/rotate-in/rebalance/sleeve, OR
+    #       • a sector_rotation proposal, OR
+    #       • an existing rec_rotation_links.to_symbol edge.
+    #     Discriminates correctly: a plain watchlist/scan buy (e.g. HPE, empty-rationale directive) is NOT
+    #     tagged rotation. Idempotent on (symbol,'rotation','trade_transactions', txn id).
+    n = 0
+    for txid, sym, acct, ts, why in _rows(cur, """
+        SELECT tt.id, upper(tt.symbol), tt.account,
+               COALESCE(tt.trade_time, tt.trade_date::timestamptz),
+               COALESCE(
+                 (SELECT 'directive: '||left(d.rationale,90) FROM watch_directives d
+                    WHERE d.kind='ticker'
+                      AND upper(COALESCE(NULLIF(d.spec->>'symbol',''), d.label))=upper(tt.symbol)
+                      AND d.rationale ~* 'rotat|rotate-in|rebalance|sleeve' LIMIT 1),
+                 (SELECT 'proposal: '||p.strategy_id FROM paper_trade_proposals p
+                    WHERE upper(p.symbol)=upper(tt.symbol) AND p.strategy_id ~* 'rotation' LIMIT 1),
+                 (SELECT 'rotation_link' FROM rec_rotation_links r WHERE upper(r.to_symbol)=upper(tt.symbol) LIMIT 1)
+               )
+        FROM trade_transactions tt
+        WHERE upper(tt.action) IN ('BUY','BOUGHT') AND tt.symbol ~ %s
+          AND COALESCE(tt.trade_time, tt.trade_date::timestamptz) IS NOT NULL""", (RE_TICKER,)):
+        if not why:
+            continue
+        _upsert(cur, dry, symbol=sym, source_type="rotation", source_ref_table="trade_transactions",
+                source_ref_id=str(txid), account=acct, executed=True,
+                first_seen_at=ts, last_seen_at=ts,
+                rationale=f"Auto-derived rotation execution ({why}).",
+                detail={"derived": True, "signal": why, "venue": "real_broker"})
+        n += 1
+    tag("rotation_derived", n)
+
     return counts
 
 
