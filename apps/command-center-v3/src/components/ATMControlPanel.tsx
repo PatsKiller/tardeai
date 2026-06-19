@@ -62,6 +62,13 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
     max_new_positions_per_day: policy.max_new_positions_per_day ?? '',
     max_concurrent_positions: policy.max_concurrent_positions ?? '',
     daily_loss_pause_pct: policy.daily_loss_pause_pct ?? '',
+    // Percent-of-equity sizing controls (operator 2026-06-19)
+    sizing_engine: policy.sizing_engine ?? 'percent_equity',
+    max_position_allocation_pct: policy.max_position_allocation_pct ?? '',
+    max_strategy_allocation_pct: policy.max_strategy_allocation_pct ?? '',
+    max_sector_allocation_pct: policy.max_sector_allocation_pct ?? '',
+    max_risk_dollars_per_trade: policy.max_risk_dollars_per_trade ?? '',
+    max_notional_per_trade: policy.max_notional_per_trade ?? '',
     display_name: account.display_name ?? account.account_key,
   })
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
@@ -95,13 +102,35 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
           <label>Max concurrent<input style={{ ...inp, width: '100%' }} value={f.max_concurrent_positions} onChange={e => set('max_concurrent_positions', e.target.value)} /></label>
           <label>Daily-loss pause %<input style={{ ...inp, width: '100%' }} value={f.daily_loss_pause_pct} onChange={e => set('daily_loss_pause_pct', e.target.value)} /></label>
         </div>
+
+        {/* Position sizing engine (operator 2026-06-19) — percent-of-equity is the default */}
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', margin: '14px 0 4px' }}>Position sizing</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+          percent-of-equity: shares = min(equity × position%, equity × risk% ÷ stop-distance). Percentages are whole numbers (5 = 5%). Optional $ ceilings clamp the % caps.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 11 }}>
+          <label>sizing engine
+            <select style={{ ...inp, width: '100%' }} value={f.sizing_engine} onChange={e => set('sizing_engine', e.target.value)}>
+              <option value="percent_equity">percent_equity (default)</option>
+              <option value="fixed_dollar">fixed_dollar (legacy)</option>
+            </select>
+          </label>
+          <label>Max position %<input style={{ ...inp, width: '100%' }} value={f.max_position_allocation_pct} onChange={e => set('max_position_allocation_pct', e.target.value)} placeholder="e.g. 20" /></label>
+          <label>Max strategy %<input style={{ ...inp, width: '100%' }} value={f.max_strategy_allocation_pct} onChange={e => set('max_strategy_allocation_pct', e.target.value)} /></label>
+          <label>Max sector %<input style={{ ...inp, width: '100%' }} value={f.max_sector_allocation_pct} onChange={e => set('max_sector_allocation_pct', e.target.value)} /></label>
+          <label>Max risk $ / trade (cap)<input style={{ ...inp, width: '100%' }} value={f.max_risk_dollars_per_trade} onChange={e => set('max_risk_dollars_per_trade', e.target.value)} placeholder="optional" /></label>
+          <label>Max notional $ / trade (cap)<input style={{ ...inp, width: '100%' }} value={f.max_notional_per_trade} onChange={e => set('max_notional_per_trade', e.target.value)} placeholder="optional" /></label>
+        </div>
+
         {isLive && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 8 }}>⚠ live account — AUTO_LIVE / AUTO_PAPER will be refused by the gate interlock.</div>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
           <button onClick={onClose} style={{ ...inp, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => {
-            const body: any = { account: account.account_key, automation_mode: f.automation_mode, approval_policy: f.approval_policy }
+            const body: any = { account: account.account_key, automation_mode: f.automation_mode, approval_policy: f.approval_policy, sizing_engine: f.sizing_engine }
             if (f.display_name && f.display_name !== account.display_name) body.display_name = f.display_name
-            for (const k of ['risk_per_trade_pct', 'max_new_positions_per_day', 'max_concurrent_positions', 'daily_loss_pause_pct'])
+            for (const k of ['risk_per_trade_pct', 'max_new_positions_per_day', 'max_concurrent_positions', 'daily_loss_pause_pct',
+                             'max_position_allocation_pct', 'max_strategy_allocation_pct', 'max_sector_allocation_pct',
+                             'max_risk_dollars_per_trade', 'max_notional_per_trade'])
               if (f[k] !== '' && f[k] != null) body[k] = Number(f[k])
             onSubmit(body)
           }} style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 4, border: '1px solid #60a5fa', background: 'rgba(96,165,250,.15)', color: '#60a5fa', cursor: 'pointer' }}>Review change</button>

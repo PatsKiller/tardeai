@@ -90,8 +90,11 @@ def format_proposal_alert(proposal, alert_type, current_price):
                 {"text": "\u274c Reject", "callback_data": f"ptreject:{pid}"},
             ],
             [
-                {"text": "\u00bd\u00d7 Shares", "callback_data": f"ptapprove_half:{pid}"},
-                {"text": "2\u00d7 Shares", "callback_data": f"ptapprove_2x:{pid}"},
+                # Modify SIZE presets (override_payload) + custom Size / Risk via force-reply
+                {"text": "\U0001f4cf \u00bd\u00d7", "callback_data": f"ptapprove_half:{pid}"},
+                {"text": "\U0001f4cf 2\u00d7", "callback_data": f"ptapprove_2x:{pid}"},
+                {"text": "\u270f\ufe0f Size", "callback_data": f"ptmodify_size:{pid}"},
+                {"text": "\U0001f3af Risk", "callback_data": f"ptmodify_risk:{pid}"},
             ],
             [
                 {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
@@ -103,12 +106,13 @@ def format_proposal_alert(proposal, alert_type, current_price):
             {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
         ]]
 
-    # URL button — only when Tailscale FQDN is configured (HTTPS, no port)
+    # URL buttons — only when the public FQDN is configured (HTTPS, no port). Trade-review page (precise
+    # size/risk edit) + the sizing/automation policy page (operator 2026-06-19).
     tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
     if tailscale_host and rows:
         rows.append([
-            {"text": "\U0001f4ca Open in Dashboard",
-             "url": f"https://{tailscale_host}/v3/trading?id={pid}"},
+            {"text": "\U0001f50e Review trade", "url": f"https://{tailscale_host}/v3/trading?tab=Review&proposal={pid}"},
+            {"text": "⚙️ Policy", "url": f"https://{tailscale_host}/v3/automation?account=alpaca_paper"},
         ])
 
     keyboard = {"inline_keyboard": rows} if rows else None
