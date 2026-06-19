@@ -170,7 +170,18 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
         UPDATE watchlist_items SET
             origin_system = COALESCE(origin_system, %s),
             origin_detail = %s::jsonb,
-            directive_id = %s, in_directive_watch = true,
+            -- Operator-intent precedence (fix 2026-06-19): an explicit operator ticker tag (kind='ticker')
+            -- owns the item's directive_id and must NOT be clobbered by a later sector/trend auto-claim.
+            -- Incoming ticker → always wins; else fill if empty; else keep an existing ticker ownership;
+            -- else take the incoming (latest sector/trend wins among non-ticker, prior behavior).
+            directive_id = CASE
+                WHEN (SELECT kind FROM watch_directives WHERE id = %s) = 'ticker' THEN %s
+                WHEN watchlist_items.directive_id IS NULL THEN %s
+                WHEN (SELECT kind FROM watch_directives WHERE id = watchlist_items.directive_id) = 'ticker'
+                    THEN watchlist_items.directive_id
+                ELSE %s
+            END,
+            in_directive_watch = true,
             -- operator explicitly added this as a directive → un-remove it so it's VISIBLE on the
             -- watchlist (this was the "Maria added it but it's not showing" bug: a previously-removed
             -- symbol got in_directive_watch=true but kept status='removed', which the UI filters out).
@@ -182,7 +193,8 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
             provenance_reason = %s,
             updated_at = NOW()
         WHERE symbol = %s
-    """, (origin_system, json.dumps(origin_detail, default=str), directive_id,
+    """, (origin_system, json.dumps(origin_detail, default=str),
+          directive_id, directive_id, directive_id, directive_id,
           source_tier, provenance_reason, symbol))
     if cur.rowcount == 0:
         cur.execute("""
