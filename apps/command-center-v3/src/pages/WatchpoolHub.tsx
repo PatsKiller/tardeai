@@ -129,6 +129,7 @@ export default function WatchpoolHub({ onDrill }: Props) {
                   <Pill text={d.kind} color="#a855f7" />
                   <span style={{ fontWeight: 600, color: 'var(--text0)', fontSize: 12 }}>{d.label}</span>
                   <Pill text={d.status} color={d.status === 'active' ? '#22c55e' : d.status === 'paused' ? '#f59e0b' : 'var(--text3)'} tip={d.status === 'paused' ? 'Auto-paused (cold) — advisory; operator un-pause' : undefined} />
+                  {d.gap_type === 'rotate_gap' && <Pill text={`rotate-gap${d.sleeve ? ' · ' + d.sleeve : ''}`} color="#fb923c" tip={`Held position flagged for rotation review — seek ${d.sleeve || 'sleeve'} replacement (advisory). via ${d.created_by || 'operator'}`} />}
                   <span style={{ fontSize: 9, color: 'var(--text3)' }}>TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</span>
                 </div>
                 {dhits.length > 0 && (
