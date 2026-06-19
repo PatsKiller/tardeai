@@ -234,10 +234,14 @@ export default function JournalHub({ onDrill }: Props) {
   const cutoff = getTimeRangeCutoff(timeRange)
   const filtered = useMemo(() => {
     let f = allTrades
+    // 'All accounts' = REAL accounts only (operator 2026-06-18: paper trades must not count toward the
+    // portfolio's performance). Alpaca Paper is opt-in — pick its chip to see paper.
     if (acctFilter) f = f.filter(t => t.na === acctFilter)
+    else f = f.filter(t => t.source !== 'paper')
     f = f.filter(t => (t.exitDate ?? t.entryDate ?? '9999') >= cutoff || t.status === 'open')
     return f
   }, [allTrades, acctFilter, cutoff])
+  const realTradeCount = useMemo(() => allTrades.filter(t => t.source !== 'paper').length, [allTrades])
 
   const closed = filtered.filter(t => t.status === 'closed')
   const open = filtered.filter(t => t.status === 'open')
@@ -354,8 +358,8 @@ export default function JournalHub({ onDrill }: Props) {
     <div style={{ marginBottom: 12 }}>
       {/* Account chips */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => setAcctFilter('')} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: !acctFilter ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: !acctFilter ? '#60a5fa' : 'var(--text3)' }}>
-          All ({allTrades.length})
+        <button onClick={() => setAcctFilter('')} title="Real accounts only — paper trades are opt-in (pick the Alpaca Paper chip)" style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: !acctFilter ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: !acctFilter ? '#60a5fa' : 'var(--text3)' }}>
+          All real ({realTradeCount})
         </button>
         {accountCounts.map(([acct, cnt]) => (
           <button key={acct} onClick={() => setAcctFilter(acctFilter === acct ? '' : acct)} style={{
@@ -389,7 +393,7 @@ export default function JournalHub({ onDrill }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Journal</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{allTrades.length} trades · {accountCounts.length} accounts</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} real accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
