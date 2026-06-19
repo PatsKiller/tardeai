@@ -136,8 +136,9 @@ def parse_command(text: str) -> dict:
         _toks = text[4:].split()
         if _toks and all(t.isalpha() and t.isupper() and len(t) <= 5 for t in _toks):
             return {"command": "wl_add", "args": text[4:].strip()}
-    if lower.startswith("trend ") and not lower.startswith("trends"):
-        return {"command": "wl_topic", "args": text[6:].strip()}
+    for _v in ("trend ", "tren ", "trnd ", "research topic "):   # tolerate the common 'trend' typos
+        if lower.startswith(_v) and not lower.startswith("trends"):
+            return {"command": "wl_topic", "args": text[len(_v):].strip()}
     if lower.startswith("ask "):
         return {"command": "wl_ask", "args": text[4:].strip()}
     if lower in ("trends", "research trends", "latest trends", "latest research"):
@@ -2544,7 +2545,8 @@ def poll_and_process():
             "alex ", "retirement ", "iris", "/iris_", "status", "help",
             "topics", "topic ", "add video", "add article",
             "backup", "sync docs",
-            "watch ", "ask ", "trends", "trend ", "latest research", "latest trends",
+            "watch ", "ask ", "trends", "trend ", "tren ", "trnd ", "research topic ",
+            "latest research", "latest trends",
         ]) or (lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower))
         # bare "add SOFI" / "add SOFI HOOD" (uppercase ticker tokens)
         if not is_command and lower.startswith("add ") and " to " not in lower and not any(w in lower for w in ("video", "article", "topic ")):
