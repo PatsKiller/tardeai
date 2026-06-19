@@ -96,6 +96,14 @@ def _send_telegram(message: str) -> bool:
 
 
 _WL_SKILL = os.path.expanduser("~/.openclaw/skills/tradeai-watchlist/scripts/tradeai_watchlist.py")
+_AGENT_NAMES = ("maria", "aegis", "alex", "iris", "steph")
+
+
+def _strip_agent_prefix(text: str) -> str:
+    """Drop a leading 'Maria, ' / 'maria ' agent address so 'maria watch HOOD' gets the deterministic
+    skill path instead of the hallucinating gateway agent."""
+    m = re.match(r"^(?:" + "|".join(_AGENT_NAMES) + r")\b[,:]?\s+(.+)$", text.strip(), re.I)
+    return m.group(1).strip() if m else text.strip()
 
 
 def _run_wl_skill(*args) -> str:
@@ -111,7 +119,7 @@ def _run_wl_skill(*args) -> str:
 
 def parse_command(text: str) -> dict:
     """Parse a Telegram message into a command + arguments."""
-    text = text.strip()
+    text = _strip_agent_prefix(text)        # 'maria watch X' -> 'watch X'
     lower = text.lower()
 
     if lower == "help":
@@ -123,6 +131,8 @@ def parse_command(text: str) -> dict:
         return {"command": "wl_add", "args": text[6:].strip()}
     if lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower):
         return {"command": "wl_add_phrase", "args": text[4:].strip()}
+    if lower.startswith("trend ") and not lower.startswith("trends"):
+        return {"command": "wl_topic", "args": text[6:].strip()}
     if lower.startswith("ask "):
         return {"command": "wl_ask", "args": text[4:].strip()}
     if lower in ("trends", "research trends", "latest trends", "latest research"):
@@ -2462,6 +2472,8 @@ def process_command(cmd: dict) -> str:
             return "Usage: add SYM to watchlist (or: add SYM to my Data Center list)"
         a = ["add", *syms] + (["--label", listname] if listname else [])
         return _run_wl_skill(*a)
+    if command == "wl_topic":
+        return _run_wl_skill("add-topic", args) if args.strip() else "Usage: trend <theme to research>"
     if command == "wl_ask":
         return _run_wl_skill("ask", args)
     if command == "wl_trends":
@@ -2502,14 +2514,15 @@ def poll_and_process():
         if not text or not chat_id:
             continue
 
-        # Only process messages that look like commands or ingestible URLs
-        lower = text.lower().strip()
+        # Only process messages that look like commands or ingestible URLs (after dropping an agent prefix
+        # so 'maria watch HOOD' is treated as the deterministic command 'watch HOOD').
+        lower = _strip_agent_prefix(text).lower().strip()
         is_command = any(lower.startswith(c) for c in [
             "research ", "find ", "analyze ", "run screener ", "run promoter", "look for ",
             "alex ", "retirement ", "iris", "/iris_", "status", "help",
             "topics", "topic ", "add video", "add article",
             "backup", "sync docs",
-            "watch ", "ask ", "trends", "latest research", "latest trends",
+            "watch ", "ask ", "trends", "trend ", "latest research", "latest trends",
         ]) or (lower.startswith("add ") and " to " in lower and ("watch" in lower or "list" in lower))
         has_url = "http://" in lower or "https://" in lower
         if not is_command and not has_url:
