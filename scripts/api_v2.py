@@ -17788,9 +17788,9 @@ def _sectors_monitor(query=None):
                                                 WHERE upper(f.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
                              LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
                                                 WHERE upper(y.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
-                             WHERE wi.status='active' AND wi.score IS NOT NULL
+                             WHERE wi.status IN ('active','researched') AND wi.score IS NOT NULL
                                AND wi.symbol IN (SELECT DISTINCT symbol FROM incubator_universe WHERE sector=%s)
-                             ORDER BY wi.score DESC NULLS LAST LIMIT 10""", (sec,)) or []
+                             ORDER BY wi.score DESC NULLS LAST LIMIT 12""", (sec,)) or []
         for _c in cands:
             _cv = (_c.get("cio_view") or "").upper()
             _c["cio_view"] = _cv or None
