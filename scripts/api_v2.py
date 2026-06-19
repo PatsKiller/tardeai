@@ -19060,7 +19060,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "account, symbol, shares, entry, stop, target are required"}
                 import paper_trade_logger as _ptl
                 res = _ptl.create_manual_proposal(sym, int(shares), float(entry), float(stop), float(target),
-                                                  account=acct, strategy_id=strat)
+                                                  account=acct, strategy_id=strat, origin="manual_web")
                 return (200 if res.get("success") else 400), {"ok": bool(res.get("success")), "data": res}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}

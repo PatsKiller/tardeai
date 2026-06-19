@@ -922,7 +922,8 @@ def _check_scan_decision(conn, symbol: str) -> dict:
 
 
 def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
-                           target: float, account: str = None, strategy_id: str = "momentum_scalp") -> dict:
+                           target: float, account: str = None, strategy_id: str = "momentum_scalp",
+                           origin: str = "manual_telegram") -> dict:
     """Create a manual paper trade proposal, mapped to a chosen strategy (operator 2026-06-19 — the
     Schwab/Fidelity manual-submit form passes the strategy).
 
@@ -982,7 +983,7 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
             _qcur = conn.cursor()
             _qcur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='paper_trade_proposals' AND column_name IN ('origin','target_account','intended_broker','routing_state','sizing_basis')")
             _qcols = {row[0] for row in _qcur.fetchall()}
-            for _c, _v in (('origin', 'manual_telegram'), ('target_account', _tacct),
+            for _c, _v in (('origin', origin or 'manual_telegram'), ('target_account', _tacct),
                            ('intended_broker', _broker), ('routing_state', 'queued'),
                            ('sizing_basis', json.dumps({'engine': 'manual_operator', 'shares': shares,
                                                          'account_key': _tacct}))):
