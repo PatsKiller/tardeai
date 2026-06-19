@@ -922,13 +922,15 @@ def _check_scan_decision(conn, symbol: str) -> dict:
 
 
 def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
-                           target: float, account: str = None) -> dict:
-    """Create a manual paper trade proposal.
+                           target: float, account: str = None, strategy_id: str = "momentum_scalp") -> dict:
+    """Create a manual paper trade proposal, mapped to a chosen strategy (operator 2026-06-19 — the
+    Schwab/Fidelity manual-submit form passes the strategy).
 
     Adds WAIT/DOWNGRADE guard: if latest scan shows WAIT/AVOID/NO GO or
     critic BLOCK/DOWNGRADE, the proposal is created but marked as
     CAUTIOUS_MANUAL_TEST with approval_allowed=false.
     """
+    strategy_id = strategy_id or "momentum_scalp"
     conn = get_conn()
     try:
         dollar_size = round(shares * entry, 2)
@@ -964,7 +966,7 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
             'proposed_stop_pct', 'proposed_rr', 'proposed_by', 'status', 'expires_at',
         ]
         vals = [
-            symbol, 'momentum_scalp', account, entry, stop,
+            symbol, strategy_id, account, entry, stop,
             target, shares, dollar_size, dollar_risk,
             stop_pct, rr, 'telegram_manual', 'PENDING', expires.isoformat(),
         ]

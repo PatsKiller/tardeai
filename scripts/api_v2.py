@@ -11830,6 +11830,33 @@ def _broker_account_readiness():
             "checks": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
+def _broker_proposals():
+    """GET /api/v2/broker-proposals — Schwab + Fidelity queue proposals + form options (accounts +
+    strategies) for the Trading-hub Broker Proposals tab (operator 2026-06-19)."""
+    try:
+        proposals = _db_query("""
+            SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                   intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
+                   COALESCE(origin,'auto') AS origin, proposed_entry, proposed_stop, proposed_target1,
+                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                   created_at, expires_at
+              FROM paper_trade_proposals
+             WHERE (lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'
+                    OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')
+               AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
+             ORDER BY created_at DESC LIMIT 100""") or []
+        accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
+            WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
+        sd = PROJECT_ROOT / "config" / "strategies"
+        strategies = sorted([f.stem for f in sd.glob("*.yaml")
+                             if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
+        return {"proposals": [{k: _json_clean(v) for k, v in r.items()} for r in proposals],
+                "accounts": [{k: _json_clean(v) for k, v in a.items()} for a in accounts],
+                "strategies": strategies}
+    except Exception as e:
+        return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -18622,6 +18649,7 @@ ROUTES = {
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
+    "/api/v2/broker-proposals": lambda: _broker_proposals(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
     "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
     "/api/v2/broker-accounts/automation-policy": lambda: _broker_account_policy(),
@@ -19018,6 +19046,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": {"status": "started"}}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/broker-proposals/manual-submit":
+            # Manual trade submission for a Schwab/Fidelity account → a manual proposal mapped to a chosen
+            # strategy (operator 2026-06-19). Lands in the SAME unified queue (origin=manual, intended_broker
+            # = the account). Schwab can then route via gated 2FA; Fidelity is record-only.
+            try:
+                b = body or {}
+                acct = str(b.get("account") or "").strip()
+                sym = str(b.get("symbol") or "").strip().upper()
+                strat = str(b.get("strategy_id") or "momentum_scalp").strip()
+                shares, entry, stop, target = b.get("shares"), b.get("entry"), b.get("stop"), b.get("target")
+                if not (acct and sym and shares and entry and stop and target):
+                    return 400, {"ok": False, "error": "account, symbol, shares, entry, stop, target are required"}
+                import paper_trade_logger as _ptl
+                res = _ptl.create_manual_proposal(sym, int(shares), float(entry), float(stop), float(target),
+                                                  account=acct, strategy_id=strat)
+                return (200 if res.get("success") else 400), {"ok": bool(res.get("success")), "data": res}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/route":
+            # Submit a queued broker proposal: Schwab → gated 2FA (prepared, no order); Fidelity →
+            # record-only (no API). Routed by queue_router; audited.
+            try:
+                b = body or {}
+                pid = int(b.get("proposal_id"))
+                actor = str(b.get("operator") or "operator")[:60]
+                import queue_router as _qr
+                res = _qr.route_proposal(pid, actor=actor)
+                http = 200 if (res.get("ok") or res.get("gated")) else 400
+                return http, {"ok": bool(res.get("ok")), "data": res}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
         if base_path == "/api/v2/paper-trades/scale":
             # Mid-trade scale-IN / scale-OUT of an OPEN position (operator 2026-06-19). Broker-routed via
             # paper_scale: alpaca_paper = live paper (delta order + stop reconcile); schwab_* = gated 2FA
