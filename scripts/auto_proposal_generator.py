@@ -991,12 +991,30 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
     signals = get_eligible_signals(conn, run_label=run_label, symbol=symbol, min_score=min_score)
     log.info(f"Found {len(signals)} eligible signals for auto-proposal")
 
-    # Deduplicate: ONE signal per symbol. Prefer the highest-priority strategy, BUT skip past a
-    # strategy whose liquidity gate rejects the symbol — so a name too thin to SCALP still produces a
-    # swing_breakout proposal (looser/ungated) instead of being dropped entirely. (operator 2026-06-15)
+    # Deduplicate: ONE signal per symbol. TILT-AWARE TIE-BREAK (operator 2026-06-19): when several
+    # strategies flag the SAME symbol, award it to the highest TILT-WEIGHTED score (signal_score x the
+    # strategy's live-performance multiplier) so winning strategies (e.g. fib_retracement_bounce at 1.5x)
+    # win their overlapping symbols instead of always losing to fixed strategy priority. Strategy priority
+    # is only the final tiebreak. momentum_scalp stays 1.0 (excluded from the tilt). Still walks past a
+    # strategy whose liquidity gate rejects the symbol (operator 2026-06-15).
+    _tilt_map = {}
+    try:
+        import strategy_tilt as _stilt
+        if _stilt.enabled():
+            for _sid in {s.get("strategy_id", "") for s in signals}:
+                _tilt_map[_sid] = _stilt.get_tilt(_sid)
+    except Exception:
+        pass
+
     def _prio(s):
         sid = s.get("strategy_id", "")
-        return (STRATEGY_PRIORITY.index(sid) if sid in STRATEGY_PRIORITY else 99, -(s.get("signal_score") or 0))
+        try:
+            score = float(s.get("signal_score") or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+        tilt = float(_tilt_map.get(sid, 1.0))
+        prio = STRATEGY_PRIORITY.index(sid) if sid in STRATEGY_PRIORITY else 99
+        return (-(score * tilt), prio)   # highest tilt-weighted score first; priority breaks ties
     by_symbol = {}
     for sig in signals:
         by_symbol.setdefault(sig["symbol"], []).append(sig)
