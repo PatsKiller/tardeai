@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-06-19 - Percent-of-equity sizing, unified queue, mid-trade scaling, broker proposals
+
+Switched automated sizing from fixed-dollar caps to **percent-of-equity** (`account_policy.py` — one
+implementation shared by the proposal generator + risk gate; live equity wired for Alpaca AND Schwab w/
+fallback+cache). Shares = min(equity×position%/price, equity×risk%/stop_dist); SNOW 8→~85sh. All
+sizing/risk controls moved into `account_automation_policies`, editable from the v3 admin modal (two-step
+token + audit). risk_gate gates re-aligned so percent-sized positions aren't wrongly rejected. Unified
+ONE approval queue for auto + manual (origin/target_account/intended_broker + `queue_router`): alpaca
+live (paper), Schwab wired-but-gated 3-lock real submit, Fidelity record-only. `queue_decision_audit`
+logs every approve/deny/modify/route. New Trading-hub **Broker Proposals** tab (Schwab/Fidelity manual
+submit → manual proposal + strategy). **Mid-trade scale-in/out** (`paper_scale.py` + Open-Trades card,
+preview→confirm, broker-routed, stop-reconcile + weighted-avg/partial-P&L). **Telegram** proposal alerts
+gained ½×/2×/✏️Size/🎯Risk + FQDN review/policy links.
+
+## 2026-06-19 - Strategy intelligence: leaderboard, backtest fix, targeted screens, allocation tilt
+
+Live **strategy leaderboard** (`/api/v2/strategy-leaderboard` + Strategy-hub default tab, chart+table):
+ranks by live expectancy (avg R), backtest+assessment as context, confidence by sample size. Fixed
+corrupt backtest expectancy (clamped per-trade r to ±10R in `strategy_signal_simulator`; repaired 12
+rows — the 27R artifact). **Targeted Finviz screens** for the live winners (swing_breakout_targeted,
+fib_retracement_targeted) matching each config's criteria → 176+148 new candidates; momentum/day-scalp
+screeners untouched. **Per-strategy allocation tilt** (`strategy_tilt.py`, bounded 0.5–1.5 from live
+expectancy, momentum_scalp excluded): re-ranks candidates + scales risk budget toward winners AND
+tightens their position cap inversely (boosted winners take more trades, not oversized positions);
+**tilt-aware dedup** awards a multi-strategy symbol to the highest tilt-weighted score (fib stopped
+losing its overlaps — first fib proposal in weeks, #256 CAST).
+
+## 2026-06-19 - Trailing-stop integrity + money-market cash reflection
+
+`alpaca_stop_manager` ratchet now stamps ALL stop columns + trailing flags (was stale on stop_loss/
+current_stop) and reads COALESCE(stop_loss_price, stop_loss) so no managed position is skipped (the SNOW
+symptom). SnapTrade now normalizes money-market sweeps (SPAXX/FDRXX/…) to $1 NAV cash (`snaptrade_read`)
+— fixes the Fidelity IRA phantom -19.7% loss + $3,060 allocation collapse; IRA cash PINNED to the
+verified manual reflection ($452,622.73) until the feed is trustworthy. IRA reconciles to $565,421.73.
+
 ## 2026-06-18 - CIO verdict: Grok + ChatGPT dual-consensus (was Grok-only)
 
 The CIO final synthesis (the "CIO View" AVOID/BUY verdict) ran on free Grok OAuth primary / gemma fallback.
