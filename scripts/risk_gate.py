@@ -120,6 +120,22 @@ class RiskGate:
             plan = trade_plan or {}
             extra_data = extra or {}
 
+            # Percent-of-equity policy + LIVE equity (operator 2026-06-19): the validation gates below
+            # (loss limits, dollar-size cap, heat, single-position concentration) must align with the
+            # account's sizing policy so they never reject a position the sizing engine intentionally
+            # allowed. Single source of truth = account_policy. Falls back to env on any error.
+            try:
+                import account_policy as _ap
+                _pol = _ap.load_policy(account)
+                _equity, _ = _ap.equity_for_account(account)
+                _risk_pct = _pol.get('risk_per_trade_pct')
+                _pos_pct = _pol.get('max_position_allocation_pct')
+            except Exception:
+                _pol, _risk_pct, _pos_pct = {}, None, None
+                _equity = _safe_float(os.getenv('PAPER_ACCOUNT_SIZE', '100000'))
+            _per_trade_risk = (_equity * _risk_pct / 100.0) if (_risk_pct and _equity > 0) \
+                else _safe_float(risk_limits.get('default_risk_per_trade', 150))
+
             # 1. Global halt
             if self._get_control('halt_all_trading') == 'true':
                 reasons.append('GLOBAL_HALT')
@@ -158,7 +174,7 @@ class RiskGate:
             if self.conn and mode in ('paper', 'live'):
                 try:
                     cur = self.conn.cursor()
-                    risk_per = risk_limits.get('default_risk_per_trade', 150)
+                    risk_per = _per_trade_risk
                     mult = risk_limits.get('daily_loss_limit_multiplier_testing', 4) if mode == 'paper' else risk_limits.get('daily_loss_limit_multiplier_live', 3)
                     daily_limit = risk_per * mult
 
@@ -176,7 +192,7 @@ class RiskGate:
             if self.conn and mode in ('paper', 'live'):
                 try:
                     cur = self.conn.cursor()
-                    risk_per = risk_limits.get('default_risk_per_trade', 150)
+                    risk_per = _per_trade_risk
                     mult = risk_limits.get('weekly_loss_limit_multiplier_testing', 8) if mode == 'paper' else risk_limits.get('weekly_loss_limit_multiplier_live', 6)
                     weekly_limit = risk_per * mult
 
@@ -251,19 +267,25 @@ class RiskGate:
                 if _safe_float(stop_pct) > max_stop:
                     reasons.append('STOP_TOO_WIDE')
 
-            # 13. Dollar size (paper from env default $15K, live from strategy YAML)
+            # 13. Dollar size — aligned to the account's percent-of-equity position cap (operator 2026-06-19).
+            #     When the policy sets max_position_allocation_pct, the ceiling = equity * pct/100 (so the
+            #     gate matches the sizing engine). Falls back to the legacy env/YAML caps otherwise.
             dollar_size = plan.get('dollar_size')
             if dollar_size:
                 live_rules = strategy_yaml.get('live_trade_rules', {})
                 live_max = live_rules.get('max_position_size', 2000)
                 paper_max = int(os.getenv('PAPER_MAX_POSITION_SIZE', '15000'))
-                max_size = paper_max if mode == 'paper' else live_max
+                legacy_max = paper_max if mode == 'paper' else live_max
+                if _pos_pct and _equity > 0:
+                    max_size = _equity * (_pos_pct / 100.0)
+                else:
+                    max_size = legacy_max
                 if _safe_float(dollar_size) > max_size:
                     reasons.append('DOLLAR_SIZE_TOO_LARGE')
 
             # ── Hard Risk Governance Gates (Session A-1, operator-approved thresholds) ──
             # These gates enforce hard portfolio-level limits for the bot paper account.
-            _paper_size = _safe_float(os.getenv('PAPER_ACCOUNT_SIZE', '100000'))
+            _paper_size = _equity if _equity > 0 else _safe_float(os.getenv('PAPER_ACCOUNT_SIZE', '100000'))
 
             # H1. Portfolio heat limit (6% default)
             if self.conn and os.getenv('RISK_GATE_H1_ENABLED', 'true').lower() == 'true':
@@ -279,9 +301,13 @@ class RiskGate:
                 except Exception:
                     pass
 
-            # H2. Single position concentration (8% default)
+            # H2. Single position concentration — never tighter than the account's sizing policy
+            #     (operator 2026-06-19): conc_limit = max(env default, policy max_position_allocation_pct)
+            #     so this gate cannot reject a position the sizing engine intentionally allowed.
             if os.getenv('RISK_GATE_H2_ENABLED', 'true').lower() == 'true':
                 conc_limit = _safe_float(os.getenv('POSITION_CONCENTRATION_PCT', '0.08'))
+                if _pos_pct:
+                    conc_limit = max(conc_limit, _pos_pct / 100.0)
                 pos_size = _safe_float(plan.get('dollar_size', 0))
                 pos_pct = pos_size / _paper_size if _paper_size > 0 else 0
                 if pos_pct > conc_limit:

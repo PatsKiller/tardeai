@@ -2550,6 +2550,35 @@ def poll_and_process():
         if not text or not chat_id:
             continue
 
+        # Pending modify-size / modify-risk capture (operator 2026-06-19): after the operator taps ✏️ Size
+        # or 🎯 Risk on a proposal alert, the NEXT numeric message from this chat is the new value. Applied
+        # via the SAME sizing engine (trade_modify → account_policy) and audited in queue_decision_audit.
+        try:
+            import trade_modify as _tm
+            _pend = _tm.pop_pending(chat_id) if chat_id else None
+        except Exception:
+            _pend, _tm = None, None
+        if _pend and _tm:
+            import re as _re2
+            m = _re2.search(r"-?\d+(?:\.\d+)?", text)
+            if not m:
+                _send_telegram(f"Couldn't read a number from '{text[:40]}'. Tap the ✏️/🎯 button again to retry.")
+                continue
+            val = float(m.group())
+            _from = msg.get("from", {}) or {}
+            actor = str(_from.get("username") or _from.get("first_name") or chat_id)
+            if _pend["kind"] == "size":
+                r = _tm.apply_size(_pend["proposal_id"], int(val), actor=actor, channel="telegram")
+                _send_telegram(f"✅ {r['symbol']} size set to {r['shares']} sh (${r['dollar_size']:,.0f})"
+                               if r.get("ok") else f"⚠ modify failed: {r.get('error')}")
+            else:
+                r = _tm.apply_risk(_pend["proposal_id"], val, actor=actor, channel="telegram")
+                _send_telegram(f"✅ {r['symbol']} stop set to ${r['stop']:.2f} → {r['shares']} sh "
+                               f"(risk ${r['dollar_risk']:,.0f}, {r['binding']})"
+                               if r.get("ok") else f"⚠ modify failed: {r.get('error')}")
+            results.append({"modify": _pend, "value": val})
+            continue
+
         # Only process messages that look like commands or ingestible URLs (after dropping an agent prefix
         # so 'maria watch HOOD' is treated as the deterministic command 'watch HOOD').
         lower = _strip_agent_prefix(text).lower().strip()

@@ -21230,10 +21230,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             EDITABLE = {"automation_mode", "approval_policy", "risk_per_trade_pct", "max_new_positions_per_day",
                         "max_concurrent_positions", "max_strategy_allocation_pct", "max_sector_allocation_pct",
                         "daily_loss_pause_pct", "market_hours_only", "require_fresh_quote", "require_stop_defined",
-                        "require_target_defined"}
+                        "require_target_defined",
+                        # Percent-of-equity sizing controls (operator 2026-06-19) — admin-editable, audited.
+                        "sizing_engine", "max_position_allocation_pct",
+                        "max_risk_dollars_per_trade", "max_notional_per_trade"}
             fields = {k: v for k, v in b.items() if k in EDITABLE}
             if "automation_mode" in fields:
                 fields["automation_mode"] = new_mode
+            if "sizing_engine" in fields and fields["sizing_engine"] not in ("percent_equity", "fixed_dollar"):
+                return 400, {"ok": False, "error": "sizing_engine must be 'percent_equity' or 'fixed_dollar'"}
+            # Guard the percentages so an admin typo can't blow up sizing (whole-percent units: 5 = 5%).
+            for _pk in ("risk_per_trade_pct", "max_position_allocation_pct", "max_strategy_allocation_pct",
+                        "max_sector_allocation_pct", "daily_loss_pause_pct"):
+                if _pk in fields and fields[_pk] is not None:
+                    try:
+                        _pv = float(fields[_pk])
+                    except (TypeError, ValueError):
+                        return 400, {"ok": False, "error": f"{_pk} must be a number (whole percent, e.g. 5 = 5%)"}
+                    if _pv < 0 or _pv > 100:
+                        return 400, {"ok": False, "error": f"{_pk} out of range 0–100 (whole percent)"}
             # display_name is the editable section/account NAME (lives on broker_accounts)
             disp_new = b.get("display_name")
             disp_new = disp_new.strip()[:120] if isinstance(disp_new, str) and disp_new.strip() else None

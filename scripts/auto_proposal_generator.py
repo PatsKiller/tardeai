@@ -612,72 +612,72 @@ def check_scan_decision(conn, symbol: str) -> dict | None:
     return None
 
 
-def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict) -> dict:
-    """Normalize proposal sizing. Returns sizing dict."""
+def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
+                   *, account_key: str = "alpaca_paper", equity: float | None = None,
+                   policy: dict | None = None) -> dict:
+    """Normalize proposal sizing via the percent-of-equity engine (operator 2026-06-19).
+
+    Sizing is owned by account_policy.compute_sizing (the ONE implementation, shared with risk_gate):
+    shares = min(position-cap, risk-cap) where caps = account_equity * pct/100 from the account's
+    admin-editable automation policy. Falls back to the legacy fixed-dollar caps only when policy/equity
+    is unavailable or the account is explicitly on the 'fixed_dollar' engine. Returns the legacy keys
+    (back-compat) plus `sizing_basis` for the proposal row / audit."""
+    import account_policy as _ap
     entry = float(signal.get("entry_high") or signal.get("price") or 0)
     stop = float(signal.get("stop_loss") or 0)
     original_shares = int(signal.get("shares") or 0)
-
-    if entry <= 0 or stop <= 0 or original_shares <= 0:
+    if entry <= 0 or stop <= 0:
         return {"valid": False, "reason": "MISSING_PLAN_DATA"}
 
-    risk_per_share = abs(entry - stop)
-    if risk_per_share <= 0:
-        return {"valid": False, "reason": "ZERO_RISK_PER_SHARE"}
+    if policy is None:
+        policy = _ap.load_policy(account_key)
+    eq_src = "provided"
+    if equity is None:
+        equity, eq_src = _ap.equity_for_account(account_key)
 
-    # Get caps from strategy config and shared rules
-    live_rules = strategy_cfg.get("live_trade_rules", {})
-    max_dollar_size = float(live_rules.get("max_position_size", DEFAULT_MAX_DOLLAR_SIZE))
-    max_dollar_risk = float(live_rules.get("max_dollar_risk", DEFAULT_MAX_DOLLAR_RISK))
-    risk_per_trade = float(shared_rules.get("risk_limits", {}).get("default_risk_per_trade", DEFAULT_RISK_PER_TRADE))
+    # On the legacy fixed_dollar engine, honour the per-strategy caps as absolute ceilings (back-compat).
+    if (policy or {}).get("sizing_engine") != "percent_equity":
+        live_rules = strategy_cfg.get("live_trade_rules", {})
+        policy = dict(policy or {})
+        policy.setdefault("max_notional_per_trade", float(live_rules.get("max_position_size", _ap.FALLBACK_SIZE_DOLLARS)))
+        policy.setdefault("max_risk_dollars_per_trade",
+                          min(float(live_rules.get("max_dollar_risk", _ap.FALLBACK_RISK_DOLLARS)),
+                              float(shared_rules.get("risk_limits", {}).get("default_risk_per_trade", _ap.FALLBACK_RISK_DOLLARS))))
 
-    # Use the more conservative risk cap
-    max_dollar_risk = min(max_dollar_risk, risk_per_trade)
+    s = _ap.compute_sizing(policy, equity, entry, stop, desired_shares=None)
+    if not s.get("valid"):
+        return {"valid": False, "reason": s.get("reason", "SIZE_TOO_SMALL"),
+                "original_shares": original_shares,
+                "max_shares_by_size": s.get("max_shares_by_size"),
+                "max_shares_by_risk": s.get("max_shares_by_risk")}
 
-    original_dollar_size = round(original_shares * entry, 2)
-    original_dollar_risk = round(original_shares * risk_per_share, 2)
-
-    # Calculate max shares by each constraint
-    max_shares_by_size = int(max_dollar_size / entry) if entry > 0 else 0
-    max_shares_by_risk = int(max_dollar_risk / risk_per_share) if risk_per_share > 0 else 0
-    adjusted_shares = min(original_shares, max_shares_by_size, max_shares_by_risk)
-    adjusted_shares = max(adjusted_shares, 0)
-
-    if adjusted_shares < 1:
-        return {
-            "valid": False,
-            "reason": "SIZE_TOO_SMALL",
-            "original_shares": original_shares,
-            "max_shares_by_size": max_shares_by_size,
-            "max_shares_by_risk": max_shares_by_risk,
-        }
-
+    adjusted_shares = s["shares"]
+    risk_per_share = s["risk_per_share"]
     sizing_adjusted = adjusted_shares != original_shares
     sizing_reason = None
     if sizing_adjusted:
-        reasons = []
-        if adjusted_shares < original_shares and max_shares_by_size < original_shares:
-            reasons.append(f"dollar_size {original_dollar_size:.0f}>{max_dollar_size:.0f}")
-        if adjusted_shares < original_shares and max_shares_by_risk < original_shares:
-            reasons.append(f"dollar_risk {original_dollar_risk:.0f}>{max_dollar_risk:.0f}")
-        sizing_reason = "; ".join(reasons) if reasons else "reduced_to_fit_limits"
-
-    adjusted_dollar_size = round(adjusted_shares * entry, 2)
-    adjusted_dollar_risk = round(adjusted_shares * risk_per_share, 2)
+        sizing_reason = (f"{s['engine']}: {s['binding']} "
+                         f"(eq=${s['equity']:,.0f} risk%={s['risk_pct']} pos%={s['pos_pct']})")
     rr = round((float(signal.get("target_1") or 0) - entry) / risk_per_share, 2) if risk_per_share > 0 else 0
 
     return {
         "valid": True,
         "original_shares": original_shares,
         "adjusted_shares": adjusted_shares,
-        "original_dollar_size": original_dollar_size,
-        "adjusted_dollar_size": adjusted_dollar_size,
-        "original_dollar_risk": original_dollar_risk,
-        "adjusted_dollar_risk": adjusted_dollar_risk,
+        "original_dollar_size": round(original_shares * entry, 2),
+        "adjusted_dollar_size": s["dollar_size"],
+        "original_dollar_risk": round(original_shares * risk_per_share, 2),
+        "adjusted_dollar_risk": s["dollar_risk"],
         "sizing_adjusted": sizing_adjusted,
         "sizing_reason": sizing_reason,
-        "stop_pct": round(risk_per_share / entry, 4) if entry > 0 else 0,
+        "stop_pct": s["stop_pct"],
         "rr": rr,
+        "sizing_basis": {
+            "engine": s["engine"], "equity": s["equity"], "equity_source": eq_src,
+            "risk_pct": s["risk_pct"], "pos_pct": s["pos_pct"],
+            "max_dollar_risk": s["max_dollar_risk"], "max_dollar_size": s["max_dollar_size"],
+            "binding": s["binding"], "account_key": account_key,
+        },
     }
 
 
@@ -861,6 +861,13 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "setup_description": signal.get("setup_description"),
         "source_run_label": signal.get("scan_run_label"),
         "auto_execution_label": auto_context.get("execution_label", "manual") if auto_context else "manual",
+        # Unified queue + percent-of-equity audit (operator 2026-06-19)
+        "origin": "auto",
+        "target_account": _resolve_proposal_account(signal.get("strategy_id")),
+        "intended_broker": "alpaca_paper",
+        "routing_state": "queued",
+        "equity_at_proposal": (sizing.get("sizing_basis") or {}).get("equity"),
+        "sizing_basis": json.dumps(sizing.get("sizing_basis") or {}),
     }
 
     # Filter to existing columns
@@ -928,6 +935,16 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
     shared_rules = _load_shared_risk_rules()
     proposal_cols = _get_available_cols(conn, "paper_trade_proposals")
     cur = conn.cursor()
+
+    # Percent-of-equity sizing (operator 2026-06-19): resolve the account policy + live equity ONCE per
+    # run (avoid per-signal broker calls), passed into normalize_size. Single source of truth = account_policy.
+    import account_policy as _ap
+    _size_account = _resolve_proposal_account()
+    _size_policy = _ap.load_policy(_size_account)
+    _size_equity, _size_equity_src = _ap.equity_for_account(_size_account)
+    log.info(f"sizing engine={_size_policy.get('sizing_engine')} account={_size_account} "
+             f"equity=${_size_equity:,.0f} ({_size_equity_src}) "
+             f"risk%={_size_policy.get('risk_per_trade_pct')} pos%={_size_policy.get('max_position_allocation_pct')}")
 
     # Record run start
     auto_run_id = None
@@ -1116,9 +1133,10 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     stats["details"].append({"symbol": sym, "decision": "SKIPPED_LIQUIDITY", "reason": reason})
                     continue
 
-            # 3. Normalize sizing
+            # 3. Normalize sizing (percent-of-equity; run-level policy + equity)
             strategy_cfg = _load_strategy_config(sid)
-            sizing = normalize_size(sig, strategy_cfg, shared_rules)
+            sizing = normalize_size(sig, strategy_cfg, shared_rules,
+                                    account_key=_size_account, equity=_size_equity, policy=_size_policy)
             if not sizing.get("valid"):
                 stats["proposals_skipped"] += 1
                 reason = f"SKIPPED_SIZE ({sizing.get('reason')})"

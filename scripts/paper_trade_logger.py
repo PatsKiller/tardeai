@@ -969,6 +969,27 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
             stop_pct, rr, 'telegram_manual', 'PENDING', expires.isoformat(),
         ]
 
+        # Unified queue stamping (operator 2026-06-19): manual submissions share the SAME queue as the
+        # automated pipeline; intended_broker prepares broker-aware routing (alpaca paper now, Schwab later).
+        # Default account/broker comes from config (no hardcode), not a literal.
+        import account_policy as _apol
+        _default_paper = _apol.default_paper_account()
+        _tacct = account or _default_paper
+        _broker = _default_paper if (not account or 'alpaca' in account.lower()) else account
+        try:
+            _qcur = conn.cursor()
+            _qcur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='paper_trade_proposals' AND column_name IN ('origin','target_account','intended_broker','routing_state','sizing_basis')")
+            _qcols = {row[0] for row in _qcur.fetchall()}
+            for _c, _v in (('origin', 'manual_telegram'), ('target_account', _tacct),
+                           ('intended_broker', _broker), ('routing_state', 'queued'),
+                           ('sizing_basis', json.dumps({'engine': 'manual_operator', 'shares': shares,
+                                                         'account_key': _tacct}))):
+                if _c in _qcols:
+                    cols.append(_c)
+                    vals.append(_v)
+        except Exception:
+            pass
+
         # Add scan context columns if they exist
         try:
             cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='paper_trade_proposals' AND column_name IN ('catalyst','catalyst_verified','critic_verdict','critic_confidence','signal_score','signal_grade','approval_allowed','approval_blocked_reason')")

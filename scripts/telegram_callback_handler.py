@@ -142,7 +142,8 @@ def handle_callback_query(cb):
         return
 
     # ── Proposal buttons (ptapprove:123, ptreject:123, ptinfo:123) ──
-    if action in ("ptapprove", "ptapprove_half", "ptapprove_2x", "ptreject", "ptinfo"):
+    if action in ("ptapprove", "ptapprove_half", "ptapprove_2x", "ptreject", "ptinfo",
+                  "ptmodify_size", "ptmodify_risk"):
         try:
             pid = int(parts[1]) if len(parts) > 1 else None
         except ValueError:
@@ -152,22 +153,58 @@ def handle_callback_query(cb):
             answer_callback(cb_id, "Missing proposal ID")
             return
 
+        try:
+            import trade_modify as _tm
+        except Exception:
+            _tm = None
+
         if action == "ptapprove":
             result = _run_approve(pid, user_id, {})
             _post_confirmation(chat_id, message_id, result, f"APPROVED by {user_name} at {now_short}")
+            if _tm:
+                _tm.audit_decision("approve", proposal_id=pid, actor=user_name, channel="telegram",
+                                   after={"shares": result.get("shares")}, reason="telegram approve")
             answer_callback(cb_id, _short_result(result))
         elif action == "ptapprove_half":
             result = _run_approve(pid, user_id, {"shares_multiplier": 0.5})
             _post_confirmation(chat_id, message_id, result, f"APPROVED \u00bd\u00d7 by {user_name} at {now_short}")
+            if _tm:
+                _tm.audit_decision("modify_size", proposal_id=pid, actor=user_name, channel="telegram",
+                                   after={"shares_multiplier": 0.5, "shares": result.get("shares")}, reason="telegram \u00bd\u00d7")
             answer_callback(cb_id, _short_result(result))
         elif action == "ptapprove_2x":
             result = _run_approve(pid, user_id, {"shares_multiplier": 2.0})
             _post_confirmation(chat_id, message_id, result, f"APPROVED 2\u00d7 by {user_name} at {now_short}")
+            if _tm:
+                _tm.audit_decision("modify_size", proposal_id=pid, actor=user_name, channel="telegram",
+                                   after={"shares_multiplier": 2.0, "shares": result.get("shares")}, reason="telegram 2\u00d7")
             answer_callback(cb_id, _short_result(result))
         elif action == "ptreject":
             result = _run_reject(pid, user_id, "telegram_inline_reject")
-            _post_confirmation(chat_id, message_id, result, f"REJECTED by {user_name} at {now_short}")
+            _post_confirmation(chat_id, message_id, result, f"DENIED by {user_name} at {now_short}")
+            if _tm:
+                _tm.audit_decision("deny", proposal_id=pid, actor=user_name, channel="telegram",
+                                   reason="telegram deny")
             answer_callback(cb_id, _short_result(result))
+        elif action in ("ptmodify_size", "ptmodify_risk"):
+            # Two-step: record what the next reply modifies, then prompt the operator to reply with a value.
+            kind = "size" if action == "ptmodify_size" else "risk"
+            sym = ""
+            if _tm:
+                try:
+                    p = _tm._proposal(pid) or {}
+                    sym = p.get("symbol", "")
+                except Exception:
+                    pass
+                _tm.set_pending(chat_id, pid, kind, sym)
+                _tm.audit_decision(f"modify_{kind}_requested", proposal_id=pid, actor=user_name,
+                                   channel="telegram", reason="operator requested modify")
+            prompt = (f"\u270f\ufe0f Reply with the new SHARE COUNT for {sym or ('#' + str(pid))} "
+                      f"(whole number)." if kind == "size" else
+                      f"\U0001f3af Reply with the new STOP PRICE for {sym or ('#' + str(pid))} "
+                      f"(re-sizes by the same risk engine).")
+            send_reply(chat_id, message_id, prompt)
+            answer_callback(cb_id, "Reply with the value")
         elif action == "ptinfo":
             from proposal_alerter import build_proposal_info
             send_reply(chat_id, message_id, build_proposal_info(pid))
