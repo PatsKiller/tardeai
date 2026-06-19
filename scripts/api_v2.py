@@ -125,6 +125,26 @@ def _reports_item(query=None):
     return _rp.get_item(q.get("source", "nl"), q.get("id"))
 
 
+def _reports_portal_summary(query=None):
+    """GET /api/v2/reports/portal-summary?days=7 — KPI roll-up for the Reports Command Portal header."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    q = query or {}
+    return _rp.portal_summary(days=int(q.get("days", 7) or 7))
+
+
+def _reports_action_items(query=None):
+    """GET /api/v2/reports/action-items?category=&q=&days=7&limit=100 — extracted, routed action items."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    q = query or {}
+    return _rp.action_items(category=(q.get("category") or None), q=q.get("q", ""),
+                            days=(int(q["days"]) if q.get("days") else 7),
+                            limit=int(q.get("limit", 100) or 100))
+
+
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
     Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
@@ -18922,6 +18942,8 @@ ROUTES = {
     "/api/v2/reports/categories": _reports_categories,
     "/api/v2/reports/list": _reports_list,
     "/api/v2/reports/item": _reports_item,
+    "/api/v2/reports/portal-summary": _reports_portal_summary,
+    "/api/v2/reports/action-items": _reports_action_items,
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
