@@ -19018,6 +19018,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": {"status": "started"}}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/paper-trades/scale":
+            # Mid-trade scale-IN / scale-OUT of an OPEN position (operator 2026-06-19). Broker-routed via
+            # paper_scale: alpaca_paper = live paper (delta order + stop reconcile); schwab_* = gated 2FA
+            # (prepared, places NOTHING); fidelity_* = record-only manual trade. confirm=false returns a
+            # PREVIEW (what would happen); confirm=true executes. Both directions require confirm (operator
+            # decision). Scale-in capped at percent-of-equity headroom. Audited in queue_decision_audit.
+            try:
+                b = body or {}
+                acct = str(b.get("account") or "").strip()
+                sym = str(b.get("symbol") or "").strip().upper()
+                delta = b.get("delta_shares")
+                confirm = bool(b.get("confirm"))
+                actor = str(b.get("operator") or "operator")[:60]
+                if not (acct and sym and delta is not None):
+                    return 400, {"ok": False, "error": "account, symbol and delta_shares are required"}
+                try:
+                    delta = int(delta)
+                except (TypeError, ValueError):
+                    return 400, {"ok": False, "error": "delta_shares must be an integer"}
+                import paper_scale as _ps
+                res = _ps.scale_position(acct, sym, delta, actor=actor, channel="web", confirm=confirm)
+                # preview / gated are not errors — return 200 so the UI can render them
+                http = 200 if (res.get("ok") or res.get("preview") or res.get("gated")) else 400
+                return http, {"ok": bool(res.get("ok")), "data": res}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
         if base_path == "/api/v2/holdings/protective-stop":
             # Stage 2c STEP 1 — REQUEST a protective SELL stop / stop-limit / trailing on a real holding.
             # Two routes (chosen by the account, never by the client):

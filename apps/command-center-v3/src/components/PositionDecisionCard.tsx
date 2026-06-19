@@ -204,6 +204,8 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       {p.primary_next_review && <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>Next: {p.primary_next_review}</div>}
     </div>
 
+    <ScaleControl p={p} />
+
     {(_bstop || protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
       {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
       {_bstop && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -324,5 +326,69 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 11, alignItems: 'center' }}>{(p.recommended_manual_actions ?? []).slice(0, 4).map((a: string) => <button key={a} onClick={() => onAction?.(a, p)} title="Operator review action only" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(148,163,184,.25)', background: 'rgba(15,23,42,.55)', color: TEXT2, cursor: 'pointer' }}>{a}</button>)}<span onClick={onToggle} style={{ fontSize: 10, color: MUTED, cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto' }}>{expanded ? 'less' : 'more'}</span><span onClick={() => onDrill({ title: `${p.symbol} — ${p.account}`, subtitle: `${p.strategy ?? ''} · ${p.broker}/${p.environment}`, endpoint: '/api/v2/open-trades/intelligence', rows: [p], subjectType: 'position', subjectKey: p.symbol })} style={{ fontSize: 10, color: BLUE, cursor: 'pointer', textDecoration: 'underline', fontWeight: 800 }}>drill</span></div>
 
     {expanded && <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 10 }}><div style={{ fontSize: 11, fontWeight: 900, color: TEXT1, marginBottom: 6 }}>News & catalysts</div>{news.length === 0 && <div style={{ fontSize: 10.5, color: MUTED }}>No recent research surfaced.</div>}{news.map((n: any, i: number) => { const stale = (n.age_hours ?? 0) > 48; return <div key={i} style={{ fontSize: 11, marginBottom: 7, opacity: stale ? 0.7 : 1, lineHeight: 1.45 }}><div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}><span style={chip('rgba(15,23,42,.55)', TEXT2)}>{n.source}</span>{n.age_hours != null && <span style={{ fontSize: 9.5, color: stale ? AMBER : MUTED }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}</div>{n.url ? <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', display: 'block', marginTop: 3, fontWeight: 650 }}>{n.title || ''}</a> : <div style={{ color: TEXT2, marginTop: 3 }}>{n.title || ''}</div>}{n.why_it_matters && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}><b style={{ color: TEXT2 }}>Why it matters:</b> {n.why_it_matters}</div>}</div> })}<div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>SMA50 {t.sma50_pct != null ? pct(t.sma50_pct) : '—'} · SMA200 {t.sma200_pct != null ? pct(t.sma200_pct) : '—'} · RVOL {t.rvol ?? '—'}{sr.sector ? ` · ${sr.sector} ${sr.label}` : ''}{p.last_hermes_review_at ? ` · Hermes ${String(p.last_hermes_review_at).slice(0, 10)}` : ''}</div></div>}
+  </div>
+}
+
+// Mid-trade scale-IN / scale-OUT control (operator 2026-06-19). Web card only; both directions require
+// a preview→confirm step. Broker-routed by the API: alpaca_paper = live paper, schwab_* = gated 2FA,
+// fidelity_* = record-only. Scale-in is capped server-side at the percent-of-equity position headroom.
+function ScaleControl({ p }: any) {
+  const [qty, setQty] = useState('')
+  const [preview, setPreview] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const held = Number(p.shares) || 0
+  const acct = String(p.account ?? '').toLowerCase()
+  const broker = acct.includes('alpaca') ? 'alpaca' : acct.startsWith('schwab') ? 'schwab' : acct.startsWith('fidelity') ? 'fidelity' : 'unknown'
+  if (held <= 0 || broker === 'unknown') return null
+  const brokerNote = broker === 'alpaca' ? 'live paper order' : broker === 'schwab' ? 'Schwab — gated 2FA (no live order yet)' : 'Fidelity — record-only (execute at broker)'
+
+  const send = async (sign: number, confirm: boolean) => {
+    const n = Math.abs(parseInt(qty || '0', 10))
+    if (!n) { setMsg('enter a share count'); return }
+    setBusy(true); setMsg('')
+    try {
+      const r = await fetch('/api/v2/paper-trades/scale', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: p.account, symbol: p.symbol, delta_shares: sign * n, confirm })
+      }).then(x => x.json())
+      const d = r.data ?? r
+      if (!confirm) {
+        if (d.ok || d.preview || d.gated) setPreview({ ...d, sign, n })
+        else { setMsg(d.error || 'preview failed'); setPreview(null) }
+      } else {
+        if (d.ok) setMsg(`✅ ${d.direction === 'scale_in' ? 'Added' : 'Trimmed'} ${d.applied ?? d.delta} ${p.symbol}${d.new_shares != null ? ` → ${d.new_shares} sh` : ''}${d.realized_pnl != null ? ` · P&L $${d.realized_pnl}` : ''}${d.stop ? ` · ${d.stop}` : ''}`)
+        else if (d.gated) setMsg(`🔒 ${d.detail}`)
+        else if (d.recorded) setMsg(`📝 ${d.detail}`)
+        else setMsg(d.error || 'failed')
+        setPreview(null); setQty('')
+      }
+    } catch (e: any) { setMsg(String(e).slice(0, 90)) } finally { setBusy(false) }
+  }
+
+  const inp = { width: 64, fontSize: 11, padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0 }
+  const btn = (c: string) => ({ fontSize: 10.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
+  return <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'rgba(56,189,248,.07)', border: '1px solid rgba(56,189,248,.25)' }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 11, fontWeight: 900, color: '#38bdf8' }}>Scale position</span>
+      <span style={{ fontSize: 9.5, color: MUTED }}>held {held} sh · {brokerNote}</span>
+      <span style={{ flex: 1 }} />
+      <input style={inp} value={qty} onChange={e => setQty(e.target.value.replace(/[^0-9]/g, ''))} placeholder="shares" disabled={busy} />
+      <button onClick={() => send(1, false)} disabled={busy} title="Add shares (capped at position headroom)" style={btn(GREEN)}>Scale in +</button>
+      <button onClick={() => send(-1, false)} disabled={busy} title="Trim shares (partial close)" style={btn(AMBER)}>Scale out −</button>
+    </div>
+    {preview && <div style={{ marginTop: 9, padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.6)', border: '1px solid rgba(148,163,184,.25)' }}>
+      <div style={{ fontSize: 11, color: TEXT1, fontWeight: 700 }}>
+        Confirm {preview.direction === 'scale_in' ? 'scale-IN' : 'scale-OUT'}: {preview.side?.toUpperCase()} {preview.delta_applied ?? preview.delta ?? preview.n} {p.symbol}
+        {preview.price ? ` @ ~$${Number(preview.price).toFixed(2)}` : ''}{preview.new_shares != null ? ` → ${preview.new_shares} sh` : ''}
+      </div>
+      {preview.cap_note && <div style={{ fontSize: 10, color: AMBER, marginTop: 3 }}>⚠ {preview.cap_note}</div>}
+      {preview.detail && <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{preview.detail}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={() => send(preview.sign, true)} disabled={busy} style={btn(preview.gated ? '#a78bfa' : GREEN)}>{busy ? '…' : preview.gated ? 'Confirm (gated)' : 'Confirm'}</button>
+        <button onClick={() => setPreview(null)} disabled={busy} style={btn(MUTED)}>Cancel</button>
+      </div>
+    </div>}
+    {msg && <div style={{ fontSize: 10.5, marginTop: 7, color: msg.startsWith('✅') ? GREEN : msg.startsWith('🔒') || msg.startsWith('📝') ? '#a78bfa' : AMBER }}>{msg}</div>}
   </div>
 }
