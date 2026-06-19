@@ -110,25 +110,40 @@ export default function WatchlistHub({ onDrill }: Props) {
     } catch { /* advisory only */ }
   }
 
+  // The DB legitimately holds >1 row per symbol (portfolio holding + ai_discovered + ai_watchlist alias +
+  // per-bucket). Collapse to ONE card per symbol, keeping the RICHEST row (directive-associated, then
+  // highest score) so the displayed card always carries the directive badge/plan — not a barer alias
+  // (fix 2026-06-19: operator ticker tags appeared "not associated" when a barer dupe won the dedup).
+  const bestBySym = useMemo(() => {
+    const best = new Map<string, { row: any; rich: number }>()
+    for (const it of items) {
+      const sym = String(it.symbol).toUpperCase()
+      const rich = (it.directive_id ? 1e9 : 0) + (Number(it.score) || 0)
+      const cur = best.get(sym)
+      if (!cur || rich > cur.rich) best.set(sym, { row: it, rich })
+    }
+    return best
+  }, [items])
+
   const visible = useMemo(() => {
-    const seen = new Set<string>()
     const q = search.trim().toUpperCase()
     // Directive filter: a ticker directive links items by directive_id, but a trend/sector directive
     // surfaces them via hits (by symbol). Match on EITHER (fix 2026-06-19 — trend filter showed 0).
     const selDir = fDir !== 'all' ? directives.find(d => String(d.id) === fDir) : null
     const selDirSyms = new Set<string>((selDir?.hit_symbols ?? []).map((s: string) => String(s).toUpperCase()))
     return items.filter(it => {
-      if (seen.has(it.symbol)) return false
+      const symU = String(it.symbol).toUpperCase()
+      if (bestBySym.get(symU)?.row !== it) return false   // one (richest) row per symbol
       // Search is a DIRECT symbol lookup — it bypasses the other filters so a specific ticker is always
       // findable (operator 2026-06-18: "can't filter HPE" — HPE is CIO=IGNORE and the Buy-side filter hid it).
-      if (q) { if (!String(it.symbol).toUpperCase().includes(q)) return false; seen.add(it.symbol); return true }
+      if (q) return symU.includes(q)
       if (fStatus !== 'all' && it.status !== fStatus) return false
       if (fOrigin !== 'all') {
         if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
         else if (it.origin_system !== fOrigin) return false
       }
       if (fKind === 'directive' && !it.directive_id) return false
-      if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(String(it.symbol).toUpperCase())) return false
+      if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(symU)) return false
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
@@ -143,10 +158,9 @@ export default function WatchlistHub({ onDrill }: Props) {
         const lists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim())
         if (fList === '__none' ? lists.filter(Boolean).length > 0 : !lists.includes(fList)) return false
       }
-      seen.add(it.symbol)
       return true
     })
-  }, [items, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap, directives])
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap, directives])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
