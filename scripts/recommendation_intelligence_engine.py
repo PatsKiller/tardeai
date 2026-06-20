@@ -662,10 +662,15 @@ def lifecycle_performance(cur, limit=300):
     for sym, acct, cdate, rr, lesson, fam in cur.fetchall():
         jrev.setdefault(sym, []).append({"account": acct, "closed_date": cdate, "realized_r": rr,
                                          "lesson": lesson, "setup_family": fam})
-    # spine: real closed (sold) trades
+    # spine: real closed (sold) trades. EXCLUDE data artifacts that don't belong in recommendation
+    # lineage (2026-06-20): (a) raw broker CUSIPs that never resolved to a ticker (symbol !~ A-Z{1,5}),
+    # (b) legacy pre-system holdings with implausibly long holds (>5yr) — e.g. an 18-yr Visa lot showing
+    # +2729% — which are real trades but not recommendation outcomes. Underlying trade_closed is untouched.
     cur.execute("""SELECT id, upper(symbol), account, open_date, close_date, shares, buy_price, sell_price,
                           pnl, pnl_pct, r_multiple, hold_days, setup, strategy_id
-                   FROM trade_closed ORDER BY close_date DESC NULLS LAST, id DESC LIMIT %s""", (limit,))
+                   FROM trade_closed
+                   WHERE symbol ~ '^[A-Za-z]{1,5}$' AND (hold_days IS NULL OR hold_days <= 1825)
+                   ORDER BY close_date DESC NULLS LAST, id DESC LIMIT %s""", (limit,))
     out = []
     for (tid, sym, acct, od, cd, sh, bp, sp, pnl, pnlpct, rmult, hold, setup, strat) in cur.fetchall():
         org = origin.get(sym)
