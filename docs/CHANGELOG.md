@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-19 - ETF classification: authoritative yfinance quoteType + watchlist API surfacing
+
+Operator flagged that the assistant said "no ETFs on the watchlist" when 51 are present (DIVI/SCHY just
+added). Root cause was three-fold: (1) `/api/v2/watchlist/items` only joined `symbol_profiles.sector`, NOT
+`instrument_type` — so ETF status was null everywhere (UI, OpenClaw skill, agent); (2) `classify_instruments.py`
+had a yfinance `quoteType` pass but capped fetches at ~120 and re-fetched known symbols, so new tickers fell
+past the cap and defaulted to `stock`; (3) DIVI/SCHY were keyword-misclassified `stock`.
+
+Fixes: added `sp.instrument_type` to the watchlist items SELECT (commit e089a63a); hardened
+`classify_instruments.py` (commit ea6ca439) to apply CACHED `quote_type` authoritatively with no network and
+fetch only un-cached symbols, so new ETFs always get caught and the work converges. Full pass cached 478/488
+symbols (the 10 nulls are non-market 401k proxy codes like AB-DISC-Z); caught 13 ETFs the heuristic missed
+(51→64 etf). Delivery: `classify_instruments.py` runs weekly via cron `30 6 * * 6` (Sat 06:30, flock-guarded),
+companion `etf_analyst_enrich.py` at `0 7 * * 6`. The OpenClaw watchlist skill now prints an
+"ETFs/funds on watchlist (N): ..." line + per-row [ETF]/[FUND] tags.
+
 ## 2026-06-19 - Auto-detected purchased→sold→journal lifecycle (Rec Intelligence)
 
 Operator: "I don't see the mapping/flagging of performance for watchlist & proposals that were purchased,
