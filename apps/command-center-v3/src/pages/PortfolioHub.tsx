@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
+import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
 import AskAgents from '../components/AskAgents'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
@@ -93,6 +94,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
+  const aMap = useAnalystMap()
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
@@ -332,6 +334,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                               style={{ color: String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
                               {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions} analysts · target ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}</span>}
                           </div>
+                          <AnalystReviews symbol={h.symbol} map={aMap} />
                           {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
                             <div key={i} style={{ fontSize: 8.5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               <span style={{ color: 'var(--text3)' }}>{n.source} · </span>

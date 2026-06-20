@@ -16144,6 +16144,55 @@ def _hermes_workflow_matrix(query=None):
     }
 
 
+def _analyst_detail(query=None):
+    """GET /api/v2/analyst-detail[?symbol=X][?map=1] — per-symbol analyst breakdown for the bulleted card
+    view: rating distribution (strong_buy/buy/hold/sell, finnhub) + target range (mean/median/high/low,
+    Yahoo) + counts + dates/sources. NOTE: sources aggregate — no individual firm names are available.
+    Read-only/advisory."""
+    q = query or {}
+    sym = q.get("symbol")
+    sym = (sym[0] if isinstance(sym, list) else sym or "").upper().strip()
+    want_map = bool(q.get("map"))
+    # latest target snapshot per symbol (Yahoo)
+    tgt_rows = _db_query("""SELECT DISTINCT ON (upper(symbol)) upper(symbol) s, target_mean_price, target_median_price,
+                              target_high_price, target_low_price, number_of_analyst_opinions, recommendation_key,
+                              current_price, snapshot_date
+                            FROM yahoo_analyst_targets_history
+                            {} ORDER BY upper(symbol), snapshot_date DESC""".format(
+                            "WHERE upper(symbol)=%s" if sym else ""), ((sym,) if sym else None)) or []
+    # latest rating distribution per symbol (finnhub)
+    dist_rows = _db_query("""SELECT DISTINCT ON (upper(symbol)) upper(symbol) s, payload
+                             FROM analyst_data_history
+                             {} ORDER BY upper(symbol), as_of DESC""".format(
+                             "WHERE upper(symbol)=%s" if sym else ""), ((sym,) if sym else None)) or []
+    dist = {}
+    for r in dist_rows:
+        p = r["payload"] if isinstance(r["payload"], dict) else {}
+        dist[r["s"]] = p
+    def _f(v):
+        try:
+            return round(float(v), 2)
+        except Exception:
+            return None
+    out = {}
+    for r in tgt_rows:
+        s = r["s"]
+        mean = _f(r["target_mean_price"]); cur = _f(r["current_price"])
+        d = dist.get(s, {})
+        out[s] = {
+            "rec": r["recommendation_key"], "n": r["number_of_analyst_opinions"],
+            "target_mean": mean, "target_median": _f(r["target_median_price"]),
+            "target_high": _f(r["target_high_price"]), "target_low": _f(r["target_low_price"]),
+            "current": cur, "upside": (round((mean - cur) / cur * 100, 1) if (mean and cur) else None),
+            "as_of": str(r["snapshot_date"]) if r["snapshot_date"] else None,
+            "dist": {k: d.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell") if d.get(k) is not None},
+            "dist_period": d.get("recommendation_period"), "dist_source": d.get("provider"),
+        }
+    if want_map or not sym:
+        return {"ok": True, "advisory_only": True, "count": len(out), "map": out}
+    return {"ok": True, "advisory_only": True, "symbol": sym, "detail": out.get(sym)}
+
+
 def _pro_analyst_pills(query=None):
     """GET /api/v2/pro-analyst/pills [?symbol=AAPL] — advisory professional-analyst layer: per-symbol Yahoo
     consensus + targets + upgrade/downgrade events + internal-vs-Street divergence + coverage by tier.
@@ -19068,6 +19117,7 @@ ROUTES = {
     "/api/v2/hermes/source-maturity": _hermes_source_maturity,
     "/api/v2/hermes/catalyst-calibration": _hermes_catalyst_calibration,
     "/api/v2/pro-analyst/pills": _pro_analyst_pills,
+    "/api/v2/analyst-detail": _analyst_detail,
     "/api/v2/hermes/researcher-matrix": _hermes_researcher_matrix,
     "/api/v2/hermes/external-escalation-policy": _hermes_external_escalation_policy,
     "/api/v2/hermes/external-research": _hermes_external_research,
