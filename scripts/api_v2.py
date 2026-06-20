@@ -18091,6 +18091,30 @@ def _portfolio_lookthrough():
 
 _ROTATION_SUMMARY_CACHE = {"ts": 0.0, "data": None}
 _REC_INTEL_CACHE = {"ts": 0.0, "data": None}
+_FIB_CONF_CACHE = {}   # symbol -> {ts, data}; on-demand multi-timeframe Fib/confluence
+
+
+def _symbol_fib_confluence(query=None):
+    """GET /api/v2/symbol/fib-confluence?symbol=X — multi-timeframe swing + Fibonacci + cross-timeframe
+    confluence for one symbol (on-demand, cached 30 min). Advisory/read-only."""
+    import time as _t
+    q = query or {}
+    sym = q.get("symbol")
+    sym = (sym[0] if isinstance(sym, list) else sym or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    c = _FIB_CONF_CACHE.get(sym)
+    if c and (_t.time() - c["ts"] < 1800):
+        return c["data"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import fib_confluence_engine as _fce
+        out = _fce.analyze(sym)
+        _FIB_CONF_CACHE[sym] = {"ts": _t.time(), "data": out}
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "symbol": sym}
 _REC_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
 _REC_OUTCOMES_CACHE = {"ts": 0.0, "data": None}
 _REC_OPENPOS_CACHE = {"ts": 0.0, "data": None}
@@ -18774,6 +18798,7 @@ def _rotation_summary(force=False):
 ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/rotation/summary": _rotation_summary,
+    "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
     "/api/v2/rec-intel/ticker": _rec_intel_ticker,
     "/api/v2/rec-intel/lifecycle-performance": _rec_intel_lifecycle_perf,
