@@ -304,9 +304,13 @@ export default function WatchlistHub({ onDrill }: Props) {
                     {fr && <Pill text={fr} color={BLUE} tip="bucket / TTL" />}
                     {it.directive_id && <Pill text="◆ directive" color={PURPLE} />}
                     {(() => { const o = outMap[String(it.symbol).toUpperCase()]; if (!o) return null
-                      const up = (o.last_pnl_pct ?? 0) >= 0
-                      return <Pill text={`✓ purchased→sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`} color={up ? GREEN : RED}
-                        tip={`real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ' · not yet journaled'}`} /> })()}
+                      const sold = (o.closed_trades ?? 0) > 0, up = (o.last_pnl_pct ?? 0) >= 0, hUp = (o.unrealized_pnl_pct ?? 0) >= 0
+                      return <>
+                        {o.held && <Pill text={`● held ${hUp ? '+' : ''}${o.unrealized_pnl_pct ?? '?'}% unrl`} color={hUp ? BLUE : AMBER}
+                          tip={`currently held${o.held_shares ? ` · ${o.held_shares} sh` : ''}${o.held_since ? ` since ${String(o.held_since).slice(0, 10)}` : ''}${o.origin ? ` · origin: ${o.origin}` : ''} · unrealized $${o.unrealized_pnl ?? '?'} (monitoring till sale)`} />}
+                        {sold && <Pill text={`✓ sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`} color={up ? GREEN : RED}
+                          tip={`prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ' · not yet journaled'}`} />}
+                      </> })()}
                     {it.watch_lists && String(it.watch_lists).split(' · ').filter(Boolean).map((l: string) => <Pill key={l} text={`☰ ${l}`} color="#22d3ee" tip="watch list — filter by it above" />)}
                     {it.in_portfolio && <Pill text="HELD" color="#ffa726" />}
                     {it.entry_urgency && <Pill text={`${it.entry_urgency === 'ready' ? 'READY' : it.entry_urgency === 'near_entry' ? 'NEAR-ENTRY' : 'planned'} · ${it.entry_setup} · lim ${money(it.entry_limit)}`} color={it.entry_urgency === 'ready' ? GREEN : it.entry_urgency === 'near_entry' ? AMBER : MUTED} strong />}

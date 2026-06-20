@@ -698,9 +698,56 @@ def lifecycle_performance(cur, limit=300):
     return out
 
 
+def open_positions(cur):
+    """Currently-held REAL positions (the 'monitored till sale' phase): cost basis from trade_transactions
+    buys, current price from holdings.json, unrealized P&L, held-since date, and discovery origin. The open
+    counterpart of lifecycle_performance(). Read-only, advisory."""
+    try:
+        hj = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+    except Exception:
+        return []
+    held = [h for h in hj.get("holdings", []) if h.get("symbol") and not h.get("is_cash")
+            and not h.get("delisted") and (h.get("shares") or 0) > 0]
+    if not held:
+        return []
+    syms = list({h["symbol"].upper() for h in held})
+    # weighted-avg buy cost + earliest acquisition per (symbol, account)
+    cur.execute("""SELECT upper(symbol), account,
+                     sum(quantity*price) FILTER (WHERE quantity>0 AND price>0) tot,
+                     sum(quantity) FILTER (WHERE quantity>0 AND price>0) qty, min(trade_date) first_buy
+                   FROM trade_transactions
+                   WHERE upper(symbol)=ANY(%s)
+                     AND (action ILIKE '%%buy%%' OR action ILIKE '%%bought%%' OR action ILIKE '%%reinvest%%')
+                   GROUP BY 1,2""", (syms,))
+    cost = {}
+    for sym, acct, tot, qty, first in cur.fetchall():
+        if qty and tot:
+            cost[(sym, acct)] = {"avg": float(tot) / float(qty), "since": first}
+    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), source_type FROM rec_ticker_attribution
+                   WHERE source_type NOT IN ('execution','holding','rotation') AND upper(symbol)=ANY(%s)
+                   ORDER BY upper(symbol), first_seen_at ASC""", (syms,))
+    SRC_LABEL = {"scan": "screener", "hermes_research": "research", "cio_decision": "cio"}
+    origin = {r[0]: SRC_LABEL.get(r[1], r[1]) for r in cur.fetchall()}
+    out = []
+    for h in held:
+        sym, acct, sh, px = h["symbol"].upper(), h.get("account"), h.get("shares") or 0, h.get("price")
+        cb = cost.get((sym, acct)) or next((v for (s2, _a), v in cost.items() if s2 == sym), None)
+        avg = cb["avg"] if cb else None
+        upnl = (px - avg) * sh if (avg and px) else None
+        out.append({"symbol": sym, "account": acct, "shares": float(sh),
+                    "avg_cost": round(avg, 4) if avg else None, "current_price": px,
+                    "market_value": h.get("market_value"),
+                    "unrealized_pnl": round(upnl, 2) if upnl is not None else None,
+                    "unrealized_pnl_pct": round((px - avg) / avg * 100, 2) if (avg and px) else None,
+                    "held_since": str(cb["since"]) if cb and cb.get("since") else None,
+                    "origin": origin.get(sym)})
+    out.sort(key=lambda x: (x["unrealized_pnl_pct"] is None, -(x["unrealized_pnl_pct"] or 0)))
+    return out
+
+
 def symbol_outcomes(cur, limit=3000):
-    """Per-symbol purchase→sale outcome map (real closed trades), for flagging watchlist / proposal items
-    and enriching journal rows with their discovery origin. Read-only, advisory."""
+    """Per-symbol outcome map — closed (purchase→sale) AND open (held, unrealized) — for flagging
+    watchlist / proposal items and enriching journal rows with their discovery origin. Read-only."""
     by = {}
     for r in lifecycle_performance(cur, limit=limit):
         s = by.setdefault(r["symbol"], {"symbol": r["symbol"], "closed_trades": 0, "wins": 0,
@@ -719,6 +766,26 @@ def symbol_outcomes(cur, limit=3000):
     for s in by.values():
         s["win_rate_pct"] = round(s["wins"] / s["closed_trades"] * 100, 1) if s["closed_trades"] else None
         s["total_pnl"] = round(s["total_pnl"], 2)
+    # merge currently-held (open / monitoring) state — a symbol can be both sold-before AND held-now,
+    # and can be held across multiple accounts/lots: aggregate shares + cost basis → weighted unrealized %.
+    for op in open_positions(cur):
+        s = by.setdefault(op["symbol"], {"symbol": op["symbol"], "closed_trades": 0, "wins": 0,
+                                         "total_pnl": 0.0, "last_pnl_pct": None, "last_close": None,
+                                         "origin": op.get("origin"), "journaled": False, "win_rate_pct": None})
+        s["held"] = True
+        s["held_shares"] = round((s.get("held_shares") or 0) + op["shares"], 4)
+        if op["unrealized_pnl"] is not None:
+            s["unrealized_pnl"] = round((s.get("unrealized_pnl") or 0) + op["unrealized_pnl"], 2)
+        if op.get("avg_cost") and op.get("shares"):
+            s["_cost_basis"] = (s.get("_cost_basis") or 0) + op["avg_cost"] * op["shares"]
+        if op.get("held_since") and (not s.get("held_since") or op["held_since"] < s["held_since"]):
+            s["held_since"] = op["held_since"]
+        if not s.get("origin") and op.get("origin"):
+            s["origin"] = op["origin"]
+    for s in by.values():
+        if s.get("held") and s.get("_cost_basis"):
+            s["unrealized_pnl_pct"] = round((s.get("unrealized_pnl") or 0) / s["_cost_basis"] * 100, 2)
+        s.pop("_cost_basis", None)
     return by
 
 
