@@ -466,7 +466,33 @@ def check_duplicate(conn, signal_id: int, symbol: str, strategy_id: str) -> dict
         LIMIT 1
     """, [signal_id, symbol])
     row = cur.fetchone()
-    return {"id": row[0], "status": row[1], "existing_strategy": row[2]} if row else None
+    if row:
+        return {"id": row[0], "status": row[1], "existing_strategy": row[2]}
+
+    # Re-proposal cooldown (2026-06-20): the active-status check above misses proposals that already
+    # EXPIRED/were REJECTED — so a screener hit re-fired one EVERY 30 min (CAST x13/day), flooding the
+    # queue + Lifecycle Journal. For NON-intraday strategies (swing/breakout/fib/etc.) block re-proposing
+    # the same symbol within a cooldown window regardless of terminal status. INTRADAY scalp/momentum is
+    # EXEMPT — re-proposing the same ticker through the day is by design (operator decision 2026-06-20;
+    # respects the momentum_scalp rule).
+    intraday = False
+    try:
+        from proposal_lifecycle import get_timeframe_class
+        intraday = str(get_timeframe_class(strategy_id) or "").upper() == "INTRADAY"
+    except Exception:
+        intraday = "scalp" in (strategy_id or "").lower() or "gap" in (strategy_id or "").lower()
+    if not intraday:
+        import os as _os
+        hrs = int(_os.getenv("PROPOSAL_RECOOLDOWN_HOURS", "12") or 12)
+        cur.execute("""
+            SELECT id, status, strategy_id FROM paper_trade_proposals
+            WHERE symbol = %s AND created_at > NOW() - (%s || ' hours')::interval
+            ORDER BY created_at DESC LIMIT 1
+        """, [symbol, str(hrs)])
+        r2 = cur.fetchone()
+        if r2:
+            return {"id": r2[0], "status": r2[1], "existing_strategy": r2[2], "cooldown": True}
+    return None
 
 
 def check_open_paper_trade(conn, symbol: str, strategy_id: str) -> dict | None:
