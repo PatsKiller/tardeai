@@ -29,6 +29,16 @@ const llmMeta = (lane?: string) => (({ grok: { label: 'Grok', color: '#1d9bf0' }
 const originColor = (o?: string) => { const k = (o || '').toLowerCase(); if (k.includes('directive') || k === 'operator') return PURPLE; if (k === 'hermes') return '#14b8a6'; if (k.includes('social')) return AMBER; if (k.includes('agent')) return GREEN; if (k.includes('portfolio')) return '#eab308'; return BLUE }
 const originLabel = (o?: string) => ({ trade_ai_screener: 'Screener', agent_discovery: 'AI', operator: 'Operator', hermes: 'Hermes', portfolio: 'Portfolio', social: 'Social' } as any)[o || ''] || (o || 'screener')
 const tierColor = (t?: string) => (({ core: GREEN, trusted: '#84cc16', probationary: AMBER, candidate: MUTED, demoted: RED } as any)[t || ''] || MUTED)
+// A directive's IDENTITY: a ticker directive is identified by its SYMBOL (label is just its list
+// membership, often the generic "Watchlist"); a sector/trend directive is identified by its theme label.
+const dirName = (d: any) => d.kind === 'ticker' ? (d.symbol || d.label || '—') : (d.label || d.kind)
+// For a ticker directive, the named LIST it belongs to — only if it's a real list (not generic/self).
+const dirList = (d: any) => {
+  if (d.kind !== 'ticker') return null
+  const l = d.label
+  if (!l || l === d.symbol || l.toLowerCase() === 'watchlist' || /^watch\s/i.test(l)) return null
+  return l
+}
 
 function ago(v: any) {
   if (!v) return ''
@@ -149,7 +159,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
         else if (it.origin_system !== fOrigin) return false
       }
-      if (fKind === 'directive' && !it.directive_id) return false
+      if (fKind !== 'all') { const itp = (it.instrument_type || 'stock').toLowerCase(); const norm = itp === 'inverse_etf' ? 'etf' : itp; if (norm !== fKind) return false }
       if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(symU)) return false
       if (fHeld && !(it.in_portfolio || outMap[symU]?.held)) return false   // held-only (currently owned)
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
@@ -209,7 +219,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       {directives.length > 0 && (
         <div style={{ ...panel, marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 900, color: TEXT0, marginBottom: 8 }}>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{directives.map(d => { const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0; return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{d.label}</span><Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hit{nHits === 1 ? '' : 's'} · {nStaged} staged</div></div> })}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{directives.map(d => { const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0; return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color="#22d3ee" tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hit{nHits === 1 ? '' : 's'} · {nStaged} staged</div></div> })}</div>
           {sectorTrendDirs.length === 0 && <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>No sector/trend directives yet — use “+ Add Watch”.</div>}
         </div>
       )}
@@ -222,8 +232,8 @@ export default function WatchlistHub({ onDrill }: Props) {
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>CIO view<select style={SEL} value={fCio} onChange={e => setFCio(e.target.value)}><option value="all">All</option><option value="buy_side">Buy-side (BUY/ADD/pullback)</option><option value="BUY">BUY</option><option value="STRONG_BUY">STRONG_BUY</option><option value="ADD">ADD</option><option value="ADD_ON_PULLBACK">ADD_ON_PULLBACK</option><option value="HOLD">HOLD</option><option value="RESEARCH_MORE">RESEARCH_MORE</option><option value="TRIM">TRIM</option><option value="avoid_side">Avoid-side (AVOID/IGNORE/SELL/TRIM)</option><option value="AVOID">AVOID</option><option value="IGNORE">IGNORE</option><option value="none">No CIO view</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>List<select style={SEL} value={fList} onChange={e => setFList(e.target.value)}><option value="all">All lists</option>{listOpts.map(l => <option key={l} value={l}>{l}</option>)}<option value="__none">— no list —</option></select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Kind<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="directive">Directive-sourced</option></select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{d.label}</option>)}</select></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Instrument<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="stock">Stocks</option><option value="etf">ETFs / inverse</option><option value="fund">Funds</option></select></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{dirName(d)}{dirList(d) ? ` · ${dirList(d)}` : ''} ({d.kind})</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Search<input style={SEL} value={search} onChange={e => setSearch(e.target.value)} placeholder="symbol" /></label>
         <div style={{ marginLeft: 'auto', fontSize: 11, color: TEXT2 }}>{visible.length} / {items.length} shown</div>
       </div>
