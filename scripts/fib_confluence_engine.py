@@ -64,15 +64,21 @@ def _analyze_tf(symbol, name, period, interval):
     if not highs or not lows:
         return {"timeframe": name, "available": False, "reason": "no swing pivots"}
     direction, structure = _structure(highs, lows)
-    # dominant swing = the most significant recent leg: the highest swing high and the lowest swing low
-    sh = max(highs, key=lambda x: x[1])
-    sl = min(lows, key=lambda x: x[1])
-    swing_high, sh_date = sh[1], sh[2]
-    swing_low, sl_date = sl[1], sl[2]
+    # Dominant swing = the ACTUAL range extremes (highest high / lowest low across the bars), NOT just
+    # fractal-confirmed pivots. Fractal pivots need `span` future bars to confirm, so the most RECENT
+    # extreme (near the right edge) is never a pivot — that made swing_high stale (e.g. HPE weekly showed
+    # $26 while price had run to $64). Range extremes give the true Fib swing.
+    hi_bar = max(bars, key=lambda b: b["h"])
+    lo_bar = min(bars, key=lambda b: b["l"])
+    swing_high, sh_date = round(hi_bar["h"], 2), hi_bar["t"]
+    swing_low, sl_date = round(lo_bar["l"], 2), lo_bar["t"]
+    # retracement direction from which extreme is more recent: low→high (uptrend, retrace down) if the low
+    # came first, else high→low.
+    up = sl_date <= sh_date
     rng = swing_high - swing_low
     cur = bars[-1]["c"]
-    # retracement: levels inside the swing; extension: beyond it (in the trend direction)
-    up = direction != "downtrend"   # default measure low→high (retrace down) unless a clean downtrend
+    # retracement: levels inside the swing; extension: beyond it (in the trend direction). `up` set above
+    # from which extreme is more recent.
     retr = []
     for r in FIB_RETR:
         px = swing_high - rng * r if up else swing_low + rng * r
