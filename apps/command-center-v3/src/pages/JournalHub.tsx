@@ -609,6 +609,10 @@ export default function JournalHub({ onDrill }: Props) {
                         {t.status === 'open'
                           ? <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(96,165,250,.18)', color: '#60a5fa' }}>OPEN</span>
                           : <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: won ? 'rgba(34,197,94,.18)' : lost ? 'rgba(239,68,68,.18)' : 'var(--bg1)', color: won ? '#22c55e' : lost ? '#ef4444' : 'var(--text3)' }}>{won ? 'WIN' : lost ? 'LOSS' : 'SCRATCH'}</span>}
+                        {t.status === 'open' && (() => { const o = outcomesData?.outcomes?.[String(t.symbol).toUpperCase()]; if (!o?.held || o.unrealized_pnl_pct == null) return null
+                          const up = o.unrealized_pnl_pct >= 0
+                          return <span title={`currently held${o.held_since ? ` since ${String(o.held_since).slice(0, 10)}` : ''}${o.origin ? ` · origin: ${o.origin}` : ''} · unrealized $${o.unrealized_pnl ?? '?'} (monitoring till sale)`}
+                            style={{ fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: up ? 'rgba(96,165,250,.18)' : 'rgba(245,158,11,.18)', color: up ? '#60a5fa' : '#f59e0b' }}>● held {up ? '+' : ''}{o.unrealized_pnl_pct}% unrl</span> })()}
                       </div>
                     </div>
                     {/* P&L + R */}
