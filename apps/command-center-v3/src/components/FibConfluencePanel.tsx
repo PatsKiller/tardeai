@@ -120,7 +120,7 @@ export default function FibConfluencePanel({ symbol }: { symbol: string }) {
           )}
         </div>
       )}
-      {chart && data?.chart_bars && <FibChartModal symbol={symbol} bars={data.chart_bars} levels={allLevels(chart.highlight)} onClose={() => setChart(null)} />}
+      {chart && data?.chart_bars && <FibChartModal symbol={symbol} bars={data.chart_bars} barsMonthly={data.chart_bars_monthly} levels={allLevels(chart.highlight)} onClose={() => setChart(null)} />}
     </div>
   )
 }
