@@ -21,6 +21,10 @@ export default function BrokerProposals() {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<Record<number, string>>({})
+  const [heldOnly, setHeldOnly] = useState(false)
+  const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
+  const heldN = proposals.filter(p => isHeld(p.symbol)).length
+  const shown = heldOnly ? proposals.filter(p => isHeld(p.symbol)) : proposals
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
   const brokerOf = (a: string) => (a || '').toLowerCase().startsWith('fidelity') ? 'Fidelity' : (a || '').toLowerCase().startsWith('schwab') ? 'Schwab' : '—'
 
@@ -87,10 +91,18 @@ export default function BrokerProposals() {
 
     {/* Proposals list */}
     <div style={card}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0, marginBottom: 10 }}>Schwab / Fidelity proposals ({proposals.length})</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>Schwab / Fidelity proposals ({shown.length}{heldOnly ? ` of ${proposals.length}` : ''})</div>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => setHeldOnly(h => !h)} title="show only proposals for symbols you currently hold"
+          style={{ fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
+            border: `1px solid ${heldOnly ? '#60a5fa' : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED }}>
+          ● Held only{heldN ? ` (${heldN})` : ''}</button>
+      </div>
       {proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
+      {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {proposals.map(p => {
+        {shown.map(p => {
           const fid = brokerOf(p.account) === 'Fidelity'
           return <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 9, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.18)' }}>
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
