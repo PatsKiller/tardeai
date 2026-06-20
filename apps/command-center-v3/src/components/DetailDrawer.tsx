@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import FibChartsInline from './FibChartsInline'
+import AnalystReviews, { useAnalystMap } from './AnalystReviews'
+
+// finviz-derived recom fields are NOT analyst ratings (known correction): finviz 'recom' is a momentum
+// number, and the holdings enrichment mislabels it as 'Strong Sell' (e.g. SCHD recom 1.34 → labeled
+// Strong Sell, contradicting Yahoo's real consensus). Suppress them from the record so the drawer shows
+// only the real Yahoo consensus (via the Analyst reviews section).
+const SUPPRESS_KEYS = new Set(['analyst_rating', 'recom_score', 'recom_raw'])
 
 export interface DrillContext {
   title: string
@@ -79,6 +86,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
     const cand = String(primary.symbol || ctx?.subjectKey || (ctx?.title || '').match(/^[A-Z]{1,5}\b/)?.[0] || '').toUpperCase().trim()
     return /^[A-Z]{1,5}$/.test(cand) ? cand : ''
   }, [primary, ctx])
+  const aMap = useAnalystMap()
   const actionMetrics = useMemo(() => {
     if (!ctx) return []
     return [
@@ -105,11 +113,12 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {ctx.links && ctx.links.length > 0 && <Section title="Where to act" accent={BLUE}><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{ctx.links.map((l, i) => <a key={i} href={l.href} title={l.note} style={{ fontSize: 12, fontWeight: 850, color: '#bfdbfe', textDecoration: 'none', padding: '6px 12px', borderRadius: 7, background: 'rgba(96,165,250,.13)', border: '1px solid rgba(96,165,250,.32)' }}>{l.label} →</a>)}</div></Section>}
         {actionMetrics.length > 0 && <Section title="Action board" subtitle="key fields surfaced from the record" accent={GREEN}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(150px,1fr))', gap: 10 }}>{actionMetrics.map(([k, v]) => { const f = fmtScalar(v); return <Metric key={k} label={k} value={k === 'Freshness' ? (ago(v) || f.text) : (String(k).match(/Entry|Stop|Target/) ? money(v) : f.text)} color={f.color || (k === 'Stop' ? RED : k === 'Entry' || k === 'Target' ? TEXT0 : TEXT1)} /> })}</div></Section>}
+        {drawerSymbol && aMap[drawerSymbol] && <Section title="Analyst reviews & targets" subtitle="Yahoo consensus + finnhub distribution · aggregated (no firm names in feed)" accent={GREEN}><AnalystReviews symbol={drawerSymbol} map={aMap} /></Section>}
         {drawerSymbol && <Section title="Charts · daily & monthly" subtitle="swing · Fibonacci · confluence as price lines · advisory" accent={BLUE}><FibChartsInline symbol={drawerSymbol} /></Section>}
         {intel?.setup && <Section title={`Hermes setup · ${intel.setup.conviction || 'unknown'} conviction`} accent={PURPLE}><div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 12 }}><div><div style={{ fontSize: 16, color: '#d8b4fe', fontWeight: 950 }}>{intel.setup.type}</div><div style={{ fontSize: 12, color: TEXT2, marginTop: 7, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Entry:</b> {intel.setup.entry}</div><div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Invalidation:</b> {intel.setup.invalidation}</div><div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>{intel.setup.why}</div></div>{intel.competition && <div style={{ ...metric }}><div style={{ fontSize: 9, color: MUTED, fontWeight: 850, textTransform: 'uppercase' }}>Competition / peer context</div><ObjBlock obj={intel.competition} /></div>}</div></Section>}
         {intel?.external_intel?.length > 0 && <Section title={`External LLM intelligence (${intel.external_intel.length})`} subtitle="recommendation, evidence, counter-view, risk flags" accent={BLUE}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>{intel.external_intel.map((e: any, i: number) => { const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }; const ev = fmtBlob(e.evidence), rf = fmtBlob(e.risk_flags); return <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}><span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span><span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span></div>{e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}{ev.length > 0 && <ul style={{ margin: '4px 0', paddingLeft: 18 }}>{ev.map((x, j) => <li key={j} style={{ fontSize: 11, color: TEXT2, lineHeight: 1.45 }}>{x}</li>)}</ul>}{e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}{rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}{e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}</div> })}</div></Section>}
         {ctx.rows.length === 0 && <Section title="No data" accent={DIM}><div style={{ color: MUTED, fontSize: 12 }}>No data rows.</div></Section>}
-        {ctx.rows.map((row, i) => { const entries = Object.entries(row).filter(([k, v]) => k.match(SECTION_RE) || !isEmptyVal(v)); const hidden = Object.keys(row).length - entries.length; return <Section key={i} title={ctx.rows.length > 1 ? `Source record ${i + 1}` : 'Source record'} subtitle={hidden > 0 ? `${hidden} empty fields hidden` : undefined} accent={DIM}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 28, rowGap: 2 }}>{entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}</div></Section> })}
+        {ctx.rows.map((row, i) => { const entries = Object.entries(row).filter(([k, v]) => !SUPPRESS_KEYS.has(k) && (k.match(SECTION_RE) || !isEmptyVal(v))); const hidden = Object.keys(row).length - entries.length; return <Section key={i} title={ctx.rows.length > 1 ? `Source record ${i + 1}` : 'Source record'} subtitle={hidden > 0 ? `${hidden} empty fields hidden` : undefined} accent={DIM}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 28, rowGap: 2 }}>{entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}</div></Section> })}
       </div>
       <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(148,163,184,.18)', fontSize: 9, color: MUTED, textAlign: 'center' }}>Read-only intelligence drawer. No order controls, no broker writes, advisory review only.</div>
     </div>
