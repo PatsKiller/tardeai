@@ -41,6 +41,22 @@ def main():
         ) u WHERE symbol ~ '^[A-Z]{1,5}$'""")
     syms = [r[0] for r in cur.fetchall() if not r[0].startswith(_FIDELITY_PFX)]
     c.close()
+    # Also include HELD positions (2026-06-20): the SQL universe is watchlist/proposals/scans only, so held
+    # stocks not also on the watchlist (TDG/NEE/DRS/KTOS) had no analyst consensus → the portfolio card's
+    # analyst section was blank for them. Add holdings.json tickers so every held stock is covered.
+    try:
+        import json as _j, re as _re
+        hj = _j.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        held = [str(h.get("symbol", "")).upper() for h in hj.get("holdings", [])
+                if h.get("symbol") and not h.get("is_cash")
+                and _re.fullmatch(r"[A-Z]{1,5}", str(h.get("symbol")).upper())
+                and not str(h.get("symbol")).upper().startswith(_FIDELITY_PFX)]
+        before = set(syms)
+        for h in held:
+            if h not in before:
+                syms.append(h)
+    except Exception as _e:
+        print(f"  (holdings union skipped: {str(_e)[:60]})")
     print(f"actionable symbols to fetch: {len(syms)} (cap {mx})")
 
     try:
