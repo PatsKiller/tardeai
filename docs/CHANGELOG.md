@@ -10,10 +10,18 @@ source→symbol→executed but stopped there. Added `recommendation_intelligence
 (`journal_trade_reviews`), matched by symbol/account/close-date — no manual tagging. Endpoints
 `/api/v2/rec-intel/lifecycle-performance` + `/outcomes` (read-only, advisory, 5-min cache). Surfaced on
 three places (operator-chosen): (1) Rec Intelligence "Purchased → Sold Lifecycle" table (origin → buy →
-sell return/P&L/R/hold → journal ✓); (2) a `✓ purchased→sold +X%` badge on Watchlist cards and Broker
-proposals; (3) a `via <origin>` chip on Journal trade rows. Scope = real closed trades only. Auto-refresh:
-engine ingest cron (daily 07:10) keeps attribution fresh; the joins recompute live. Verified: 124
-positions, 115 (93%) with detected origin, journal-matched, 0 console errors.
+sell return/P&L/R/hold → journal ✓); (2) a `✓ sold +X%` badge on Watchlist cards and Broker
+proposals; (3) a `via <origin>` chip on Journal trade rows. Auto-refresh: engine ingest cron (daily 07:10)
+keeps attribution fresh; the joins recompute live. Verified: 124 positions, 115 (93%) with detected
+origin, journal-matched, 0 console errors.
+
+Open-position monitoring (follow-up, same day): `open_positions()` completes the
+purchased→MONITORED→sold arc — currently-held real positions with cost basis (weighted-avg buy from
+`trade_transactions`), current price, unrealized P&L, held-since, and auto-detected origin.
+`symbol_outcomes()` merges held state (multi-account/lot aggregation → weighted unrealized %; a symbol can
+be sold-before AND held-now). Endpoint `/api/v2/rec-intel/open-positions`. UI: Rec Intel "Open Positions
+— Monitoring" table + `● held +X% unrl` badge on Watchlist/proposals. Live: 39 held, all origin-detected,
+$7,552 total unrealized.
 
 ## 2026-06-19 - LLM auto-enhancement of trend/sector watch directives
 
