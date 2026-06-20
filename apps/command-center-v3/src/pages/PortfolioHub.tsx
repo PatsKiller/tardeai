@@ -268,12 +268,17 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</span>
                       <ProAnalystPill symbol={h.symbol} map={paMap} compact />
                       <span style={{ flex: 1 }} />
-                      <a
-                        href={`/v3/rotation?question=${encodeURIComponent(`Review whether ${h.symbol} exposure should be reduced`)}`}
-                        onClick={(e) => e.stopPropagation()}
-                        title="Review this exposure in the Rotation Advisor (advisory only · no broker action)"
-                        style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3, textDecoration: 'none',
-                          background: 'rgba(96,165,250,.12)', color: '#60a5fa' }}>⤢ review</a>
+                      {/* Rotation review only for ROTATABLE holdings (tradeable stock/ETF). Cash (SPAXX/CASH)
+                          and mutual funds (5-letter ticker ending X: FCNTX/AMANX) can't be rotation-reviewed —
+                          the advisor would be the wrong page — so the link is hidden for them. */}
+                      {!h.is_cash && /^[A-Z]{1,5}$/.test(String(h.symbol || '')) && !/^[A-Z]{4,5}X$/.test(String(h.symbol || '')) && (
+                        <a
+                          href={`/v3/rotation?question=${encodeURIComponent(`Review whether ${h.symbol} exposure should be reduced`)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Review this exposure in the Rotation Advisor (advisory only · no broker action)"
+                          style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3, textDecoration: 'none',
+                            background: 'rgba(96,165,250,.12)', color: '#60a5fa' }}>⤢ review</a>
+                      )}
                       {h.signal
                         ? <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${sc}1f`, color: sc }}>{h.signal}</span>
                         : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
