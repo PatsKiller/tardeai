@@ -14,7 +14,21 @@ const DARK = {
   rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
 }
 
-function TFChart({ label, bars, levels }: { label: string; bars: any[]; levels: FibLevel[] }) {
+// every analyzed level in a fib-confluence response → chart price lines (tagged by source for the legend)
+export function buildFibLevels(data: any, highlight?: number): FibLevel[] {
+  const out: FibLevel[] = []
+  for (const t of (data?.timeframes ?? []).filter((x: any) => x.available)) {
+    const tag = t.timeframe[0].toUpperCase()
+    out.push({ price: t.swing_high, title: `${tag} swing hi`, color: '#ef4444' })
+    out.push({ price: t.swing_low, title: `${tag} swing lo`, color: '#22c55e' })
+    for (const r of t.retracements) out.push({ price: r.price, title: `${tag} ${r.label}`, color: '#60a5fa' })
+    for (const e of t.extensions) out.push({ price: e.price, title: `${tag} ext ${e.label}`, color: '#a855f7' })
+  }
+  for (const z of (data?.confluence_zones ?? []).slice(0, 4)) out.push({ price: z.price_mid, title: `confluence (${z.confidence})`, color: '#eab308' })
+  return out.map(l => ({ ...l, bold: highlight != null && Math.abs(l.price - highlight) < 0.01 }))
+}
+
+export function TFChart({ label, bars, levels }: { label: string; bars: any[]; levels: FibLevel[] }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!ref.current || !bars?.length) return
