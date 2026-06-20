@@ -153,11 +153,13 @@ def analyze(symbol: str) -> dict:
         tfs = [_analyze_tf(symbol, n, p, i) for (n, p, i) in TIMEFRAMES]
         cur = next((t["current_price"] for t in tfs if t.get("available")), None)
         zones = _confluence(tfs, cur) if cur else []
-        # daily OHLC bars for the on-click chart (so the UI draws candles + the Fib levels as price lines
-        # without a second fetch). ~6 months of daily.
+        # OHLC bars for the on-click charts (drawn with the Fib levels as price lines, no extra fetch):
+        # daily (~6mo) + monthly (~6yr) so details show both short- and long-term structure.
         chart_bars = _fetch_bars(symbol, "6mo", "1d")[-140:]
+        chart_bars_monthly = _fetch_bars(symbol, "6y", "1mo")[-84:]
         return {"ok": True, "advisory_only": True, "symbol": symbol, "current_price": cur,
-                "timeframes": tfs, "confluence_zones": zones, "chart_bars": chart_bars,
+                "timeframes": tfs, "confluence_zones": zones,
+                "chart_bars": chart_bars, "chart_bars_monthly": chart_bars_monthly,
                 "note": "Multi-timeframe swing + Fibonacci + cross-timeframe confluence. Advisory only — "
                         "verify against your own charts; never an order."}
     except Exception as e:
