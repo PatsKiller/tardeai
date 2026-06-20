@@ -393,18 +393,32 @@ export default function RecommendationIntelligence() {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Lifecycle Journal</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Immutable lineage events appended to the <span style={{ fontFamily: 'monospace' }}>lifecycle_events</span> spine as tickers transition (promoted → executed → rotated).</div>
           <div style={{ ...card, maxHeight: 320, overflow: 'auto', padding: 0 }}>
-            {events.map((e, i) => {
-              const ec = e.event === 'rec_executed' ? '#22c55e' : e.event === 'rec_rotated' ? '#ef4444' : '#f59e0b'
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderTop: i ? '1px solid var(--border)' : undefined, fontSize: 10.5 }}>
-                  <span style={{ width: 78, color: 'var(--text3)', fontFamily: 'monospace' }}>{String(e.at).slice(0, 10)}</span>
-                  <span style={{ width: 64, fontFamily: 'monospace', fontWeight: 700, color: 'var(--text0)' }}>{e.symbol}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${ec}1f`, color: ec, border: `1px solid ${ec}44` }}>{(e.event || '').replace('rec_', '').replace(/_/g, ' ')}</span>
-                  <span style={{ color: 'var(--text3)' }}>{e.payload?.discovery_source || e.payload?.account || e.status || ''}</span>
-                  {e.payload?.pnl_pct != null && <span style={{ color: rcol(e.payload.pnl_pct) }}>{pct(e.payload.pnl_pct)}</span>}
-                </div>
-              )
-            })}
+            {(() => {
+              // Collapse identical (day · symbol · event · status · source) rows into one with ×N — the same
+              // screener hit re-proposed every 30 min (or a scalp re-fired) would otherwise show dozens of
+              // identical lines. The cooldown fix prevents new floods; this keeps the journal readable.
+              const groups: any[] = []
+              const idx: Record<string, number> = {}
+              for (const e of events) {
+                const src = e.payload?.discovery_source || e.payload?.account || e.status || ''
+                const key = `${String(e.at).slice(0, 10)}|${e.symbol}|${e.event}|${src}`
+                if (idx[key] == null) { idx[key] = groups.length; groups.push({ ...e, _src: src, _n: 1 }) }
+                else groups[idx[key]]._n++
+              }
+              return groups.map((e, i) => {
+                const ec = e.event === 'rec_executed' ? '#22c55e' : e.event === 'rec_rotated' ? '#ef4444' : '#f59e0b'
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderTop: i ? '1px solid var(--border)' : undefined, fontSize: 10.5 }}>
+                    <span style={{ width: 78, color: 'var(--text3)', fontFamily: 'monospace' }}>{String(e.at).slice(0, 10)}</span>
+                    <span style={{ width: 64, fontFamily: 'monospace', fontWeight: 700, color: 'var(--text0)' }}>{e.symbol}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${ec}1f`, color: ec, border: `1px solid ${ec}44` }}>{(e.event || '').replace('rec_', '').replace(/_/g, ' ')}</span>
+                    <span style={{ color: 'var(--text3)' }}>{e._src}</span>
+                    {e._n > 1 && <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: 'var(--text2)' }} title={`${e._n} identical events that day (deduped for readability)`}>×{e._n}</span>}
+                    {e.payload?.pnl_pct != null && <span style={{ color: rcol(e.payload.pnl_pct) }}>{pct(e.payload.pnl_pct)}</span>}
+                  </div>
+                )
+              })
+            })()}
           </div>
         </section>
       )}
