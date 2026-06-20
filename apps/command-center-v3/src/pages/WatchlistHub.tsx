@@ -201,7 +201,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setSearch('') } },
+          { label: 'Loaded · top by rank', value: items.length, color: TEXT0, tip: `top ${items.length} by Hermes rank (not the full ${(byStatus.active ?? 0) + (byStatus.researched ?? 0)}-name universe) — click to clear all filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setSearch('') } },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
           { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
           { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
