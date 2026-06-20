@@ -94,15 +94,20 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fRating, setFRating] = useState('all')
   const [fCio, setFCio] = useState('all')
   const [fList, setFList] = useState('all')
+  const [fHeld, setFHeld] = useState(false)   // held-only (currently-owned positions)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const PER_PAGE = 24
-  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, search])   // reset to page 1 on any filter change
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, search])   // reset to page 1 on any filter change
   // named watch lists (directive labels) present across the items, for the List filter
   const listOpts = useMemo(() => Array.from(new Set(
     items.flatMap((i: any) => String(i.watch_lists || '').split(' · ').map(s => s.trim()).filter(Boolean))
   )).sort(), [items])
+  // distinct currently-held symbols present in the loaded items (drives the Held-only toggle count)
+  const heldCount = useMemo(() => new Set(items
+    .filter((it: any) => it.in_portfolio || outMap[String(it.symbol).toUpperCase()]?.held)
+    .map((it: any) => String(it.symbol).toUpperCase())).size, [items, outMap])
 
   const runChatgptTop20 = async () => {
     if (curateRunning) return
@@ -146,6 +151,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       }
       if (fKind === 'directive' && !it.directive_id) return false
       if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(symU)) return false
+      if (fHeld && !(it.in_portfolio || outMap[symU]?.held)) return false   // held-only (currently owned)
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
@@ -162,7 +168,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       }
       return true
     })
-  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, search, paMap, advMap, directives])
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, search, paMap, advMap, directives, outMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -185,7 +191,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setSearch('') } },
+          { label: 'Watchlist items', value: items.length, color: TEXT0, tip: 'show all — clears filters', onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setSearch('') } },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
           { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
           { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
@@ -210,6 +216,7 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       <div style={{ ...panel, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Status<select style={SEL} value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Active + Researched</option><option value="active">Active only</option><option value="researched">Researched only</option></select></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Position<button onClick={() => setFHeld(h => !h)} title="show only currently-held positions (the ● held badge)" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fHeld ? '#ffa726' : 'var(--border)'}`, background: fHeld ? 'rgba(255,167,38,.14)' : 'var(--bg2)', color: fHeld ? '#ffa726' : MUTED, fontWeight: fHeld ? 800 : 500, whiteSpace: 'nowrap' }}>● Held only{heldCount ? ` (${heldCount})` : ''}</button></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Origin<select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
@@ -237,7 +244,7 @@ export default function WatchlistHub({ onDrill }: Props) {
         {visible.length === 0 ? (() => {
           const sd = fDir !== 'all' ? directives.find((d: any) => String(d.id) === fDir) : null
           const nh = (sd?.hit_symbols ?? []).length
-          const resetAll = () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setSearch('') }
+          const resetAll = () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setSearch('') }
           const link = (c: string, t: string, fn: () => void) => <span onClick={fn} style={{ color: c, cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}>{t}</span>
           return <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>
             {sd
