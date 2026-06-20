@@ -14,6 +14,10 @@ type LifePos = {
   pnl?: number; pnl_pct?: number; r_multiple?: number; hold_days?: number
   setup?: string; strategy_id?: string; journaled?: boolean; journal?: any
 }
+type OpenPos = {
+  symbol?: string; account?: string; origin?: string; shares?: number; avg_cost?: number
+  current_price?: number; unrealized_pnl?: number; unrealized_pnl_pct?: number; held_since?: string
+}
 type Summary = {
   ok?: boolean; error?: string; total_tickers?: number; multi_source_count?: number; executed_attributions?: number
   by_source?: BySource[]; performance_by_source?: SrcPerf[]; performance_by_strategy?: StratPerf[]
@@ -59,6 +63,7 @@ export default function RecommendationIntelligence() {
   const [events, setEvents] = useState<LcEvent[]>([])
   const [life, setLife] = useState<LifePos[]>([])
   const [lifeOnlyOrigin, setLifeOnlyOrigin] = useState(false)
+  const [openPos, setOpenPos] = useState<OpenPos[]>([])
 
   async function load() {
     setWarn('')
@@ -78,6 +83,11 @@ export default function RecommendationIntelligence() {
       const r = await fetch('/api/v2/rec-intel/lifecycle-performance?limit=300')
       const j = await r.json()
       setLife((j?.data ?? j)?.positions ?? [])
+    } catch { /* noop */ }
+    try {
+      const r = await fetch('/api/v2/rec-intel/open-positions')
+      const j = await r.json()
+      setOpenPos((j?.data ?? j)?.positions ?? [])
     } catch { /* noop */ }
   }
   async function lookup(s?: string) {
@@ -211,6 +221,42 @@ export default function RecommendationIntelligence() {
           </div>
         </section>
       </div>
+
+      {/* Open positions — monitoring (held now, unrealized, auto-detected origin) */}
+      {openPos.length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Open Positions — Monitoring</div>
+            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{openPos.length} held · {openPos.filter(p => p.origin).length} with detected origin · total unrealized <b style={{ color: rcol(openPos.reduce((a, p) => a + (p.unrealized_pnl ?? 0), 0)) }}>{usd(openPos.reduce((a, p) => a + (p.unrealized_pnl ?? 0), 0))}</b></span>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Currently-held real positions in the "monitored till sale" phase — cost basis from your buys, current price, unrealized P&amp;L, held-since, and the auto-detected recommendation origin. Click to trace lineage.</div>
+          <div style={{ ...card, padding: 4, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Symbol</th>
+                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Origin</th>
+                <th style={{ padding: '6px 8px' }}>Shares</th><th style={{ padding: '6px 8px' }}>Avg cost</th>
+                <th style={{ padding: '6px 8px' }}>Current</th><th style={{ padding: '6px 8px' }}>Unrealized</th>
+                <th style={{ padding: '6px 8px' }}>$</th><th style={{ textAlign: 'left', padding: '6px 8px' }}>Held since</th>
+              </tr></thead>
+              <tbody>
+                {openPos.slice(0, 60).map((p, i) => (
+                  <tr key={i} onClick={() => lookup(p.symbol)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', textAlign: 'right' }}>
+                    <td style={{ textAlign: 'left', padding: '6px 8px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--text0)' }}>{p.symbol}</td>
+                    <td style={{ textAlign: 'left', padding: '6px 8px' }}>{p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 9, color: 'var(--text3)' }}>direct/manual</span>}</td>
+                    <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{p.shares != null ? (p.shares % 1 === 0 ? p.shares : p.shares.toFixed(2)) : '—'}</td>
+                    <td style={{ padding: '6px 8px', color: 'var(--text2)' }}>{p.avg_cost != null ? `$${p.avg_cost.toFixed(2)}` : '—'}</td>
+                    <td style={{ padding: '6px 8px', color: 'var(--text2)' }}>{p.current_price != null ? `$${p.current_price.toFixed(2)}` : '—'}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 700, color: rcol(p.unrealized_pnl_pct) }}>{pct(p.unrealized_pnl_pct)}</td>
+                    <td style={{ padding: '6px 8px', color: rcol(p.unrealized_pnl) }}>{usd(p.unrealized_pnl)}</td>
+                    <td style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontSize: 10 }}>{p.held_since ? String(p.held_since).slice(0, 10) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Purchased → Sold lifecycle (real closed trades, auto-detected origin + journal) */}
       <section style={{ marginBottom: 20 }}>

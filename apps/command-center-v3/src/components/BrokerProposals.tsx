@@ -96,10 +96,12 @@ export default function BrokerProposals() {
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>{p.symbol}</span>
             {(() => { const o = outMap[String(p.symbol).toUpperCase()]; if (!o) return null
-              const up = (o.last_pnl_pct ?? 0) >= 0
-              return <span title={`prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ''}`}
-                style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: `${up ? GREEN : RED}1f`, color: up ? GREEN : RED }}>
-                ✓ sold {up ? '+' : ''}{o.last_pnl_pct ?? '?'}%{o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}{o.journaled ? ' 📓' : ''}</span> })()}
+              const sold = (o.closed_trades ?? 0) > 0, up = (o.last_pnl_pct ?? 0) >= 0, hUp = (o.unrealized_pnl_pct ?? 0) >= 0
+              const chip = (txt: string, c: string, tip: string) => <span title={tip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: `${c}1f`, color: c }}>{txt}</span>
+              return <>
+                {o.held && chip(`● held ${hUp ? '+' : ''}${o.unrealized_pnl_pct ?? '?'}% unrl`, hUp ? BLUE : AMBER, `currently held${o.held_since ? ` since ${String(o.held_since).slice(0, 10)}` : ''}${o.origin ? ` · origin: ${o.origin}` : ''} · unrealized $${o.unrealized_pnl ?? '?'} (monitoring till sale)`)}
+                {sold && chip(`✓ sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`, up ? GREEN : RED, `prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ''}`)}
+              </> })()}
             <span style={{ fontSize: 10.5, color: MUTED }}>{p.strategy_id} · {p.account}</span>
             <span style={{ fontSize: 10.5, color: TEXT1 }}>{p.proposed_shares} sh @ ${Number(p.proposed_entry).toFixed(2)} · stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}{p.proposed_rr ? ` · R:R ${Number(p.proposed_rr).toFixed(1)}` : ''}</span>
             <span style={{ fontSize: 9, color: MUTED }}>{p.origin} · {p.routing_state}</span>

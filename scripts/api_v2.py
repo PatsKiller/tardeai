@@ -18087,6 +18087,7 @@ _ROTATION_SUMMARY_CACHE = {"ts": 0.0, "data": None}
 _REC_INTEL_CACHE = {"ts": 0.0, "data": None}
 _REC_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
 _REC_OUTCOMES_CACHE = {"ts": 0.0, "data": None}
+_REC_OPENPOS_CACHE = {"ts": 0.0, "data": None}
 
 
 def _rec_intel_summary():
@@ -18150,6 +18151,27 @@ def _rec_intel_lifecycle_perf(query=None):
                "with_origin": sum(1 for p in positions if p.get("origin")),
                "journaled": sum(1 for p in positions if p.get("journaled"))}
         _REC_LIFECYCLE_CACHE.update(ts=_t.time(), data=out)
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _rec_intel_open_positions(query=None):
+    """GET /api/v2/rec-intel/open-positions — currently-held real positions (monitoring phase): cost basis,
+    current price, unrealized P&L, held-since, and auto-detected discovery origin. Read-only."""
+    import time as _t
+    if _REC_OPENPOS_CACHE["data"] and (_t.time() - _REC_OPENPOS_CACHE["ts"] < 300):
+        return _REC_OPENPOS_CACHE["data"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import recommendation_intelligence_engine as _rie
+        from db_adapter import _get_conn
+        positions = _rie.open_positions(_get_conn().cursor())
+        out = {"ok": True, "advisory_only": True, "positions": positions, "count": len(positions),
+               "with_origin": sum(1 for p in positions if p.get("origin")),
+               "total_unrealized": round(sum(p["unrealized_pnl"] for p in positions if p.get("unrealized_pnl") is not None), 2)}
+        _REC_OPENPOS_CACHE.update(ts=_t.time(), data=out)
         return out
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -18750,6 +18772,7 @@ ROUTES = {
     "/api/v2/rec-intel/ticker": _rec_intel_ticker,
     "/api/v2/rec-intel/lifecycle-performance": _rec_intel_lifecycle_perf,
     "/api/v2/rec-intel/outcomes": _rec_intel_outcomes,
+    "/api/v2/rec-intel/open-positions": _rec_intel_open_positions,
     "/api/v2/rec-intel/lifecycle": _rec_intel_lifecycle,
     "/api/v2/portfolio/lookthrough": _portfolio_lookthrough,
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
