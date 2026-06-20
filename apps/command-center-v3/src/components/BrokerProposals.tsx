@@ -112,6 +112,9 @@ export default function BrokerProposals() {
           return <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 9, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.18)' }}>
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>{p.symbol}</span>
+            {(() => { const o = outMap[String(p.symbol).toUpperCase()]; return o?.origin
+              ? <span title="auto-detected discovery origin — where this symbol was first surfaced in the lineage" style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(96,165,250,.14)', color: BLUE }}>via {o.origin}</span>
+              : null })()}
             {(() => { const o = outMap[String(p.symbol).toUpperCase()]; if (!o) return null
               const sold = (o.closed_trades ?? 0) > 0, up = (o.last_pnl_pct ?? 0) >= 0, hUp = (o.unrealized_pnl_pct ?? 0) >= 0
               const chip = (txt: string, c: string, tip: string) => <span title={tip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: `${c}1f`, color: c }}>{txt}</span>
