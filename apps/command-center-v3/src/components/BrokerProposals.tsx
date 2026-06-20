@@ -98,6 +98,11 @@ export default function BrokerProposals() {
           style={{ fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
             border: `1px solid ${heldOnly ? '#60a5fa' : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED }}>
           ● Held only{heldN ? ` (${heldN})` : ''}</button>
+        {(heldOnly || Object.keys(routeMsg).length > 0) && (
+          <button onClick={() => { setHeldOnly(false); setRouteMsg({}) }} title="clear filters + action messages"
+            style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid var(--border)', background: 'transparent', color: MUTED }}>
+            Reset all</button>
+        )}
       </div>
       {proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
       {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}
