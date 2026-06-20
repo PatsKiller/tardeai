@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-19 - ETF YTD performance + yield + dividends (net-new)
+
+Operator: "I want actual ETF YTD performance ... yield and dividends" (previously untracked). New
+`scripts/etf_performance_enrich.py` (yfinance: YTD price return year-start→now, trailing dividend yield,
+TTM dividend $/share) → new `symbol_profiles` columns `ytd_return_pct`/`dividend_yield_pct`/`ttm_dividend`,
+exposed in `/api/v2/watchlist/items`. The OpenClaw `etfs` skill command now shows YTD/yield/div/expense/
+look-through per ETF; Maria reports the full breakdown (verified live: XAR +13.5%/0.3%, XLE +17.8%/2.65%/
+$2.16, PSQ −16.8% inverse, ITA +12.8% look-through). Weekly cron Sat 07:15. Backfill: 75/75 ETFs/funds.
+Commits e089a63a (instrument_type API), 1e93bdf3 (expense+look-through API), 722469b4 (YTD/yield/div).
+
 ## 2026-06-19 - ETF classification: authoritative yfinance quoteType + watchlist API surfacing
 
 Operator flagged that the assistant said "no ETFs on the watchlist" when 51 are present (DIVI/SCHY just
