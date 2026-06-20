@@ -3408,6 +3408,7 @@ def _wl_items(query: dict = None):
                    fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                    fs.model_used AS cio_model_used,
                    sp.sector AS profile_sector, sp.industry AS profile_industry,
+                   sp.instrument_type AS instrument_type,
                    sp.description_1s AS profile_description,
                    cat.catalyst_type, cat.headline AS catalyst_headline,
                    cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
