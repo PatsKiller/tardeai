@@ -27,7 +27,7 @@ def _fetch_bars(symbol, period, interval):
     h = yf.Ticker(symbol).history(period=period, interval=interval, auto_adjust=False)
     if h is None or len(h) < 8:
         return []
-    return [{"t": str(idx.date()), "h": float(r["High"]), "l": float(r["Low"]), "c": float(r["Close"])}
+    return [{"t": str(idx.date()), "o": float(r["Open"]), "h": float(r["High"]), "l": float(r["Low"]), "c": float(r["Close"])}
             for idx, r in h.iterrows() if r["High"] == r["High"] and r["Low"] == r["Low"]]
 
 
@@ -153,8 +153,11 @@ def analyze(symbol: str) -> dict:
         tfs = [_analyze_tf(symbol, n, p, i) for (n, p, i) in TIMEFRAMES]
         cur = next((t["current_price"] for t in tfs if t.get("available")), None)
         zones = _confluence(tfs, cur) if cur else []
+        # daily OHLC bars for the on-click chart (so the UI draws candles + the Fib levels as price lines
+        # without a second fetch). ~6 months of daily.
+        chart_bars = _fetch_bars(symbol, "6mo", "1d")[-140:]
         return {"ok": True, "advisory_only": True, "symbol": symbol, "current_price": cur,
-                "timeframes": tfs, "confluence_zones": zones,
+                "timeframes": tfs, "confluence_zones": zones, "chart_bars": chart_bars,
                 "note": "Multi-timeframe swing + Fibonacci + cross-timeframe confluence. Advisory only — "
                         "verify against your own charts; never an order."}
     except Exception as e:
