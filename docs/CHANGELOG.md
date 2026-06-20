@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-20 - Multi-timeframe Fibonacci + swing + confluence on cards
+
+New `scripts/fib_confluence_engine.py`: analyzes daily/weekly/monthly charts (yfinance OHLC) independently
+— fractal swing pivots, trend/structure (HH-HL / LH-LL), Fib retracements (23.6/38.2/50/61.8/78.6) +
+extensions (1.272/1.618/2.618) per timeframe — then clusters every level (Fib / swing / S-R) aligning
+within 1.5% ACROSS timeframes into confluence zones ranked by strength (overlap + timeframe diversity +
+signal-kind diversity), each tagged with originating timeframe + source. Endpoint
+`/api/v2/symbol/fib-confluence` (on-demand, cached 30m). UI: lazy-loaded "Multi-TF Fib & Confluence" panel
+on each watchlist card (per-timeframe table + ranked confluence zones). Advisory/read-only. Verified:
+NVDA top zone $164.27-164.67 (4 signals/3 TFs, high); ANET 11 zones, top $177-180 (6 signals, 9.5 high).
+
 ## 2026-06-19 - ETF YTD performance + yield + dividends (net-new)
 
 Operator: "I want actual ETF YTD performance ... yield and dividends" (previously untracked). New
