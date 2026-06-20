@@ -58,7 +58,7 @@ def create_backup(dry_run=False):
             os.environ["PGPASSWORD"] = db_pw
             r = subprocess.run(
                 f'pg_dump -h localhost -U trade_ai trade_ai | gzip > "{db_dir}/trade_ai.sql.gz"',
-                shell=True, capture_output=True, text=True, timeout=120
+                shell=True, capture_output=True, text=True, timeout=600   # was 120 — too short as the DB grew (dump now exceeds 2min)
             )
             size = (db_dir / "trade_ai.sql.gz").stat().st_size if (db_dir / "trade_ai.sql.gz").exists() else 0
             print(f"  DB dump: {size / 1e6:.1f} MB")
