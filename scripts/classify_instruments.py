@@ -69,37 +69,43 @@ def main():
     except Exception:
         pass
 
-    # AUTHORITATIVE pass: yfinance quoteType + expense ratio for every non-stock candidate (and confirm
-    # heuristic stocks aren't actually ETFs/funds). quoteType (ETF/MUTUALFUND/EQUITY/INDEX) corrects the
-    # heuristics so ANY ETF/fund flowing through the system is captured, not just the curated universe; and
-    # ETFs/funds get their expense ratio. Bounded + polite; --no-fetch skips it.
-    exp = {}  # symbol -> expense_ratio (fraction, e.g. 0.0009)
-    qt = {}   # symbol -> quoteType
+    # AUTHORITATIVE: yfinance quoteType (ETF/MUTUALFUND/INDEX/EQUITY) is the source of truth for instrument
+    # type — it overrides the heuristics so ANY ETF/fund is caught, not just the curated set. We CACHE it in
+    # symbol_profiles.quote_type so each run (a) applies every already-known type instantly with NO fetch,
+    # and (b) only fetches symbols not yet typed. That's the fix for new tickers (e.g. DIVI/SCHY) silently
+    # defaulting to 'stock' and never being re-checked: previously the fetch was capped and skipped them.
+    _QMAP = {"ETF": "etf", "MUTUALFUND": "fund", "INDEX": "stock", "EQUITY": "stock"}
+    exp, qt = {}, {}
+
+    # 1) apply CACHED quote_type to every symbol (authoritative; instant; no network)
+    cur.execute("SELECT upper(symbol), quote_type FROM symbol_profiles WHERE quote_type IS NOT NULL")
+    for s, q in cur.fetchall():
+        m = _QMAP.get((q or "").upper())
+        if m and s in cls and cls[s].get("source") != "universe":
+            cls[s]["type"] = m
+
+    # 2) fetch quoteType for symbols NOT yet cached — prioritises new/unknown tickers, converges over runs
     if enrich:
-        # fetch for everything not obviously a plain stock; cap to keep it bounded/polite
-        fetch_syms = [s for s, i in cls.items() if i["type"] != "stock" or _FUND_CODE.match(s) or len(s) <= 4]
+        cur.execute("SELECT upper(symbol) FROM symbol_profiles WHERE quote_type IS NULL ORDER BY upper(symbol)")
+        to_fetch = [r[0] for r in cur.fetchall() if r[0] in cls]
         try:
             import yfinance as yf, time as _t
-            for s in fetch_syms[:120]:
-                _t.sleep(0.9)
+            for s in to_fetch[:300]:                       # bounded per run; cached ones are skipped so this converges
+                _t.sleep(0.8)
                 try:
                     info = yf.Ticker(s).info
                     q = (info.get("quoteType") or "").upper()
                     if q:
-                        qt[s] = q
-                        mapped = {"ETF": "etf", "MUTUALFUND": "fund", "INDEX": "stock", "EQUITY": "stock"}.get(q)
-                        # don't override a curated inverse_etf; otherwise trust quoteType
-                        if mapped and cls[s].get("source") != "universe":
-                            cls[s]["type"] = mapped
-                        elif mapped == "etf" and cls[s]["type"] == "stock":
-                            cls[s]["type"] = "etf"
+                        qt[s] = q                          # cached for next run
+                        m = _QMAP.get(q)
+                        if m and cls[s].get("source") != "universe":
+                            cls[s]["type"] = m              # quoteType wins over the heuristic
                     er = info.get("netExpenseRatio")
                     if er is None:
                         er = info.get("annualReportExpenseRatio")
                     if isinstance(er, (int, float)) and er > 0:
-                        # yfinance is inconsistent (fraction 0.0009 vs percent-number 0.09 vs 3.0). Normalize
-                        # to a fraction: real ETF/fund expense ratios are < ~2%, so anything implying >2% is
-                        # mis-scaled and gets divided down until sane.
+                        # yfinance is inconsistent (fraction 0.0009 vs percent 0.09 vs 3.0). Normalize to a
+                        # fraction: real expense ratios are < ~2%, so anything implying >2% is mis-scaled.
                         v = float(er)
                         while v > 0.02:
                             v /= 100.0
