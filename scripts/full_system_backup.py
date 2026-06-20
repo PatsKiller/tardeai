@@ -56,10 +56,17 @@ def create_backup(dry_run=False):
             if line.startswith("DB_PASSWORD="): db_pw = line.split("=", 1)[1].strip()
         if db_pw and not dry_run:
             os.environ["PGPASSWORD"] = db_pw
+            # Exclude DATA of large REGENERABLE tables — they bloat the dump and (on the single-threaded
+            # live box) make pg_dump slow + lock-contending. Schema is still captured (so restore recreates
+            # them empty), and each rebuilds from its own pipeline. Irreplaceable operational data —
+            # holdings, trades, journal, directives, accounts, configs, SOULs — is fully backed up.
+            REGENERABLE = ("content_embeddings", "hermes_score_history", "market_quotes", "ticker_snapshot_daily")
+            _excl = " ".join(f"--exclude-table-data='{t}'" for t in REGENERABLE)
             r = subprocess.run(
-                f'pg_dump -h localhost -U trade_ai trade_ai | gzip > "{db_dir}/trade_ai.sql.gz"',
-                shell=True, capture_output=True, text=True, timeout=600   # was 120 — too short as the DB grew (dump now exceeds 2min)
+                f'pg_dump -h localhost -U trade_ai {_excl} trade_ai | gzip > "{db_dir}/trade_ai.sql.gz"',
+                shell=True, capture_output=True, text=True, timeout=600   # was 120 — too short as the DB grew
             )
+            print(f"  (excluded data of regenerable tables: {', '.join(REGENERABLE)})")
             size = (db_dir / "trade_ai.sql.gz").stat().st_size if (db_dir / "trade_ai.sql.gz").exists() else 0
             print(f"  DB dump: {size / 1e6:.1f} MB")
         else:
