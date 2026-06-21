@@ -1199,6 +1199,11 @@ def main():
                         help="Use pre-computed LLM queries from topic_curator instead of static queries")
     parser.add_argument("--symbol", help="Single symbol to search for (gap-fill mode)")
     parser.add_argument("--limit", type=int, default=10, help="Max articles per query")
+    parser.add_argument("--max-topics", type=int, default=0,
+                        help="Cap topics processed this run (0=all). Lets a backfill batch finish "
+                             "cleanly within a timeout; staleest topics (NULLS FIRST) go first.")
+    parser.add_argument("--owner", default="",
+                        help="Restrict to a single owner (e.g. 'shared'). Default: tradeai+shared.")
     args = parser.parse_args()
 
     conn = _get_conn()
@@ -1219,13 +1224,24 @@ def main():
         # hermes-owned topics are handed off to Hermes via hermes_topic_monitor_bridge.py
         # (which enqueues owner IN ('hermes','shared') into hermes_research_intelligence).
         # shared = researched by BOTH engines.
-        cur.execute(
-            "SELECT * FROM topic_monitor WHERE enabled = true AND owner IN ('tradeai','shared') "
-            "ORDER BY last_searched ASC NULLS FIRST, priority, topic_id"
-        )
+        if args.owner:
+            cur.execute(
+                "SELECT * FROM topic_monitor WHERE enabled = true AND owner = %s "
+                "ORDER BY last_searched ASC NULLS FIRST, priority, topic_id", (args.owner,)
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM topic_monitor WHERE enabled = true AND owner IN ('tradeai','shared') "
+                "ORDER BY last_searched ASC NULLS FIRST, priority, topic_id"
+            )
 
     columns = [desc[0] for desc in cur.description]
     topics = [dict(zip(columns, row)) for row in cur.fetchall()]
+    # Backfill cap (2026-06-20): with 140+ topics and per-article LLM curation, a full run can't
+    # finish in 30m. --max-topics lets a batch process the N stalest topics and exit clean; the
+    # NULLS-FIRST ordering means never-searched (newly-routed) topics are picked up first.
+    if args.max_topics and len(topics) > args.max_topics:
+        topics = topics[:args.max_topics]
 
     if not topics:
         print("No enabled topics found in topic_monitor table.")

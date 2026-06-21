@@ -884,6 +884,30 @@ The topic intelligence system discovers, ingests, curates, and links non-symbol 
     Tickers extracted → Queries that worked → Better queries next run
 ```
 
+### 2026-06-20 — Grounded + graded research, source lifecycle, continuous freshness
+
+The closed loop now extends from topics through **web-grounded, garbage-filtered briefings** and a **rated
+website registry**. Full detail: **`HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md`**.
+
+- **Topic count: 140+** (operator Telegram adds auto-route to BOTH ticker-discovery *and* knowledge
+  research; planning topics get operator context + Steph ownership).
+- **DOES BOTH (web + LLM):** `topic_research_synthesizer.py` grounds each LLM briefing on the crawler's
+  real articles (`symbol=topic_id` / keyword fallback) and **catalogs the sites used** into
+  `hermes_research_intelligence.evidence_json.grounded_on`. `--reground` upgrades memory-only rows to
+  source-cited once the crawler has ingested the topic.
+- **Grade out garbage:** grounding only uses **graded-good** articles (excludes `low_quality`/`blocked`/
+  demoted). `topic_curator.py` now runs on a **standalone cron (09:30/13:30/18:30)**, not just the
+  post-ingestion trigger, so the grading backlog is drained independently.
+- **Find/catalog new sites + ratings (autonomous, no human flip):** `hermes_source_curation.py` maintains
+  `research_sources` (~97 active / 352 total). Track A auto-promotes domains by **yield** (≥2 outputs,
+  ≥30%) and auto-retires dead ones; Track B has an **LLM validate** first-seen domains (free lane) and
+  auto-activate credible ones immediately — spam auto-rejected, verdicts cached. Website lifecycle
+  first-seen→LLM-validated/yield-proven→active→decay→auto-retire runs hands-off.
+- **Throughput:** `topic_ingestion.py --max-topics N` + a 2nd 13:00 crawl so 120+ new topics are crawled
+  (newest-first) within days, not weeks.
+- **Surface:** RetirementHub → Planning Research tab (6 themes, vetted source chips, provenance count) via
+  `GET /api/v2/retirement/planning-research`.
+
 ### DB Tables
 
 | Table | Purpose |
