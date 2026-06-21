@@ -79,12 +79,54 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
     return tickers  # Full CSV result — capping handled by caller with screener_id context
 
 
+def _update_screener_membership(cur, screener_id, present, run_id):
+    """Keep screener_symbol_membership fresh — the runner previously only wrote new classifications, so
+    membership went stale. Pattern per run: reset present_this_run → mark present symbols (seen++/miss=0)
+    → increment the missing-streak for symbols that fell out (dropped→stale@3→expired@7)."""
+    from psycopg2.extras import execute_values
+    present = list({str(s).upper() for s in present if s})
+    # 1) reset this screener's present flag
+    cur.execute("UPDATE screener_symbol_membership SET present_this_run=FALSE WHERE screener_id=%s",
+                (screener_id,))
+    # 2) upsert present symbols
+    if present:
+        execute_values(cur, """
+            INSERT INTO screener_symbol_membership
+              (symbol, screener_id, first_seen_in_screener_at, last_seen_in_screener_at,
+               last_seen_run_id, present_this_run, consecutive_seen_count, consecutive_missing_count,
+               membership_status, updated_at)
+            VALUES %s
+            ON CONFLICT (symbol, screener_id) DO UPDATE SET
+              last_seen_in_screener_at = now(),
+              last_seen_run_id         = EXCLUDED.last_seen_run_id,
+              present_this_run         = TRUE,
+              consecutive_seen_count   = screener_symbol_membership.consecutive_seen_count + 1,
+              consecutive_missing_count = 0,
+              membership_status        = 'active',
+              updated_at = now()
+        """, [(s, screener_id, run_id) for s in present],
+             template="(%s,%s,now(),now(),%s,TRUE,1,0,'active',now())")
+    # 3) age the fall-offs (still FALSE after step 2 = absent this run)
+    cur.execute("""
+        UPDATE screener_symbol_membership
+           SET consecutive_seen_count = 0,
+               consecutive_missing_count = consecutive_missing_count + 1,
+               membership_status = CASE WHEN consecutive_missing_count + 1 >= 7 THEN 'expired'
+                                        WHEN consecutive_missing_count + 1 >= 3 THEN 'stale'
+                                        ELSE 'dropped' END,
+               updated_at = now()
+         WHERE screener_id = %s AND present_this_run = FALSE
+    """, (screener_id,))
+    return len(present)
+
+
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     """Run one or all screeners. Returns discovery summary."""
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cookie = _get_finviz_cookie()
+    _run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if screener_id:
         cur.execute("SELECT * FROM finviz_screeners WHERE screener_id=%s AND active=TRUE", (screener_id,))
@@ -136,6 +178,14 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
             "sample": new_tickers[:10],
         }
         results.append(screener_result)
+
+        # Keep membership fresh for EVERY present symbol (not just new ones) — fixes the staleness where
+        # the runner only ever wrote new classifications. Runs on live runs only.
+        if not dry_run and tickers:
+            try:
+                screener_result["membership_updated"] = _update_screener_membership(cur, sid, tickers, _run_id)
+            except Exception as _me:
+                print(f"  [screener] membership update failed for {sid}: {str(_me)[:80]}")
 
         if not dry_run and new_tickers:
             for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
