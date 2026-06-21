@@ -74,6 +74,17 @@ unchanged when the flag is off.
 - `30 18 * * *` → `topic_curator.py --ensemble` — the EOD rescue pass over the day's borderline rejects.
 Rescued articles carry `rag_reason = 'ensemble rescue (<lanes>): …'` for audit.
 
+**Layer-4 loop validation (2026-06-21):** the engine runs the ensemble as a **second opinion on each
+synthesized inference before it's surfaced** (`ensemble_validate_inferences` in `inference_layer_engine.py`).
+After the synthesis layers run and before `persist_inferences`, the top inferences (by severity then
+confidence, capped at `ensemble.validate_max=4` per cycle) from the `higher_order`/`regional` layers get a
+3-lane vote. Each is annotated with `payload['ensemble'] = {score, decision, consensus, lanes}`, the verdict
+is appended to `reasoning_trace`, the ensemble score is **blended into `confidence`**, and a consensus
+`block` **downgrades severity** (critical→high). Config: `ensemble.validate_in_loop / validate_layers /
+validate_max`. Advisory, free-lane, cost-bounded. So an inference the panel doesn't believe surfaces with
+lower confidence — not full weight. Verified: synthetic inference → score 4.9 / block / 1-of-3 →
+confidence 0.62→0.56.
+
 ## Roadmap (not yet built — deferred from the enhancement spec)
 Multi-modal ingestion (SEC filings/PDFs), A/B curation testing, self-adjusting ingestion cadence from
 outcome feedback, and a dashboard hub for the inference results. (Multi-LLM ensemble — DONE above.)
