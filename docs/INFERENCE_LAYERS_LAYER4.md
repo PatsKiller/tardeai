@@ -63,6 +63,13 @@ the iron LLM policy).
   reasoning}`; aggregates to a final verdict via **majority + (consensus_threshold OR min_score)**. Skips
   unavailable/failed lanes; if every lane is down it returns a **safe block** (never guesses).
 - Config: `inference_layers.yaml → ensemble:` (`lanes`, `consensus_threshold` 0.66, `min_score` 6.0, `timeout`).
+- **Finance rubric (2026-06-21):** when the item is finance-substantive (keyword-gated — NAV/CEF/income/
+  retirement/tax; generic items keep a light prompt) a strict rubric is injected, scoring hard on what a
+  retirement reviewer must get right: CEF/ETF **NAV premium-vs-discount direction** (penalize if backwards),
+  **income durability** (distribution coverage vs return-of-capital / NAV erosion), sizing/FOMO, and a
+  required tax/Medicare "confirm with a professional" caveat. Verified: correct "PTY at a discount, verify
+  coverage" → 7.0/approve; backwards "PTY at a premium so it's cheap, back up the truck for guaranteed safe
+  income" → **1.1/block**. Commit `cd1daa46`.
 - Verified: demo → grok 8.5 / chatgpt 8.4 / local 7.5 → avg 8.1, 3/3 approve, consensus.
 
 **Curator escalation** — `topic_curator.py --ensemble`: opt-in second opinion that re-rates only the
