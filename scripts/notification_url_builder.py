@@ -5,20 +5,36 @@ Converts local/internal IP links to the Tailscale FQDN AND rewrites legacy /v2/ 
 /v3/ Command Center equivalents (v3 is the canonical UI). For Telegram/email messages only — does NOT modify
 internal health-check or API binding code.
 """
+import os
 import re
 
-PUBLIC_BASE_URL = "https://ms01-openclaw.tail163d14.ts.net"
+# Public dashboard base for user-facing links. The portfolio server speaks HTTP on
+# :7777; the Tailscale FQDN must carry that port for the link to reach it directly
+# over the tailnet (operator 2026-06-21). Env-overridable so the host/port is never
+# hardcoded. NOTE: TLS is only on :443 (Tailscale serve), so the port-bearing form
+# is http, not https.
+PUBLIC_BASE_URL = os.getenv(
+    "NOTIFICATION_PUBLIC_BASE_URL", "http://ms01-openclaw.tail163d14.ts.net:7777"
+).rstrip("/")
 DASHBOARD_PATH = "/v3/"   # v3 is canonical
+_FQDN = "ms01-openclaw.tail163d14.ts.net"            # host only (for the upgrade rule)
+_HOSTPORT = PUBLIC_BASE_URL.split("://", 1)[-1]      # host:port, scheme-stripped
 
-# Internal IPs/hosts -> public Tailscale FQDN
+# Internal IPs/hosts AND a port-less public FQDN -> the canonical port-bearing FQDN.
+# `(?!:\d)` guards so an already-ported URL (e.g. the :8443 → 7776 DOF endpoint, or an
+# already-correct :7777) is never given a second port.
 _REPLACEMENTS = [
     (re.compile(r"https?://192\.168\.50\.16:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://192\.168\.50\.16"), PUBLIC_BASE_URL),
-    (re.compile(r"192\.168\.50\.16:7777"), PUBLIC_BASE_URL.replace("https://", "")),
+    (re.compile(r"https?://192\.168\.50\.16(?!:\d)"), PUBLIC_BASE_URL),
+    (re.compile(r"192\.168\.50\.16:7777"), _HOSTPORT),
     (re.compile(r"https?://localhost:7777"), PUBLIC_BASE_URL),
     (re.compile(r"https?://127\.0\.0\.1:7777"), PUBLIC_BASE_URL),
     (re.compile(r"https?://100\.66\.120\.124:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://100\.66\.120\.124"), PUBLIC_BASE_URL),
+    (re.compile(r"https?://100\.66\.120\.124(?!:\d)"), PUBLIC_BASE_URL),
+    # Already-FQDN links that scripts hardcode without the port (e.g. morning brief,
+    # email footers, reports portal) — upgrade them to the port-bearing form so EVERY
+    # alert is consistent. Leaves :7777 and other explicit ports (:8443) alone.
+    (re.compile(r"https?://" + re.escape(_FQDN) + r"(?!:\d)"), PUBLIC_BASE_URL),
 ]
 
 # Legacy /v2/ page -> /v3/ hub route. v3 routes: home(/v3/), portfolio, risk, trading, strategy, agents,
