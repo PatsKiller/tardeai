@@ -140,7 +140,9 @@ def fetch_finviz_news(
             return cached_articles
 
     # ── Request ───────────────────────────────────────────────────────────────
-    url = f"{NEWS_BASE_URL}?t={ticker}&auth={FINVIZ_TOKEN}"
+    # v=3 returns ticker-TAGGED Stock news (Ticker column, comma-sep for multi-ticker headlines).
+    # The old ?t=TICKER form returned untagged market/blog news — useless for per-ticker catalysts.
+    url = f"{NEWS_BASE_URL}?v=3&auth={FINVIZ_TOKEN}"
     headers = {
         "User-Agent": FINVIZ_UA,
         "Accept": "application/json,text/json,*/*",
@@ -168,22 +170,38 @@ def fetch_finviz_news(
             log.warning("[finviz_news] %s — HTTP %d", ticker, r.status_code)
             return []
 
-        # Try JSON parse first
-        try:
-            data = r.json()
-            if not isinstance(data, list):
-                data = data.get("news", data.get("articles", []))
-        except Exception:
-            # Some Finviz endpoints return newline-delimited JSON
-            lines = [ln.strip() for ln in r.text.splitlines() if ln.strip().startswith("{")]
-            import json
-            data = []
-            for ln in lines:
-                try:
-                    data.append(json.loads(ln))
-                except Exception:
-                    pass
+        text = r.text or ""
+        data = []
+        # news_export.ashx returns CSV: "Title","Source","Date","Url","Category","Ticker" (2026-06-20:
+        # the old code only tried JSON/NDJSON, so it always parsed 0). Detect + parse CSV first.
+        if text.lstrip().startswith('"Title"') or ("\"Url\"" in text[:200] and "," in text[:200]):
+            import csv, io
+            for row in csv.DictReader(io.StringIO(text)):
+                data.append({
+                    "headline": row.get("Title") or row.get("title"),
+                    "url": row.get("Url") or row.get("url") or row.get("Link"),
+                    "source": row.get("Source") or row.get("source"),
+                    "date": row.get("Date") or row.get("datetime"),
+                    "ticker": row.get("Ticker") or ticker,
+                })
+        else:
+            # Fallbacks: JSON, then NDJSON
+            try:
+                j = r.json()
+                data = j if isinstance(j, list) else j.get("news", j.get("articles", []))
+            except Exception:
+                import json as _json
+                for ln in [l.strip() for l in text.splitlines() if l.strip().startswith("{")]:
+                    try:
+                        data.append(_json.loads(ln))
+                    except Exception:
+                        pass
 
+        # Ticker column is comma-separated for multi-ticker headlines (e.g. "CVX,NOC,LMT") — keep rows
+        # that mention THIS ticker.
+        tkr = ticker.upper()
+        data = [d for d in data
+                if tkr in [x.strip().upper() for x in str(d.get("ticker", "")).split(",") if x.strip()]]
         articles = _parse_finviz_news_response(data, ticker, lookback_hours)
 
         # Sort newest first
@@ -217,6 +235,41 @@ def fetch_finviz_news_batch(
     for ticker in tickers[:max_tickers]:
         results[ticker] = fetch_finviz_news(ticker, lookback_hours=lookback_hours)
     return results
+
+
+def fetch_finviz_stock_news_all(lookback_hours: int = 72) -> list[dict]:
+    """Fetch ALL ticker-tagged Stock news once (news_export v=3) and return rows with a parsed
+    `tickers` list — efficient for proactive coverage (one request, distribute to the universe)
+    instead of one request per symbol. Returns [] on any failure."""
+    if not (FINVIZ_NEWS_ENABLED and FINVIZ_TOKEN):
+        return []
+    url = f"{NEWS_BASE_URL}?v=3&auth={FINVIZ_TOKEN}"
+    try:
+        try:
+            from finviz_throttle import acquire as _fv_acquire
+            _fv_acquire()
+        except Exception:
+            pass
+        r = requests.get(url, headers={"User-Agent": FINVIZ_UA}, timeout=REQUEST_TIMEOUT)
+        if r.status_code != 200:
+            log.warning("[finviz_news] stock-news-all HTTP %d", r.status_code)
+            return []
+        import csv, io
+        out = []
+        for row in csv.DictReader(io.StringIO(r.text or "")):
+            tickers = [x.strip().upper() for x in str(row.get("Ticker", "")).split(",") if x.strip()]
+            if not tickers:
+                continue
+            parsed = _parse_finviz_news_response(
+                [{"headline": row.get("Title"), "url": row.get("Url"),
+                  "source": row.get("Source"), "date": row.get("Date")}], "", lookback_hours)
+            if parsed:
+                p = parsed[0]; p["tickers"] = tickers
+                out.append(p)
+        return out
+    except Exception as exc:
+        log.warning("[finviz_news] stock-news-all error: %s", exc)
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

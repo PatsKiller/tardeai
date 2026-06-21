@@ -679,11 +679,15 @@ def search_duckduckgo(queries: list[str], max_per_query: int = 5) -> list[dict]:
     results = []
     seen_urls = set()
     for q in queries:
-        encoded = urllib.parse.quote_plus(q)
-        url = f"https://html.duckduckgo.com/html/?q={encoded}"
+        # 2026-06-20: DDG's html endpoint now requires a POST form + a desktop UA — the old GET ?q=
+        # with a Linux UA silently returned 0 results (markup/bot-gate change). POST restores result__a.
+        url = "https://html.duckduckgo.com/html/"
+        data = urllib.parse.urlencode({"q": q}).encode()
         try:
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            req = urllib.request.Request(url, data=data, headers={
+                "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                               "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+                "Content-Type": "application/x-www-form-urlencoded",
             })
             with urllib.request.urlopen(req, timeout=15) as resp:
                 html = resp.read().decode("utf-8", errors="replace")
@@ -698,6 +702,9 @@ def search_duckduckgo(queries: list[str], max_per_query: int = 5) -> list[dict]:
                 # DDG wraps URLs
                 if "uddg=" in link:
                     link = urllib.parse.unquote(link.split("uddg=")[1].split("&")[0])
+                # skip sponsored/ad results (duckduckgo.com/y.js?ad_domain=…)
+                if "duckduckgo.com/y.js" in link or "ad_domain=" in link:
+                    continue
                 if link in seen_urls:
                     continue
                 seen_urls.add(link)
