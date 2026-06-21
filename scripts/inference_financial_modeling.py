@@ -105,7 +105,8 @@ def _measured_nav(symbol: str) -> tuple[Optional[float], Optional[str]]:
 
 
 # ── public: premium / discount to NAV ─────────────────────────────────────────
-def nav_premium_discount(symbol: str, ctx=None, cfg: Optional[dict] = None) -> dict:
+def nav_premium_discount(symbol: str, ctx=None, cfg: Optional[dict] = None,
+                         force_lane: Optional[str] = None) -> dict:
     """Compute (or qualitatively infer) a fund's premium/discount to NAV.
 
     Returns a structured, source-attributed valuation object:
@@ -166,7 +167,7 @@ def nav_premium_discount(symbol: str, ctx=None, cfg: Optional[dict] = None) -> d
                  f"Give a qualitative read for a retirement-income investor. Be explicit that "
                  f"this is a qualitative estimate, not a measured NAV.")
             ans = proactive_query(ctx, symbol, q, trigger="nav_estimate",
-                                  salience=0.5,
+                                  salience=0.5, force_lane=force_lane,
                                   want_keys=["direction", "signal", "note", "confidence", "reasoning"])
             out["direction"] = ans.get("direction", "neutral")
             out["signal"] = ans.get("signal", "unknown")

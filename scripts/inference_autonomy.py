@@ -180,6 +180,7 @@ def act_on_gaps(ctx, items: list, res) -> int:
     aut = ctx.cfg.get("autonomy", {}) or {}
     max_actions = int(aut.get("max_actions_per_run", 3))
     min_priority = float(aut.get("min_priority", 6))
+    action_lane = aut.get("action_lane") or None      # e.g. "grok" → run actions off-box
 
     def prio(it):
         try:
@@ -206,7 +207,8 @@ def act_on_gaps(ctx, items: list, res) -> int:
             if gtype == "valuation" and assets:
                 # real NAV premium/discount read
                 import inference_financial_modeling as fm
-                nav = fm.nav_premium_discount(assets[0], ctx=ctx, cfg=ctx.cfg)
+                nav = fm.nav_premium_discount(assets[0], ctx=ctx, cfg=ctx.cfg,
+                                              force_lane=action_lane)
                 body = nav.get("note") or desc
                 conf = float(nav.get("confidence", conf) or conf)
                 res.inferences.append(Inference(
@@ -223,7 +225,8 @@ def act_on_gaps(ctx, items: list, res) -> int:
                 q = it.get("suggested_query") or f"Research this gap for the portfolio: {desc}"
                 ans = hq.proactive_query(ctx, subject, q, trigger=f"autonomy:{gtype}",
                                          salience=min(1.0, 0.5 + prio(it) / 20.0),
-                                         want_keys=["answer", "direction", "confidence", "reasoning"])
+                                         want_keys=["answer", "direction", "confidence", "reasoning"],
+                                         force_lane=action_lane)
                 res.inferences.append(Inference(
                     inference_type=inf_type if inf_type != "research_gap" else "research_gap",
                     subject=subject,

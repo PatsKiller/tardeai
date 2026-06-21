@@ -97,6 +97,9 @@ inference_layers:
     # so detection doesn't compete with the local model under GPU load; null/local
     # keeps it on gemma3. Falls back to local automatically if the lane is unreachable.
     detection_lane: grok
+    # Lane for the ACTIONS the autonomy pass takes (Hermes follow-up queries + NAV
+    # premium/discount reads). grok keeps the whole pass off the contended local GPU.
+    action_lane: grok
 
   telegram:
     enabled: true

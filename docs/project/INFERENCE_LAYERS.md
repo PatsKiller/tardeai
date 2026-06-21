@@ -127,11 +127,12 @@ more risk budget, losers get trimmed.
   follow-up (`proactive_query`), NAV read (`nav_premium_discount`), or an advisory
   research-topic suggestion (recorded to `inference_memory`, never auto-injected into
   ingestion). Each action becomes an `[autonomy]`-tagged inference.
-  **Detection lane:** `autonomy.detection_lane` (e.g. `grok`) routes the gap-detection
-  LLM call to a free OAuth lane via `llm_json(force_lane=...)`, so it stays fast and
-  reliable without competing with the local model under GPU load (grok: ~8 gaps in
-  ~5s vs the local model taking minutes and often returning empty). Falls back to
-  local automatically if the lane is unreachable.
+  **Lanes:** `autonomy.detection_lane` routes the gap-detection LLM call, and
+  `autonomy.action_lane` routes the actions (Hermes follow-up queries + NAV reads),
+  each to a free OAuth lane (e.g. `grok`) via `llm_json(force_lane=...)` /
+  `proactive_query(force_lane=...)` — keeping the whole pass off the contended local
+  GPU (full detect+act cycle ~26s on grok vs the local model taking minutes and often
+  returning empty). Both fall back to local automatically if the lane is unreachable.
   **Robustness:** model output is coerced (gemma3:4b often returns gaps as bare
   strings), detection retries once on an empty parse, and falls back to deterministic
   **state-grounded** gaps (held income funds with no NAV read this cycle, negative

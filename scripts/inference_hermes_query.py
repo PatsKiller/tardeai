@@ -145,12 +145,14 @@ def rag_block(subject: str, limit: int = 6) -> str:
 
 # ── proactive querying ("mind of its own") ────────────────────────────────────
 def proactive_query(ctx, subject: str, question: str, trigger: str,
-                    salience: float, want_keys: Optional[list] = None) -> dict:
+                    salience: float, want_keys: Optional[list] = None,
+                    force_lane: Optional[str] = None) -> dict:
     """The engine decides on its own to ask Hermes a follow-up.
 
     Persists the exchange to inference_proactive_queries and updates
     inference_memory so salient gaps accumulate across cycles. Respects the
-    per-run proactive budget enforced by the caller.
+    per-run proactive budget enforced by the caller. `force_lane` (e.g. "grok")
+    runs the call on a specific free OAuth lane instead of the local model.
     """
     cfg = ctx.cfg
     # count against the per-cycle proactive budget shared by all layers
@@ -161,7 +163,8 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
         prompt = f"{rag}\n\n{question}"
 
     answer = llm_json(prompt, caller="inference_proactive", salience=salience,
-                      cfg=cfg, want_keys=want_keys or ["answer", "confidence", "reasoning"])
+                      cfg=cfg, want_keys=want_keys or ["answer", "confidence", "reasoning"],
+                      force_lane=force_lane)
     lane = answer.get("_lane", "local")
     conf = float(answer.get("confidence", 0.5) or 0.5)
     text = answer.get("answer") or answer.get("summary") or json.dumps(
