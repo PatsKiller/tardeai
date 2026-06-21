@@ -51,9 +51,26 @@ the engine. `account: rollover` (active trading account).
 Full cycle runs end-to-end: regime=risk_off (conf 60%), cross-regional signals across 2 regions, PTY NAV
 signal, 16 inferences in run #3. `/api/v2/inference/latest` serves them.
 
+## Multi-LLM ensemble validator (`scripts/inference_ensemble.py`)
+
+A real hybrid ensemble over the **free lanes only** — grok (xAI-OAuth proxy :8645) + chatgpt (codex-OAuth
+proxy :8646) + local gemma, via `llm_lane.py`. **No metered keys, no anthropic/xai/ollama SDKs** (the
+pasted "ensemble" that used `ANTHROPIC_API_KEY`/`XAI_API_KEY` + uninstalled SDKs was rejected — it violated
+the iron LLM policy).
+
+- `ensemble_validate(content, context, task)` → each available lane returns `{score, decision, confidence,
+  reasoning}`; aggregates to a final verdict via **majority + (consensus_threshold OR min_score)**. Skips
+  unavailable/failed lanes; if every lane is down it returns a **safe block** (never guesses).
+- Config: `inference_layers.yaml → ensemble:` (`lanes`, `consensus_threshold` 0.66, `min_score` 6.0, `timeout`).
+- Verified: demo → grok 8.5 / chatgpt 8.4 / local 7.5 → avg 8.1, 3/3 approve, consensus.
+
+**Curator escalation** — `topic_curator.py --ensemble`: opt-in second opinion that re-rates only the
+borderline `low_quality` rejects through the ensemble and upgrades consensus-approved ones (so only borderline
+items pay the 3-lane cost — single-lane still decides the bulk). Verified: 1/3 rescued. Default behavior
+unchanged when the flag is off.
+
 ## Roadmap (not yet built — deferred from the enhancement spec)
-Multi-modal ingestion (SEC filings/PDFs), multi-LLM ensemble *voting* (vs current single+escalation),
-A/B curation testing, self-adjusting ingestion cadence from outcome feedback, and a dashboard hub for the
-inference results. These are separate scoped efforts.
+Multi-modal ingestion (SEC filings/PDFs), A/B curation testing, self-adjusting ingestion cadence from
+outcome feedback, and a dashboard hub for the inference results. (Multi-LLM ensemble — DONE above.)
 
 See also `HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md`, `MASTER_SYSTEM_DOCUMENTATION.md` §6b.
