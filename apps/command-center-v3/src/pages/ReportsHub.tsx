@@ -21,7 +21,11 @@ const fmtDate = (s?: string) => {
     d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
-const FQDN = 'https://ms01-openclaw.tail163d14.ts.net'
+// Same-origin so report action links open the CURRENT host's page, not a hardcoded tailscale instance
+// (the prior absolute host sent every action link to the wrong page when viewed on localhost/another host).
+const FQDN = typeof window !== 'undefined' ? window.location.origin : ''
+// Backend action urls are absolute (tailscale host baked in for Telegram/email) — strip to a same-origin path.
+const relUrl = (u?: string) => (u ? u.replace(/^https?:\/\/[^/]+/, '') : u)
 const VALID = new Set(['portfolio', 'risk', 'trading', 'strategy', 'agents', 'intelligence', 'hermes', 'retirement', 'journal', 'watchlist', 'watchpool', 'sectors', 'reports', 'system', 'manual-execution'])
 // every legacy/brief page slug → a REAL v3 route + friendly label (no dead links)
 const PAGE: Record<string, { label: string; route: string }> = {
@@ -348,7 +352,7 @@ export default function ReportsHub({ onDrill }: Props) {
                 {(selected.actions || []).length > 0 && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
                     {selected.actions.map((a: any, i: number) => (
-                      <a key={i} href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} ↗</a>
+                      <a key={i} href={relUrl(a.url)} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
                     ))}
                   </div>
                 )}
