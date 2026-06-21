@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-19T11:40:02.422652+00:00",
+  "status": "attention_required",
+  "safety": {
+    "ALPACA_MODE": "paper",
+    "LLM_DISABLE_LIVE_EXECUTION": "true"
+  },
+  "facts_summary": {
+    "tables": null,
+    "scripts": null,
+    "cron_jobs": null,
+    "strategies": null
+  },
+  "a1a_summary": {
+    "status": "attention_required",
+    "findings": 3,
+    "by_severity": {
+      "P1": 1,
+      "P0": 1,
+      "P2": 1
+    }
+  }
+}

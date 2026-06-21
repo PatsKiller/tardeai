@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-19T11:40:00.465483+00:00",
+  "git_head": "531817e5",
+  "files_checked": 2,
+  "findings_count": 3,
+  "by_severity": {
+    "P1": 1,
+    "P0": 1,
+    "P2": 1
+  },
+  "status": "attention_required",
+  "findings": [
+    {
+      "severity": "P1",
+      "check": "code_without_docs",
+      "message": "2 code files changed, 0 docs updated"
+    },
+    {
+      "severity": "P0",
+      "check": "missing_required_doc",
+      "file": "docs/v4_1_deployment_log.md",
+      "message": "Required doc missing: docs/v4_1_deployment_log.md"
+    },
+    {
+      "severity": "P2",
+      "check": "deployment_log_stale",
+      "message": "Code changed but deployment log not updated"
+    }
+  ]
+}

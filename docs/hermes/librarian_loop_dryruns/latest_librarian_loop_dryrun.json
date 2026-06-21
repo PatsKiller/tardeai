@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-21",
+  "timestamp": "2026-06-21T18:00:19.595102+00:00",
+  "mode": "apply",
+  "findings": 0,
+  "max_rows": 10,
+  "details": [],
+  "db_writes": 0,
+  "runtime_sec": 0.2
+}
