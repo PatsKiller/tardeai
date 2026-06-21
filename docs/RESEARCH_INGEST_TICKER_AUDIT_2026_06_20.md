@@ -114,8 +114,10 @@ tells the truth: RSS + Grok + ChatGPT are LIVE.
 1. ~~Validate extracted tickers~~ — **DONE** (§2a, validated vs ~5k-symbol universe).
 2. ~~Promote research-discovered tickers to discovery~~ — **DONE** (§2a, PENDING candidates, never auto-trade).
 3. ~~Remove the dead `hermes_rss_ingest.py` reference~~ — **DONE** (registry corrected).
-4. (Open) Entity extraction grading (`rate_pending_content`) still runs on local gemma — high-volume, fine
-   on local; switch to free lanes only if quality demands it.
+4. ~~Grading (`rate_pending_content`) on local gemma~~ — **DONE** — switched to free OAuth lanes
+   (`_free_lane_gen` grok→chatgpt→local). Article + transcript rating now use the free lanes; local is the
+   built-in fallback. Verified live: 10/10 rated via grok. (Query-improvement step `improve_queries` still
+   local — low priority, not grading.)
 
 ## Files
 - `scripts/topic_ingestion.py::_save_article` — article write + dedup + score
