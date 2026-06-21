@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import SynthesizedReportCard from '../components/SynthesizedReportCard'
 
 // v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
 // digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
@@ -298,17 +299,13 @@ export default function ReportsHub({ onDrill }: Props) {
 
           {items.map((it: any) => {
             const id = `${it.source}-${it.id}`
-            const on = selected && `${selected.source}-${selected.id}` === id
+            const on = !!(selected && `${selected.source}-${selected.id}` === id)
             return (
-              <div key={id} onClick={() => setSelId(id)} style={{ ...card, borderLeft: `3px solid ${sevColor(it.severity)}`, padding: '10px 12px', cursor: 'pointer', outline: on ? '1px solid #60a5fa' : 'none', background: on ? 'rgba(96,165,250,.06)' : 'var(--bg1)' }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginBottom: 4 }}>{it.title}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span>{fmtDate(it.created_at)}</span><span>· {it.channel}</span>
-                  {(it.symbols || []).slice(0, 3).map((s: string) => <span key={s} style={{ fontWeight: 800, color: '#60a5fa' }}>{s}</span>)}
-                </div>
+              <div key={id} onClick={() => setSelId(id)}>
+                <SynthesizedReportCard item={it} selected={on} compact />
                 {(it.has_actions || (it.action_classes || []).length > 0) && (
-                  <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--text2)' }}>{it.action_count} action{it.action_count === 1 ? '' : 's'}</span>
+                  <div style={{ display: 'flex', gap: 4, margin: '-4px 0 2px 12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)' }}>{it.action_count} action{it.action_count === 1 ? '' : 's'} →</span>
                     {(it.action_classes || []).slice(0, 3).map((c: string) => <ActionPill key={c} cls={c} />)}
                   </div>
                 )}

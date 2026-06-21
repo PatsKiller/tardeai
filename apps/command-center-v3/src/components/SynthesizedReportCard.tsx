@@ -1,0 +1,89 @@
+// SynthesizedReportCard — professional trade-desk report card (v3 stack: inline styles + CSS vars).
+// In-stack translation of the requested design (no Tailwind/shadcn/lucide). Renders a synthesized insight,
+// severity rail, symbol/sector/trend chips, quality/ensemble badge, and inline action buttons.
+
+export interface ReportCardItem {
+  id: string
+  source?: string
+  type?: string
+  channel?: string
+  title: string
+  summary?: string                 // full body; first sentence is used as the synthesized insight
+  synthesized_insight?: string     // explicit insight if the backend provides one
+  severity?: string                // critical | warning | info | positive (+ urgent/high/etc.)
+  symbols?: string[]
+  symbol?: string
+  sector?: string
+  trend?: string
+  created_at?: string
+  quality_score?: number           // 0..100 or 0..1
+  ensemble?: { score?: number; decision?: string; consensus?: boolean; lanes?: string[] } | null
+  actions?: { label: string; url?: string }[]
+  action_classes?: string[]
+}
+
+const SEV = (s?: string) => {
+  const v = (s || '').toLowerCase()
+  if (/crit|urgent|triggered|danger|broken/.test(v)) return { c: '#ef4444', bg: 'rgba(239,68,68,.13)', label: 'CRITICAL' }
+  if (/warn|weak|caution|high|stale|pending|review/.test(v)) return { c: '#f59e0b', bg: 'rgba(245,158,11,.13)', label: 'WARNING' }
+  if (/pos|ok|pass|protected|good|approve/.test(v)) return { c: '#22c55e', bg: 'rgba(34,197,94,.13)', label: 'POSITIVE' }
+  return { c: '#60a5fa', bg: 'rgba(96,165,250,.13)', label: 'INFO' }
+}
+function insightOf(it: ReportCardItem): string {
+  if (it.synthesized_insight) return it.synthesized_insight
+  const b = (it.summary || '').replace(/\s+/g, ' ').trim()
+  if (!b) return ''
+  const m = b.match(/^.{40,240}?[.!?](\s|$)/)
+  return (m ? m[0] : b.slice(0, 200)).trim()
+}
+function ago(iso?: string): string {
+  if (!iso) return ''
+  const h = (Date.now() - Date.parse(iso)) / 3.6e6
+  if (!Number.isFinite(h)) return ''
+  return h < 1 ? 'just now' : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`
+}
+const chip: React.CSSProperties = { fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'var(--bg2)', color: 'var(--text2)' }
+
+export default function SynthesizedReportCard(
+  { item, onAction, compact, selected }:
+  { item: ReportCardItem; onAction?: (action: string, id: string) => void; compact?: boolean; selected?: boolean }
+) {
+  const sv = SEV(item.severity)
+  const insight = insightOf(item)
+  const syms = (item.symbols && item.symbols.length ? item.symbols : item.symbol ? [item.symbol] : []).slice(0, 4)
+  const q = item.quality_score == null ? null : item.quality_score > 1 ? Math.round(item.quality_score) : Math.round(item.quality_score * 100)
+  const en = item.ensemble
+  return (
+    <div style={{
+      background: selected ? 'rgba(96,165,250,.06)' : 'var(--bg1)', border: '1px solid var(--border)',
+      borderLeft: `4px solid ${sv.c}`, borderRadius: 11, padding: compact ? '10px 12px' : '13px 15px',
+      outline: selected ? '1px solid #60a5fa' : 'none', cursor: onAction ? 'default' : 'pointer',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: sv.bg }}>{sv.label}</span>
+            {item.type && <span style={{ fontSize: 9, color: 'var(--text3)' }}>{item.type}</span>}
+            {syms.map(s => <span key={s} style={{ fontSize: 11, fontWeight: 800, color: '#60a5fa', fontFamily: 'monospace' }}>{s}</span>)}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginTop: 5 }}>{item.title}</div>
+          {insight && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: compact ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{insight}</div>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7, alignItems: 'center' }}>
+            {item.sector && <span style={chip}>{item.sector}</span>}
+            {item.trend && <span style={{ ...chip, color: '#a855f7' }}>{item.trend}</span>}
+            {q != null && <span style={{ ...chip, color: q >= 72 ? '#22c55e' : q >= 50 ? '#f59e0b' : '#ef4444' }}>quality {q}%</span>}
+            {en && en.decision && <span style={{ ...chip, color: en.decision === 'approve' ? '#22c55e' : '#ef4444' }}>ensemble {en.decision}{en.score != null ? ` ${en.score}` : ''}{en.lanes?.length ? ` · ${en.lanes.length} lanes` : ''}</span>}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 9.5, color: 'var(--text3)' }}>{ago(item.created_at)}{item.channel ? <><br />{item.channel}</> : null}</div>
+      </div>
+      {(item.actions && item.actions.length > 0) && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+          {item.actions.slice(0, 5).map((a, i) => a.url
+            ? <a key={i} href={a.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} ↗</a>
+            : <button key={i} onClick={e => { e.stopPropagation(); onAction?.(a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>{a.label}</button>)}
+        </div>
+      )}
+    </div>
+  )
+}
