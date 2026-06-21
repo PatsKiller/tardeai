@@ -107,10 +107,15 @@ for every one — with uniform boilerplate reasons.
    higher-quality alert); open-trade scales with risk-flag count + operator priority. The `/api/v2/command`
    feed omits current price, so command stops **cross-reference price from `/api/v2/risk`**; command items
    that duplicate a triggered risk item are **deduped** (no-noise).
+3. **De-dup the external-LM report series.** The `external-lm-report` cards arrive as a daily series
+   (`REPORT:aegis_morning_brief_<date>`) repeating the same advice with a newer date — 5+ stale copies at
+   42% flooding the board. Group by subject (key with the trailing date stripped) and keep only the
+   **freshest entry per subject** (8 → 1).
 
 **Result (verified on the rendered page):** quality spans **32–96%** (no uniform 39%); the 8 defense stops
-show once each, ranked by breach — LDOS/NOC/LMT (deep) ≈96%, KBR/CACI (~2% past) ≈66%.
-Commits `f70342ed` + `1cad708c`.
+show once each, ranked by breach — LDOS/NOC/LMT (deep) ≈96%, KBR/CACI (~2% past) ≈66%; the external-LM
+morning-brief series collapses 8 → 1 (the current report). Total intelligence dropped ~151 → ~70 by
+removing duplicates. Commits `f70342ed` + `1cad708c` + `311fced2`.
 
 ---
 
