@@ -54,6 +54,24 @@ stale). This is **per-source yield monitoring**, complementary to the job/freshn
 
 ---
 
+## 2b. Finviz surfacing — where it shows (verified)
+
+Finviz appears everywhere a symbol is rendered:
+
+**Inline strip on card faces** (one shared `/api/v2/finviz-strip-map` call — mtime-cached, universe =
+watchlist ∪ open proposals ∪ held): RSI (band-colored ≥70 red / ≤30 green) + perf Week/Month/YTD +
+vs-50d-SMA (sign-colored).
+- Watchlist cards (`WatchlistHub`) — **verified 200/200 covered**
+- Portfolio holding cards (`PortfolioHub`) — **verified 38/38 held covered**
+- Broker-proposal rows (`BrokerProposals`, compact RSI/W/YTD) — **verified via a temporary test proposal**:
+  a non-watchlist/non-held ticker (KO) went `strip-map: False → True` purely because the proposal existed,
+  the `/api/v2/broker-proposals` endpoint returned it, and `fvMap[symbol]` resolved → strip renders. Test
+  proposal was placed on a `schwab_taxable` (no-trading-API) account so it could not route, then deleted
+  (0 rows left). 2026-06-21.
+
+**Detail drawer** (click any card): Finviz technical chart → grouped metrics panel
+(`/api/v2/finviz-enrichment`: Technicals/Performance/Valuation/Fundamentals/Ownership) → insider Form-4.
+
 ## 3. Fixes shipped 2026-06-20
 - **DuckDuckGo**: GET→POST + desktop UA (+ ad-link filter). 0 → 10 results.
 - **Screener membership**: the runner now maintains `screener_symbol_membership` every run
