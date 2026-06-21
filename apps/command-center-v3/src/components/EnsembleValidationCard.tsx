@@ -13,6 +13,10 @@ export interface EnsembleVote {
   decision: 'approve' | 'block'
   confidence: number
   reasoning?: string
+  // finance/retirement sub-scores (present only on finance-substantive items — see inference_ensemble._prompt)
+  retirement_relevance?: number
+  finance_actionability?: number
+  risk_alignment?: number
 }
 export interface EnsembleResult {
   final_decision: 'approve' | 'block'
@@ -22,6 +26,9 @@ export interface EnsembleResult {
   lanes_used: string[]
   votes: EnsembleVote[]
   reasoning_summary?: string
+  retirement_relevance?: number
+  finance_actionability?: number
+  risk_alignment?: number
 }
 
 const decColor = (d?: string) => (d === 'approve' ? '#22c55e' : '#ef4444')
@@ -29,12 +36,26 @@ const scoreColor = (s?: number) => (s == null ? 'var(--text2)' : s >= 8 ? '#34d3
 const LANE_ICON: Record<string, string> = { grok: '𝕏', chatgpt: '◎', local: '🖥', claude: '✶' }
 
 // ── Pure display card ────────────────────────────────────────────────────────
+// finance sub-scores: prefer the aggregate the backend put on the result; else average the per-lane votes.
+const SUBS: { key: keyof EnsembleResult; vkey: keyof EnsembleVote; label: string }[] = [
+  { key: 'retirement_relevance', vkey: 'retirement_relevance', label: 'retirement' },
+  { key: 'finance_actionability', vkey: 'finance_actionability', label: 'finance' },
+  { key: 'risk_alignment', vkey: 'risk_alignment', label: 'risk' },
+]
+const subColor = (v: number) => (v >= 7 ? '#34d399' : v >= 4 ? '#facc15' : '#f87171')
+
 export function EnsembleValidationCard({ result, onRevalidate }: {
   result: EnsembleResult
   onRevalidate?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const votes = result.votes ?? []
+  const subs = SUBS.map(s => {
+    const agg = (result as any)[s.key]
+    if (typeof agg === 'number') return { ...s, val: agg }
+    const vals = votes.map(v => v[s.vkey]).filter((x): x is number => typeof x === 'number')
+    return vals.length ? { ...s, val: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 } : null
+  }).filter(Boolean) as { label: string; val: number }[]
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginTop: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -51,6 +72,17 @@ export function EnsembleValidationCard({ result, onRevalidate }: {
           {result.consensus_reached ? '✓ consensus' : '⚠ split'}
         </span>
       </div>
+      {subs.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          {subs.map(s => (
+            <span key={s.label} title={`${s.label} sub-score (0-10) — finance/retirement ensemble`} style={{
+              fontSize: 9.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+              background: 'var(--bg1)', border: `1px solid ${subColor(s.val)}55`, color: subColor(s.val) }}>
+              {s.label} {s.val.toFixed(1)}
+            </span>
+          ))}
+        </div>
+      )}
       {result.reasoning_summary && (
         <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>{result.reasoning_summary}</div>
       )}
