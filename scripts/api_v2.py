@@ -2948,6 +2948,22 @@ def risk():
             h_prices[sym] = h["price"]
     # Also try enrichment cache
     enrich = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
+    # ── CANONICAL STOP RECONCILIATION (operator 2026-06-21) ──────────────────────────────────────────────
+    # risk_management.json holds the PLANNED stop (the level the strategy intends). The source of truth for
+    # whether a position is actually protected — and at what price — is the broker's LIVE working SELL-stop
+    # order (Stage 2c, same source the Open Trades card uses). Overlay it so 'protected'/'triggered' reflect
+    # broker reality, not a planned value that may not be live (e.g. PFLT showed a $8.21 planned stop while no
+    # live stop exists at the broker). canonical stop = live broker stop when present, else the planned stop.
+    _bstops = {}
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import open_trades_intelligence as _oti
+        _accts = sorted({p.get("account", "") for p in positions if p.get("account")})
+        for (acct, sym), v in (_oti._broker_protective_stops(_accts) or {}).items():
+            _bstops[(sym, acct)] = v
+    except Exception:
+        pass
     for p in positions:
         sym = p.get("symbol", "")
         if not p.get("current_price") or p["current_price"] == 0:
@@ -2980,18 +2996,30 @@ def risk():
         "total_protected_mv": rm.get("total_protected_mv", 0),
         "total_unprotected_mv": rm.get("total_unprotected_mv", 0),
         "position_count": len(positions),
-        "positions": [{
+        "positions": [(lambda _bs, _planned, _conf: {
             "symbol": p.get("symbol", ""), "market_value": p.get("market_value", 0),
             "account": p.get("account", ""),
-            "stop_price": p.get("stop_price"), "current_price": p.get("current_price") or p.get("price", 0),
+            # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed
+            # stop [no-API accounts: stop lives in ToS, confirmed in stop_confirmations], (3) planned stop
+            # [risk_management.json, advisory only]. stop_price = the highest-confidence value available.
+            "stop_price": (_bs.get("stop_price") if _bs else (_conf.get("stop_price_confirmed") if _conf.get("stop_confirmed") else _planned)),
+            "current_price": p.get("current_price") or p.get("price", 0),
             "distance_pct": p.get("distance_pct"), "max_loss": p.get("max_loss") or p.get("max_loss_dollar", 0),
             "status": p.get("status", ""),
             "triggered": bool(p.get("triggered")) or (isinstance(p.get("distance_pct"), (int, float)) and p["distance_pct"] < 0),
-            "has_stop": bool(p.get("stop_price")),
+            # has_stop = a stop LEVEL exists (broker/confirmed/planned) — keeps buckets stable, avoids a
+            # transient broker hiccup flagging everything unprotected.
+            "has_stop": bool(_bs or _conf.get("stop_confirmed") or _planned),
+            # broker_protected = CANONICAL truth: a VERIFIED live stop — broker API order OR operator-confirmed.
+            "broker_protected": bool(_bs) or bool(_conf.get("stop_confirmed")),
+            "broker_stop": (_bs.get("stop_price") if _bs else None),
+            "broker_order_id": (_bs.get("order_id") if _bs else None),
+            "planned_stop": _planned,
+            "stop_source": ("broker" if _bs else ("confirmed" if _conf.get("stop_confirmed") else ("planned" if _planned else "none"))),
             "rsi": p.get("rsi"), "day_change_pct": p.get("day_change_pct"),
             "distance_to_stop_pct": p.get("distance_to_stop_pct") or p.get("distance_pct"),
-            **(conf_map.get((p.get("symbol",""), p.get("account","")), {})),
-        } for p in positions],
+            **_conf,
+        })(_bstops.get((p.get("symbol", ""), p.get("account", ""))), p.get("stop_price"), conf_map.get((p.get("symbol", ""), p.get("account", "")), {})) for p in positions],
         "stops": {sym: {"stop_price": v.get("stop_price") or v.get("stop"), "triggered": v.get("triggered", False)}
                   for sym, v in stops.items() if isinstance(v, dict)},
         # Escalation lane

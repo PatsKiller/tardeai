@@ -42,7 +42,12 @@ export default function RiskHub({ onDrill }: Props) {
   })
 
   const noStop = positions.filter((p: any) => !p.has_stop)
-  const protectedCount = positions.filter((p: any) => p.has_stop && !p.triggered).length
+  // Canonical protection (reconciled 2026-06-21): VERIFIED = a live broker stop order OR an operator-confirmed
+  // stop (broker_protected). PLANNED = a risk_management stop that is NOT verified live (advisory only). The
+  // old "protected" count conflated the two — a planned stop is not protection until it's live at the broker.
+  const verifiedCount = positions.filter((p: any) => p.broker_protected).length
+  const plannedOnly = positions.filter((p: any) => !p.broker_protected && p.has_stop).length
+  const protectedCount = verifiedCount       // only verified live stops count as protected
   const exposedCount = positions.length - protectedCount
 
   // Correlation matrix
@@ -144,16 +149,17 @@ export default function RiskHub({ onDrill }: Props) {
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Protection Coverage</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{positions.length} positions · pct_protected: {risk?.pct_protected}%</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{positions.length} positions · verified live stops</span>
               </div>
-              {/* Split bar */}
-              <div style={{ display: 'flex', height: 32, borderRadius: 6, overflow: 'hidden', marginBottom: 10 }}>
-                <div style={{ flex: protectedCount, background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
-                  {protectedCount} protected
-                </div>
-                <div style={{ flex: exposedCount || 1, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
-                  {exposedCount} exposed
-                </div>
+              {/* 3-way split (reconciled): VERIFIED (live broker / operator-confirmed) · PLANNED (intended stop,
+                  not verified live) · NO STOP. A planned stop is not protection until it's live at the broker. */}
+              <div style={{ display: 'flex', height: 32, borderRadius: 6, overflow: 'hidden', marginBottom: 6 }}>
+                <div title="Verified: a live broker stop order OR an operator-confirmed stop" style={{ flex: verifiedCount || 0.001, minWidth: verifiedCount ? 84 : 0, background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, color: '#06280f', whiteSpace: 'nowrap', overflow: 'hidden' }}>{verifiedCount > 0 ? `${verifiedCount} verified` : ''}</div>
+                <div title="Planned: a risk_management stop that is NOT verified live at the broker (advisory)" style={{ flex: plannedOnly || 0.001, minWidth: plannedOnly ? 84 : 0, background: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, color: '#1a1205', whiteSpace: 'nowrap', overflow: 'hidden' }}>{plannedOnly > 0 ? `${plannedOnly} planned` : ''}</div>
+                <div title="No stop level at all" style={{ flex: noStop.length || 0.001, minWidth: noStop.length ? 84 : 0, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden' }}>{noStop.length > 0 ? `${noStop.length} no stop` : ''}</div>
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, lineHeight: 1.4 }}>
+                <b style={{ color: '#22c55e' }}>verified</b> = live broker stop or operator-confirmed · <b style={{ color: '#f59e0b' }}>planned</b> = intended stop, not yet live at the broker (Schwab/Fidelity stops sit in ToS — confirm to verify) · <b style={{ color: '#ef4444' }}>no stop</b>
               </div>
 
               {/* Triggered stops — each symbol is individually clickable → its singular stop detail (+ act link) */}
@@ -164,7 +170,7 @@ export default function RiskHub({ onDrill }: Props) {
                     {triggered.map((p: any) => (
                       <span key={p.symbol} style={{ display: 'inline-flex', alignItems: 'center' }}>
                         {/* primary: go straight to the actionable Stage 2c card for THIS symbol */}
-                        <a href={`/v3/trading?tab=Open%20Trades&symbol=${p.symbol}`} title={`Act on ${p.symbol} stop — arm a protective stop or ignore 1 week (${p.distance_to_stop_pct ?? '?'}% past stop)`}
+                        <a href={`/v3/trading?tab=Open%20Trades&symbol=${p.symbol}`} title={`Act on ${p.symbol} — stop $${p.stop_price ?? '—'} (${p.stop_source === 'broker' ? 'LIVE at broker' : p.stop_source === 'confirmed' ? 'operator-confirmed' : 'PLANNED, not live at broker'}) · ${p.distance_to_stop_pct ?? '?'}% past · arm a protective stop or ignore 1 week`}
                           style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 8px', borderRadius: '6px 0 0 6px', textDecoration: 'none', border: '1px solid #ef444466', borderRight: 'none', background: 'rgba(239,68,68,.18)', color: '#fca5a5' }}>{p.symbol} →</a>
                         {/* secondary: read-only review drawer (charts / analyst / finviz) */}
                         <button onClick={() => stopDrill(p)} title={`Review ${p.symbol} (read-only: charts, analyst, finviz)`}
