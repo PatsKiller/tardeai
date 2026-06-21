@@ -360,7 +360,53 @@ def _load_base_positions():
 
 
 _BSTOP_CACHE = {"ts": 0.0, "map": {}}
+_ASTOP_CACHE = {"ts": 0.0, "map": {}}
 _BSTOP_TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "replaced", "working_rejected"}
+
+
+def _alpaca_protective_stops():
+    """Stage 2c — read Alpaca's LIVE working SELL stop/trailing-stop orders for the PAPER account (source of
+    truth for paper protection — the bracket/ratchet stops the paper pipeline places). Keyed by
+    (_norm_acct('alpaca_paper'), symbol), same shape as _broker_protective_stops so callers can merge the
+    two transparently. Cached 60s; fail-open (empty on any read error so Open Trades never blocks)."""
+    import time
+    if time.time() - _ASTOP_CACHE["ts"] < 60 and _ASTOP_CACHE["map"]:
+        return _ASTOP_CACHE["map"]
+    out = {}
+    try:
+        import alpaca_paper_reconciler as apr
+        env = apr.get_env()
+        acct_norm = _norm_acct("alpaca_paper")
+        for o in (apr.get_alpaca_orders(env, status="open") or []):
+            if str(o.get("side", "")).lower() != "sell":
+                continue
+            otype = str(o.get("type", "") or o.get("order_type", "")).upper()
+            if "STOP" not in otype and "TRAILING" not in otype:
+                continue
+            if str(o.get("status", "")).lower() in _BSTOP_TERMINAL:
+                continue
+            sym = str(o.get("symbol", "")).upper()
+            if not sym:
+                continue
+            _sp = o.get("stop_price")
+            try:
+                sp = float(_sp) if _sp not in (None, "", 0, "0", "0.0") else None
+            except Exception:
+                sp = None
+            _to = o.get("trail_price") or o.get("trail_percent")
+            try:
+                trail_offset = float(_to) if _to not in (None, "") else None
+            except Exception:
+                trail_offset = None
+            out[(acct_norm, sym)] = {
+                "order_id": str(o.get("id") or ""), "stop_price": sp,
+                "trail_offset": trail_offset, "trail_link": ("trail" if trail_offset else None),
+                "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
+                "qty": o.get("qty"), "account": "alpaca_paper"}
+    except Exception:
+        return out
+    _ASTOP_CACHE.update(ts=time.time(), map=out)
+    return out
 
 
 def _broker_protective_stops(accounts):
@@ -370,12 +416,21 @@ def _broker_protective_stops(accounts):
     the Open Trades page never blocks on a slow broker call). Returns {(acct, sym): {order_id, stop_price,
     order_type, status, qty, account}}."""
     import time
-    if time.time() - _BSTOP_CACHE["ts"] < 60 and _BSTOP_CACHE["map"]:
+    _ckey = tuple(sorted({(a or "").lower() for a in (accounts or [])}))
+    if time.time() - _BSTOP_CACHE["ts"] < 60 and _BSTOP_CACHE.get("key") == _ckey and _BSTOP_CACHE["map"]:
         return _BSTOP_CACHE["map"]
     out = {}
+    # Alpaca paper account uses its own trading API (not Schwab) — pull its live SELL stops too so paper
+    # positions count as broker-protected on the same canonical footing. Only when a paper acct is requested.
+    if any("alpaca" in (a or "").lower() for a in (accounts or [])):
+        try:
+            out.update(_alpaca_protective_stops())
+        except Exception:
+            pass
     try:
         import schwab_transport as st
     except Exception:
+        _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey)
         return out
     for acct in accounts:
         try:
@@ -412,7 +467,7 @@ def _broker_protective_stops(accounts):
                     "qty": leg.get("quantity"), "account": acct}
         except Exception:
             continue
-    _BSTOP_CACHE.update(ts=time.time(), map=out)
+    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey)
     return out
 
 
@@ -622,9 +677,12 @@ def build_intelligence():
 
         # ── assemble ──
         spy = tech.get("SPY") or {}
-        # FULL STOP MONITORING: pull the broker's live working/pending stops once (cached) for every real
-        # Schwab account in view, so a placed protective stop (ours or a manual ToS one) shows as PROTECTED.
-        _bstop_accts = sorted({p["account"] for p in base if str(p.get("account", "")).startswith("schwab")})
+        # FULL STOP MONITORING: pull the broker's live working/pending stops once (cached) for every account
+        # with a live trading API in view — Schwab (ToS/API stops) AND Alpaca paper (bracket/ratchet stops) —
+        # so a placed protective stop (ours or a manual ToS one) shows as PROTECTED on the same footing.
+        _bstop_accts = sorted({p["account"] for p in base
+                               if str(p.get("account", "")).startswith("schwab")
+                               or "alpaca" in str(p.get("account", "")).lower()})
         bmap = _broker_protective_stops(_bstop_accts) if _bstop_accts else {}
         positions = []
         for p in base:
