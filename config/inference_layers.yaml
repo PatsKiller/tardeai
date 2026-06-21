@@ -31,9 +31,11 @@ inference_layers:
   llm:
     caller: inference_engine        # audit tag passed to local_llm.generate
     timeout: 180
-    # Escalate high-salience gaps to an external free OAuth lane (grok/chatgpt).
-    # Default off → all reasoning stays on local gemma3.
-    use_external_lane: false
+    # Route the WHOLE cycle's reasoning to a free OAuth lane (grok) instead of the
+    # local GPU. With use_external_lane=true every llm_json call whose salience clears
+    # proactive.salience_threshold escalates; threshold is set to 0.0 below so that is
+    # effectively all of them. Any lane miss falls back to local automatically.
+    use_external_lane: true
     external_lane: grok             # grok | chatgpt
     external_model: grok-3-mini
 
@@ -83,7 +85,10 @@ inference_layers:
     # across the regional layer and the autonomy pass (a single per-cycle ceiling).
     gap_query_enabled: true
     max_queries_per_run: 3
-    salience_threshold: 0.65
+    # Min salience an llm_json call needs to escalate to the external lane (when
+    # llm.use_external_lane is true). 0.0 = escalate EVERYTHING → whole cycle on grok.
+    # Raise it (e.g. 0.65) to keep low-salience calls on the local model.
+    salience_threshold: 0.0
 
   autonomy:
     # Generalized gap-detection → prioritize → act pass (inference_autonomy.py).

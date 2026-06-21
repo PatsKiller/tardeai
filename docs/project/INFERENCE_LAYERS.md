@@ -57,11 +57,17 @@ runs, indexes salient inferences, and pushes a prioritized Telegram digest.
 
 All layers reason through one interface so behavior is consistent and auditable:
 
-- **`llm_text` / `llm_json`** — primary local **gemma3** via `local_llm.generate`
-  (toll-gated). `llm_json` returns parsed JSON with a `confidence` and a `reasoning`
-  trace. It escalates to a **free OAuth lane (grok / chatgpt)** only when
+- **`llm_text` / `llm_json`** — local **gemma3** via `local_llm.generate` (toll-gated)
+  by default. `llm_json` returns parsed JSON with a `confidence` and a `reasoning`
+  trace, and escalates to a **free OAuth lane (grok / chatgpt)** when
   `llm.use_external_lane` is set **and** the call's salience clears
-  `proactive.salience_threshold` — otherwise everything stays local.
+  `proactive.salience_threshold`. **Whole-cycle-on-grok:** set
+  `llm.use_external_lane: true` + `proactive.salience_threshold: 0.0` and every
+  LLM-backed inference routes to grok (verified: a full cycle's reasoning — regional,
+  journal, NAV ×10, opportunity/risk, autonomy detect+act — ran entirely on grok in
+  ~117s; only the rule-based regime/concentration inferences stay `heuristic` because
+  they use no LLM). Every external miss falls back to local automatically; each
+  inference records its real lane in `source_lane`.
 - **`rag_block`** — injects prior intelligence via `rag_retrieval.get_rag_context`
   so inferences are grounded in what the system already knows.
 - **`proactive_query`** — the "mind of its own" primitive. A layer decides on its own
