@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import FinvizSectorPanel from '../components/FinvizSectorPanel'
 import type { DrillContext } from '../components/DetailDrawer'
 
 // v3 Sector Monitor — standing view of each GICS sector: ETF, momentum vs SPY, setup counts,
@@ -49,6 +50,8 @@ export default function SectorsHub({ onDrill }: Props) {
       </div>
 
       {msg && <div style={{ fontSize: 11, color: msg.startsWith('Error') ? '#ef4444' : '#22c55e', marginBottom: 12 }}>{msg}</div>}
+
+      <FinvizSectorPanel />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
         {sectors.map((s: any) => {
