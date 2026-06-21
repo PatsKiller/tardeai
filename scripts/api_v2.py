@@ -16495,6 +16495,58 @@ def _data_source_health(query=None):
                     "stale=2-4x late, dead=>4x late or no data. Catches silent sub-source failures."}
 
 
+_FINVIZ_ENRICH_CACHE = {"mtime": 0, "data": {}}
+def _finviz_enrichment(query=None):
+    """GET /api/v2/finviz-enrichment?symbol=X — the ~60 Finviz fields already collected daily
+    (ticker_enrichment_cache.json), grouped for display: technicals / performance / valuation /
+    fundamentals / ownership. Read-only. mtime-cached so we don't re-read the 5k-ticker file each call."""
+    q = query or {}
+    sym = (q.get("symbol", [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol"))
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    sym = sym.upper().strip()
+    try:
+        p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
+        mt = p.stat().st_mtime
+        if mt != _FINVIZ_ENRICH_CACHE["mtime"]:
+            _FINVIZ_ENRICH_CACHE["data"] = json.loads(p.read_text())
+            _FINVIZ_ENRICH_CACHE["mtime"] = mt
+    except Exception as e:
+        return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}"}
+    d = _FINVIZ_ENRICH_CACHE["data"].get(sym) or {}
+    if not d:
+        return {"ok": True, "symbol": sym, "found": False, "groups": [], "note": "No Finviz enrichment cached."}
+    GROUPS = [
+        ("Technicals", [("RSI", "rsi"), ("RSI status", "rsi_status"), ("SMA20 %", "sma20_pct"),
+                        ("SMA50 %", "sma50_pct"), ("SMA200 %", "sma200_pct"), ("ATR", "atr"),
+                        ("Beta", "beta"), ("Volatility W %", "volatility_w_pct"), ("RVOL", "rvol"),
+                        ("52w high %", "week52_high_pct"), ("52w low %", "week52_low_pct"),
+                        ("Short float %", "short_float_pct"), ("Trend", "trend")]),
+        ("Performance", [("Week %", "perf_week_pct"), ("Month %", "perf_month_pct"),
+                         ("Quarter %", "perf_quarter_pct"), ("Half-yr %", "perf_halfyr_pct"),
+                         ("YTD %", "perf_ytd_pct"), ("Year %", "perf_year_pct")]),
+        ("Valuation", [("P/E", "pe"), ("Fwd P/E", "forward_pe"), ("PEG", "peg"), ("P/B", "pb"),
+                       ("P/S", "ps"), ("P/FCF", "pfcf"), ("Mkt cap $B", "market_cap_b"),
+                       ("Div yield %", "div_yield_pct")]),
+        ("Fundamentals", [("Gross margin %", "gross_margin_pct"), ("Oper margin %", "oper_margin_pct"),
+                          ("Profit margin %", "profit_margin_pct"), ("ROE %", "roe_pct"),
+                          ("ROA %", "roa_pct"), ("ROIC %", "roic_pct"), ("EPS QoQ", "eps_qoq"),
+                          ("EPS next Y", "eps_next_y"), ("Debt/Eq", "total_debt_equity")]),
+        ("Ownership", [("Insider own %", "insider_own_pct"), ("Insider trans %", "insider_trans_pct"),
+                       ("Inst own %", "inst_own_pct"), ("Inst trans %", "inst_trans_pct"),
+                       ("Float M", "float_m"), ("Short ratio", "short_ratio")]),
+    ]
+    groups = []
+    for gname, fields in GROUPS:
+        items = [{"label": lbl, "value": _json_clean(d.get(key))} for lbl, key in fields if d.get(key) is not None]
+        if items:
+            groups.append({"group": gname, "items": items})
+    return {"ok": True, "symbol": sym, "found": True, "company": d.get("company"),
+            "sector": d.get("sector"), "industry": d.get("industry"),
+            "cached_at": d.get("cached_at"), "groups": groups,
+            "note": "Finviz enrichment (daily). Advisory."}
+
+
 def _sector_performance(query=None):
     """GET /api/v2/sector-performance — latest Finviz sector + industry performance snapshot
     (leaders/laggards) for macro/rotation research. Read-only."""
@@ -19197,6 +19249,7 @@ ROUTES = {
     "/api/v2/data-source-health": _data_source_health,
     "/api/v2/sector-performance": _sector_performance,
     "/api/v2/insider-activity": _insider_activity,
+    "/api/v2/finviz-enrichment": _finviz_enrichment,
     "/api/v2/ai-analyst": ai_analyst,
     "/api/v2/ai-reports": lambda: {"reports": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, report_type, title, content, provider, cost, generated_at FROM ai_reports ORDER BY generated_at DESC LIMIT 20") or [])]},
     "/api/v2/alex/recent": lambda: _alex_recent(),

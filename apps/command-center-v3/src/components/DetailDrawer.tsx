@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import FibChartsInline from './FibChartsInline'
 import AnalystReviews, { useAnalystMap } from './AnalystReviews'
 import InsiderActivity from './InsiderActivity'
+import FinvizEnrichmentPanel from './FinvizEnrichmentPanel'
 
 // finviz-derived recom fields are NOT analyst ratings (known correction): finviz 'recom' is a momentum
 // number, and the holdings enrichment mislabels it as 'Strong Sell' (e.g. SCHD recom 1.34 → labeled
@@ -124,6 +125,9 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             <div style={{ fontSize: 9, color: DIM, marginTop: 4 }}>Source: Finviz charts2.finviz.com · technical overlay · advisory</div>
           </Section>
+        )}
+        {drawerSymbol && !primary.is_cash && /^[A-Z]{1,5}$/.test(drawerSymbol) && (
+          <Section title="Finviz metrics" subtitle="technicals · performance · valuation · fundamentals · ownership (Finviz daily)" accent={BLUE}><FinvizEnrichmentPanel symbol={drawerSymbol} /></Section>
         )}
         {drawerSymbol && !primary.is_cash && /^[A-Z]{1,5}$/.test(drawerSymbol) && (
           <Section title="Insider activity · SEC Form 4" subtitle="recent insider filings (authoritative · advisory)" accent={AMBER}><InsiderActivity symbol={drawerSymbol} /></Section>
