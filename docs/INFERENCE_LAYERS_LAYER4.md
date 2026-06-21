@@ -8,11 +8,12 @@ as a standalone subsystem; this doc covers what it does and how it's wired.
 
 ## Pipeline (one cycle = one `inference_run`)
 ```
-IngestionLayer   → structures news (region-tagged), topics, proposals, positions, closed trades
+IngestionLayer   → structures news (region-tagged), topics, proposals, positions, closed trades,
+                   + Aegis safety signals (weakening/danger/triggered theses + surveillance) [first-class]
 FeatureLayer     → market regime (VIX + news sentiment → risk_on/off/high_vol/neutral) + confidence
 RegionalLayer    → cross-market signals (Asia/Europe/EM → US impact), per-region, LLM-classified
-HigherOrderLayer → fuses the above + journal edge + NAV premium/discount + Hermes RAG into inferences,
-                   with proactive_query() filling gaps (its "mind of its own")
+HigherOrderLayer → fuses the above + journal edge + NAV premium/discount + Hermes RAG + Aegis flags into
+                   inferences, with proactive_query() filling gaps (its "mind of its own")
 ```
 Each layer writes rows to `inference_results` (layer, inference_type, subject, title, body, confidence,
 severity, source_lane, **reasoning_trace**, evidence, payload). The run header is `inference_runs`.
@@ -85,8 +86,20 @@ validate_max`. Advisory, free-lane, cost-bounded. So an inference the panel does
 lower confidence — not full weight. Verified: synthetic inference → score 4.9 / block / 1-of-3 →
 confidence 0.62→0.56.
 
+## Aegis as a first-class signal (2026-06-21)
+
+The production Aegis synthesis/surveillance outputs now feed the cycle directly (was: ignored).
+`IngestionLayer` pulls recent `aegis_portfolio_briefs` (thesis_status ∈ weakening/warning/broken/danger/
+triggered) + `advisor_observations` into `ctx.data['aegis']` (first-class context every layer sees), and
+emits the top safety flags as `aegis_thesis` inferences — **critical** for broken/danger/triggered, **high**
+for weakening/warning, severe-first. `HigherOrderLayer` threads the Aegis flags into the chief-synthesizer
+context + prompt, weighting them heavily for the RISK call (and that synthesized risk then gets the ensemble
+second-opinion). Verified: ingests 20 thesis-flags + 20 observations, emits 8 (AVAV/RTX/NEE danger → critical).
+Commit `f7af2c8a`.
+
 ## Roadmap (not yet built — deferred from the enhancement spec)
 Multi-modal ingestion (SEC filings/PDFs), A/B curation testing, self-adjusting ingestion cadence from
-outcome feedback, and a dashboard hub for the inference results. (Multi-LLM ensemble — DONE above.)
+outcome feedback, finance-specific ensemble prompt tuning (NAV/retirement-income), and a dashboard hub for
+the inference results. (Multi-LLM ensemble + Aegis first-class signal — DONE above.)
 
 See also `HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md`, `MASTER_SYSTEM_DOCUMENTATION.md` §6b.
