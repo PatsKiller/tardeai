@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type SrcPerf = { source?: string; closed_trades?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number; total_pnl?: number; avg_hold_days?: number }
 type StratPerf = { strategy?: string; resolved?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number }
@@ -64,6 +64,7 @@ export default function RecommendationIntelligence() {
   const [life, setLife] = useState<LifePos[]>([])
   const [lifeOnlyOrigin, setLifeOnlyOrigin] = useState(false)
   const [openPos, setOpenPos] = useState<OpenPos[]>([])
+  const [fOrigin, setFOrigin] = useState('')   // unified origin-source filter (drives both position tables)
 
   async function load() {
     setWarn('')
@@ -108,6 +109,15 @@ export default function RecommendationIntelligence() {
   const bySrc = d?.by_source ?? []
   const multi = d?.multi_source_examples ?? []
   const rot = d?.rotation_links ?? []
+
+  // Unified origin filter — derived from the position tables' OWN origins (self-consistent; the headline
+  // perf-by-source table uses a different attribution layer, so it's intentionally NOT wired here).
+  const originChips = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const p of [...life, ...openPos]) { const o = p.origin || 'direct/manual'; counts[o] = (counts[o] || 0) + 1 }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])
+  }, [life, openPos])
+  const matchOrigin = (o?: string) => !fOrigin || (o || 'direct/manual') === fOrigin
 
   return (
     <div style={{ padding: 4 }}>
@@ -222,6 +232,18 @@ export default function RecommendationIntelligence() {
         </section>
       </div>
 
+      {/* Unified origin filter — drives both position tables (self-consistent: chips come from their data) */}
+      {originChips.length > 0 && (
+        <section style={{ ...card, marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Filter trades by origin</span>
+          <button onClick={() => setFOrigin('')} style={{ fontSize: 10.5, fontWeight: fOrigin === '' ? 800 : 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fOrigin === '' ? ACCENT : 'var(--border)'}`, background: fOrigin === '' ? 'rgba(96,165,250,.12)' : 'var(--bg2)', color: fOrigin === '' ? ACCENT : 'var(--text2)' }}>All</button>
+          {originChips.map(([o, n]) => {
+            const on = fOrigin === o; const c = SRC_COLOR[o] ?? '#6b7280'
+            return <button key={o} onClick={() => setFOrigin(on ? '' : o)} style={{ fontSize: 10.5, fontWeight: on ? 800 : 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${on ? c : 'var(--border)'}`, background: on ? `${c}1f` : 'var(--bg2)', color: on ? c : 'var(--text2)' }}>{o} <span style={{ opacity: 0.7 }}>{n}</span></button>
+          })}
+        </section>
+      )}
+
       {/* Open positions — monitoring (held now, unrealized, auto-detected origin) */}
       {openPos.length > 0 && (
         <section style={{ marginBottom: 20 }}>
@@ -240,7 +262,7 @@ export default function RecommendationIntelligence() {
                 <th style={{ padding: '6px 8px' }}>$</th><th style={{ textAlign: 'left', padding: '6px 8px' }}>Held since</th>
               </tr></thead>
               <tbody>
-                {openPos.slice(0, 60).map((p, i) => (
+                {openPos.filter(p => matchOrigin(p.origin)).slice(0, 60).map((p, i) => (
                   <tr key={i} onClick={() => lookup(p.symbol)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', textAlign: 'right' }}>
                     <td style={{ textAlign: 'left', padding: '6px 8px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--text0)' }}>{p.symbol}</td>
                     <td style={{ textAlign: 'left', padding: '6px 8px' }}>{p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 9, color: 'var(--text3)' }}>direct/manual</span>}</td>
@@ -281,7 +303,7 @@ export default function RecommendationIntelligence() {
               <th style={{ padding: '6px 8px' }}>Journal</th>
             </tr></thead>
             <tbody>
-              {life.filter(p => !lifeOnlyOrigin || p.origin).slice(0, 120).map((p, i) => (
+              {life.filter(p => (!lifeOnlyOrigin || p.origin) && matchOrigin(p.origin)).slice(0, 120).map((p, i) => (
                 <tr key={i} onClick={() => lookup(p.symbol)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', textAlign: 'right' }}>
                   <td style={{ textAlign: 'left', padding: '6px 8px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--text0)' }}>{p.symbol}</td>
                   <td style={{ textAlign: 'left', padding: '6px 8px' }}>{p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 9, color: 'var(--text3)' }}>direct/manual</span>}</td>
