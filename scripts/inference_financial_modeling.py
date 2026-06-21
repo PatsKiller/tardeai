@@ -134,6 +134,7 @@ def nav_premium_discount(symbol: str, ctx=None, cfg: Optional[dict] = None,
         "confidence": 0.3,
         "note": "",
         "reasoning": [],
+        "lane": "measured" if nav else "local",   # actual LLM lane filled in below
     }
 
     # Measured path: exact premium/discount math
@@ -174,6 +175,7 @@ def nav_premium_discount(symbol: str, ctx=None, cfg: Optional[dict] = None,
             out["note"] = (ans.get("note") or ans.get("answer") or "")[:600]
             out["confidence"] = min(0.55, float(ans.get("confidence", 0.4) or 0.4))
             out["source"] = "llm_estimate"
+            out["lane"] = ans.get("_lane", "local")   # real lane (grok when routed there)
             out["measured"] = False
             r = ans.get("reasoning")
             out["reasoning"] = r if isinstance(r, list) else [str(r)] if r else []

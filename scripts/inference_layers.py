@@ -513,7 +513,7 @@ class HigherOrderLayer:
                       else f"{r['symbol']}: {r['signal'].replace('_',' ')} ({measured})",
                 body=r["note"], confidence=float(r["confidence"]),
                 severity=sev if r.get("held") else "low",
-                source_lane=r["source"] if r["measured"] else "local",
+                source_lane=r["source"] if r["measured"] else r.get("lane", "local"),
                 reasoning_trace=r.get("reasoning", []),
                 payload={k: r[k] for k in ("price", "nav", "premium_pct", "measured",
                                            "held", "direction", "source")}))
