@@ -134,6 +134,28 @@ Located in `~/.openclaw/skills/`
 
 ---
 
+## Inference Layers (Higher-Order Reasoning Skill)
+
+A reusable, layered reasoning pipeline on top of every other skill/agent here.
+Each layer is an importable module any agent (Maria/Steph/Alex/Aegis/Risk) can call.
+Advisory-only. Full design: `docs/project/INFERENCE_LAYERS.md`.
+
+| Layer | Module | Capability |
+|-------|--------|------------|
+| L1 Ingestion | `inference_layers.IngestionLayer` | structure news/topics/positions/proposals/journal; region-tag news |
+| L2 Features | `inference_layers.FeatureLayer` | regime (risk_on/off/high_vol), sentiment, VIX, concentration |
+| L3 Regional | `inference_layers.RegionalLayer` | Asia/Europe/EM → US ETF/CEF transmission (e.g. PTY) |
+| L4 Higher-order | `inference_layers.HigherOrderLayer` | journal patterns, NAV premium/discount, opportunity/risk, **risk-appropriate sizing**, proactive Hermes queries |
+
+- Substrate: `inference_hermes_query` (local gemma3 first → grok/chatgpt escalation,
+  RAG injection, `proactive_query` autonomy). Reuses `account_policy.compute_sizing`
+  + `risk_gate` (sizing never escapes the risk envelope), `journal_analytics_engine`,
+  `rag_retrieval`, `telegram_alert`.
+- Run: `python scripts/inference_layer_engine.py --run`; cron
+  `linux_launchers/run_inference_cycle.sh`. API: `/api/v2/inference/*`.
+
+---
+
 ## LLM Routing
 
 ```

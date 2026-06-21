@@ -2458,7 +2458,41 @@ Gate status is available at `/api/v2/live-trading-gate`.
 
 ---
 
+## 23c. Inference Layers — Higher-Order Reasoning (2026-06-21)
+
+A modular, reusable layered reasoning pipeline that sits **on top of** the existing
+intelligence stack (Hermes, RAG, LLM enrichment, journal analytics, topic curation,
+risk gate, proposal lifecycle) and synthesizes everything into higher-order,
+actionable inferences. Advisory-only — no execution path. Full design:
+`docs/project/INFERENCE_LAYERS.md`.
+
+- **Engine:** `scripts/inference_layer_engine.py` (`--run` / `--latest` / `--dry-run`);
+  config `config/inference_layers.yaml`; cron `linux_launchers/run_inference_cycle.sh`.
+- **Layers** (`scripts/inference_layers.py`): L1 Ingestion & region-tagging · L2
+  Feature/regime extraction · L3 Cross-regional synthesis (Asia→US ETF/CEF, e.g. PTY)
+  · L4 Higher-order (journal patterns, NAV premium/discount, opportunity/risk,
+  **risk-appropriate sizing**, proactive Hermes queries).
+- **Substrate:** `inference_hermes_query.py` (local gemma3 first, grok/chatgpt
+  escalation, RAG injection, `proactive_query` autonomy), `inference_financial_modeling.py`
+  (CEF/ETF NAV premium/discount, honest measured-vs-estimate flag),
+  `inference_sizing.py` (tilt over `account_policy.compute_sizing`, re-validated by
+  `risk_gate`), `inference_telegram.py`, `inference_api.py`.
+- **Data:** `inference_runs`, `inference_results`, `inference_regional_signals`,
+  `inference_sizing_recommendations`, `inference_memory`, `inference_proactive_queries`;
+  `news_articles.region/geo_keywords` added. Schema: `create_inference_schema.py`.
+- **Surfaces:** `/api/v2/inference/*` (delegated from `api_v2.handle`), Telegram digest,
+  Intelligence-hub `InferenceLayersPanel`.
+
 ## 24. Session Changelog
+
+### Session — 2026-06-21 (Inference Layers v1)
+
+Built the modular Inference Layers system (12 new files, ~1,900 lines) — a layered
+reasoning pipeline extending Hermes/RAG/journal/risk/proposal subsystems into
+higher-order advisory inferences, region-aware (Asia→US/CEF), with risk-appropriate
+sizing and a proactive "mind of its own" query loop. Verified end-to-end live
+(run #1: 9 inferences, regime=risk_off, Asia signal, journal edge, NAV reads).
+See §23c and `docs/project/INFERENCE_LAYERS.md`.
 
 ### Session 29 — 2026-05-11 (Phases 1-8)
 
