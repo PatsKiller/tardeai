@@ -6,6 +6,7 @@ import { exitLadder, planWarnings, MONITOR_RULES } from '../lib/exitLadder'
 import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 import FibConfluencePanel from '../components/FibConfluencePanel'
+import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -113,6 +114,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
+  const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const PER_PAGE = 24
   useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fSector, fAnalyst, search])   // reset to page 1 on any filter change
   // named watch lists (directive labels) present across the items, for the List filter
@@ -376,7 +378,25 @@ export default function WatchlistHub({ onDrill }: Props) {
                   {!sc && (it.profile_description || it.profile_sector) && <div style={{ borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>{it.profile_description && <div style={{ fontSize: 11.5, color: TEXT2, lineHeight: 1.45 }}>{it.profile_description}</div>}{it.profile_sector && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}><Pill text={it.profile_sector} color={BLUE} tip={it.profile_industry || undefined} />{it.profile_industry && <Pill text={it.profile_industry} color={MUTED} />}</div>}</div>}
                   {it.catalyst_headline && <div style={{ fontSize: 10.5, color: TEXT2, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}><Pill text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`} color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? GREEN : AMBER} tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`} />{it.catalyst_url ? <a href={it.catalyst_url} target="_blank" rel="noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>{it.catalyst_headline}</a> : <span>{it.catalyst_headline}</span>}{it.catalyst_at && <span style={{ color: MUTED, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}</div>}
                   <FibConfluencePanel symbol={it.symbol} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10.5, color: MUTED }}><span>{it.origin_system === 'agent_discovery' ? 'AI-discovered' : originLabel(it.origin_system)}</span><span style={{ color: BLUE, fontWeight: 800 }}>more intelligence →</span></div>
+
+                  {/* One-click action row — real routes + the cross-page multi-LLM ensemble thread (on-demand) */}
+                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 9 }}>
+                    <button onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
+                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${BLUE}66`, background: BLUE + '14', color: '#bfdbfe', cursor: 'pointer' }}>Open card →</button>
+                    <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${hasPlan ? GREEN : 'var(--border)'}`, background: hasPlan ? GREEN + '16' : 'var(--bg2)', color: hasPlan ? '#bbf7d0' : MUTED, textDecoration: 'none' }}>{hasPlan ? '🎯 Propose →' : 'Propose →'}</a>
+                    <a href="/v3/intelligence" onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 10.5, fontWeight: 700, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, textDecoration: 'none' }}>Intelligence →</a>
+                    <button onClick={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
+                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${PURPLE}66`, background: ensOpen[it.id] ? PURPLE + '22' : 'var(--bg2)', color: '#d8b4fe', cursor: 'pointer' }}>⚖ Ensemble {ensOpen[it.id] ? '▲' : '▾'}</button>
+                    <span style={{ marginLeft: 'auto', fontSize: 10.5, color: BLUE, fontWeight: 800 }}>more intelligence →</span>
+                  </div>
+                  {ensOpen[it.id] && (
+                    <div onClick={e => e.stopPropagation()}>
+                      <EnsembleValidationInline targetType="signal" targetId={it.id} subject={it.symbol}
+                        content={`${it.symbol} watchlist — ${it.latest_recommendation || it.trend || ''} · ${it.profile_sector || ''} · ${(cardMap[it.symbol]?.description || it.profile_description || '').slice(0, 400)}`} />
+                    </div>
+                  )}
                 </div>
               )
             })}
