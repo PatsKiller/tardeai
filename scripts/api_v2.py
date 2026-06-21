@@ -19457,6 +19457,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
+    # Inference Layers routes (delegated to inference_api module; read-only)
+    if base_path.startswith("/api/v2/inference"):
+        try:
+            from inference_api import handle_inference
+            _ir = handle_inference(base_path, method, body, query)
+            if _ir is not None:
+                return _ir
+        except Exception as _ie:
+            return 500, {"ok": False, "error": f"inference: {_ie}"}
+
     # POST routes
     if method == "POST":
         if base_path == "/api/v2/hermes/identity":
