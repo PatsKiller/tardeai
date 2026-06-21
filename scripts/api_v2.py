@@ -16380,16 +16380,21 @@ def _retirement_planning_research(query=None):
               ("SSDI & taxes", r"ssdi|social security|tax|magi|irs"),
               ("Income & dividends", r"dividend|covered call|jepi|income|cef|pty|nav|bond|annuit")]
     rows = _db_query("""SELECT topic, summary, thesis, confidence_score, freshness_date, model_used,
-                          research_type, created_at, status
+                          research_type, created_at, status, evidence_json
                         FROM hermes_research_intelligence
                         WHERE research_type='topic_research'
                         ORDER BY created_at DESC LIMIT 400""") or []
     groups = {n: [] for n, _ in THEMES}
-    import re as _re
+    import re as _re, json as _json
     seen = set()
     for r in rows:
         blob = f"{r.get('topic') or ''} {r.get('summary') or ''}"
         key = (r.get("topic") or "")[:60]
+        # vetted sources this research grounded on (cataloged by the synthesizer; graded-good only)
+        ev = r.get("evidence_json")
+        ev = ev if isinstance(ev, dict) else (_json.loads(ev) if ev else {})
+        srcs = [{"source": g.get("source"), "title": g.get("title"), "url": g.get("url")}
+                for g in (ev.get("grounded_on") or [])][:6]
         for name, rx in THEMES:
             if _re.search(rx, blob, _re.I):
                 if (name, key) in seen:
@@ -16399,6 +16404,7 @@ def _retirement_planning_research(query=None):
                                      "thesis": (r.get("thesis") or "")[:300] or None,
                                      "confidence": _json_clean(r.get("confidence_score")),
                                      "status": r.get("status"), "model": r.get("model_used"),
+                                     "sources": srcs, "source_count": len(srcs),
                                      "at": _json_clean(r.get("created_at"))})
                 break
     out = [{"theme": n, "count": len(groups[n]), "items": groups[n][:8]} for n, _ in THEMES if groups[n]]

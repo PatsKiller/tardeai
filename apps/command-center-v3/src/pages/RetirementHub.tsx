@@ -124,8 +124,15 @@ export default function RetirementHub({ onDrill }: Props) {
                       style={{ padding: '7px 9px', borderRadius: 7, background: 'var(--bg2)', cursor: 'pointer', borderLeft: `3px solid ${it.status === 'promoted' || it.status === 'embedded' ? '#22c55e' : '#f59e0b'}` }}>
                       <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)', lineHeight: 1.3 }}>{it.topic}</div>
                       {it.summary && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.summary}</div>}
-                      <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 8 }}>
-                        <span>{it.status ?? 'staged'}</span>{it.confidence != null && <span>· conf {it.confidence}</span>}{it.model && <span>· {it.model}</span>}{it.at && <span>· {String(it.at).slice(0, 10)}</span>}
+                      {(it.sources ?? []).length > 0 && (
+                        <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {(it.sources ?? []).slice(0, 4).map((s: any, j: number) => (
+                            <span key={j} title={s.title ?? ''} style={{ background: 'rgba(34,197,94,.10)', color: '#22c55e', borderRadius: 4, padding: '1px 5px' }}>{s.source}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <span>{it.status ?? 'staged'}</span>{it.confidence != null && <span>· conf {it.confidence}</span>}{it.model && <span>· {it.model}</span>}{it.source_count > 0 && <span>· {it.source_count} vetted src</span>}{it.at && <span>· {String(it.at).slice(0, 10)}</span>}
                       </div>
                     </div>
                   ))}
