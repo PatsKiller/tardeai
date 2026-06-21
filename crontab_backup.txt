@@ -442,3 +442,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 13 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_midday >> logs/inference_cron.log 2>&1
 30 16 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_postclose >> logs/inference_cron.log 2>&1
 # END INFERENCE-LAYERS-1
+
+# ============================================================
+# Generated-docs backup → generated-docs-backup branch (gitignored on main).
+# BEGIN DOCS-BACKUP-1
+50 23 * * * cd $PROJ && bash linux_launchers/backup_generated_docs.sh >> logs/docs_backup.log 2>&1
+# END DOCS-BACKUP-1
