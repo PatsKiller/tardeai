@@ -176,24 +176,6 @@ function qvMatchesAction(qv: QV, a: any): boolean {
   }
 }
 
-// Reader synthesis strip — surfaces the enriched fields (sector / trend / finance / retirement / ensemble
-// votes) that reports_portal now attaches per item. Only renders the facets that actually exist (honest).
-const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
-function SynthStrip({ it }: { it: any }) {
-  const fin = it.finance_score == null ? null : Math.round(it.finance_score)
-  const en = it.ensemble
-  const chips: ReactNode[] = []
-  const C = (key: string, label: string, color: string) => chips.push(
-    <span key={key} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: color + '18', color }}>{label}</span>)
-  if (it.sector) C('sec', it.sector, '#94a3b8')
-  if (it.trend) C('tr', it.trend, TREND_C(it.trend))
-  if (fin != null && fin >= 28) C('fin', `finance ${fin}`, fin >= 70 ? '#22c55e' : '#60a5fa')
-  if (it.retirement_relevance) C('ret', `retire ${it.retirement_relevance}`, it.retirement_relevance === 'high' ? '#f59e0b' : '#94a3b8')
-  if (en && en.decision) C('en', `ensemble ${en.decision}${en.score != null ? ` ${en.score}` : ''}${en.lanes?.length ? ` · ${en.lanes.join('/')}` : ''}`, en.decision === 'approve' ? '#22c55e' : '#ef4444')
-  if (!chips.length) return null
-  return <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>{chips}</div>
-}
-
 function Kpi({ label, value, color, active, onClick }: { label: string; value: number | string; color?: string; active?: boolean; onClick?: () => void }) {
   return (
     <div onClick={onClick} style={{ ...card, padding: '11px 13px', cursor: onClick ? 'pointer' : 'default', borderColor: active ? (color || '#60a5fa') : 'var(--border)', background: active ? (color || '#60a5fa') + '12' : 'var(--bg1)' }}>
@@ -384,8 +366,6 @@ export default function ReportsHub({ onDrill }: Props) {
                   </div>
                   <SeverityBadge sev={selected.severity} />
                 </header>
-                <SynthStrip it={selected} />
-                <div style={{ height: 10 }} />
                 <Article text={shown} />
                 {long && <button onClick={() => setExpanded(e => !e)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>{expanded ? '▲ show less' : '▼ read full report'}</button>}
                 {(selected.actions || []).length > 0 && (
