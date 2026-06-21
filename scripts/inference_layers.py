@@ -113,14 +113,42 @@ class IngestionLayer:
 
         positions = _holdings()
 
+        # Aegis safety outputs as a FIRST-CLASS signal: weakening/broken theses + surveillance
+        # observations from the production Aegis synthesis/surveillance tiers feed the cycle directly.
+        aegis_briefs = _db_all(
+            """SELECT symbol, brief_type, thesis_status, what_changed, why_it_matters, confidence, observed_at
+               FROM aegis_portfolio_briefs
+               WHERE observed_at > now() - interval '4 days'
+                 AND thesis_status IN ('weakening','warning','broken','danger','triggered')
+               ORDER BY (thesis_status IN ('broken','danger','triggered')) DESC, observed_at DESC LIMIT 20""")
+        aegis_obs = _db_all(
+            """SELECT symbol, category, observation, confidence, observed_at
+               FROM advisor_observations
+               WHERE observed_at > now() - interval '4 days'
+               ORDER BY observed_at DESC LIMIT 20""")
+        aegis = {"briefs": aegis_briefs, "observations": aegis_obs}
+
         res.data = {"news": news, "topics": topics, "proposals": proposals,
                     "closed_trades": closed, "positions": positions,
-                    "news_tagged": tagged}
+                    "news_tagged": tagged, "aegis": aegis}
         res.metrics = {"news": len(news), "topics": len(topics), "proposals": len(proposals),
-                       "closed": len(closed), "positions": len(positions), "tagged": tagged}
+                       "closed": len(closed), "positions": len(positions), "tagged": tagged,
+                       "aegis_briefs": len(aegis_briefs), "aegis_obs": len(aegis_obs)}
+
+        # Surface the highest-priority Aegis safety signals as first-class inferences.
+        for b in aegis_briefs[:8]:
+            crit = b.get("thesis_status") in ("broken", "danger", "triggered")
+            res.inferences.append(Inference(
+                inference_type="aegis_thesis", subject=(b.get("symbol") or "portfolio")[:60],
+                title=f"Aegis: {b.get('symbol')} thesis {b.get('thesis_status')}",
+                body=f"{b.get('what_changed') or ''} {b.get('why_it_matters') or ''}".strip()[:600],
+                confidence=float(b.get("confidence") or 0.6),
+                severity="critical" if crit else "high", source_lane="aegis",
+                evidence=[b.get("brief_type") or "aegis_brief"]))
         res.summary = (f"ingested {len(news)} news ({tagged} region-tagged), {len(topics)} topics, "
                        f"{len(proposals)} pending proposals, {len(positions)} positions, "
-                       f"{len(closed)} closed trades")
+                       f"{len(closed)} closed trades, {len(aegis_briefs)} Aegis thesis-flags, "
+                       f"{len(aegis_obs)} Aegis observations")
 
         if len(news) < 5:
             res.inferences.append(Inference(
@@ -528,6 +556,7 @@ class HigherOrderLayer:
         nav_infs = [i for i in res.inferences if i.inference_type == "nav_signal"]
         journal_infs = [i for i in res.inferences if i.inference_type == "journal_pattern"]
 
+        _aeg = (ctx.get("ingestion") or {}).get("aegis") or {}
         context = {
             "regime": ctx.regime,
             "regime_detail": feat,
@@ -535,12 +564,16 @@ class HigherOrderLayer:
                           "conf": i.confidence} for i in top_regional],
             "nav": [{"sym": i.subject, "title": i.title} for i in nav_infs],
             "journal": [i.body[:400] for i in journal_infs],
+            "aegis_safety": [{"sym": b.get("symbol"), "status": b.get("thesis_status"),
+                              "why": (b.get("why_it_matters") or "")[:160]}
+                             for b in (_aeg.get("briefs") or [])[:8]],
         }
         prompt = (
             "You are the chief synthesizer. Given the current regime, cross-regional signals, "
-            "fund NAV reads, and journal patterns below, produce: (1) the single best OPPORTUNITY "
-            "and (2) the single most important RISK for this US retirement portfolio over the next "
-            "1-2 weeks. Be specific and tie each to the evidence.\n\n"
+            "fund NAV reads, journal patterns, and the Aegis safety flags (weakening/broken theses) "
+            "below, produce: (1) the single best OPPORTUNITY and (2) the single most important RISK for "
+            "this US retirement portfolio over the next 1-2 weeks. Weight the Aegis safety flags heavily "
+            "for the RISK. Be specific and tie each to the evidence.\n\n"
             f"{json.dumps(context, default=str)[:6000]}")
         out = hq.llm_json(prompt, caller="inference_synthesis", salience=0.7, cfg=ctx.cfg,
                           want_keys=["opportunity", "opportunity_confidence",
