@@ -79,8 +79,10 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold outcomes (real closed trades)
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const paMap = useProAnalystMap()
+  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
 
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
+  const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const extMap: Record<string, any[]> = ext?.map ?? {}
   const curateRunning = !!curateStatus?.running
   const items: any[] = wl?.items ?? []
@@ -304,6 +306,28 @@ export default function WatchlistHub({ onDrill }: Props) {
                     </div>
                     <div style={{ textAlign: 'right' }}><div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</div>{it.change_pct != null && <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</div>}</div>
                   </div>
+
+                  {fvMap[it.symbol] && (() => {
+                    const fv = fvMap[it.symbol]
+                    const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
+                    const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT0
+                    const cell = (label: string, val: any, color: string, suffix = '') => (
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 8.5, color: MUTED, fontWeight: 700 }}>{label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color }}>{val == null ? '—' : `${Number(val) > 0 && suffix ? '+' : ''}${Number(val).toFixed(suffix ? 1 : 0)}${suffix}`}</span>
+                      </span>
+                    )
+                    return (
+                      <div title="Finviz daily metrics" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '5px 10px', background: 'rgba(96,165,250,.07)', border: '1px solid rgba(96,165,250,.18)', borderRadius: 9 }}>
+                        {cell('RSI', fv.rsi, rsiC)}
+                        {cell('W', fv.perf_week, pc(fv.perf_week), '%')}
+                        {cell('M', fv.perf_month, pc(fv.perf_month), '%')}
+                        {cell('YTD', fv.perf_ytd, pc(fv.perf_ytd), '%')}
+                        {cell('vs50d', fv.sma50, pc(fv.sma50), '%')}
+                        <span style={{ fontSize: 8, color: MUTED, alignSelf: 'center' }}>finviz</span>
+                      </div>
+                    )
+                  })()}
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(110px, 1fr))', gap: 8, padding: 10, background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10 }}>
                     <Metric label="CIO View" color={recColor(it.latest_recommendation || pa.rec)} value={
