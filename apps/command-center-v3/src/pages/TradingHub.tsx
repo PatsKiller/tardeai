@@ -334,7 +334,7 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Proposals' && <ProposalsRich />}
-      {tab === 'Broker Proposals' && <BrokerProposals />}
+      {tab === 'Broker Proposals' && <BrokerProposals focusSymbol={searchParams.get('symbol') || undefined} />}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
       {tab === 'Schwab Accounts' && (
         <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />

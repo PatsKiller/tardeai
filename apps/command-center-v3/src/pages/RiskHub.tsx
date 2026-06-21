@@ -25,19 +25,11 @@ export default function RiskHub({ onDrill }: Props) {
   const positions = risk?.positions ?? []
   const triggered = positions.filter((p: any) => p.triggered)
 
-  // Deep-link: arriving as /v3/risk?symbol=XXX (e.g. a stop-triggered action for XXX from the Reports
-  // Action Queue) opens the page focused on JUST that position — its stop/protection detail in the drawer —
-  // instead of the whole risk hub (operator: "if its a stop for XXX then page should open just for stop of XXX").
-  const [focusSym] = useState(() => { try { return (new URLSearchParams(window.location.search).get('symbol') || '').toUpperCase() } catch { return '' } })
+  // Deep-link params from the Reports Action Queue: ?symbol / ?symbols / ?drawer (stop|stops|unprotected|
+  // recovery) / ?tab. The effect below opens the EXACT drawer/tab so a stop action lands on that position's
+  // stop detail, an "unprotected" action on the no-stop list, a recovery action on the Recovery tab, etc.
+  const [dlp] = useState(() => { try { return new URLSearchParams(window.location.search) } catch { return new URLSearchParams() } })
   const [focused, setFocused] = useState(false)
-  useEffect(() => {
-    if (!focusSym || focused || !positions.length) return
-    const p = positions.find((x: any) => String(x.symbol || '').toUpperCase() === focusSym)
-    if (p) {
-      setFocused(true)
-      onDrill({ title: `${p.symbol} — risk / stop`, subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · ${p.triggered ? 'TRIGGERED' : p.has_stop ? 'protected' : 'unprotected'}`, endpoint: '/api/v2/risk', rows: [p] })
-    }
-  }, [focusSym, focused, positions, onDrill])
 
   const noStop = positions.filter((p: any) => !p.has_stop)
   const protectedCount = positions.filter((p: any) => p.has_stop && !p.triggered).length
@@ -56,6 +48,44 @@ export default function RiskHub({ onDrill }: Props) {
 
   // Recovery items
   const recoveryItems = recovery?.items ?? []
+
+  useEffect(() => {
+    if (focused) return
+    const tab = dlp.get('tab'); const drawer = dlp.get('drawer')
+    const symbol = (dlp.get('symbol') || '').toUpperCase()
+    const symbols = (dlp.get('symbols') || '').toUpperCase().split(',').map(s => s.trim()).filter(Boolean)
+    if (tab && (TABS as readonly string[]).includes(tab)) setTab(tab as typeof TABS[number])
+    const ready = positions.length > 0 || recoveryItems.length > 0
+    if (!ready) return
+    // Recovery deep-link
+    if (drawer === 'recovery' || tab === 'Recovery') {
+      if (symbol) {
+        const r = recoveryItems.find((x: any) => String(x.symbol || '').toUpperCase() === symbol)
+        if (r) { setFocused(true); onDrill({ title: `${r.symbol} Recovery`, subtitle: r.analyst_verdict ?? 'recovery watch', endpoint: '/api/v2/recovery', rows: [r] }) }
+        else setFocused(true)
+      } else setFocused(true)
+      return
+    }
+    // Unprotected (no-stop) list
+    if (drawer === 'unprotected') {
+      setFocused(true)
+      onDrill({ title: `Unprotected positions (${noStop.length})`, subtitle: 'no protective stop', endpoint: '/api/v2/risk', rows: noStop })
+      return
+    }
+    // Grouped triggered stops (?symbols=A,B,C or ?drawer=stops)
+    if (symbols.length || drawer === 'stops') {
+      const rows = symbols.length ? positions.filter((p: any) => symbols.includes(String(p.symbol || '').toUpperCase())) : triggered
+      setFocused(true)
+      onDrill({ title: `Triggered stops (${rows.length})`, subtitle: rows.map((r: any) => r.symbol).join(' '), endpoint: '/api/v2/risk', rows })
+      return
+    }
+    // Single-symbol stop detail
+    if (symbol) {
+      const p = positions.find((x: any) => String(x.symbol || '').toUpperCase() === symbol)
+      if (p) { setFocused(true); onDrill({ title: `${p.symbol} — risk / stop`, subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · ${p.triggered ? 'TRIGGERED' : p.has_stop ? 'protected' : 'unprotected'}`, endpoint: '/api/v2/risk', rows: [p] }) }
+      else setFocused(true)
+    }
+  }, [dlp, focused, positions, noStop, triggered, recoveryItems, onDrill])
 
   return (
     <div>

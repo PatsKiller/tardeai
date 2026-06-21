@@ -10,7 +10,7 @@ const card = { background: 'var(--bg1)', border: '1px solid var(--border)', bord
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
 const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, padding: '6px 13px', borderRadius: 7, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
 
-export default function BrokerProposals() {
+export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
   const { data, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold history per symbol
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
@@ -24,9 +24,13 @@ export default function BrokerProposals() {
   const [busy, setBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<Record<number, string>>({})
   const [heldOnly, setHeldOnly] = useState(false)
+  // Deep-link focus from a Reports approval action (?symbol=NEE&modal=approval) — show JUST that symbol's
+  // proposal first, with a banner to clear back to all.
+  const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
   const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
   const heldN = proposals.filter(p => isHeld(p.symbol)).length
-  const shown = heldOnly ? proposals.filter(p => isHeld(p.symbol)) : proposals
+  let shown = heldOnly ? proposals.filter(p => isHeld(p.symbol)) : proposals
+  if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) shown = shown.filter(p => String(p.symbol).toUpperCase() === focus)
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
   const brokerOf = (a: string) => (a || '').toLowerCase().startsWith('fidelity') ? 'Fidelity' : (a || '').toLowerCase().startsWith('schwab') ? 'Schwab' : '—'
 
@@ -58,6 +62,12 @@ export default function BrokerProposals() {
   }
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    {focus && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, fontSize: 11.5, background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.35)', color: '#93c5fd' }}>
+        <span>Focused on <b style={{ fontFamily: 'monospace', color: TEXT0 }}>{focus}</b> approval (from Reports).{!proposals.some(p => String(p.symbol).toUpperCase() === focus) ? ' No matching proposal in the current queue.' : ''}</span>
+        <button onClick={() => setFocus('')} style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>show all</button>
+      </div>
+    )}
     <div style={{ fontSize: 10.5, color: MUTED }}>
       Schwab + Fidelity proposals share the unified queue. Manual submit maps to a manual proposal + strategy.
       <b style={{ color: AMBER }}> Schwab</b> routing is wired for 2FA submit but <b>disabled</b> (gated — no live order).

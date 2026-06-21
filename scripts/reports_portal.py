@@ -225,6 +225,7 @@ _ACT_ROUTE = {
     "system_health": ("/v3/system", "System"),
     "cron_or_backup": ("/v3/system", "System"),
     "llm_review": ("/v3/system", "System"),
+    "recovery": ("/v3/risk", "Recovery"),
     "informational": ("/v3/reports", "Reports"),
 }
 
@@ -234,8 +235,8 @@ _ACT_RULES = [
     # recovery rows like "Relisted — No Stop-Out" (a NON-event). A negation guard (_NEG_STOP) also drops
     # any matched occurrence inside a negated sentence ("no stop loss triggered").
     ("stop_triggered", "urgent", _re.compile(
-        r"\bstops?\s+(?:were\s+)?(?:triggered|hit|fired|executed|filled)\b"
-        r"|\b\d+\s+stops?\s+triggered\b"
+        r"\bstop(?:\(s\)|s)?\s+(?:were\s+)?(?:triggered|hit|fired|executed|filled)\b"
+        r"|\b\d+\s+stop(?:\(s\)|s)?\s+triggered\b"
         r"|\btriggered\s+(?:a\s+)?stop\b"
         r"|\bprotective\s+stop\s+filled\b"
         r"|\bstop\s+filled\b"
@@ -256,8 +257,9 @@ _ACT_RULES = [
     ("system_health", "warning", _re.compile(r"\bsystem\s+health\b|\bhealth\s+check\b|\b(?:failed|failure|blocked|degraded|unhealthy|depleted|warmup\s+failed|stale\s+data)\b", _re.I)),
     ("llm_review", "info", _re.compile(r"\bLLM\b|\bgemma\b|\bgrok\b|\barbitration\b|\bmodel\s+(?:failed|warmup|coverage|disagree)\b", _re.I)),
     ("broker_manual", "warning", _re.compile(r"\bmanual\s+(?:execution|order|ticket)\b|\bplace\s+(?:the\s+)?order\b|\bbroker\s+ticket\b|\bToS\s+desk\b|\bSchwab\s+ticket\b", _re.I)),
+    ("recovery", "info", _re.compile(r"reentry[_\s]?candidate|market[_\s]?relist|relist[_\s]?monitor|recovery\s+watch|hold[_\s]?for[_\s]?reentry|stay[_\s]?cash|/v2/recovery", _re.I)),
     ("portfolio_review", "info", _re.compile(r"\brebalanc\w*\b|\bdividend\b|\ballocation\b|\bdrift\b|\bregime\s+change\b|\blook[\s-]?through\b", _re.I)),
-    ("research_needed", "info", _re.compile(r"\bresearch\b|\bintel\b|\binvestigat\w*\b|\bdue\s+diligence\b|\bcatalyst\b", _re.I)),
+    ("research_needed", "info", _re.compile(r"\bresearch\b|\bintel\b|\binvestigat\w*\b|\bdue\s+diligence\b|\bcatalyst\b|research\s+gap", _re.I)),
 ]
 _RISK_CLASSES = {"stop_triggered", "unprotected_position", "risk_review"}
 _SEV_RANK = {"urgent": 3, "critical": 3, "warning": 2, "info": 1}
@@ -300,9 +302,93 @@ def _symbol_near(line: str) -> str | None:
     return None
 
 
+import urllib.parse as _ulib
+
+
+def _enc(s) -> str:
+    return _ulib.quote((str(s) or "")[:90])
+
+
+def _action_target(cls: str, line: str, sym: str | None, syms: list[str]) -> dict:
+    """Resolve a CANONICAL target for an action — exact page + tab + drawer/modal when determinable, with a
+    confidence + reason. Deterministic, no LLM. The UI deep-links to target.route and labels with route_label."""
+    symq = f"symbol={sym}" if sym else ""
+    if cls == "stop_triggered":
+        if syms and len(syms) > 1:
+            sl = ",".join(syms[:12])
+            return {"target_type": "risk_stop", "target_id": sl, "symbol": sym,
+                    "route": f"/v3/risk?symbols={sl}&drawer=stops", "route_label": f"Open {len(syms)} triggered stops",
+                    "modal": "risk_stop_drawer", "endpoint": "/api/v2/risk", "target_confidence": "high",
+                    "reason": f"stop-triggered line, {len(syms)} symbols"}
+        return {"target_type": "risk_stop", "target_id": sym, "symbol": sym,
+                "route": f"/v3/risk?{symq}&drawer=stop" if sym else "/v3/risk?drawer=stops",
+                "route_label": f"Open {sym} stop detail" if sym else "Open triggered stops",
+                "modal": "risk_stop_drawer", "endpoint": "/api/v2/risk",
+                "target_confidence": "high" if sym else "medium", "reason": "stop-triggered line"}
+    if cls == "unprotected_position":
+        return {"target_type": "risk_stop", "target_id": sym, "symbol": sym,
+                "route": f"/v3/risk?drawer=unprotected{('&' + symq) if sym else ''}",
+                "route_label": f"Open {sym} (no stop)" if sym else "Open unprotected positions",
+                "modal": "risk_unprotected_drawer", "endpoint": "/api/v2/risk", "target_confidence": "high",
+                "reason": "unprotected / no-stop line"}
+    if cls == "risk_review":
+        return {"target_type": "risk_stop", "target_id": sym, "symbol": sym,
+                "route": f"/v3/risk?{symq}&drawer=stop" if sym else "/v3/risk",
+                "route_label": f"Open {sym} risk" if sym else "Open Risk", "modal": "risk_stop_drawer" if sym else None,
+                "endpoint": "/api/v2/risk", "target_confidence": "high" if sym else "medium", "reason": "risk-review line"}
+    if cls == "recovery":
+        return {"target_type": "recovery", "target_id": sym, "symbol": sym,
+                "route": f"/v3/risk?tab=Recovery{('&' + symq) if sym else ''}&drawer=recovery",
+                "route_label": f"Open {sym} recovery detail" if sym else "Open Recovery", "modal": "recovery_drawer",
+                "endpoint": "/api/v2/recovery", "target_confidence": "high" if sym else "medium", "reason": "recovery-watch line"}
+    if cls == "approval_needed":
+        return {"target_type": "approval", "target_id": sym, "symbol": sym,
+                "route": f"/v3/trading?tab=Broker%20Proposals{('&' + symq) if sym else ''}&modal=approval",
+                "route_label": f"Open {sym} approval" if sym else "Open Broker Proposals", "modal": "approval",
+                "endpoint": "/api/v2/broker-proposals", "target_confidence": "medium" if sym else "low",
+                "reason": "approval / Steph-review line (no exact approval id in source)"}
+    if cls == "broker_manual":
+        return {"target_type": "trading", "target_id": sym, "symbol": sym, "route": "/v3/trading?tab=Manual%20ToS",
+                "route_label": "Open Manual ToS", "modal": None, "endpoint": None, "target_confidence": "medium",
+                "reason": "broker-manual line"}
+    if cls == "research_needed":
+        topic = _re.sub(r"^.*?(?:gap|topic)\s*:?\s*", "", line, flags=_re.I).split("—")[0].strip()
+        return {"target_type": "research", "target_id": None, "symbol": sym,
+                "route": f"/v3/intelligence?tab=Research&query={_enc(topic)}&drawer=research", "route_label": "Open research focus",
+                "modal": "research", "endpoint": "/api/v2/research-topics", "target_confidence": "medium",
+                "reason": "research gap / topic line (Intelligence query focus)"}
+    if cls == "hermes_review":
+        flt = "backlog" if _re.search(r"backlog", line, _re.I) else "librarian" if _re.search(r"librarian", line, _re.I) else "embedding" if _re.search(r"embedding", line, _re.I) else ""
+        tab = "Pipeline" if flt == "librarian" else "Provenance" if flt == "embedding" else "Research"
+        return {"target_type": "hermes", "target_id": flt or None, "symbol": sym,
+                "route": f"/v3/hermes?tab={tab}{('&filter=' + flt) if flt else ''}", "route_label": f"Open Hermes {tab}",
+                "modal": None, "endpoint": None, "target_confidence": "medium", "reason": "hermes line"}
+    if cls == "cron_or_backup":
+        m = _re.search(r"\b([a-z0-9_]+\.(?:sh|py|service|timer))\b", line)
+        return {"target_type": "system", "target_id": (m.group(1) if m else None), "symbol": None,
+                "route": f"/v3/system?tab=Crons{('&query=' + _enc(m.group(1))) if m else ''}", "route_label": "Open Crons tab",
+                "modal": None, "endpoint": None, "target_confidence": "high", "reason": "cron / backup line"}
+    if cls == "llm_review":
+        return {"target_type": "system", "target_id": None, "symbol": None, "route": "/v3/system?tab=LLM",
+                "route_label": "Open LLM tab", "modal": None, "endpoint": None, "target_confidence": "high", "reason": "llm line"}
+    if cls == "system_health":
+        tab = "SIEM" if _re.search(r"siem|alert|breach|fatigue", line, _re.I) else "Brokers" if _re.search(r"broker|connector|schwab|alpaca|fidelity", line, _re.I) else "Data Sources" if _re.search(r"stale|source|feed|ingest", line, _re.I) else "Pipeline"
+        return {"target_type": "system", "target_id": None, "symbol": None, "route": f"/v3/system?tab={_ulib.quote(tab)}",
+                "route_label": f"Open {tab} tab", "modal": None, "endpoint": None, "target_confidence": "medium", "reason": "system-health line"}
+    if cls == "portfolio_review":
+        return {"target_type": "portfolio", "target_id": sym, "symbol": sym, "route": f"/v3/portfolio?{symq}" if sym else "/v3/portfolio",
+                "route_label": f"Open {sym} in Portfolio" if sym else "Open Portfolio", "modal": None, "endpoint": "/api/v2/portfolio",
+                "target_confidence": "medium", "reason": "portfolio line"}
+    return {"target_type": "report", "target_id": None, "symbol": sym, "route": "/v3/reports",
+            "route_label": "Open related page", "modal": None, "endpoint": None, "target_confidence": "low",
+            "reason": "no explicit target resolved"}
+
+
 def extract_action_items(item: dict) -> list[dict]:
     """Deterministically extract operator action items from one normalized report item. NO LLMs.
-    Returns a list of routed action dicts (one per detected class, capped). [] if nothing actionable."""
+    Returns a list of routed action dicts (one per detected class, capped). [] if nothing actionable.
+    Each action carries a canonical `target` object (see _action_target); top-level route/route_label are
+    derived from it for backward compatibility."""
     text = f"{item.get('title') or ''}\n{item.get('summary') or ''}"
     if not text.strip():
         return []
@@ -330,6 +416,15 @@ def extract_action_items(item: dict) -> list[dict]:
             cand_line = text[cl_s:(cl_e if cl_e != -1 else len(text))]
             if neg and neg.search(cand_line):
                 continue
+            # stop_triggered: prefer the occurrence whose line carries the most tickers (the
+            # "8 stop(s) TRIGGERED: PFLT, LHX, …" list line, not the bare "8 stops triggered" summary) so the
+            # grouped multi-symbol drawer target resolves. Other classes take the first non-negated match.
+            if action_class == "stop_triggered":
+                nt = sum(1 for t in _ACT_TICKER.findall(cand_line) if _is_ticker(t))
+                cur_nt = sum(1 for t in _ACT_TICKER.findall(line) if _is_ticker(t)) if m else -1
+                if m is None or nt > cur_nt:
+                    m, line = cand, cand_line.strip()[:200]
+                continue
             m, line = cand, cand_line.strip()[:200]
             break
         if not m:
@@ -340,31 +435,26 @@ def extract_action_items(item: dict) -> list[dict]:
             sev = "urgent"
         out_class = action_class
         sym = item_sym or (_symbol_near(line) if action_class in _RISK_CLASSES else None)
-        route, route_label = _ACT_ROUTE.get(action_class, ("/v3/reports", "Reports"))
-        # The destination the matched LINE names (e.g. "→ /v2/approvals") drives BOTH the route AND the pill
-        # class — so a Steph-review item that merely mentions a stop is an Approval (pill + tab + button all
-        # Approvals), not a Risk item linking elsewhere. Fixes "all links go to risk" + the pill/route mismatch.
+        # All tickers on the line (for grouped multi-symbol stop targets, e.g. "8 stops TRIGGERED: A, B, C…").
+        syms = [t for t in _ACT_TICKER.findall(line or "") if _is_ticker(t)]
+        # The destination the matched LINE names (e.g. "→ /v2/approvals") drives the pill CLASS — so a
+        # Steph-review item that merely mentions a stop is an Approval (pill + tab + Approvals), not Risk.
         _ml = _re.search(r"/v[23]/([a-z0-9-]+)", line)
-        if _ml and _ml.group(1) in _PAGE:
-            seg = _ml.group(1)
-            route_label, route = _PAGE[seg]
-            if seg in _PAGE_CLASS:
-                out_class = _PAGE_CLASS[seg]
-        elif action_class == "informational" and own_route:
-            route = own_route
+        if _ml and _ml.group(1) in _PAGE_CLASS:
+            out_class = _PAGE_CLASS[_ml.group(1)]
+        elif _ml and _ml.group(1) in ("recovery", "reco"):
+            out_class = "recovery"
         _key = (out_class, (sym or "").upper())   # dedup by class+SYMBOL → keep per-symbol actions distinct
         if _key in emitted:
             continue
         emitted.add(_key)
-        # Deep-link to the SYMBOL: a stop/action for IRDM opens the page focused on IRDM (?symbol=IRDM),
-        # not the generic hub (operator: "if its a stop for XXX then page should open just for stop of XXX").
-        if sym and _is_ticker(sym):
-            route = f"{route}{'&' if '?' in route else '?'}symbol={sym}"
+        # Canonical target — exact page+tab+drawer/modal + confidence. route/route_label derive from it.
+        target = _action_target(out_class, line, sym if (sym and _is_ticker(sym)) else None, syms)
         out.append({
             "id": f"{rid}-{out_class}", "report_id": rid, "source": item.get("source"),
             "category": item.get("category"), "title": item.get("title"), "action_class": out_class,
-            "severity": sev, "symbol": sym, "route": route, "route_label": route_label,
-            "text": line or (item.get("title") or "")[:200],
+            "severity": sev, "symbol": sym, "route": target["route"], "route_label": target["route_label"],
+            "target": target, "text": line or (item.get("title") or "")[:200],
             "created_at": item.get("created_at"), "status": "open",
         })
         if len(out) >= 4:
@@ -828,21 +918,50 @@ def _verify_actions() -> int:
         print(f"  [{status}] {text[:52]!r:54} -> {sorted(got)}"
               + (f"  UNEXPECTED:{sorted(bad)}" if bad else "")
               + (f"  MISSING:{sorted(miss)}" if miss else ""))
-    # routing: an action whose line points to a specific page routes THERE, not the class default ("all
-    # links go to risk" fix). A Steph-review stop mention -> Approvals (/v3/trading), not /v3/risk.
-    acts = extract_action_items({"source": "t", "id": 0,
-        "title": "CACI: The stop-loss order was triggered → /v2/approvals", "summary": "",
-        "severity": "info", "symbol": None, "actions": []})
-    # the Steph-review item must NOT carry a Risk pill, and its approval action must route to /v3/trading
-    no_risk_pill = not any(a["action_class"] in _RISK_CLASSES for a in acts)
-    appr = next((a for a in acts if a["action_class"] == "approval_needed"), None)
-    route_ok = no_risk_pill and appr is not None and appr["route"].startswith("/v3/trading") and appr["route_label"] == "Approvals" and "symbol=CACI" in appr["route"]
-    if not route_ok:
-        ok = False
-    classes_got = sorted({a["action_class"] for a in acts})
-    print(f"  [{'PASS' if route_ok else 'FAIL'}] inline-route+pill: stop->approvals item classes={classes_got} "
-          f"route={appr['route'] if appr else None} (want approval_needed/-/v3/trading, no risk pill)")
-    print("✓ all action-classifier checks passed" if ok else "✗ action-classifier checks FAILED")
+    # ── Canonical target-contract checks (Phase 5) ──────────────────────────────────────────────────────
+    def acts_of(title):
+        return extract_action_items({"source": "t", "id": 0, "title": title, "summary": "",
+                                     "severity": "info", "symbol": None, "actions": []})
+
+    def check(name, cond, detail=""):
+        nonlocal ok
+        if not cond:
+            ok = False
+        print(f"  [{'PASS' if cond else 'FAIL'}] {name}{(' — ' + detail) if detail else ''}")
+
+    # 3) approval line -> /v3/trading ...modal=approval, NOT risk
+    a = next((x for x in acts_of("CACI: The stop-loss order was triggered → /v2/approvals") if x["action_class"] == "approval_needed"), None)
+    check("approval line -> trading modal", bool(a) and a["route"].startswith("/v3/trading?tab=Broker") and "modal=approval" in a["route"] and a["target"]["target_type"] == "approval", a["route"] if a else "none")
+    check("approval line carries no risk pill", not any(x["action_class"] in _RISK_CLASSES for x in acts_of("CACI: The stop-loss order was triggered → /v2/approvals")))
+
+    # 4) stop line -> /v3/risk ...drawer=stop(s)
+    a = next((x for x in acts_of("8 stop(s) TRIGGERED: PFLT, LHX, LMT. Check /v2/risk immediately.") if x["action_class"] == "stop_triggered"), None)
+    check("stop line -> risk drawer=stops + symbols", bool(a) and a["route"].startswith("/v3/risk?symbols=") and "drawer=stops" in a["route"] and a["target"]["target_type"] == "risk_stop", a["route"] if a else "none")
+
+    # 5) recovery line -> /v3/risk?tab=Recovery
+    a = next((x for x in acts_of("RTX: reentry_candidate (alloc: hold_for_reentry) → /v2/recovery") if x["action_class"] == "recovery"), None)
+    check("recovery line -> risk tab=Recovery", bool(a) and "tab=Recovery" in a["route"] and "drawer=recovery" in a["route"] and a["target"]["target_type"] == "recovery", a["route"] if a else "none")
+
+    # 6) research-topics -> /v3/intelligence
+    a = next((x for x in acts_of("Research gap: Defense sector rotation → /v2/research-topics") if x["action_class"] == "research_needed"), None)
+    check("research line -> intelligence", bool(a) and a["route"].startswith("/v3/intelligence") and a["target"]["target_type"] == "research", a["route"] if a else "none")
+
+    # 7) cron line -> /v3/system?tab=Crons
+    a = next((x for x in acts_of("backup_secrets_state.sh cron failed during nightly backup") if x["action_class"] == "cron_or_backup"), None)
+    check("cron line -> system tab=Crons", bool(a) and "tab=Crons" in a["route"] and a["target"]["target_type"] == "system", a["route"] if a else "none")
+
+    # 8 & 9) every action has a target; every high-confidence target has a non-empty route+label
+    allacts = (acts_of("8 stop(s) TRIGGERED: PFLT, LHX. Check /v2/risk") + acts_of("CACI → /v2/approvals")
+               + acts_of("RTX: reentry_candidate → /v2/recovery") + acts_of("cron.sh failed"))
+    check("every action has a target object", all("target" in x and isinstance(x["target"], dict) for x in allacts))
+    check("high-confidence targets have route+label", all(x["target"]["route"] and x["target"]["route_label"]
+          for x in allacts if x["target"]["target_confidence"] == "high"))
+
+    # 10) no action defaults to /v3/risk unless the line is genuinely risk/stop/unprotected
+    nonrisk = acts_of("Defense sector rotation research → /v2/research-topics") + acts_of("backup.sh cron failed")
+    check("no spurious /v3/risk default", all(not x["route"].startswith("/v3/risk") for x in nonrisk))
+
+    print("✓ all action-classifier + target checks passed" if ok else "✗ checks FAILED")
     return 0 if ok else 1
 
 
