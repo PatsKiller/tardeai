@@ -61,6 +61,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   const [stopTicket, setStopTicket] = useState<string>('')   // ticket string when account has no API
   const [stopDone, setStopDone] = useState(false)
   const _resetStop = () => { setStopOrder(null); setStopTk(''); setStopCode(''); setStopMsg(''); setStopIntent(''); setStopTicket(''); setStopDone(false) }
+  // "Ignore stop for a week" — operator acknowledgement granting a 7-day grace period. Suppresses the stop
+  // ALERT (stop_snooze table); advisory only — does NOT change or cancel the protective stop at the broker.
+  const [snoozeBusy, setSnoozeBusy] = useState(false)
+  const [snoozeMsg, setSnoozeMsg] = useState('')
+  const _snoozeStop = async () => {
+    setSnoozeBusy(true); setSnoozeMsg('')
+    try {
+      const r = await fetch('/api/v2/holdings/stop-snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: p.symbol, days: 7 }) }).then(x => x.json())
+      setSnoozeMsg(r?.ok ? `✓ Acknowledged — ${p.symbol} stop alert snoozed 1 week (until ${String(r.snoozed_until).slice(0, 10)}); protective stop unchanged` : `failed: ${r?.error ?? '—'}`)
+    } catch { setSnoozeMsg('snooze failed — retry') } finally { setSnoozeBusy(false) }
+  }
   // STEP 1 — request: builds the order + (Schwab/armed) requests per-order 2FA, or returns a ToS ticket.
   const _requestStop = async () => {
     setStopBusy(true); setStopMsg('requesting…')
@@ -274,8 +285,10 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
               <button onClick={open('STOP', `SELL ${qty} ${p.symbol} STOP $${stop.toFixed(2)} GTC`)} title={stopTip} style={trailReady ? actBtn : recBtn}>Queue stop (fixed){trailReady ? '' : ' ★'}</button>
               <button onClick={open('STOP_LIMIT', `SELL ${qty} ${p.symbol} STOP-LIMIT $${stop.toFixed(2)} GTC`)} title={limitTip} style={actBtn}>Queue stop-limit (fixed)</button>
               {trailReady && <button onClick={open('TRAILING', `SELL ${qty} ${p.symbol} TRAILING STOP ${trailPct.toFixed(0)}% GTC`)} title={trailTip} style={recBtn}>Queue trailing stop ★</button>}
+              <button onClick={_snoozeStop} disabled={snoozeBusy} title="Acknowledge this stop and grant a 1-week grace period — suppresses the stop ALERT for 7 days. Advisory only: does NOT change or cancel the protective stop at the broker." style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: snoozeBusy ? 'not-allowed' : 'pointer' }}>{snoozeBusy ? '…' : '⏸ Ignore 1 week'}</button>
             </div>
           })()}
+          {snoozeMsg && <div style={{ fontSize: 10.5, color: snoozeMsg.startsWith('✓') ? GREEN : AMBER, marginTop: 5 }}>{snoozeMsg}</div>}
         </>
       })()}
       {protectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{protectionRec.rationale}</div>}

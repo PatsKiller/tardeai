@@ -19981,6 +19981,42 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/holdings/stop-snooze":
+            # Operator acknowledgement of a triggered/at-risk stop → a GRACE PERIOD (default 7 days). Writes
+            # the existing stop_snooze table (the stop monitor at portfolio_stops honors snoozed_until), so the
+            # stop ALERT is suppressed for the window. Internal advisory state only — NO broker write, no order
+            # change; the protective stop itself is untouched. (operator 2026-06-21)
+            try:
+                b = body or {}
+                sym = str(b.get("symbol") or "").strip().upper()
+                if not sym:
+                    return 400, {"ok": False, "error": "symbol required"}
+                days = b.get("days")
+                try:
+                    days = float(days) if days is not None else 7.0
+                except (TypeError, ValueError):
+                    days = 7.0
+                days = max(0.0, min(31.0, days))   # cap the grace window at a month
+                row = _db_query(
+                    """INSERT INTO stop_snooze (symbol, snoozed_until, snoozed_by, created_at)
+                       VALUES (%s, NOW() + make_interval(mins => %s), %s, NOW())
+                       RETURNING snoozed_until""",
+                    (sym, int(days * 24 * 60), b.get("snoozed_by", "operator")), fetch="one")
+                until = (row or {}).get("snoozed_until")
+                try:
+                    from alert_event_writer import save_alert_event
+                    save_alert_event(alert_type="strategic_alert", severity="info",
+                                     source_script="stop_snooze", symbol=sym,
+                                     raw_text=f"[stop-snooze] {sym} acknowledged — {days:g}d grace until {until}",
+                                     parsed_payload={"kind": "stop_snooze", "symbol": sym, "days": days,
+                                                     "snoozed_until": str(until), "by": b.get("snoozed_by", "operator")})
+                except Exception:
+                    pass
+                return 200, {"ok": True, "symbol": sym, "days": days, "snoozed_until": str(until),
+                             "note": "operator acknowledgement — stop alert snoozed; protective stop unchanged (no broker write)"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/reports/purge":
             # Reports portal: purge old reports (optionally one category). Preview unless apply=true.
             try:

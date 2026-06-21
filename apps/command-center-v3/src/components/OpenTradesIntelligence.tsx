@@ -9,8 +9,11 @@ const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', bor
 const sel = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: '#f8fafc' } as const
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', TEXT0 = '#f8fafc', TEXT2 = '#cbd5e1', MUTED = '#94a3b8'
 
-export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: DrillContext) => void }) {
+export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDrill: (c: DrillContext) => void; focusSymbol?: string }) {
   const { data, loading, error } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
+  // Deep-link from a Reports stop action: ?symbol=XXX focuses JUST that position's decision card (with the
+  // Stage 2c protective-stop ARM + Ignore-1-week controls), with a banner to clear back to all.
+  const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const paMap = useProAnalystMap()
@@ -70,6 +73,8 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
     }
     return [...v].sort((a, b) => f.sort === 'symbol' ? String(g(a)).localeCompare(String(g(b))) : (Number(g(b)) - Number(g(a))))
   }, [positions, f])
+  const focusMatch = focus && visible.some(p => String(p.symbol || '').toUpperCase() === focus)
+  const shown = focusMatch ? visible.filter(p => String(p.symbol || '').toUpperCase() === focus) : visible
 
   if (loading && !data) return <div style={{ ...panel, color: TEXT2 }}>Loading position intelligence…</div>
   if (error) return <div style={{ ...panel, borderColor: RED, color: RED }}>Intelligence unavailable: {error}</div>
@@ -99,10 +104,16 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 10, color: MUTED }}>account:</span>{['all', ...(flt.accounts ?? [])].map((a: string) => { const paper = String(a).toLowerCase().includes('paper'), on = f.account === a; return <button key={a} onClick={() => set('account', a)} style={{ fontSize: 10, padding: '4px 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: on ? (a === 'all' || paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)') : 'var(--bg2)', color: on ? (a === 'all' || paper ? BLUE : '#ffa726') : MUTED, fontWeight: on ? 800 : 500 }}>{a === 'all' ? 'All accounts' : `${paper ? 'PAPER' : 'REAL'} ${a.replace(/_/g, ' ')}`}{a !== 'all' && summary.by_account?.[a] != null ? ` (${summary.by_account[a]})` : ''}</button> })}</div>
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => <button key={k} onClick={() => set('quick', k)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: f.quick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: f.quick === k ? BLUE : MUTED, fontWeight: f.quick === k ? 800 : 500 }}>{lbl}</button>)}</div>
 
+    {focus && (
+      <div style={{ ...panel, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, borderColor: 'rgba(96,165,250,.35)', background: 'rgba(96,165,250,.08)', color: '#93c5fd' }}>
+        <span>Focused on <b style={{ fontFamily: 'monospace', color: TEXT0 }}>{focus}</b> — its protective-stop ARM + "Ignore 1 week" controls are below.{!focusMatch ? ' (no open position for this symbol)' : ''}</span>
+        <button onClick={() => setFocus('')} style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>show all</button>
+      </div>
+    )}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(620px,1fr))', gap: 16 }}>
-      {visible.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <PositionDecisionCard key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
+      {shown.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <PositionDecisionCard key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
     </div>
-    {visible.length === 0 && <div style={{ ...panel, color: MUTED, textAlign: 'center' }}>No positions match the current filters.</div>}
+    {shown.length === 0 && <div style={{ ...panel, color: MUTED, textAlign: 'center' }}>No positions match the current filters.</div>}
     <div style={{ fontSize: 9, color: MUTED }}>Source: /api/v2/open-trades/intelligence (read-only) · price {summary.last_price_update ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}</div>
   </div>
 }
