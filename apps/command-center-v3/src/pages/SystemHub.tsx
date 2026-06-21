@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
+
+// Deep-link: /v3/system?tab=Crons|LLM|SIEM|Brokers&query=<id> selects that tab (from a Reports action).
+function _dlTab<T extends readonly string[]>(tabs: T, fallback: T[number]): T[number] {
+  try { const t = new URLSearchParams(window.location.search).get('tab'); return (t && (tabs as readonly string[]).includes(t)) ? t as T[number] : fallback } catch { return fallback }
+}
+function _dlQuery(): string { try { return new URLSearchParams(window.location.search).get('query') || '' } catch { return '' } }
 import SchwabMonitor from '../components/SchwabMonitor'
 import CsvUpload from '../components/CsvUpload'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -30,7 +36,8 @@ function fmtAge(iso: string | null | undefined): string {
 }
 
 export default function SystemHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('Pipeline')
+  const [tab, setTab] = useState<typeof TABS[number]>(() => _dlTab(TABS, 'Pipeline'))
+  const [dlQuery] = useState(_dlQuery)
   const { data: qct } = useApi<any>('/api/v2/system/queue-control-tower', 30_000)
   const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000)
   const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000)
@@ -84,6 +91,12 @@ export default function SystemHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {dlQuery && (
+        <div style={{ marginBottom: 12, padding: '7px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.3)', color: '#93c5fd' }}>
+          Focused from Reports: <b style={{ fontFamily: 'monospace', color: 'var(--text0)' }}>{dlQuery}</b> — review it on the <b>{tab}</b> tab.
+        </div>
+      )}
 
       {tab === 'Pipeline' && (() => {
         const d = pipe?.data ?? pipe ?? {}

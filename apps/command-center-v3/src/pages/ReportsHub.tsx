@@ -201,6 +201,18 @@ const SECTIONS = [
 ]
 const sectionIdOf = (text: string): string | undefined => SECTIONS.find(s => s.rx.test(text))?.id
 
+// "What matters" briefing groups (Phase 4) — the selected report's actions grouped by canonical target_type,
+// each a one-click exact deep-link. Order = operator priority.
+const WM_GROUPS: { tt: string; label: string; c: string }[] = [
+  { tt: 'risk_stop', label: 'Immediate risk', c: '#ef4444' },
+  { tt: 'approval', label: 'Approvals', c: '#f59e0b' },
+  { tt: 'recovery', label: 'Recovery', c: '#a855f7' },
+  { tt: 'research', label: 'Research', c: '#14b8a6' },
+  { tt: 'system', label: 'System', c: '#60a5fa' },
+  { tt: 'hermes', label: 'Hermes', c: '#22d3ee' },
+  { tt: 'portfolio', label: 'Portfolio', c: '#eab308' },
+]
+
 // Reader synthesis strip — surfaces the enriched fields (sector / trend / finance / retirement / ensemble
 // votes) that reports_portal now attaches per item. Only renders the facets that actually exist (honest).
 const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
@@ -277,6 +289,12 @@ export default function ReportsHub({ onDrill }: Props) {
   // auto-select first result when nothing selected
   const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
   const allActions = actionsData?.actions || []   // raw extracted (full set); AQ tabs filter the deduped view
+  // the selected report's own actions (one per class) for the "What matters" briefing block
+  const reportActions = useMemo(() => {
+    if (!selected) return []
+    const rid = `${selected.source}-${selected.id}`, seen = new Set<string>()
+    return allActions.filter((a: any) => a.report_id === rid).filter((a: any) => { if (seen.has(a.action_class)) return false; seen.add(a.action_class); return true })
+  }, [selected, allActions])
   // Dedup: one underlying item emits the SAME symbol+text under several action_classes (e.g. an RTX recovery
   // escalation shows as Stop-triggered + Unprotected + System). Collapse to one row, merging the classes
   // into pills and keeping the highest severity — so the queue isn't 3× the same line.
@@ -296,7 +314,7 @@ export default function ReportsHub({ onDrill }: Props) {
         ex._dupes++
         if (a.action_class && !ex._classes.includes(a.action_class)) ex._classes.push(a.action_class)
         if (sevRank(a.severity) > sevRank(ex.severity)) ex.severity = a.severity
-        if (sevRank(a.severity) >= sevRank(ex.severity)) { ex.route = a.route; ex.route_label = a.route_label }
+        if (sevRank(a.severity) >= sevRank(ex.severity)) { ex.route = a.route; ex.route_label = a.route_label; ex.target = a.target }
       }
     }
     return [...seen.values()]
@@ -434,11 +452,26 @@ export default function ReportsHub({ onDrill }: Props) {
                   <SeverityBadge sev={selected.severity} />
                 </header>
                 <SynthStrip it={selected} />
-                {/* extracted action pills (Phase 4) */}
-                {(selected.action_classes || []).length > 0 && (
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>Actions</span>
-                    {(selected.action_classes || []).map((c: string) => <ActionPill key={c} cls={c} />)}
+                {/* "What matters" briefing (Phase 4): the report's actions grouped by canonical target, each a
+                    one-click EXACT deep-link (stop drawer / approval modal / recovery / system tab / research). */}
+                {reportActions.length > 0 && (
+                  <div style={{ marginTop: 11, padding: '10px 12px', borderRadius: 9, background: 'var(--bg2)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 7 }}>What matters</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {WM_GROUPS.map(g => {
+                        const grp = reportActions.filter((a: any) => (a.target?.target_type || '') === g.tt)
+                        if (!grp.length) return null
+                        return (
+                          <div key={g.tt} style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 9.5, fontWeight: 800, color: g.c, minWidth: 92 }}>{g.label}</span>
+                            {grp.slice(0, 6).map((a: any) => {
+                              const tg = a.target || {}; const low = tg.target_confidence === 'low'
+                              return <a key={a.id} href={relUrl(FQDN + (tg.route || a.route))} title={tg.reason || ''} style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, textDecoration: 'none', border: `1px solid ${low ? 'var(--border)' : g.c + '55'}`, background: low ? 'var(--bg1)' : g.c + '14', color: low ? 'var(--text3)' : g.c }}>{low ? 'Open related page' : (tg.route_label || a.route_label)} →</a>
+                            })}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
                 {/* Key sections anchor chips — scroll the (auto-expanded) body to a recognized header */}
@@ -499,7 +532,9 @@ export default function ReportsHub({ onDrill }: Props) {
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{a.text}</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <a href={relUrl(FQDN + a.route)} style={{ fontSize: 9.5, fontWeight: 800, color: '#60a5fa', textDecoration: 'none', border: '1px solid #60a5fa44', borderRadius: 5, padding: '2px 7px' }}>{a.route_label} →</a>
+                    {(() => { const tg = a.target || {}; const low = tg.target_confidence === 'low'; return (
+                      <a href={relUrl(FQDN + (tg.route || a.route))} title={tg.reason || ''} style={{ fontSize: 9.5, fontWeight: 800, color: low ? 'var(--text3)' : '#60a5fa', textDecoration: 'none', border: `1px solid ${low ? 'var(--border)' : '#60a5fa44'}`, borderRadius: 5, padding: '2px 7px' }}>{low ? 'Open related page' : (tg.route_label || a.route_label)} →</a>
+                    ) })()}
                     <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>{a.category}</span>
                     <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
                   </div>
