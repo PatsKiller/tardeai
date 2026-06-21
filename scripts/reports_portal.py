@@ -415,7 +415,29 @@ def _category_rows(cat: dict, q: str = "", days: int | None = None) -> list:
         except Exception:
             pass
 
-    return rows
+    return _dedup_rows(rows)
+
+
+def _dedup_rows(rows: list) -> list:
+    """Collapse near-identical repeated rows — e.g. a stop-health alert re-emitted every poll for the SAME
+    order (IRDM fired ~18×, flooding the list + Top-symbols). Key = symbol + source + normalized first
+    ~120 chars of title/summary with volatile clock tokens stripped, so re-emits collapse but genuinely
+    distinct items (different days/bodies) don't. Each source's rows arrive created_at DESC, so the first
+    occurrence kept is the most recent; the rest just bump repeat_count for a 'x N' badge."""
+    seen: dict = {}
+    out: list = []
+    for it in rows:
+        base = (it.get("title") or it.get("summary") or "")[:120]
+        base = _re.sub(r"\s+", " ", base).strip().lower()
+        base = _re.sub(r"\b\d{1,2}:\d{2}(:\d{2})?\s*(am|pm)?\b", "", base)   # drop times so re-emits match
+        key = f"{(it.get('symbol') or '').upper()}|{it.get('source')}|{base}"
+        if key in seen:
+            seen[key]["repeat_count"] = seen[key].get("repeat_count", 1) + 1
+            continue
+        it["repeat_count"] = 1
+        seen[key] = it
+        out.append(it)
+    return out
 
 
 def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None) -> dict:
