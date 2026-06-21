@@ -267,7 +267,12 @@ _SEV_RANK = {"urgent": 3, "critical": 3, "warning": 2, "info": 1}
 _NEG_STOP = _re.compile(
     r"\bno\s+stop[\s-]?out\b|\bnot\s+a\s+stop[\s-]?out\b|\bno\s+stop\s+loss\s+triggered\b"
     r"|relisted\s*[—\-]\s*no\s+stop\b|\bno\s+stop\s+out\b", _re.I)
-_NEGATE = {"stop_triggered": _NEG_STOP}
+# risk_review negation: "drawdown" / "stop-loss" inside a retirement-income-planning research phrase is NOT
+# a portfolio risk event (e.g. "Tax-efficient retirement income drawdown" research gap).
+_NEG_RISK = _re.compile(
+    r"income\s+drawdown|retirement\s+(?:income\s+)?drawdown|drawdown\s+(?:strateg|sequenc|plan)"
+    r"|withdrawal\s+sequenc|tax[\s-]?efficient|research\s+gap", _re.I)
+_NEGATE = {"stop_triggered": _NEG_STOP, "risk_review": _NEG_RISK}
 
 
 def _is_ticker(s) -> bool:
@@ -326,7 +331,14 @@ def extract_action_items(item: dict) -> list[dict]:
             sev = "urgent"
         sym = item_sym or (_symbol_near(line) if action_class in _RISK_CLASSES else None)
         route, route_label = _ACT_ROUTE.get(action_class, ("/v3/reports", "Reports"))
-        if action_class == "informational" and own_route:
+        # Prefer the destination the matched LINE itself points to (e.g. "→ /v2/approvals") over the
+        # class default — so a Steph-review item that merely mentions a stop routes to Approvals, not Risk.
+        # This is the fix for "all links go to risk": the class no longer dictates the route when the text
+        # names a specific page.
+        _ml = _re.search(r"/v[23]/([a-z0-9-]+)", line)
+        if _ml and _ml.group(1) in _PAGE:
+            route_label, route = _PAGE[_ml.group(1)]
+        elif action_class == "informational" and own_route:
             route = own_route
         out.append({
             "id": f"{rid}-{action_class}", "report_id": rid, "source": item.get("source"),
@@ -782,6 +794,8 @@ def _verify_actions() -> int:
         ("stop FILLED — position may be flat", set(), {"stop_triggered"}),
         ("cron failed during nightly backup", set(), {"system_health"}),
         ("no stop loss triggered overnight", {"stop_triggered"}, set()),
+        # retirement-income-drawdown research is NOT a risk event
+        ("Research gap: Tax-efficient retirement income drawdown — zero_articles", {"risk_review"}, set()),
     ]
     ok = True
     for text, must_not, must in cases:
@@ -794,6 +808,19 @@ def _verify_actions() -> int:
         print(f"  [{status}] {text[:52]!r:54} -> {sorted(got)}"
               + (f"  UNEXPECTED:{sorted(bad)}" if bad else "")
               + (f"  MISSING:{sorted(miss)}" if miss else ""))
+    # routing: an action whose line points to a specific page routes THERE, not the class default ("all
+    # links go to risk" fix). A Steph-review stop mention -> Approvals (/v3/trading), not /v3/risk.
+    def route_of(title, cls_wanted):
+        for a in extract_action_items({"source": "t", "id": 0, "title": title, "summary": "",
+                                       "severity": "info", "symbol": None, "actions": []}):
+            if a["action_class"] == cls_wanted:
+                return a["route"], a["route_label"]
+        return None, None
+    rt, rl = route_of("CACI: The stop-loss order was triggered → /v2/approvals", "stop_triggered")
+    route_ok = rt == "/v3/trading"
+    if not route_ok:
+        ok = False
+    print(f"  [{'PASS' if route_ok else 'FAIL'}] inline-route: stop mention -> {rl} {rt} (want Approvals /v3/trading)")
     print("✓ all action-classifier checks passed" if ok else "✗ action-classifier checks FAILED")
     return 0 if ok else 1
 
