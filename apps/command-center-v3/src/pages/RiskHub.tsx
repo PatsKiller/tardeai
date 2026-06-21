@@ -38,7 +38,7 @@ export default function RiskHub({ onDrill }: Props) {
     title: `${p.symbol} — stop ${p.triggered ? 'TRIGGERED' : p.has_stop ? '' : 'MISSING'}`.trim(),
     subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · current ${p.current_price ?? '—'}${p.distance_to_stop_pct != null ? ` · ${p.distance_to_stop_pct}% past` : ''}${p.account ? ` · ${p.account}` : ''}`,
     endpoint: '/api/v2/risk', rows: [p],
-    links: [{ label: `Review ${p.symbol} in Approvals`, href: `/v3/trading?tab=Broker%20Proposals&symbol=${p.symbol}&modal=approval`, note: 'existing operator-gated proposal/approval flow — advisory review, no broker write here' }],
+    links: [{ label: `Arm protective stop / ignore 1wk — ${p.symbol}`, href: `/v3/trading?tab=Open%20Trades&symbol=${p.symbol}`, note: 'opens the Stage 2c protective-stop card for this position: ARM a live protective stop (operator 2FA) or acknowledge with a 1-week grace period' }],
   })
 
   const noStop = positions.filter((p: any) => !p.has_stop)

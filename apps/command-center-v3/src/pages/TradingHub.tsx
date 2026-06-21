@@ -325,7 +325,7 @@ export default function TradingHub({ onDrill }: Props) {
       {tab === 'Open Trades' && (
         <>
           <TimeExitProposals />
-          <OpenTradesIntelligence onDrill={onDrill} />
+          <OpenTradesIntelligence onDrill={onDrill} focusSymbol={searchParams.get('symbol') || undefined} />
           <details style={{ marginTop: 14 }}>
             <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', cursor: 'pointer' }}>Protection Advisory (all proposals)</summary>
             <div style={{ marginTop: 10 }}><ProtectionPanel onDrill={onDrill} /></div>
