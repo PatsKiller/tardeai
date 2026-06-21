@@ -177,6 +177,19 @@ tagged digest via the existing `telegram_alert.send_telegram`. Pushes only
 dashboard link is rewritten to the public FQDN-with-port by `notification_url_builder`
 (`http://ms01-openclaw.tail163d14.ts.net:7777/...`).
 
+**Ensemble validation** (multi-LLM second opinion, free lanes — Grok + ChatGPT OAuth
++ local gemma via `inference_ensemble.ensemble_validate`): high/critical inferences on
+the Inferences tab get an **⚖ Ensemble validate** action. Because the dashboard server
+is single-threaded and the ensemble runs ~3 sequential LLM calls, it runs **off the
+request path**: the POST `/api/v2/inference/ensemble/request` only **enqueues** a job
+(`inference_ensemble_jobs`, ~25ms), a flock-guarded worker
+(`inference_ensemble_worker.py`, cron `*/3 9-16 * * 1-5`) drains the queue and persists
+the verdict (`inference_ensemble_results`), and the card polls GET
+`/api/v2/inference/ensemble?target_type=&target_id=` until `done`. The verdict shows the
+final approve/block + score(0-10) + confidence + consensus, with an expandable per-lane
+breakdown (grok/chatgpt/local each with score, decision, reasoning). Reusable component:
+`EnsembleValidationCard` / `EnsembleValidationInline`.
+
 **Cost / tuning levers** (all in `config/inference_layers.yaml`):
 `llm.use_external_lane` + `salience_threshold` (whole cycle on grok vs local),
 `autonomy.detection_lane` / `action_lane` (grok), `regional.income_funds` (one grok

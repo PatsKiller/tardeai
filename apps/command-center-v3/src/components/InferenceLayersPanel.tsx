@@ -1,4 +1,5 @@
 import { useApi } from '../hooks/useApi'
+import { EnsembleValidationInline } from './EnsembleValidationCard'
 
 // Inference Layers — higher-order reasoning surface.
 // Reads /api/v2/inference/* (latest run + regional signals + sizing). Read-only, advisory.
@@ -70,6 +71,14 @@ export default function InferenceLayersPanel() {
                 <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>
                   {r.inference_type} · {r.subject} · {r.layer} · lane {r.source_lane}
                 </div>
+                {r.id && (r.severity === 'high' || r.severity === 'critical') && (
+                  <EnsembleValidationInline
+                    targetType="inference"
+                    targetId={r.id}
+                    subject={r.subject}
+                    content={`${r.title}\n${r.body ?? ''}`}
+                  />
+                )}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: SEV_COLOR[r.severity] ?? 'var(--text2)', whiteSpace: 'nowrap' }}>
                 {pct(r.confidence)}

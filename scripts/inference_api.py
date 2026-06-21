@@ -56,13 +56,78 @@ def _int(query, key, default, cap=500):
         return default
 
 
+def _db_write(sql, params=None, fetch=None):
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return None
+        return _execute(sql, params, fetch=fetch)
+    except Exception as e:
+        log.warning("inference_api write failed: %s", e)
+        return None
+
+
 def handle_inference(path: str, method: str = "GET", body: dict = None, query: dict = None):
     """Return (status, dict) for /api/v2/inference/* or None if not ours."""
     if not path.startswith("/api/v2/inference"):
         return None
+
+    # ── POST: enqueue an ensemble validation job (fast — just a DB insert; the
+    #    worker runs the 3 LLM lanes off the request path so the server never blocks)
+    if method == "POST":
+        if path == "/api/v2/inference/ensemble/request":
+            b = body or {}
+            content = (b.get("content") or "").strip()
+            if not content:
+                return 400, {"ok": False, "error": "content required"}
+            target_type = b.get("target_type", "inference")
+            target_id = str(b.get("target_id") or "")
+            # de-dupe: reuse an open job for the same target instead of stacking
+            existing = _q("""SELECT id FROM inference_ensemble_jobs
+                             WHERE target_type=%s AND target_id=%s AND status IN ('queued','running')
+                             ORDER BY requested_at DESC LIMIT 1""",
+                          (target_type, target_id), fetch="one")
+            if existing:
+                return 200, {"ok": True, "job_id": existing["id"], "status": "queued",
+                             "deduped": True}
+            row = _db_write(
+                """INSERT INTO inference_ensemble_jobs
+                   (target_type, target_id, subject, content, task, requested_by, status)
+                   VALUES (%s,%s,%s,%s,%s,%s,'queued') RETURNING id""",
+                (target_type, target_id, (b.get("subject") or "")[:300], content[:8000],
+                 b.get("task", "inference_quality"), b.get("requested_by", "operator")),
+                fetch="one")
+            if not row:
+                return 500, {"ok": False, "error": "could not enqueue"}
+            return 200, {"ok": True, "job_id": row["id"], "status": "queued"}
+        return 405, {"ok": False, "error": "method not allowed"}
+
     if method != "GET":
         return 405, {"ok": False, "error": "method not allowed"}
     q = query or {}
+
+    # ── GET ensemble: latest result + pending-job status for a target ──────────
+    if path == "/api/v2/inference/ensemble":
+        tt = q.get("target_type", "inference")
+        tid = str(q.get("target_id") or "")
+        if not tid:
+            rows = _q("""SELECT * FROM inference_ensemble_results
+                         ORDER BY created_at DESC LIMIT %s""", (_int(q, "limit", 30),)) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+        result = _q("""SELECT * FROM inference_ensemble_results
+                       WHERE target_type=%s AND target_id=%s
+                       ORDER BY created_at DESC LIMIT 1""", (tt, tid), fetch="one")
+        job = _q("""SELECT id, status, error, requested_at, finished_at
+                    FROM inference_ensemble_jobs WHERE target_type=%s AND target_id=%s
+                    ORDER BY requested_at DESC LIMIT 1""", (tt, tid), fetch="one")
+        return 200, {"ok": True, "result": _clean(result), "job": _clean(job)}
+
+    if path == "/api/v2/inference/ensemble/jobs":
+        rows = _q("""SELECT id, target_type, target_id, subject, task, status, error,
+                            requested_at, finished_at
+                     FROM inference_ensemble_jobs ORDER BY requested_at DESC LIMIT %s""",
+                  (_int(q, "limit", 30),)) or []
+        return 200, {"ok": True, "data": _clean(rows)}
 
     try:
         if path == "/api/v2/inference/latest":
@@ -75,7 +140,7 @@ def handle_inference(path: str, method: str = "GET", body: dict = None, query: d
             if not run:
                 return 200, {"ok": True, "run": None, "results": []}
             results = _q(
-                """SELECT layer, inference_type, subject, title, body, confidence,
+                """SELECT id, layer, inference_type, subject, title, body, confidence,
                           severity, source_lane, created_at
                    FROM inference_results WHERE run_id=%s
                    ORDER BY (severity='critical') DESC, (severity='high') DESC,
