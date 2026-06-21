@@ -182,6 +182,61 @@ def rate_pending_content(conn, topic_id=None, limit=200):
 # ════════════════════════════════════════════════════════════
 # STEP 2: EXTRACT ENTITIES (tickers, topics, sectors, etc.)
 # ════════════════════════════════════════════════════════════
+def _free_lane_gen(prompt, timeout=40):
+    """LLM via the FREE OAuth lanes first (grok :8645 → chatgpt :8646), local gemma as fallback.
+    Replaces local-only `local_llm.generate` so research entity extraction uses the better free models."""
+    try:
+        import llm_lane
+        for lane in ("grok", "chatgpt", "local"):
+            try:
+                if not llm_lane.available(lane):
+                    continue
+                out = llm_lane.generate(prompt, lane=lane, timeout=timeout)
+                if out and out.strip():
+                    return out
+            except Exception:
+                continue
+    except Exception:
+        pass
+    try:
+        from local_llm import generate
+        return generate(prompt, timeout=timeout, fallback=False, fast=True) or ""
+    except Exception:
+        return ""
+
+
+_VALID_SYMS = None
+def _valid_symbols(pcur):
+    """Broad real-US-symbol universe (~5k) to validate LLM-extracted tickers — rejects 'CEO'/'AI'/'USA'
+    while still admitting genuinely new discoveries (not limited to already-profiled symbols). Cached."""
+    global _VALID_SYMS
+    if _VALID_SYMS is None:
+        pcur.execute("""SELECT symbol FROM watchlist_symbol_master WHERE symbol IS NOT NULL
+                        UNION SELECT symbol FROM ticker_snapshot_daily WHERE symbol IS NOT NULL
+                        UNION SELECT symbol FROM symbol_profiles WHERE symbol IS NOT NULL""")
+        _VALID_SYMS = {r[0] for r in pcur.fetchall() if r[0]}
+    return _VALID_SYMS
+
+
+def _promote_discovery_ticker(pcur, symbol, title, topic):
+    """Promote a symbol-validated, research-discovered ticker into the watch universe as a PENDING
+    discovery candidate: status='researched' (NEVER active → never auto-trades), tier='candidate',
+    origin='topic_research', full provenance. Idempotent; never disturbs an existing watch entry."""
+    pcur.execute("SELECT 1 FROM watchlist_items WHERE symbol=%s AND status<>'removed' LIMIT 1", (symbol,))
+    if pcur.fetchone():
+        return False  # already watched/held/known — don't duplicate or override
+    detail = json.dumps({"thesis": "research-discovered ticker (pending manual review)",
+                         "topic": (topic or "")[:80], "title": (title or "")[:140]})
+    pcur.execute("""INSERT INTO watchlist_items
+        (symbol, source, status, bucket, origin_system, origin_detail, source_tier,
+         in_directive_watch, provenance_reason, seen_count, first_seen_at, last_seen_at)
+        VALUES (%s,'topic_research','researched','research_discovery','topic_research',%s::jsonb,'candidate',
+                false,%s,1,now(),now())
+        ON CONFLICT DO NOTHING""",
+        (symbol, detail, f"Discovered in topic research: {(title or '')[:140]}"))
+    return pcur.rowcount > 0
+
+
 def extract_and_link_entities(conn, topic_id=None, limit=100):
     """
     LLM extracts tickers, sectors, topics, orgs from content.
@@ -190,13 +245,10 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
     - Articles about SSDI → entity_type='topic', entity_value='ssdi'
     - Articles about semiconductors → entity_type='sector', entity_value='semiconductors'
     """
-    try:
-        from local_llm import generate
-    except ImportError:
-        print("  [curator] No LLM, skipping entity extraction")
-        return 0
-
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
+    pcur = conn.cursor()           # plain cursor for symbol validation + discovery promotion
+    valid_syms = _valid_symbols(pcur)
+    promoted = []                  # research-discovered tickers newly promoted to the watch universe
 
     # Get articles without entity links yet (all sources, not just topic-ingested)
     sql = """
@@ -234,7 +286,7 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
             f'Reply JSON array: [{{"id": 1, "tickers": ["NVDA"], "topics": ["ai_infrastructure"], "sectors": ["technology"]}}]'
             f'\nIf no tickers, use topics/sectors. Every item must link to something.'
         )
-        raw = generate(prompt, timeout=30, fallback=False, fast=True)
+        raw = _free_lane_gen(prompt, timeout=40)
         if raw:
             try:
                 match = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -246,13 +298,22 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
                             article_id = batch[idx]['id']
                             for ticker in r.get("tickers", []):
                                 ticker = ticker.upper().strip()
-                                if ticker and len(ticker) <= 6:
-                                    cur.execute("""
-                                        INSERT INTO content_entity_links (content_type, content_id, entity_type, entity_value, extracted_by)
-                                        VALUES ('news_article', %s, 'ticker', %s, 'llm_curator')
-                                        ON CONFLICT DO NOTHING
-                                    """, (article_id, ticker))
-                                    total_links += 1
+                                # VALIDATE against the real-symbol universe — drop non-symbols
+                                # ("CEO"/"AI"/"USA") the LLM hallucinates as tickers.
+                                if not (ticker and len(ticker) <= 6 and ticker in valid_syms):
+                                    continue
+                                cur.execute("""
+                                    INSERT INTO content_entity_links (content_type, content_id, entity_type, entity_value, extracted_by)
+                                    VALUES ('news_article', %s, 'ticker', %s, 'llm_curator')
+                                    ON CONFLICT DO NOTHING
+                                """, (article_id, ticker))
+                                total_links += 1
+                                # PROMOTE to discovery as a PENDING candidate (manual-review, never auto-trade)
+                                try:
+                                    if _promote_discovery_ticker(pcur, ticker, batch[idx]['title'], batch[idx]['strategy_type']):
+                                        promoted.append(ticker)
+                                except Exception as _pe:
+                                    print(f"  [curator] promote {ticker} skipped: {str(_pe)[:50]}")
                             for topic in r.get("topics", []):
                                 topic = topic.lower().strip().replace(" ", "_")
                                 if topic:
@@ -275,6 +336,10 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
                 print(f"  [curator] Entity parse error: {e}")
         conn.commit()
 
+    conn.commit()
+    if promoted:
+        print(f"  [curator] Promoted {len(promoted)} research-discovered tickers to watch (PENDING review, "
+              f"never auto-trade): {', '.join(sorted(set(promoted))[:15])}")
     print(f"  [curator] Created {total_links} entity links")
     return total_links
 
