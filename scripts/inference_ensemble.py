@@ -51,13 +51,41 @@ def _load_cfg() -> dict:
     return cfg
 
 
+_FIN_RX = re.compile(
+    r"\b(nav|premium|discount|cef|closed.?end|distribution|yield|income|covered call|roth|ira|mapt|"
+    r"medicare|irmaa|ssdi|annuit|dividend|return of capital|\broc\b|coverage|sustainab|retire|sequence)\b",
+    re.I)
+
+
+def _finance_rubric(blob: str) -> str:
+    """Finance-specific scoring rubric, injected only when the item is finance-substantive so generic
+    content keeps a light prompt. Tightens the ensemble on the things a retail/retirement reviewer must
+    get right (NAV premium/discount direction, income durability, sizing, tax caveats)."""
+    if not _FIN_RX.search(blob):
+        return ""
+    return (
+        "\nFINANCE RUBRIC (apply strictly — score LOWER and lean 'block' if the content gets any wrong):\n"
+        "• CEF/ETF vs NAV: a DISCOUNT to NAV is potential value but check for a value trap (distribution "
+        "cut / chronic discount); a PREMIUM warrants caution. The premium/discount DIRECTION must be "
+        "interpreted correctly — penalize hard if it's backwards.\n"
+        "• Income durability: is the distribution covered by earnings, or return-of-capital / NAV erosion? "
+        "High yield funded by NAV erosion is NOT sustainable income.\n"
+        "• Retirement context (investor on SSDI, NY, Golden-Window Roth): weight income durability + capital "
+        "preservation over total-return chasing; flag sequence-of-returns risk.\n"
+        "• Sizing/risk: reject FOMO/chase framing and any implied oversizing beyond a sane risk budget.\n"
+        "• Tax/Medicare/estate (Roth/MAPT/IRMAA): require a 'confirm with a professional' caveat; do not "
+        "approve specific figures stated with false precision.\n"
+    )
+
+
 def _prompt(content: str, context: str, task: str) -> str:
     return (
         "You are one model in a multi-LLM ensemble validating research/inference for a retail investor "
         "(retirement/SSDI/Medicare + markets). Be a strict, finance-aware reviewer.\n"
         f"TASK: {task}\n"
         f"CONTEXT: {context or 'general research / safety relevance'}\n"
-        f"CONTENT:\n{content[:4500]}\n\n"
+        f"CONTENT:\n{content[:4500]}\n"
+        f"{_finance_rubric(f'{content} {context} {task}')}\n"
         "Reply ONLY with JSON, no prose:\n"
         '{"score": 0.0-10.0, "decision": "approve" | "block", "confidence": 0.0-1.0, '
         '"reasoning": "<=25 words"}'
