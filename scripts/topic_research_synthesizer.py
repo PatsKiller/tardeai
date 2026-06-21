@@ -102,11 +102,25 @@ def run(apply=False, max_rows=20, reground=False):
         ctx = ""
         tmid = ev.get("topic_monitor_id")
         disp = ""
+        sq = []
         if tmid:
-            cur.execute("SELECT personal_context, display_name FROM topic_monitor WHERE topic_id=%s", (tmid,))
+            cur.execute("SELECT personal_context, display_name, search_queries FROM topic_monitor WHERE topic_id=%s", (tmid,))
             r2 = cur.fetchone()
             if r2:
                 ctx = (r2[0] or ""); disp = (r2[1] or "")
+                sq = r2[2] if isinstance(r2[2], list) else (json.loads(r2[2]) if r2[2] else [])
+        # Distinctive topic tokens — from the topic's OWN (good) search queries + display name,
+        # minus generic words. Used below to ground only on ON-topic articles, so generic matches
+        # ("2026") and mis-tagged off-topic news (AI/semiconductor) can't pollute retirement research.
+        _STOP = {"and", "for", "the", "with", "from", "into", "strategies", "strategy", "ideas",
+                 "investment", "investor", "management", "monitoring", "plan", "planning", "tax",
+                 "taxes", "income", "market", "markets", "stock", "stocks", "sector", "rules",
+                 "best", "top", "2024", "2025", "2026", "2027", "2028"}
+        _toks = set()
+        for _q in list(sq) + [disp, topic or ""]:
+            for _w in re.sub(r"[^a-z0-9 ]", " ", str(_q).lower()).split():
+                if len(_w) > 3 and not _w.isdigit() and _w not in _STOP:
+                    _toks.add(_w)
         # GROUND on what the crawler actually found: topic-sourced articles are tagged symbol=topic_id;
         # fall back to a keyword match on the topic text so even un-ingested topics pick up related news.
         # GRADE FILTER: never ground on garbage. The curator marks new-site articles
@@ -122,10 +136,8 @@ def run(apply=False, max_rows=20, reground=False):
             articles = [{"title": a[0], "summary": a[1], "source": a[2], "source_url": a[3]}
                         for a in cur.fetchall()]
         if not articles:
-            _STOP = {"and", "for", "the", "with", "from", "into", "strategies", "strategy",
-                     "ideas", "investment", "investor", "management", "monitoring"}
             kw = re.sub(r"[^a-z0-9 ]", " ", (disp or topic or "").lower()).split()
-            kw = [w for w in kw if len(w) > 3 and w not in _STOP][:4]
+            kw = [w for w in kw if len(w) > 3 and not w.isdigit() and w not in _STOP][:4]
             if kw:
                 # OR-match distinctive keywords (e.g. roth/medicaid/ssdi) so existing planning news is found
                 ors = " OR ".join(["title ILIKE %s"] * len(kw))
@@ -134,6 +146,21 @@ def run(apply=False, max_rows=20, reground=False):
                                ORDER BY {GRADE_ORD} published_at DESC LIMIT 6""", tuple(f"%{w}%" for w in kw))
                 articles = [{"title": a[0], "summary": a[1], "source": a[2], "source_url": a[3]}
                             for a in cur.fetchall()]
+        # Relevance gate: ground ONLY on articles matching >=2 distinctive topic tokens (>=1 when the
+        # topic has a single distinctive token). Two-token requirement drops both off-topic items
+        # (AI/semiconductor news matched by a generic term like "2026") AND keyword homonyms (e.g.
+        # "ROTH" Capital conference, debt "conversion") that a single-keyword match would let through.
+        # Grounding on nothing (honest "thin sources") beats grounding on off-topic noise.
+        if _toks and articles:
+            _need = 2 if len(_toks) >= 2 else 1
+            def _mc(a):
+                blob = f"{a.get('title') or ''} {a.get('summary') or ''}".lower()
+                return sum(1 for t in _toks if t in blob)
+            _kept = [a for a in articles if _mc(a) >= _need]
+            if len(_kept) != len(articles):
+                log.info("topic %s: relevance gate kept %d/%d articles (need>=%d tokens)",
+                         (topic or "")[:40], len(_kept), len(articles), _need)
+            articles = _kept
         res = _synthesize(topic, ctx, articles)
         if not res:
             skipped += 1
