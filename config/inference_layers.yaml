@@ -79,10 +79,20 @@ inference_layers:
 
   proactive:
     # "Mind of its own": the engine fires its own Hermes queries when it detects
-    # gaps or high-salience regional/journal signals.
+    # gaps or high-salience regional/journal signals. The budget below is SHARED
+    # across the regional layer and the autonomy pass (a single per-cycle ceiling).
     gap_query_enabled: true
     max_queries_per_run: 3
     salience_threshold: 0.65
+
+  autonomy:
+    # Generalized gap-detection → prioritize → act pass (inference_autonomy.py).
+    # One structured LLM call surfaces gaps/opportunities the prior layers did not
+    # cover (regional, journal, valuation, modeling, research, risk); the engine
+    # then acts on the top items within the SHARED proactive budget above.
+    enabled: true
+    max_actions_per_run: 3
+    min_priority: 6              # 1-10; only act on items at/above this priority
 
   telegram:
     enabled: true
@@ -102,3 +112,6 @@ inference_layers:
     consensus_threshold: 0.66        # fraction of approve votes that grants consensus
     min_score: 6.0                   # avg score (0-10) that also grants consensus
     timeout: 60
+    # Curator EOD --ensemble rescue cap: max borderline low_quality items re-rated per run
+    # (each costs ~3 sequential lane calls, so this bounds the daily run time).
+    rescue_max: 20

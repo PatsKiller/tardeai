@@ -537,10 +537,21 @@ def update_agent_context(conn, topic_id=None):
 # ════════════════════════════════════════════════════════════
 # OPT-IN: free-lane multi-LLM ensemble rescue
 # ════════════════════════════════════════════════════════════
-def ensemble_rescue(conn, topic_id=None, limit=40):
+def ensemble_rescue(conn, topic_id=None, limit=None):
     """Second opinion on borderline rejects: re-rate recently low_quality topic articles with the FREE-lane
     multi-LLM ensemble (grok+chatgpt+local); upgrade consensus-approved ones to 'approved'. Catches single-
-    lane false rejects without re-rating everything (only the borderline items pay the 3-lane cost). No keys."""
+    lane false rejects without re-rating everything (only the borderline items pay the 3-lane cost). No keys.
+    Cap is config-driven (inference_layers.yaml → ensemble.rescue_max, default 20) so the daily EOD cron stays
+    bounded — each item costs ~3 sequential lane calls."""
+    if limit is None:
+        limit = 20
+        try:
+            import yaml
+            from pathlib import Path as _P
+            y = yaml.safe_load((_P(__file__).resolve().parent.parent / "config" / "inference_layers.yaml").read_text()) or {}
+            limit = int(((y.get("inference_layers") or {}).get("ensemble") or {}).get("rescue_max", 20))
+        except Exception:
+            pass
     try:
         from inference_ensemble import ensemble_validate
     except Exception as e:
