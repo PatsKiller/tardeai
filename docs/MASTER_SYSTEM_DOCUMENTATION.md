@@ -908,6 +908,15 @@ website registry**. Full detail: **`HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS
 - **Surface:** RetirementHub → Planning Research tab (6 themes, vetted source chips, provenance count) via
   `GET /api/v2/retirement/planning-research`.
 
+### 2026-06-21 — Layer-4 inference/synthesis engine activated
+
+The research pipeline now feeds a cross-source **inference engine** (`scripts/inference_*.py`, full detail in
+**`INFERENCE_LAYERS_LAYER4.md`**). A flock-guarded cycle (weekday 08:00/13:00/16:30) fuses news + market
+regime + cross-market regional signals (Asia/Europe/EM → US) + portfolio + CEF/ETF NAV premium/discount into
+auditable `inference_results` (with reasoning traces), advisory-only, free LLM lanes only. News is region-
+tagged first (`region_tag_news.py`, cheap keyword pass — backfilled 3,964 articles, 255 Asia). Surfaced at
+`GET /api/v2/inference/*`. Was built standalone but uncommitted/dormant; now committed, scheduled, and wired.
+
 ### DB Tables
 
 | Table | Purpose |

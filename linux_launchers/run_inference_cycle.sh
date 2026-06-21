@@ -15,5 +15,8 @@ TRIGGER="${1:-cron}"
 LOCK="/tmp/tradeai_inference_cycle.lock"
 
 cd "$PROJ"
+# Tag recently-ingested news with cross-market regions first (cheap keyword pass, no LLM) so the
+# RegionalLayer reasons over real Asia/Europe/EM-tagged data instead of 0 region-tagged news.
+"$PY" scripts/region_tag_news.py --hours 96 >> logs/inference_cron.log 2>&1 || true
 exec /usr/bin/flock -n "$LOCK" \
     timeout 25m "$PY" scripts/inference_layer_engine.py --run --trigger "$TRIGGER"
