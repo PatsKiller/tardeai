@@ -16560,8 +16560,19 @@ def _finviz_strip_map(query=None):
     except Exception as e:
         return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}", "map": {}}
     cache = _FINVIZ_ENRICH_CACHE["data"]
+    # union of the surfaces that render Finviz strips: watchlist + open broker proposals + held positions
     syms = {r["symbol"] for r in (_db_query(
         "SELECT DISTINCT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'") or [])}
+    syms |= {r["symbol"] for r in (_db_query(
+        "SELECT DISTINCT symbol FROM paper_trade_proposals WHERE status IN ('PENDING','APPROVED') AND symbol ~ '^[A-Z]{1,5}$'") or [])}
+    try:
+        hj = _load_json(STATE_DIR / "holdings.json") or {}
+        for h in hj.get("holdings", []):
+            s = str(h.get("symbol", "")).upper()
+            if s and not h.get("is_cash") and re.fullmatch(r"[A-Z]{1,5}", s):
+                syms.add(s)
+    except Exception:
+        pass
     out = {}
     for s in syms:
         d = cache.get(s)

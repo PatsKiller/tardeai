@@ -13,6 +13,8 @@ const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, paddi
 export default function BrokerProposals() {
   const { data, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold history per symbol
+  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const outMap: Record<string, any> = outcomesData?.outcomes ?? {}
   const accounts: any[] = data?.accounts ?? []
   const strategies: string[] = data?.strategies ?? []
@@ -112,6 +114,11 @@ export default function BrokerProposals() {
           return <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 9, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.18)' }}>
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>{p.symbol}</span>
+            {(() => { const fv = fvMap[String(p.symbol).toUpperCase()]; if (!fv) return null
+              const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
+              const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
+              const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 9, color: MUTED }}>{l}<b style={{ color: col, fontFamily: 'monospace', marginLeft: 2 }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
+              return <span title="Finviz daily metrics" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>{c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</span> })()}
             {(() => { const o = outMap[String(p.symbol).toUpperCase()]; return o?.origin
               ? <span title="auto-detected discovery origin — where this symbol was first surfaced in the lineage" style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(96,165,250,.14)', color: BLUE }}>via {o.origin}</span>
               : null })()}
