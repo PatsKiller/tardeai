@@ -99,6 +99,14 @@ export default function WatchlistHub({ onDrill }: Props) {
   const outMap: Record<string, any> = outcomesData?.outcomes ?? {}   // symbol → purchased→sold outcome
   const directives: any[] = wd?.directives ?? []
   const sectorTrendDirs = directives.filter(d => d.kind === 'sector' || d.kind === 'trend')
+  // Actionable vs dormant — a directive earns a chip only if it's doing something: a named ticker, or a
+  // sector/trend that has actually surfaced or staged a symbol. The ~100 archived/0-hit trend research-
+  // topics (Roth/Medicare/MAPT planning themes that can never produce a tradeable ticker) are dormant noise
+  // — folded behind a collapsed toggle so the section shows what's live, not a wall of zeros.
+  const dirActivity = (d: any) => (d.hit_count ?? (d.hit_symbols?.length ?? 0)) + (d.staged_count ?? 0)
+  const isActionableDir = (d: any) => d.status !== 'archived' && (d.kind === 'ticker' || dirActivity(d) > 0)
+  const actionableDirs = directives.filter(isActionableDir).sort((a, b) => dirActivity(b) - dirActivity(a))
+  const dormantDirs = directives.filter(d => !isActionableDir(d))
 
   const [fOrigin, setFOrigin] = useState('all')
   const [fBand, setFBand] = useState('all')
@@ -114,6 +122,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
+  const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const PER_PAGE = 24
   useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fSector, fAnalyst, search])   // reset to page 1 on any filter change
@@ -230,9 +239,28 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       {directives.length > 0 && (
         <div style={{ ...panel, marginBottom: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 900, color: TEXT0, marginBottom: 8 }}>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{directives.map(d => { const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0; return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color="#22d3ee" tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hit{nHits === 1 ? '' : 's'} · {nStaged} staged</div></div> })}</div>
-          {sectorTrendDirs.length === 0 && <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>No sector/trend directives yet — use “+ Add Watch”.</div>}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: TEXT0 }}>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></div>
+            <span style={{ fontSize: 10, color: MUTED }}>{actionableDirs.length} active · sorted by hits + staged</span>
+          </div>
+          {(() => {
+            const renderDir = (d: any) => {
+              const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0
+              return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color="#22d3ee" tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hit{nHits === 1 ? '' : 's'} · {nStaged} staged</div></div>
+            }
+            return <>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{actionableDirs.map(renderDir)}</div>
+              {actionableDirs.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No active directives with hits yet — named tickers and surfacing sector/trend themes will appear here.</div>}
+              {dormantDirs.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <button onClick={() => setShowDormantDirs(v => !v)} style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED }}>
+                    {showDormantDirs ? '▲ Hide' : '▾ Show'} {dormantDirs.length} dormant directive{dormantDirs.length === 1 ? '' : 's'} <span style={{ color: DIM }}>· 0 hits / archived research-topics</span>
+                  </button>
+                  {showDormantDirs && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, opacity: 0.7 }}>{dormantDirs.map(renderDir)}</div>}
+                </div>
+              )}
+            </>
+          })()}
         </div>
       )}
 
