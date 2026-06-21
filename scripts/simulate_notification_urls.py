@@ -14,11 +14,14 @@ CASES = [
     ("Dashboard: 192.168.50.16:7777/v2/morning-brief", "rewrite"),
     ("View: http://100.66.120.124:7777/v2/journal", "rewrite"),
     ("https://ms01-openclaw.tail163d14.ts.net/v2/overview", "already_fqdn"),
+    ("Port-less FQDN footer: https://ms01-openclaw.tail163d14.ts.net/v3/intelligence", "already_fqdn"),
+    ("DOF auction: https://ms01-openclaw.tail163d14.ts.net:8443/ keep its own port", "keep_8443"),
     ("Internal health check to localhost:7777 — this is code, not user message", "internal"),
 ]
 
 BANNED = ["192.168.50.16", "localhost:7777", "127.0.0.1:7777", "100.66.120.124"]
 FQDN = "ms01-openclaw.tail163d14.ts.net"
+PORT = ":7777"
 
 
 def main():
@@ -38,10 +41,15 @@ def main():
         has_banned = any(b in rewritten for b in BANNED)
         has_fqdn = FQDN in rewritten
 
+        has_port = f"{FQDN}{PORT}" in rewritten
+        no_double_port = f"{PORT}:" not in rewritten and f"{PORT}{PORT}" not in rewritten
+
         if expected == "rewrite":
-            ok = has_fqdn and not has_banned
+            ok = has_fqdn and not has_banned and has_port and no_double_port
         elif expected == "already_fqdn":
-            ok = has_fqdn
+            ok = has_fqdn and has_port and no_double_port      # port-less FQDN must gain :7777
+        elif expected == "keep_8443":
+            ok = ":8443" in rewritten and no_double_port and f"{FQDN}:7777:8443" not in rewritten
         else:
             ok = True  # internal — no requirement
 
