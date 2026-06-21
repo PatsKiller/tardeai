@@ -117,6 +117,93 @@ def _action_links(text: str) -> list[dict]:
 # Maps a report's text → operator action items, each routed to a REAL v3 page. Rules are ordered by
 # priority (most urgent first); a report can emit several distinct classes.
 import re as _re
+import time as _time
+
+# ── Synthesis enrichment (sector / trend / finance_score / retirement_relevance / ensemble) ─────────
+# Honest, cheap, bounded: three small maps loaded ONCE per ~2-min window and attached to the ≤100 items
+# a page actually returns (in _enrich_item). Every field traces to a real source — null when absent, never
+# fabricated. sector←symbol_profiles, trend←watchlist_items, ensemble←inference_ensemble_results.
+_SYN_CACHE: dict = {"t": 0.0, "sector": {}, "trend": {}, "ensemble": {}}
+_SYN_TTL = 120.0
+
+# finance-substance keywords (shared spirit with inference_ensemble._FIN_RX) → a 0-100 score by hit breadth
+_FIN_TERMS = _re.compile(
+    r"\b(nav|premium|discount|cef|closed.?end|distribution|yield|income|covered call|dividend|"
+    r"return of capital|\broc\b|coverage|earnings|valuation|drawdown|carry|beta|rebalance|allocation|"
+    r"concentration|hedge|tilt|position siz|sizing|trim|protection|stop[- ]?loss|exposure|risk|"
+    r"premarket|catalyst|breakout|support|resistance|rsi|volume|gap|rotation|sector|macro|fed|cpi|"
+    r"earnings|guidance|downgrade|upgrade|target)\b", _re.I)
+# retirement-context keywords → high / medium relevance (John is on SSDI, Golden-Window Roth strategy)
+_RETIRE_HI = _re.compile(r"\b(roth|ira|ssdi|medicare|irmaa|mapt|golden.?window|rmd|annuit|sequence of returns)\b", _re.I)
+_RETIRE_MD = _re.compile(r"\b(retire|retirement|income|distribution|drawdown|preservation|tax|estate|nav)\b", _re.I)
+
+
+def _load_synthesis_maps() -> dict:
+    """Refresh the sector/trend/ensemble lookup maps if the cache is stale. One small query each."""
+    now = _time.time()
+    if now - _SYN_CACHE["t"] < _SYN_TTL and _SYN_CACHE["sector"]:
+        return _SYN_CACHE
+    sector, trend, ensemble = {}, {}, {}
+    try:
+        cur = _conn().cursor()
+        try:
+            cur.execute("SELECT UPPER(symbol), sector FROM symbol_profiles WHERE sector IS NOT NULL AND sector <> ''")
+            sector = {s: v for s, v in cur.fetchall()}
+        except Exception:
+            _conn().rollback()
+        try:
+            cur.execute("SELECT UPPER(symbol), trend FROM watchlist_items WHERE trend IS NOT NULL AND trend <> ''")
+            trend = {s: v for s, v in cur.fetchall()}
+        except Exception:
+            _conn().rollback()
+        try:
+            # latest ensemble verdict per symbol-like subject (skip portfolio/region/theme subjects)
+            cur.execute(
+                "SELECT DISTINCT ON (UPPER(subject)) UPPER(subject), final_decision, final_score, "
+                "consensus_reached, lanes_used FROM inference_ensemble_results "
+                "WHERE subject ~ '^[A-Za-z]{1,5}$' ORDER BY UPPER(subject), created_at DESC")
+            for sub, dec, score, cons, lanes in cur.fetchall():
+                ensemble[sub] = {"decision": dec, "score": round(float(score), 1) if score is not None else None,
+                                 "consensus": bool(cons), "lanes": list(lanes or [])}
+        except Exception:
+            _conn().rollback()
+    except Exception:
+        pass
+    _SYN_CACHE.update({"t": now, "sector": sector, "trend": trend, "ensemble": ensemble})
+    return _SYN_CACHE
+
+
+def _finance_score(blob: str) -> int:
+    """0-100 finance-substance score from distinct keyword breadth (deterministic, no LLM)."""
+    if not blob:
+        return 0
+    hits = {m.group(0).lower() for m in _FIN_TERMS.finditer(blob)}
+    return min(100, len(hits) * 14)   # ~7 distinct finance terms → saturates
+
+
+def _retirement_relevance(blob: str) -> str | None:
+    if not blob:
+        return None
+    if _RETIRE_HI.search(blob):
+        return "high"
+    if _RETIRE_MD.search(blob):
+        return "medium"
+    return None
+
+
+def _attach_synthesis(it: dict) -> None:
+    """Attach sector / trend / finance_score / retirement_relevance / ensemble to one item (honest, null-safe)."""
+    maps = _load_synthesis_maps()
+    syms = it.get("symbols") or ([it["symbol"]] if it.get("symbol") else [])
+    sym = (syms[0] if syms else "") or ""
+    sym = sym.upper()
+    blob = f"{it.get('title') or ''} {it.get('summary') or ''}"
+    it["sector"] = maps["sector"].get(sym)
+    it["trend"] = maps["trend"].get(sym)
+    it["finance_score"] = _finance_score(blob)
+    it["retirement_relevance"] = _retirement_relevance(blob)
+    it["ensemble"] = maps["ensemble"].get(sym)   # only when a real verdict exists for this symbol
+
 
 _ACT_TICKER = _re.compile(r"\b([A-Z]{2,5})\b")
 _ACT_STOP = {"A", "I", "AM", "PM", "ET", "EST", "EDT", "US", "USD", "CEO", "CFO", "ETF", "IRA", "LLM",
@@ -235,6 +322,7 @@ def _enrich_item(it: dict) -> dict:
     it["symbols"] = syms or ([it["symbol"]] if it.get("symbol") else [])
     it["has_actions"] = bool(acts)
     it["route_count"] = len(routes)
+    _attach_synthesis(it)   # sector/trend/finance_score/retirement_relevance/ensemble (cheap, per-page)
     return it
 
 

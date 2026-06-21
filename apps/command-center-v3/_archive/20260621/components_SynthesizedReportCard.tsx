@@ -17,8 +17,6 @@ export interface ReportCardItem {
   trend?: string
   created_at?: string
   quality_score?: number           // 0..100 or 0..1
-  finance_score?: number           // 0..100 finance-substance (reports_portal)
-  retirement_relevance?: string    // high | medium | null
   ensemble?: { score?: number; decision?: string; consensus?: boolean; lanes?: string[] } | null
   actions?: { label: string; url?: string }[]
   action_classes?: string[]
@@ -51,7 +49,6 @@ function relUrl(u?: string): string | undefined {
   try { const p = new URL(u); return p.pathname + p.search + p.hash } catch { return u }
 }
 const chip: React.CSSProperties = { fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'var(--bg2)', color: 'var(--text2)' }
-const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
 
 export default function SynthesizedReportCard(
   { item, onAction, compact, selected }:
@@ -61,7 +58,6 @@ export default function SynthesizedReportCard(
   const insight = insightOf(item)
   const syms = (item.symbols && item.symbols.length ? item.symbols : item.symbol ? [item.symbol] : []).slice(0, 4)
   const q = item.quality_score == null ? null : item.quality_score > 1 ? Math.round(item.quality_score) : Math.round(item.quality_score * 100)
-  const fin = item.finance_score == null ? null : Math.round(item.finance_score)
   const en = item.ensemble
   return (
     <div style={{
@@ -79,12 +75,10 @@ export default function SynthesizedReportCard(
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginTop: 5 }}>{item.title}</div>
           {insight && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: compact ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{insight}</div>}
           {/* chips: only the ones that exist, and never in compact (narrow list) — keeps the list scannable */}
-          {!compact && (item.sector || item.trend || q != null || fin != null || item.retirement_relevance || (en && en.decision)) && (
+          {!compact && (item.sector || item.trend || q != null || (en && en.decision)) && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7, alignItems: 'center' }}>
               {item.sector && <span style={chip}>{item.sector}</span>}
-              {item.trend && <span style={{ ...chip, color: TREND_C(item.trend) }}>{item.trend}</span>}
-              {fin != null && fin >= 28 && <span style={{ ...chip, color: fin >= 70 ? '#22c55e' : '#60a5fa' }}>finance {fin}</span>}
-              {item.retirement_relevance && <span style={{ ...chip, color: item.retirement_relevance === 'high' ? '#f59e0b' : 'var(--text2)' }}>retire {item.retirement_relevance}</span>}
+              {item.trend && <span style={{ ...chip, color: '#a855f7' }}>{item.trend}</span>}
               {q != null && <span style={{ ...chip, color: q >= 72 ? '#22c55e' : q >= 50 ? '#f59e0b' : '#ef4444' }}>quality {q}%</span>}
               {en && en.decision && <span style={{ ...chip, color: en.decision === 'approve' ? '#22c55e' : '#ef4444' }}>ensemble {en.decision}{en.score != null ? ` ${en.score}` : ''}{en.lanes?.length ? ` · ${en.lanes.length} lanes` : ''}</span>}
             </div>
