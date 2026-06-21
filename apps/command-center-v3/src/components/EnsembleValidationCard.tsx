@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 // Multi-LLM ensemble validation UI (Grok + ChatGPT OAuth + local gemma).
 // Mirrors the real backend shape from scripts/inference_ensemble.ensemble_validate:
@@ -90,23 +90,45 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   subject?: string
   content: string
 }) {
-  const [state, setState] = useState<'idle' | 'queued' | 'done' | 'error'>('idle')
+  const [state, setState] = useState<'loading' | 'idle' | 'queued' | 'done' | 'error'>('loading')
   const [result, setResult] = useState<EnsembleResult | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
 
+  // Read the latest persisted verdict / pending-job status for this target.
+  const fetchOnce = useCallback(async (): Promise<'done' | 'pending' | 'none' | 'error'> => {
+    try {
+      const r = await fetch(`/api/v2/inference/ensemble?target_type=${targetType}&target_id=${targetId}`)
+      const j = await r.json()
+      if (j.result) { setResult(j.result); return 'done' }
+      if (j.job?.status === 'queued' || j.job?.status === 'running') return 'pending'
+      return 'none'
+    } catch { return 'error' }
+  }, [targetType, targetId])
+
   const poll = useCallback(() => {
+    setState('queued')
     let tries = 0
     pollRef.current = setInterval(async () => {
       tries++
-      try {
-        const r = await fetch(`/api/v2/inference/ensemble?target_type=${targetType}&target_id=${targetId}`)
-        const j = await r.json()
-        if (j.result) { setResult(j.result); setState('done'); clearInterval(pollRef.current) }
-        else if (j.job?.status === 'error') { setState('error'); clearInterval(pollRef.current) }
-      } catch { /* keep polling */ }
-      if (tries > 30) { setState('error'); clearInterval(pollRef.current) }  // ~2min cap
+      const s = await fetchOnce()
+      if (s === 'done') { setState('done'); clearInterval(pollRef.current) }
+      else if (tries > 30) { setState('idle'); clearInterval(pollRef.current) }  // ~2min cap → allow retry
     }, 4000)
-  }, [targetType, targetId])
+  }, [fetchOnce])
+
+  // On mount: auto-display an existing verdict, resume polling a pending job, or
+  // fall back to the manual validate button. This is what makes auto-enqueued
+  // verdicts render on the card without an operator click.
+  useEffect(() => {
+    let cancelled = false
+    fetchOnce().then(s => {
+      if (cancelled) return
+      if (s === 'done') setState('done')
+      else if (s === 'pending') poll()
+      else setState('idle')
+    })
+    return () => { cancelled = true; clearInterval(pollRef.current) }
+  }, [fetchOnce, poll])
 
   const request = useCallback(async () => {
     setState('queued'); setResult(null)
@@ -119,6 +141,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     } catch { setState('error') }
   }, [targetType, targetId, subject, content, poll])
 
+  if (state === 'loading') return <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>checking ensemble…</div>
   if (state === 'done' && result) return <EnsembleValidationCard result={result} onRevalidate={request} />
   return (
     <button onClick={request} disabled={state === 'queued'} style={{
