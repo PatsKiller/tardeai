@@ -535,6 +535,42 @@ def update_agent_context(conn, topic_id=None):
 
 
 # ════════════════════════════════════════════════════════════
+# OPT-IN: free-lane multi-LLM ensemble rescue
+# ════════════════════════════════════════════════════════════
+def ensemble_rescue(conn, topic_id=None, limit=40):
+    """Second opinion on borderline rejects: re-rate recently low_quality topic articles with the FREE-lane
+    multi-LLM ensemble (grok+chatgpt+local); upgrade consensus-approved ones to 'approved'. Catches single-
+    lane false rejects without re-rating everything (only the borderline items pay the 3-lane cost). No keys."""
+    try:
+        from inference_ensemble import ensemble_validate
+    except Exception as e:
+        print(f"  [curator] ensemble unavailable: {e}"); return 0
+    cur = conn.cursor()
+    sql = ("SELECT id, title, summary, strategy_type FROM news_articles "
+           "WHERE rag_status='low_quality' AND source LIKE 'topic_%%'")
+    params = []
+    if topic_id:
+        sql += " AND strategy_type=%s"; params.append(topic_id)
+    sql += " ORDER BY created_at DESC LIMIT %s"; params.append(limit)
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    upgraded = 0
+    for rid, title, summary, strat in rows:
+        res = ensemble_validate(f"{title}\n{summary or ''}",
+                                context=f"topic {strat}; research/retirement/markets relevance",
+                                task="content_quality_and_relevance_for_research")
+        if (res.get("final_decision") == "approve" and res.get("consensus_reached")
+                and res.get("final_score", 0) >= 6.5):
+            cur.execute("UPDATE news_articles SET rag_status='approved', rag_reason=%s WHERE id=%s",
+                        (f"ensemble rescue ({','.join(res.get('lanes_used', []))}): "
+                         f"{res.get('reasoning_summary', '')}"[:200], rid))
+            upgraded += 1
+    conn.commit()
+    print(f"  [curator] ensemble rescue: {upgraded}/{len(rows)} low_quality → approved (free-lane consensus)")
+    return upgraded
+
+
+# ════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════
 def main():
@@ -543,6 +579,8 @@ def main():
     parser.add_argument("--reindex", action="store_true", help="Force RAG re-index")
     parser.add_argument("--improve-queries", action="store_true", help="LLM improves queries for next run")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM steps")
+    parser.add_argument("--ensemble", action="store_true",
+                        help="Free-lane multi-LLM ensemble second opinion on borderline (low_quality) items")
     args = parser.parse_args()
 
     conn = _get_conn()
@@ -557,6 +595,9 @@ def main():
         print("[1/5] Rating pending content...")
         total, approved, blocked = rate_pending_content(conn, args.topic)
         stats['rated'] = total
+        if args.ensemble:
+            print("  [1b] Ensemble rescue on borderline rejects (free-lane grok+chatgpt+local)...")
+            stats['ensemble_rescued'] = ensemble_rescue(conn, args.topic)
         stats['approved'] = approved
         stats['blocked'] = blocked
     else:
