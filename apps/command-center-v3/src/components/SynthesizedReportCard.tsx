@@ -54,8 +54,8 @@ const chip: React.CSSProperties = { fontSize: 9, fontWeight: 700, padding: '2px 
 const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
 
 export default function SynthesizedReportCard(
-  { item, onAction, compact, selected }:
-  { item: ReportCardItem; onAction?: (action: string, id: string) => void; compact?: boolean; selected?: boolean }
+  { item, onAction, compact, selected, footer }:
+  { item: ReportCardItem; onAction?: (action: string, id: string) => void; compact?: boolean; selected?: boolean; footer?: React.ReactNode }
 ) {
   const sv = SEV(item.severity)
   const insight = insightOf(item)
@@ -92,6 +92,8 @@ export default function SynthesizedReportCard(
         </div>
         <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 9.5, color: 'var(--text3)' }}>{ago(item.created_at)}{item.channel ? <><br />{item.channel}</> : null}</div>
       </div>
+      {/* footer slot (full card only) — live embeds like the ensemble verdict, above the action row */}
+      {!compact && footer && <div style={{ marginTop: 8 }}>{footer}</div>}
       {/* actions only on the FULL card (reader/feed) — the compact list opens the reader on click, which has them */}
       {!compact && (item.actions && item.actions.length > 0) && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
