@@ -95,6 +95,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
   const aMap = useAnalystMap()
+  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
@@ -284,6 +286,15 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <span style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 7px', borderRadius: 3, background: `${ac}1f`, color: ac }}>
                         ● {(h.account ?? 'unknown').replace(/_/g, ' ')}</span>
                     </div>
+                    {/* Finviz inline strip */}
+                    {fvMap[(h.symbol || '').toUpperCase()] && (() => {
+                      const fv = fvMap[(h.symbol || '').toUpperCase()]
+                      const pc = (v: any) => v == null ? 'var(--text3)' : Number(v) > 0 ? '#22c55e' : Number(v) < 0 ? '#ef4444' : 'var(--text3)'
+                      const rsiC = fv.rsi == null ? 'var(--text3)' : fv.rsi >= 70 ? '#ef4444' : fv.rsi <= 30 ? '#22c55e' : 'var(--text1)'
+                      const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>{l}<b style={{ color: col, fontFamily: 'monospace' }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
+                      return <div title="Finviz daily metrics" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 5, padding: '3px 7px', borderRadius: 6, background: 'rgba(96,165,250,.07)', border: '1px solid rgba(96,165,250,.16)' }}>
+                        {c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('M ', fv.perf_month, pc(fv.perf_month), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</div>
+                    })()}
                     {/* value + P/L row */}
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
                       <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
