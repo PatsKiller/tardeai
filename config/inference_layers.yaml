@@ -94,3 +94,11 @@ inference_layers:
     persist: true
     # Index high-value inferences into RAG so future agent prompts can retrieve them.
     rag_index: true
+
+  # Multi-LLM ensemble validator (scripts/inference_ensemble.py) — FREE lanes only.
+  # Used as an opt-in second opinion for curation grading + inference quality checks. No metered keys.
+  ensemble:
+    lanes: [grok, chatgpt, local]   # free OAuth proxies + local gemma (llm_lane.py)
+    consensus_threshold: 0.66        # fraction of approve votes that grants consensus
+    min_score: 6.0                   # avg score (0-10) that also grants consensus
+    timeout: 60
