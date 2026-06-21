@@ -226,6 +226,25 @@ export default function ReportsHub({ onDrill }: Props) {
   // auto-select first result when nothing selected
   const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
   const allActions = (actionsData?.actions || []).filter((a: any) => qvMatchesAction(qv, a))
+  // Dedup: one underlying item emits the SAME symbol+text under several action_classes (e.g. an RTX recovery
+  // escalation shows as Stop-triggered + Unprotected + System). Collapse to one row, merging the classes
+  // into pills and keeping the highest severity — so the queue isn't 3× the same line.
+  const sevRank = (s: string) => ({ urgent: 4, critical: 4, warning: 2, info: 1 } as any)[(s || '').toLowerCase()] || 0
+  const dedupedActions = useMemo(() => {
+    const seen = new Map<string, any>()
+    for (const a of allActions) {
+      const key = `${(a.symbol || '').toUpperCase()}|${(a.text || '').slice(0, 100).toLowerCase().replace(/\s+/g, ' ').trim()}`
+      const ex = seen.get(key)
+      if (!ex) { seen.set(key, { ...a, _classes: [a.action_class], _dupes: 1 }) }
+      else {
+        ex._dupes++
+        if (a.action_class && !ex._classes.includes(a.action_class)) ex._classes.push(a.action_class)
+        if (sevRank(a.severity) > sevRank(ex.severity)) ex.severity = a.severity
+        if (sevRank(a.severity) >= sevRank(ex.severity)) { ex.route = a.route; ex.route_label = a.route_label }
+      }
+    }
+    return [...seen.values()]
+  }, [allActions])
 
   const k = summary?.kpis || {}
   const sevRows = Object.entries(summary?.by_severity || {}).map(([label, value]: any) => ({ label, value, color: sevColor(label) }))
@@ -365,19 +384,19 @@ export default function ReportsHub({ onDrill }: Props) {
         <div style={{ flex: '1 1 240px', minWidth: 230, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ ...card, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Action Queue</span><span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700 }}>{allActions.length}</span>
+              <span>Action Queue</span><span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700 }}>{dedupedActions.length}{allActions.length !== dedupedActions.length ? ` of ${allActions.length}` : ''}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
-              {allActions.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no open actions in this view</div>}
-              {allActions.slice(0, 40).map((a: any) => (
+              {dedupedActions.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no open actions in this view</div>}
+              {dedupedActions.slice(0, 40).map((a: any) => (
                 <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '7px 8px', borderRadius: 7, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
                   <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <ActionPill cls={a.action_class} />
+                    {(a._classes || [a.action_class]).map((c: string) => <ActionPill key={c} cls={c} />)}
                     {a.symbol && <span style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa' }}>{a.symbol}</span>}
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{a.text}</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <a href={FQDN + a.route} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{a.route_label} ↗</a>
+                    <a href={relUrl(FQDN + a.route)} style={{ fontSize: 9.5, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{a.route_label} →</a>
                     <span style={{ fontSize: 9, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
                   </div>
                 </div>
