@@ -135,3 +135,18 @@ imports/schwab_history/
 data/state_guard_audit.jsonl
 data/backups/state_snapshots/
 config/snaptrade_accounts.json
+
+# ── Generated/snapshot docs ─────────────────────────────────────────────────
+# Auto-generated reports/briefs/status snapshots. Untracked on main (keep dev
+# diffs quiet); snapshotted to the `generated-docs-backup` branch by the daily
+# docs-backup cron (linux_launchers/backup_generated_docs.sh). Authored docs in
+# these dirs (PHASE*.md, HERMES_*.md) stay tracked — only generated patterns here.
+docs/governance/*latest*
+docs/maturity_hardening/*latest*
+docs/hermes/backlog_health/
+docs/hermes/embedding_promotion_reviews/
+docs/hermes/observations/
+docs/hermes/librarian_loop_dryruns/
+docs/openclaw_aegis_morning_brief_*.md
+docs/project/STATE_OF_REPO_LATEST.md
+docs/project/SYSTEM_FACTS_LATEST.md
