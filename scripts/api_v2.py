@@ -16547,6 +16547,34 @@ def _finviz_enrichment(query=None):
             "note": "Finviz enrichment (daily). Advisory."}
 
 
+def _finviz_strip_map(query=None):
+    """GET /api/v2/finviz-strip-map — compact Finviz metrics for the whole watch universe in ONE call
+    (rsi, perf week/month/ytd, sma50, change) so cards can show an inline strip without one request each.
+    Reuses the mtime-cached enrichment file. Read-only."""
+    try:
+        p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
+        mt = p.stat().st_mtime
+        if mt != _FINVIZ_ENRICH_CACHE["mtime"]:
+            _FINVIZ_ENRICH_CACHE["data"] = json.loads(p.read_text())
+            _FINVIZ_ENRICH_CACHE["mtime"] = mt
+    except Exception as e:
+        return {"ok": False, "error": f"cache unavailable: {str(e)[:60]}", "map": {}}
+    cache = _FINVIZ_ENRICH_CACHE["data"]
+    syms = {r["symbol"] for r in (_db_query(
+        "SELECT DISTINCT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'") or [])}
+    out = {}
+    for s in syms:
+        d = cache.get(s)
+        if not d:
+            continue
+        out[s] = {"rsi": _json_clean(d.get("rsi")), "rsi_status": d.get("rsi_status"),
+                  "perf_week": _json_clean(d.get("perf_week_pct")),
+                  "perf_month": _json_clean(d.get("perf_month_pct")),
+                  "perf_ytd": _json_clean(d.get("perf_ytd_pct")),
+                  "sma50": _json_clean(d.get("sma50_pct"))}
+    return {"ok": True, "count": len(out), "map": out, "note": "Finviz inline-strip metrics (daily)."}
+
+
 def _sector_performance(query=None):
     """GET /api/v2/sector-performance — latest Finviz sector + industry performance snapshot
     (leaders/laggards) for macro/rotation research. Read-only."""
@@ -19250,6 +19278,7 @@ ROUTES = {
     "/api/v2/sector-performance": _sector_performance,
     "/api/v2/insider-activity": _insider_activity,
     "/api/v2/finviz-enrichment": _finviz_enrichment,
+    "/api/v2/finviz-strip-map": _finviz_strip_map,
     "/api/v2/ai-analyst": ai_analyst,
     "/api/v2/ai-reports": lambda: {"reports": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, report_type, title, content, provider, cost, generated_at FROM ai_reports ORDER BY generated_at DESC LIMIT 20") or [])]},
     "/api/v2/alex/recent": lambda: _alex_recent(),
