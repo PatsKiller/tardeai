@@ -16754,15 +16754,31 @@ def _watch_directive_create(body):
                          "routed_to_research": True, "research_topic": {"topic_id": tid, "knowledge": True},
                          "note": "knowledge/planning theme → research pipeline only (no watchlist directive)"}
 
-    row = _db_query("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
-                          trade_ai_enabled, hermes_enabled)
-                       VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                    (kind, label, _j.dumps(spec), body.get("rationale"),
-                     body.get("created_by", "operator"), body.get("ttl_days"),
-                     body.get("priority", "normal"),
-                     bool(body.get("trade_ai_enabled", True)), bool(body.get("hermes_enabled", True))),
-                    fetch="one")
-    did = (row or {}).get("id")
+    # ── DEDUP TICKER DIRECTIVES (operator 2026-06-21) ────────────────────────────────────────────────
+    # Don't stack a second active ticker directive for the same symbol — re-adds were creating duplicate
+    # rows (CEG ×3, SOFI ×3, …) cluttering the Watch Directives list. Reuse the existing active directive
+    # (it gets re-serviced below, so the symbol re-evaluates) instead of inserting a duplicate. The
+    # existing label is preserved (don't clobber a named-list label with a generic re-add).
+    reused = False
+    did = None
+    if kind == "ticker":
+        _symU = (spec.get("symbol") or "").upper()
+        _ex = _db_query("""SELECT id FROM watch_directives
+                           WHERE kind='ticker' AND status='active' AND UPPER(spec->>'symbol')=%s
+                           ORDER BY id LIMIT 1""", (_symU,), fetch="one")
+        if _ex:
+            did = _ex["id"]
+            reused = True
+    if did is None:
+        row = _db_query("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
+                              trade_ai_enabled, hermes_enabled)
+                           VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (kind, label, _j.dumps(spec), body.get("rationale"),
+                         body.get("created_by", "operator"), body.get("ttl_days"),
+                         body.get("priority", "normal"),
+                         bool(body.get("trade_ai_enabled", True)), bool(body.get("hermes_enabled", True))),
+                        fetch="one")
+        did = (row or {}).get("id")
     # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
     # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
     # SAME real evaluation engine (directive_promotion.promote_directive_lead) synchronously, so the
@@ -16807,7 +16823,7 @@ def _watch_directive_create(body):
         except Exception as e:
             research_topic = {"error": str(e)[:120]}
     return 200, {"ok": True, "directive_id": did, "kind": kind, "label": label, "serviced": serviced,
-                 "research_topic": research_topic}
+                 "research_topic": research_topic, "reused": reused}
 
 
 def _watch_directive_promote(body):
