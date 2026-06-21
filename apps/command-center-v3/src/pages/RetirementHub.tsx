@@ -4,11 +4,12 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Overview', 'Accounts', 'Timeline'] as const
+const TABS = ['Overview', 'Accounts', 'Timeline', 'Planning Research'] as const
 
 export default function RetirementHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Overview')
   const { data: ret } = useApi<any>('/api/v2/retirement', 300_000)
+  const { data: planning } = useApi<any>('/api/v2/retirement/planning-research', 300_000)
 
   if (!ret) return <div style={{ padding: 24, color: 'var(--text3)' }}>Loading retirement data...</div>
 
@@ -103,6 +104,36 @@ export default function RetirementHub({ onDrill }: Props) {
             </div>
           ))}
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/retirement → timeline</div>
+        </div>
+      )}
+
+      {tab === 'Planning Research' && (
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12, lineHeight: 1.5 }}>
+            Hermes knowledge research on your retirement / estate / tax / Medicare topics (routed from the topics you add via Telegram into the research pipeline). {planning?.total ?? 0} researched items. Advisory — consult an elder-law attorney + tax advisor.
+          </div>
+          {!planning && <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading…</div>}
+          {planning && (planning.themes ?? []).length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>No planning research yet — topics are queued; Hermes researches them on its loop.</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 14 }}>
+            {(planning?.themes ?? []).map((th: any) => (
+              <div key={th.theme} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#60a5fa', marginBottom: 8 }}>{th.theme} <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 500 }}>· {th.count}</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(th.items ?? []).map((it: any, i: number) => (
+                    <div key={i} onClick={() => onDrill({ title: it.topic, subtitle: th.theme, endpoint: '/api/v2/retirement/planning-research', rows: [it] })}
+                      style={{ padding: '7px 9px', borderRadius: 7, background: 'var(--bg2)', cursor: 'pointer', borderLeft: `3px solid ${it.status === 'promoted' || it.status === 'embedded' ? '#22c55e' : '#f59e0b'}` }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)', lineHeight: 1.3 }}>{it.topic}</div>
+                      {it.summary && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.summary}</div>}
+                      <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 8 }}>
+                        <span>{it.status ?? 'staged'}</span>{it.confidence != null && <span>· conf {it.confidence}</span>}{it.model && <span>· {it.model}</span>}{it.at && <span>· {String(it.at).slice(0, 10)}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>Source: /api/v2/retirement/planning-research → topic_research (Hermes knowledge research). Advisory only.</div>
         </div>
       )}
     </div>

@@ -16369,6 +16369,46 @@ def _watch_directives(query=None):
             "promoted_to_watchlist": promoted.get("c"), "health": health}
 
 
+def _retirement_planning_research(query=None):
+    """GET /api/v2/retirement/planning-research — Hermes knowledge research on the operator's retirement /
+    estate / tax / Medicare planning topics (research_type='topic_research'), grouped by theme. Read-only.
+    Feeds the RetirementHub 'Planning Research' section. Advisory — consult professionals."""
+    THEMES = [("Roth & conversions", r"roth|conversion|golden window|rmd"),
+              ("Medicare & IRMAA", r"medicare|irmaa|part b|part d"),
+              ("Medicaid & asset protection", r"medicaid|mapt|asset protection|lookback|spend.?down"),
+              ("Estate & trusts", r"estate|trust|probate|life estate|special needs"),
+              ("SSDI & taxes", r"ssdi|social security|tax|magi|irs"),
+              ("Income & dividends", r"dividend|covered call|jepi|income|cef|pty|nav|bond|annuit")]
+    rows = _db_query("""SELECT topic, summary, thesis, confidence_score, freshness_date, model_used,
+                          research_type, created_at, status
+                        FROM hermes_research_intelligence
+                        WHERE research_type='topic_research'
+                        ORDER BY created_at DESC LIMIT 400""") or []
+    groups = {n: [] for n, _ in THEMES}
+    import re as _re
+    seen = set()
+    for r in rows:
+        blob = f"{r.get('topic') or ''} {r.get('summary') or ''}"
+        key = (r.get("topic") or "")[:60]
+        for name, rx in THEMES:
+            if _re.search(rx, blob, _re.I):
+                if (name, key) in seen:
+                    break
+                seen.add((name, key))
+                groups[name].append({"topic": r.get("topic"), "summary": (r.get("summary") or "")[:400],
+                                     "thesis": (r.get("thesis") or "")[:300] or None,
+                                     "confidence": _json_clean(r.get("confidence_score")),
+                                     "status": r.get("status"), "model": r.get("model_used"),
+                                     "at": _json_clean(r.get("created_at"))})
+                break
+    out = [{"theme": n, "count": len(groups[n]), "items": groups[n][:8]} for n, _ in THEMES if groups[n]]
+    return {"ok": True, "advisory_only": True, "as_of": datetime.now().astimezone().isoformat(),
+            "themes": out, "total": sum(len(groups[n]) for n in groups),
+            "note": "Hermes research on your retirement/estate/tax/Medicare topics (advisory; consult an "
+                    "elder-law attorney + tax advisor). Routed from operator research topics into the "
+                    "knowledge-research pipeline."}
+
+
 def _watch_provenance(symbol):
     """GET /api/v2/watch/provenance/{symbol} — unified provenance contract for the shared pill row.
     origin + tier + freshness + directive link + Street consensus (Yahoo-authoritative) + divergence.
@@ -16453,7 +16493,32 @@ def _watch_directive_create(body):
                       (did,), fetch="none")
         except Exception as e:
             serviced = {"status": "DEFERRED_TO_CRON", "detail": str(e)[:140]}
-    return 200, {"ok": True, "directive_id": did, "kind": kind, "label": label, "serviced": serviced}
+    # ── ROUTE TO BOTH (operator 2026-06-20: "make all route properly to trends and research both"): a
+    # trend directive feeds TICKER DISCOVERY only — but knowledge themes (Roth/Medicaid/sector theses)
+    # need the KNOWLEDGE-research pipeline too. Mirror every trend directive into topic_monitor (owner
+    # 'shared' → researched by BOTH Hermes + TradeAI via the topic bridge). Idempotent; non-fatal.
+    research_topic = None
+    if kind == "trend" and did and bool(body.get("hermes_enabled", True)):
+        try:
+            import re as _re
+            theme = _re.sub(r"^trend\s+", "", label or "", flags=_re.I).strip()
+            tid = "d{}_{}".format(did, _re.sub(r"[^a-z0-9]+", "_", theme.lower()).strip("_")[:44])
+            kws = [k for k in (spec.get("keywords") or []) if k]
+            queries = kws[:8] if kws else [theme]
+            planning = bool(_re.search(r"roth|irmaa|medicaid|medicare|ssdi|estate|trust|mapt|retire|tax|"
+                                       r"conversion|dividend|covered call|income|cef|pty|nav|annuit", theme + " " + " ".join(kws), _re.I))
+            ctx = ("Operator age 58 (59 Aug 2026), SSDI, NY, Medicare ~Dec 2026, Golden-Window Roth, MAPT "
+                   "asset protection, ~$1.2M portfolio.") if planning else ""
+            _db_query("""INSERT INTO topic_monitor (topic_id, display_name, search_queries, priority,
+                           agent_owner, owner, enabled, max_age_days, min_articles, personal_context)
+                         VALUES (%s,%s,%s::jsonb,%s,%s,'shared',true,30,3,%s) ON CONFLICT (topic_id) DO NOTHING""",
+                      (tid, theme[:80], _j.dumps(queries), 2 if planning else 4,
+                       "Steph" if planning else "Alex", ctx), fetch="none")
+            research_topic = {"topic_id": tid, "planning": planning}
+        except Exception as e:
+            research_topic = {"error": str(e)[:120]}
+    return 200, {"ok": True, "directive_id": did, "kind": kind, "label": label, "serviced": serviced,
+                 "research_topic": research_topic}
 
 
 def _watch_directive_promote(body):
@@ -18999,6 +19064,7 @@ ROUTES = {
     "/api/v2/forecast": lambda: _forecast(),
     "/api/v2/dividends": dividends,
     "/api/v2/retirement": retirement,
+    "/api/v2/retirement/planning-research": _retirement_planning_research,
     "/api/v2/ai-analyst": ai_analyst,
     "/api/v2/ai-reports": lambda: {"reports": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, report_type, title, content, provider, cost, generated_at FROM ai_reports ORDER BY generated_at DESC LIMIT 20") or [])]},
     "/api/v2/alex/recent": lambda: _alex_recent(),
