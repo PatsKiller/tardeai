@@ -1,14 +1,20 @@
 {
-  "generated_at": "2026-06-11T11:40:42.873277+00:00",
-  "git_head": "962f9ade",
-  "files_checked": 8,
-  "findings_count": 2,
+  "generated_at": "2026-06-19T11:40:00.465483+00:00",
+  "git_head": "531817e5",
+  "files_checked": 2,
+  "findings_count": 3,
   "by_severity": {
+    "P1": 1,
     "P0": 1,
     "P2": 1
   },
   "status": "attention_required",
   "findings": [
+    {
+      "severity": "P1",
+      "check": "code_without_docs",
+      "message": "2 code files changed, 0 docs updated"
+    },
     {
       "severity": "P0",
       "check": "missing_required_doc",
