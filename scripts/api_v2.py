@@ -16418,6 +16418,81 @@ def _retirement_planning_research(query=None):
                     "knowledge-research pipeline."}
 
 
+def _data_source_health(query=None):
+    """GET /api/v2/data-source-health — per-source freshness/yield monitor for EVERY ingest feed
+    (news APIs, RSS, Finviz, FRED, YouTube, web-search). Each source: last update, recent volume, and a
+    status vs its expected cadence (live/slow/stale/dead). This is the gap that let DuckDuckGo fail
+    silently — job-level monitors saw topic_ingestion 'succeed' while a sub-source produced 0 for weeks.
+    Read-only."""
+    # (label, category, SQL → (last_ts, recent_count), expected-fresh hours, notes)
+    NEWS = ("SELECT max(published_at), count(*) FILTER (WHERE created_at>now()-interval '{w}') "
+            "FROM news_articles WHERE source {op} %s")
+    SPECS = [
+        # news / RSS / API feeds (source LIKE/=)
+        ("Yahoo RSS", "news", NEWS, "=", "yahoo_rss", 24),
+        ("Google News RSS", "news", NEWS, "LIKE", "google_news%", 24),
+        ("Google News (topic)", "news", NEWS, "=", "topic_google_news_rss", 48),
+        ("Finnhub API", "news", NEWS, "=", "finnhub", 24),
+        ("Finviz News", "news", NEWS, "=", "finviz_news", 24),
+        ("Benzinga RSS", "news", NEWS, "=", "benzinga_rss", 48),
+        ("Seeking Alpha", "news", NEWS, "=", "seeking_alpha", 72),
+        ("YouTube (topic API)", "news", NEWS, "=", "topic_youtube_api", 72),
+        ("DuckDuckGo (topic)", "websearch", NEWS, "=", "topic_duckduckgo", 168),
+        ("Brave (topic)", "websearch", NEWS, "=", "topic_brave_news", 336),
+        ("Hermes research", "research", NEWS, "=", "hermes", 48),
+    ]
+    out, now_iso = [], datetime.now().astimezone()
+    for label, cat, tmpl, op, val, thr in SPECS:
+        try:
+            w = f"{max(thr*2, 48)} hours"
+            row = _db_query(tmpl.format(w=w, op=op), (val,), fetch="one") or {}
+            vals = list(row.values())
+            last_ts = vals[0] if vals else None
+            cnt = vals[1] if len(vals) > 1 else 0
+            age_h = None
+            if last_ts:
+                try:
+                    age_h = (now_iso - last_ts).total_seconds() / 3600.0
+                except Exception:
+                    age_h = None
+            status = ("dead" if (age_h is None or age_h > thr * 4)
+                      else "stale" if age_h > thr * 2
+                      else "slow" if age_h > thr else "live")
+            out.append({"source": label, "category": cat, "last_update": _json_clean(last_ts),
+                        "age_hours": round(age_h, 1) if age_h is not None else None,
+                        "recent_count": cnt or 0, "expected_fresh_h": thr, "status": status})
+        except Exception as e:
+            out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
+    # non-news feeds (own queries)
+    def _feed(label, cat, sql, thr):
+        try:
+            r = _db_query(sql, fetch="one") or {}
+            v = list(r.values()); last = v[0] if v else None; cnt = v[1] if len(v) > 1 else None
+            age_h = (now_iso - last).total_seconds()/3600.0 if last else None
+            status = ("dead" if (age_h is None or age_h > thr*4) else "stale" if age_h > thr*2
+                      else "slow" if age_h > thr else "live")
+            out.append({"source": label, "category": cat, "last_update": _json_clean(last),
+                        "age_hours": round(age_h,1) if age_h is not None else None,
+                        "recent_count": cnt, "expected_fresh_h": thr, "status": status})
+        except Exception as e:
+            out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
+    _feed("FRED macro", "macro", "SELECT max(fetched_at), count(*) FROM fred_economic_series", 72)
+    _feed("Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24)
+    _feed("Finviz enrichment", "finviz", "SELECT max(last_enriched_at), count(*) FROM watchlist_items WHERE last_enriched_at IS NOT NULL", 48)
+    _feed("Screener membership", "finviz", "SELECT max(last_seen_in_screener_at), count(*) FILTER (WHERE present_this_run) FROM screener_symbol_membership", 48)
+    _feed("YouTube transcripts", "news", "SELECT max(ingested_at), count(*) FROM youtube_transcripts WHERE ingested_at>now()-interval '7 days'", 96)
+    _feed("Catalyst events", "research", "SELECT max(created_at), count(*) FILTER (WHERE created_at>now()-interval '2 days') FROM catalyst_events", 24)
+    order = {"dead": 0, "error": 1, "stale": 2, "slow": 3, "live": 4}
+    out.sort(key=lambda x: order.get(x.get("status"), 9))
+    counts = {}
+    for o in out:
+        counts[o["status"]] = counts.get(o["status"], 0) + 1
+    return {"ok": True, "as_of": now_iso.isoformat(), "sources": out, "summary": counts,
+            "total": len(out),
+            "note": "Per-source freshness vs expected cadence. status: live=within cadence, slow=1-2x late, "
+                    "stale=2-4x late, dead=>4x late or no data. Catches silent sub-source failures."}
+
+
 def _watch_provenance(symbol):
     """GET /api/v2/watch/provenance/{symbol} — unified provenance contract for the shared pill row.
     origin + tier + freshness + directive link + Street consensus (Yahoo-authoritative) + divergence.
@@ -19074,6 +19149,7 @@ ROUTES = {
     "/api/v2/dividends": dividends,
     "/api/v2/retirement": retirement,
     "/api/v2/retirement/planning-research": _retirement_planning_research,
+    "/api/v2/data-source-health": _data_source_health,
     "/api/v2/ai-analyst": ai_analyst,
     "/api/v2/ai-reports": lambda: {"reports": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, report_type, title, content, provider, cost, generated_at FROM ai_reports ORDER BY generated_at DESC LIMIT 20") or [])]},
     "/api/v2/alex/recent": lambda: _alex_recent(),
