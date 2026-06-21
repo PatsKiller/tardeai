@@ -106,7 +106,9 @@ export default function WatchlistHub({ onDrill }: Props) {
   const dirActivity = (d: any) => (d.hit_count ?? (d.hit_symbols?.length ?? 0)) + (d.staged_count ?? 0)
   const isActionableDir = (d: any) => d.status !== 'archived' && (d.kind === 'ticker' || dirActivity(d) > 0)
   const actionableDirs = directives.filter(isActionableDir).sort((a, b) => dirActivity(b) - dirActivity(a))
-  const dormantDirs = directives.filter(d => !isActionableDir(d))
+  // Dormant = live-but-quiet discovery trends (active/paused, 0 hits). Archived directives are RETIRED
+  // (e.g. knowledge themes moved to the research pipeline) — hidden entirely, not even in the dormant list.
+  const dormantDirs = directives.filter(d => d.status !== 'archived' && !isActionableDir(d))
 
   const [fOrigin, setFOrigin] = useState('all')
   const [fBand, setFBand] = useState('all')

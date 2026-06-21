@@ -16688,6 +16688,37 @@ def _watch_directive_create(body):
         return 400, {"ok": False, "error": "label required"}
     if kind == "ticker" and not (spec.get("symbol")):
         return 400, {"ok": False, "error": "ticker directive needs spec.symbol"}
+
+    # ── KNOWLEDGE THEMES ARE RESEARCH TOPICS, NOT WATCH DIRECTIVES (operator 2026-06-21) ──────────────
+    # A trend like "Roth conversion ladder" / "Medicaid Asset Protection Trust" / "IRMAA planning" can never
+    # surface a tradeable ticker — creating a watch_directive for it just floods the watchlist with 0-hit
+    # noise (it sat at "0 hits · 0 staged" forever). Route these to the KNOWLEDGE-research pipeline
+    # (topic_monitor → Hermes/TradeAI research) ONLY; never create a ticker-discovery directive. Genuine
+    # ticker-discovery trends ("AI datacenter", "Defense", "Energy") don't match and flow through normally.
+    import re as _re
+    if kind == "trend":
+        _theme = _re.sub(r"^trend\s+", "", label or "", flags=_re.I).strip()
+        _kws = [k for k in (spec.get("keywords") or []) if k]
+        _planning = bool(_re.search(r"roth|irmaa|medicaid|medicare|ssdi|estate|trust|mapt|retire|tax|"
+                                    r"conversion|dividend|covered call|income|cef|pty|nav|annuit",
+                                    _theme + " " + " ".join(_kws), _re.I))
+        if _planning and bool(body.get("hermes_enabled", True)):
+            tid = "k_" + _re.sub(r"[^a-z0-9]+", "_", _theme.lower()).strip("_")[:46]
+            queries = _kws[:8] if _kws else [_theme]
+            ctx = ("Operator age 58 (59 Aug 2026), SSDI, NY, Medicare ~Dec 2026, Golden-Window Roth, MAPT "
+                   "asset protection, ~$1.2M portfolio.")
+            try:
+                _db_query("""INSERT INTO topic_monitor (topic_id, display_name, search_queries, priority,
+                               agent_owner, owner, enabled, max_age_days, min_articles, personal_context)
+                             VALUES (%s,%s,%s::jsonb,2,'Steph','shared',true,30,3,%s)
+                             ON CONFLICT (topic_id) DO NOTHING""",
+                          (tid, _theme[:80], _j.dumps(queries), ctx), fetch="none")
+            except Exception as e:
+                return 200, {"ok": False, "error": "research-topic routing failed: " + str(e)[:160]}
+            return 200, {"ok": True, "directive_id": None, "kind": "research_topic", "label": label,
+                         "routed_to_research": True, "research_topic": {"topic_id": tid, "knowledge": True},
+                         "note": "knowledge/planning theme → research pipeline only (no watchlist directive)"}
+
     row = _db_query("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
                           trade_ai_enabled, hermes_enabled)
                        VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s) RETURNING id""",
