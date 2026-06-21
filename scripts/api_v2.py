@@ -16425,7 +16425,10 @@ def _data_source_health(query=None):
     silently — job-level monitors saw topic_ingestion 'succeed' while a sub-source produced 0 for weeks.
     Read-only."""
     # (label, category, SQL → (last_ts, recent_count), expected-fresh hours, notes)
-    NEWS = ("SELECT max(published_at), count(*) FILTER (WHERE created_at>now()-interval '{w}') "
+    # Age by INGEST time (created_at = when the feed last delivered to us), NOT the article's publish
+    # date — several sources (DuckDuckGo, etc.) don't populate published_at, which would falsely read
+    # as dead even while producing fresh rows.
+    NEWS = ("SELECT max(created_at), count(*) FILTER (WHERE created_at>now()-interval '{w}') "
             "FROM news_articles WHERE source {op} %s")
     SPECS = [
         # news / RSS / API feeds (source LIKE/=)
