@@ -30,6 +30,16 @@ export default function RiskHub({ onDrill }: Props) {
   // stop detail, an "unprotected" action on the no-stop list, a recovery action on the Recovery tab, etc.
   const [dlp] = useState(() => { try { return new URLSearchParams(window.location.search) } catch { return new URLSearchParams() } })
   const [focused, setFocused] = useState(false)
+  const [hlStops, setHlStops] = useState(false)   // highlight the triggered-stops panel (deep-link from Reports)
+
+  // Open ONE position's stop detail (singular, not the whole stacked list) with a "Where to act" link to the
+  // existing operator-gated approval/proposal flow (advisory — no broker write here).
+  const stopDrill = (p: any) => onDrill({
+    title: `${p.symbol} — stop ${p.triggered ? 'TRIGGERED' : p.has_stop ? '' : 'MISSING'}`.trim(),
+    subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · current ${p.current_price ?? '—'}${p.distance_to_stop_pct != null ? ` · ${p.distance_to_stop_pct}% past` : ''}${p.account ? ` · ${p.account}` : ''}`,
+    endpoint: '/api/v2/risk', rows: [p],
+    links: [{ label: `Review ${p.symbol} in Approvals`, href: `/v3/trading?tab=Broker%20Proposals&symbol=${p.symbol}&modal=approval`, note: 'existing operator-gated proposal/approval flow — advisory review, no broker write here' }],
+  })
 
   const noStop = positions.filter((p: any) => !p.has_stop)
   const protectedCount = positions.filter((p: any) => p.has_stop && !p.triggered).length
@@ -72,17 +82,18 @@ export default function RiskHub({ onDrill }: Props) {
       onDrill({ title: `Unprotected positions (${noStop.length})`, subtitle: 'no protective stop', endpoint: '/api/v2/risk', rows: noStop })
       return
     }
-    // Grouped triggered stops (?symbols=A,B,C or ?drawer=stops)
+    // Grouped triggered stops (?symbols=A,B,C or ?drawer=stops): DON'T stack them all into one drawer —
+    // land on the Exposure tab, highlight the triggered-stops panel, and let the operator click ONE symbol
+    // to open its singular stop detail (operator: "opens all not singular").
     if (symbols.length || drawer === 'stops') {
-      const rows = symbols.length ? positions.filter((p: any) => symbols.includes(String(p.symbol || '').toUpperCase())) : triggered
-      setFocused(true)
-      onDrill({ title: `Triggered stops (${rows.length})`, subtitle: rows.map((r: any) => r.symbol).join(' '), endpoint: '/api/v2/risk', rows })
+      setFocused(true); setTab('Exposure'); setHlStops(true)
+      setTimeout(() => document.getElementById('triggered-stops')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
       return
     }
-    // Single-symbol stop detail
+    // Single-symbol stop detail (singular)
     if (symbol) {
       const p = positions.find((x: any) => String(x.symbol || '').toUpperCase() === symbol)
-      if (p) { setFocused(true); onDrill({ title: `${p.symbol} — risk / stop`, subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · ${p.triggered ? 'TRIGGERED' : p.has_stop ? 'protected' : 'unprotected'}`, endpoint: '/api/v2/risk', rows: [p] }) }
+      if (p) { setFocused(true); stopDrill(p) }
       else setFocused(true)
     }
   }, [dlp, focused, positions, noStop, triggered, recoveryItems, onDrill])
@@ -145,27 +156,29 @@ export default function RiskHub({ onDrill }: Props) {
                 </div>
               </div>
 
-              {/* Triggered stops */}
+              {/* Triggered stops — each symbol is individually clickable → its singular stop detail (+ act link) */}
               {triggered.length > 0 && (
-                <div onClick={() => onDrill({
-                  title: `${triggered.length} Stops Triggered`, subtitle: 'Price below stop level',
-                  endpoint: '/api/v2/risk', rows: triggered,
-                })}
-                  style={{ padding: '6px 10px', background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 6, marginBottom: 6, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>{triggered.length} stops triggered</span>
-                  <span style={{ fontSize: 10, color: '#fca5a5' }}>{triggered.map((p: any) => p.symbol).join(' ')}</span>
+                <div id="triggered-stops" style={{ padding: '7px 10px', background: 'rgba(239,68,68,.1)', border: `1px solid ${hlStops ? '#ef4444' : 'rgba(239,68,68,.2)'}`, borderRadius: 6, marginBottom: 6, boxShadow: hlStops ? '0 0 0 2px rgba(239,68,68,.35)' : 'none', scrollMarginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>{triggered.length} stops triggered <span style={{ fontSize: 9.5, fontWeight: 500, color: '#fca5a5' }}>— click a symbol to act on its stop</span></div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    {triggered.map((p: any) => (
+                      <button key={p.symbol} onClick={() => stopDrill(p)} title={`open ${p.symbol} stop · ${p.distance_to_stop_pct ?? '?'}% past stop`}
+                        style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid #ef444466', background: 'rgba(239,68,68,.14)', color: '#fca5a5' }}>{p.symbol}</button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* No stop set */}
+              {/* No stop set — each symbol individually clickable */}
               {noStop.length > 0 && (
-                <div onClick={() => onDrill({
-                  title: `${noStop.length} Positions No Stop`, subtitle: 'Unprotected positions',
-                  endpoint: '/api/v2/risk', rows: noStop,
-                })}
-                  style={{ padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: '#f59e0b' }}>{noStop.length} positions no stop set</span>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>review</span>
+                <div style={{ padding: '7px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 6 }}>{noStop.length} positions no stop set <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>— click to review</span></div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    {noStop.map((p: any) => (
+                      <button key={p.symbol} onClick={() => stopDrill(p)} title={`open ${p.symbol} — no protective stop`}
+                        style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid #f59e0b55', background: 'rgba(245,158,11,.1)', color: '#fcd34d' }}>{p.symbol}</button>
+                    ))}
+                  </div>
                 </div>
               )}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk → positions[], pct_protected, total_risk_dollars</div>
