@@ -271,7 +271,12 @@ export default function ReportsHub({ onDrill }: Props) {
   const dedupedActions = useMemo(() => {
     const seen = new Map<string, any>()
     for (const a of allActions) {
-      const key = `${(a.symbol || '').toUpperCase()}|${(a.text || '').slice(0, 100).toLowerCase().replace(/\s+/g, ' ').trim()}`
+      // Normalize volatile numbers ($ amounts, %, counts) out of the key so the SAME recurring advisory
+      // re-emitted daily — "Portfolio $1.28M … 8 stops triggered, 7 unprotected" vs the next day's
+      // "$1.26M … 6 stops triggered" — collapses to ONE card (the most recent) instead of 7 near-identical
+      // rows flooding the queue. Distinct symbols keep distinct keys.
+      const norm = (a.text || '').toLowerCase().replace(/[$%,]/g, '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim().slice(0, 90)
+      const key = `${(a.symbol || '').toUpperCase()}|${norm}`
       const ex = seen.get(key)
       if (!ex) { seen.set(key, { ...a, _classes: [a.action_class], _dupes: 1 }) }
       else {
