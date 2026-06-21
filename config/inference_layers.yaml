@@ -130,9 +130,11 @@ inference_layers:
     # Curator EOD --ensemble rescue cap: max borderline low_quality items re-rated per run
     # (each costs ~3 sequential lane calls, so this bounds the daily run time).
     rescue_max: 20
-    # Layer-4 loop validation: ensemble second-opinion on synthesized inferences before surfacing.
-    # Scoped to the opinion layers and capped per cycle so the engine stays bounded.
-    validate_in_loop: true
+    # Layer-4 loop validation: synchronous ensemble during the cycle. DISABLED
+    # (2026-06-21) — standardized on the queued auto_enqueue path below, which runs the
+    # same ensemble OFF the cycle (bounded, lower latency, feeds the UI cards directly).
+    # Flip back to true only if you want inferences gated by ensemble BEFORE surfacing.
+    validate_in_loop: false
     validate_layers: [higher_order, regional]
     validate_max: 4
     # Auto-enqueue: at the end of each cycle the engine queues ensemble validation
