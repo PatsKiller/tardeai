@@ -93,6 +93,10 @@ inference_layers:
     enabled: true
     max_actions_per_run: 3
     min_priority: 6              # 1-10; only act on items at/above this priority
+    # Lane for the gap-detection LLM call. Set to a free OAuth lane (grok|chatgpt)
+    # so detection doesn't compete with the local model under GPU load; null/local
+    # keeps it on gemma3. Falls back to local automatically if the lane is unreachable.
+    detection_lane: grok
 
   telegram:
     enabled: true

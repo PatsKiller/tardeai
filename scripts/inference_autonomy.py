@@ -91,14 +91,19 @@ def detect_gaps(ctx, res) -> list:
     # for this prompt; a single cheap retry reliably recovers the run (observed
     # 0 then 7 items from the identical prompt). Detection calls don't count against
     # the proactive budget.
+    # Gap detection can run on a dedicated lane (e.g. grok) so it doesn't compete
+    # with the local model — keeps the autonomy pass fast/reliable under GPU load.
+    detect_lane = (ctx.cfg.get("autonomy", {}) or {}).get("detection_lane") or None
     items: list = []
     for attempt in range(2):
         out = hq.llm_json(prompt, caller="inference_autonomy", salience=0.7, cfg=ctx.cfg,
-                          want_keys=["gaps", "opportunities", "reasoning"])
+                          want_keys=["gaps", "opportunities", "reasoning"],
+                          force_lane=detect_lane)
         for bucket in ("gaps", "opportunities"):
             for it in (out.get(bucket) or []):
                 norm = _coerce_item(it, bucket, default_priority)
                 if norm:
+                    norm["_detect_lane"] = out.get("_lane", "local")  # provenance
                     items.append(norm)
         if items:
             break
@@ -241,7 +246,7 @@ def act_on_gaps(ctx, items: list, res) -> int:
                     inference_type=inf_type, subject=subject,
                     title=f"[autonomy] {gtype}: {desc[:90]}",
                     body=desc, confidence=conf,
-                    severity="low", source_lane="heuristic",
+                    severity="low", source_lane=it.get("_detect_lane", "heuristic"),
                     payload={"gap": it, "assets": assets,
                              "note": "recorded (proactive budget exhausted)" if need_query else "note"}))
             remember(f"gap_detected:{gtype}:{subject}", "gap",
