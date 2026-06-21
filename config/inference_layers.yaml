@@ -1,0 +1,96 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Inference Layers — configuration
+#
+# Drives scripts/inference_layer_engine.py. No values are hardcoded in the engine;
+# everything tunable lives here (per the repo "no hardcoded values" rule). The
+# engine reads this file via PyYAML and falls back to baked defaults only if a key
+# is missing, so partial edits are safe.
+# ──────────────────────────────────────────────────────────────────────────────
+inference_layers:
+  enabled: true
+  # Account the cycle reasons about for sizing/journal context (account_key).
+  # "rollover" is the active trading account per current ops state.
+  account: rollover
+
+  layers:
+    ingestion:
+      enabled: true
+      news_lookback_hours: 72      # window of news_articles to structure
+      max_news: 160
+      max_topics: 60
+      max_closed_trades: 40
+    features:
+      enabled: true
+    regional:
+      enabled: true
+      regions: [US, Asia, Europe, EmergingMarkets]
+    higher_order:
+      enabled: true
+      journal_days: 180
+
+  llm:
+    caller: inference_engine        # audit tag passed to local_llm.generate
+    timeout: 180
+    # Escalate high-salience gaps to an external free OAuth lane (grok/chatgpt).
+    # Default off → all reasoning stays on local gemma3.
+    use_external_lane: false
+    external_lane: grok             # grok | chatgpt
+    external_model: grok-3-mini
+
+  regional:
+    # Themes the engine actively hunts for in each region (Asia is the priority
+    # per the operator's "Asia effects on US markets/ETFs/CEFs" mandate).
+    asia_themes:
+      - BOJ monetary policy
+      - yen / carry trade
+      - China stimulus / PBOC
+      - semiconductors / TSMC / chip supply chain
+      - export controls
+      - Japan equities / Nikkei
+    europe_themes:
+      - ECB policy
+      - energy prices
+      - EU regulation
+    em_themes:
+      - India growth
+      - commodity demand
+      - EM currency stress
+    # Income CEFs / ETFs to run NAV premium/discount + flow inference on, even
+    # when not currently held (PTY is the canonical retirement-income example).
+    income_funds: [PTY, PDI, PDO, UTF, UTG, RQI, JEPI, SCHD, PFLT, CSWC]
+
+  sizing:
+    base_tilt: 1.0
+    # Multiplicative tilt applied to the risk budget by detected regime.
+    regime_tilts:
+      risk_on: 1.15
+      neutral: 1.00
+      risk_off: 0.70
+      high_vol: 0.60
+    # Penalty when the proposal/inference carries FOMO / chase signals.
+    fomo_penalty: 0.80
+    # Reward only when the synthesized confidence clears this bar.
+    min_confidence_for_uptilt: 0.60
+    # Hard clamp so a runaway inference can never oversize.
+    tilt_floor: 0.40
+    tilt_ceiling: 1.50
+    # Journal edge: scale tilt by historical expectancy of the setup/emotion.
+    journal_edge_weight: 0.50
+
+  proactive:
+    # "Mind of its own": the engine fires its own Hermes queries when it detects
+    # gaps or high-salience regional/journal signals.
+    gap_query_enabled: true
+    max_queries_per_run: 3
+    salience_threshold: 0.65
+
+  telegram:
+    enabled: true
+    min_severity: medium            # only push medium+ inferences
+    max_items: 6
+    dashboard_url: "http://localhost:7777/v3/intelligence"
+
+  output:
+    persist: true
+    # Index high-value inferences into RAG so future agent prompts can retrieve them.
+    rag_index: true

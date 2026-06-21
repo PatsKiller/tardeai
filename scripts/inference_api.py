@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Inference Layers — /api/v2/inference/* router.
+
+Self-contained handler so the giant api_v2.handle() only needs a 5-line delegating
+hook. Returns (status:int, body:dict) tuples exactly like api_v2 routes, or None if
+the path is not an inference route. Read-only.
+
+Routes:
+    GET /api/v2/inference/latest                  most recent run + top inferences
+    GET /api/v2/inference/runs?limit=N            recent run headers
+    GET /api/v2/inference/results?run_id=&type=&limit=   inference rows
+    GET /api/v2/inference/regional?limit=N        latest cross-regional signals
+    GET /api/v2/inference/sizing?limit=N          latest sizing recommendations
+    GET /api/v2/inference/nav?limit=N             latest NAV premium/discount signals
+    GET /api/v2/inference/memory?kind=&limit=     persistent inference memory
+"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+import sys
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+log = logging.getLogger("inference_api")
+
+
+def _q(sql, params=None, fetch="all"):
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return None
+        return _execute(sql, params, fetch=fetch)
+    except Exception as e:
+        log.warning("inference_api query failed: %s", e)
+        return None
+
+
+def _clean(rows):
+    try:
+        from api_v2 import _json_clean
+        if isinstance(rows, list):
+            return [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+        if isinstance(rows, dict):
+            return {k: _json_clean(v) for k, v in rows.items()}
+    except Exception:
+        pass
+    return rows
+
+
+def _int(query, key, default, cap=500):
+    try:
+        return min(int((query or {}).get(key, default)), cap)
+    except (TypeError, ValueError):
+        return default
+
+
+def handle_inference(path: str, method: str = "GET", body: dict = None, query: dict = None):
+    """Return (status, dict) for /api/v2/inference/* or None if not ours."""
+    if not path.startswith("/api/v2/inference"):
+        return None
+    if method != "GET":
+        return 405, {"ok": False, "error": "method not allowed"}
+    q = query or {}
+
+    try:
+        if path == "/api/v2/inference/latest":
+            # prefer the most recent COMPLETE run so a half-finished/errored cycle
+            # never fronts the dashboard; fall back to the newest of any status
+            run = _q("SELECT * FROM inference_runs WHERE status='complete' "
+                     "ORDER BY id DESC LIMIT 1", fetch="one")
+            if not run:
+                run = _q("SELECT * FROM inference_runs ORDER BY id DESC LIMIT 1", fetch="one")
+            if not run:
+                return 200, {"ok": True, "run": None, "results": []}
+            results = _q(
+                """SELECT layer, inference_type, subject, title, body, confidence,
+                          severity, source_lane, created_at
+                   FROM inference_results WHERE run_id=%s
+                   ORDER BY (severity='critical') DESC, (severity='high') DESC,
+                            confidence DESC LIMIT 40""",
+                (run["id"],)) or []
+            return 200, {"ok": True, "run": _clean(run), "results": _clean(results)}
+
+        if path == "/api/v2/inference/runs":
+            rows = _q("SELECT * FROM inference_runs ORDER BY id DESC LIMIT %s",
+                      (_int(q, "limit", 20),)) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        if path == "/api/v2/inference/results":
+            where, params = ["1=1"], []
+            if q.get("run_id"):
+                where.append("run_id=%s"); params.append(int(q["run_id"]))
+            if q.get("type"):
+                where.append("inference_type=%s"); params.append(q["type"])
+            if q.get("subject"):
+                where.append("subject=%s"); params.append(q["subject"])
+            params.append(_int(q, "limit", 50))
+            rows = _q(f"""SELECT * FROM inference_results WHERE {' AND '.join(where)}
+                          ORDER BY created_at DESC LIMIT %s""", params) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        if path == "/api/v2/inference/regional":
+            rows = _q("""SELECT * FROM inference_regional_signals
+                         ORDER BY created_at DESC LIMIT %s""", (_int(q, "limit", 30),)) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        if path == "/api/v2/inference/sizing":
+            rows = _q("""SELECT * FROM inference_sizing_recommendations
+                         ORDER BY created_at DESC LIMIT %s""", (_int(q, "limit", 40),)) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        if path == "/api/v2/inference/nav":
+            rows = _q("""SELECT * FROM inference_results WHERE inference_type='nav_signal'
+                         ORDER BY created_at DESC LIMIT %s""", (_int(q, "limit", 30),)) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        if path == "/api/v2/inference/memory":
+            where, params = ["1=1"], []
+            if q.get("kind"):
+                where.append("kind=%s"); params.append(q["kind"])
+            params.append(_int(q, "limit", 50))
+            rows = _q(f"""SELECT * FROM inference_memory WHERE {' AND '.join(where)}
+                          ORDER BY salience DESC, updated_at DESC LIMIT %s""", params) or []
+            return 200, {"ok": True, "data": _clean(rows)}
+
+        return 404, {"ok": False, "error": "unknown inference route"}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)}
