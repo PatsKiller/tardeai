@@ -66,10 +66,15 @@ export default function RetirementHub({ onDrill }: Props) {
   }, [planning])
   const planFiltered = useMemo(() => {
     const q = search.trim().toLowerCase()
+    // Prioritize, don't dump: researched/promoted items first, then by confidence, then most recent.
+    const rank = (x: any) => (x.status === 'promoted' || x.status === 'embedded' ? 2 : x.status === 'staged' ? 1 : 0)
     return planItems.filter(it => {
       const blob = `${it.topic} ${it.summary ?? ''} ${it.theme ?? ''}`
       return (!q || blob.toLowerCase().includes(q)) && catMatch(cat, blob)
-    })
+    }).sort((a, b) =>
+      rank(b) - rank(a) ||
+      (Number(b.confidence) || 0) - (Number(a.confidence) || 0) ||
+      String(b.at || '').localeCompare(String(a.at || '')))
   }, [planItems, search, cat])
 
   if (!ret) return <div style={{ padding: 24, color: 'var(--text3)' }}>Loading retirement data…</div>
