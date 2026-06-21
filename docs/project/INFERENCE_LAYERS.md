@@ -115,10 +115,26 @@ more risk budget, losers get trimmed.
 
 ## 6. Autonomy & persistence
 
-- **Proactive querying** — budgeted per run (`proactive.max_queries_per_run`); fires
-  on regional gaps, NAV estimates with no feed, and salient holdings risks.
+- **Proactive querying** — budgeted per run (`proactive.max_queries_per_run`, SHARED
+  across the regional layer and the autonomy pass via `ctx.scratch["proactive_used"]`,
+  auto-incremented in `proactive_query`); fires on regional gaps, NAV estimates with
+  no feed, and salient holdings risks.
+- **Autonomy pass** (`inference_autonomy.py`, run at the end of Layer 4) — the
+  generalized "mind of its own": `detect_gaps()` makes one structured LLM call to
+  surface gaps/opportunities the pipeline did *not* already cover (regional, journal,
+  valuation, modeling, research, risk), then `act_on_gaps()` acts on the top
+  `autonomy.max_actions_per_run` items at/above `autonomy.min_priority` — Hermes
+  follow-up (`proactive_query`), NAV read (`nav_premium_discount`), or an advisory
+  research-topic suggestion (recorded to `inference_memory`, never auto-injected into
+  ingestion). Each action becomes an `[autonomy]`-tagged inference.
+  **Robustness:** model output is coerced (gemma3:4b often returns gaps as bare
+  strings), detection retries once on an empty parse, and falls back to deterministic
+  **state-grounded** gaps (held income funds with no NAV read this cycle, negative
+  journal-edge strategies, risk-off/high-vol regime) so the pass is never dead — those
+  fallbacks are real, not invented.
 - **Persistent memory** — `inference_memory` accumulates salience across cycles
-  (`regime:*`, `regional:*`, `journal:*`, `gap:*`), so recurring signals strengthen.
+  (`regime:*`, `regional:*`, `journal:*`, `gap:*`, `gap_detected:*`, `topic_suggestion:*`),
+  so recurring signals strengthen.
 - **Stale-run reaper** — every cycle marks runs left `running` > 60 min as `error`
   so a killed cron tick can't poison `/latest`.
 

@@ -269,7 +269,6 @@ class RegionalLayer:
 
         signals = 0
         proactive_budget = int((cfg.get("proactive", {}) or {}).get("max_queries_per_run", 3))
-        used_proactive = 0
 
         for region in regions:
             if region == "US":
@@ -284,9 +283,9 @@ class RegionalLayer:
             headlines = [i.get("title", "") for i in items[:12]]
             salience = min(1.0, 0.4 + 0.05 * len(items) + (0.25 if region == "Asia" else 0))
 
-            if region == "Asia" and len(items) < 3 and used_proactive < proactive_budget \
+            if region == "Asia" and len(items) < 3 \
+                    and ctx.scratch.get("proactive_used", 0) < proactive_budget \
                     and (cfg.get("proactive", {}) or {}).get("gap_query_enabled", True):
-                used_proactive += 1
                 q = ("What are the most market-moving developments in Asia right now "
                      "(BOJ/yen, China stimulus/PBOC, semiconductors/TSMC, export controls), "
                      "and how could they transmit to US equities, semiconductor ETFs, and "
@@ -339,7 +338,8 @@ class RegionalLayer:
                      {"direction": direction, "us_impact": us_impact[:600], "confidence": conf},
                      salience=min(1.0, conf + (0.2 if any(a.get("held") for a in affected) else 0)))
 
-        res.metrics = {"signals": signals, "proactive_used": used_proactive}
+        res.metrics = {"signals": signals,
+                       "proactive_used": ctx.scratch.get("proactive_used", 0)}
         res.summary = f"{signals} cross-regional signals across {len(by_region)} regions"
         return res
 
@@ -407,8 +407,14 @@ class HigherOrderLayer:
             res.metrics["sizing_recs"] = n
         except Exception as e:
             log.warning("sizing failed: %s", e)
+        try:
+            import inference_autonomy as autonomy
+            res.metrics["autonomy"] = autonomy.run_autonomy(ctx, res)
+        except Exception as e:
+            log.warning("autonomy pass failed: %s", e)
         res.summary = (f"journal_setups={len(journal_edge)} "
                        f"sizing_recs={res.metrics.get('sizing_recs',0)} "
+                       f"autonomy={res.metrics.get('autonomy',{}).get('acted',0)} "
                        f"inferences={len(res.inferences)}")
         return res
 
