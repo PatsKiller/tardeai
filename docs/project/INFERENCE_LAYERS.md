@@ -127,11 +127,17 @@ more risk budget, losers get trimmed.
   follow-up (`proactive_query`), NAV read (`nav_premium_discount`), or an advisory
   research-topic suggestion (recorded to `inference_memory`, never auto-injected into
   ingestion). Each action becomes an `[autonomy]`-tagged inference.
+  **Detection lane:** `autonomy.detection_lane` (e.g. `grok`) routes the gap-detection
+  LLM call to a free OAuth lane via `llm_json(force_lane=...)`, so it stays fast and
+  reliable without competing with the local model under GPU load (grok: ~8 gaps in
+  ~5s vs the local model taking minutes and often returning empty). Falls back to
+  local automatically if the lane is unreachable.
   **Robustness:** model output is coerced (gemma3:4b often returns gaps as bare
   strings), detection retries once on an empty parse, and falls back to deterministic
   **state-grounded** gaps (held income funds with no NAV read this cycle, negative
   journal-edge strategies, risk-off/high-vol regime) so the pass is never dead — those
-  fallbacks are real, not invented.
+  fallbacks are real, not invented. Each acted inference records its detection
+  provenance in `source_lane`.
 - **Persistent memory** — `inference_memory` accumulates salience across cycles
   (`regime:*`, `regional:*`, `journal:*`, `gap:*`, `gap_detected:*`, `topic_suggestion:*`),
   so recurring signals strengthen.

@@ -85,13 +85,17 @@ def _external(lane: str, model: str, prompt: str, max_tokens: int = 1500) -> str
 
 def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 180,
              salience: float = 0.0, cfg: Optional[dict] = None,
-             want_keys: Optional[list] = None) -> dict:
+             want_keys: Optional[list] = None, force_lane: Optional[str] = None) -> dict:
     """Run a structured reasoning call and return parsed JSON.
 
-    Stays on local gemma3 unless cfg.llm.use_external_lane is set AND salience
-    clears proactive.salience_threshold, in which case it escalates to a free
-    OAuth lane (grok/chatgpt) for the harder synthesis. The returned dict always
-    carries `_lane` and a best-effort `confidence`.
+    Lane selection:
+      * force_lane (e.g. "grok"/"chatgpt") — explicit per-call override; used when a
+        step should always run on a free OAuth lane regardless of the global flag.
+      * else escalate to cfg.llm.external_lane when cfg.llm.use_external_lane is set
+        AND salience clears proactive.salience_threshold.
+      * else local gemma3.
+    Any external miss falls back to local. The returned dict always carries `_lane`
+    and a best-effort `confidence`.
     """
     cfg = cfg or {}
     llm_cfg = cfg.get("llm", {}) or {}
@@ -103,10 +107,16 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
                         + ". Include a numeric \"confidence\" 0.0-1.0 and a "
                           "\"reasoning\" array of short steps. No prose outside JSON.")
 
+    chosen = None
+    if force_lane and force_lane != "local":
+        chosen = force_lane
+    elif llm_cfg.get("use_external_lane") and salience >= threshold:
+        chosen = llm_cfg.get("external_lane", "grok")
+
     lane = "local"
     raw = ""
-    if llm_cfg.get("use_external_lane") and salience >= threshold:
-        lane = llm_cfg.get("external_lane", "grok")
+    if chosen:
+        lane = chosen
         model = llm_cfg.get("external_model", "grok-3-mini")
         raw = _external(lane, model, instruction)
         if not raw:  # fall back to local on lane miss
