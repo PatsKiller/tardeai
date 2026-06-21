@@ -130,3 +130,8 @@ inference_layers:
     # Curator EOD --ensemble rescue cap: max borderline low_quality items re-rated per run
     # (each costs ~3 sequential lane calls, so this bounds the daily run time).
     rescue_max: 20
+    # Layer-4 loop validation: ensemble second-opinion on synthesized inferences before surfacing.
+    # Scoped to the opinion layers and capped per cycle so the engine stays bounded.
+    validate_in_loop: true
+    validate_layers: [higher_order, regional]
+    validate_max: 4

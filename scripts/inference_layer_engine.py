@@ -219,6 +219,48 @@ def persist_inferences(run_id: Optional[int], layer: str, inferences: list) -> i
     return n
 
 
+def ensemble_validate_inferences(layer: str, inferences: list, cfg: dict) -> int:
+    """FREE-lane multi-LLM ensemble second-opinion on the SYNTHESIZED inferences before they're surfaced.
+    Annotates each with payload['ensemble'] (score/decision/consensus/lanes), folds the ensemble score into
+    confidence, and downgrades severity on a consensus 'block'. Only runs for the configured synthesis layers
+    (higher_order/regional — the opinion layers, not the structural ones) and is capped per cycle so the loop
+    stays bounded. No metered keys. Returns count validated."""
+    ecfg = (cfg.get("ensemble") or {})
+    if not ecfg.get("validate_in_loop", False):
+        return 0
+    if layer not in (ecfg.get("validate_layers") or ["higher_order", "regional"]) or not inferences:
+        return 0
+    try:
+        from inference_ensemble import ensemble_validate
+    except Exception:
+        return 0
+    cap = int(ecfg.get("validate_max", 4))
+    sev_rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+    targets = sorted(inferences, key=lambda i: (sev_rank.get(i.severity, 0), i.confidence or 0), reverse=True)[:cap]
+    done = 0
+    for inf in targets:
+        try:
+            res = ensemble_validate(f"{inf.title}\n{inf.body}",
+                                    context=f"Layer-4 {inf.inference_type} on {inf.subject}; advisory inference for a retail investor (retirement/markets)",
+                                    task="validate this inference's quality + actionability before surfacing")
+        except Exception:
+            continue
+        if not res.get("lanes_used"):
+            continue
+        inf.payload = dict(inf.payload or {})
+        inf.payload["ensemble"] = {"score": res.get("final_score"), "decision": res.get("final_decision"),
+                                   "consensus": res.get("consensus_reached"), "lanes": res.get("lanes_used")}
+        inf.reasoning_trace = list(inf.reasoning_trace or []) + [f"ensemble: {res.get('reasoning_summary', '')}"]
+        blended = (float(inf.confidence or 0.5) + (float(res.get("final_score", 5)) / 10.0)) / 2.0
+        if res.get("final_decision") == "block" and res.get("consensus_reached"):
+            blended = min(blended, 0.45)
+            if inf.severity == "critical":
+                inf.severity = "high"
+        inf.confidence = round(max(0.05, min(0.98, blended)), 2)
+        done += 1
+    return done
+
+
 def remember(mem_key: str, kind: str, value: dict, salience: float = 0.5) -> None:
     """Upsert persistent inference memory (the 'mind of its own' state)."""
     _execute, use_db = _db()
@@ -284,6 +326,13 @@ class InferenceEngine:
                 result = LayerResult(layer=name, ok=False, error=str(e))
             result.elapsed_ms = int((time.time() - t0) * 1000)
             ctx.store[name] = result
+            # Ensemble second-opinion on synthesized inferences before they're persisted/surfaced (free lanes).
+            try:
+                nv = ensemble_validate_inferences(name, result.inferences, self.cfg)
+                if nv:
+                    log.info("layer %-13s ensemble-validated %d inference(s)", name, nv)
+            except Exception as e:
+                log.warning("ensemble validation skipped for %s: %s", name, str(e)[:80])
             n = persist_inferences(run_id, name, result.inferences) if not dry_run else len(result.inferences)
             total_inf += n
             layers_run.append({"layer": name, "ok": result.ok, "ms": result.elapsed_ms,
