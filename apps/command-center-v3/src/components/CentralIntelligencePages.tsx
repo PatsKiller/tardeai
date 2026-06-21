@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
+import { EnsembleValidationInline } from './EnsembleValidationCard'
 
 const TEXT0 = '#f8fafc'
 const TEXT2 = '#cbd5e1'
@@ -85,6 +86,14 @@ function ItemCard({ item, onDrill, onAsk }: { item: IntelItem; onDrill: (ctx: Dr
       <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}><b>Why:</b> {qualityReasons(item).join(' · ')}</div>
       <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}><b>Next:</b> {nextStep(item)}</div>
       <button onClick={(e) => { e.stopPropagation(); onAsk(item) }} style={{ ...btn(true, PURPLE), marginTop: 7 }}>Ask LM to verify this</button>
+      <div onClick={(e) => e.stopPropagation()}>
+        <EnsembleValidationInline
+          targetType="signal"
+          targetId={item.id}
+          subject={item.symbol || item.type}
+          content={`${item.title}\n${item.summary ?? ''}`}
+        />
+      </div>
     </div>}
   </div>
 }

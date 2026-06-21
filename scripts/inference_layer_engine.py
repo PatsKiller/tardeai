@@ -195,25 +195,56 @@ def finalize_run(run_id: Optional[int], status: str, regime: str,
     )
 
 
-def persist_inferences(run_id: Optional[int], layer: str, inferences: list) -> int:
+def persist_inferences(run_id: Optional[int], layer: str, inferences: list) -> list:
+    """Insert inferences; return the list of inserted ids (None per failed row),
+    aligned with `inferences` order so callers can target rows (e.g. ensemble jobs)."""
     if run_id is None or not inferences:
-        return 0
+        return []
     _execute, use_db = _db()
     if not use_db:
-        return 0
-    n = 0
+        return []
+    ids: list = []
     for inf in inferences:
-        res = _execute(
+        row = _execute(
             """INSERT INTO inference_results
                (run_id, layer, inference_type, subject, title, body, confidence,
                 severity, source_lane, reasoning_trace, evidence, payload)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (run_id, layer, inf.inference_type, inf.subject[:300], inf.title[:500],
              (inf.body or "")[:8000], float(inf.confidence or 0), inf.severity,
              inf.source_lane, json.dumps(inf.reasoning_trace, default=str),
              json.dumps(inf.evidence, default=str), json.dumps(inf.payload, default=str)),
-            fetch=None,
+            fetch="one",
         )
+        ids.append(row["id"] if row else None)
+    return ids
+
+
+def enqueue_ensemble_jobs(items: list, cfg: dict) -> int:
+    """Queue ensemble-validation jobs for the highest-severity inferences this cycle.
+
+    `items` is a list of (inference_id, Inference). The worker
+    (inference_ensemble_worker.py) runs them off-cycle so the engine stays bounded.
+    Controlled by cfg.ensemble.auto_enqueue / *_severities / *_max.
+    """
+    ens = cfg.get("ensemble", {}) or {}
+    if not ens.get("auto_enqueue"):
+        return 0
+    sevs = set(ens.get("auto_enqueue_severities", ["high", "critical"]))
+    cap = int(ens.get("auto_enqueue_max", 4))
+    _execute, use_db = _db()
+    if not use_db:
+        return 0
+    picked = [(iid, inf) for iid, inf in items if iid and inf.severity in sevs]
+    picked.sort(key=lambda x: (x[1].severity != "critical", -float(x[1].confidence or 0)))
+    n = 0
+    for iid, inf in picked[:cap]:
+        content = f"{inf.title}\n{inf.body or ''}"[:8000]
+        res = _execute(
+            """INSERT INTO inference_ensemble_jobs
+               (target_type, target_id, subject, content, task, requested_by, status)
+               VALUES ('inference', %s, %s, %s, 'inference_quality', 'auto', 'queued')""",
+            (str(iid), inf.subject[:300], content), fetch=None)
         if res:
             n += 1
     return n
@@ -317,6 +348,7 @@ class InferenceEngine:
 
         layers_run: list = []
         total_inf = 0
+        hi_sev: list = []   # (inference_id, Inference) for auto ensemble-enqueue
         for name, layer in self._build_layers(only_layers):
             t0 = time.time()
             try:
@@ -333,17 +365,36 @@ class InferenceEngine:
                     log.info("layer %-13s ensemble-validated %d inference(s)", name, nv)
             except Exception as e:
                 log.warning("ensemble validation skipped for %s: %s", name, str(e)[:80])
-            n = persist_inferences(run_id, name, result.inferences) if not dry_run else len(result.inferences)
+            if dry_run:
+                n = len(result.inferences)
+            else:
+                inserted = persist_inferences(run_id, name, result.inferences)
+                n = sum(1 for i in inserted if i)
+                for iid, inf in zip(inserted, result.inferences):
+                    if iid and inf.severity in ("high", "critical"):
+                        hi_sev.append((iid, inf))
             total_inf += n
             layers_run.append({"layer": name, "ok": result.ok, "ms": result.elapsed_ms,
                                "n": len(result.inferences), "summary": result.summary[:200]})
             log.info("layer %-13s ok=%s %4dms inferences=%d :: %s",
                      name, result.ok, result.elapsed_ms, len(result.inferences), result.summary[:120])
 
+        # Auto-enqueue ensemble validation for the cycle's highest-severity inferences
+        # (the worker runs them off-cycle; bounded by ensemble.auto_enqueue_max).
+        enqueued = 0
+        if not dry_run:
+            try:
+                enqueued = enqueue_ensemble_jobs(hi_sev, self.cfg)
+                if enqueued:
+                    log.info("auto-enqueued %d ensemble validation job(s)", enqueued)
+            except Exception as e:
+                log.warning("ensemble auto-enqueue failed: %s", e)
+
         summary = self._summarize(ctx, total_inf)
         metrics = {"total_inferences": total_inf,
                    "regime": ctx.regime,
-                   "layers": len(layers_run)}
+                   "layers": len(layers_run),
+                   "ensemble_enqueued": enqueued}
         if not dry_run:
             finalize_run(run_id, "complete", ctx.regime, layers_run, summary, metrics)
 
