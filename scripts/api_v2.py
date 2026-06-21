@@ -3358,20 +3358,23 @@ def ai_ask(body: dict):
 def _wl_items(query: dict = None):
     """GET /api/v2/watchlist/items — DB-backed watchlist items with filters."""
     q = query or {}
-    conditions = ["status <> 'removed'"]
+    # NOTE: this SELECT joins several tables that also have source/status/asset_type columns
+    # (watchlist_symbol_master, strategy cards, …) — filter columns MUST be qualified with wi.,
+    # else Postgres raises "column reference ... is ambiguous" and the whole list silently returns 0.
+    conditions = ["wi.status <> 'removed'"]
     params = []
     if q.get("source"):
-        conditions.append("source = %s")
+        conditions.append("wi.source = %s")
         params.append(q["source"][0] if isinstance(q["source"], list) else q["source"])
     if q.get("bucket"):
-        conditions.append("bucket = %s")
+        conditions.append("wi.bucket = %s")
         params.append(q["bucket"][0] if isinstance(q["bucket"], list) else q["bucket"])
     if q.get("asset_type"):
-        conditions.append("asset_type = %s")
+        conditions.append("wi.asset_type = %s")
         params.append(q["asset_type"][0] if isinstance(q["asset_type"], list) else q["asset_type"])
     if q.get("status"):
         conditions = [c for c in conditions if "status" not in c]
-        conditions.append("status = %s")
+        conditions.append("wi.status = %s")
         params.append(q["status"][0] if isinstance(q["status"], list) else q["status"])
     where = " AND ".join(conditions)
     sort = "updated_at DESC"
