@@ -42,6 +42,12 @@ function ago(iso?: string): string {
   if (!Number.isFinite(h)) return ''
   return h < 1 ? 'just now' : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`
 }
+// Action URLs from the backend are absolute (hardcoded tailscale host for Telegram/email). In the dashboard
+// that navigates OFF to another instance — strip to the same-origin path so the link stays in this app.
+function relUrl(u?: string): string | undefined {
+  if (!u) return u
+  try { const p = new URL(u); return p.pathname + p.search + p.hash } catch { return u }
+}
 const chip: React.CSSProperties = { fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'var(--bg2)', color: 'var(--text2)' }
 
 export default function SynthesizedReportCard(
@@ -68,19 +74,23 @@ export default function SynthesizedReportCard(
           </div>
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginTop: 5 }}>{item.title}</div>
           {insight && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: compact ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{insight}</div>}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7, alignItems: 'center' }}>
-            {item.sector && <span style={chip}>{item.sector}</span>}
-            {item.trend && <span style={{ ...chip, color: '#a855f7' }}>{item.trend}</span>}
-            {q != null && <span style={{ ...chip, color: q >= 72 ? '#22c55e' : q >= 50 ? '#f59e0b' : '#ef4444' }}>quality {q}%</span>}
-            {en && en.decision && <span style={{ ...chip, color: en.decision === 'approve' ? '#22c55e' : '#ef4444' }}>ensemble {en.decision}{en.score != null ? ` ${en.score}` : ''}{en.lanes?.length ? ` · ${en.lanes.length} lanes` : ''}</span>}
-          </div>
+          {/* chips: only the ones that exist, and never in compact (narrow list) — keeps the list scannable */}
+          {!compact && (item.sector || item.trend || q != null || (en && en.decision)) && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7, alignItems: 'center' }}>
+              {item.sector && <span style={chip}>{item.sector}</span>}
+              {item.trend && <span style={{ ...chip, color: '#a855f7' }}>{item.trend}</span>}
+              {q != null && <span style={{ ...chip, color: q >= 72 ? '#22c55e' : q >= 50 ? '#f59e0b' : '#ef4444' }}>quality {q}%</span>}
+              {en && en.decision && <span style={{ ...chip, color: en.decision === 'approve' ? '#22c55e' : '#ef4444' }}>ensemble {en.decision}{en.score != null ? ` ${en.score}` : ''}{en.lanes?.length ? ` · ${en.lanes.length} lanes` : ''}</span>}
+            </div>
+          )}
         </div>
         <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 9.5, color: 'var(--text3)' }}>{ago(item.created_at)}{item.channel ? <><br />{item.channel}</> : null}</div>
       </div>
-      {(item.actions && item.actions.length > 0) && (
+      {/* actions only on the FULL card (reader/feed) — the compact list opens the reader on click, which has them */}
+      {!compact && (item.actions && item.actions.length > 0) && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
           {item.actions.slice(0, 5).map((a, i) => a.url
-            ? <a key={i} href={a.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} ↗</a>
+            ? <a key={i} href={relUrl(a.url)} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
             : <button key={i} onClick={e => { e.stopPropagation(); onAction?.(a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>{a.label}</button>)}
         </div>
       )}
