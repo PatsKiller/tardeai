@@ -448,3 +448,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # BEGIN DOCS-BACKUP-1
 50 23 * * * cd $PROJ && bash linux_launchers/backup_generated_docs.sh >> logs/docs_backup.log 2>&1
 # END DOCS-BACKUP-1
+
+# ============================================================
+# Inference ensemble worker — drains queued validation jobs (free LLM lanes).
+# BEGIN ENSEMBLE-WORKER-1
+*/3 9-16 * * 1-5 cd $PROJ && bash linux_launchers/run_ensemble_worker.sh
+# END ENSEMBLE-WORKER-1

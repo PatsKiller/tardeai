@@ -147,6 +147,45 @@ DDL = [
     "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS geo_keywords JSONB",
     "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS region_tagged_at TIMESTAMPTZ",
     "CREATE INDEX IF NOT EXISTS idx_news_region ON news_articles(region, created_at DESC)",
+    # ── Multi-LLM ensemble validation (background-computed, displayed in the UI) ──
+    """
+    CREATE TABLE IF NOT EXISTS inference_ensemble_jobs (
+        id            BIGSERIAL PRIMARY KEY,
+        target_type   TEXT,                         -- 'inference' | 'proposal' | 'signal' | ...
+        target_id     TEXT,                         -- id of the thing being validated
+        subject       TEXT,                         -- display subject (symbol/topic)
+        content       TEXT,                         -- the text the ensemble rates
+        task          TEXT DEFAULT 'inference_quality',
+        status        TEXT DEFAULT 'queued',        -- queued | running | done | error
+        result_id     BIGINT,                       -- -> inference_ensemble_results.id
+        error         TEXT,
+        requested_by  TEXT DEFAULT 'operator',
+        requested_at  TIMESTAMPTZ DEFAULT now(),
+        started_at    TIMESTAMPTZ,
+        finished_at   TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_ens_jobs_status ON inference_ensemble_jobs(status, requested_at)",
+    "CREATE INDEX IF NOT EXISTS idx_ens_jobs_target ON inference_ensemble_jobs(target_type, target_id, requested_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS inference_ensemble_results (
+        id                BIGSERIAL PRIMARY KEY,
+        target_type       TEXT,
+        target_id         TEXT,
+        subject           TEXT,
+        task              TEXT,
+        content_hash      TEXT,
+        final_decision    TEXT,                     -- approve | block
+        final_score       NUMERIC,                  -- 0-10 avg
+        final_confidence  NUMERIC,                  -- 0-1
+        consensus_reached BOOLEAN,
+        lanes_used        JSONB DEFAULT '[]'::jsonb,
+        votes             JSONB DEFAULT '[]'::jsonb, -- [{lane,score,decision,confidence,reasoning}]
+        reasoning_summary TEXT,
+        created_at        TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_ens_results_target ON inference_ensemble_results(target_type, target_id, created_at DESC)",
 ]
 
 
