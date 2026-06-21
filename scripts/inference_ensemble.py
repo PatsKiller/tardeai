@@ -70,28 +70,54 @@ def _finance_rubric(blob: str) -> str:
         "\nFINANCE RUBRIC (apply strictly — score LOWER and lean 'block' if the content gets any wrong):\n"
         "• CEF/ETF vs NAV: a DISCOUNT to NAV is potential value but check for a value trap (distribution "
         "cut / chronic discount); a PREMIUM warrants caution. The premium/discount DIRECTION must be "
-        "interpreted correctly — penalize hard if it's backwards.\n"
-        "• Income durability: is the distribution covered by earnings, or return-of-capital / NAV erosion? "
-        "High yield funded by NAV erosion is NOT sustainable income.\n"
-        "• Retirement context (investor on SSDI, NY, Golden-Window Roth): weight income durability + capital "
-        "preservation over total-return chasing; flag sequence-of-returns risk.\n"
-        "• Sizing/risk: reject FOMO/chase framing and any implied oversizing beyond a sane risk budget.\n"
-        "• Tax/Medicare/estate (Roth/MAPT/IRMAA): require a 'confirm with a professional' caveat; do not "
-        "approve specific figures stated with false precision.\n"
+        "interpreted correctly — penalize hard if it's backwards. For covered-call ETFs (JEPI/JEPQ/QYLD/SCHD) "
+        "separate option-premium/dividend income from capped price upside.\n"
+        "• Income durability: is the distribution covered by NII/earnings, or destructive return-of-capital / "
+        "NAV erosion? High yield funded by ROC or NAV erosion is NOT sustainable income — flag PTY-style "
+        "premium-plus-ROC combinations explicitly.\n"
+        "• Roth / Golden-Window (ages ~63→65): conversions must weigh the IRMAA 2-year lookback (2026 MAGI "
+        "sets 2028 Part B/D surcharges) and avoid pushing MAGI into a higher IRMAA tier without cause; Roth "
+        "has no RMDs and grows tax-free — sequencing vs ordinary-income brackets matters.\n"
+        "• Medicaid / MAPT: the 5-year lookback means assets must sit in an IRREVOCABLE MAPT 60 months before "
+        "application; estate recovery can claw back from the probate estate. Penalize advice that ignores the "
+        "lookback or implies a REVOCABLE trust protects assets (it does not).\n"
+        "• SSDI: earned income above the SGA limit (~$1,620/mo 2026, non-blind) risks benefit loss; portfolio "
+        "and dividend income is UNEARNED and does NOT count toward SGA — never conflate the two.\n"
+        "• Sizing/risk: reject FOMO/chase framing and oversizing beyond a sane risk budget; weight capital "
+        "preservation + sequence-of-returns risk for a near-retirement SSDI investor.\n"
+        "• Tax/Medicare/estate precision: require a 'confirm with a professional' caveat; do not approve "
+        "specific dollar/bracket figures stated with false precision.\n"
     )
 
 
+_SUB_FIELDS = ("retirement_relevance", "finance_actionability", "risk_alignment")
+
+
 def _prompt(content: str, context: str, task: str) -> str:
+    rubric = _finance_rubric(f"{content} {context} {task}")
+    # Finance-substantive items get three extra sub-scores; generic items keep the light 4-field schema.
+    if rubric:
+        extra = (
+            "\nAlso score each 0-10: retirement_relevance (bearing on Roth/MAPT/Medicare/IRMAA/SSDI/estate "
+            "planning for THIS investor), finance_actionability (a concrete sound next step — NAV signal, "
+            "protection review, conversion timing — vs vague commentary), risk_alignment (respects capital "
+            "preservation + the stated risk budget).\n")
+        schema = ('{"score": 0.0-10.0, "decision": "approve" | "block", "confidence": 0.0-1.0, '
+                  '"reasoning": "<=25 words", "retirement_relevance": 0.0-10.0, '
+                  '"finance_actionability": 0.0-10.0, "risk_alignment": 0.0-10.0}')
+    else:
+        extra = ""
+        schema = ('{"score": 0.0-10.0, "decision": "approve" | "block", "confidence": 0.0-1.0, '
+                  '"reasoning": "<=25 words"}')
     return (
         "You are one model in a multi-LLM ensemble validating research/inference for a retail investor "
         "(retirement/SSDI/Medicare + markets). Be a strict, finance-aware reviewer.\n"
         f"TASK: {task}\n"
         f"CONTEXT: {context or 'general research / safety relevance'}\n"
         f"CONTENT:\n{content[:4500]}\n"
-        f"{_finance_rubric(f'{content} {context} {task}')}\n"
+        f"{rubric}{extra}"
         "Reply ONLY with JSON, no prose:\n"
-        '{"score": 0.0-10.0, "decision": "approve" | "block", "confidence": 0.0-1.0, '
-        '"reasoning": "<=25 words"}'
+        + schema
     )
 
 
@@ -120,8 +146,17 @@ def _parse_vote(raw: str) -> Optional[Dict[str, Any]]:
         score = 7.0 if dec == "approve" else 3.0
     if dec is None:
         dec = "approve" if score >= 6.0 else "block"
-    return {"score": max(0.0, min(10.0, score)), "decision": dec, "confidence": round(conf, 2),
-            "reasoning": str(d.get("reasoning", ""))[:160]}
+    out = {"score": max(0.0, min(10.0, score)), "decision": dec, "confidence": round(conf, 2),
+           "reasoning": str(d.get("reasoning", ""))[:160]}
+    # finance sub-scores (only present when the finance schema was used and the lane returned them)
+    for k in _SUB_FIELDS:
+        try:
+            sv = float(d.get(k))
+            if 0 <= sv <= 10:
+                out[k] = round(sv, 1)
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def ensemble_validate(content: str, context: str = "", task: str = "content_quality_rating",
@@ -160,11 +195,21 @@ def ensemble_validate(content: str, context: str = "", task: str = "content_qual
     consensus = approve_frac >= cfg["consensus_threshold"] or avg >= cfg["min_score"]
     majority = "approve" if approve_frac > 0.5 else "block"
     final = majority if consensus else "block"
-    return {"final_decision": final, "final_score": round(avg, 2),
-            "final_confidence": round(sum(v["confidence"] for v in votes) / len(votes), 2),
-            "consensus_reached": bool(consensus), "lanes_used": [v["lane"] for v in votes],
-            "votes": votes,
-            "reasoning_summary": f"avg={avg:.1f}, {approve}/{len(votes)} approve, consensus={consensus}"}
+    out = {"final_decision": final, "final_score": round(avg, 2),
+           "final_confidence": round(sum(v["confidence"] for v in votes) / len(votes), 2),
+           "consensus_reached": bool(consensus), "lanes_used": [v["lane"] for v in votes],
+           "votes": votes,
+           "reasoning_summary": f"avg={avg:.1f}, {approve}/{len(votes)} approve, consensus={consensus}"}
+    # aggregate finance sub-scores over the votes that provided them (finance-substantive items only)
+    sub = {}
+    for k in _SUB_FIELDS:
+        vals = [v[k] for v in votes if k in v]
+        if vals:
+            sub[k] = round(sum(vals) / len(vals), 2)
+    if sub:
+        out.update(sub)
+        out["reasoning_summary"] += " · " + ", ".join(f"{k.split('_')[0]} {v}" for k, v in sub.items())
+    return out
 
 
 def main():
