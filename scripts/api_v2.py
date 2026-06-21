@@ -16482,6 +16482,8 @@ def _data_source_health(query=None):
     _feed("Screener membership", "finviz", "SELECT max(last_seen_in_screener_at), count(*) FILTER (WHERE present_this_run) FROM screener_symbol_membership", 48)
     _feed("YouTube transcripts", "news", "SELECT max(ingested_at), count(*) FROM youtube_transcripts WHERE ingested_at>now()-interval '7 days'", 96)
     _feed("Catalyst events", "research", "SELECT max(created_at), count(*) FILTER (WHERE created_at>now()-interval '2 days') FROM catalyst_events", 24)
+    _feed("Finviz sector/industry", "finviz", "SELECT max(created_at), count(*) FROM finviz_group_performance WHERE snapshot_date=(SELECT max(snapshot_date) FROM finviz_group_performance)", 30)
+    _feed("SEC Form-4 insider", "research", "SELECT max(created_at), count(*) FILTER (WHERE filing_date>current_date-7) FROM sec_form4", 48)
     order = {"dead": 0, "error": 1, "stale": 2, "slow": 3, "live": 4}
     out.sort(key=lambda x: order.get(x.get("status"), 9))
     counts = {}
@@ -16491,6 +16493,49 @@ def _data_source_health(query=None):
             "total": len(out),
             "note": "Per-source freshness vs expected cadence. status: live=within cadence, slow=1-2x late, "
                     "stale=2-4x late, dead=>4x late or no data. Catches silent sub-source failures."}
+
+
+def _sector_performance(query=None):
+    """GET /api/v2/sector-performance — latest Finviz sector + industry performance snapshot
+    (leaders/laggards) for macro/rotation research. Read-only."""
+    q = query or {}
+    gtype = (q.get("type", ["sector"])[0] if isinstance(q.get("type"), list) else q.get("type")) or "sector"
+    rows = _db_query("""SELECT name, change_pct, pe, dividend_yield, market_cap, stocks, snapshot_date
+                        FROM finviz_group_performance
+                        WHERE group_type=%s AND snapshot_date=(SELECT max(snapshot_date)
+                              FROM finviz_group_performance WHERE group_type=%s)
+                        ORDER BY change_pct DESC NULLS LAST""", (gtype, gtype)) or []
+    items = [{"name": r.get("name"), "change_pct": _json_clean(r.get("change_pct")),
+              "pe": _json_clean(r.get("pe")), "dividend_yield": _json_clean(r.get("dividend_yield")),
+              "market_cap": _json_clean(r.get("market_cap")), "stocks": r.get("stocks"),
+              "as_of": _json_clean(r.get("snapshot_date"))} for r in rows]
+    return {"ok": True, "group_type": gtype, "count": len(items),
+            "leaders": items[:5], "laggards": items[-5:][::-1], "items": items,
+            "as_of": items[0]["as_of"] if items else None,
+            "note": "Finviz group performance (advisory · macro/rotation lens)."}
+
+
+def _insider_activity(query=None):
+    """GET /api/v2/insider-activity[?symbol=X] — recent SEC Form-4 insider filings (authoritative) for a
+    symbol, else across the held + active-watchlist universe. Read-only/advisory."""
+    q = query or {}
+    sym = (q.get("symbol", [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol"))
+    if sym:
+        rows = _db_query("""SELECT symbol, filer_name, filer_relation, transaction_type, shares, price,
+                              total_value, ownership_after, filing_date, transaction_date, sec_url
+                            FROM sec_form4 WHERE symbol=%s ORDER BY filing_date DESC NULLS LAST LIMIT 40""",
+                         (sym.upper(),)) or []
+    else:
+        rows = _db_query("""SELECT s.symbol, s.filer_name, s.filer_relation, s.transaction_type, s.shares,
+                              s.price, s.total_value, s.ownership_after, s.filing_date, s.transaction_date, s.sec_url
+                            FROM sec_form4 s
+                            WHERE s.filing_date > current_date - 30
+                              AND (s.symbol IN (SELECT symbol FROM watchlist_items WHERE status<>'removed')
+                                   OR s.symbol IN (SELECT symbol FROM watchlist_items WHERE source='portfolio'))
+                            ORDER BY s.filing_date DESC NULLS LAST LIMIT 80""") or []
+    items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    return {"ok": True, "symbol": (sym or None), "count": len(items), "items": items,
+            "note": "SEC Form-4 insider filings (authoritative). Advisory."}
 
 
 def _watch_provenance(symbol):
@@ -19150,6 +19195,8 @@ ROUTES = {
     "/api/v2/retirement": retirement,
     "/api/v2/retirement/planning-research": _retirement_planning_research,
     "/api/v2/data-source-health": _data_source_health,
+    "/api/v2/sector-performance": _sector_performance,
+    "/api/v2/insider-activity": _insider_activity,
     "/api/v2/ai-analyst": ai_analyst,
     "/api/v2/ai-reports": lambda: {"reports": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, report_type, title, content, provider, cost, generated_at FROM ai_reports ORDER BY generated_at DESC LIMIT 20") or [])]},
     "/api/v2/alex/recent": lambda: _alex_recent(),
