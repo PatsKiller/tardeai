@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -24,6 +24,21 @@ export default function RiskHub({ onDrill }: Props) {
   const overThreshold = heat > HEAT_THRESHOLD
   const positions = risk?.positions ?? []
   const triggered = positions.filter((p: any) => p.triggered)
+
+  // Deep-link: arriving as /v3/risk?symbol=XXX (e.g. a stop-triggered action for XXX from the Reports
+  // Action Queue) opens the page focused on JUST that position — its stop/protection detail in the drawer —
+  // instead of the whole risk hub (operator: "if its a stop for XXX then page should open just for stop of XXX").
+  const [focusSym] = useState(() => { try { return (new URLSearchParams(window.location.search).get('symbol') || '').toUpperCase() } catch { return '' } })
+  const [focused, setFocused] = useState(false)
+  useEffect(() => {
+    if (!focusSym || focused || !positions.length) return
+    const p = positions.find((x: any) => String(x.symbol || '').toUpperCase() === focusSym)
+    if (p) {
+      setFocused(true)
+      onDrill({ title: `${p.symbol} — risk / stop`, subtitle: `stop ${p.stop_price ?? p.stop ?? '—'} · ${p.triggered ? 'TRIGGERED' : p.has_stop ? 'protected' : 'unprotected'}`, endpoint: '/api/v2/risk', rows: [p] })
+    }
+  }, [focusSym, focused, positions, onDrill])
+
   const noStop = positions.filter((p: any) => !p.has_stop)
   const protectedCount = positions.filter((p: any) => p.has_stop && !p.triggered).length
   const exposedCount = positions.length - protectedCount

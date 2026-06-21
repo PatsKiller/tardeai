@@ -262,6 +262,18 @@ _ACT_RULES = [
 _RISK_CLASSES = {"stop_triggered", "unprotected_position", "risk_review"}
 _SEV_RANK = {"urgent": 3, "critical": 3, "warning": 2, "info": 1}
 
+# Destination page (from an inline link in the matched line) → the canonical action_class, so the PILL
+# matches where the link goes. A "stop-loss triggered → /v2/approvals" Steph-review item is an APPROVAL
+# action (pill + tab + route all Approvals), not a Risk item that happens to link elsewhere. risk/recovery/
+# journal keep their matched class (they genuinely are risk/recovery).
+_PAGE_CLASS = {
+    "approvals": "approval_needed", "trading": "approval_needed", "proposals": "approval_needed",
+    "paper-proposals": "approval_needed", "paper-status": "approval_needed",
+    "research": "research_needed", "research-topics": "research_needed",
+    "system": "system_health", "alerts": "system_health", "siem": "system_health",
+    "portfolio": "portfolio_review",
+}
+
 # Negation guard: an occurrence inside a sentence with this language is NOT a stop trigger (recovery-watch
 # "Relisted — No Stop-Out", "not a stop-out", "no stop loss triggered"). Applied per-class in extract.
 _NEG_STOP = _re.compile(
@@ -305,10 +317,8 @@ def extract_action_items(item: dict) -> list[dict]:
             own_route = m.group(0)
             break
     rid = f"{item.get('source')}-{item.get('id')}"
-    out, used = [], set()
+    out, emitted = [], set()   # dedup by FINAL (out) class so a reclassified item never keeps a stale pill
     for action_class, rule_sev, rx in _ACT_RULES:
-        if action_class in used:
-            continue
         # Find the first NON-negated occurrence: for guarded classes (stop_triggered), an occurrence whose
         # surrounding line carries negation language ("No Stop-Out") is skipped — if every occurrence is
         # negated the class isn't emitted at all.
@@ -324,25 +334,35 @@ def extract_action_items(item: dict) -> list[dict]:
             break
         if not m:
             continue
-        used.add(action_class)
         # severity = stronger of the item's own severity and the rule's base severity
         sev = rule_sev if _SEV_RANK.get(rule_sev, 1) >= _SEV_RANK.get(base_sev, 1) else base_sev
         if sev == "critical":
             sev = "urgent"
+        out_class = action_class
         sym = item_sym or (_symbol_near(line) if action_class in _RISK_CLASSES else None)
         route, route_label = _ACT_ROUTE.get(action_class, ("/v3/reports", "Reports"))
-        # Prefer the destination the matched LINE itself points to (e.g. "→ /v2/approvals") over the
-        # class default — so a Steph-review item that merely mentions a stop routes to Approvals, not Risk.
-        # This is the fix for "all links go to risk": the class no longer dictates the route when the text
-        # names a specific page.
+        # The destination the matched LINE names (e.g. "→ /v2/approvals") drives BOTH the route AND the pill
+        # class — so a Steph-review item that merely mentions a stop is an Approval (pill + tab + button all
+        # Approvals), not a Risk item linking elsewhere. Fixes "all links go to risk" + the pill/route mismatch.
         _ml = _re.search(r"/v[23]/([a-z0-9-]+)", line)
         if _ml and _ml.group(1) in _PAGE:
-            route_label, route = _PAGE[_ml.group(1)]
+            seg = _ml.group(1)
+            route_label, route = _PAGE[seg]
+            if seg in _PAGE_CLASS:
+                out_class = _PAGE_CLASS[seg]
         elif action_class == "informational" and own_route:
             route = own_route
+        _key = (out_class, (sym or "").upper())   # dedup by class+SYMBOL → keep per-symbol actions distinct
+        if _key in emitted:
+            continue
+        emitted.add(_key)
+        # Deep-link to the SYMBOL: a stop/action for IRDM opens the page focused on IRDM (?symbol=IRDM),
+        # not the generic hub (operator: "if its a stop for XXX then page should open just for stop of XXX").
+        if sym and _is_ticker(sym):
+            route = f"{route}{'&' if '?' in route else '?'}symbol={sym}"
         out.append({
-            "id": f"{rid}-{action_class}", "report_id": rid, "source": item.get("source"),
-            "category": item.get("category"), "title": item.get("title"), "action_class": action_class,
+            "id": f"{rid}-{out_class}", "report_id": rid, "source": item.get("source"),
+            "category": item.get("category"), "title": item.get("title"), "action_class": out_class,
             "severity": sev, "symbol": sym, "route": route, "route_label": route_label,
             "text": line or (item.get("title") or "")[:200],
             "created_at": item.get("created_at"), "status": "open",
@@ -810,17 +830,18 @@ def _verify_actions() -> int:
               + (f"  MISSING:{sorted(miss)}" if miss else ""))
     # routing: an action whose line points to a specific page routes THERE, not the class default ("all
     # links go to risk" fix). A Steph-review stop mention -> Approvals (/v3/trading), not /v3/risk.
-    def route_of(title, cls_wanted):
-        for a in extract_action_items({"source": "t", "id": 0, "title": title, "summary": "",
-                                       "severity": "info", "symbol": None, "actions": []}):
-            if a["action_class"] == cls_wanted:
-                return a["route"], a["route_label"]
-        return None, None
-    rt, rl = route_of("CACI: The stop-loss order was triggered → /v2/approvals", "stop_triggered")
-    route_ok = rt == "/v3/trading"
+    acts = extract_action_items({"source": "t", "id": 0,
+        "title": "CACI: The stop-loss order was triggered → /v2/approvals", "summary": "",
+        "severity": "info", "symbol": None, "actions": []})
+    # the Steph-review item must NOT carry a Risk pill, and its approval action must route to /v3/trading
+    no_risk_pill = not any(a["action_class"] in _RISK_CLASSES for a in acts)
+    appr = next((a for a in acts if a["action_class"] == "approval_needed"), None)
+    route_ok = no_risk_pill and appr is not None and appr["route"].startswith("/v3/trading") and appr["route_label"] == "Approvals" and "symbol=CACI" in appr["route"]
     if not route_ok:
         ok = False
-    print(f"  [{'PASS' if route_ok else 'FAIL'}] inline-route: stop mention -> {rl} {rt} (want Approvals /v3/trading)")
+    classes_got = sorted({a["action_class"] for a in acts})
+    print(f"  [{'PASS' if route_ok else 'FAIL'}] inline-route+pill: stop->approvals item classes={classes_got} "
+          f"route={appr['route'] if appr else None} (want approval_needed/-/v3/trading, no risk pill)")
     print("✓ all action-classifier checks passed" if ok else "✗ action-classifier checks FAILED")
     return 0 if ok else 1
 
