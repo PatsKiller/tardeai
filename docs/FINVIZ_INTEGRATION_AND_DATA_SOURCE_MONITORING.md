@@ -52,6 +52,18 @@ cadence. The health monitor closes that gap: it flags a source `dead` on sight w
 its last update is far past cadence (it immediately caught DDG + Brave dead, and screener-membership 33-days
 stale). This is **per-source yield monitoring**, complementary to the job/freshness monitors.
 
+### Age by INGEST time, not publish date (bug fix 2026-06-21, commit 3f9f0f9a)
+The recovery test exposed a latent monitor bug: it aged news feeds by `max(published_at)`, but several
+sources (DuckDuckGo, etc.) don't populate `published_at`. A feed producing fresh rows therefore read as
+`dead` (`age=None`) — the exact false-negative the monitor exists to prevent. Fixed to age by
+`max(created_at)` — when the feed last *delivered to us*, which is the correct freshness signal.
+
+### Recovery verified (2026-06-21)
+Firing the now-fixed jobs flipped the monitor `3 DEAD / 2 SLOW / 14 LIVE` → `1 DEAD / 18 LIVE`:
+DuckDuckGo (ran topic_ingestion → 10 results saved) and Screener membership (ran a screener → membership
+maintained) both went **dead → live**. **Brave stays dead — correctly**: its free monthly tier is exhausted
+(returns 0 items), so the monitor is honest, not buggy (DuckDuckGo is its fallback and is now healthy).
+
 ---
 
 ## 2b. Finviz surfacing — where it shows (verified)
