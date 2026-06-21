@@ -117,7 +117,7 @@ export default function StrategyHub({ onDrill }: Props) {
         </div>
       </div>
 
-      {tab === 'Leaderboard' && <StrategyLeaderboard data={leaderboard} />}
+      {tab === 'Leaderboard' && <StrategyLeaderboard data={leaderboard} onDrill={onDrill} onTab={setTab} />}
       {tab === 'Analytics' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -333,13 +333,22 @@ export default function StrategyHub({ onDrill }: Props) {
 
 // Live strategy leaderboard (operator 2026-06-19) — ranked by LIVE expectancy (avg R), with backtest +
 // assessment as context. Chart + table. LOW confidence (<8 live trades) flagged as directional only.
-function StrategyLeaderboard({ data }: any) {
+function StrategyLeaderboard({ data, onDrill, onTab }: any) {
   const rows: any[] = data?.leaderboard ?? []
   const note: string = data?.note ?? ''
   const CONF: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#94a3b8' }
   const chart = rows.map(r => ({ name: r.strategy_id.replace(/_/g, ' ').slice(0, 14), R: r.live?.avg_r ?? 0 }))
   const th = { fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase' as const, fontWeight: 800, textAlign: 'right' as const, padding: '5px 8px' }
   const td = { fontSize: 12, padding: '6px 8px', textAlign: 'right' as const, color: 'var(--text1)' }
+  const drillRow = (r: any) => onDrill?.({
+    title: r.strategy_id, subtitle: `rank #${r.rank} · ${r.confidence} confidence · tilt ${r.tilt ?? '—'}×`,
+    endpoint: '/api/v2/strategy-leaderboard',
+    rows: [{ strategy_id: r.strategy_id, rank: r.rank, live_avg_r: r.live?.avg_r, live_win_rate: r.live?.win_rate,
+      live_trades: `${r.live?.wins ?? 0}/${r.live?.n ?? 0}`, total_pnl: r.live?.total_pnl, confidence: r.confidence,
+      tilt: r.tilt, backtest: r.backtest ? `${r.backtest.sample} · ${r.backtest.expectancy_r}R` : '—',
+      assessment: r.snapshot?.recommendation || r.snapshot?.assessment || '—' }],
+  })
+  const actBtn: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#60a5fa', cursor: 'pointer', whiteSpace: 'nowrap' }
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{note}</div>
     {rows.length > 0 && <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
@@ -359,13 +368,13 @@ function StrategyLeaderboard({ data }: any) {
         <thead><tr>
           <th style={{ ...th, textAlign: 'left' }}>#  Strategy</th>
           <th style={th}>Live R</th><th style={th}>Win%</th><th style={th}>Trades</th><th style={th}>Total P&L</th>
-          <th style={th}>Conf</th><th style={th}>Tilt</th><th style={th}>Backtest (n · expR)</th><th style={{ ...th, textAlign: 'left' }}>Assessment</th>
+          <th style={th}>Conf</th><th style={th}>Tilt</th><th style={th}>Backtest (n · expR)</th><th style={{ ...th, textAlign: 'left' }}>Assessment</th><th style={{ ...th, textAlign: 'left' }}>Actions</th>
         </tr></thead>
         <tbody>
           {rows.map(r => {
             const lv = r.live ?? {}, bt = r.backtest, sn = r.snapshot
             const rc = (lv.avg_r ?? 0) >= 0 ? '#22c55e' : '#ef4444'
-            return <tr key={r.strategy_id} style={{ borderTop: '1px solid var(--border)' }}>
+            return <tr key={r.strategy_id} onClick={() => drillRow(r)} title="open strategy detail" style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
               <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: 'var(--text0)' }}>
                 <span style={{ color: r.rank <= 2 ? '#fbbf24' : 'var(--text3)', marginRight: 7 }}>{r.rank <= 2 ? '★' : r.rank}</span>{r.strategy_id}
               </td>
@@ -377,9 +386,15 @@ function StrategyLeaderboard({ data }: any) {
               <td style={{ ...td, fontWeight: 800, color: r.excluded ? 'var(--text3)' : (r.tilt > 1.02 ? '#22c55e' : r.tilt < 0.98 ? '#ef4444' : 'var(--text3)') }} title={r.excluded ? 'momentum_scalp — excluded from tilt (pinned 1.0)' : 'allocation tilt: boosts candidate ranking + risk budget'}>{r.tilt != null ? `${r.tilt}×` : '—'}{r.excluded ? ' 🔒' : ''}</td>
               <td style={td}>{bt ? <span title={bt.data_suspect ? 'backtest expectancy out of realistic range — data suspect, ignored in ranking' : ''}>{bt.sample ?? '—'} · {bt.expectancy_r ?? '—'}R {bt.data_suspect ? '⚠' : ''}</span> : '—'}</td>
               <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }}>{sn?.recommendation || sn?.assessment || '—'}</td>
+              <td style={{ ...td, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+                <span style={{ display: 'flex', gap: 5 }}>
+                  <button style={actBtn} onClick={() => onTab?.('Backtest')} title={`Open the Backtest tab for ${r.strategy_id}`}>Backtest →</button>
+                  <button style={actBtn} onClick={() => onTab?.('Plan vs Perf')} title="Open Plan vs Performance">Plan →</button>
+                </span>
+              </td>
             </tr>
           })}
-          {rows.length === 0 && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No closed trades yet.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No closed trades yet.</td></tr>}
         </tbody>
       </table>
     </div>
