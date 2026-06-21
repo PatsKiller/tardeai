@@ -159,11 +159,17 @@ export default function RiskHub({ onDrill }: Props) {
               {/* Triggered stops — each symbol is individually clickable → its singular stop detail (+ act link) */}
               {triggered.length > 0 && (
                 <div id="triggered-stops" style={{ padding: '7px 10px', background: 'rgba(239,68,68,.1)', border: `1px solid ${hlStops ? '#ef4444' : 'rgba(239,68,68,.2)'}`, borderRadius: 6, marginBottom: 6, boxShadow: hlStops ? '0 0 0 2px rgba(239,68,68,.35)' : 'none', scrollMarginTop: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>{triggered.length} stops triggered <span style={{ fontSize: 9.5, fontWeight: 500, color: '#fca5a5' }}>— click a symbol to act on its stop</span></div>
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>{triggered.length} stops triggered <span style={{ fontSize: 9.5, fontWeight: 500, color: '#fca5a5' }}>— click a symbol to ACT on its stop (arm / ignore 1wk)</span></div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                     {triggered.map((p: any) => (
-                      <button key={p.symbol} onClick={() => stopDrill(p)} title={`open ${p.symbol} stop · ${p.distance_to_stop_pct ?? '?'}% past stop`}
-                        style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid #ef444466', background: 'rgba(239,68,68,.14)', color: '#fca5a5' }}>{p.symbol}</button>
+                      <span key={p.symbol} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {/* primary: go straight to the actionable Stage 2c card for THIS symbol */}
+                        <a href={`/v3/trading?tab=Open%20Trades&symbol=${p.symbol}`} title={`Act on ${p.symbol} stop — arm a protective stop or ignore 1 week (${p.distance_to_stop_pct ?? '?'}% past stop)`}
+                          style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 8px', borderRadius: '6px 0 0 6px', textDecoration: 'none', border: '1px solid #ef444466', borderRight: 'none', background: 'rgba(239,68,68,.18)', color: '#fca5a5' }}>{p.symbol} →</a>
+                        {/* secondary: read-only review drawer (charts / analyst / finviz) */}
+                        <button onClick={() => stopDrill(p)} title={`Review ${p.symbol} (read-only: charts, analyst, finviz)`}
+                          style={{ fontSize: 9, fontWeight: 700, padding: '4px 6px', borderRadius: '0 6px 6px 0', cursor: 'pointer', border: '1px solid #ef444466', background: 'rgba(239,68,68,.08)', color: '#fca5a5' }}>ⓘ</button>
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -172,11 +178,15 @@ export default function RiskHub({ onDrill }: Props) {
               {/* No stop set — each symbol individually clickable */}
               {noStop.length > 0 && (
                 <div style={{ padding: '7px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 6 }}>{noStop.length} positions no stop set <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>— click to review</span></div>
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 6 }}>{noStop.length} positions no stop set <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>— click a symbol to arm a protective stop</span></div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                     {noStop.map((p: any) => (
-                      <button key={p.symbol} onClick={() => stopDrill(p)} title={`open ${p.symbol} — no protective stop`}
-                        style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid #f59e0b55', background: 'rgba(245,158,11,.1)', color: '#fcd34d' }}>{p.symbol}</button>
+                      <span key={p.symbol} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <a href={`/v3/trading?tab=Open%20Trades&symbol=${p.symbol}`} title={`Arm a protective stop for ${p.symbol} (no stop set)`}
+                          style={{ fontSize: 10.5, fontWeight: 800, fontFamily: 'monospace', padding: '3px 8px', borderRadius: '6px 0 0 6px', textDecoration: 'none', border: '1px solid #f59e0b55', borderRight: 'none', background: 'rgba(245,158,11,.12)', color: '#fcd34d' }}>{p.symbol} →</a>
+                        <button onClick={() => stopDrill(p)} title={`Review ${p.symbol} (read-only)`}
+                          style={{ fontSize: 9, fontWeight: 700, padding: '4px 6px', borderRadius: '0 6px 6px 0', cursor: 'pointer', border: '1px solid #f59e0b55', background: 'rgba(245,158,11,.06)', color: '#fcd34d' }}>ⓘ</button>
+                      </span>
                     ))}
                   </div>
                 </div>
