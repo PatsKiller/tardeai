@@ -111,7 +111,7 @@ inference_layers:
 
   telegram:
     enabled: true
-    min_severity: medium            # only push medium+ inferences
+    min_severity: high              # only push high/critical inferences (was medium)
     max_items: 6
     dashboard_url: "http://localhost:7777/v3/intelligence"
 
