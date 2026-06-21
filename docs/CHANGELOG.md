@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-20 - Operator research topics route to BOTH trends + knowledge research
+
+Verification (operator: "make sure these added, not hallucinations, in research engine; retirement/estate/
+tax used for reports"): Maria's add-topic created REAL trend directives (#85-203 — not fabricated) but they
+fed TICKER DISCOVERY only, so ~65 retirement/estate/tax/Medicare topics produced ZERO knowledge research
+(Roth/IRMAA/Medicaid/SSDI all 0) and fed no report. Fix: (1) sync_research_directives_to_topics.py backfilled
+124 trend directives into topic_monitor (owner='shared' → Hermes+TradeAI research bridge); (2) POST
+/watch/directives now mirrors every trend directive into topic_monitor on creation, so future Telegram/UI
+adds route to BOTH automatically; (3) /api/v2/retirement/planning-research + a 'Planning Research' tab on
+RetirementHub surface the topic_research grouped by theme. Bridge cron bumped 5→40 rows/day. Verified:
+topic_research now Roth 9/IRMAA 3/Medicaid 5/SSDI 7/Medicare 6 (was 0); 124 enqueued (staged for Hermes).
+
 ## 2026-06-20 - Multi-timeframe Fibonacci + swing + confluence on cards
 
 New `scripts/fib_confluence_engine.py`: analyzes daily/weekly/monthly charts (yfinance OHLC) independently
