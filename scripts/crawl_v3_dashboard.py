@@ -14,6 +14,21 @@ Exit code 0 = clean; 1 = real issues found (CI/cron friendly).
 import argparse
 import sys
 import time
+import urllib.request
+
+
+def _server_up(base, tries=20, gap=2.0):
+    """The v3 dashboard is served by a SINGLE-THREADED server; a fast crawl can momentarily overwhelm it
+    (watchdog restart → ERR_CONNECTION_REFUSED). Poll a light endpoint so we never mistake a transient
+    server blip for a dead route."""
+    url = base.replace("/v3", "") + "/api/v2/data-source-health"
+    for _ in range(tries):
+        try:
+            urllib.request.urlopen(url, timeout=5)
+            return True
+        except Exception:
+            time.sleep(gap)
+    return False
 
 ROUTES = ["", "portfolio", "risk", "trading", "manual-execution", "strategy", "agents", "intelligence",
           "hermes", "retirement", "journal", "watchlist", "watchpool", "sectors", "reports", "rotation",
@@ -58,10 +73,13 @@ def main():
     issues = {}
     with sync_playwright() as p:
         b = p.chromium.launch()
-        # Pass 1 — fast sequential crawl
+        # Pass 1 — gentle sequential crawl (delay between routes so we don't overwhelm the
+        # single-threaded server and trip its watchdog — that would create false ERR_CONNECTION_REFUSED).
         for route in ROUTES:
+            _server_up(base)  # wait out any transient blip before loading the next route
             pg = b.new_page(viewport={"width": 1500, "height": 1000})
-            loaded, failed, cerr, perr, stuck = _visit(pg, f"{base}/{route}", 3500, 20000)
+            loaded, failed, cerr, perr, stuck = _visit(pg, f"{base}/{route}", 3500, 25000)
+            time.sleep(1.2)
             if args.screenshots:
                 try: pg.screenshot(path=f"{args.screenshots}/{route or 'home'}.png", full_page=True)
                 except Exception: pass
@@ -73,6 +91,9 @@ def main():
         for route, _ in list(issues.items()):
             rk = "" if route == "home" else route
             time.sleep(3)
+            if not _server_up(base):     # server itself is down — that's an availability issue, not a route bug
+                confirmed["__server__"] = {"failed": [], "console": [], "pageerr": ["server not responding"], "stuck": True}
+                break
             pg = b.new_page(viewport={"width": 1500, "height": 1000})
             loaded, failed, cerr, perr, stuck = _visit(pg, f"{base}/{rk}", 5000, 45000)
             pg.close()
