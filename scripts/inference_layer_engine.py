@@ -231,14 +231,15 @@ def enqueue_ensemble_jobs(items: list, cfg: dict) -> int:
     if not ens.get("auto_enqueue"):
         return 0
     sevs = set(ens.get("auto_enqueue_severities", ["high", "critical"]))
-    cap = int(ens.get("auto_enqueue_max", 4))
+    cap = int(ens.get("auto_enqueue_max", 4))   # <=0 means no cap (all high-severity)
     _execute, use_db = _db()
     if not use_db:
         return 0
     picked = [(iid, inf) for iid, inf in items if iid and inf.severity in sevs]
     picked.sort(key=lambda x: (x[1].severity != "critical", -float(x[1].confidence or 0)))
+    selected = picked if cap <= 0 else picked[:cap]
     n = 0
-    for iid, inf in picked[:cap]:
+    for iid, inf in selected:
         content = f"{inf.title}\n{inf.body or ''}"[:8000]
         res = _execute(
             """INSERT INTO inference_ensemble_jobs

@@ -142,4 +142,6 @@ inference_layers:
     # by auto_enqueue_max so lane volume stays predictable (~3 lane calls per job).
     auto_enqueue: true
     auto_enqueue_severities: [high, critical]
-    auto_enqueue_max: 4
+    # 0 = enqueue ALL high-severity inferences this cycle (no cap). Set a positive
+    # number to bound it (each job ≈ 3 lane calls; the worker drains ~5 per tick).
+    auto_enqueue_max: 0
