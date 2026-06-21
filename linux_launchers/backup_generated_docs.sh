@@ -14,6 +14,22 @@ PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJ"
 BR="generated-docs-backup"
 TS="$(date '+%F %T')"
+HOST="$(hostname -s 2>/dev/null || echo host)"
+
+# Telegram failure ping (direct Bot API; token/chat from .env, first chat id only).
+# No-op if not configured or disabled. Mirrors the repo's existing curl idiom.
+tg_alert() {
+  local msg="$1" enabled token chat
+  enabled="$(grep -E '^ENABLE_TELEGRAM=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'\''[:space:]')"
+  [ "${enabled:-true}" = "false" ] && return 0
+  token="$(grep -E '^TELEGRAM_BOT_TOKEN=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'\''[:space:]')"
+  chat="$(grep -E '^TELEGRAM_CHAT_ID=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'\''[:space:]')"
+  chat="${chat%%,*}"
+  [ -n "$token" ] && [ -n "$chat" ] || { echo "$TS [tg] not configured — alert skipped"; return 0; }
+  curl -s --max-time 15 -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+    -d "chat_id=${chat}" -d "text=${msg}" >/dev/null 2>&1 \
+    && echo "$TS [tg] failure alert sent" || echo "$TS [tg] alert curl failed"
+}
 
 # single-instance
 exec 9>/tmp/tradeai_docs_backup.lock
@@ -47,11 +63,19 @@ if [ -n "$PARENT" ] && [ "$(git rev-parse "$PARENT^{tree}")" = "$TREE" ]; then
 fi
 
 MSG="docs: generated-docs backup $TS"
-COMMIT="$(printf '%s\n' "$MSG" | git commit-tree "$TREE" ${PARENT:+-p "$PARENT"})"
+COMMIT="$(printf '%s\n' "$MSG" | git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} 2>/dev/null || true)"
+if [ -z "${COMMIT:-}" ]; then
+  echo "$TS commit-tree FAILED"
+  tg_alert "🔴 docs-backup ($HOST): commit-tree failed — generated docs NOT backed up. Check logs/docs_backup.log."
+  exit 1
+fi
 git update-ref "refs/heads/$BR" "$COMMIT"
 
 if git push -q origin "$BR" 2>/dev/null; then
   echo "$TS backed up $(git rev-parse --short "$COMMIT") -> origin/$BR"
 else
-  echo "$TS commit $(git rev-parse --short "$COMMIT") made locally; push FAILED (will retry next run)"
+  SHORT="$(git rev-parse --short "$COMMIT")"
+  echo "$TS commit $SHORT made locally; push FAILED (will retry next run)"
+  tg_alert "🔴 docs-backup ($HOST): commit $SHORT made locally but PUSH to origin/$BR FAILED. Backup is stranded — check network/auth; it will retry next run."
+  exit 1
 fi
