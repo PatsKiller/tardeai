@@ -135,3 +135,9 @@ inference_layers:
     validate_in_loop: true
     validate_layers: [higher_order, regional]
     validate_max: 4
+    # Auto-enqueue: at the end of each cycle the engine queues ensemble validation
+    # jobs for the highest-severity inferences (the worker runs them off-cycle). Bounded
+    # by auto_enqueue_max so lane volume stays predictable (~3 lane calls per job).
+    auto_enqueue: true
+    auto_enqueue_severities: [high, critical]
+    auto_enqueue_max: 4
