@@ -16395,12 +16395,22 @@ def _retirement_planning_research(query=None):
     """GET /api/v2/retirement/planning-research — Hermes knowledge research on the operator's retirement /
     estate / tax / Medicare planning topics (research_type='topic_research'), grouped by theme. Read-only.
     Feeds the RetirementHub 'Planning Research' section. Advisory — consult professionals."""
-    THEMES = [("Roth & conversions", r"roth|conversion|golden window|rmd"),
-              ("Medicare & IRMAA", r"medicare|irmaa|part b|part d"),
-              ("Medicaid & asset protection", r"medicaid|mapt|asset protection|lookback|spend.?down"),
-              ("Estate & trusts", r"estate|trust|probate|life estate|special needs"),
-              ("SSDI & taxes", r"ssdi|social security|tax|magi|irs"),
-              ("Income & dividends", r"dividend|covered call|jepi|income|cef|pty|nav|bond|annuit")]
+    # Classify on the TOPIC NAME (concise + on-point) — NOT topic+summary, whose long
+    # cross-references caused trading topics to leak in via bare "tax/income/dividend/nav".
+    # Themes require retirement-SPECIFIC anchors; TRADING_EXCLUDE drops market/trading
+    # research (sector rotation, options, swing/momentum, AI-datacenter, defense, etc.)
+    # — those belong on Intelligence/Research, not the Retirement hub.
+    THEMES = [("Roth & conversions", r"\broth\b|conversion|golden window|\brmd\b|backdoor|qualified charitable"),
+              ("Medicare & IRMAA", r"medicare|irmaa|medigap|part [bd]\b"),
+              ("Medicaid & asset protection", r"medicaid|\bmapt\b|asset protection|spend.?down|look.?back|estate recovery|special needs|supplemental needs"),
+              ("Estate & trusts", r"estate|\btrust\b|probate|life estate|beneficiar|\bwill\b|inheritance"),
+              ("SSDI & taxes", r"\bssdi\b|social security|disability|\bmagi\b|tax.?loss|tax-efficient|tax strateg|\bqcd\b|\bhsa\b|earnings test|substantial gainful"),
+              ("Income & dividends (retirement)", r"dividend income|covered call|bond ladder|tips|fixed.?income|annuit|drawdown|income sleeve|monthly income|dividend aristocrat|income strateg|bucket strateg|\bcef\b|\bpty\b|\bnav\b")]
+    TRADING_EXCLUDE = (r"swing|momentum|sector rotation|option|greeks|iron condor|earnings season|technical|breakout|scalp|"
+                       r"reddit|chart|implied vol|theta|premium sell|datacenter|data center|semiconductor|ai chip|ai hardware|"
+                       r"ai networking|ai datacenter|\bgpu\b|nvidia|defense|aerospace|materials sector|geopolitical|glp-1|"
+                       r"weight.?loss|hot topics|controvers|collar|sentiment-driven|emerging sector|infrastructure buildout|"
+                       r"hedging|catalyst|energy sector|utilities sector|consumer (defensive|staples)|healthcare rotation|trending|hype")
     rows = _db_query("""SELECT topic, summary, thesis, confidence_score, freshness_date, model_used,
                           research_type, created_at, status, evidence_json
                         FROM hermes_research_intelligence
@@ -16409,16 +16419,21 @@ def _retirement_planning_research(query=None):
     groups = {n: [] for n, _ in THEMES}
     import re as _re, json as _json
     seen = set()
+    excluded = 0
     for r in rows:
-        blob = f"{r.get('topic') or ''} {r.get('summary') or ''}"
-        key = (r.get("topic") or "")[:60]
+        topic_name = (r.get("topic") or "")
+        key = topic_name[:60]
+        # drop market/trading research outright — it isn't retirement planning
+        if _re.search(TRADING_EXCLUDE, topic_name, _re.I):
+            excluded += 1
+            continue
         # vetted sources this research grounded on (cataloged by the synthesizer; graded-good only)
         ev = r.get("evidence_json")
         ev = ev if isinstance(ev, dict) else (_json.loads(ev) if ev else {})
         srcs = [{"source": g.get("source"), "title": g.get("title"), "url": g.get("url")}
                 for g in (ev.get("grounded_on") or [])][:6]
         for name, rx in THEMES:
-            if _re.search(rx, blob, _re.I):
+            if _re.search(rx, topic_name, _re.I):
                 if (name, key) in seen:
                     break
                 seen.add((name, key))
@@ -16432,9 +16447,10 @@ def _retirement_planning_research(query=None):
     out = [{"theme": n, "count": len(groups[n]), "items": groups[n][:8]} for n, _ in THEMES if groups[n]]
     return {"ok": True, "advisory_only": True, "as_of": datetime.now().astimezone().isoformat(),
             "themes": out, "total": sum(len(groups[n]) for n in groups),
-            "note": "Hermes research on your retirement/estate/tax/Medicare topics (advisory; consult an "
-                    "elder-law attorney + tax advisor). Routed from operator research topics into the "
-                    "knowledge-research pipeline."}
+            "excluded_non_retirement": excluded,
+            "note": "Retirement/estate/tax/Medicare/SSDI planning research only (advisory; consult an "
+                    "elder-law attorney + tax advisor). Trading/market research is filtered out to the "
+                    "Intelligence/Research surfaces."}
 
 
 def _data_source_health(query=None):
