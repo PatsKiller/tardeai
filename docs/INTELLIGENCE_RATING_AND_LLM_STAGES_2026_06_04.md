@@ -87,6 +87,33 @@ and keep TradeAI on external-data + deterministic scoring.*
 
 ---
 
+## C. Intelligence Command Center signal-quality (UI, 2026-06-21)
+
+Separate from article-quality (§A): the **Intelligence → Command Center** page scores each consolidated
+*signal* (risk/stop, command, open-trade, setup, news, research, external-LM…) for trust/actionability.
+Computed in `apps/command-center-v3/src/components/CentralIntelligencePages.tsx` (`qscore`/`estError`).
+
+**The bug (fixed 2026-06-21):** every risk/stop/command/open-trade card showed an identical
+`quality 39% / est error 61%`. Root cause: those signals were added with no per-signal confidence (flat
+0.65 fallback) and no timestamp, so `qscore = 0.65 − 0.18 (missing timestamp) − 0.08 (no LM review) = 0.39`
+for every one — with uniform boilerplate reasons.
+
+**The fix (two parts):**
+1. **Type-aware `qscore`.** Structural signals (`risk | telegram/action | open-trade | setup`) are FACTS —
+   graded on data completeness + signal clarity, NOT penalized for news-freshness or "not LM-reviewed."
+   Opinion/research signals keep the freshness/source/LM penalties (so external-LM reports still spread by
+   staleness, e.g. 42% @>72h → 70% fresh).
+2. **Real per-signal confidence.** Stop signals scale with **distance past the stop** (deep breach = clearer,
+   higher-quality alert); open-trade scales with risk-flag count + operator priority. The `/api/v2/command`
+   feed omits current price, so command stops **cross-reference price from `/api/v2/risk`**; command items
+   that duplicate a triggered risk item are **deduped** (no-noise).
+
+**Result (verified on the rendered page):** quality spans **32–96%** (no uniform 39%); the 8 defense stops
+show once each, ranked by breach — LDOS/NOC/LMT (deep) ≈96%, KBR/CACI (~2% past) ≈66%.
+Commits `f70342ed` + `1cad708c`.
+
+---
+
 ## Status
 - **A (rating alignment): DONE** — `content_scoring` now applied to Hermes-bridged articles; both
   engines rank article quality on the same framework. Verified.
