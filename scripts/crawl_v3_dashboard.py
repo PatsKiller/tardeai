@@ -12,9 +12,30 @@ Exit code 0 = clean; 1 = real issues found (CI/cron friendly).
   python3 scripts/crawl_v3_dashboard.py [--base http://localhost:7777] [--screenshots DIR]
 """
 import argparse
+import os
 import sys
 import time
+import urllib.parse
 import urllib.request
+
+
+def _send_telegram(message):
+    """Alert on confirmed issues. Env-driven (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID); no-op if unset."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_ids = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_ids:
+        return
+    for cid in chat_ids.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            data = urllib.parse.urlencode({"chat_id": cid, "text": message[:4000]}).encode()
+            urllib.request.urlopen(
+                urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data),
+                timeout=10)
+        except Exception:
+            pass
 
 
 def _server_up(base, tries=20, gap=2.0):
@@ -59,7 +80,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:7777")
     ap.add_argument("--screenshots", default="")
+    ap.add_argument("--telegram", action="store_true", help="Alert via Telegram on confirmed issues")
     args = ap.parse_args()
+    if args.telegram:
+        try:
+            from pathlib import Path as _P
+            for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+                if "=" in _l and not _l.strip().startswith("#"):
+                    _k, _, _v = _l.partition("="); os.environ.setdefault(_k.strip(), _v.strip().strip("'\""))
+        except Exception:
+            pass
     base = args.base.rstrip("/") + "/v3"
     try:
         from playwright.sync_api import sync_playwright
@@ -107,12 +137,18 @@ def main():
         print("  ✓ CLEAN — no dead endpoints, console errors, or broken routes "
               f"({len(issues) - len(confirmed)} pass-1 flags were crawl-speed false positives).")
         return 0
+    lines = []
     for route, info in confirmed.items():
         print(f"  ✗ /{route}:")
-        if info["failed"]: print("      failed API:", info["failed"])
-        if info["pageerr"]: print("      page errors:", info["pageerr"])
-        if info["console"]: print("      console errors:", info["console"])
-        if info["stuck"]: print("      STUCK on loading")
+        parts = []
+        if info["failed"]: print("      failed API:", info["failed"]); parts.append(f"API {info['failed']}")
+        if info["pageerr"]: print("      page errors:", info["pageerr"]); parts.append(f"err {info['pageerr']}")
+        if info["console"]: print("      console errors:", info["console"]); parts.append("console errors")
+        if info["stuck"]: print("      STUCK on loading"); parts.append("stuck")
+        lines.append(f"/{route}: {'; '.join(parts)}")
+    if args.telegram:
+        _send_telegram("🕷 v3 dashboard crawl — issues on "
+                       + f"{len(confirmed)} route(s):\n" + "\n".join(lines[:10]))
     return 1
 
 
