@@ -53,7 +53,10 @@ def _load_cfg() -> dict:
 
 _FIN_RX = re.compile(
     r"\b(nav|premium|discount|cef|closed.?end|distribution|yield|income|covered call|roth|ira|mapt|"
-    r"medicare|irmaa|ssdi|annuit|dividend|return of capital|\broc\b|coverage|sustainab|retire|sequence)\b",
+    r"medicare|irmaa|ssdi|annuit|dividend|return of capital|\broc\b|coverage|sustainab|retire|sequence|"
+    # portfolio-reasoning terms (the synthesized Layer-4 risk/opportunity inferences live here)
+    r"drawdown|carry|beta|rebalance|allocation|concentration|hedge|tilt|position siz|trim|protection|"
+    r"stop[- ]?loss|exposure|sizing)\b",
     re.I)
 
 
