@@ -171,7 +171,17 @@ delegating hook in `api_v2.handle()` → `inference_api.handle_inference`):
 Frontend widget: `InferenceLayersPanel` on the Intelligence hub.
 
 **Telegram** (`inference_telegram.send_inference_digest`): prioritized, confidence-
-tagged digest of medium+ inferences via the existing `telegram_alert.send_telegram`.
+tagged digest via the existing `telegram_alert.send_telegram`. Pushes only
+`telegram.min_severity`+ inferences (default **`high`** → high/critical only;
+`max_items` caps the count); medium/low still persist and show on the dashboard. The
+dashboard link is rewritten to the public FQDN-with-port by `notification_url_builder`
+(`http://ms01-openclaw.tail163d14.ts.net:7777/...`).
+
+**Cost / tuning levers** (all in `config/inference_layers.yaml`):
+`llm.use_external_lane` + `salience_threshold` (whole cycle on grok vs local),
+`autonomy.detection_lane` / `action_lane` (grok), `regional.income_funds` (one grok
+NAV call each — trimmed to PTY + held positions), `proactive.max_queries_per_run`,
+`autonomy.max_actions_per_run`, and `telegram.min_severity` / `max_items`.
 
 ## 9. Operation
 

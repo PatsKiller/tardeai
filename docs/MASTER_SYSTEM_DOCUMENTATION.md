@@ -2503,6 +2503,15 @@ sizing and a proactive "mind of its own" query loop. Verified end-to-end live
 (run #1: 9 inferences, regime=risk_off, Asia signal, journal edge, NAV reads).
 See §23c and `docs/project/INFERENCE_LAYERS.md`.
 
+Same-day enhancements: (1) cron installed (weekday 08:00/13:00/16:30 ET, flock-guarded);
+(2) autonomous gap-detection→prioritize→act pass (`inference_autonomy.py`) with string-
+coercion, retry, and deterministic state-grounded fallback; (3) whole cycle routed to
+the free **grok** OAuth lane (`llm.use_external_lane`+`salience_threshold:0.0`, plus
+`autonomy.detection_lane`/`action_lane`) — full cycle ~69-117s on grok vs local stalls;
+(4) `income_funds` trimmed 10→5 (PTY + held) to cut NAV call volume; (5) root-cause fix
+to `notification_url_builder` so ALL Telegram/email links carry the FQDN **with :7777**;
+(6) `telegram.min_severity` raised to **high** (high/critical only).
+
 ### Session 29 — 2026-05-11 (Phases 1-8)
 
 12 commits, ~9,000 lines added across 65+ files. All changes are integrated into the sections above.
