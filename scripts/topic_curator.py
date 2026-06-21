@@ -64,13 +64,7 @@ def _send_telegram(msg):
 # STEP 1: RATE PENDING CONTENT  (RAG / low_quality / blocked)
 # ════════════════════════════════════════════════════════════
 def rate_pending_content(conn, topic_id=None, limit=200):
-    """LLM rates pending articles and transcripts. Tight prompt."""
-    try:
-        from local_llm import generate
-    except ImportError:
-        print("  [curator] No LLM available, skipping rating")
-        return 0, 0, 0
-
+    """LLM rates pending articles and transcripts via the FREE OAuth lanes (grok→chatgpt→local). Tight prompt."""
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
     # Auto-approve high-relevance articles (score >= 0.4) without LLM — already quality-gated at ingest
@@ -125,7 +119,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
             f"Reply ONLY with JSON array: "
             f'[{{"id": 1, "rag": "approved" or "low_quality" or "blocked", "reason": "5 words max"}}]'
         )
-        raw = generate(prompt, timeout=30, fallback=False, fast=True)
+        raw = _free_lane_gen(prompt, timeout=40)
         if raw:
             try:
                 match = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -153,7 +147,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
             f"Preview: {t['preview'][:300]}\n\n"
             f'Reply JSON: {{"rag": "approved"/"low_quality"/"blocked", "reason": "5 words"}}'
         )
-        raw = generate(prompt, timeout=20, fallback=False, fast=True)
+        raw = _free_lane_gen(prompt, timeout=40)
         if raw:
             try:
                 match = re.search(r'\{[^}]+\}', raw)
