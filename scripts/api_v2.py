@@ -3185,6 +3185,17 @@ def retirement():
             f"This month ({current_month['month_name']}): ${current_month['total']:,.0f} expected from {current_month['count']} positions — {', '.join(current_month['symbols'][:8])}."
         )
 
+    # Golden-window calendar YEARS from key_dates (the gw object only carries ages) — the UI shows the
+    # window as years; without these it rendered "No window configured" despite the dates existing.
+    def _yr(s):
+        try:
+            y = int(str(s)[:4])
+            return y if 1900 < y < 2200 else None
+        except Exception:
+            return None
+    gw_start_year = _yr(key_dates.get("golden_window_start"))
+    gw_end_year = _yr(key_dates.get("golden_window_end"))
+
     return {
         "as_of": r.get("as_of", ""),
         "current_age": current_age,
@@ -3202,6 +3213,11 @@ def retirement():
         "golden_window": {
             "start_age": gw_start,
             "end_age": gw.get("end_age") or key_dates.get("golden_window_end", ""),
+            # UI-facing calendar-year + conversion fields (the card reads start_year/end_year/annual_conversion)
+            "start_year": gw_start_year,
+            "end_year": gw_end_year,
+            "annual_conversion": gw_conversion,
+            "bracket_ceiling": gw.get("bracket_ceiling") or "",
             "years_available": gw.get("years_available") or key_dates.get("years_to_golden", 0),
             "optimal_annual_conversion": gw_conversion,
             "projected_roth_at_start": gw.get("projected_roth_at_start") or roth,
@@ -3209,7 +3225,10 @@ def retirement():
         },
         "dividend_income": {
             "annual": annual_div,
+            # UI reads annual_total; keep it consistent with monthly_avg (annual/12) so it never shows $0 vs $X/mo
+            "annual_total": annual_div,
             "monthly_avg": round(annual_div / 12, 2) if annual_div else 0,
+            "yield_pct": round(annual_div / total * 100, 2) if total else None,
             "qualified_annual": div_cal.get("qualified_annual", 0),
             "current_month": current_month,
             "top_payers": [{"symbol": p.get("symbol"), "annual": p.get("annual_income"),
