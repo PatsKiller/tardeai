@@ -78,7 +78,8 @@ function Article({ text }: { text: string }) {
         if (md || tg) {
           const lvl = md ? md[1].length : 2
           const label = (md ? md[2] : t).replace(/^\*|\*$/g, '').replace(/^#+\s*/, '')
-          return <div key={i} style={{ fontSize: lvl <= 1 ? 16 : lvl === 2 ? 12.5 : 11.5, fontWeight: 900, letterSpacing: lvl >= 2 ? .4 : 0, textTransform: lvl >= 2 ? 'uppercase' : 'none', color: lvl <= 1 ? 'var(--text0)' : '#60a5fa', marginTop: i ? 14 : 0, marginBottom: 4 }}>{inline(label)}</div>
+          const sid = sectionIdOf(label)
+          return <div key={i} id={sid ? `rsec-${sid}` : undefined} style={{ scrollMarginTop: 12, fontSize: lvl <= 1 ? 16 : lvl === 2 ? 12.5 : 11.5, fontWeight: 900, letterSpacing: lvl >= 2 ? .4 : 0, textTransform: lvl >= 2 ? 'uppercase' : 'none', color: lvl <= 1 ? 'var(--text0)' : '#60a5fa', marginTop: i ? 14 : 0, marginBottom: 4 }}>{inline(label)}</div>
         }
         const bul = t.match(/^[•\-▪◦·*]\s+(.*)$/)
         if (bul) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: 'var(--text3)' }}>•</span><span style={{ flex: 1 }}>{inline(bul[1])}</span></div>
@@ -139,14 +140,6 @@ const QUICK_VIEWS: { key: QV; label: string }[] = [
   { key: 'risk', label: 'Risk / Stops' }, { key: 'approvals', label: 'Approvals' }, { key: 'hermes', label: 'Hermes' },
   { key: 'system', label: 'System' }, { key: 'critical', label: 'Critical' },
 ]
-// quick view → server-side action-items filter (class-based views become exact at any day range)
-const QV_SERVER: Partial<Record<QV, string>> = {
-  risk: 'classes=stop_triggered,unprotected_position,risk_review',
-  approvals: 'classes=approval_needed,broker_manual',
-  hermes: 'classes=hermes_review',
-  system: 'classes=system_health,cron_or_backup,llm_review',
-  critical: 'severity=urgent,critical',
-}
 const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
 function qvMatchesItem(qv: QV, it: any): boolean {
   const cls: string[] = it.action_classes || []
@@ -162,19 +155,38 @@ function qvMatchesItem(qv: QV, it: any): boolean {
     default: return true
   }
 }
-function qvMatchesAction(qv: QV, a: any): boolean {
-  switch (qv) {
-    case '': return true
-    case 'today': return isToday(a.created_at)
-    case 'needs_action': return true
-    case 'risk': return RISK_CLASSES.includes(a.action_class)
-    case 'approvals': return ['approval_needed', 'broker_manual'].includes(a.action_class)
-    case 'hermes': return a.action_class === 'hermes_review'
-    case 'system': return SYSTEM_CLASSES.includes(a.action_class)
-    case 'critical': return ['urgent', 'critical'].includes((a.severity || '').toLowerCase())
+// ── Action Queue tabs (Phase 2): the right rail defaults to a small actionable "Now" set, not hundreds ──
+const APPROVAL_CLASSES = ['approval_needed', 'broker_manual']
+const RESEARCH_CLASSES = ['research_needed', 'hermes_review', 'portfolio_review']
+type AQTab = 'now' | 'risk' | 'approvals' | 'system' | 'research' | 'all'
+const AQ_TABS: { key: AQTab; label: string }[] = [
+  { key: 'now', label: 'Now' }, { key: 'risk', label: 'Risk' }, { key: 'approvals', label: 'Approvals' },
+  { key: 'system', label: 'System' }, { key: 'research', label: 'Research' }, { key: 'all', label: 'All' },
+]
+function aqMatch(tab: AQTab, a: any): boolean {
+  const cls: string[] = a._classes || (a.action_class ? [a.action_class] : [])
+  const urgent = ['urgent', 'critical'].includes((a.severity || '').toLowerCase())
+  const has = (set: string[]) => cls.some(c => set.includes(c))
+  switch (tab) {
+    case 'all': return true
+    case 'risk': return has(RISK_CLASSES)
+    case 'approvals': return has(APPROVAL_CLASSES)
+    case 'system': return has(SYSTEM_CLASSES)
+    case 'research': return has(RESEARCH_CLASSES)
+    case 'now': return urgent || isToday(a.created_at) || has([...RISK_CLASSES, ...APPROVAL_CLASSES, ...SYSTEM_CLASSES])
     default: return true
   }
 }
+
+// ── Reader "Key sections" (Phase 4): recognized markdown headers → anchor chips that scroll the body ──
+const SECTIONS = [
+  { id: 'exec', label: 'Executive Summary', rx: /executive summary/i },
+  { id: 'risk', label: 'Immediate Risk', rx: /immediate risk/i },
+  { id: 'steph', label: 'Steph Review', rx: /steph review/i },
+  { id: 'recovery', label: 'Recovery Watch', rx: /recovery watch/i },
+  { id: 'next', label: 'Ranked Next Actions', rx: /ranked next action/i },
+]
+const sectionIdOf = (text: string): string | undefined => SECTIONS.find(s => s.rx.test(text))?.id
 
 // Reader synthesis strip — surfaces the enriched fields (sector / trend / finance / retirement / ensemble
 // votes) that reports_portal now attaches per item. Only renders the facets that actually exist (honest).
@@ -194,11 +206,19 @@ function SynthStrip({ it }: { it: any }) {
   return <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>{chips}</div>
 }
 
-function Kpi({ label, value, color, active, onClick }: { label: string; value: number | string; color?: string; active?: boolean; onClick?: () => void }) {
+function Kpi({ label, value, color, active, onClick, sub, strong }: { label: string; value: number | string; color?: string; active?: boolean; onClick?: () => void; sub?: string; strong?: boolean }) {
+  // strong = higher visual priority (Risk/Stops, Approvals): persistent tinted border + left rail.
+  const c = color || '#60a5fa'
   return (
-    <div onClick={onClick} style={{ ...card, padding: '11px 13px', cursor: onClick ? 'pointer' : 'default', borderColor: active ? (color || '#60a5fa') : 'var(--border)', background: active ? (color || '#60a5fa') + '12' : 'var(--bg1)' }}>
-      <div style={{ fontSize: 22, fontWeight: 900, color: color || 'var(--text0)', lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, textTransform: 'uppercase', letterSpacing: .3, fontWeight: 700 }}>{label}</div>
+    <div onClick={onClick} style={{
+      ...card, padding: '11px 13px', cursor: onClick ? 'pointer' : 'default',
+      borderColor: active ? c : strong ? c + '66' : 'var(--border)',
+      borderLeft: strong ? `4px solid ${c}` : (card as any).border,
+      background: active ? c + '18' : strong ? c + '0b' : 'var(--bg1)',
+    }}>
+      <div style={{ fontSize: 23, fontWeight: 900, color: color || 'var(--text0)', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 10, color: strong ? c : 'var(--text2)', marginTop: 3, textTransform: 'uppercase', letterSpacing: .3, fontWeight: 800 }}>{label}</div>
+      {sub && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
@@ -216,6 +236,7 @@ export default function ReportsHub({ onDrill }: Props) {
   const [purge, setPurge] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [aqTab, setAqTab] = useState<AQTab>('now')   // Action Queue defaults to the actionable "Now" set
 
   useEffect(() => { const t = setTimeout(() => { setQ(qInput); setPage(1) }, 350); return () => clearTimeout(t) }, [qInput])
   useEffect(() => { setPage(1) }, [active, days, q])
@@ -224,11 +245,10 @@ export default function ReportsHub({ onDrill }: Props) {
   const effDays = qv === 'today' ? 1 : days
   const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`
   const { data: summary } = useApi<any>(summaryPath, 0)
-  // Action Queue: a class-based quick view passes its filter SERVER-SIDE (exact at any day range — no
-  // crowding-out by higher-severity items, no limit cap on the matched class). Non-class views (All /
-  // Today / Needs action) fetch the full set; client qvMatchesAction stays as a redundant safety pass.
-  const qvServer = QV_SERVER[qv] || ''
-  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=1000${qvServer ? `&${qvServer}` : ''}`
+  // Action Queue (Phase 2): fetch the FULL extracted set; the AQ has its own Now/Risk/Approvals/System/
+  // Research/All tabs (independent of the page quick-views, which filter the report LIST). This is what
+  // lets the queue default to a small "Now" set instead of hundreds of rows.
+  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=1000`
   const { data: actionsData } = useApi<any>(actionsPath, 0)
   const listPath = useMemo(() =>
     `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}`,
@@ -243,7 +263,7 @@ export default function ReportsHub({ onDrill }: Props) {
 
   // auto-select first result when nothing selected
   const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
-  const allActions = (actionsData?.actions || []).filter((a: any) => qvMatchesAction(qv, a))
+  const allActions = actionsData?.actions || []   // raw extracted (full set); AQ tabs filter the deduped view
   // Dedup: one underlying item emits the SAME symbol+text under several action_classes (e.g. an RTX recovery
   // escalation shows as Stop-triggered + Unprotected + System). Collapse to one row, merging the classes
   // into pills and keeping the highest severity — so the queue isn't 3× the same line.
@@ -263,6 +283,11 @@ export default function ReportsHub({ onDrill }: Props) {
     }
     return [...seen.values()]
   }, [allActions])
+  // AQ tab filter + cap (Now is capped at 12 priority items; other tabs show up to 40). sev-then-recency order.
+  const aqRank = (a: any) => sevRank(a.severity) * 1e13 + (Date.parse(a.created_at || '') || 0)
+  const aqFiltered = useMemo(() => dedupedActions.filter((a: any) => aqMatch(aqTab, a)).sort((x: any, y: any) => aqRank(y) - aqRank(x)), [dedupedActions, aqTab])
+  const aqCap = aqTab === 'now' ? 12 : 40
+  const aqShown = aqFiltered.slice(0, aqCap)
 
   const k = summary?.kpis || {}
   const sevRows = Object.entries(summary?.by_severity || {}).map(([label, value]: any) => ({ label, value, color: sevColor(label) }))
@@ -279,14 +304,20 @@ export default function ReportsHub({ onDrill }: Props) {
         <button onClick={() => setPurge(true)} style={{ fontSize: 10.5, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Retention / purge old reports</button>
       </div>
 
-      {/* KPI grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-        <Kpi label={`Reports ${effDays || 7}d`} value={k.total ?? '—'} />
-        <Kpi label="Critical / Urgent" value={k.critical_urgent ?? '—'} color="#ef4444" active={qv === 'critical'} onClick={() => setQv(qv === 'critical' ? '' : 'critical')} />
-        <Kpi label="Open actions" value={k.open_actions ?? '—'} color="#a855f7" active={qv === 'needs_action'} onClick={() => setQv(qv === 'needs_action' ? '' : 'needs_action')} />
-        <Kpi label="Risk / Stop" value={k.risk_stop ?? '—'} color="#f59e0b" active={qv === 'risk'} onClick={() => setQv(qv === 'risk' ? '' : 'risk')} />
-        <Kpi label="Approvals" value={k.approvals ?? '—'} color="#a855f7" active={qv === 'approvals'} onClick={() => setQv(qv === 'approvals' ? '' : 'approvals')} />
-        <Kpi label="System / Hermes" value={k.system_hermes ?? '—'} color="#60a5fa" active={qv === 'system'} onClick={() => setQv(qv === 'system' ? '' : 'system')} />
+      {/* KPI grid (Phase 3): action-first hierarchy. Risk/Stops + Approvals get persistent visual priority.
+          Clicking a card focuses the report list AND the Action Queue tab. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        <Kpi label="Needs action now" value={k.open_actions ?? '—'} color="#a855f7" sub={`${k.total ?? 0} reports · 7d`}
+          active={qv === 'needs_action'} onClick={() => { setQv(qv === 'needs_action' ? '' : 'needs_action'); setAqTab('now') }} />
+        <Kpi label="Critical / urgent" value={k.critical_urgent ?? '—'} color="#ef4444" sub={`${k.today ?? 0} today`}
+          active={qv === 'critical'} onClick={() => setQv(qv === 'critical' ? '' : 'critical')} />
+        <Kpi label="Risk / stops" value={k.risk_stop ?? '—'} color="#f59e0b" strong sub="open risk actions"
+          active={qv === 'risk'} onClick={() => { setQv(qv === 'risk' ? '' : 'risk'); setAqTab('risk') }} />
+        <Kpi label="Approvals" value={k.approvals ?? '—'} color="#f59e0b" strong sub="awaiting sign-off"
+          active={qv === 'approvals'} onClick={() => { setQv(qv === 'approvals' ? '' : 'approvals'); setAqTab('approvals') }} />
+        <Kpi label="System blockers" value={k.system_hermes ?? '—'} color="#60a5fa" sub="system · hermes"
+          active={qv === 'system'} onClick={() => { setQv(qv === 'system' ? '' : 'system'); setAqTab('system') }} />
+        <Kpi label="Reports today" value={k.today ?? '—'} color="var(--text0)" sub={`${k.total ?? 0} in ${effDays || 7}d`} />
       </div>
 
       {/* Quick views */}
@@ -385,7 +416,28 @@ export default function ReportsHub({ onDrill }: Props) {
                   <SeverityBadge sev={selected.severity} />
                 </header>
                 <SynthStrip it={selected} />
-                <div style={{ height: 10 }} />
+                {/* extracted action pills (Phase 4) */}
+                {(selected.action_classes || []).length > 0 && (
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>Actions</span>
+                    {(selected.action_classes || []).map((c: string) => <ActionPill key={c} cls={c} />)}
+                  </div>
+                )}
+                {/* Key sections anchor chips — scroll the (auto-expanded) body to a recognized header */}
+                {(() => {
+                  const present = SECTIONS.filter(s => s.rx.test(body))
+                  if (!present.length) return null
+                  return (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>Jump to</span>
+                      {present.map(s => (
+                        <button key={s.id} onClick={() => { setExpanded(true); setTimeout(() => document.getElementById(`rsec-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) }}
+                          style={{ fontSize: 9.5, fontWeight: 700, padding: '3px 9px', borderRadius: 99, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)' }}>{s.label}</button>
+                      ))}
+                    </div>
+                  )
+                })()}
+                <div style={{ height: 12 }} />
                 <Article text={shown} />
                 {long && <button onClick={() => setExpanded(e => !e)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>{expanded ? '▲ show less' : '▼ read full report'}</button>}
                 {(selected.actions || []).length > 0 && (
@@ -400,24 +452,38 @@ export default function ReportsHub({ onDrill }: Props) {
           })()}
         </div>
 
-        {/* RIGHT — action queue + symbols + bars */}
-        <div style={{ flex: '1 1 240px', minWidth: 230, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* RIGHT — action queue + symbols + bars (sticky so it stays in view while the page scrolls) */}
+        <div style={{ flex: '1 1 240px', minWidth: 230, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 8, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}>
           <div style={{ ...card, padding: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Action Queue</span><span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700 }}>{dedupedActions.length}{allActions.length !== dedupedActions.length ? ` of ${allActions.length}` : ''}</span>
+            {/* sticky header so the queue title + tabs stay visible while the list scrolls */}
+            <div style={{ position: 'sticky', top: 0, background: 'var(--bg1)', zIndex: 1, paddingBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 7 }}>Action Queue</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                {AQ_TABS.map(t => {
+                  const on = aqTab === t.key
+                  const n = dedupedActions.filter((a: any) => aqMatch(t.key, a)).length
+                  return <button key={t.key} onClick={() => setAqTab(t.key)} style={{ fontSize: 9.5, fontWeight: on ? 800 : 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+                    border: `1px solid ${on ? '#a855f7' : 'var(--border)'}`, background: on ? 'rgba(168,85,247,.14)' : 'var(--bg2)', color: on ? '#d8b4fe' : 'var(--text3)' }}>{t.label} <span style={{ opacity: .7 }}>{n}</span></button>
+                })}
+              </div>
+              <div style={{ fontSize: 9.5, color: 'var(--text3)', fontWeight: 600 }}>
+                Showing {aqShown.length} {aqTab === 'now' ? 'priority' : aqTab} action{aqShown.length === 1 ? '' : 's'} of {allActions.length} extracted
+                {aqFiltered.length > aqShown.length ? ` · ${aqFiltered.length - aqShown.length} more` : ''}
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
-              {dedupedActions.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no open actions in this view</div>}
-              {dedupedActions.slice(0, 40).map((a: any) => (
-                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '7px 8px', borderRadius: 7, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto', marginTop: 4 }}>
+              {aqShown.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no {aqTab === 'all' ? '' : aqTab + ' '}actions in this window</div>}
+              {aqShown.map((a: any) => (
+                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 9px', borderRadius: 7, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
                   <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                     {(a._classes || [a.action_class]).map((c: string) => <ActionPill key={c} cls={c} />)}
-                    {a.symbol && <span style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa' }}>{a.symbol}</span>}
+                    {a.symbol && <span style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa', fontFamily: 'monospace' }}>{a.symbol}</span>}
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{a.text}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <a href={relUrl(FQDN + a.route)} style={{ fontSize: 9.5, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{a.route_label} →</a>
-                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <a href={relUrl(FQDN + a.route)} style={{ fontSize: 9.5, fontWeight: 800, color: '#60a5fa', textDecoration: 'none', border: '1px solid #60a5fa44', borderRadius: 5, padding: '2px 7px' }}>{a.route_label} →</a>
+                    <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>{a.category}</span>
+                    <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
                   </div>
                 </div>
               ))}

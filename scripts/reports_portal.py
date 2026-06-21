@@ -230,8 +230,25 @@ _ACT_ROUTE = {
 
 # ordered (action_class, base_severity, regex) — earlier = higher priority
 _ACT_RULES = [
-    ("stop_triggered", "urgent", _re.compile(r"\bstops?\s+(?:were\s+)?(?:triggered|hit|fired|executed|filled)\b|\btriggered\s+(?:a\s+)?stop\b|\bstop[\s-]?out\b", _re.I)),
-    ("unprotected_position", "urgent", _re.compile(r"\bunprotected\b|\bnaked\s+(?:stop|position)\b|\bno\s+(?:protective\s+)?stop\b|\bmissing\s+(?:protective\s+)?stop\b|\bwithout\s+a\s+stop\b", _re.I)),
+    # stop_triggered: TRUE trigger language only. The bare "stop-out" clause was removed — it fired on
+    # recovery rows like "Relisted — No Stop-Out" (a NON-event). A negation guard (_NEG_STOP) also drops
+    # any matched occurrence inside a negated sentence ("no stop loss triggered").
+    ("stop_triggered", "urgent", _re.compile(
+        r"\bstops?\s+(?:were\s+)?(?:triggered|hit|fired|executed|filled)\b"
+        r"|\b\d+\s+stops?\s+triggered\b"
+        r"|\btriggered\s+(?:a\s+)?stop\b"
+        r"|\bprotective\s+stop\s+filled\b"
+        r"|\bstop\s+filled\b"
+        r"|\bstop[\s-]?loss\s+(?:order\s+)?(?:was\s+)?triggered\b"
+        r"|\bposition\s+may\s+be\s+flat\b", _re.I)),
+    # unprotected_position: requires explicit "without stops" / "unprotected" / "no protective stop".
+    # The old bare "no stop" clause matched "No Stop-Out" — removed.
+    ("unprotected_position", "urgent", _re.compile(
+        r"\bunprotected\b"
+        r"|\bwithout\s+(?:a\s+|protective\s+)?stops?\b"
+        r"|\bno\s+protective\s+stop\b"
+        r"|\blarge\s+positions?\s+without\s+stops?\b"
+        r"|\bnaked\s+(?:stop|position)\b", _re.I)),
     ("approval_needed", "warning", _re.compile(r"\bapprov(?:e|al|als|ed)\b|\breview\s+queue\b|\bawaiting\s+(?:your\s+)?(?:approval|review|sign-?off)\b|\bpending\s+approval\b|\bone[\s-]?tap\b|\bneeds?\s+(?:your\s+)?(?:approval|sign-?off)\b", _re.I)),
     ("risk_review", "warning", _re.compile(r"\bprotective\s+stop\b|\bstop[\s-]?loss\b|\brisk\s+review\b|\bdrawdown\b|\bbreach(?:ed|es)?\b|\bstop\s+health\b|\bat\s+risk\b", _re.I)),
     ("hermes_review", "info", _re.compile(r"\bhermes\b|\bbacklog\b|\blibrarian\b|\bembedding\s+promotion\b|\bchallenger\b", _re.I)),
@@ -244,6 +261,13 @@ _ACT_RULES = [
 ]
 _RISK_CLASSES = {"stop_triggered", "unprotected_position", "risk_review"}
 _SEV_RANK = {"urgent": 3, "critical": 3, "warning": 2, "info": 1}
+
+# Negation guard: an occurrence inside a sentence with this language is NOT a stop trigger (recovery-watch
+# "Relisted — No Stop-Out", "not a stop-out", "no stop loss triggered"). Applied per-class in extract.
+_NEG_STOP = _re.compile(
+    r"\bno\s+stop[\s-]?out\b|\bnot\s+a\s+stop[\s-]?out\b|\bno\s+stop\s+loss\s+triggered\b"
+    r"|relisted\s*[—\-]\s*no\s+stop\b|\bno\s+stop\s+out\b", _re.I)
+_NEGATE = {"stop_triggered": _NEG_STOP}
 
 
 def _is_ticker(s) -> bool:
@@ -278,18 +302,28 @@ def extract_action_items(item: dict) -> list[dict]:
     rid = f"{item.get('source')}-{item.get('id')}"
     out, used = [], set()
     for action_class, rule_sev, rx in _ACT_RULES:
-        m = rx.search(text)
-        if not m or action_class in used:
+        if action_class in used:
+            continue
+        # Find the first NON-negated occurrence: for guarded classes (stop_triggered), an occurrence whose
+        # surrounding line carries negation language ("No Stop-Out") is skipped — if every occurrence is
+        # negated the class isn't emitted at all.
+        neg = _NEGATE.get(action_class)
+        m, line = None, ""
+        for cand in rx.finditer(text):
+            cl_s = text.rfind("\n", 0, cand.start()) + 1
+            cl_e = text.find("\n", cand.end())
+            cand_line = text[cl_s:(cl_e if cl_e != -1 else len(text))]
+            if neg and neg.search(cand_line):
+                continue
+            m, line = cand, cand_line.strip()[:200]
+            break
+        if not m:
             continue
         used.add(action_class)
         # severity = stronger of the item's own severity and the rule's base severity
         sev = rule_sev if _SEV_RANK.get(rule_sev, 1) >= _SEV_RANK.get(base_sev, 1) else base_sev
         if sev == "critical":
             sev = "urgent"
-        # the matched line, as the action text
-        ls = text.rfind("\n", 0, m.start()) + 1
-        le = text.find("\n", m.end())
-        line = text[ls:(le if le != -1 else len(text))].strip()[:200]
         sym = item_sym or (_symbol_near(line) if action_class in _RISK_CLASSES else None)
         route, route_label = _ACT_ROUTE.get(action_class, ("/v3/reports", "Reports"))
         if action_class == "informational" and own_route:
@@ -732,7 +766,42 @@ def purge(category: str | None = None, older_than_days: int = 90, apply: bool = 
             "category": category or "all", "deleted": deleted, "total": sum(deleted.values())}
 
 
+def _verify_actions() -> int:
+    """Deterministic verification of the action classifier (Phase 1 false-positive fixes). No DB/LLM.
+    Run: python3 scripts/reports_portal.py --verify"""
+    def classes(title, summary=""):
+        item = {"source": "t", "id": 0, "title": title, "summary": summary,
+                "severity": "info", "symbol": None, "actions": []}
+        return {a["action_class"] for a in extract_action_items(item)}
+    cases = [
+        # (text, must_NOT_contain, must_contain)
+        ("RTX recovery watch. Verdict: Reentry Candidate. Analyst: Relisted — No Stop-Out. "
+         "Market reconnection event (relist #0).", {"stop_triggered", "unprotected_position"}, set()),
+        ("8 stops triggered: PFLT, LHX, LMT.", set(), {"stop_triggered"}),
+        ("6 large positions without stops ($222,160 total).", set(), {"unprotected_position"}),
+        ("stop FILLED — position may be flat", set(), {"stop_triggered"}),
+        ("cron failed during nightly backup", set(), {"system_health"}),
+        ("no stop loss triggered overnight", {"stop_triggered"}, set()),
+    ]
+    ok = True
+    for text, must_not, must in cases:
+        got = classes(text)
+        bad = must_not & got
+        miss = must - got
+        status = "PASS" if (not bad and not miss) else "FAIL"
+        if status == "FAIL":
+            ok = False
+        print(f"  [{status}] {text[:52]!r:54} -> {sorted(got)}"
+              + (f"  UNEXPECTED:{sorted(bad)}" if bad else "")
+              + (f"  MISSING:{sorted(miss)}" if miss else ""))
+    print("✓ all action-classifier checks passed" if ok else "✗ action-classifier checks FAILED")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    import sys as _sys
+    if "--verify" in _sys.argv:
+        raise SystemExit(_verify_actions())
     from dotenv import load_dotenv
     load_dotenv(str(PROJECT_ROOT / ".env"))
     import json
