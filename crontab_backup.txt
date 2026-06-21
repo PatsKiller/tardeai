@@ -433,3 +433,12 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Encrypted offsite backup → Google Drive (.env daily, data/ weekly) [added 2026-06-04] ──
 30 5 * * *   cd $PROJ && flock -n /tmp/backup_env.lock  bash scripts/backup_secrets_state.sh env  >> logs/backup_secrets.log 2>&1
 45 5 * * 0   cd $PROJ && flock -n /tmp/backup_data.lock bash scripts/backup_secrets_state.sh data >> logs/backup_secrets.log 2>&1
+
+# ============================================================
+# Inference Layers — modular higher-order reasoning (advisory, no execution).
+# See docs/project/INFERENCE_LAYERS.md. flock-guarded, timeout 25m inside launcher.
+# BEGIN INFERENCE-LAYERS-1
+0 8 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_preopen >> logs/inference_cron.log 2>&1
+0 13 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_midday >> logs/inference_cron.log 2>&1
+30 16 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_postclose >> logs/inference_cron.log 2>&1
+# END INFERENCE-LAYERS-1

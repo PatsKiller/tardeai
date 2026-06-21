@@ -4,9 +4,10 @@ import type { DrillContext } from '../components/DetailDrawer'
 import ResearchTopicsModal from '../components/ResearchTopicsModal'
 import IntelligenceWorkflow from '../components/IntelligenceWorkflow'
 import CentralIntelligencePages from '../components/CentralIntelligencePages'
+import InferenceLayersPanel from '../components/InferenceLayersPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Command Center', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow', 'Rotation'] as const
+const TABS = ['Command Center', 'Inferences', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow', 'Rotation'] as const
 
 export default function IntelligenceHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Command Center')
@@ -44,6 +45,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
       {showTopics && <ResearchTopicsModal onClose={() => setShowTopics(false)} />}
 
       {tab === 'Command Center' && <CentralIntelligencePages mode="command" onDrill={onDrill} />}
+      {tab === 'Inferences' && <InferenceLayersPanel />}
       {tab === 'Signal Quality' && <CentralIntelligencePages mode="quality" onDrill={onDrill} />}
 
       {tab === 'News' && (
