@@ -57,9 +57,12 @@ inference_layers:
       - India growth
       - commodity demand
       - EM currency stress
-    # Income CEFs / ETFs to run NAV premium/discount + flow inference on, even
-    # when not currently held (PTY is the canonical retirement-income example).
-    income_funds: [PTY, PDI, PDO, UTF, UTG, RQI, JEPI, SCHD, PFLT, CSWC]
+    # Income CEFs / ETFs to run NAV premium/discount + flow inference on. Each
+    # unmeasured fund costs one grok NAV call per cycle, so this is the main lever on
+    # call volume — trimmed (2026-06-21) to the held income positions (JEPI/SCHD/PFLT/
+    # CSWC, the actionable ones) plus PTY (the canonical retirement-income CEF watch).
+    # Add a ticker here to monitor its premium/discount even when not held.
+    income_funds: [PTY, JEPI, SCHD, PFLT, CSWC]
 
   sizing:
     base_tilt: 1.0
