@@ -158,8 +158,8 @@ def run(apply=False, max_rows=20, reground=False):
                 return sum(1 for t in _toks if t in blob)
             _kept = [a for a in articles if _mc(a) >= _need]
             if len(_kept) != len(articles):
-                log.info("topic %s: relevance gate kept %d/%d articles (need>=%d tokens)",
-                         (topic or "")[:40], len(_kept), len(articles), _need)
+                print(f"  [relevance] {(topic or '')[:40]}: kept {len(_kept)}/{len(articles)} "
+                      f"articles (need>={_need} tokens)")
             articles = _kept
         res = _synthesize(topic, ctx, articles)
         if not res:
