@@ -47,9 +47,18 @@ function pageLink(path: string) {
 
 // ── markdown/Telegram → React: **bold** *bold* `code`, dashboard links, urls. NOTE: NO _italic_ rule —
 // the data is full of snake_case (reentry_candidate, hold_for_reentry) and underscore-italic ate them. ──
-function inline(text: string): ReactNode[] {
+// tokens that look like tickers but aren't — don't turn these into per-symbol links
+const NOT_TICKER = new Set(['STOP', 'STOPS', 'RISK', 'HEAT', 'NEED', 'ITEM', 'ETF', 'IRA', 'EOD', 'RSI', 'ATR',
+  'PNL', 'YTD', 'ET', 'EST', 'EDT', 'AM', 'PM', 'US', 'USD', 'CIO', 'AI', 'NAV', 'CEF', 'OK', 'NO',
+  'SELL', 'BUY', 'HOLD', 'ADD', 'TRIM', 'GO', 'WAIT'])
+// Per-ticker deep-link in the report body. `sym` = the line's leading ticker (RTX:/CACI:) so its page link
+// carries ?symbol=. `riskLine` = a stop/triggered line → also turn each ticker token into a /v3/risk?symbol=X
+// link, so "8 stops TRIGGERED: PFLT, LHX, LMT…" gives one-click access to EACH position (operator ask).
+function inline(text: string, sym?: string, riskLine?: boolean): ReactNode[] {
   const parts: ReactNode[] = []
-  const re = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|https?:\/\/[^\s)]+|\/v[23]\/[a-z0-9-]+)/g
+  const re = riskLine
+    ? /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|https?:\/\/[^\s)]+|\/v[23]\/[a-z0-9-]+|\b[A-Z]{2,5}\b)/g
+    : /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|https?:\/\/[^\s)]+|\/v[23]\/[a-z0-9-]+)/g
   let last = 0, m: RegExpExecArray | null, key = 0
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index))
@@ -57,13 +66,17 @@ function inline(text: string): ReactNode[] {
     if (tok.startsWith('**')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(2, -2)}</b>)
     else if (tok.startsWith('*')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(1, -1)}</b>)
     else if (tok.startsWith('`')) parts.push(<code key={key++} style={{ fontFamily: 'monospace', fontSize: '.92em', background: 'var(--bg0)', padding: '1px 5px', borderRadius: 4, color: '#a5d6ff' }}>{tok.slice(1, -1)}</code>)
-    else if (tok.startsWith('/v')) { const { label, route } = pageLink(tok); parts.push(<a key={key++} href={FQDN + route} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: '#60a5fa18', color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{label} ↗</a>) }
+    else if (tok.startsWith('/v')) { const { label, route } = pageLink(tok); const r = sym && /\/v3\/(risk|trading|portfolio)/.test(route) ? `${route}?symbol=${sym}` : route; parts.push(<a key={key++} href={FQDN + r} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: '#60a5fa18', color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{label}{sym ? ` ${sym}` : ''} ↗</a>) }
+    else if (riskLine && /^[A-Z]{2,5}$/.test(tok) && !NOT_TICKER.has(tok)) { parts.push(<a key={key++} href={FQDN + `/v3/risk?symbol=${tok}`} target="_blank" rel="noreferrer" title={`open ${tok} risk / stop`} style={{ color: '#60a5fa', fontWeight: 700, fontFamily: 'monospace', textDecoration: 'none', borderBottom: '1px dotted #60a5fa66' }}>{tok}</a>) }
     else parts.push(<a key={key++} href={tok} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', wordBreak: 'break-all' }}>{tok}</a>)
     last = m.index + tok.length
   }
   if (last < text.length) parts.push(text.slice(last))
   return parts
 }
+// the line's leading ticker ("RTX: …", "- CACI: …") and whether it's a stop/risk line
+const lineSym = (t: string): string | undefined => (t.match(/^[•\-▪◦·*\s]*\d*\.?\s*([A-Z]{2,5}):/) || [])[1]
+const isRiskLine = (t: string): boolean => /\bstop|\btrigger|unprotected|protective|stop-?loss/i.test(t)
 
 function Article({ text }: { text: string }) {
   const lines = (text || '').split('\n')
@@ -82,10 +95,10 @@ function Article({ text }: { text: string }) {
           return <div key={i} id={sid ? `rsec-${sid}` : undefined} style={{ scrollMarginTop: 12, fontSize: lvl <= 1 ? 16 : lvl === 2 ? 12.5 : 11.5, fontWeight: 900, letterSpacing: lvl >= 2 ? .4 : 0, textTransform: lvl >= 2 ? 'uppercase' : 'none', color: lvl <= 1 ? 'var(--text0)' : '#60a5fa', marginTop: i ? 14 : 0, marginBottom: 4 }}>{inline(label)}</div>
         }
         const bul = t.match(/^[•\-▪◦·*]\s+(.*)$/)
-        if (bul) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: 'var(--text3)' }}>•</span><span style={{ flex: 1 }}>{inline(bul[1])}</span></div>
+        if (bul) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: 'var(--text3)' }}>•</span><span style={{ flex: 1 }}>{inline(bul[1], lineSym(bul[1]), isRiskLine(bul[1]))}</span></div>
         const num = t.match(/^(\d+)\.\s+(.*)$/)
-        if (num) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: '#60a5fa', fontWeight: 800 }}>{num[1]}.</span><span style={{ flex: 1 }}>{inline(num[2])}</span></div>
-        return <div key={i} style={{ marginBottom: 3 }}>{inline(line)}</div>
+        if (num) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: '#60a5fa', fontWeight: 800 }}>{num[1]}.</span><span style={{ flex: 1 }}>{inline(num[2], lineSym(num[2]), isRiskLine(num[2]))}</span></div>
+        return <div key={i} style={{ marginBottom: 3 }}>{inline(line, lineSym(t), isRiskLine(t))}</div>
       })}
     </div>
   )
