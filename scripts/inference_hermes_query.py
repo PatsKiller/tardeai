@@ -143,6 +143,8 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
     per-run proactive budget enforced by the caller.
     """
     cfg = ctx.cfg
+    # count against the per-cycle proactive budget shared by all layers
+    ctx.scratch["proactive_used"] = ctx.scratch.get("proactive_used", 0) + 1
     rag = rag_block(subject)
     prompt = question
     if rag:
