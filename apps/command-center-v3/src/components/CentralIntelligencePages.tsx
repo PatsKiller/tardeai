@@ -3,6 +3,8 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
+import SynthesizedReportCard from './SynthesizedReportCard'
+import type { ReportCardItem } from './SynthesizedReportCard'
 
 const TEXT0 = '#f8fafc'
 const TEXT2 = '#cbd5e1'
@@ -74,28 +76,42 @@ function KPI({ label, value, sub, color = TEXT0, active = false, onClick }: any)
     {sub && <div style={{ fontSize: 10, color: active ? color : DIM, marginTop: 4 }}>{sub}</div>}
   </button>
 }
+// IntelItem → the shared card's item shape (cohesion: same card on Reports / Inferences / Intelligence).
+function toCardItem(item: IntelItem): ReportCardItem {
+  const created = first((item.raw as any)?.at, (item.raw as any)?.updated_at, (item.raw as any)?.created_at, (item.raw as any)?.generated_at, (item.raw as any)?.last_enriched_at)
+  return {
+    id: item.id, type: item.type, channel: item.model || item.lane || undefined,
+    title: item.title, summary: item.summary, severity: item.severity,
+    symbol: item.symbol, symbols: item.symbol ? [item.symbol] : [],
+    created_at: created, quality_score: Math.round(qscore(item) * 100),
+  }
+}
+// Renders the shared SynthesizedReportCard; the est-error/action meta + (when weak) the verification plan,
+// Ask-LM and live ensemble verdict live in the card FOOTER. Whole-card click still drills; footer controls
+// stopPropagation so they don't trigger a drill.
 function ItemCard({ item, onDrill, onAsk }: { item: IntelItem; onDrill: (ctx: DrillContext) => void; onAsk: (item: IntelItem) => void }) {
-  const qs = qscore(item), er = estError(item), weak = er > .35 || qs < .55
-  return <div onClick={() => onDrill({ title: item.title, subtitle: `${item.source} · ${item.type}`, endpoint: item.source, rows: [item.raw] })} style={{ border: `1px solid ${sevColor(item.severity)}55`, borderLeft: `4px solid ${sevColor(item.severity)}`, borderRadius: 11, background: 'rgba(15,23,42,.58)', padding: 12, cursor: 'pointer' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}><div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>{item.symbol && <span style={{ color: TEXT0, fontSize: 14, fontWeight: 950, fontFamily: 'monospace' }}>{item.symbol}</span>}<span style={{ color: sevColor(item.severity), fontSize: 9, fontWeight: 900, textTransform: 'uppercase' }}>{item.severity}</span><span style={{ color: MUTED, fontSize: 9 }}>{item.type}</span></div><span style={{ color: qs >= .72 ? GREEN : qs >= .5 ? AMBER : RED, fontSize: 10, fontWeight: 900 }}>quality {Math.round(qs * 100)}%</span></div>
-    <div style={{ color: TEXT0, fontSize: 12, fontWeight: 800, marginTop: 7, lineHeight: 1.35 }}>{item.title}</div>
-    {item.summary && <div style={{ color: TEXT2, fontSize: 11, lineHeight: 1.45, marginTop: 5 }}>{String(item.summary).slice(0, 280)}</div>}
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontSize: 9 }}><span style={{ color: MUTED }}>{item.source}</span>{item.model && <span style={{ color: BLUE }}>{item.model}</span>}<span style={{ color: er > .45 ? RED : er > .25 ? AMBER : GREEN }}>est error {(er * 100).toFixed(0)}%</span>{item.action && <span style={{ color: AMBER }}>action: {item.action}</span>}</div>
-    {weak && <div style={{ marginTop: 9, padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)' }}>
-      <div style={{ color: AMBER, fontSize: 10, fontWeight: 900 }}>Low-quality signal action plan</div>
-      <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}><b>Why:</b> {qualityReasons(item).join(' · ')}</div>
-      <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}><b>Next:</b> {nextStep(item)}</div>
-      <button onClick={(e) => { e.stopPropagation(); onAsk(item) }} style={{ ...btn(true, PURPLE), marginTop: 7 }}>Ask LM to verify this</button>
-      <div onClick={(e) => e.stopPropagation()}>
-        <EnsembleValidationInline
-          targetType="signal"
-          targetId={item.id}
-          subject={item.symbol || item.type}
-          content={`${item.title}\n${item.summary ?? ''}`}
-        />
+  const er = estError(item), qs = qscore(item), weak = er > .35 || qs < .55
+  const footer = (
+    <div onClick={(e) => e.stopPropagation()}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9 }}>
+        <span style={{ color: MUTED }}>{item.source}</span>
+        <span style={{ color: er > .45 ? RED : er > .25 ? AMBER : GREEN }}>est error {(er * 100).toFixed(0)}%</span>
+        {item.action && <span style={{ color: AMBER }}>action: {item.action}</span>}
       </div>
-    </div>}
-  </div>
+      {weak && <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)' }}>
+        <div style={{ color: AMBER, fontSize: 10, fontWeight: 900 }}>Low-quality signal action plan</div>
+        <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}><b>Why:</b> {qualityReasons(item).join(' · ')}</div>
+        <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}><b>Next:</b> {nextStep(item)}</div>
+        <button onClick={(e) => { e.stopPropagation(); onAsk(item) }} style={{ ...btn(true, PURPLE), marginTop: 7 }}>Ask LM to verify this</button>
+        <EnsembleValidationInline targetType="signal" targetId={item.id} subject={item.symbol || item.type} content={`${item.title}\n${item.summary ?? ''}`} />
+      </div>}
+    </div>
+  )
+  return (
+    <div onClick={() => onDrill({ title: item.title, subtitle: `${item.source} · ${item.type}`, endpoint: item.source, rows: [item.raw] })}>
+      <SynthesizedReportCard item={toCardItem(item)} footer={footer} />
+    </div>
+  )
 }
 
 export default function CentralIntelligencePages({ mode, onDrill }: Props) {
