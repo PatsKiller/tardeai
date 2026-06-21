@@ -39,10 +39,10 @@ CONNECTOR_TYPES = [
     {"type": "social", "name": "Reddit / Stocktwits / X", "active": True, "specialty": "social sentiment", "note": "live via social_ingest pipeline (Social Scalp)"},
     {"type": "youtube", "name": "YouTube transcripts", "active": True, "specialty": "video transcripts", "note": "live via transcript_processor (cookie-gated)"},
     {"type": "sec", "name": "SEC filings (Form 4)", "active": True, "specialty": "insider filings", "note": "live via sec_form4 ingest"},
-    {"type": "rss", "name": "RSS feeds", "active": False, "specialty": "news feeds", "note": "connector ready (hermes_rss_ingest.py) — no feeds configured in config/hermes_rss_feeds.txt"},
-    {"type": "ai_openai", "name": "OpenAI (ChatGPT)", "active": False, "specialty": "AI research", "note": "DORMANT — needs OPENAI_API_KEY"},
-    {"type": "ai_anthropic", "name": "Anthropic (Claude)", "active": False, "specialty": "AI research", "note": "DORMANT — needs ANTHROPIC_API_KEY"},
-    {"type": "ai_xai", "name": "xAI (Grok)", "active": False, "specialty": "AI research", "note": "DORMANT — needs XAI_API_KEY"},
+    {"type": "rss", "name": "RSS feeds (Yahoo/Benzinga/Google News)", "active": True, "specialty": "news feeds", "note": "live via news_ingestion.py (yahoo_rss/benzinga_rss) + Google News RSS in topic_ingestion (topic_google_news_rss) — 3k+/wk"},
+    {"type": "ai_openai", "name": "OpenAI (ChatGPT)", "active": True, "specialty": "AI research", "note": "live via FREE OAuth codex proxy :8646 (no metered key)"},
+    {"type": "ai_anthropic", "name": "Anthropic (Claude)", "active": False, "specialty": "AI research", "note": "DORMANT — arbitration only; no free lane"},
+    {"type": "ai_xai", "name": "xAI (Grok)", "active": True, "specialty": "AI research", "note": "live via FREE xAI-OAuth proxy :8645 (no metered key)"},
     {"type": "seeking_alpha", "name": "Seeking Alpha", "active": False, "specialty": "equity research", "note": "DORMANT — needs SEEKING_ALPHA_API_KEY (via official API, not cookies)"},
 ]
 
