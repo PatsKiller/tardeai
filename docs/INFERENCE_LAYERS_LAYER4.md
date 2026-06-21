@@ -69,6 +69,11 @@ borderline `low_quality` rejects through the ensemble and upgrades consensus-app
 items pay the 3-lane cost — single-lane still decides the bulk). Verified: 1/3 rescued. Default behavior
 unchanged when the flag is off.
 
+**Cron wiring (2026-06-21):** the curator cron is split so the ensemble cost lands once a day, not 3×:
+- `30 9,13 * * *` → plain grading (fast, single-lane).
+- `30 18 * * *` → `topic_curator.py --ensemble` — the EOD rescue pass over the day's borderline rejects.
+Rescued articles carry `rag_reason = 'ensemble rescue (<lanes>): …'` for audit.
+
 ## Roadmap (not yet built — deferred from the enhancement spec)
 Multi-modal ingestion (SEC filings/PDFs), A/B curation testing, self-adjusting ingestion cadence from
 outcome feedback, and a dashboard hub for the inference results. (Multi-LLM ensemble — DONE above.)
