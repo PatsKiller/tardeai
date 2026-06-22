@@ -508,12 +508,20 @@ def reauth_url(account_key):
     flow (works with a 127.0.0.1 callback behind Tailscale — no listening server): log in, copy the full
     redirect URL from the address bar, then `exchange_code(account_key, redirect_url)` seeds the token."""
     import broker_secrets; broker_secrets.load_into_env()
-    appkey = os.environ.get("SCHWAB_APP_KEY"); cb = os.environ.get("SCHWAB_CALLBACK_URL")
+    appkey = os.environ.get("SCHWAB_APP_KEY"); secret = os.environ.get("SCHWAB_APP_SECRET")
+    cb = os.environ.get("SCHWAB_CALLBACK_URL")
     if not (appkey and cb):
         return {"ok": False, "reason": "SCHWAB_APP_KEY/SCHWAB_CALLBACK_URL not set (architect open-item: portal app + callback)."}
-    from urllib.parse import quote
-    url = (f"https://api.schwabapi.com/v1/oauth/authorize?client_id={appkey}"
-           f"&redirect_uri={quote(cb)}&response_type=code")
+    # Build the URL the SAME way schwab-py/authlib does — fully percent-encoding the redirect_uri
+    # (the prior hand-built URL left the // unencoded as https%3A//127.0.0.1, which Schwab rejects).
+    try:
+        from authlib.integrations.httpx_client import OAuth2Client
+        url, _state = OAuth2Client(appkey, secret, redirect_uri=cb).create_authorization_url(
+            "https://api.schwabapi.com/v1/oauth/authorize")
+    except Exception:
+        from urllib.parse import quote
+        url = (f"https://api.schwabapi.com/v1/oauth/authorize?client_id={appkey}"
+               f"&redirect_uri={quote(cb, safe='')}&response_type=code")
     return {"ok": True, "account_key": account_key, "authorize_url": url,
             "note": "STEP 1 of 2. Open authorize_url in a browser and log in. Schwab redirects to the callback "
                     "with ?code=... (the page may not load — that's fine). Copy the FULL redirect URL from the "
