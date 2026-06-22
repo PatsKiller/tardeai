@@ -264,13 +264,116 @@ def collect_retirement_planning() -> list[dict]:
     return out
 
 
-COLLECTORS = {
-    "data_quality": collect_data_quality,
-    "execution_health": collect_execution_health,
-    "intelligence_quality": collect_intelligence_quality,
-    "risk_protection": collect_risk_protection,
-    "retirement_planning": collect_retirement_planning,
-}
+# policy made available to arg-less collectors (set by compute() before the collectors run)
+_POLICY: dict = {}
+
+
+def collect_strategy_output() -> list[dict]:
+    """Catch 'silent zero' strategy failures: an active, tilt-weighted strategy that graded 0 signals
+    today even though the pipeline ran fine. This is the FIB-style gap (verify_fib_proposals.py) —
+    generalized to every strategy. Gated to avoid morning false-positives: only on trading days, only
+    after the configured hour, and only for strategies with a recent baseline (fired in prior days)."""
+    out = []
+    cfg = (_POLICY.get("strategy_output") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        try:
+            from market_session import is_trading_day
+            if not is_trading_day():
+                return out  # no signals expected off-session
+        except Exception:
+            pass
+        check_after = int(cfg.get("check_after_hour", 11))  # server clock is ET
+        if datetime.now().hour < check_after:
+            return out  # too early to judge "zero today"
+        tilt_min = float(cfg.get("tilt_min", 1.0))
+        rows = _db("""SELECT strategy_id,
+                        COUNT(*) FILTER (WHERE fired_at::date = CURRENT_DATE) AS today,
+                        COUNT(*) FILTER (WHERE fired_at::date < CURRENT_DATE) AS prior
+                      FROM strategy_signals
+                      WHERE fired_at > now() - interval '7 days'
+                      GROUP BY strategy_id""", fetch="all") or []
+        try:
+            import strategy_tilt as _st
+        except Exception:
+            _st = None
+        for r in rows:
+            sid = r.get("strategy_id")
+            if r.get("today", 0) != 0 or r.get("prior", 0) <= 0:
+                continue  # produced today, or no baseline → not a silent zero
+            try:
+                tilt = float(_st.get_tilt(sid)) if _st else 1.0
+            except Exception:
+                tilt = 1.0
+            if tilt < tilt_min:
+                continue
+            out.append(_f("execution_health", "strategy_zero_output",
+                          "warning" if tilt >= 1.5 else "info",
+                          f"{sid}: 0 signals today (tilt {tilt}, {r['prior']} fired in prior 7d)",
+                          strategy=sid, tilt=tilt, prior_7d=r["prior"]))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"strategy_output check error: {e}"))
+    return out
+
+
+def collect_log_errors() -> list[dict]:
+    """Scan key component logs for ERROR/Traceback/CRITICAL spikes (content, not just staleness).
+    Only recently-modified logs are considered, so old errors don't re-alarm."""
+    import re as _re
+    import time as _t
+    out = []
+    cfg = (_POLICY.get("log_errors") or {})
+    if not cfg.get("enabled", True):
+        return out
+    watch = cfg.get("watch") or [
+        "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
+        "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
+        "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log",
+    ]
+    window_h = float(cfg.get("window_hours", 3))
+    threshold = int(cfg.get("error_threshold", 5))
+    tail = int(cfg.get("tail_lines", 400))
+    # Case-SENSITIVE: match real log-level tokens / error markers, NOT domain words like the
+    # severity label "high/critical" in a normal summary line (that caused false positives).
+    pat = _re.compile(r"\bERROR\b|\bCRITICAL\b|\bFATAL\b|Traceback \(most recent call last\)"
+                      r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:")
+    now = _t.time()
+    try:
+        for name in watch:
+            p = LOG_DIR / name
+            if not p.exists():
+                continue
+            if now - p.stat().st_mtime > window_h * 3600:
+                continue  # not recently active → not a current spike
+            try:
+                lines = p.read_text(errors="ignore").splitlines()[-tail:]
+            except Exception:
+                continue
+            errs = [ln for ln in lines if pat.search(ln)]
+            if len(errs) >= threshold:
+                out.append(_f("execution_health", "log_errors",
+                              "critical" if len(errs) >= threshold * 3 else "warning",
+                              f"{name}: {len(errs)} error lines in last {tail} (recent)",
+                              log=name, count=len(errs), sample=(errs[-1][:160] if errs else ""),
+                              kind="code"))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"log_errors check error: {e}"))
+    return out
+
+
+CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
+              "risk_protection", "retirement_planning"]
+
+COLLECTORS = [
+    collect_data_quality,
+    collect_execution_health,
+    collect_intelligence_quality,
+    collect_risk_protection,
+    collect_retirement_planning,
+    collect_strategy_output,
+    collect_log_errors,
+]
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────────────────────────────
@@ -283,13 +386,19 @@ def score_category(findings: list[dict], penalties: dict) -> int:
 
 
 def compute(policy: dict):
+    global _POLICY
+    _POLICY = policy or {}
     penalties = policy.get("penalties", {"critical": 40, "warning": 15, "info": 5})
     weights = policy.get("weights", {})
-    cat_findings, cat_scores = {}, {}
-    for cat, fn in COLLECTORS.items():
-        fnd = fn()
-        cat_findings[cat] = fnd
-        cat_scores[cat] = score_category(fnd, penalties)
+    all_findings = []
+    for fn in COLLECTORS:
+        try:
+            all_findings.extend(fn() or [])
+        except Exception as e:
+            all_findings.append(_f("execution_health", "collector_error", "info", f"{fn.__name__}: {e}"))
+    # Group findings by their tagged category so multiple collectors can feed one category.
+    cat_findings = {c: [f for f in all_findings if f.get("category") == c] for c in CATEGORIES}
+    cat_scores = {c: score_category(cat_findings[c], penalties) for c in CATEGORIES}
     # weighted overall (fallback to equal weights)
     if weights:
         tot_w = sum(weights.get(c, 0) for c in cat_scores) or 1
