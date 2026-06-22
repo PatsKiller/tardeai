@@ -6099,6 +6099,40 @@ def _health_coder_status():
     }
 
 
+def _health_activity():
+    """GET /api/v2/health/activity — rolling feed of recent remediations across all findings, so
+    resolved items stay visible for a while instead of vanishing once fixed. Merges the escalation
+    handler's interventions and the AI-coder dispatches into one time-sorted timeline."""
+    feed = []
+    try:
+        for r in (_db_query("SELECT component, status, solution, diagnosis, "
+                            "COALESCE(resolved_at, created_at) AS ts "
+                            "FROM claude_interventions WHERE component LIKE 'health:%' "
+                            "AND COALESCE(resolved_at, created_at) > now() - interval '7 days' "
+                            "ORDER BY ts DESC LIMIT 40") or []):
+            comp = (r.get("component") or "").replace("health:", "")
+            feed.append({"at": _json_clean(r.get("ts")), "actor": "escalation_handler",
+                         "component": comp, "action": r.get("status"),
+                         "detail": (r.get("solution") or r.get("diagnosis") or "")[:200],
+                         "lane": "retry_or_llm", "pr_url": None})
+    except Exception:
+        pass
+    try:
+        for r in (_db_query("SELECT component, backend, outcome, pr_url, created_at "
+                            "FROM coder_dispatch_audit "
+                            "WHERE created_at > now() - interval '7 days' "
+                            "ORDER BY created_at DESC LIMIT 40") or []):
+            comp = (r.get("component") or "").replace("health:", "")
+            feed.append({"at": _json_clean(r.get("created_at")), "actor": f"coder:{r.get('backend')}",
+                         "component": comp, "action": r.get("outcome"),
+                         "detail": "", "lane": "code_fix", "pr_url": r.get("pr_url")})
+    except Exception:
+        pass
+    feed.sort(key=lambda x: x.get("at") or "", reverse=True)
+    return {"activity": feed[:20], "count": len(feed[:20]),
+            "note": "Recent auto-remediations (escalation handler + AI coders), newest first."}
+
+
 def _llm_health():
     """GET /api/v2/llm/health — LLM router health + budget status."""
     try:
@@ -19607,6 +19641,7 @@ ROUTES = {
     "/api/v2/health": lambda: _health_agent_dashboard(),
     "/api/v2/health/history": lambda: _health_agent_history(),
     "/api/v2/health/coders": lambda: _health_coder_status(),
+    "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
@@ -19946,6 +19981,57 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/health/remediate":
+            # Manual "Fix now" — operator-triggered remediation of one finding. Server-authoritative:
+            # the command is NEVER taken from the client; it's derived from policy by finding type.
+            # Non-blocking (background Popen) because the server is single-threaded. Audited.
+            try:
+                import subprocess as _sp, shlex as _shx, json as _j, time as _t
+                b = body or {}
+                ftype = (b.get("type") or "").strip()
+                fcat = (b.get("category") or "").strip()
+                action = (b.get("action_type") or "").strip()
+                message = (b.get("message") or ftype)[:300]
+                operator = b.get("operator") or "operator"
+                if not ftype:
+                    return 400, {"ok": False, "error": "missing finding type"}
+                _pol = _load_json(PROJECT_ROOT / "config" / "health_agent_policy.json") or {}
+                _rmap = _pol.get("remediation_map") or {}
+                _py = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+                _logf = open(PROJECT_ROOT / "logs" / "health_manual_remediation.log", "a")
+                triggered, cmd_desc = None, None
+                if action in ("auto_retry", "refresh") and ftype in _rmap:
+                    cmd = _rmap[ftype]                       # server-side command only
+                    _sp.Popen(_shx.split(cmd), cwd=str(PROJECT_ROOT), stdout=_logf, stderr=_logf)
+                    triggered, cmd_desc = "retry_triggered", cmd
+                elif action == "code_fix":
+                    kind = b.get("kind") or "single_file"
+                    _sp.Popen([_py, "scripts/coder_dispatch.py", "--problem", message,
+                               "--kind", kind, "--component", f"health:{fcat}:{ftype}", "--apply"],
+                              cwd=str(PROJECT_ROOT), stdout=_logf, stderr=_logf)
+                    triggered, cmd_desc = "coder_dispatched", f"coder_dispatch ({kind})"
+                else:
+                    # refresh fallback even if not pre-mapped: re-run the health agent so status refreshes
+                    if action == "review":
+                        return 200, {"ok": True, "status": "acknowledged",
+                                     "note": "No automated action for this finding — flagged for operator review."}
+                    return 400, {"ok": False, "error": f"no server-side action for type '{ftype}' / action '{action}'"}
+                # audit the manual trigger
+                try:
+                    from db_adapter import _execute as _ex
+                    _ex("""CREATE TABLE IF NOT EXISTS health_manual_remediation_audit (
+                             id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT now(),
+                             operator TEXT, finding_type TEXT, category TEXT, action TEXT, command TEXT)""")
+                    _ex("""INSERT INTO health_manual_remediation_audit
+                           (operator, finding_type, category, action, command) VALUES (%s,%s,%s,%s,%s)""",
+                        (operator, ftype, fcat, triggered, cmd_desc))
+                except Exception:
+                    pass
+                return 200, {"ok": True, "status": triggered, "command": cmd_desc,
+                             "note": "Triggered in background — watch the Recent Changes feed for the result."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/hermes/identity":
             # Save identity (model/provider) on a profile config.yaml — backup-first + hard safety guards.
             # Never edits tools (tradeai/tradeai12b stay tool-less). Never touches broker/trading.
