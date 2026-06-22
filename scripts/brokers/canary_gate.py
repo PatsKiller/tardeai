@@ -31,6 +31,15 @@ from dataclasses import dataclass
 #   (06-13 was a Saturday; rescheduled to Monday 06-15 for the live battery session.)
 CANARY_SYMBOL_ALLOWLIST: tuple[str, ...] = ("GRAB", "XRX")
 
+# ── CANARY ENVELOPE REMOVED (operator 2026-06-21: "remove $40 canary envelope") ──────────────────
+# While True, evaluate() is a PASS-THROUGH: the $4 price / 10-share / $40 notional / symbol-allowlist /
+# session-date / equities / long-only checks below NO LONGER block any BUY. This mirrors the Stage-2c
+# stop decision (GATES_REMOVED) the operator already made. The per-order 2FA (web typed-ticker +
+# Telegram) — enforced in execution_guard, NOT here — and the armed-session/standing-approval locks
+# still gate EVERY submit. Flip back to False (one-line, committed) to restore the full envelope below;
+# every check is retained, just bypassed. (Committed literal — honors this module's no-config rule.)
+GATES_REMOVED = True
+
 # AUTO-EXPIRY: the allowlist is honored ONLY on this committed date. Any other date ⇒ the gate treats
 # the allowlist as EMPTY — fail-closed — so a forgotten post-session rotate-back can never leave the
 # envelope armed. Rescheduling = commit a new date.
@@ -78,6 +87,10 @@ def _today() -> str:
 
 def evaluate(intent) -> CanaryGateDecision:
     """Pure, deterministic, fail-closed. Any doubt => BLOCKED with the reason(s)."""
+    # Envelope removed (operator 2026-06-21): pass through — per-order 2FA + armed-session locks in
+    # execution_guard remain the gate. Flip GATES_REMOVED=False to restore the full envelope below.
+    if GATES_REMOVED:
+        return CanaryGateDecision(allowed=True, reasons=[])
     reasons: list[str] = []
     try:
         # auto-expiry: allowlist is live ONLY on the committed session date (fail-closed otherwise)
