@@ -108,11 +108,18 @@ export default function OptionsHub({ onDrill }: Props) {
   const handleAction = async (action: string, id: string, item: Proposal | Position) => {
     if (action === 'review_chain') {
       const sym = 'symbol' in item && item.symbol ? item.symbol : (item as Position).underlying
+      const prop = 'strike' in item && 'symbol' in item ? (item as Proposal) : null
       onDrill({
         title: `${sym} Option Chain`,
-        subtitle: 'Schwab read-only chain',
+        subtitle: prop
+          ? `${prop.strategy?.replace(/_/g, ' ')} · $${prop.strike} · ${prop.expiration ?? ''} · verify live bid/ask`
+          : 'Schwab read-only chain — pick expiration & strike',
         endpoint: `/api/v2/schwab/option-chain?symbol=${sym}&strikes=12`,
         rows: [],
+        chainMode: true,
+        highlightStrike: prop?.strike,
+        highlightExpiration: prop?.expiration,
+        chainSide: prop?.strategy === 'cash_secured_put' ? 'put' : 'call',
       })
       return
     }

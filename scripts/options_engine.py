@@ -452,8 +452,12 @@ def generate_covered_call_proposals(
             continue
 
         pop = _pop_otm_call(und, strike, max(0.05, iv), dte)
-        max_profit = round(premium * 100 * contracts + max(0, strike - und) * shares, 2)
-        max_loss = "unlimited upside forgone"
+        premium_total = round(premium * 100 * contracts, 2)
+        max_profit = round(premium_total + max(0, strike - und) * shares, 2)
+        # Covered call: stock can still fall (you own shares); upside capped at strike if assigned.
+        stock_downside_risk = round(und * shares - premium_total, 2)
+        max_loss = stock_downside_risk
+        upside_cap = f"${strike:.2f} if assigned"
         breakeven = round(und - premium, 2)
         collateral = round(und * shares, 2)
         rr = (premium * 100 * contracts) / max(collateral * (dte / 365.0), 1.0)
@@ -507,11 +511,15 @@ def generate_covered_call_proposals(
             "dte": dte,
             "contracts": contracts,
             "premium": round(premium, 2),
-            "premium_total": round(premium * 100 * contracts, 2),
+            "premium_total": premium_total,
             "underlying_price": round(und, 2),
             "pop_pct": pop,
             "max_profit": max_profit,
             "max_loss": max_loss,
+            "stock_downside_risk": stock_downside_risk,
+            "upside_cap": upside_cap,
+            "max_loss_note": "Stock can fall to $0 (you still own shares); premium offsets loss slightly.",
+            "upside_cap_note": "If stock rises above strike, shares may be called away at the strike — upside capped.",
             "breakeven": breakeven,
             "risk_reward": round(rr, 3),
             "expected_value": round(premium * 100 * contracts * (pop / 100.0), 2),
