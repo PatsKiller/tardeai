@@ -66,6 +66,10 @@ def _pilot_preconditions(account_key, kind="canary"):
         from brokers.protective_stop_policy import effective_account_allowlist
         allow = effective_account_allowlist()
         desc = "protective-stop allowlist"
+    elif kind == "options":
+        from brokers.options_execution_policy import OPTIONS_ACCOUNT_ALLOWLIST
+        allow = OPTIONS_ACCOUNT_ALLOWLIST
+        desc = "options execution allowlist"
     else:
         from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
         allow = PILOT_ACCOUNT_ALLOWLIST

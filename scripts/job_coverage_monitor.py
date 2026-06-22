@@ -60,6 +60,10 @@ REGISTRY = [
      "signal": ("log", "iris_proposal_curator.log")},
     {"name": "hermes_youtube_discovery", "schedule_match": "hermes_youtube_discovery.py", "cadence_h": 30,
      "signal": ("log", "hermes_youtube_discovery.log")},
+    {"name": "options_monitor", "schedule_match": "run_options_monitor", "cadence_h": 1,
+     "signal": ("log", "options_monitor.log")},
+    {"name": "options_iv_snapshot", "schedule_match": "options_iv_snapshot.py", "cadence_h": 30,
+     "signal": ("db", "SELECT MAX(captured_at) FROM options_iv_history")},
 ]
 
 

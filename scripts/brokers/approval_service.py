@@ -174,6 +174,11 @@ def _execution_notice(intent) -> str:
                 return ("✅ Protective/trailing stops are LIVE-ENABLED — this SELL stop WILL submit to "
                         "Schwab once approved (the 2FA above is the final gate).")
             return "⛔ Protective stops are currently locked (system control off)."
+        if intent is not None and _g._is_options_execution(intent):
+            if _g._options_unlocked() and _g._live_future_unlocked():
+                return ("✅ Options execution LIVE — this order WILL submit to Schwab once approved "
+                        "(2FA is the final gate).")
+            return "⛔ Options execution locked — run options_pilot_arm.py --approve."
         if intent is not None and _g._live_future_unlocked():
             return "✅ Execution is LIVE — this order WILL submit once approved."
     except Exception:

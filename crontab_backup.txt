@@ -113,6 +113,12 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 */5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
 */5 9-15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1
 # STOP-V2.2: replaced by unified_stop_supervisor
+# ── Options desk: proposals + position monitor (every 10m market hours) ──
+35,45,55 9 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+*/10 10-15 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+5 16 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+# Options IV history snapshot (daily after close, for true IV rank)
+20 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py >> logs/options_iv_snapshot.log 2>&1
 */2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
 */5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
 0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1

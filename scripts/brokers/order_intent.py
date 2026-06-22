@@ -45,7 +45,13 @@ class SessionPolicy(str, Enum):
 
 class AssetType(str, Enum):
     EQUITY = "EQUITY"
-    OPTION = "OPTION"          # model-only this phase (capability-blocked)
+    OPTION = "OPTION"
+
+
+class SpreadType(str, Enum):
+    SINGLE = "SINGLE"
+    CREDIT_SPREAD = "CREDIT_SPREAD"
+    DEBIT_SPREAD = "DEBIT_SPREAD"
 
 
 class IntentState(str, Enum):
@@ -148,10 +154,31 @@ class RiskSettings:
 
 
 @dataclass
+class OptionLeg:
+    underlying: str
+    option_type: str          # call | put
+    strike: float
+    expiration: str           # YYYY-MM-DD
+    side: str                 # BUY | SELL
+    quantity: int = 1
+
+    def to_dict(self) -> dict:
+        return {
+            "underlying": self.underlying,
+            "option_type": self.option_type,
+            "strike": self.strike,
+            "expiration": self.expiration,
+            "side": self.side,
+            "quantity": self.quantity,
+        }
+
+
+@dataclass
 class Instrument:
     symbol: str
     asset_type: AssetType = AssetType.EQUITY
-    option_legs: list[dict] = field(default_factory=list)   # model-only this phase
+    option_legs: list[dict] = field(default_factory=list)
+    spread_type: SpreadType = SpreadType.SINGLE
 
 
 @dataclass
@@ -194,9 +221,13 @@ class OrderIntent:
     @classmethod
     def from_dict(cls, d: dict) -> "OrderIntent":
         d = dict(d)
-        d["instrument"] = Instrument(symbol=d["instrument"]["symbol"],
-                                     asset_type=AssetType(d["instrument"].get("asset_type", "EQUITY")),
-                                     option_legs=d["instrument"].get("option_legs") or [])
+        inst = d["instrument"]
+        d["instrument"] = Instrument(
+            symbol=inst["symbol"],
+            asset_type=AssetType(inst.get("asset_type", "EQUITY")),
+            option_legs=inst.get("option_legs") or [],
+            spread_type=SpreadType(inst.get("spread_type", "SINGLE")),
+        )
         d["direction"] = Direction(d["direction"])
         e = d.get("entry") or {}
         pl = e.get("price_link")
@@ -305,8 +336,22 @@ def validate(intent: OrderIntent) -> ValidationResult:
         if len(intent.ladder.legs) < 2:
             errs.append("ladder requires >= 2 legs")
 
-    # options: model-only this phase
+    # options / spreads — structural validation only; execution gated by options_execution_policy
     if intent.instrument.asset_type == AssetType.OPTION or intent.instrument.option_legs:
-        errs.append("BLOCKED_CAPABILITY: options intents are model-only this phase (operator decision 2026-06-11)")
+        if not intent.quantity.contracts or intent.quantity.contracts < 1:
+            errs.append("options require quantity.contracts >= 1")
+        legs = intent.instrument.option_legs or []
+        if not legs:
+            errs.append("options require at least one option_leg")
+        for i, leg in enumerate(legs):
+            if not leg.get("strike") or not leg.get("expiration"):
+                errs.append(f"option_leg[{i}] missing strike or expiration")
+        if intent.instrument.spread_type == SpreadType.CREDIT_SPREAD:
+            if len(legs) != 2:
+                errs.append("credit_spread requires exactly 2 option legs")
+            elif legs[0].get("side") == legs[1].get("side"):
+                errs.append("credit_spread legs must be opposite sides (SELL + BUY)")
+        if intent.quantity.qty or intent.quantity.notional:
+            errs.append("options must use quantity.contracts, not qty/notional")
 
     return ValidationResult(ok=not errs, errors=errs, warnings=warns)

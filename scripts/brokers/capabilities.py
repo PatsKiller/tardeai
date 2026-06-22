@@ -63,8 +63,10 @@ CAPS: dict[str, dict] = {
             "session.extended":    {"level": "native", "confidence": "VERIFIED-SDK", "note": "AM/PM/SEAMLESS"},
             "short":               {"level": "native", "confidence": "VERIFIED-SDK",
                                     "note": "SELL_SHORT/BUY_TO_COVER — translation only this phase"},
-            "options":             {"level": "blocked", "confidence": "VERIFIED-SDK(schema)",
-                                    "msg": "model-only this phase (operator decision 2026-06-11)"},
+            "options":             {"level": "native", "confidence": "VERIFIED-SDK(schema)",
+                                    "note": "single-leg + NET_CREDIT vertical; requires options_pilot_arm --approve + 2FA"},
+            "options.credit_spread": {"level": "native", "confidence": "VERIFIED-SDK(schema)",
+                                      "note": "2-leg vertical NET_CREDIT; policy envelope + 2FA"},
             "fractional":          {"level": "blocked", "confidence": "UNVERIFIED",
                                     "msg": "API fractional support unverified — REQUIRES OFFICIAL DOC CONFIRMATION"},
             "replace":             {"level": "blocked", "confidence": "UNVERIFIED",
@@ -133,6 +135,8 @@ def annotate_intent(broker: str, intent) -> list[dict]:
         add("short")
     if intent.instrument.asset_type.value == "OPTION" or intent.instrument.option_legs:
         add("options")
+        if getattr(intent.instrument, "spread_type", None) and intent.instrument.spread_type.value == "CREDIT_SPREAD":
+            add("options.credit_spread")
     if intent.quantity.notional:
         add("fractional")
     add({"DAY": "tif.day", "GTC": "tif.gtc"}.get(intent.tif.value, "tif.fok_ioc"))

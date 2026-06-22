@@ -47,6 +47,29 @@ def _iso(dt: Optional[datetime] = None) -> str:
     return (dt or _now()).isoformat()
 
 
+_EXEC_NOTE_CACHE: Optional[str] = None
+
+
+def _execution_note(extra: str = "") -> str:
+    """Reflect live options execution arm state in proposal copy."""
+    global _EXEC_NOTE_CACHE
+    if _EXEC_NOTE_CACHE is None:
+        try:
+            from options_pilot_arm import status as _opt_status
+            armed = bool((_opt_status() or {}).get("armed_for_execution"))
+        except Exception:
+            armed = False
+        if armed:
+            _EXEC_NOTE_CACHE = (
+                "Live Schwab options path ARMED — use preflight + per-order 2FA before submit."
+            )
+        else:
+            _EXEC_NOTE_CACHE = (
+                "Advisory only — run options_pilot_arm --approve to enable live Schwab submit."
+            )
+    return f"{_EXEC_NOTE_CACHE} {extra}".strip() if extra else _EXEC_NOTE_CACHE
+
+
 def _f(v, default=0.0) -> float:
     try:
         return float(str(v).replace(",", "").replace("%", "").strip())
@@ -100,8 +123,32 @@ def _pop_otm_put(spot: float, strike: float, iv: float, dte: int) -> float:
     return round(100.0 * _norm_cdf(d2), 1)
 
 
+def _iv_rank_from_history(sym: str, current_iv_pct: float) -> Optional[float]:
+    """True IV rank from options_iv_history (52-week window)."""
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB or current_iv_pct <= 0:
+            return None
+        rows = _execute(
+            """SELECT iv_pct FROM options_iv_history
+               WHERE symbol=%s AND captured_at > NOW() - INTERVAL '365 days'
+               ORDER BY captured_at ASC""",
+            (sym.upper(),),
+            fetch="all",
+        ) or []
+        vals = [_f(r.get("iv_pct")) for r in rows if _f(r.get("iv_pct")) > 0]
+        if len(vals) < 5:
+            return None
+        lo, hi = min(vals), max(vals)
+        if hi <= lo:
+            return 50.0
+        return round(100.0 * (current_iv_pct - lo) / (hi - lo), 1)
+    except Exception:
+        return None
+
+
 def _iv_rank_proxy(sym: str, tech: dict, chain_iv: Optional[float] = None) -> float:
-    """IV rank proxy: chain IV vs Finviz vol + 52w range position."""
+    """IV rank: prefer DB history; fallback to chain + Finviz proxy."""
     iv_pct = _f(tech.get("iv") or tech.get("volatility"))
     if chain_iv and chain_iv > 0:
         iv_pct = max(iv_pct, chain_iv * 100 if chain_iv < 3 else chain_iv)
@@ -114,6 +161,9 @@ def _iv_rank_proxy(sym: str, tech: dict, chain_iv: Optional[float] = None) -> fl
     vol_w = _f(tech.get("volatility_w") or tech.get("vol_week"))
     vol_m = _f(tech.get("volatility_m") or tech.get("vol_month"))
     vol_boost = min(30.0, (vol_w + vol_m) / 4.0)
+    hist = _iv_rank_from_history(sym, iv_pct)
+    if hist is not None:
+        return max(0.0, min(100.0, hist))
     rank = min(95.0, max(5.0, iv_pct * 0.55 + range_pos * 0.25 + vol_boost))
     return round(rank, 1)
 
@@ -464,7 +514,7 @@ def generate_covered_call_proposals(
             ],
             "reasoning": _build_reasoning("Covered call", sym, ctx),
             "quality_pass": True,
-            "execution_note": "Advisory only — Schwab options execution is not enabled in pilot.",
+            "execution_note": _execution_note(),
             "generated_at": _iso(),
         })
     proposals.sort(key=lambda x: -x["edge_score"])
@@ -547,7 +597,7 @@ def generate_defined_risk_proposals(
                     "technical": f"Conviction {conf:.0%}",
                 }),
                 "quality_pass": True,
-                "execution_note": "Advisory only — options orders not wired to broker.",
+                "execution_note": _execution_note(),
                 "generated_at": _iso(),
             })
         elif conf >= 0.55:
@@ -601,11 +651,93 @@ def generate_defined_risk_proposals(
                     "technical": f"Defined-risk entry, POP {pop:.0f}%",
                 }),
                 "quality_pass": True,
-                "execution_note": "Advisory only — verify buying power + SSDI income context before entry.",
+                "execution_note": _execution_note(
+                    "Verify buying power + SSDI income context before entry."
+                ),
                 "generated_at": _iso(),
             })
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:12]
+
+
+def generate_credit_spread_proposals(
+    convictions: List[dict],
+    tech_map: dict,
+) -> List[dict]:
+    """Bull put / bear call credit spreads on high-conviction names (defined risk)."""
+    proposals: List[dict] = []
+    for c in convictions[:15]:
+        sym = c["symbol"]
+        tech = tech_map.get(sym) or {}
+        price = _f(tech.get("price") or tech.get("last"))
+        if price <= 0:
+            continue
+        chain = _schwab_chain(sym, strikes=12)
+        und = _f(chain.get("underlying_price")) or price
+        iv_rank = _iv_rank_proxy(sym, tech)
+        if iv_rank < MIN_IV_RANK:
+            continue
+        conf = _f(c.get("confidence"), 0.5)
+        if conf < 0.58:
+            continue
+        # Bull put credit spread: sell higher strike put, buy lower strike put
+        short_strike = round(und * 0.93 / 2.5) * 2.5 if und > 50 else round(und * 0.94, 1)
+        long_strike = round(short_strike * 0.95 / 2.5) * 2.5 if und > 50 else round(short_strike * 0.96, 1)
+        short_c = _pick_chain_contract(chain, "put", short_strike, 30)
+        long_c = _pick_chain_contract(chain, "put", long_strike, 30)
+        if not short_c or not long_c:
+            continue
+        net_credit = round(max(0.05, short_c["mid"] - long_c["mid"]), 2)
+        if net_credit < 0.10:
+            continue
+        width = short_strike - long_strike
+        max_loss = round((width - net_credit) * 100, 2)
+        pop = _pop_otm_put(und, short_strike, max(0.05, short_c.get("iv") or 0.25), short_c["dte"])
+        rr = (net_credit * 100) / max(max_loss, 1)
+        edge = _edge_score(pop, iv_rank, rr, conviction=conf)
+        if edge < MIN_EDGE_SCORE or pop < MIN_POP_PCT:
+            continue
+        proposals.append({
+            "id": _proposal_id(),
+            "strategy": "credit_spread",
+            "symbol": sym,
+            "underlying": sym,
+            "option_type": "put",
+            "short_strike": short_strike,
+            "long_strike": long_strike,
+            "strike": short_strike,
+            "expiration": short_c.get("exp"),
+            "dte": short_c["dte"],
+            "contracts": 1,
+            "premium": net_credit,
+            "premium_total": round(net_credit * 100, 2),
+            "underlying_price": round(und, 2),
+            "pop_pct": pop,
+            "max_profit": round(net_credit * 100, 2),
+            "max_loss": max_loss,
+            "breakeven": round(short_strike - net_credit, 2),
+            "risk_reward": round(rr, 3),
+            "expected_value": round(net_credit * 100 * (pop / 100.0), 2),
+            "edge_score": edge,
+            "iv_rank": iv_rank,
+            "severity": "positive" if edge >= 70 else "info",
+            "recommended_action": "Sell Put Credit Spread",
+            "action_buttons": [
+                {"action": "sell_credit_spread", "label": "Sell Credit Spread"},
+                {"action": "review_chain", "label": "View Chain"},
+                {"action": "hold", "label": "Pass"},
+            ],
+            "reasoning": _build_reasoning("Put credit spread", sym, {
+                "iv_rank": iv_rank,
+                "layer4": c.get("summary") or "",
+                "technical": f"${short_strike}/${long_strike} width ${width:.1f}, credit ${net_credit:.2f}",
+            }),
+            "quality_pass": True,
+            "execution_note": _execution_note(),
+            "generated_at": _iso(),
+        })
+    proposals.sort(key=lambda x: -x["edge_score"])
+    return proposals[:8]
 
 
 def _fetch_schwab_option_positions() -> List[dict]:
@@ -794,8 +926,10 @@ def generate_proposals(force: bool = False) -> dict:
     owned = {h.get("symbol", "").upper() for h in holdings if _f(h.get("shares")) >= 100}
 
     cc = generate_covered_call_proposals(holdings, tech_map, intent_cfg, aegis_map)
-    dr = generate_defined_risk_proposals(_high_conviction_symbols(), tech_map, owned)
-    all_p = cc + dr
+    convictions = _high_conviction_symbols()
+    dr = generate_defined_risk_proposals(convictions, tech_map, owned)
+    spreads = generate_credit_spread_proposals(convictions, tech_map)
+    all_p = cc + dr + spreads
     all_p = [p for p in all_p if p.get("quality_pass") and p.get("edge_score", 0) >= MIN_EDGE_SCORE]
     seen = set()
     deduped = []
@@ -813,6 +947,7 @@ def generate_proposals(force: bool = False) -> dict:
         "count": len(all_p),
         "covered_calls": len(cc),
         "defined_risk": len(dr),
+        "credit_spreads": len(spreads),
         "quality_gate": {
             "min_edge_score": MIN_EDGE_SCORE,
             "min_pop_pct": MIN_POP_PCT,

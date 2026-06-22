@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-22 - Options Module v2: cron, execution, IV history, credit spreads
+
+1. **Cron** — `run_options_monitor.sh` every 10m market hours; daily `options_iv_snapshot.py` at 16:20 ET.
+2. **Schwab execution** — `options_execution_policy.py`, `options_order_pilot.py`, `options_pilot_arm.py`,
+   guard `OPTIONS_EXECUTION_MARKER`, API preflight/confirm/status; operator approved 2026-06-22.
+3. **IV rank history** — `options_iv_history` table + daily ATM IV snapshot for true 52-week IV rank.
+4. **Credit spreads** — bull put vertical proposals + `SpreadType.CREDIT_SPREAD` / `OptionLeg` in `order_intent.py`.
+UI: OptionsHub execution preflight flow + credit spread filter. Doc: `docs/options-module.md`.
+
 ## 2026-06-22 - Options Module (Trading tab)
 
 Turnkey advisory options desk: `scripts/options_engine.py` (covered calls + defined-risk proposals,
