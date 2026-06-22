@@ -17608,7 +17608,9 @@ def _symbol_cards(query=None):
     profs = _db_query("""SELECT symbol, description_1s, sector, industry, instrument_type, direction_hint,
                                 expense_ratio, analyst_look_through_pct, analyst_basis,
                                 next_earnings_date, last_earnings_date, last_eps_estimate, last_eps_actual,
-                                last_eps_surprise_pct FROM symbol_profiles""") or []
+                                last_eps_surprise_pct, last_distribution_date, last_distribution_amount,
+                                distribution_cadence, next_distribution_est, ttm_distribution_amount
+                         FROM symbol_profiles""") or []
     out = {p["symbol"]: {"description": p["description_1s"], "sector": p["sector"], "industry": p["industry"],
                          "instrument_type": p.get("instrument_type") or "stock", "direction_hint": p.get("direction_hint"),
                          "expense_ratio": _json_clean(p.get("expense_ratio")),
@@ -17622,7 +17624,14 @@ def _symbol_cards(query=None):
                                        "surprise_pct": _json_clean(p.get("last_eps_surprise_pct")),
                                        "beat": (None if p.get("last_eps_surprise_pct") is None
                                                 else float(p["last_eps_surprise_pct"]) >= 0)}
-                                      if (p.get("next_earnings_date") or p.get("last_earnings_date")) else None)}
+                                      if (p.get("next_earnings_date") or p.get("last_earnings_date")) else None),
+                         # distribution (the fund analog of earnings — dividend/cap-gains payout schedule)
+                         "distribution": ({"next_est": _json_clean(p.get("next_distribution_est")),
+                                           "last_date": _json_clean(p.get("last_distribution_date")),
+                                           "last_amount": _json_clean(p.get("last_distribution_amount")),
+                                           "cadence": p.get("distribution_cadence"),
+                                           "ttm_amount": _json_clean(p.get("ttm_distribution_amount"))}
+                                          if (p.get("next_distribution_est") or p.get("last_distribution_date")) else None)}
                           for p in profs}
     syms = list(out.keys())
     if not syms:

@@ -350,6 +350,14 @@ export default function PortfolioHub({ onDrill }: Props) {
                                 {sc.earnings.surprise_pct != null && <span style={{ color: sc.earnings.beat ? '#22c55e' : '#ef4444', fontWeight: 700, marginLeft: sc.earnings.next_date ? 4 : 0 }}>{sc.earnings.next_date ? '· ' : ''}{sc.earnings.beat ? 'BEAT' : 'MISS'} {sc.earnings.surprise_pct >= 0 ? '+' : ''}{sc.earnings.surprise_pct}%</span>}
                               </span>
                             )}
+                            {/* Distribution — the fund/ETF analog of earnings (funds have no EPS) */}
+                            {sc.distribution && (sc.distribution.next_est || sc.distribution.last_date) && (
+                              <span style={{ color: 'var(--text2)' }} title={`${sc.distribution.cadence ? sc.distribution.cadence + ' distribution' : 'distribution'}${sc.distribution.last_date ? ` · last ${sc.distribution.last_date} $${sc.distribution.last_amount}` : ''}${sc.distribution.ttm_amount != null ? ` · TTM $${sc.distribution.ttm_amount}/sh` : ''}${sc.distribution.next_est ? ' · next date estimated from cadence' : ''}`}>
+                                💵 {sc.distribution.next_est
+                                  ? `next ~${new Date(sc.distribution.next_est + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                  : sc.distribution.cadence || 'distribution'}
+                                {sc.distribution.cadence && sc.distribution.next_est ? ` (${sc.distribution.cadence})` : ''}</span>
+                            )}
                           </div>
                           <AnalystReviews symbol={h.symbol} map={aMap} />
                           {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
