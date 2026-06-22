@@ -123,14 +123,32 @@ export default function OptionsHub({ onDrill }: Props) {
     return s ? `?${s}` : ''
   }, [symbolFilter, strategyFilter, minPop, minEdge])
 
-  const { data: proposals, loading: propLoading, refetch: refetchProps } = useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
-  const { data: monitor, loading: monLoading, refetch: refetchMon } = useApi<any>('/api/v2/options/positions', 300_000)
-  const { data: overview } = useApi<any>('/api/v2/options/overview', 300_000)
+  const { data: proposals, loading: propLoading, error: propError, stale: propStale, refetch: refetchProps } =
+    useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
+  const { data: monitor, loading: monLoading, error: monError, refetch: refetchMon } =
+    useApi<any>('/api/v2/options/positions', 300_000)
+  const { data: overview, refetch: refetchOverview } = useApi<any>('/api/v2/options/overview', 300_000)
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
 
-  const propList: Proposal[] = proposals?.proposals ?? []
-  const posList: Position[] = monitor?.positions ?? []
+  const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
+  const propCount = proposals?.count ?? propList.length
+  const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
   const alerts = monitor?.alerts ?? []
+
+  const forceRefresh = async () => {
+    try {
+      const r = await fetch(`/api/v2/options/proposals?force=1${q ? q.replace('?', '&') : ''}`)
+      const j = await r.json()
+      refetchProps()
+      refetchMon()
+      refetchOverview()
+      return j
+    } catch {
+      refetchProps()
+      refetchMon()
+      refetchOverview()
+    }
+  }
 
   const selectTab = (t: typeof TABS[number]) => {
     setTab(t)
@@ -161,7 +179,7 @@ export default function OptionsHub({ onDrill }: Props) {
         const r = await fetch('/api/v2/options/preflight', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proposal_id: p.id, account_key: 'schwab_taxable' }),
+          body: JSON.stringify({ proposal_id: p.id, account_key: (p as any).account || undefined }),
         })
         const j = await r.json()
         const data = j.data ?? j
@@ -201,7 +219,10 @@ export default function OptionsHub({ onDrill }: Props) {
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>Options Desk</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            High-quality proposals only · {propList.length} ideas · {posList.length} open legs
+            High-quality proposals only · {propCount} ideas · {posList.length} open legs
+            {proposals?.generated_at && (
+              <span style={{ color: 'var(--text3)' }}> · updated {new Date(proposals.generated_at).toLocaleTimeString()}</span>
+            )}
             {alerts.length > 0 && <span style={{ color: '#f59e0b' }}> · {alerts.length} need action</span>}
             {execStatus && (
               <span style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}>
@@ -265,14 +286,22 @@ export default function OptionsHub({ onDrill }: Props) {
                 <option value={75}>75+</option>
               </select>
             </label>
-            <button onClick={() => { refetchProps(); refetchMon() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
+            <button onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
+            <button onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'pointer', color: '#60a5fa' }}>Force scan</button>
             {propLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
+            {propStale && <span style={{ fontSize: 10, color: '#f59e0b' }}>Reconnecting…</span>}
           </div>
 
-          {propList.length === 0 && !propLoading && (
+          {propError && (
+            <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #ef4444', fontSize: 11, color: '#ef4444' }}>
+              Options API: {propError} — try Force scan or check server on :7777
+            </div>
+          )}
+
+          {propList.length === 0 && !propLoading && !propError && (
             <div style={panel}>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank). Adjust filters or wait for next scan.
+                No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank). Use Force scan — fallback tier surfaces income-sleeve CCs when chain is thin.
               </div>
             </div>
           )}
@@ -364,8 +393,11 @@ export default function OptionsHub({ onDrill }: Props) {
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Quality Philosophy</div>
             <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>
               Proposals below edge {proposals?.quality_gate?.min_edge_score ?? 62}, POP {proposals?.quality_gate?.min_pop_pct ?? 52}%,
-              or IV rank {proposals?.quality_gate?.min_iv_rank ?? 20}% are excluded. Monitoring refreshes every 5–15 minutes during market hours.
-              Execution is advisory-only until Schwab options write path is operator-approved.
+              or IV rank {proposals?.quality_gate?.min_iv_rank ?? 20}% are excluded (fallback floor {proposals?.quality_gate?.relaxed_edge_floor ?? 52}).
+              Monitoring refreshes every 5–15 minutes during market hours.
+              {execStatus?.armed_for_execution
+                ? ' Execution ARMED — preflight + per-order 2FA required.'
+                : ' Execution advisory until options_pilot_arm --approve.'}
             </div>
           </div>
         </div>

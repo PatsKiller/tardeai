@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-22 - Proposal Maturity L10: options fallback, health monitoring, UI fix
+
+Audit: `docs/PROPOSAL_MATURITY_AUDIT.md`. Options engine fallback tier when strict gates empty;
+BS estimate for defined-risk; `get_proposal_health_metrics()`; `collect_proposal_maturity()` health agent;
+`/api/v2/health/proposals`; OptionsHub force-scan + error/stale UX; HealthHub proposal panel;
+`unified_edge_score.py` for cross-module edge adoption.
+
 ## 2026-06-22 - Cancelled trades: specific reason in DB + operator Telegram
 
 Broker-blocked / revalidation-blocked / timeout cancels now write `exit_reason=cancelled_*`,

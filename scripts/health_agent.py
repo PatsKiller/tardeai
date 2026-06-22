@@ -373,6 +373,52 @@ def collect_strategy_output() -> list[dict]:
     return out
 
 
+def collect_proposal_maturity() -> list[dict]:
+    """Monitor proposal volume/quality across Options, Trades, Watchlist, Rotation."""
+    out = []
+    cfg = (_POLICY.get("proposal_maturity") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        import options_engine as oe
+        metrics = oe.get_proposal_health_metrics()
+        opt = metrics.get("options") or {}
+        count = int(opt.get("proposal_count") or 0)
+        age_min = opt.get("cache_age_min")
+        stale_h = float(cfg.get("options_stale_hours", 4)) * 60
+        min_count = int(cfg.get("options_min_count", 1))
+        if age_min is not None and age_min > stale_h:
+            out.append(_f("execution_health", "options_proposals_stale", "warning",
+                          f"Options cache {int(age_min)}m old (>{int(stale_h)}m)",
+                          count=count, age_min=age_min))
+        try:
+            from market_session import is_trading_day
+            trading = is_trading_day()
+        except Exception:
+            trading = datetime.now().weekday() < 5
+        check_after = int(cfg.get("check_after_hour", 10))
+        if trading and datetime.now().hour >= check_after and count < min_count:
+            out.append(_f("execution_health", "options_zero_proposals", "warning",
+                          f"No options proposals ({count}) — desk empty after {check_after}:00",
+                          count=count, kind="code"))
+        pending = (metrics.get("trades") or {}).get("pending_proposals")
+        if pending is not None and pending >= int(cfg.get("trade_pending_warn", 25)):
+            out.append(_f("execution_health", "trade_proposals_backlog", "warning",
+                          f"{pending} pending trade proposals awaiting review", count=pending))
+        wl_stale = (metrics.get("watchlist") or {}).get("stale_active_7d")
+        if wl_stale is not None and wl_stale >= int(cfg.get("watchlist_stale_warn", 15)):
+            out.append(_f("intelligence_quality", "watchlist_stale", "warning",
+                          f"{wl_stale} active watchlist items stale >7d", count=wl_stale))
+        rot = (metrics.get("rotation") or {}).get("pending_recommendations")
+        if rot is not None and rot == 0 and trading and datetime.now().hour >= 14:
+            out.append(_f("intelligence_quality", "rotation_empty", "info",
+                          "No pending rotation recommendations", count=0))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"proposal_maturity check error: {e}"))
+    return out
+
+
 def collect_log_errors() -> list[dict]:
     """Scan key component logs for ERROR/Traceback/CRITICAL spikes (content, not just staleness).
     Only recently-modified logs are considered, so old errors don't re-alarm."""
@@ -438,6 +484,11 @@ WHY = {
     "hermes_embed_backlog": "Hermes embedding queue is backing up — RAG won't catch up until drained.",
     "hermes_embed_failures": "Ollama embedding failures — check nomic-embed-text and retry worker.",
     "hermes_coordinator_stale": "Hermes coordinator hasn't ticked — auto-promote and fleet agents may be stalled.",
+    "options_zero_proposals": "Options desk produced zero proposals — income/CC opportunities may be invisible in Command Center.",
+    "options_proposals_stale": "Options proposal cache is stale — UI may show outdated or empty ideas.",
+    "trade_proposals_backlog": "Many trade proposals are pending — approval queue may be clogged.",
+    "watchlist_stale": "Watchlist items haven't been refreshed — rotation/options synergy may be weak.",
+    "rotation_empty": "No rotation recommendations staged — capital redeployment signals may be missing.",
     "golden_window_missing": "Retirement Golden Window drives Roth-conversion guidance; missing = a planning gap.",
     "dividend_income_zero": "Zero dividend income is almost certainly a data inconsistency, not reality.",
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
@@ -481,6 +532,7 @@ COLLECTORS = [
     collect_risk_protection,
     collect_retirement_planning,
     collect_strategy_output,
+    collect_proposal_maturity,
     collect_log_errors,
 ]
 

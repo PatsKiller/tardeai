@@ -58,6 +58,7 @@ export default function HealthHub({ onDrill }: Props) {
   const { data: dispatches, loading: dispLoading } = useApi<any>('/api/v2/health/dispatches', 60_000)
   const { data: hist } = useApi<any>('/api/v2/health/history', 300_000)
   const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000)
+  const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
   const [acting, setActing] = useState<Record<string, string>>({})
   const [histExpanded, setHistExpanded] = useState<number | null>(null)
 
@@ -141,6 +142,30 @@ export default function HealthHub({ onDrill }: Props) {
               {health?.note && <div style={{ fontSize: 10, color: 'var(--amber)', marginTop: 4 }}>{health.note}</div>}
             </div>
           </div>
+
+          {propHealth && (
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg1)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>
+                Proposal Maturity
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                {[
+                  { label: 'Options ideas', value: propHealth.options?.proposal_count ?? '—', warn: (propHealth.options?.proposal_count ?? 1) === 0 },
+                  { label: 'Options cache (m)', value: propHealth.options?.cache_age_min ?? '—', warn: (propHealth.options?.cache_age_min ?? 0) > 240 },
+                  { label: 'Open option legs', value: propHealth.options?.open_legs ?? 0 },
+                  { label: 'Pending trades', value: propHealth.trades?.pending_proposals ?? '—' },
+                  { label: 'Stale watchlist', value: propHealth.watchlist?.stale_active_7d ?? '—' },
+                  { label: 'Rotation queue', value: propHealth.rotation?.pending_recommendations ?? '—' },
+                ].map(k => (
+                  <div key={k.label} style={{ textAlign: 'center', padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: k.warn ? 'var(--amber)' : 'var(--text0)' }}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Recent changes */}
           {(activity?.activity || []).length > 0 && (

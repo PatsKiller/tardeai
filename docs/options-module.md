@@ -1,7 +1,7 @@
 # Options Module — Architecture & Operations
 
 **Location:** Trading hub → **Options** tab (`/v3/trading?tab=Options`)  
-**Status:** Advisory / read-only (Schwab options execution remains blocked in `brokers/capabilities.py`)
+**Status:** Maturity Level 10 desk — proposals + monitor + health metrics. Execution path operator-approved (`options_pilot_arm`).
 
 ## Reuse Audit (what existed before)
 
