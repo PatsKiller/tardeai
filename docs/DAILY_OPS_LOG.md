@@ -1,4 +1,12 @@
 
+## 2026-06-22 — Stabilization session + maturity audit (Grok CLI)
+
+Full triage of health-agent findings (score 64): agent queue backlog (36 jobs >2h, drain batch started),
+screener duplicate-key spam (fixed `53636262`, 10:00 errors pre-fix), overnight LLM queue root cause
+(PHASE102-RETIRED cron — 1,941 pending), SIEM alerts acked (fused_signals + DB SSL transient), KTOS/KBR
+stop-outs flagged for operator review. Maturity audit ≈7.1/10. Docs:
+`docs/project/STABILIZATION_SESSION_2026_06_22.md`, `docs/project/MATURITY_AUDIT_2026_06_22.md`.
+
 ## 2026-06-19 — Defense/BDC rotate-gap directives seeded (audit Task 5)
 
 Seeded 8 `rotate_gap` watch directives for held Schwab-taxable defense/BDC positions flagged in the
