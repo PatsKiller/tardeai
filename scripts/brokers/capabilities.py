@@ -73,6 +73,25 @@ CAPS: dict[str, dict] = {
                                     "msg": "ACCT_ACTIVITY stream exists in schema; untested; Rule-9 fenced"},
         },
     },
+    "fidelity": {
+        "execution_mode_default": "LIVE_ENABLED_FUTURE",
+        "environment": "live (monitored — no broker write API)",
+        "features": {
+            "entry.stop":          {"level": "degraded", "note": "monitored + 2FA + Active Trader ticket"},
+            "entry.stop_limit":    {"level": "degraded", "note": "monitored + 2FA + Active Trader ticket"},
+            "exit.trailing":       {"level": "degraded", "note": "monitored ratchet + 2FA on breach"},
+            "tif.gtc":             {"level": "degraded", "note": "software-monitored GTC level"},
+        },
+    },
+    "snaptrade": {
+        "execution_mode_default": "LIVE_ENABLED_FUTURE",
+        "environment": "live (broker-dependent; Fidelity read-only today)",
+        "features": {
+            "entry.stop":          {"level": "native", "confidence": "VERIFIED-SDK", "note": "Stop via get_order_impact"},
+            "entry.stop_limit":    {"level": "native", "confidence": "VERIFIED-SDK", "note": "StopLimit"},
+            "exit.trailing":       {"level": "blocked", "msg": "no TrailingStop in SnapTrade equity API"},
+        },
+    },
 }
 
 

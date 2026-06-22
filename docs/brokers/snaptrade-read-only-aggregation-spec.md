@@ -96,7 +96,20 @@ Holdings/positions transit SnapTrade's servers. Given the self-hosted, no-extern
 deliberately limited to **read-only aggregation of accounts that lack a direct API**. Secrets stay gpg-encrypted;
 the user secret is encrypted at rest; nothing trades.
 
+## Protective stops (2026-06-22 addendum)
+
+Fidelity remains **read-only** on SnapTrade — broker API stops are **not** available. A monitored-stop
+stack mirroring Schwab Stage 2c 2FA is built but **gated off** until operator approval:
+
+→ [`snaptrade-fidelity-protective-stops-spec.md`](snaptrade-fidelity-protective-stops-spec.md)
+
+```bash
+python3 scripts/snaptrade_pilot_arm.py --capability
+python3 scripts/snaptrade_pilot_arm.py --approve --confirm "APPROVE FIDELITY STOPS $(date +%Y-%m-%d)"
+```
+
 ## Open decisions (operator)
 - SnapTrade account + which keys (client pair) — paste via the modal.
 - Scope: 401k only (recommended) vs all accounts for cross-check.
 - Comfortable with third-party data custody for the aggregated accounts?
+- **Fidelity monitored stops:** run `--approve` above when ready (2FA per order; no broker auto-submit).

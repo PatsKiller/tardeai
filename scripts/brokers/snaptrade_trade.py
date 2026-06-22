@@ -24,8 +24,9 @@ from . import snaptrade_credentials as _creds
 ENABLED = False                                  # ← flip True in a commit to arm. Default OFF.
 # Internal account_keys allowed to trade (resolved to SnapTrade account_id by the caller via
 # config/snaptrade_accounts.json). 401k excluded — it can't be traded through SnapTrade.
-TRADE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("fidelity_ira",)
+TRADE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("fidelity_rollover_ira",)
 ALLOWED_ACTIONS = ("BUY", "SELL")
+# SnapTrade equity API: no native TrailingStop — trailing uses fidelity_monitored_stop ratchet.
 ALLOWED_ORDER_TYPES = ("Limit", "Market", "Stop", "StopLimit")
 # Canary-style ceilings for the FIRST tests — tiny, like the Schwab pilot. Widen by commit later.
 MAX_QTY_UNITS = 5

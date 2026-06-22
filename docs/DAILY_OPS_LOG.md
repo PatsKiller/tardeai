@@ -1,4 +1,10 @@
 
+## 2026-06-22 — Fidelity monitored stops (SnapTrade scaffold, awaiting operator approve)
+
+SnapTrade verified read-only for Fidelity — no broker API stops/trailing. Built Schwab Stage 2c mirror:
+`fidelity_monitored_stop` + 2FA + ratchet trailing; `snaptrade_pilot_arm.py --approve` required before UI
+live route on `fidelity_rollover_ira`. Spec: `docs/brokers/snaptrade-fidelity-protective-stops-spec.md`.
+
 ## 2026-06-22 — Intelligence engine + Command Center hub (all tabs A-grade)
 
 Hermes→RAG closed loop: `hermes_embedding_enqueue.py` on promote, 2246-row backfill,

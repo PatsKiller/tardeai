@@ -19149,6 +19149,15 @@ def _hermes_terminal_commands(query=None):
     }
 
 
+def _fidelity_stops_status():
+    """GET /api/v2/fidelity-stops/status — Fidelity monitored-stop approval + capability (mirrors snaptrade_pilot_arm)."""
+    try:
+        import snaptrade_pilot_arm as _arm
+        return {"ok": True, "data": _arm.status()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
+
 def _snaptrade_status():
     """Non-secret status of the SnapTrade keys + connection (for the credentials modal). Never returns any
     secret. `ready` = client keys present; `connected` = a brokerage user is linked (reads can run)."""
@@ -19917,6 +19926,7 @@ ROUTES = {
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/snaptrade/status": _snaptrade_status,
+    "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
@@ -20567,7 +20577,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 replace_order_id = b.get("replace_order_id")   # MODIFY: cancel this existing stop, then place the new one (one 2FA)
                 if not (sym and acct and qty):
                     return 400, {"ok": False, "error": "symbol, account and qty are required"}
-                from brokers import protective_stop_pilot as _psp
+                is_fidelity = acct.startswith("fidelity_") and acct != "fidelity_401k"
+                if is_fidelity:
+                    from brokers import snaptrade_protective_stop_pilot as _psp
+                else:
+                    from brokers import protective_stop_pilot as _psp
                 ot = _psp.normalize_kind(kind)
                 if not ot:
                     return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
@@ -20592,7 +20606,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     except Exception:
                         pass
                 summ = _psp.order_summary(sym, qty, kind, stop_price=stop_price,
-                                          limit_price=limit_price, trail_pct=trail_pct)
+                                          limit_price=limit_price, trail_pct=trail_pct,
+                                          account_key=acct)
                 ticket = summ["ticket"]
                 # server truth for the gate-critical fields (never trust the client for held qty / price)
                 held_qty, current_price = _protective_holding_truth(acct, sym)
@@ -20600,7 +20615,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     current_price = b.get("current_price")
                 is_schwab = acct.startswith("schwab")
                 api_write = _protective_account_api_write(acct)
-                live_route = bool(is_schwab and api_write)
+                fidelity_live = False
+                if is_fidelity:
+                    try:
+                        from brokers.execution_guard import _fidelity_monitored_unlocked
+                        fidelity_live = _fidelity_monitored_unlocked()
+                    except Exception:
+                        fidelity_live = False
+                live_route = bool(is_schwab and api_write) or bool(is_fidelity and fidelity_live)
                 try:
                     from alert_event_writer import save_alert_event
                     save_alert_event(alert_type="strategic_alert", severity="info",
@@ -20636,16 +20658,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                      "error": req.get("reason") or "could not request approval",
                                      "holder_intent_ids": req.get("holder_intent_ids"),
                                      "ticket": ticket, "account": acct}
+                    _live_note = ("Code sent to Telegram + email. Approve from EITHER — enter the code "
+                                  "below, tap Approve in Telegram, or type the ticker. ")
+                    if is_fidelity:
+                        _live_note += ("Then the monitored stop arms (software watch + Fidelity Active Trader "
+                                       "ticket on breach). SnapTrade cannot place orders on Fidelity (read-only).")
+                    else:
+                        _live_note += "Then it submits LIVE at Schwab."
                     return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
                                  "order": summ, "account": acct, "channels": req.get("channels"),
                                  "ttl_min": req.get("ttl_min"), "qty_note": qty_note,
-                                 "note": ((qty_note + " ") if qty_note else "")
-                                         + "Code sent to Telegram + email. Approve from EITHER — enter the code "
-                                         "below, tap Approve in Telegram, or type the ticker. Then it submits LIVE."}
+                                 "route": ("fidelity_monitored" if is_fidelity else "schwab_live"),
+                                 "note": ((qty_note + " ") if qty_note else "") + _live_note}
+                _platform = summ.get("platform") or ("thinkorswim" if is_schwab else "Fidelity Active Trader Pro")
                 return 200, {"ok": True, "mode": "ticket", "ticket": ticket, "detail": ticket,
                              "order": summ, "account": acct,
-                             "manual": "Place this exact order in thinkorswim → Monitor → working orders. "
-                                       + ("(This account has no trading API — ticket only.)" if not is_schwab
+                             "manual": f"Place this exact order in {_platform}. "
+                                       + ("(Run snaptrade_pilot_arm.py --approve to enable monitored 2FA route.)"
+                                          if is_fidelity and not fidelity_live else
+                                          "(This account has no trading API — ticket only.)" if not is_schwab
                                           else "(Account write not enabled — ticket only.)")}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
@@ -20663,9 +20694,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 code = b.get("code")
                 if not intent_id or channel not in ("web", "telegram"):
                     return 400, {"ok": False, "error": "intent_id and channel ('web' or 'telegram') required"}
-                from brokers import protective_stop_pilot as _psp
                 from brokers import approval_service
-                intent = _psp.load_intent(intent_id)
+                from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER
+                intent = None
+                for _mod in ("brokers.snaptrade_protective_stop_pilot", "brokers.protective_stop_pilot"):
+                    try:
+                        _psp = __import__(_mod, fromlist=["load_intent"])
+                        intent = _psp.load_intent(intent_id)
+                        if intent:
+                            break
+                    except Exception:
+                        pass
                 if intent is None:
                     return 404, {"ok": False, "error": "no protective-stop intent for that id (expired?)"}
                 cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
@@ -20674,25 +20713,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not cr.get("fully_approved"):
                     return 200, {"ok": True, "stage": "confirm", "fully_approved": False,
                                  "note": "channel confirmed; waiting on the rest"}
-                # fully approved → (MODIFY: cancel the old stop first) → submit the new
-                order_spec = _psp.spec_from_intent(intent)
                 acct = intent.account_key
                 _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
                 _replace_id = _ev.get("replace_order_id")
+                _replace_stop_id = _ev.get("replace_stop_id")
                 replace_result = None
-                if _replace_id:
+                is_fidelity_intent = getattr(getattr(intent, "meta", None), "strategy_id", None) == FIDELITY_PROTECTIVE_MARKER
+                if _replace_stop_id and is_fidelity_intent:
+                    try:
+                        import fidelity_monitored_stop as _fms
+                        replace_result = _fms.cancel(stop_id=int(_replace_stop_id))
+                    except Exception as ce:
+                        return 200, {"ok": False, "stage": "modify_cancel",
+                                     "error": f"could not cancel monitored stop #{_replace_stop_id}: {str(ce)[:160]}"}
+                elif _replace_id and not is_fidelity_intent:
                     try:
                         import sys as _sys
                         _sys.path.insert(0, str(Path(__file__).resolve().parent))
                         import schwab_transport as _st
                         replace_result = _st.cancel_order(acct, str(_replace_id))
                     except Exception as ce:
-                        # don't place a second stop if we couldn't cancel the first (avoid a double/oversized stop)
                         return 200, {"ok": False, "stage": "modify_cancel",
                                      "error": f"could not cancel the existing stop #{_replace_id}: {str(ce)[:160]} — "
                                               "new stop NOT placed (avoiding a double stop). Try again or cancel in ToS."}
                 try:
-                    res = _psp.submit(acct, order_spec, intent)
+                    if is_fidelity_intent:
+                        from brokers import snaptrade_protective_stop_pilot as _fpsp
+                        res = _fpsp.route_after_2fa(acct, intent)
+                        res = {"status": "monitored_armed" if res.get("ok") else "rejected", **res}
+                    else:
+                        from brokers import protective_stop_pilot as _psp
+                        order_spec = _psp.spec_from_intent(intent)
+                        res = _psp.submit(acct, order_spec, intent)
                 except Exception as se:
                     return 200, {"ok": False, "stage": "submit", "error": str(se)[:240],
                                  "modify_cancel_result": replace_result}
@@ -20706,16 +20758,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 except Exception:
                     pass
                 # bust the broker-stop monitor cache so the Open Trades card flips to PROTECTED promptly
-                if res.get("status") in ("submitted", "filled"):
+                _ok_status = res.get("status") in ("submitted", "filled", "monitored_armed")
+                if _ok_status:
                     try:
                         import open_trades_intelligence as _oti
                         _oti._BSTOP_CACHE["ts"] = 0.0
                     except Exception:
                         pass
-                return 200, {"ok": res.get("status") in ("submitted", "filled"), "stage": "submit",
+                return 200, {"ok": _ok_status, "stage": "submit",
                              "result": res, "broker_order_id": res.get("broker_order_id"),
                              "status": res.get("status"), "account": acct,
-                             "replaced_order_id": _replace_id, "modify_cancel_result": replace_result}
+                             "replaced_order_id": _replace_id, "modify_cancel_result": replace_result,
+                             "monitored_stop_id": res.get("id")}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
@@ -20730,6 +20784,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 oid = str(b.get("broker_order_id") or "").strip()
                 if not (acct and oid):
                     return 400, {"ok": False, "error": "account and broker_order_id are required"}
+                if acct.startswith("fidelity_"):
+                    import fidelity_monitored_stop as _fms
+                    try:
+                        res = _fms.cancel(symbol=str(b.get("symbol") or ""), account=acct)
+                        return 200, {"ok": bool(res.get("canceled")), "status": "canceled",
+                                     "result": res, "account": acct,
+                                     "note": "monitored stop canceled (software watch only — cancel broker order in Active Trader if placed manually)"}
+                    except Exception as ce:
+                        return 200, {"ok": False, "error": str(ce)[:200]}
                 import sys as _sys
                 _sys.path.insert(0, str(Path(__file__).resolve().parent))
                 import schwab_transport as _st
