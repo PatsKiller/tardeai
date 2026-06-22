@@ -18277,6 +18277,18 @@ def _schwab_token_health(query=None):
                         if needs_reauth else "Schwab token healthy.")}
 
 
+def _fee_efficiency(query=None):
+    """GET /api/v2/fee-efficiency — portfolio fee/cost-efficiency analysis: per-holding annual $ fee drag,
+    total + by-account, and flagged fee-inefficient holdings with cheaper-alternative contrast. Read-only."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        import fee_efficiency_analyzer as _fa
+        return _json_clean(_fa.analyze())
+    except Exception as e:
+        return {"positions": [], "findings": [], "total_annual_fee_usd": None, "error": str(e)[:160]}
+
+
 def _synthetic_stops_list(query=None):
     """GET /api/v2/holdings/synthetic-stops — armed (default) or all synthetic stops for fractional
     positions. ?status=all|armed|triggered|canceled. Read-only."""
@@ -19613,6 +19625,7 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
+    "/api/v2/fee-efficiency": _fee_efficiency,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
     "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,
     "/api/v2/broker-orders/events": _broker_orders_events,
