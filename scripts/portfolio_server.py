@@ -52,17 +52,29 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 # reloads, and only when the file changed. Preserves hot-reload-on-edit for dev.
 _api_v2_lock = threading.Lock()
 _api_v2_mtime = [0.0]
+_api_rp_mtime = [0.0]
+
 def _get_api_v2():
-    import importlib, api_v2 as _mod
+    import importlib, sys, api_v2 as _mod
     try:
         _m = os.path.getmtime(_mod.__file__)
     except Exception:
         _m = 0.0
-    if _m != _api_v2_mtime[0]:
+    try:
+        import reports_portal as _rp
+        _rm = os.path.getmtime(_rp.__file__)
+    except Exception:
+        _rm = 0.0
+    if _m != _api_v2_mtime[0] or _rm != _api_rp_mtime[0]:
         with _api_v2_lock:
-            if _m != _api_v2_mtime[0]:   # double-checked under lock
-                importlib.reload(_mod)
-                _api_v2_mtime[0] = _m
+            if _m != _api_v2_mtime[0] or _rm != _api_rp_mtime[0]:
+                if _rm != _api_rp_mtime[0]:
+                    if "reports_portal" in sys.modules:
+                        importlib.reload(sys.modules["reports_portal"])
+                    _api_rp_mtime[0] = _rm
+                if _m != _api_v2_mtime[0]:
+                    importlib.reload(_mod)
+                    _api_v2_mtime[0] = _m
     return _mod
 
 # Phase P1: Load .env into os.environ so db_adapter sees DB_* keys when run as systemd service
@@ -1061,7 +1073,7 @@ def handle_clear_pending(body: dict) -> tuple:
 API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN", "").strip()
 API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
 # Paths exempt from auth (frontend, static files, health check)
-AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/reports/", "/assets/", "/api/health")
+AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/archive/", "/reports/", "/assets/", "/api/health")
 
 
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
@@ -1457,6 +1469,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             ("/data/portfolios/state/", PROJECT_ROOT / "data" / "portfolios" / "state"),
             ("/data/portfolios/charts/", PROJECT_ROOT / "data" / "portfolios" / "charts"),
             ("/data/portfolios/reports/", PROJECT_ROOT / "data" / "portfolios" / "reports"),
+            ("/archive/", PROJECT_ROOT / "archive"),
             ("/reports/", PROJECT_ROOT / "reports"),
             ("/config/", PROJECT_ROOT / "config"),
             ("/assets/", PROJECT_ROOT / "assets"),
