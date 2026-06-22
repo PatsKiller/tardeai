@@ -88,8 +88,8 @@ def status() -> dict:
         "capability": cap,
         "armed_for_ui": enabled and cap.get("MONITORED_ENABLED"),
         "one_share_test_ready": test_armed and cap.get("snaptrade_trade_ENABLED") and cap.get("broker_allows_trading"),
-        "note": "armed_for_ui=true enables monitored stops on fidelity_rollover_ira. "
-                "one_share_test_ready=true means live 1-share proof orders allowed (still needs 2FA per order).",
+        "note": "armed_for_ui=true enables monitored stops on fidelity_rollover_ira (no 2FA — monitor only). "
+                "one_share_test_ready=true means live 1-share broker proof (2FA) when trade-capable.",
     }
 
 

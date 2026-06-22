@@ -109,8 +109,8 @@ def arm(symbol, account, stop_price, qty, *, order_type="STOP", trail_pct=None, 
             "stop_price": sp, "trail_pct": trail_pct, "qty": q,
             "ticket": ticket_line(sym, q, ot, stop_price=sp, limit_price=limit_price, trail_pct=trail_pct),
             "mode": "monitored",
-            "note": "Monitored stop armed after 2FA. Software watches price; on breach you get 2FA + "
-                    f"a {FIDELITY_TICKET_PLATFORM} ticket — nothing hits Fidelity API automatically."}
+            "note": "Monitored stop armed (no 2FA — monitor-only). On breach: alert + "
+                    f"{FIDELITY_TICKET_PLATFORM} ticket; you place manually."}
 
 
 def cancel(symbol=None, account=None, stop_id=None):
@@ -170,7 +170,7 @@ def _live_price(symbol, account):
 
 
 def check_and_trigger(dry_run=True):
-    """Ratchet trailing stops and fire 2FA request on breach."""
+    """Ratchet trailing stops; on breach alert + ticket (no execution, no 2FA)."""
     ensure_table()
     out = []
     try:
@@ -204,24 +204,24 @@ def check_and_trigger(dry_run=True):
                         stop_price=eff, limit_price=s.get("limit_price"), trail_pct=s.get("trail_pct"))})
             continue
         try:
-            from brokers import snaptrade_protective_stop_pilot as psp
-            intent = psp.build_intent(acct, sym, float(s["qty"]), s["order_type"],
-                                      stop_price=eff, limit_price=s.get("limit_price"),
-                                      trail_pct=s.get("trail_pct"), advised_stop=eff,
-                                      current_price=px, held_qty=float(s["qty"]))
-            req = psp.request_2fa(intent)
-            if req.get("ok"):
-                cur.execute("""UPDATE fidelity_monitored_stops SET status='triggered', triggered_at=NOW(),
-                               intent_id=%s, updated_at=NOW() WHERE id=%s""",
-                            (intent.intent_id, s["id"]))
-                conn.commit()
-                out.append({"symbol": sym, "account": acct, "status": "triggered", "price": px,
-                            "effective_stop": eff, "intent_id": intent.intent_id,
-                            "ticket": ticket_line(sym, s["qty"], s["order_type"], stop_price=eff,
-                                                  limit_price=s.get("limit_price"), trail_pct=s.get("trail_pct"))})
-            else:
-                out.append({"symbol": sym, "account": acct, "status": "trigger_blocked",
-                            "error": req.get("reason")})
+            tkt = ticket_line(sym, s["qty"], s["order_type"], stop_price=eff,
+                              limit_price=s.get("limit_price"), trail_pct=s.get("trail_pct"))
+            cur.execute("""UPDATE fidelity_monitored_stops SET status='triggered', triggered_at=NOW(),
+                           updated_at=NOW() WHERE id=%s""", (s["id"],))
+            conn.commit()
+            try:
+                from alert_event_writer import save_alert_event
+                save_alert_event(alert_type="strategic_alert", severity="critical",
+                                 source_script="fidelity_monitored_stop", symbol=sym,
+                                 raw_text=f"[fidelity-monitored-stop:breach] {sym} {acct} px ${px:g} <= stop ${eff:g} → {tkt}",
+                                 parsed_payload={"kind": "fidelity_monitored_stop", "symbol": sym,
+                                                 "account": acct, "price": px, "effective_stop": eff,
+                                                 "ticket": tkt, "qty": float(s["qty"])})
+            except Exception:
+                pass
+            out.append({"symbol": sym, "account": acct, "status": "breach_alerted", "price": px,
+                        "effective_stop": eff, "ticket": tkt,
+                        "note": "Alert sent — place manually in Fidelity Active Trader; no auto-execution."})
         except Exception as e:
             out.append({"symbol": sym, "account": acct, "status": "trigger_error", "error": str(e)[:160]})
     return out

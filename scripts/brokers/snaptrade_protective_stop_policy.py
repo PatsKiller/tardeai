@@ -5,8 +5,8 @@ This policy gates TWO paths:
   • BROKER_API_ENABLED — SnapTrade preview→place (Stop/StopLimit only; no native trailing in SnapTrade SDK).
     Stays False until a trade-capable brokerage is connected AND the operator commits a flip.
   • MONITORED_ENABLED — software-monitored stops + trailing ratchet for fidelity_rollover_ira holdings.
-    Same per-order 2FA discipline as Schwab Stage 2c; arms a DB-monitored level (no broker order) until
-    breach → 2FA → Fidelity Active Trader ticket.
+    Monitor-only for Fidelity (no broker execution) — no per-order 2FA; arms a DB level until
+    breach → alert + Fidelity Active Trader ticket (manual placement).
 
 Standing unlock (like Schwab protective_stops_enabled): system_controls['fidelity_stops_enabled']='true',
 set by snaptrade_pilot_arm.py --approve after operator typed-phrase confirmation.

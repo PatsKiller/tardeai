@@ -158,7 +158,7 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
             report["fidelity_monitored_stops"] = {"checked": len(_fms_out), "triggered": len(_ftrig),
                                                   "detail": _fms_out}
             if _ftrig:
-                log.warning(f"FIDELITY MONITORED STOP: {len(_ftrig)} breach(es) → 2FA + Active Trader ticket requested")
+                log.warning(f"FIDELITY MONITORED STOP: {len(_ftrig)} breach(es) → alert + Active Trader ticket (manual)")
         except Exception as _fe:
             report["fidelity_monitored_stops"] = {"error": str(_fe)}
         _trig = [r for r in _syn if r.get("status") == "triggered"]

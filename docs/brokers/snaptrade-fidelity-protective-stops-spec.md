@@ -16,17 +16,17 @@
 
 ```
 Open Trades card (fidelity_rollover_ira)
-  → POST /api/v2/holdings/protective-stop          [REQUEST]
+  → POST /api/v2/holdings/protective-stop          [ONE STEP]
        ├─ snaptrade_protective_stop_policy.evaluate()
-       ├─ execution_guard (FIDELITY_MONITORED_STOP marker + fidelity_stops_enabled DB flag)
-       └─ request_2fa() — web typed-ticker OR telegram/email code
-  → POST /api/v2/holdings/protective-stop/confirm   [CONFIRM]
-       └─ fidelity_monitored_stop.arm() — DB-monitored level (no broker HTTP)
+       ├─ fidelity_stops_enabled standing unlock
+       └─ fidelity_monitored_stop.arm() — DB level only (NO 2FA — no broker execution)
   → unified_stop_supervisor (~3 min RTH)
-       └─ ratchet trailing (high-water × trail%) → on breach request 2FA + ticket
+       └─ ratchet trailing → on breach: Telegram/alert + Active Trader ticket (still no auto-execution)
 ```
 
-**Trailing:** ratchet-only in `fidelity_monitored_stop.py` (same discipline as paper Alpaca degraded trailing).
+**2FA:** Required on **Schwab** (real broker submit). **Not** used on Fidelity monitor-only — arming is advisory DB state; breach is alert + manual ticket only.
+
+**Trailing:** ratchet-only in `fidelity_monitored_stop.py`.
 
 ## Components
 
