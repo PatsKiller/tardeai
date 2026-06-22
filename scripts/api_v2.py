@@ -18629,6 +18629,46 @@ def _schwab_option_chain(query=None):
     return _json_clean(schwab_transport.get_option_chain(sym, strike_count=min(int(g("strikes", 8) or 8), 20)))
 
 
+def _options_proposals(query=None):
+    """GET /api/v2/options/proposals — high-quality options proposals (covered calls + defined risk)."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    force = str(g("force", "")).lower() in ("1", "true", "yes")
+    import options_engine as oe
+    data = oe.generate_proposals(force=force)
+    proposals = data.get("proposals") or []
+    filtered = oe.filter_proposals(
+        proposals,
+        symbol=(g("symbol") or "").upper(),
+        strategy=g("strategy") or "",
+        min_dte=int(g("min_dte", 0) or 0),
+        max_dte=int(g("max_dte", 999) or 999),
+        min_pop=float(g("min_pop", 0) or 0),
+        min_edge=float(g("min_edge", 0) or 0),
+    )
+    return _json_clean({**data, "proposals": filtered, "filtered_count": len(filtered)})
+
+
+def _options_positions(query=None):
+    """GET /api/v2/options/positions — open options legs from Schwab + monitoring snapshot."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    force = str(g("force", "")).lower() in ("1", "true", "yes")
+    import options_engine as oe
+    return _json_clean(oe.monitor_positions(force=force))
+
+
+def _options_monitor(query=None):
+    """GET /api/v2/options/monitor — alias for positions monitor + alerts."""
+    return _options_positions(query)
+
+
+def _options_overview(query=None):
+    """GET /api/v2/options/overview — strategy edge summary + open position stats."""
+    import options_engine as oe
+    return _json_clean(oe.get_overview())
+
+
 def _schwab_fundamentals(query=None):
     """GET /api/v2/schwab/fundamentals?symbols=A,B — READ-ONLY instrument fundamentals."""
     q = query or {}
@@ -20237,6 +20277,10 @@ ROUTES = {
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
+    "/api/v2/options/proposals": _options_proposals,
+    "/api/v2/options/positions": _options_positions,
+    "/api/v2/options/monitor": _options_monitor,
+    "/api/v2/options/overview": _options_overview,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,

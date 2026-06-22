@@ -13,9 +13,10 @@ import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import ManualTosDesk from './ManualTosDesk'
 import BrokerProposals from '../components/BrokerProposals'
+import OptionsHub from './OptionsHub'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Broker Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Broker Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -321,6 +322,8 @@ export default function TradingHub({ onDrill }: Props) {
           </div>
         )
       })()}
+
+      {tab === 'Options' && <OptionsHub onDrill={onDrill} />}
 
       {tab === 'Open Trades' && (
         <>
