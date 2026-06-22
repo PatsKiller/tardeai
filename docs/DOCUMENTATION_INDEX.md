@@ -15,11 +15,12 @@
 | Document | Purpose | Status |
 |----------|---------|--------|
 | `docs/A1A.md` | **Documentation due-diligence protocol** — what must stay current, drift detection, P0/P1/P2 meaning | Active |
+| `docs/LIVE_SYSTEM_FACTS.md` | **Live scale counts** — tables/crons/scripts/strategies; regenerate via `generate_system_facts.py` | Active (2026-06-22) |
 | `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — architecture, pipeline, data, strategies, agents, LLM, API, frontend | Active |
 | `docs/project/Trade_AI_v12_Reference_Architecture.docx` | **Canonical architecture DOCX** — updated append-only each session (latest: Session 2026-06-19) | Active |
 | `docs/atm_audit_2026_05_26/SYSTEM_ARCHITECTURE_COMPLETE.md` | Complete architecture detail — tables, endpoints, cron map *(path corrected)* | Active |
-| `docs/CHEAT_SHEET.md` | Operator quick reference — commands, models, cron, diagnostics | ⚠ drift (counts stale — see drift table) |
-| `docs/RESTORE_GUIDE.md` | Disaster recovery — holdings guard, deploy-zip rule, DB restore, rollback | ⚠ drift (script counts stale) |
+| `docs/CHEAT_SHEET.md` | Operator quick reference — commands, models, cron, diagnostics | Active (counts → LIVE_SYSTEM_FACTS) |
+| `docs/RESTORE_GUIDE.md` | Disaster recovery — holdings guard, deploy-zip rule, DB restore, rollback | Active |
 
 ---
 
@@ -92,14 +93,12 @@
 
 ---
 
-## Known Documentation Drift (A1A findings — do not paper over)
+## Known Documentation Drift
 
-| Doc | Claimed | Actual | Fix |
-|-----|---------|--------|-----|
-| `CHEAT_SHEET.md` | table_count=299 / scripts=3 | 334+ / ~370 | Replace hard-coded counts with "see `scripts/system_facts_snapshot.py`" |
-| `RESTORE_GUIDE.md` | scripts=3 | ~370 | Same |
+**Policy (2026-06-22):** Active canonical docs use `docs/LIVE_SYSTEM_FACTS.md` — not hard-coded counts.
+Run `.venv/bin/python3 scripts/generate_system_facts.py` to regenerate and check `data/system_fact_drift.json`.
 
-**Preferred fix:** replace hard-coded counts with a pointer to the live source — do NOT manually patch numbers.
+Exempt from drift checks: `CHANGELOG.md` (historical), `_archive/` (snapshots), `PHASE*_CLOSEOUT.md` (evidence).
 
 ---
 
@@ -131,6 +130,8 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Document | Purpose |
 |----------|---------|
+| `docs/LIVE_SYSTEM_FACTS.md` | **Canonical live scale counts** — regenerate, do not hard-code elsewhere |
+| `docs/project/DOCS_CONSOLIDATION_2026_06_22.md` | A1A consolidation closeout — drift fix, pointer policy, 32-file commit |
 | `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Track-1 stabilize: agent backlog, screener upsert, SIEM triage, LLM queue root cause |
 | `docs/project/MATURITY_AUDIT_2026_06_22.md` | Area maturity scores (≈7.1/10) from live probe + Jun-11 baseline |
 
@@ -138,5 +139,6 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-06-22 | A1A consolidation: LIVE_SYSTEM_FACTS.md, canonical docs → live pointers, drift detector hardened, DOCS_CONSOLIDATION closeout; runtime YAML/JSON/scripts committed. |
 | 2026-06-22 | Added stabilization + maturity audit docs; open-items updated (overnight LLM cron, KTOS/KBR stops); SYSTEM_FACTS + STATE_OF_REPO regenerated. |
 | 2026-06-19 | Index created + path/status verified against filesystem (14 corrections vs draft). Reflects commits d09a653c (deployment log) / 075bd602 (canary 2026-06-22) / 94e7275d (rotate-gap directives) / 65b3c751 (watchpool gap chip). |

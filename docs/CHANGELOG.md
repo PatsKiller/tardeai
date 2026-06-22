@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-22 - Docs consolidation (A1A) + runtime commit
+
+A1A consolidation: new `docs/LIVE_SYSTEM_FACTS.md` as canonical scale-count authority; MASTER,
+EXECUTIVE_ARCHITECTURE, CHEAT_SHEET, COST_MODEL rewritten to use live-fact pointers (no hard-coded
+tables/crons/scripts/strategies). `generate_system_facts.py` drift detector tightened (excludes CHANGELOG,
+fewer false positives). Closeout `docs/project/DOCS_CONSOLIDATION_2026_06_22.md`. Committed pending
+runtime: 17 strategy YAML performance_context updates, 7 cron-generated runtime JSON files, finviz global
+throttle (`scripts/finviz_screener_runner.py` + `scripts/alpaca_throttle.py`), ohlc_charts,
+system_health_agent, 3 new scripts. Drive-synced via gog.
+
 ## 2026-06-22 - Stabilization session docs + maturity audit (≈7.1/10)
 
 Operator requested system maturity scoring and Track-1 stabilization. Live probe: health score 64

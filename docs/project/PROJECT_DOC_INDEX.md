@@ -1,3 +1,10 @@
+## Documentation Consolidation (2026-06-22)
+| Document | Purpose |
+|----------|---------|
+| `docs/LIVE_SYSTEM_FACTS.md` | **Canonical live scale counts** — tables/crons/scripts/strategies; regenerate via `generate_system_facts.py` |
+| `docs/project/DOCS_CONSOLIDATION_2026_06_22.md` | A1A closeout: purge hard-coded counts, drift detector fix, runtime commit |
+| `docs/_audit/drift_report.md` | Drift audit log (2026-06-02 + 2026-06-22 entries) |
+
 ## Stabilization + Maturity Audit (2026-06-22)
 | Document | Purpose |
 |----------|---------|

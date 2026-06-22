@@ -6,15 +6,19 @@
       "provider": "openai-codex",
       "lane": "chatgpt",
       "interactive_status": "ready",
-      "headless_status": "unavailable",
+      "headless_status": "ready",
       "reason_code": "hermes_headless_limit",
       "tested_hermes_version": "0.16.0",
       "tested_at": "2026-06-07T12:00:00",
       "next_retest_condition": "hermes_version_gt_0.16.0_or_changelog_fix",
-      "next_retest_not_before": "2026-06-14T12:00:00",
       "command_tested": "hermes -z --provider openai-codex -m gpt-5-codex",
       "failure_signature": "no final response was produced; treating the run as failed",
-      "guidance": "ChatGPT/Codex is interactive-only on Hermes 0.16.0; use Grok lane for free automation or run `hermes -p dev chat` manually."
+      "guidance": "ChatGPT/Codex is interactive-only on Hermes 0.16.0; use Grok lane for free automation or run `hermes -p dev chat` manually.",
+      "note": "headless via pty (script -qec) + gpt-5.4; free codex OAuth",
+      "retest_recommended": true,
+      "newer_hermes_available": [
+        "0.17.0"
+      ]
     },
     "grok": {
       "provider": "xai-oauth",

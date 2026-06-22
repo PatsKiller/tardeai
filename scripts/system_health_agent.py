@@ -991,11 +991,17 @@ def run_health_check(dry_run=True, verbose=False):
             if _recent_proposals == 0 and _h >= 10:
                 pipeline_alerts.append(f"⚠️ 0 proposals created in last 3 hours (market open)")
 
-            # 3. Signal generation — 0 signals today after 10 AM
+            # 3. Signal generation — 0 signals today after 10 AM.
+            # Include universe size so the cause is attributable: a thin universe points upstream
+            # (screener/Finviz), NOT the orchestrator. Root cause (e.g. 429) is carried by check #9.
             cur.execute("SELECT COUNT(*) FROM strategy_signals WHERE fired_at::date = CURRENT_DATE")
             _today_signals = cur.fetchone()[0] or 0
             if _today_signals == 0 and _h >= 10:
-                pipeline_alerts.append(f"⚠️ 0 signals generated today (orchestrator may be broken)")
+                cur.execute("SELECT COUNT(DISTINCT symbol) FROM trade_ai_scans WHERE scanned_at::date = CURRENT_DATE")
+                _uni_today = cur.fetchone()[0] or 0
+                pipeline_alerts.append(
+                    f"⚠️ 0 signals generated today (universe={_uni_today} symbols) — "
+                    f"check Finviz 429/screener if universe is thin, else orchestrator scoring")
 
             # 4. Trade execution rate — ATM active but 0 trades after 10 AM
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
@@ -1060,6 +1066,23 @@ def run_health_check(dry_run=True, verbose=False):
                             pipeline_alerts.append(
                                 f"⚠️ Pre-promotion gate blocking {_blocked}/{_created} proposals"
                             )
+            except Exception:
+                pass
+
+            # 9. Finviz rate-limiting — ROOT CAUSE of a starved universe → 0 GO/A+ → 0 signals
+            # (added 2026-06-22 after a 429 storm collapsed the universe to ~40-70 symbols and
+            # produced 0 signals for every strategy, which earlier looked like a fib-specific bug).
+            # Detects the cause directly so the alert is actionable instead of "orchestrator broken".
+            try:
+                _fv_log = PROJECT_ROOT / "logs" / "finviz_screener.log"
+                _fv_429_thresh = int(os.getenv("HEALTH_FINVIZ_429_THRESHOLD", "100"))
+                if _fv_log.exists():
+                    _fv_tail = _fv_log.read_text()[-40000:]
+                    _fv_429 = _fv_tail.count("Too Many Requests")
+                    if _fv_429 >= _fv_429_thresh:
+                        pipeline_alerts.append(
+                            f"🔴 Finviz rate-limited (HTTP 429 ×{_fv_429} in recent log) — screener "
+                            f"universe starved; signal generation will be thin/zero until it clears")
             except Exception:
                 pass
 

@@ -3,7 +3,7 @@
 > **⚠️ Model policy (validated 2026-06-02):** gemma3:12b = primary chat, gemma3:4b = fallback, gemma3:27b = overnight; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** Any reference below to qwen3:14b as an active chat/generation model is superseded — see `MASTER_SYSTEM_DOCUMENTATION.md` §12.
 
 
-**Last updated:** 2026-05-09
+**Last updated:** 2026-06-22
 **Basis:** AWS pricing (US-East-1). Azure equivalents within ~5% at this scale.
 
 ---
@@ -57,7 +57,7 @@
 | Service | SKU | Specs | Monthly Cost |
 |---------|-----|-------|-------------|
 | **RDS PostgreSQL** | db.t4g.medium | 2 vCPU, 4 GB RAM, 100 GB gp3 | $65-80 |
-| **RDS storage** | gp3, 100 GB | 334 tables, growing | $10-12 |
+| **RDS storage** | gp3, 100 GB | see `database.table_count` in LIVE_SYSTEM_FACTS | $10-12 |
 | **RDS backups** | 7-day automated | Included in RDS | $0 |
 | **ElastiCache (optional)** | cache.t4g.micro | JSON cache replacement | $12-15 |
 

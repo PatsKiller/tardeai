@@ -172,34 +172,46 @@ def collect_facts():
 
 
 def detect_drift(facts):
-    """Compare facts against doc claims."""
+    """Compare facts against doc claims in active top-level docs only."""
     drift = []
     doc_dir = PROJECT_ROOT / "docs"
+    skip_names = {
+        "CHANGELOG.md", "LIVE_SYSTEM_FACTS.md",
+        "COMMAND_CENTER_PAGE_MATRIX.md",  # historical page-inventory build log
+        "PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md",
+        "HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md",
+    }
 
-    # Patterns to check in docs
     checks = [
         ("table_count", facts.get("database", {}).get("table_count"), r"(\d+)\s+tables"),
-        ("strategy_count", facts.get("codebase", {}).get("strategy_count"), r"(\d+)\s+strateg"),
-        ("cron_job_count", facts.get("codebase", {}).get("cron_job_count"), r"(\d+)\s+(?:cron|scheduled)"),
-        ("python_script_count", facts.get("codebase", {}).get("python_script_count"), r"(\d+)\s+(?:Python|scripts)"),
-        ("frontend_page_count", facts.get("codebase", {}).get("frontend_page_count"), r"(\d+)\s+pages"),
+        ("strategy_count", facts.get("codebase", {}).get("strategy_count"), r"(\d+)\s+strategies?\b"),
+        ("cron_job_count", facts.get("codebase", {}).get("cron_job_count"), r"(\d+)\s+(?:cron|scheduled)\s+job"),
+        ("python_script_count", facts.get("codebase", {}).get("python_script_count"), r"(\d+)\s+Python\s+scripts"),
+        ("frontend_page_count", facts.get("codebase", {}).get("frontend_page_count"), r"(\d+)\s+pages?\s+\(frozen\)"),
     ]
 
-    for doc_file in doc_dir.glob("*.md"):
+    for doc_file in sorted(doc_dir.glob("*.md")):
+        if doc_file.name in skip_names:
+            continue
         try:
             text = doc_file.read_text(errors="replace")
             for fact_name, actual, pattern in checks:
                 if actual is None:
                     continue
                 for m in re.finditer(pattern, text, re.IGNORECASE):
+                    ctx = text[max(0, m.start()-40):m.end()+40]
+                    if fact_name == "strategy_count" and "strategy-specific" in ctx.lower():
+                        continue
+                    if fact_name == "python_script_count" and "python3 scripts/" in ctx.lower():
+                        continue
                     claimed = int(m.group(1))
-                    if claimed != actual and abs(claimed - actual) > 2:  # tolerance
+                    if claimed != actual and abs(claimed - actual) > 2:
                         drift.append({
                             "file": str(doc_file.relative_to(PROJECT_ROOT)),
                             "fact": fact_name,
                             "claimed": claimed,
                             "actual": actual,
-                            "line_context": text[max(0, m.start()-30):m.end()+30].strip(),
+                            "line_context": ctx.strip(),
                         })
         except Exception:
             pass
