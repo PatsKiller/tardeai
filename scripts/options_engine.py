@@ -579,6 +579,7 @@ def generate_covered_call_proposals(
             "symbol": sym,
             "underlying": sym,
             "account": h.get("account_display") or h.get("account") or "",
+            "intent_sleeve": in_intent,
             "aegis_note": (aegis.get("reasoning") or "")[:160] or None,
             "aegis_verdict": aegis.get("verdict"),
             "side": "SELL",
@@ -1050,7 +1051,19 @@ def generate_proposals(force: bool = False) -> dict:
     dr = generate_defined_risk_proposals(convictions, tech_map, owned)
     spreads = generate_credit_spread_proposals(convictions, tech_map)
     pool = cc + dr + spreads
-    strict = [p for p in pool if p.get("quality_pass") and p.get("edge_score", 0) >= MIN_EDGE_SCORE]
+    cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
+
+    def _passes_quality_gate(p: dict) -> bool:
+        if not p.get("quality_pass"):
+            return False
+        edge = _f(p.get("edge_score"))
+        sym = (p.get("symbol") or "").upper()
+        # Income-sleeve names (V, SCHD, LMT in portfolio_intent) use relaxed floor — final
+        # filter must match per-proposal generation or borderline intent CCs vanish (V ~61 vs 62).
+        min_e = MIN_EDGE_CC_INTENT if p.get("strategy") == "covered_call" and sym in cc_syms else MIN_EDGE_SCORE
+        return edge >= min_e
+
+    strict = [p for p in pool if _passes_quality_gate(p)]
     fallback_used = False
     if not strict and pool:
         relaxed = [

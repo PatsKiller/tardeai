@@ -183,6 +183,9 @@ export default function OptionsHub({ onDrill }: Props) {
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>Options Desk</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
             High-quality proposals only · {propCount} ideas · {posList.length} open legs
+            {proposals?.quality_gate && (
+              <span title="Intent sleeve (V/SCHD/LMT) uses edge floor 52; others need 62"> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+</span>
+            )}
             {proposals?.generated_at && (
               <span style={{ color: 'var(--text3)' }}> · updated {new Date(proposals.generated_at).toLocaleTimeString()}</span>
             )}

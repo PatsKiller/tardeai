@@ -102,6 +102,7 @@ export type OptionProposal = {
   upside_cap_note?: string
   aegis_note?: string
   aegis_verdict?: string
+  intent_sleeve?: boolean
   breakeven?: number
   risk_reward?: number
   expected_value?: number
@@ -179,6 +180,7 @@ export default function OptionProposalCard({
             <span title={guide.oneLiner} style={{ fontSize: 9, color: MUTED, cursor: 'help' }}>{guide.emoji} {strat}</span>
             <span style={{ fontSize: 12, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.symbol}</span>
             {ds && <span title={ds.label === 'BS estimate' ? 'Premium estimated via Black-Scholes — confirm on chain before sizing.' : 'Live bid/ask mid from Schwab option chain.'} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: ds.c, background: `${ds.c}18`, border: `1px solid ${ds.c}44` }}>{ds.label}</span>}
+            {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: PURPLE, background: 'rgba(168,85,247,.15)', border: '1px solid rgba(168,85,247,.35)' }}>income sleeve</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
           </div>
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>
