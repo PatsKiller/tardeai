@@ -20,7 +20,7 @@ export interface ReportCardItem {
   finance_score?: number           // 0..100 finance-substance (reports_portal)
   retirement_relevance?: string    // high | medium | null
   ensemble?: { score?: number; decision?: string; consensus?: boolean; lanes?: string[] } | null
-  actions?: { label: string; url?: string }[]
+  actions?: { label: string; url?: string; action?: string }[]
   action_classes?: string[]
   action_count?: number
   has_actions?: boolean
@@ -105,9 +105,12 @@ export default function SynthesizedReportCard(
       {/* actions only on the FULL card (reader/feed) — the compact list opens the reader on click, which has them */}
       {!compact && (item.actions && item.actions.length > 0) && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
-          {item.actions.slice(0, 5).map((a, i) => a.url
-            ? <a key={i} href={relUrl(a.url)} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
-            : <button key={i} onClick={e => { e.stopPropagation(); onAction?.(a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>{a.label}</button>)}
+          {item.actions.slice(0, 5).map((a, i) => {
+            const slug = a.action || (a.url?.startsWith('#') ? a.url.slice(1) : undefined)
+            const external = a.url && !a.url.startsWith('#')
+            if (external) return <a key={i} href={relUrl(a.url)} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
+            return <button key={i} onClick={e => { e.stopPropagation(); onAction?.(slug || a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: slug ? '1px solid #60a5fa55' : '1px solid var(--border)', background: slug ? '#60a5fa14' : 'var(--bg2)', color: slug ? '#60a5fa' : 'var(--text1)', cursor: 'pointer' }}>{a.label}{slug ? ' →' : ''}</button>
+          })}
         </div>
       )}
     </div>
