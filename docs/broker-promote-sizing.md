@@ -27,7 +27,10 @@ Before broker save, merged into the same PASS / WARN / BLOCK status:
 | Maria / Risk / Steph agent reviews | Still **pending** | Agent **REJECT** / **CAUTIOUS** / **WAIT_FOR_DATA** |
 | Agent vote | **BLOCK** | — |
 | Grok + ChatGPT cloud review (`cloud_review.py`) | Consensus **DISAGREE** | **CAUTION** or not run (lanes available) |
-| Local LLM decision packet (`paper_proposal_analysis`) | — | Missing or still **queued** |
+| Local LLM decision packet (`paper_proposal_analysis`) | Missing or still **queued** | Errored |
+| Catalyst critic (`trade_ai_scans`) | **BLOCK** | **DOWNGRADE** |
+| Intel readiness | Below **50%** | Below **75%** |
+| Analyst / enrichment intel | Packet failed to load | Thin coverage, unverified catalyst, incomplete technicals |
 
 **Models involved:**
 

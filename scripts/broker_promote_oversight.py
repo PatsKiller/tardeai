@@ -20,6 +20,8 @@ BLOCK_VOTES = frozenset({"BLOCK"})
 WARN_VOTES = frozenset({"REJECT", "CAUTIOUS_TEST", "WAIT_FOR_DATA"})
 CLOUD_CACHE_HOURS = int(os.getenv("BROKER_CLOUD_OVERSIGHT_CACHE_HOURS", "24"))
 REQUIRE_CLOUD = os.getenv("BROKER_REQUIRE_CLOUD_OVERSIGHT", "0") == "1"
+INTEL_READINESS_BLOCK = float(os.getenv("BROKER_INTEL_READINESS_BLOCK", "50"))
+INTEL_READINESS_WARN = float(os.getenv("BROKER_INTEL_READINESS_WARN", "75"))
 
 
 def _get_conn():
@@ -232,6 +234,119 @@ def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def evaluate_intel_diligence(proposal_id: int) -> dict:
+    """Research/intel gates for paper→broker promote (catalyst, analyst, enrichment)."""
+    violations: list[str] = []
+    warnings: list[str] = []
+    try:
+        import broker_proposal_intel as bpi
+        intel = bpi.get_intel_packet(proposal_id)
+    except Exception as e:
+        return {
+            "ok": False,
+            "violations": [f"Intel packet failed to load: {str(e)[:120]}"],
+            "warnings": [],
+        }
+
+    if not intel.get("ok"):
+        return {
+            "ok": False,
+            "violations": ["Decision context not loaded — run Enrich on paper proposal"],
+            "warnings": [],
+        }
+
+    cat = intel.get("catalyst") or {}
+    verdict = str(cat.get("critic_verdict") or "").upper()
+    if verdict == "BLOCK":
+        violations.append("Catalyst critic BLOCK — thesis rejected for live promote")
+    elif verdict == "DOWNGRADE":
+        warnings.append("Catalyst critic DOWNGRADE — reduced conviction")
+
+    if cat.get("text") and not cat.get("verified"):
+        warnings.append("Catalyst not verified — confirm headline before live size")
+    elif not cat.get("text"):
+        warnings.append("No catalyst on record")
+
+    an = intel.get("analyst") or {}
+    quality = an.get("quality") or {}
+    for w in quality.get("warnings") or []:
+        warnings.append(w)
+    if quality.get("coverage") == "thin":
+        warnings.append("Thin analyst coverage — single-source street data is not promote-grade")
+
+    ir = intel.get("intel_readiness")
+    if ir is not None:
+        ir_f = float(ir)
+        if ir_f < INTEL_READINESS_BLOCK:
+            violations.append(
+                f"Intel readiness {ir_f:.0f}% below {INTEL_READINESS_BLOCK:.0f}% — enrichment incomplete"
+            )
+        elif ir_f < INTEL_READINESS_WARN:
+            warnings.append(
+                f"Intel readiness {ir_f:.0f}% below promote-ready threshold ({INTEL_READINESS_WARN:.0f}%)"
+            )
+
+    tech = intel.get("technicals") or {}
+    grade = str(tech.get("technical_grade") or tech.get("grade") or "").upper()
+    if grade in ("TECH_INCOMPLETE", "INCOMPLETE"):
+        warnings.append("Technical grade incomplete — confirm indicators before promote")
+
+    return {
+        "ok": True,
+        "violations": _dedupe(violations),
+        "warnings": _dedupe(warnings),
+        "catalyst_verdict": verdict or None,
+        "analyst_coverage": quality.get("coverage"),
+        "intel_readiness": float(ir) if ir is not None else None,
+        "source_count": quality.get("source_count"),
+    }
+
+
+def needs_oversight_queue(proposal_id: int) -> bool:
+    """True when local agent/LLM diligence still needs to run."""
+    snap = get_oversight_snapshot(proposal_id)
+    pending = snap.get("agents", {}).get("pending") or []
+    local_status = (snap.get("local_llm") or {}).get("status")
+    return bool(pending) or local_status in ("missing", "queued")
+
+
+def queue_oversight_jobs(proposal_id: int) -> dict:
+    """Queue Maria/Risk/Steph + local LLM analysis for a proposal."""
+    import subprocess as sp
+    row = _q("SELECT symbol FROM paper_trade_proposals WHERE id=%s", (proposal_id,), one=True) or {}
+    sym = str(row.get("symbol") or "").upper()
+    root = Path(__file__).resolve().parent.parent
+    py = str(root / ".venv/bin/python")
+    scripts = root / "scripts"
+    started = []
+    for script, args in (
+        ("queue_proposal_agent_reviews.py", ["--symbol", sym, "--apply"] if sym else ["--apply"]),
+        ("proposal_intelligence_analyzer.py", ["--proposal-id", str(proposal_id), "--apply"]),
+        ("proposal_agent_review.py", ["--proposal-id", str(proposal_id)]),
+    ):
+        try:
+            sp.Popen(
+                [py, str(scripts / script)] + args,
+                cwd=str(root),
+                stdout=sp.DEVNULL,
+                stderr=sp.DEVNULL,
+            )
+            started.append(script)
+        except Exception:
+            pass
+    return {"ok": True, "started": started, "symbol": sym}
+
+
 def get_oversight_snapshot(proposal_id: int) -> dict:
     """Fast DB snapshot for UI — no cloud LLM calls."""
     reviews = _fetch_agent_reviews(proposal_id)
@@ -282,9 +397,17 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
 
     local = snap.get("local_llm") or {}
     if local.get("status") == "missing":
-        warnings.append("Local LLM decision packet missing — run AI Review on paper proposal")
+        violations.append("Local LLM decision packet missing — run AI Review before broker promote")
     elif local.get("status") == "queued":
-        warnings.append("Local LLM review still queued")
+        violations.append("Local LLM review still queued — wait for completion before promote")
+    elif local.get("status") == "error":
+        warnings.append("Local LLM review errored — re-run AI Review")
+
+    intel_dd = evaluate_intel_diligence(proposal_id)
+    violations.extend(intel_dd.get("violations") or [])
+    warnings.extend(intel_dd.get("warnings") or [])
+    violations = _dedupe(violations)
+    warnings = _dedupe(warnings)
 
     cloud_data = cloud if cloud is not None else (snap.get("cloud_review") or {})
     cloud_status = str(cloud_data.get("status") or "not_run").lower()
@@ -322,6 +445,8 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         "allowed": allowed,
         "violations": violations,
         "warnings": warnings,
+        "intel_diligence": intel_dd,
+        "promote_ready": allowed and status == "PASS",
         **snap,
     }
 

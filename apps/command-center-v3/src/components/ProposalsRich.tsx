@@ -4,7 +4,13 @@ import { exitLadder, planWarnings, MONITOR_RULES } from '../lib/exitLadder'
 import { StatusBadge } from './StatusBadge'
 import { StateCard } from './StateCard'
 import { ActionButton } from './ActionButton'
+import BrokerPromoteModal from './BrokerPromoteModal'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
+
+function isPaperQueueProposal(p: any): boolean {
+  const b = String(p.intended_broker || p.target_account || p.proposed_account || 'alpaca_paper').toLowerCase()
+  return !b.startsWith('schwab') && !b.startsWith('fidelity')
+}
 
 // Full v2-parity proposal review surface, ported into v3 (canonical).
 // Same /api/v2/paper-proposals contract + write workflow as the frozen v2 page.
@@ -143,6 +149,7 @@ function ConfirmModal({ p, onConfirm, onCancel }: { p: any; onConfirm: () => voi
 const TIMEFRAME_COLORS: Record<string, { bg: string; text: string }> = {
   intraday: { bg: 'rgba(249,115,22,0.15)', text: '#F97316' },
   short_swing: { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA' },
+  medium_swing: { bg: 'rgba(99,102,241,0.15)', text: '#818CF8' },
   event_window: { bg: 'rgba(168,85,247,0.15)', text: '#A855F7' },
   position: { bg: 'rgba(34,197,94,0.15)', text: '#22C55E' },
 }
@@ -178,7 +185,7 @@ function PipelineChevron({ stages }: { stages: any[] }) {
 }
 
 // -- Proposal card --
-function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string>; symCard?: any }) {
+function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string>; symCard?: any; onRefetch?: () => void }) {
   const { data: extIntel } = useApi<any>(`/api/v2/hermes/subject-intel?type=proposal&key=${p.symbol}`, 120_000)
   const extOpinions: any[] = extIntel?.external_intel ?? []
   const hermes = extIntel?.hermes
@@ -191,6 +198,7 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
   const [stop] = useState(p.proposed_stop || 0)
   const [target] = useState(p.proposed_target1 || 0)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [showBrokerPromote, setShowBrokerPromote] = useState(false)
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
   const norm = normalizeProposal(p)
@@ -355,6 +363,13 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
       opacity: p.operator_verdict === 'ENTRY_MISSED' ? 0.6 : 1,
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
+      {showBrokerPromote && (
+        <BrokerPromoteModal
+          seed={{ proposal_id: p.id, symbol: p.symbol }}
+          onClose={() => setShowBrokerPromote(false)}
+          onPromoted={() => { onRefetch?.(); setShowBrokerPromote(false) }}
+        />
+      )}
 
       {/* A. HEADER */}
       <div style={{ padding: '8px 14px', background: vc.bg, borderBottom: `1px solid ${vc.text}30`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, borderRadius: '6px 6px 0 0' }}>
@@ -377,6 +392,14 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
           )}
           {extOpinions.map((e: any, i: number) => <span key={i} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ fontSize: 9, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>)}
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
+          {(p.strategy_type_label || p.strategy_type || p.strategy_timeframe_class) && (
+            <span title={[p.strategy_type_label || p.strategy_type, p.strategy_timeframe_display].filter(Boolean).join(' · ')}
+              style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+                background: (TIMEFRAME_COLORS[(p.strategy_timeframe_class || p.strategy_type || '').toLowerCase()] || { bg: 'rgba(148,163,184,0.12)' }).bg,
+                color: (TIMEFRAME_COLORS[(p.strategy_timeframe_class || p.strategy_type || '').toLowerCase()] || { text: '#94A3B8' }).text }}>
+              {p.strategy_type_label || String(p.strategy_type || p.strategy_timeframe_class || '').replace(/_/g, ' ')}
+            </span>
+          )}
           {(p.sector || p.industry) && <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{[p.sector, p.industry].filter(Boolean).join(' / ')}</span>}
           {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}
           {p.signal_grade && <StatusBadge status={p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'ready' : p.signal_grade === 'B' ? 'warning' : 'blocked'} label={`${p.signal_grade} ${p.signal_score}pts`} />}
@@ -395,7 +418,6 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
               L2 {(l2p?.avg_imbalance ?? l2.imbalance) > 0 ? '+' : ''}{Number(l2p?.avg_imbalance ?? l2.imbalance).toFixed(2)}
             </span>
           )}
-          {p.strategy_timeframe_class && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { bg: 'rgba(148,163,184,0.12)' }).bg, color: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { text: '#94A3B8' }).text, fontWeight: 600 }}>{(p.strategy_timeframe_class || '').replace(/_/g, ' ')}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {p.staleness_policy?.is_stale && <StatusBadge status="stale" label="STALE" />}
@@ -535,6 +557,9 @@ function ProposalCard({ p, act, acting, symCard }: { p: any; act: (id: number, a
         </ActionButton>
         <ActionButton variant="secondary" size="sm" loading={runningAction === 'aiReview'} disabled={runningAction !== null} onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} style={{ border: '1px solid rgba(168,85,247,0.3)', color: '#A855F7' }}>
           {runningAction === 'aiReview' ? 'Running...' : '3. AI Review'}
+        </ActionButton>
+        <ActionButton variant="secondary" size="sm" onClick={() => setShowBrokerPromote(true)} style={{ border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B', fontWeight: 800 }} title="Requires agent reviews, AI Review, catalyst/analyst intel, and account sizing gates before broker queue">
+          Send to Broker
         </ActionButton>
         <div style={{ flex: 1 }} />
         <ActionButton
@@ -837,7 +862,7 @@ export default function ProposalsRich() {
 
   const summary = data?.summary || {}
   const allProposals = data?.proposals ?? []
-  const pending = allProposals
+  const pending = allProposals.filter(isPaperQueueProposal)
 
   const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
 
@@ -1052,7 +1077,7 @@ export default function ProposalsRich() {
             )}
           </div>
         ) : displayed.map((p: any) => (
-          <ProposalCard key={p.id} p={p} act={act} acting={acting} symCard={cardMap[(p.symbol || '').toUpperCase()]} />
+          <ProposalCard key={p.id} p={p} act={act} acting={acting} symCard={cardMap[(p.symbol || '').toUpperCase()]} onRefetch={refetch} />
         ))}
       </div>
 

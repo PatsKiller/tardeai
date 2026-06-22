@@ -159,6 +159,13 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
   }, [seed.proposal_id, seed.account])
 
   useEffect(() => {
+    if (loading || !data) return
+    if (data.diligence_auto_queued) {
+      setMsg('⏳ Due diligence auto-queued — agent + LLM reviews running (~1 min)')
+    }
+  }, [loading, data?.diligence_auto_queued])
+
+  useEffect(() => {
     if (loading || !f.account || f.account === prevAccount.current) return
     prevAccount.current = f.account
     sharesTouched.current = false
@@ -206,9 +213,15 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
   const activity = evaluation?.account_activity || sizing?.account_activity || {}
   const gateStatus = evaluation?.status || '—'
   const oversightStatus = evaluation?.oversight?.status || data?.oversight?.status
-  const blocked = gateStatus === 'BLOCK'
+  const promoteReady = evaluation?.oversight?.promote_ready ?? data?.promote_ready
+  const diligenceIncomplete = oversightStatus === 'BLOCK' || evaluation?.allowed === false || gateStatus === 'BLOCK'
+  const blocked = diligenceIncomplete
   const oversightWarnings: string[] = evaluation?.oversight?.warnings || evaluation?.warnings || []
-  const oversightViolations: string[] = evaluation?.oversight?.violations || []
+  const oversightViolations: string[] = [
+    ...(evaluation?.oversight?.violations || []),
+    ...(evaluation?.violations || []),
+  ].filter((v, i, a) => a.indexOf(v) === i)
+  const intelDiligence = evaluation?.oversight?.intel_diligence || data?.oversight?.intel_diligence
 
   const refreshOversight = useCallback(async () => {
     try {
@@ -228,6 +241,18 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
       }
     } catch { /* keep last */ }
   }, [seed.proposal_id])
+
+  useEffect(() => {
+    if (loading) return
+    const pending = evaluation?.oversight?.agents?.pending?.length || data?.oversight?.agents?.pending?.length
+    const localSt = evaluation?.oversight?.local_llm?.status || data?.oversight?.local_llm?.status
+    if (!pending && localSt !== 'queued' && localSt !== 'missing') return
+    const t = setInterval(() => {
+      refreshOversight()
+      runEvaluate(f, data?.strategy_id)
+    }, 12_000)
+    return () => clearInterval(t)
+  }, [loading, evaluation?.oversight?.agents?.pending, evaluation?.oversight?.local_llm?.status, data?.oversight, f, data?.strategy_id, refreshOversight, runEvaluate])
 
   const queueOversight = async () => {
     setOversightBusy(true); setMsg('')
@@ -307,7 +332,12 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
   }
 
   const submit = async () => {
-    if (blocked) { setMsg('⛔ Trade blocked — fix sizing or market conditions before saving'); return }
+    if (blocked) {
+      setMsg(oversightViolations.length
+        ? '⛔ Due diligence incomplete — complete agent reviews, AI Review, and intel gates before promote'
+        : '⛔ Trade blocked — fix sizing or market conditions before saving')
+      return
+    }
     if (!f.account) { setMsg('Select a destination account'); return }
     if (!f.shares || !f.entry || !f.stop || !f.target) { setMsg('Fill shares, entry, stop, and target'); return }
     if (Number(f.entry) <= Number(f.stop)) { setMsg('Entry must be above stop (long trade)'); return }
@@ -352,7 +382,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
               {isAdjust ? 'Edit broker trade' : 'Send to broker'} · <span style={{ fontFamily: 'monospace' }}>{seed.symbol}</span>
             </div>
             <div style={{ fontSize: 11, color: MUTED, marginTop: 5, lineHeight: 1.45 }}>
-              Sized for destination account + strategy live rules. Gates update live.
+              Agent reviews, catalyst/analyst intel, sizing, and market gates must pass before promote.
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
@@ -389,7 +419,12 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
                   background: oversightStatus === 'PASS' ? 'rgba(168,85,247,.15)' : oversightStatus === 'WARN' ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)',
                   color: oversightStatus === 'PASS' ? PURPLE : statusColor(oversightStatus),
                 }}>
-                  AI {oversightStatus}
+                  Diligence {oversightStatus}
+                </span>
+              )}
+              {promoteReady === true && (
+                <span style={{ fontSize: 9, fontWeight: 800, padding: '4px 9px', borderRadius: 6, background: 'rgba(34,197,94,.15)', color: GREEN }}>
+                  PROMOTE READY
                 </span>
               )}
               <span style={{ fontSize: 9, color: MUTED }}>Proposal #{seed.proposal_id}</span>
@@ -424,15 +459,18 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
               </div>
             )}
 
-            {evaluation?.violations?.length > 0 && (
+            {oversightViolations.length > 0 && (
               <div style={{ fontSize: 10, color: RED, marginBottom: 12, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,.1)' }}>
-                {evaluation.violations.map((v: string, i: number) => <div key={i}>• {v}</div>)}
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Due diligence blockers</div>
+                {oversightViolations.map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
               </div>
             )}
 
-            {oversightViolations.length > 0 && !evaluation?.violations?.length && (
-              <div style={{ fontSize: 10, color: RED, marginBottom: 12, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,.1)' }}>
-                {oversightViolations.map((v: string, i: number) => <div key={i}>• {v}</div>)}
+            {intelDiligence?.catalyst_verdict && (
+              <div style={{ fontSize: 9, color: MUTED, marginBottom: 10 }}>
+                Catalyst critic: <b style={{ color: intelDiligence.catalyst_verdict === 'BLOCK' ? RED : intelDiligence.catalyst_verdict === 'DOWNGRADE' ? AMBER : GREEN }}>{intelDiligence.catalyst_verdict}</b>
+                {intelDiligence.analyst_coverage ? ` · analyst coverage ${intelDiligence.analyst_coverage}` : ''}
+                {intelDiligence.intel_readiness != null ? ` · intel ${intelDiligence.intel_readiness}%` : ''}
               </div>
             )}
 
@@ -522,7 +560,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
           <button onClick={onClose} style={{ fontSize: 11, fontWeight: 700, padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Cancel</button>
           <button onClick={submit} disabled={busy || loading || blocked}
             style={{ fontSize: 12, fontWeight: 800, padding: '9px 20px', borderRadius: 8, border: 'none', background: blocked ? MUTED : AMBER, color: '#0f172a', cursor: busy || blocked ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-            {busy ? 'Saving…' : blocked ? 'Blocked' : isAdjust ? 'Save trade plan' : 'Add to broker queue'}
+            {busy ? 'Saving…' : blocked ? 'Diligence incomplete' : isAdjust ? 'Save trade plan' : 'Add to broker queue'}
           </button>
         </div>
       </div>

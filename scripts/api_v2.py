@@ -12754,6 +12754,16 @@ def _prepare_broker_promote(body: dict):
     evaluation = _merge_broker_oversight(evaluation, pid)
     intel = {}
     oversight = (evaluation.get("oversight") or {})
+    diligence_auto_queued = False
+    try:
+        import broker_promote_oversight as _bpo
+        if _bpo.needs_oversight_queue(pid):
+            _bpo.queue_oversight_jobs(pid)
+            diligence_auto_queued = True
+            oversight = _bpo.evaluate_oversight(pid)
+            evaluation = _bpo.merge_evaluation_with_oversight(evaluation, oversight)
+    except Exception:
+        pass
     try:
         import broker_proposal_intel as _bpi
         intel = _bpi.get_intel_packet(pid)
@@ -12769,6 +12779,8 @@ def _prepare_broker_promote(body: dict):
             "strategy_id": strategy_id,
             "intel": intel,
             "oversight": oversight,
+            "diligence_auto_queued": diligence_auto_queued,
+            "promote_ready": bool(oversight.get("promote_ready")),
             "status": row.get("status"),
             "already_on_broker_queue": already_broker,
             "current_broker": row.get("intended_broker"),
@@ -12823,32 +12835,18 @@ def _broker_run_cloud_oversight(body: dict):
 
 def _broker_queue_oversight(body: dict):
     """POST /api/v2/broker-proposals/queue-oversight — queue local agents + LLM for proposal."""
-    import subprocess as _sp
+    import broker_promote_oversight as bpo
     b = body or {}
     pid = int(b.get("proposal_id") or 0)
     if not pid:
         return {"ok": False, "error": "proposal_id required"}
-    row = _db_query("SELECT symbol FROM paper_trade_proposals WHERE id=%s", (pid,), fetch="one") or {}
-    sym = str(row.get("symbol") or "").upper()
-    py = str(PROJECT_ROOT / ".venv/bin/python")
-    scripts = PROJECT_ROOT / "scripts"
-    started = []
-    for script, args in (
-        ("queue_proposal_agent_reviews.py", ["--symbol", sym, "--apply"] if sym else ["--apply"]),
-        ("proposal_intelligence_analyzer.py", ["--proposal-id", str(pid), "--apply"]),
-        ("proposal_agent_review.py", ["--proposal-id", str(pid)]),
-    ):
-        try:
-            _sp.Popen(
-                [py, str(scripts / script)] + args,
-                cwd=str(PROJECT_ROOT),
-                stdout=_sp.DEVNULL,
-                stderr=_sp.DEVNULL,
-            )
-            started.append(script)
-        except Exception:
-            pass
-    return {"ok": True, "message": f"Oversight jobs started for #{pid} {sym}", "started": started}
+    res = bpo.queue_oversight_jobs(pid)
+    sym = res.get("symbol") or ""
+    return {
+        "ok": True,
+        "message": f"Oversight jobs started for #{pid} {sym}".strip(),
+        "started": res.get("started") or [],
+    }
 
 
 def _promote_paper_to_broker(body: dict):
