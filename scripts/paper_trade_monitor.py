@@ -130,12 +130,34 @@ def _fix_integrity_issues(conn, alpaca_symbols):
     cur = conn.cursor()
     fixed = 0
 
-    # Fix 1: Open trades never filled after 30min → cancel
+    # Fix 1: Pending/open rows never submitted to broker after 15min → cancel (not phantom)
     cur.execute("""
         UPDATE paper_trades
         SET lifecycle_state = 'cancelled', status = 'cancelled',
-            close_reason = 'auto_fix_never_filled'
-        WHERE lifecycle_state = 'open'
+            close_reason = 'auto_cancel_never_submitted',
+            exit_reason = 'auto_cancel_never_submitted',
+            closed_via = 'integrity_check', closed_at = NOW(),
+            outcome_verdict = 'CANCELLED', pnl = 0, pnl_pct = 0, r_multiple = 0, unrealized_pnl = 0
+        WHERE status IN ('pending', 'open')
+          AND COALESCE(broker_order_id, '') = ''
+          AND filled_at IS NULL
+          AND created_at < NOW() - INTERVAL '15 minutes'
+        RETURNING id, symbol
+    """)
+    for r in cur.fetchall():
+        log.info(f"[integrity] Auto-cancelled never-submitted: {r[1]} id={r[0]}")
+        fixed += 1
+
+    # Fix 1b: Open trades with broker order but never filled after 30min → cancel
+    cur.execute("""
+        UPDATE paper_trades
+        SET lifecycle_state = 'cancelled', status = 'cancelled',
+            close_reason = 'auto_fix_never_filled',
+            exit_reason = 'auto_fix_never_filled',
+            closed_via = 'integrity_check', closed_at = NOW(),
+            outcome_verdict = 'CANCELLED', pnl = 0, pnl_pct = 0, r_multiple = 0
+        WHERE lifecycle_state = 'open' AND status = 'open'
+          AND COALESCE(broker_order_id, '') <> ''
           AND filled_at IS NULL AND broker_status NOT IN ('filled')
           AND created_at < NOW() - INTERVAL '30 minutes'
         RETURNING id, symbol
@@ -144,8 +166,11 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         log.info(f"[integrity] Auto-cancelled never-filled: {r[1]} id={r[0]}")
         fixed += 1
 
-    # Fix 2: DB says open but Alpaca doesn't have it → close as phantom
-    cur.execute("SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk FROM paper_trades WHERE lifecycle_state='open'")
+    # Fix 2: DB says open (broker-submitted) but Alpaca doesn't have it → close as phantom
+    cur.execute("""SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk
+                   FROM paper_trades
+                   WHERE lifecycle_state='open' AND status='open'
+                     AND (COALESCE(broker_order_id,'') <> '' OR filled_at IS NOT NULL)""")
     for row in cur.fetchall():
         tid, sym = row[0], row[1]
         _entry_t = row[2] if len(row) > 2 else None

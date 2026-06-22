@@ -169,6 +169,23 @@ def collect_execution_health() -> list[dict]:
         if orph and orph.get("c", 0) > 0:
             out.append(_f("execution_health", "orphaned_stops", "warning",
                           f"{orph['c']} orphaned stop orders", count=orph["c"]))
+        # pending rows with wrong lifecycle (phantom false-positive source)
+        lc_mis = _db("""SELECT COUNT(*) AS c FROM paper_trades
+                        WHERE status='pending' AND lifecycle_state='open'
+                          AND COALESCE(broker_order_id,'')=''""", fetch="one")
+        if lc_mis and lc_mis.get("c", 0) > 0:
+            out.append(_f("execution_health", "pending_lifecycle_mismatch", "critical",
+                          f"{lc_mis['c']} pending trade(s) with lifecycle_state=open (phantom risk)",
+                          count=lc_mis["c"], kind="code"))
+        # stale never-submitted trades (should be auto-cancelled by monitor/submitter)
+        stale_ns = _db("""SELECT COUNT(*) AS c FROM paper_trades
+                          WHERE status IN ('pending','open')
+                            AND COALESCE(broker_order_id,'')='' AND filled_at IS NULL
+                            AND created_at < now() - interval '20 minutes'""", fetch="one")
+        if stale_ns and stale_ns.get("c", 0) > 0:
+            out.append(_f("execution_health", "never_submitted_stale", "warning",
+                          f"{stale_ns['c']} trade(s) pending >20m without broker order",
+                          count=stale_ns["c"]))
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"execution check error: {e}"))
     return out
