@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-22 - Fidelity monitored stops: operator approved (live)
+
+`snaptrade_pilot_arm.py --approve` with `APPROVE FIDELITY STOPS 2026-06-22` — DB
+`fidelity_stops_enabled=true`, `armed_for_ui=true`, `fidelity_monitored_unlocked()` passes. Monitor-only
+on `fidelity_rollover_ira` (no broker execution, no 2FA); breach = alert + Active Trader ticket.
+Portfolio server restarted (PID 2585482, port 7777); pilot status verified post-restart.
+
 ## 2026-06-22 - Schwab pilot: all 3 accounts + standing unlock (2FA retained)
 
 `PILOT_ACCOUNT_ALLOWLIST` = taxable + both IRAs; `schwab_pilot_standing_unlock` DB flag (no expiry);
