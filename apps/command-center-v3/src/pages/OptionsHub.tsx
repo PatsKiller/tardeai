@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
 import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
 import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
+import { Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
+import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 
@@ -29,6 +31,11 @@ export default function OptionsHub({ onDrill }: Props) {
   const [expandedEnsemble, setExpandedEnsemble] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
+  const [novice, setNovice] = useState(isNoviceMode)
+  const [guideCollapsed, setGuideCollapsed] = useState(false)
+  const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
+
+  useEffect(() => { setNoviceMode(novice) }, [novice])
 
   const q = useMemo(() => {
     const p = new URLSearchParams()
@@ -74,6 +81,30 @@ export default function OptionsHub({ onDrill }: Props) {
 
   const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_call', 'sell_credit_spread'])
 
+  const runPreflight = async (p: Proposal) => {
+    if (!execStatus?.armed_for_execution) {
+      setExecMsg('Options execution locked — run options_pilot_arm.py --approve on server.')
+      return
+    }
+    try {
+      const r = await fetch('/api/v2/options/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: p.id, account_key: p.account || undefined }),
+      })
+      const j = await r.json()
+      const data = j.data ?? j
+      if (!data.ok) {
+        setExecMsg(data.error || 'Preflight blocked')
+        return
+      }
+      setPendingIntent(data.intent_id)
+      setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
+    } catch (e: any) {
+      setExecMsg(String(e?.message || e))
+    }
+  }
+
   const handleAction = async (action: string, id: string, item: Proposal | Position) => {
     if (action === 'review_chain') {
       const sym = 'symbol' in item && item.symbol ? item.symbol : (item as Position).underlying
@@ -89,29 +120,13 @@ export default function OptionsHub({ onDrill }: Props) {
       setExecMsg(`Passed on ${'symbol' in item ? item.symbol : (item as Position).underlying} — no action taken.`)
       return
     }
-    if (execActions.has(action) && 'id' in item) {
+    if (execActions.has(action) && 'symbol' in item) {
       const p = item as Proposal
-      if (!execStatus?.armed_for_execution) {
-        setExecMsg('Options execution locked — run options_pilot_arm.py --approve on server.')
+      if (novice) {
+        setPreflightProposal(p)
         return
       }
-      try {
-        const r = await fetch('/api/v2/options/preflight', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proposal_id: p.id, account_key: (p as any).account || undefined }),
-        })
-        const j = await r.json()
-        const data = j.data ?? j
-        if (!data.ok) {
-          setExecMsg(data.error || 'Preflight blocked')
-          return
-        }
-        setPendingIntent(data.intent_id)
-        setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
-      } catch (e: any) {
-        setExecMsg(String(e?.message || e))
-      }
+      await runPreflight(p)
       return
     }
     onDrill({
@@ -151,7 +166,9 @@ export default function OptionsHub({ onDrill }: Props) {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <NoviceToggle on={novice} onChange={setNovice} />
+          <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
             <button key={t} onClick={() => selectTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -159,8 +176,21 @@ export default function OptionsHub({ onDrill }: Props) {
               color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
             }}>{t}</button>
           ))}
+          </div>
         </div>
       </div>
+
+      {novice && tab === 'Proposals' && (
+        <Options101Banner collapsed={guideCollapsed} onToggle={() => setGuideCollapsed(c => !c)} />
+      )}
+
+      {preflightProposal && (
+        <PreflightConfirmModal
+          proposal={preflightProposal}
+          onCancel={() => setPreflightProposal(null)}
+          onConfirm={() => { const p = preflightProposal; setPreflightProposal(null); if (p) runPreflight(p) }}
+        />
+      )}
 
       {execMsg && (
         <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #60a5fa', fontSize: 11, color: 'var(--text2)' }}>
@@ -232,6 +262,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 key={p.id}
                 proposal={p}
                 armed={!!execStatus?.armed_for_execution}
+                novice={novice}
                 onAction={(a, id) => handleAction(a, id, p)}
                 onDrill={() => onDrill({
                   title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
@@ -290,6 +321,7 @@ export default function OptionsHub({ onDrill }: Props) {
               <OptionPositionCard
                 key={p.id}
                 position={p}
+                novice={novice}
                 onAction={(a, id) => handleAction(a, id, p)}
                 onDrill={() => onDrill({
                   title: `${p.underlying} option leg`,
@@ -322,6 +354,22 @@ export default function OptionsHub({ onDrill }: Props) {
               <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
             </div>
           ))}
+          {novice && (
+            <div style={{ ...panel, gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Strategy cheat sheet</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+                {(['covered_call', 'cash_secured_put', 'long_call', 'credit_spread'] as const).map(s => {
+                  const g = strategyGuide(s)
+                  return (
+                    <div key={s} style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
+                      <div style={{ fontWeight: 800, color: '#60a5fa' }}>{g.emoji} {g.name}</div>
+                      <div style={{ marginTop: 4 }}>{g.oneLiner}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <div style={{ ...panel, gridColumn: '1 / -1' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Quality Philosophy</div>
             <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>
@@ -332,6 +380,14 @@ export default function OptionsHub({ onDrill }: Props) {
                 ? ' Execution ARMED — preflight + per-order 2FA required.'
                 : ' Execution advisory until options_pilot_arm --approve.'}
             </div>
+            {novice && (
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', cursor: 'pointer' }}>Key terms ({GLOSSARY.length})</summary>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6, marginTop: 8, fontSize: 10, color: 'var(--text2)' }}>
+                  {GLOSSARY.map(g => <div key={g.term}><b>{g.term}</b> — {g.def}</div>)}
+                </div>
+              </details>
+            )}
           </div>
         </div>
       )}
