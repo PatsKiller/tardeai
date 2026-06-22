@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-22 - Broker promote: cash sizing + AI oversight (Grok/ChatGPT)
+
+Paper→Schwab promote now re-sizes on destination **cash** (not Alpaca equity), enforces strategy
+live caps, daily limits, and live market gates (`broker_promote_sizing.py`). New AI oversight layer
+(`broker_promote_oversight.py`): blocks on pending Maria/Risk/Steph reviews, agent BLOCK votes, or
+Grok+ChatGPT DISAGREE; warns on missing cloud review / cautious agent votes. APIs:
+`prepare-promote`, `evaluate-promote`, `oversight`, `queue-oversight`, `run-cloud-oversight`,
+`promote-from-paper`. UI: `BrokerPromoteModal`, `BrokerIntelPanel` with decision context + oversight
+buttons. Doc: `docs/broker-promote-sizing.md`. Tests: `test_broker_promote_sizing.py`,
+`test_broker_promote_oversight.py`.
+
 ## 2026-06-22 - Proposal Maturity L10: options fallback, health monitoring, UI fix
 
 Audit: `docs/PROPOSAL_MATURITY_AUDIT.md`. Options engine fallback tier when strict gates empty;

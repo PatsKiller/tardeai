@@ -1063,6 +1063,158 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
         return {'success': False, 'message': f'Manual proposal failed: {e}'}
 
 
+def promote_proposal_to_broker(
+    proposal_id: int,
+    account: str,
+    shares: int,
+    entry: float,
+    stop: float,
+    target: float,
+    *,
+    risk_reward: float = None,
+    operator: str = "operator",
+) -> dict:
+    """Promote an Alpaca-paper proposal to the Schwab/Fidelity broker queue (in-place update)."""
+    acct = (account or "").strip()
+    acct_l = acct.lower()
+    if not acct or not ("schwab" in acct_l or "fidelity" in acct_l):
+        return {"ok": False, "error": "account must be a Schwab or Fidelity account key"}
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, symbol, strategy_id, status,
+                      COALESCE(intended_broker, '') AS intended_broker,
+                      COALESCE(origin, 'auto') AS origin
+               FROM paper_trade_proposals WHERE id=%s""",
+            (proposal_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "error": f"proposal #{proposal_id} not found"}
+        _id, symbol, strategy_id, status, prev_broker, prev_origin = row
+        if status not in ("PENDING", "APPROVED_FOR_PAPER_TEST"):
+            return {"ok": False, "error": f"proposal #{proposal_id} status={status} — cannot promote"}
+
+        shares = int(shares)
+        entry, stop, target = float(entry), float(stop), float(target)
+        if shares <= 0 or entry <= 0 or stop <= 0 or target <= 0:
+            return {"ok": False, "error": "shares, entry, stop, and target must be positive"}
+        if entry <= stop:
+            return {"ok": False, "error": "entry must be above stop for a long trade"}
+
+        import broker_promote_sizing as bps
+        live_quote = {}
+        try:
+            from market_quote_provider import get_best_quote
+            live_quote = get_best_quote(symbol) or {}
+        except Exception:
+            pass
+        evaluation = bps.evaluate_broker_promote(
+            acct, strategy_id, entry, stop, target, shares, quote=live_quote,
+        )
+        try:
+            import broker_promote_oversight as bpo
+            oversight = bpo.evaluate_oversight(proposal_id)
+            evaluation = bpo.merge_evaluation_with_oversight(evaluation, oversight)
+        except Exception:
+            pass
+
+        if not evaluation.get("allowed"):
+            reasons = list(evaluation.get("violations") or [])
+            mkt = evaluation.get("market") or {}
+            if mkt.get("reason"):
+                reasons.append(mkt["reason"])
+            sizing = evaluation.get("sizing") or {}
+            return {
+                "ok": False,
+                "error": "; ".join(reasons) or "broker promote blocked by sizing/market/oversight gates",
+                "evaluation": evaluation,
+                "oversight": evaluation.get("oversight"),
+                "max_shares": evaluation.get("max_shares"),
+                "recommended_shares": evaluation.get("recommended_shares"),
+                "binding": sizing.get("binding"),
+            }
+
+        dollar_size = round(shares * entry, 2)
+        dollar_risk = round(abs(entry - stop) * shares, 2)
+        stop_pct = round(abs(entry - stop) / entry, 4) if entry > 0 else 0
+        rr = round(float(risk_reward), 2) if risk_reward is not None else (
+            round((target - entry) / (entry - stop), 2) if entry > stop else 0
+        )
+
+        sizing_basis = evaluation.get("sizing") or {}
+        basis_patch = json.dumps({
+            "engine": "paper_promoted_to_broker",
+            "promoted_from_broker": prev_broker or os.getenv("DEFAULT_PAPER_ACCOUNT", "alpaca_paper"),  # hardcode-ok: env-backed lineage fallback when prior broker unset
+            "promoted_at": datetime.now(timezone.utc).isoformat(),
+            "operator": operator,
+            "shares": shares,
+            "account_key": acct,
+            "broker_sizing": {
+                "binding": sizing_basis.get("binding"),
+                "max_shares": evaluation.get("max_shares"),
+                "engine": sizing_basis.get("engine"),
+                "equity": sizing_basis.get("equity"),
+                "cash_available": sizing_basis.get("cash_available"),
+                "policy_snapshot": sizing_basis.get("policy_snapshot"),
+            },
+            "market_status": (evaluation.get("market") or {}).get("status"),
+        })
+
+        cur.execute(
+            """UPDATE paper_trade_proposals SET
+                 intended_broker=%s, target_account=%s, proposed_account=%s,
+                 proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
+                 proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
+                 proposed_stop_pct=%s, proposed_rr=%s,
+                 routing_state='queued',
+                 origin=CASE WHEN origin='auto' THEN 'paper_promoted' ELSE origin END,
+                 sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb
+               WHERE id=%s""",
+            (acct, acct, acct, entry, stop, target, shares, dollar_size, dollar_risk,
+             stop_pct, rr, basis_patch, proposal_id),
+        )
+        conn.commit()
+
+        try:
+            import trade_modify as _tm
+            _tm.audit_decision(
+                "promote_to_broker", proposal_id=proposal_id, actor=operator, channel="web",
+                after={"account": acct, "symbol": symbol, "shares": shares, "entry": entry,
+                       "stop": stop, "target": target, "rr": rr, "prev_broker": prev_broker,
+                       "prev_origin": prev_origin},
+                reason=f"Promoted #{proposal_id} {symbol} to broker queue ({acct})",
+            )
+        except Exception:
+            pass
+
+        broker_label = "Fidelity" if "fidelity" in acct_l else "Schwab"
+        return {
+            "ok": True,
+            "success": True,
+            "proposal_id": proposal_id,
+            "symbol": symbol,
+            "account": acct,
+            "broker": broker_label,
+            "shares": shares,
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "rr": rr,
+            "message": f"Proposal #{proposal_id} ({symbol}) queued for {broker_label} · {acct}",
+        }
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e)[:200]}
+    finally:
+        conn.close()
+
+
 def validate_paper_proposal_live_market(
     symbol: str,
     entry: float,
