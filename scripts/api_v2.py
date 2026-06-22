@@ -2939,6 +2939,39 @@ def risk():
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     stops = _load_json(STATE_DIR / "stops.json") or {}
     positions = rm.get("positions", [])
+    # Tag real-money positions so the UI can split real vs paper (headline heat/risk KPIs below stay
+    # real-money only — they come precomputed from risk_management.json and exclude paper by design).
+    for _rp in positions:
+        _rp.setdefault("environment", "real")
+    # ── PAPER ACCOUNT (operator 2026-06-21) ──────────────────────────────────────────────────────────────
+    # Show the Alpaca paper account on Risk too. Paper positions carry REAL live SELL stops (the bracket/
+    # ratchet pipeline), so they flow through the SAME canonical stop reconciliation below and show as
+    # broker_protected. Tagged environment="paper" + risk_excluded so the UI can filter and the real-money
+    # aggregates are never polluted.
+    try:
+        _prows = _db_query("""SELECT UPPER(account) account, symbol, sum(shares) sh,
+                                     sum(entry_price*shares)/NULLIF(sum(shares),0) avg_entry,
+                                     min(stop_loss) stop, max(current_price) cur_px
+                              FROM paper_trades WHERE lower(status)='open'
+                              GROUP BY UPPER(account), symbol""") or []
+        for _pr in _prows:
+            _sh = float(_pr.get("sh") or 0)
+            if _sh <= 0:
+                continue
+            _cur = float(_pr["cur_px"]) if _pr.get("cur_px") else (float(_pr["avg_entry"]) if _pr.get("avg_entry") else 0)
+            _stop = float(_pr["stop"]) if _pr.get("stop") is not None else None
+            _mv = _sh * _cur if _cur else 0
+            _dist = round(((_cur - _stop) / _cur) * 100, 1) if (_cur and _stop) else None
+            positions.append({
+                "symbol": (_pr.get("symbol") or "").strip(), "account": "alpaca_paper",
+                "environment": "paper", "risk_excluded": True,
+                "market_value": round(_mv, 2), "current_price": _cur, "stop_price": _stop,
+                "distance_pct": _dist, "distance_to_stop_pct": _dist,
+                "max_loss": round(_sh * (_cur - _stop), 0) if (_cur and _stop) else 0,
+                "shares": _sh, "status": "", "triggered": bool(_dist is not None and _dist < 0),
+            })
+    except Exception:
+        pass
     # Enrich with live prices from holdings if risk prices are $0
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
     h_prices = {}
@@ -2995,10 +3028,12 @@ def risk():
         "pct_protected": rm.get("pct_protected", 0),
         "total_protected_mv": rm.get("total_protected_mv", 0),
         "total_unprotected_mv": rm.get("total_unprotected_mv", 0),
-        "position_count": len(positions),
+        "position_count": sum(1 for p in positions if not p.get("risk_excluded")),
+        "paper_position_count": sum(1 for p in positions if p.get("risk_excluded")),
         "positions": [(lambda _bs, _planned, _conf: {
             "symbol": p.get("symbol", ""), "market_value": p.get("market_value", 0),
             "account": p.get("account", ""),
+            "environment": p.get("environment", "real"), "risk_excluded": bool(p.get("risk_excluded")),
             # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed
             # stop [no-API accounts: stop lives in ToS, confirmed in stop_confirmations], (3) planned stop
             # [risk_management.json, advisory only]. stop_price = the highest-confidence value available.
