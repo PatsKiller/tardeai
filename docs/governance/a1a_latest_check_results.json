@@ -1,25 +1,17 @@
 {
-  "generated_at": "2026-06-19T11:40:00.465483+00:00",
-  "git_head": "531817e5",
-  "files_checked": 2,
-  "findings_count": 3,
+  "generated_at": "2026-06-21T22:00:42.802309+00:00",
+  "git_head": "67db6814",
+  "files_checked": 3,
+  "findings_count": 2,
   "by_severity": {
-    "P1": 1,
-    "P0": 1,
-    "P2": 1
+    "P2": 2
   },
-  "status": "attention_required",
+  "status": "warning",
   "findings": [
     {
-      "severity": "P1",
-      "check": "code_without_docs",
-      "message": "2 code files changed, 0 docs updated"
-    },
-    {
-      "severity": "P0",
-      "check": "missing_required_doc",
-      "file": "docs/v4_1_deployment_log.md",
-      "message": "Required doc missing: docs/v4_1_deployment_log.md"
+      "severity": "P2",
+      "check": "stale_facts",
+      "message": "System facts 58h old (>48h)"
     },
     {
       "severity": "P2",
