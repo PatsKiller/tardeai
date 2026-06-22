@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Trade AI Health Agent every 30 minutes
+
+[Timer]
+# Every 30 min; first run 2 min after boot. Pairs with the cron entries (use ONE mechanism).
+OnBootSec=2min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

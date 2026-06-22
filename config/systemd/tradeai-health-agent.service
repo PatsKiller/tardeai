@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI v12 Centralized Health Agent (score + trends + escalation routing)
+After=network.target
+
+[Service]
+Type=oneshot
+User=johnclaw
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/health_agent.py
+# Advisory by default. Set HEALTH_AGENT_MODE / CODER_DISPATCH_MODE in the environment to change behavior.
+Environment=HEALTH_AGENT_MODE=advisory
+
+[Install]
+WantedBy=multi-user.target

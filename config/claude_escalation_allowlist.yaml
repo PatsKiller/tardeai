@@ -26,6 +26,8 @@ allowed_script_patterns:
   # News/data refresh
   - "scripts/news_ingestion.py"
   - "scripts/finviz_screener_runner.py"
+  # Data gap resolution (Health Agent enqueues this; read+enrich, no order submission)
+  - "scripts/data_gap_resolver.py"
 
 blocked_patterns:
   # Order/broker mutations

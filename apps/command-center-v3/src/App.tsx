@@ -23,6 +23,7 @@ import ManualExecutionHub from './pages/ManualExecutionHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
+import HealthHub from './pages/HealthHub'
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
@@ -63,6 +64,7 @@ function Shell() {
             <Route path="rotation" element={<RotationIntelligence />} />
             <Route path="rec-intel" element={<RecommendationIntelligence />} />
             <Route path="advisor-changes" element={<AdvisorChangesHub />} />
+            <Route path="health" element={<HealthHub onDrill={setDrill} />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
         </main>
