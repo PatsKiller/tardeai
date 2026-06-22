@@ -1,4 +1,11 @@
 
+## 2026-06-22 — Fidelity monitored stops approved + server restart
+
+Operator approved Fidelity monitor-only stops: `snaptrade_pilot_arm.py --approve --confirm
+"APPROVE FIDELITY STOPS 2026-06-22"` → `fidelity_stops_enabled=true`, `armed_for_ui=true`. Schwab pilot
+still armed (all 3 accounts, standing unlock, per-order 2FA). Restarted portfolio server (`restart_server.sh`,
+port 7777); API checks OK.
+
 ## 2026-06-22 — Schwab canary: all 3 accounts, standing unlock (2FA retained)
 
 Pilot allowlist expanded to `schwab_taxable` + both IRAs; `schwab_pilot_standing_unlock` (no session
