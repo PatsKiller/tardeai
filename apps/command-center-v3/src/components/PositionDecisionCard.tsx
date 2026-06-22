@@ -87,6 +87,19 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       setSnoozeMsg(r?.ok ? `✓ Acknowledged — ${p.symbol} stop alert snoozed 1 week (until ${String(r.snoozed_until).slice(0, 10)}); protective stop unchanged` : `failed: ${r?.error ?? '—'}`)
     } catch { setSnoozeMsg('snooze failed — retry') } finally { setSnoozeBusy(false) }
   }
+  // Fractional Schwab positions can't hold a resting broker STOP (Schwab rejects fractional stops) — arm a
+  // SYNTHETIC stop instead: a monitored level that, on breach, requests a Market-Day sell-all 2FA.
+  const _shares = Number(p.shares) || 0
+  const _isFractional = _isSchwab && _shares > 0 && Math.abs(_shares - Math.round(_shares)) > 1e-9
+  const [synthBusy, setSynthBusy] = useState(false)
+  const [synthMsg, setSynthMsg] = useState('')
+  const _armSynthetic = async (level: number) => {
+    setSynthBusy(true); setSynthMsg('')
+    try {
+      const r = unwrapApi(await fetch('/api/v2/holdings/synthetic-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: p.symbol, account: p.account, stop_price: level, qty: _shares, note: 'fractional — arm from card' }) }).then(x => x.json()))
+      setSynthMsg(r?.ok ? `✓ Synthetic stop armed @ $${Number(level).toFixed(2)} on full ${_shares} sh — on breach you'll get a Market-Day sell-all 2FA (nothing placed at the broker)` : `⛔ ${apiReason(r)}`)
+    } catch (e: any) { setSynthMsg('⛔ ' + e.message) } finally { setSynthBusy(false) }
+  }
   // STEP 1 — request: builds the order + (Schwab/armed) requests per-order 2FA, or returns a ToS ticket.
   const _requestStop = async () => {
     setStopBusy(true); setStopMsg('requesting…')
@@ -337,6 +350,16 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
               <button onClick={_snoozeStop} disabled={snoozeBusy} title="Acknowledge this stop and grant a 1-week grace period — suppresses the stop ALERT for 7 days. Advisory only: does NOT change or cancel the protective stop at the broker." style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: snoozeBusy ? 'not-allowed' : 'pointer' }}>{snoozeBusy ? '…' : '⏸ Ignore 1 week'}</button>
             </div>
           })()}
+          {/* FRACTIONAL position: a broker STOP covers only whole shares (Schwab rejects fractional stops). Offer a
+              synthetic stop that protects the FULL position via a monitored Market-Day sell-all on breach. */}
+          {_isFractional && stop != null && unprotected && !mf && (
+            <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(168,85,247,.10)', border: '1px solid rgba(168,85,247,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: '#d8b4fe' }}>▸ Fractional ({_shares} sh) — a broker stop covers only {Math.floor(_shares)} whole share{Math.floor(_shares) === 1 ? '' : 's'}. Synthetic stop covers all {_shares}.</span>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => _armSynthetic(stop)} disabled={synthBusy} title={`Arm a synthetic stop at $${stop.toFixed(2)} on the FULL ${_shares} sh. The monitor watches the price; on a breach it requests a Market-Day sell-all 2FA (Schwab accepts market sells of fractional qty). Nothing is placed at the broker now.`} style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid #a855f7', background: 'rgba(168,85,247,.18)', color: '#d8b4fe', cursor: synthBusy ? 'not-allowed' : 'pointer' }}>{synthBusy ? '…' : `Arm synthetic stop @ $${stop.toFixed(2)}`}</button>
+            </div>
+          )}
+          {synthMsg && <div style={{ fontSize: 10.5, color: synthMsg.startsWith('✓') ? GREEN : '#ef4444', marginTop: 5 }}>{synthMsg}</div>}
           {snoozeMsg && <div style={{ fontSize: 10.5, color: snoozeMsg.startsWith('✓') ? GREEN : AMBER, marginTop: 5 }}>{snoozeMsg}</div>}
         </>
       })()}
