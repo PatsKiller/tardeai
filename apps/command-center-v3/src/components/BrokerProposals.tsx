@@ -29,6 +29,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [modalSeed, setModalSeed] = useState<ManualExecSeed | null>(null)
   const [adjustSeed, setAdjustSeed] = useState<BrokerPromoteSeed | null>(null)
   const [destAccount, setDestAccount] = useState<Record<number, string>>({})
+  const [oversightBusy, setOversightBusy] = useState<Record<number, boolean>>({})
+  const [cloudBusy, setCloudBusy] = useState<Record<number, boolean>>({})
+  const [oversightMsg, setOversightMsg] = useState<Record<number, string>>({})
 
   const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
   const heldN = proposals.filter(p => isHeld(p.symbol)).length
@@ -68,6 +71,48 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const openManual = (p: any) => {
     const acct = destAccount[p.id] || p.account || accounts[0]?.account_key || ''
     setModalSeed({ symbol: p.symbol, account: acct, proposal_id: p.id, execution_type: 'equity' })
+  }
+
+  const gateColor = (s: string) => s === 'PASS' ? GREEN : s === 'WARN' ? AMBER : s === 'BLOCK' ? RED : MUTED
+
+  const queueOversight = async (pid: number) => {
+    setOversightBusy(m => ({ ...m, [pid]: true }))
+    setOversightMsg(m => ({ ...m, [pid]: '' }))
+    try {
+      const r = await fetch('/api/v2/broker-proposals/queue-oversight', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: pid }),
+      }).then(x => x.json())
+      setOversightMsg(m => ({ ...m, [pid]: r.ok ? '✅ Local reviews queued' : `⛔ ${r.error || 'failed'}` }))
+      if (r.ok) setTimeout(() => refetch?.(), 4000)
+    } catch (e: any) {
+      setOversightMsg(m => ({ ...m, [pid]: '⛔ ' + String(e).slice(0, 60) }))
+    } finally {
+      setOversightBusy(m => ({ ...m, [pid]: false }))
+    }
+  }
+
+  const runCloudOversight = async (pid: number) => {
+    setCloudBusy(m => ({ ...m, [pid]: true }))
+    setOversightMsg(m => ({ ...m, [pid]: 'Running Grok+ChatGPT…' }))
+    try {
+      const r = await fetch('/api/v2/broker-proposals/run-cloud-oversight', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: pid, timeout: 120 }),
+      }).then(x => x.json())
+      const payload = r.data ?? r
+      if (r.ok) {
+        const v = payload.cloud?.consensus?.verdict || payload.oversight?.status || 'done'
+        setOversightMsg(m => ({ ...m, [pid]: `✅ Cloud: ${v}` }))
+        refetch?.()
+      } else {
+        setOversightMsg(m => ({ ...m, [pid]: `⛔ ${r.error || payload.error || 'failed'}` }))
+      }
+    } catch (e: any) {
+      setOversightMsg(m => ({ ...m, [pid]: '⛔ ' + String(e).slice(0, 60) }))
+    } finally {
+      setCloudBusy(m => ({ ...m, [pid]: false }))
+    }
   }
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -140,12 +185,38 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           const fid = brokerOf(p.account) === 'Fidelity' || p.execution_mode === 'manual'
           const dest = destAccount[p.id] ?? p.account ?? ''
           const fmt = (n: number | null | undefined) => n == null ? '—' : n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}`
+          const gate = p.gate_status || p.evaluation?.status
+          const ov = p.oversight || p.intel?.oversight || p.evaluation?.oversight || {}
+          const ovStatus = ov.status || (ov.violations?.length ? 'BLOCK' : ov.warnings?.length ? 'WARN' : null)
+          const bs = p.broker_sizing || {}
+          const oversized = bs.oversized
+          const maxSh = bs.max_shares ?? p.evaluation?.max_shares
+          const gateBlocked = gate === 'BLOCK' || ovStatus === 'BLOCK'
+          const intel = p.intel?.ok ? {
+            ...p.intel,
+            oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
+          } : p.intel
           return (
             <div key={p.id} style={{ borderRadius: 12, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.2)', overflow: 'hidden' }}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 12px', borderBottom: '1px solid rgba(148,163,184,.12)' }}>
                 <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{p.execution_label || (fid ? 'Manual · Fidelity' : 'Schwab · auto or manual')}</span>
                 <span style={{ fontSize: 15, fontWeight: 900, color: TEXT0, fontFamily: 'monospace' }}>{p.symbol}</span>
                 <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}>{p.strategy_id}</span>
+                {gate && (
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${gateColor(gate)}22`, color: gateColor(gate) }}>
+                    GATE {gate}
+                  </span>
+                )}
+                {ovStatus && (
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${gateColor(ovStatus)}18`, color: ovStatus === 'PASS' ? PURPLE : gateColor(ovStatus) }}>
+                    AI {ovStatus}
+                  </span>
+                )}
+                {oversized && maxSh != null && (
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: 'rgba(239,68,68,.15)', color: RED }}>
+                    OVERSIZED · max {Number(maxSh).toLocaleString()} sh
+                  </span>
+                )}
                 {(() => { const fv = fvMap[String(p.symbol).toUpperCase()]; if (!fv) return null
                   const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
                   const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
@@ -157,9 +228,19 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 </button>
               </div>
 
-              {p.intel?.ok && (
+              {intel?.ok && (
                 <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(15,23,42,.35)' }}>
-                  <BrokerIntelPanel intel={p.intel} compact />
+                  <BrokerIntelPanel
+                    intel={intel}
+                    compact
+                    onQueueOversight={() => queueOversight(p.id)}
+                    onRunCloudOversight={() => runCloudOversight(p.id)}
+                    oversightBusy={!!oversightBusy[p.id]}
+                    cloudBusy={!!cloudBusy[p.id]}
+                  />
+                  {oversightMsg[p.id] && (
+                    <div style={{ fontSize: 9.5, marginTop: 6, color: oversightMsg[p.id].startsWith('✅') ? GREEN : AMBER }}>{oversightMsg[p.id]}</div>
+                  )}
                 </div>
               )}
 
@@ -172,9 +253,18 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 </div>
               )}
 
+              {(gateBlocked || oversized) && (
+                <div style={{ padding: '8px 12px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)' }}>
+                  {oversized && maxSh != null && <div>⛔ {Number(p.proposed_shares).toLocaleString()} sh exceeds broker cap {Number(maxSh).toLocaleString()} — use ✎ Edit trade to resize.</div>}
+                  {(ov.violations || []).map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
+                  {(bs.violations || p.evaluation?.violations || []).filter((v: string) => !(ov.violations || []).includes(v)).map((v: string, i: number) => <div key={`s${i}`}>⛔ {v}</div>)}
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, padding: '10px 12px', fontSize: 10 }}>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Position</div>
-                  <div style={{ color: TEXT0, fontWeight: 700, fontFamily: 'monospace' }}>{Number(p.proposed_shares).toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}</div>
+                  <div style={{ color: oversized ? RED : TEXT0, fontWeight: 700, fontFamily: 'monospace' }}>{Number(p.proposed_shares).toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}</div>
+                  {maxSh != null && oversized && <div style={{ color: AMBER, fontSize: 8 }}>cap {Number(maxSh).toLocaleString()} sh</div>}
                   <div style={{ color: MUTED, fontSize: 9 }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
                 </div>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Investment</div>
@@ -205,7 +295,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 {routeMsg[p.id] && <span style={{ fontSize: 10, color: routeMsg[p.id].startsWith('✅') || routeMsg[p.id].startsWith('📝') ? GREEN : routeMsg[p.id].startsWith('🔒') ? PURPLE : AMBER }}>{routeMsg[p.id]}</span>}
                 <span style={{ flex: 1 }} />
                 <button onClick={() => openManual(p)} style={btn(BLUE)} title="Log after you filled at broker">Executed manually</button>
-                <button onClick={() => route(p.id)} style={btn(fid ? PURPLE : AMBER)} title={fid ? 'Record-only' : 'Schwab 2FA submit'}>{fid ? 'Record' : 'Auto (2FA)'}</button>
+                <button onClick={() => route(p.id)} disabled={gateBlocked && !fid} style={btn(fid ? PURPLE : AMBER, gateBlocked && !fid)} title={gateBlocked ? 'Blocked by sizing/AI gates — edit trade first' : (fid ? 'Record-only' : 'Schwab 2FA submit')}>{fid ? 'Record' : 'Auto (2FA)'}</button>
               </div>
             </div>
           )

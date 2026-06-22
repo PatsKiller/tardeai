@@ -51,13 +51,14 @@ export default function BrokerIntelPanel({
   const localLlm = oversight.local_llm || {}
   const cloud = oversight.cloud_review || {}
   const lanes = oversight.lanes_available || {}
-  const ovStatus = oversight.status
   const ovViolations: string[] = oversight.violations || []
   const ovWarnings: string[] = oversight.warnings || []
+  const ovStatus = oversight.status || (ovViolations.length ? 'BLOCK' : ovWarnings.length ? 'WARN' : reviews.length ? 'PENDING' : null)
+  const showOversight = Boolean(ovStatus || reviews.length > 0 || onQueueOversight || onRunCloudOversight || ovViolations.length || ovWarnings.length)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 8 : 10 }}>
-      {(ovStatus || reviews.length > 0 || onQueueOversight) && (
+      {showOversight && (
         <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.22)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
             <div style={{ ...sec, color: PURPLE, marginBottom: 0 }}>AI oversight {ovStatus ? `· ${ovStatus}` : ''}</div>
@@ -94,15 +95,17 @@ export default function BrokerIntelPanel({
             <div style={{ fontSize: 9, color: AMBER, marginBottom: 4 }}>Pending agents: {ovAgents.pending.join(', ')}</div>
           )}
 
-          {reviews.map((r, i) => (
-            <div key={i} style={{ fontSize: 9.5, marginBottom: 4, paddingLeft: 6, borderLeft: `2px solid ${voteColor(r.verdict)}` }}>
+          {reviews.map((r, i) => {
+            const pending = !r.verdict && (r.status === 'pending' || !r.status)
+            return (
+            <div key={i} style={{ fontSize: 9.5, marginBottom: 4, paddingLeft: 6, borderLeft: `2px solid ${voteColor(r.verdict || (pending ? 'PENDING' : ''))}` }}>
               <b style={{ color: TEXT0 }}>{r.agent}</b>
-              <span style={{ color: MUTED }}> · {r.status || '—'}</span>
+              <span style={{ color: pending ? AMBER : MUTED }}> · {r.status || (pending ? 'pending' : '—')}</span>
               {r.verdict && <span style={{ color: voteColor(r.verdict) }}> · {r.verdict}</span>}
               {r.model && <span style={{ color: MUTED }}> · {r.model}</span>}
               {r.summary && <div style={{ color: TEXT1, marginTop: 2 }}>{r.summary}</div>}
             </div>
-          ))}
+          )})}
 
           {cloud.consensus && (
             <div style={{ fontSize: 9, color: cloudColor(cloud.status), marginTop: 4 }}>
