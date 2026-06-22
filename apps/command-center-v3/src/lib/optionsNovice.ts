@@ -78,7 +78,9 @@ export function plainEnglishProposal(p: OptionProposal): string {
     const shares = contracts * 100
     const otm = spot && strike > spot
     const dist = spot ? `${(((strike - spot) / spot) * 100).toFixed(1)}% above spot` : ''
-    return `You own ~${shares} shares of ${sym}. Sell ${contracts} call(s) at $${strike} (${exp}, ${p.dte ?? '—'} days) for ~${credit} total. ${otm ? `Strike is ${dist} — ` : ''}If ${sym} stays below $${strike}, you keep the cash. Above $${strike}, shares may be called away at $${strike}.`
+    const stockRisk = (p as OptionProposal).stock_downside_risk
+    const riskNote = stockRisk != null ? ` Stock can still fall (worst case ~${fmt$(stockRisk)} if price went to $0).` : ''
+    return `You own ~${shares} shares of ${sym}. Sell ${contracts} call(s) at $${strike} (${exp}, ${p.dte ?? '—'} days) for ~${credit} total. ${otm ? `Strike is ${dist} — ` : ''}If ${sym} stays below $${strike}, you keep the cash. Above $${strike}, shares may be called away at $${strike} (upside capped).${riskNote}`
   }
   if (p.strategy === 'cash_secured_put') {
     return `Set aside cash to buy ${sym} at $${strike} if assigned. Collect ~${credit} premium for the ${exp} put (${p.dte ?? '—'} days). Keep premium if ${sym} stays above $${strike}; otherwise you may buy ${contracts * 100} shares at $${strike}.`

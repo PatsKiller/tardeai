@@ -35,7 +35,8 @@ const TIPS = {
   premium: 'Estimated mid price per contract (×100 shares). See data-source badge.',
   totalCredit: 'Total credit if filled: premium × 100 × contracts.',
   maxProfit: 'Best-case profit if the trade works as modeled.',
-  maxLoss: 'Worst-case loss — for covered calls, stock can fall to zero minus premium kept.',
+  maxLoss: 'Stock downside if price falls to $0 (you still own the shares). Premium reduces this slightly.',
+  upsideCap: 'If assigned, you sell shares at this strike — gains above strike are forgone.',
   breakeven: 'Underlying price where P&L crosses zero at expiration.',
   rr: 'Risk/reward: max profit ÷ max loss (higher is better for defined-risk trades).',
   ev: 'Expected value ≈ total credit × POP% — probabilistic edge.',
@@ -95,6 +96,10 @@ export type OptionProposal = {
   iv_rank?: number
   max_profit?: number | string
   max_loss?: number | string
+  stock_downside_risk?: number
+  upside_cap?: string
+  max_loss_note?: string
+  upside_cap_note?: string
   breakeven?: number
   risk_reward?: number
   expected_value?: number
@@ -137,6 +142,11 @@ export default function OptionProposalCard({
   const guide = strategyGuide(p.strategy)
   const dist = strikeDistance(p)
   const risks = novice ? proposalRiskFlags(p) : []
+  const stockRisk = p.stock_downside_risk ?? (
+    p.strategy === 'covered_call' && p.underlying_price && p.contracts
+      ? Math.round(p.underlying_price * p.contracts * 100 - (p.premium_total ?? 0))
+      : typeof p.max_loss === 'number' ? p.max_loss : null
+  )
 
   const btnStyle = (action: string): React.CSSProperties => {
     if (action === 'hold') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }
@@ -206,7 +216,14 @@ export default function OptionProposalCard({
         <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} tip={TIPS.breakeven} />
         <Metric label="EV" value={fmt$(p.expected_value)} color={PURPLE} tip={TIPS.ev} />
         <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={GREEN} tip={TIPS.maxProfit} />
-        <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={RED} tip={TIPS.maxLoss} />
+        {p.strategy === 'covered_call' ? (
+          <>
+            <Metric label="Stock risk" value={fmt$(stockRisk)} color={RED} tip={p.max_loss_note || TIPS.maxLoss} />
+            <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={AMBER} tip={p.upside_cap_note || TIPS.upsideCap} />
+          </>
+        ) : (
+          <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={RED} tip={TIPS.maxLoss} />
+        )}
         <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} tip={TIPS.ivRank} />
         <Metric label="Contracts" value={p.contracts ?? '—'} tip={TIPS.contracts} />
         {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} tip={TIPS.delta} />}
