@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', RED = '#ef4444', PURPLE = '#a78bfa'
 const sec = { fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }
 const body = { fontSize: 10, color: TEXT1, lineHeight: 1.45 }
@@ -17,6 +19,81 @@ function cloudColor(status: string | null | undefined) {
   if (s === 'caution') return AMBER
   if (s === 'disagree') return RED
   return MUTED
+}
+
+function criticColor(verdict: string | null | undefined) {
+  const v = String(verdict || '').toUpperCase()
+  if (v === 'BLOCK') return RED
+  if (v === 'DOWNGRADE') return AMBER
+  if (v === 'CONFIRM' || v === 'PASS') return GREEN
+  return TEXT1
+}
+
+const VOTE_BUCKETS = [
+  { key: 'strong_buy', label: 'Strong buy', color: '#16a34a' },
+  { key: 'buy', label: 'Buy', color: '#4ade80' },
+  { key: 'hold', label: 'Hold', color: '#94a3b8' },
+  { key: 'sell', label: 'Sell', color: '#fb923c' },
+  { key: 'strong_sell', label: 'Strong sell', color: '#ef4444' },
+] as const
+
+function AnalystVoteBar({ dist }: { dist: Record<string, number> }) {
+  const total = VOTE_BUCKETS.reduce((s, b) => s + (Number(dist[b.key]) || 0), 0)
+  if (!total) return null
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'rgba(15,23,42,.6)' }}>
+        {VOTE_BUCKETS.map(b => {
+          const n = Number(dist[b.key]) || 0
+          if (!n) return null
+          return (
+            <div key={b.key} title={`${b.label}: ${n}`}
+              style={{ width: `${(n / total) * 100}%`, background: b.color, minWidth: n ? 4 : 0 }} />
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', marginTop: 6, fontSize: 8.5, color: MUTED }}>
+        {VOTE_BUCKETS.map(b => {
+          const n = Number(dist[b.key]) || 0
+          if (!n) return null
+          return (
+            <span key={b.key}><span style={{ color: b.color, fontWeight: 700 }}>{n}</span> {b.label}</span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CatalystCritic({ cat, compact }: { cat: any; compact: boolean }) {
+  const [open, setOpen] = useState(!compact && ['BLOCK', 'DOWNGRADE'].includes(String(cat.critic_verdict || '').toUpperCase()))
+  const reasoning = cat.critic_reasoning ? String(cat.critic_reasoning) : ''
+  const preview = reasoning.slice(0, compact ? 100 : 160)
+  const hasMore = reasoning.length > preview.length
+
+  return (
+    <>
+      {cat.critic_verdict && (
+        <div style={{ fontSize: 9, color: criticColor(cat.critic_verdict), marginTop: 4, fontWeight: 700 }}>
+          Critic: {cat.critic_verdict}
+        </div>
+      )}
+      {reasoning && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 9, color: MUTED, marginBottom: 3 }}>Catalyst review</div>
+          <div style={{ ...body, fontSize: 9.5, color: TEXT1 }}>
+            {open || !hasMore ? reasoning : `${preview}…`}
+          </div>
+          {hasMore && (
+            <button type="button" onClick={() => setOpen(v => !v)}
+              style={{ marginTop: 4, fontSize: 9, fontWeight: 700, padding: 0, border: 'none', background: 'transparent', color: BLUE, cursor: 'pointer' }}>
+              {open ? 'Show less' : 'Show full critic review'}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  )
 }
 
 type Props = {
@@ -55,6 +132,8 @@ export default function BrokerIntelPanel({
   const ovWarnings: string[] = oversight.warnings || []
   const ovStatus = oversight.status || (ovViolations.length ? 'BLOCK' : ovWarnings.length ? 'WARN' : reviews.length ? 'PENDING' : null)
   const showOversight = Boolean(ovStatus || reviews.length > 0 || onQueueOversight || onRunCloudOversight || ovViolations.length || ovWarnings.length)
+  const dist = an?.distribution as Record<string, number> | null | undefined
+  const hasDist = dist && VOTE_BUCKETS.some(b => Number(dist[b.key]) > 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 8 : 10 }}>
@@ -141,12 +220,12 @@ export default function BrokerIntelPanel({
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr', gap: 8 }}>
-        {(cat.text || cat.critic_verdict) && (
+        {(cat.text || cat.critic_verdict || cat.critic_reasoning) && (
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)' }}>
             <div style={sec}>Catalyst {cat.verified ? '✅' : '⚠️'}</div>
-            <div style={body}>{cat.text ? String(cat.text).slice(0, compact ? 180 : 320) : '—'}</div>
+            <div style={body}>{cat.text ? String(cat.text).slice(0, compact ? 220 : 400) : '—'}</div>
             {cat.confidence != null && <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>Confidence {cat.confidence}%</div>}
-            {cat.critic_verdict && <div style={{ fontSize: 9, color: cat.critic_verdict === 'PASS' ? GREEN : AMBER, marginTop: 3 }}>Critic: {cat.critic_verdict}</div>}
+            <CatalystCritic cat={cat} compact={compact} />
           </div>
         )}
 
@@ -161,19 +240,33 @@ export default function BrokerIntelPanel({
 
       {an && (
         <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.15)' }}>
-          <div style={sec}>Analyst consensus</div>
+          <div style={sec}>Analyst consensus (Yahoo)</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: String(an.rating || '').includes('buy') ? GREEN : TEXT0, fontFamily: 'monospace' }}>
             {String(an.rating || '—').replace(/_/g, ' ')}
-            {an.opinions != null ? ` · ${an.opinions} analysts` : ''}
-            {an.target != null ? ` · target $${an.target}` : ''}
-            {an.upside_pct != null ? ` (${an.upside_pct >= 0 ? '+' : ''}${an.upside_pct}%)` : ''}
+            {an.opinions != null ? ` · ${an.opinions} analyst${an.opinions === 1 ? '' : 's'}` : ''}
+            {an.mean != null ? ` · score ${an.mean}` : ''}
+          </div>
+          <div style={{ fontSize: 10, color: TEXT1, marginTop: 5, fontFamily: 'monospace' }}>
+            {an.target != null && <span>Mean target <b style={{ color: BLUE }}>${an.target}</b></span>}
+            {an.upside_pct != null && (
+              <span style={{ color: an.upside_pct >= 0 ? GREEN : RED, marginLeft: 8 }}>
+                {an.upside_pct >= 0 ? '+' : ''}{an.upside_pct}% vs current
+              </span>
+            )}
           </div>
           {(an.target_low != null || an.target_high != null) && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>Range ${an.target_low ?? '—'} – ${an.target_high ?? '—'}</div>
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>
+              Street range ${an.target_low ?? '—'} – ${an.target_high ?? '—'}
+            </div>
           )}
-          {an.distribution && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>
-              Votes: {an.distribution.strong_buy ?? 0} strong buy / {an.distribution.buy ?? 0} buy / {an.distribution.hold ?? 0} hold
+          {hasDist ? (
+            <>
+              <div style={{ fontSize: 9, color: MUTED, marginTop: 6 }}>Analyst vote distribution</div>
+              <AnalystVoteBar dist={dist!} />
+            </>
+          ) : (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 6, fontStyle: 'italic' }}>
+              Vote breakdown not loaded — consensus rating/target from Yahoo only.
             </div>
           )}
         </div>
