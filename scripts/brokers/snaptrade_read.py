@@ -88,10 +88,21 @@ def list_accounts(user: SnapTradeUser) -> list[dict]:
 
 
 def holdings(user: SnapTradeUser, account_id: str) -> list[dict]:
-    """GET positions for one account (normalize via normalize_positions before any holdings write)."""
+    """GET positions for one account (normalize via normalize_positions before any holdings write).
+
+    Uses the unified positions endpoint (get_all_account_positions), which replaces the deprecated
+    get_user_account_positions and returns equity + option + other asset classes in one call. The
+    body is an object {"results": [...], "data_freshness": {...}}, so we return the `results` list;
+    the per-position shape (symbol moved under `instrument`, per-unit `cost_basis`) is handled by
+    normalize_positions.
+    """
     c = _client()
-    return _body(c.account_information.get_user_account_positions(
-        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id))
+    resp = c.account_information.get_all_account_positions(
+        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id)
+    body = getattr(resp, "body", resp) or {}
+    if isinstance(body, dict):
+        return list(body.get("results") or [])
+    return list(body or [])
 
 
 def balances(user: SnapTradeUser, account_id: str) -> list[dict]:
@@ -117,10 +128,17 @@ def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dic
     never double-counts or silently replaces a direct-broker source. Pure / unit-testable."""
     out: list[dict] = []
     for p in raw_positions or []:
-        symobj = p.get("symbol") or {}
-        sym = (((symobj.get("symbol") or {}) if isinstance(symobj, dict) else {}).get("symbol")
-               or (symobj.get("symbol") if isinstance(symobj, dict) else None)
-               or p.get("symbol") or "")
+        # Unified endpoint (get_all_account_positions): symbol/description live under `instrument`.
+        inst = p.get("instrument")
+        if isinstance(inst, dict):
+            symobj = inst  # so the money-market description check below reads instrument.description
+            sym = inst.get("symbol") or inst.get("raw_symbol") or ""
+        else:
+            # Legacy/deprecated endpoint shape: nested universal symbol object.
+            symobj = p.get("symbol") or {}
+            sym = (((symobj.get("symbol") or {}) if isinstance(symobj, dict) else {}).get("symbol")
+                   or (symobj.get("symbol") if isinstance(symobj, dict) else None)
+                   or p.get("symbol") or "")
         sym = str(sym).upper().strip()
         if not sym:
             continue
