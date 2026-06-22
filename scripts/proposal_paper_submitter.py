@@ -49,24 +49,107 @@ def _log_event(conn, proposal_id, symbol, event_type, payload):
             pass
 
 
-def _cancel_never_submitted_pending(conn, proposal_id: int, exit_reason: str, closed_via: str) -> int:
+_CANCEL_LABELS = {
+    "broker_risk_gate": "Broker risk gate",
+    "broker_rejected": "Broker rejected order",
+    "revalidation_blocked": "Execution revalidation blocked",
+    "revalidation_reapproval": "Revalidation requires re-approval",
+    "submit_error": "Submission error",
+    "never_submitted_timeout": "Never submitted (timeout)",
+}
+
+
+def _format_block_detail(raw) -> str:
+    """Normalize blocker payloads (list/dict/str) into operator-readable text."""
+    if raw is None:
+        return "unknown"
+    if isinstance(raw, dict):
+        raw = raw.get("reason") or raw.get("error") or raw.get("blockers") or raw
+    if isinstance(raw, list):
+        parts = [str(x).strip() for x in raw if x]
+        return "; ".join(parts) if parts else "unknown"
+    text = str(raw).strip()
+    return text or "unknown"
+
+
+def _notify_trade_cancelled(
+    symbol: str,
+    proposal_id: int,
+    trade_ids: list,
+    cancel_code: str,
+    detail: str,
+    strategy_id: str | None = None,
+) -> None:
+    """Operator alert — specific cancel reason, not a generic phantom/sync message."""
+    label = _CANCEL_LABELS.get(cancel_code, cancel_code.replace("_", " ").title())
+    strat = f" ({strategy_id.replace('_', ' ')})" if strategy_id else ""
+    tid = f"\nTrade record: #{trade_ids[0]}" if trade_ids else ""
+    if len(trade_ids) > 1:
+        tid += f" (+{len(trade_ids) - 1} more)"
+    msg = (
+        f"🚫 *TRADE CANCELLED — {symbol}{strat}*\n\n"
+        f"Proposal #{proposal_id}{tid}\n"
+        f"*Reason:* {label}\n"
+        f"*Detail:* {detail}\n\n"
+        f"No Alpaca order was submitted. DB record marked `cancelled`."
+    )
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+    except Exception as e:
+        log.warning(f"[submitter] cancel notify failed for {symbol}: {e}")
+
+
+def _cancel_never_submitted_pending(
+    conn,
+    proposal_id: int,
+    *,
+    cancel_code: str,
+    detail,
+    closed_via: str,
+    symbol: str | None = None,
+    strategy_id: str | None = None,
+    notify: bool = True,
+) -> int:
     """Cancel pre-created pending paper_trades rows that never received a broker order."""
+    detail_text = _format_block_detail(detail)
+    exit_reason = f"cancelled_{cancel_code}"
+    note = f"CANCELLED — {_CANCEL_LABELS.get(cancel_code, cancel_code)}: {detail_text}"
     try:
         cur = conn.cursor()
+        cur.execute(
+            """SELECT id, symbol, strategy_id FROM paper_trades
+               WHERE proposal_id=%s AND status='pending'
+                 AND COALESCE(broker_order_id,'')='' AND filled_at IS NULL""",
+            (proposal_id,),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return 0
+        trade_ids = [r[0] for r in rows]
+        sym = symbol or (rows[0][1] if rows else "?")
+        strat = strategy_id or (rows[0][2] if rows else None)
         cur.execute(
             """UPDATE paper_trades
                SET status='cancelled', lifecycle_state='cancelled',
                    exit_reason=%s, close_reason=%s,
+                   notes=COALESCE(notes,'') || CASE WHEN COALESCE(notes,'')='' THEN %s ELSE ' | ' || %s END,
                    closed_via=%s, closed_at=NOW(),
                    outcome_verdict='CANCELLED', pnl=0, pnl_pct=0, r_multiple=0, unrealized_pnl=0
                WHERE proposal_id=%s AND status='pending'
                  AND COALESCE(broker_order_id,'')='' AND filled_at IS NULL""",
-            (exit_reason, exit_reason, closed_via, proposal_id),
+            (exit_reason, exit_reason, note, note, closed_via, proposal_id),
         )
         n = cur.rowcount
         if n:
             conn.commit()
-            log.info(f"[submitter] cancelled {n} never-submitted pending row(s) for proposal {proposal_id}")
+            _log_event(conn, proposal_id, sym, "TRADE_CANCELLED",
+                       {"cancel_code": cancel_code, "detail": detail_text,
+                        "trade_ids": trade_ids, "exit_reason": exit_reason})
+            log.warning(f"[submitter] CANCELLED {sym} proposal #{proposal_id} "
+                        f"({cancel_code}): {detail_text}")
+            if notify:
+                _notify_trade_cancelled(sym, proposal_id, trade_ids, cancel_code, detail_text, strat)
         return n
     except Exception as e:
         log.warning(f"[submitter] pending-row cleanup failed for proposal {proposal_id}: {e}")
@@ -533,18 +616,14 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                        "EXECUTION_REVALIDATION_BLOCKED",
                        {"recheck_status": rck_status, "reason": recheck.get("reason"),
                         "eligibility": _elig_status, "live_price": recheck_live_price})
-            # ── Telegram alert for blocked submission ──
-            try:
-                from telegram_alert import send_telegram
-                send_telegram(
-                    f"🚫 *SUBMISSION BLOCKED: {p['symbol']}*\n\n"
-                    f"Proposal #{proposal_id} blocked at revalidation.\n"
-                    f"Reason: {recheck.get('reason', rck_status)}\n"
-                    f"Live price: ${recheck_live_price or '?'}\n"
-                    f"Status: {rck_status}"
-                )
-            except Exception:
-                pass
+            _cancel_never_submitted_pending(
+                conn, proposal_id,
+                cancel_code="revalidation_blocked",
+                detail=recheck.get("reason") or rck_status,
+                closed_via="revalidation_block",
+                symbol=p["symbol"],
+                strategy_id=p.get("strategy_id"),
+            )
             return {"status": "blocked", "proposal_id": proposal_id,
                     "recheck_status": rck_status,
                     "reason": recheck.get("reason"),
@@ -556,10 +635,14 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             # ATOS phantom fix (2026-06-11): the approval flow pre-creates a 'pending' paper_trades row;
             # when revalidation BLOCKS submission, cancel that row immediately instead of leaving it for
             # phantom detection 16 minutes later (it was polluting closed-trade reviews as $0 'F' trades).
+            _reap_detail = recheck.get("reason") or ", ".join(recheck.get("material_change_reasons") or []) or "requires_reapproval"
             _cancel_never_submitted_pending(
                 conn, proposal_id,
-                exit_reason="revalidation_blocked_never_submitted",
+                cancel_code="revalidation_reapproval",
+                detail=_reap_detail,
                 closed_via="revalidation_block",
+                symbol=p["symbol"],
+                strategy_id=p.get("strategy_id"),
             )
             # ── Gap 6: Telegram alert for NEEDS_REVALIDATION ──
             try:
@@ -670,14 +753,21 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
         conn.commit()
 
         if event_type == "ALPACA_PAPER_SUBMIT_BLOCKED":
+            _block_detail = _format_block_detail(result)
+            _cancel_code = "broker_risk_gate" if result.get("status") == "rejected" else "broker_rejected"
             _cancel_never_submitted_pending(
                 conn, proposal_id,
-                exit_reason="broker_submit_blocked_never_filled",
+                cancel_code=_cancel_code,
+                detail=_block_detail,
                 closed_via="broker_submit_block",
+                symbol=p["symbol"],
+                strategy_id=p.get("strategy_id"),
             )
 
         return {
             "status": result.get("status"),
+            "reason": result.get("reason"),
+            "block_detail": _format_block_detail(result) if event_type == "ALPACA_PAPER_SUBMIT_BLOCKED" else None,
             "proposal_id": proposal_id,
             "symbol": p["symbol"],
             "order_id": result.get("order_id"),
@@ -692,13 +782,17 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                    {"error": str(e)})
         _cancel_never_submitted_pending(
             conn, proposal_id,
-            exit_reason="broker_submit_blocked_never_filled",
+            cancel_code="submit_error",
+            detail=str(e),
             closed_via="broker_submit_block",
+            symbol=p.get("symbol"),
+            strategy_id=p.get("strategy_id"),
         )
         return {
             "status": "error",
             "proposal_id": proposal_id,
             "error": str(e),
+            "block_detail": str(e),
         }
 
 

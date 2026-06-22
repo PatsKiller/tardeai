@@ -580,12 +580,16 @@ def run_cycle():
             _broker_ok = broker_status in ("submitted", "simulation", "dry_run")
             if not _broker_ok:
                 fail_detail = (
-                    sub_result.get("reason")
+                    sub_result.get("block_detail")
+                    or sub_result.get("reason")
                     or sub_result.get("error")
                     or (sub_result.get("blockers") or [None])[0]
                     or broker_status
                 )
-                reasons.append({"gate": "broker_submit_failed", "detail": str(fail_detail)[:200]})
+                if isinstance(fail_detail, list):
+                    fail_detail = "; ".join(str(x) for x in fail_detail)
+                fail_detail = str(fail_detail)[:200]
+                reasons.append({"gate": "broker_submit_failed", "detail": fail_detail})
                 _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                              "rejected", reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
@@ -596,14 +600,11 @@ def run_cycle():
                         atm_last_evaluation_at = NOW(),
                         atm_last_failure_reason = %s
                     WHERE id = %s
-                """, (f"broker_submit_failed: {str(fail_detail)[:150]}", pid))
+                """, (f"cancelled_broker_submit: {fail_detail[:150]}", pid))
                 conn.commit()
                 rejected_count += 1
-                log.warning(f"  {sym}: REJECTED — trade #{trade_id} created but broker={broker_status} ({fail_detail})")
-                _telegram_both(
-                    f"ATM broker block: {sym} ({sid.replace('_', ' ')}) "
-                    f"proposal #{pid} — {fail_detail}"
-                )
+                log.warning(f"  {sym}: CANCELLED — proposal #{pid} trade #{trade_id} "
+                            f"broker={broker_status}: {fail_detail} (operator notified by submitter)")
                 continue
 
             # Stamp ATM provenance on the trade

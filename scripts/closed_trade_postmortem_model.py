@@ -41,6 +41,12 @@ EXIT_TYPE_MAP = {
     "broker_submit_blocked_never_filled": "broker_submit_blocked",
     "revalidation_blocked_never_submitted": "broker_submit_blocked",
     "auto_cancel_never_submitted": "broker_submit_blocked",
+    "cancelled_broker_risk_gate": "broker_submit_blocked",
+    "cancelled_broker_rejected": "broker_submit_blocked",
+    "cancelled_revalidation_blocked": "broker_submit_blocked",
+    "cancelled_revalidation_reapproval": "broker_submit_blocked",
+    "cancelled_never_submitted_timeout": "broker_submit_blocked",
+    "cancelled_submit_error": "broker_submit_blocked",
     "order_never_filled_on_alpaca": "broker_position_closed",
     "closed_on_different_trade_id": "duplicate_trade_record",
 }
@@ -215,15 +221,16 @@ def generate_improved_lesson(trade: dict) -> dict:
             "better_exit_possible": "yes",
             "post_exit_review_needed": True,
         }
-    if "broker_submit_blocked" in exit_reason or "revalidation_blocked" in exit_reason:
+    if exit_reason.startswith("cancelled_") or "broker_submit_blocked" in exit_reason or "revalidation_blocked" in exit_reason:
+        detail = (trade.get("notes") or "").replace("CANCELLED — ", "").strip() or exit_reason
         return {
             "category": "execution_gate",
-            "lesson": f"{symbol} ({strategy}): Broker submission was blocked before any fill — trade record was cancelled, no position was opened. Review risk gate / concentration / revalidation reason",
-            "rule_feedback": "Blocked submits must cancel the pending DB row immediately; digest excludes these bookkeeping closes",
+            "lesson": f"{symbol} ({strategy}): Trade cancelled before fill — {detail}",
+            "rule_feedback": "Cancelled submits are excluded from closed-trade digest; operator receives Telegram with specific block reason",
             "action": "review_risk_gate",
             "action_priority": "medium",
             "action_owner": "strategy_review",
-            "next_operator_action": f"Review why {symbol} was blocked at submit (proposal event log / ATM failure reason)",
+            "next_operator_action": f"Review cancel reason for {symbol}: {detail[:120]}",
             "better_exit_possible": "n/a",
             "post_exit_review_needed": False,
         }

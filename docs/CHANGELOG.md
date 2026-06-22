@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-22 - Cancelled trades: specific reason in DB + operator Telegram
+
+Broker-blocked / revalidation-blocked / timeout cancels now write `exit_reason=cancelled_*`,
+notes with human detail (e.g. CONCENTRATION_CAP), `TRADE_CANCELLED` proposal event, and
+Telegram `TRADE CANCELLED — {symbol}` with Reason + Detail (not generic phantom/sync copy).
+
 ## 2026-06-22 - APGE phantom fix: broker-blocked submits no longer pollute journal
 
 Root cause: ATM approved APGE (#96) but Alpaca rejected submit (CONCENTRATION_CAP 13.3% vs 8%).
