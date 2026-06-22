@@ -20663,19 +20663,45 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         fidelity_live = _fidelity_monitored_unlocked()
                     except Exception:
                         fidelity_live = False
-                live_route = bool(is_schwab and api_write) or bool(is_fidelity and fidelity_live)
+                schwab_live_route = bool(is_schwab and api_write)
+                fidelity_monitored_route = bool(is_fidelity and fidelity_live)
                 try:
                     from alert_event_writer import save_alert_event
                     save_alert_event(alert_type="strategic_alert", severity="info",
                                      source_script="protective_stop", symbol=sym,
-                                     raw_text=f"[protective-stop:request] {('LIVE' if live_route else 'TICKET')} · {acct} · {ticket}",
+                                     raw_text=f"[protective-stop:request] {('SCHWAB_LIVE' if schwab_live_route else 'MONITORED' if fidelity_monitored_route else 'TICKET')} · {acct} · {ticket}",
                                      parsed_payload={"kind": "protective_stop", "phase": "request", "symbol": sym,
                                                      "account": acct, "order_kind": ot, "qty": qty,
                                                      "stop_price": stop_price, "trail_pct": trail_pct,
-                                                     "mode": ("live" if live_route else "ticket")})
+                                                     "mode": ("schwab_live" if schwab_live_route else
+                                                              "monitored" if fidelity_monitored_route else "ticket")})
                 except Exception:
                     pass
-                if live_route:
+                # Fidelity/SnapTrade: monitor-only — arm DB level directly (no broker, no 2FA).
+                if fidelity_monitored_route:
+                    from brokers.snaptrade_protective_stop_policy import evaluate as _feval
+                    ok, reasons = _feval(
+                        account_key=acct, instruction="SELL", order_type=ot,
+                        stop_price=float(stop_price) if stop_price is not None else None,
+                        advised_stop=float(advised_stop) if advised_stop is not None else None,
+                        current_price=float(current_price) if current_price is not None else None,
+                        qty=float(qty) if qty is not None else None,
+                        held_qty=float(held_qty) if held_qty is not None else None, symbol=sym)
+                    if not ok:
+                        return 200, {"ok": False, "mode": "blocked", "error": "; ".join(reasons),
+                                     "ticket": ticket, "account": acct}
+                    import fidelity_monitored_stop as _fms
+                    res = _fms.arm(sym, acct, stop_price, qty, order_type=ot, trail_pct=trail_pct,
+                                   limit_price=limit_price,
+                                   note="armed via Open Trades (monitor-only, no execution)")
+                    if not res.get("ok"):
+                        return 200, {"ok": False, "mode": "blocked", "error": res.get("error"),
+                                     "ticket": ticket, "account": acct}
+                    return 200, {"ok": True, "mode": "monitored_armed", "route": "fidelity_monitored",
+                                 "result": res, "order": summ, "account": acct, "qty_note": qty_note,
+                                 "note": "Monitored stop armed — software watch only. On breach you get an "
+                                         "alert + Fidelity Active Trader ticket; nothing executes automatically."}
+                if schwab_live_route:
                     intent = _psp.build_intent(acct, sym, qty, kind, stop_price=stop_price,
                                                limit_price=limit_price, trail_pct=trail_pct,
                                                advised_stop=advised_stop, current_price=current_price,
@@ -20699,23 +20725,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                      "error": req.get("reason") or "could not request approval",
                                      "holder_intent_ids": req.get("holder_intent_ids"),
                                      "ticket": ticket, "account": acct}
-                    _live_note = ("Code sent to Telegram + email. Approve from EITHER — enter the code "
-                                  "below, tap Approve in Telegram, or type the ticker. ")
-                    if is_fidelity:
-                        _live_note += ("Then the monitored stop arms (software watch + Fidelity Active Trader "
-                                       "ticket on breach). SnapTrade cannot place orders on Fidelity (read-only).")
-                    else:
-                        _live_note += "Then it submits LIVE at Schwab."
                     return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
                                  "order": summ, "account": acct, "channels": req.get("channels"),
                                  "ttl_min": req.get("ttl_min"), "qty_note": qty_note,
-                                 "route": ("fidelity_monitored" if is_fidelity else "schwab_live"),
-                                 "note": ((qty_note + " ") if qty_note else "") + _live_note}
+                                 "route": "schwab_live",
+                                 "note": ((qty_note + " ") if qty_note else "")
+                                         + "Code sent to Telegram + email. Approve from EITHER — enter the code "
+                                         "below, tap Approve in Telegram, or type the ticker. Then it submits LIVE at Schwab."}
                 _platform = summ.get("platform") or ("thinkorswim" if is_schwab else "Fidelity Active Trader Pro")
                 return 200, {"ok": True, "mode": "ticket", "ticket": ticket, "detail": ticket,
                              "order": summ, "account": acct,
                              "manual": f"Place this exact order in {_platform}. "
-                                       + ("(Run snaptrade_pilot_arm.py --approve to enable monitored 2FA route.)"
+                                       + ("(Run snaptrade_pilot_arm.py --approve to enable monitored stop route.)"
                                           if is_fidelity and not fidelity_live else
                                           "(This account has no trading API — ticket only.)" if not is_schwab
                                           else "(Account write not enabled — ticket only.)")}

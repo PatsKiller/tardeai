@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-22 - Fidelity monitored stops: drop 2FA (monitor-only)
+
+SnapTrade/Fidelity path is advisory only (no broker execution). Arm monitored stop in one step without
+2FA; breach sends alert + Active Trader ticket. Schwab live submit still requires per-order 2FA.
+
 ## 2026-06-22 - SnapTrade one-share test mode (no sandbox)
 
 Added `one_share_test` envelope (exactly 1 share, ≤$50), `snaptrade_trade_pilot.py` preflight/execute
