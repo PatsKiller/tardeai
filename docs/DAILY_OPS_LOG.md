@@ -1,9 +1,12 @@
 
-## 2026-06-22 — Fidelity monitored stops (SnapTrade scaffold, awaiting operator approve)
+## 2026-06-22 — SnapTrade / Fidelity stops + one-share test (docs sync)
 
-SnapTrade verified read-only for Fidelity — no broker API stops/trailing. Built Schwab Stage 2c mirror:
-`fidelity_monitored_stop` + 2FA + ratchet trailing; `snaptrade_pilot_arm.py --approve` required before UI
-live route on `fidelity_rollover_ira`. Spec: `docs/brokers/snaptrade-fidelity-protective-stops-spec.md`.
+**Fidelity (`fidelity_rollover_ira`):** SnapTrade read-only — monitor-only stops (`fidelity_monitored_stop`),
+no broker execution, **no 2FA** on arm/breach (alert + Active Trader ticket). Standing unlock:
+`snaptrade_pilot_arm.py --approve`. **Schwab:** live stops unchanged (2FA per order). **One-share test**
+(no sandbox): `snaptrade_trade_pilot` + `--arm-test` + `POST /api/v2/snaptrade/trade/preflight|execute`
+(when trade-capable broker + `ENABLED=True` commit). Specs: `docs/brokers/snaptrade-fidelity-protective-stops-spec.md`,
+`stop-management-architecture.md`. Commits: `e205f53d`, `1494257e`, `7f91fadd`.
 
 ## 2026-06-22 — Intelligence engine + Command Center hub (all tabs A-grade)
 

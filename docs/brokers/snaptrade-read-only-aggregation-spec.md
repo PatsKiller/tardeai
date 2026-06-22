@@ -112,4 +112,4 @@ python3 scripts/snaptrade_pilot_arm.py --approve --confirm "APPROVE FIDELITY STO
 - SnapTrade account + which keys (client pair) — paste via the modal.
 - Scope: 401k only (recommended) vs all accounts for cross-check.
 - Comfortable with third-party data custody for the aggregated accounts?
-- **Fidelity monitored stops:** run `--approve` above when ready (2FA per order; no broker auto-submit).
+- **Fidelity monitored stops:** run `--approve` above when ready (monitor-only, no 2FA; manual ticket on breach).
