@@ -440,9 +440,17 @@ def exchange_code(account_key, redirect_url, broker="schwab", environment="live"
     cb = os.environ.get("SCHWAB_CALLBACK_URL")
     if not (appkey and secret and cb):
         return {"ok": False, "reason": "SCHWAB_APP_KEY/SECRET/CALLBACK_URL not set"}
-    code = (redirect_url or "").strip()
+    # Remote/headless friendly: accept EITHER the full https://127.0.0.1/?code=... redirect URL (the page
+    # never has to load — we only read the code out of it) OR the bare code pasted directly. Handles the
+    # code in the query or the fragment, and URL-decodes a bare code (Schwab codes end with %40 → '@').
+    from urllib.parse import unquote
+    code = (redirect_url or "").strip().strip('"').strip("'")
     if "code=" in code:
-        code = (parse_qs(urlparse(code).query).get("code") or [""])[0]
+        parsed = urlparse(code)
+        q = parse_qs(parsed.query) or parse_qs(parsed.fragment)
+        code = (q.get("code") or [""])[0]
+    else:
+        code = unquote(code)
     if not code:
         return {"ok": False, "reason": "no authorization code found in the redirect URL"}
     RATE.acquire()
@@ -467,7 +475,26 @@ def exchange_code(account_key, redirect_url, broker="schwab", environment="live"
             "note": "First token seeded via the manager (Fernet-encrypted, atomic). No wrapper token file."}
 
 
+def _load_dotenv():
+    """Load PROJECT_ROOT/.env into the environment so the CLI works standalone over SSH (the portal creds
+    SCHWAB_APP_KEY/SECRET/CALLBACK live there; broker_secrets does not read .env). setdefault = never
+    override an already-exported value. Best-effort."""
+    try:
+        envf = PROJECT_ROOT / ".env"
+        if not envf.exists():
+            return
+        for line in envf.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+    except Exception:
+        pass
+
+
 def main():
+    _load_dotenv()
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["init-key", "health", "check-alerts", "reauth-url", "exchange-code"])
     ap.add_argument("account", nargs="?", default=None)
