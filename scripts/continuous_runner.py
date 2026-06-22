@@ -446,6 +446,15 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                     %s, %s, %s,
                     %s, %s, %s, %s, %s, %s
                 )
+                ON CONFLICT (symbol, run_date) DO UPDATE SET
+                    run_id = EXCLUDED.run_id, run_label = EXCLUDED.run_label, run_type = EXCLUDED.run_type,
+                    score = EXCLUDED.score, grade = EXCLUDED.grade, decision = EXCLUDED.decision,
+                    rvol = EXCLUDED.rvol, price = EXCLUDED.price, change_pct = EXCLUDED.change_pct,
+                    gap_pct = EXCLUDED.gap_pct, float_m = EXCLUDED.float_m, catalyst = EXCLUDED.catalyst,
+                    catalyst_verified = EXCLUDED.catalyst_verified, catalyst_confidence = EXCLUDED.catalyst_confidence,
+                    disqualified = EXCLUDED.disqualified, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
+                    country = EXCLUDED.country, source = EXCLUDED.source, pillar_breakdown = EXCLUDED.pillar_breakdown,
+                    scanned_at = now()
             """, (
                 _run_id, date_str, run_label, t.get("symbol",""),
                 t.get("score",0), t.get("grade",""), t.get("decision",""),
