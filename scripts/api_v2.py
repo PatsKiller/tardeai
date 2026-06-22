@@ -16674,17 +16674,42 @@ def _finviz_strip_map(query=None):
                 syms.add(s)
     except Exception:
         pass
+    # Mutual funds aren't covered by Finviz (null strip) → fall back to symbol_profiles technicals computed
+    # from yfinance NAV history (fund_technicals_enrich). Per-field fallback so a partial Finviz row still wins
+    # where it has data. (operator 2026-06-21)
+    _prof = {}
+    try:
+        for r in (_db_query("""SELECT upper(symbol) s, rsi14, perf_week_pct, perf_month_pct,
+                                      ytd_return_pct, sma50_pct FROM symbol_profiles
+                               WHERE upper(symbol) = ANY(%s)""", (sorted(syms),)) or []):
+            _prof[r["s"]] = r
+    except Exception:
+        _prof = {}
+
+    def _rsi_status(v):
+        if v is None:
+            return "unknown"
+        return "oversold" if v <= 30 else "overbought" if v >= 70 else "neutral"
+
     out = {}
     for s in syms:
-        d = cache.get(s)
-        if not d:
-            continue
-        out[s] = {"rsi": _json_clean(d.get("rsi")), "rsi_status": d.get("rsi_status"),
-                  "perf_week": _json_clean(d.get("perf_week_pct")),
-                  "perf_month": _json_clean(d.get("perf_month_pct")),
-                  "perf_ytd": _json_clean(d.get("perf_ytd_pct")),
-                  "sma50": _json_clean(d.get("sma50_pct"))}
-    return {"ok": True, "count": len(out), "map": out, "note": "Finviz inline-strip metrics (daily)."}
+        d = cache.get(s) or {}
+        pf = _prof.get(s) or {}
+        rsi = d.get("rsi")
+        rsi = rsi if rsi is not None else _json_clean(pf.get("rsi14"))
+        pw = d.get("perf_week_pct"); pw = pw if pw is not None else _json_clean(pf.get("perf_week_pct"))
+        pm = d.get("perf_month_pct"); pm = pm if pm is not None else _json_clean(pf.get("perf_month_pct"))
+        pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
+        sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
+        if rsi is None and pw is None and pm is None and pytd is None and sma is None:
+            continue   # nothing for this symbol from either source
+        out[s] = {"rsi": _json_clean(rsi),
+                  "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
+                  "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
+                  "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
+                  "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
+    return {"ok": True, "count": len(out), "map": out,
+            "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals."}
 
 
 def _sector_performance(query=None):
