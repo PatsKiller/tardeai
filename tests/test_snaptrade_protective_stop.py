@@ -8,6 +8,7 @@ if ROOT not in sys.path:
 
 from brokers.snaptrade_protective_stop_policy import evaluate, MONITORED_ENABLED, BROKER_API_ENABLED
 from brokers.snaptrade_protective_stop_pilot import normalize_kind, order_summary
+from brokers.snaptrade_trade import evaluate_envelope, envelope_limits, ONE_SHARE_TEST_EXACT_UNITS
 from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER
 
 
@@ -38,3 +39,18 @@ def test_order_summary_fidelity_platform():
 
 def test_fidelity_marker_distinct():
     assert FIDELITY_PROTECTIVE_MARKER == "FIDELITY_MONITORED_STOP"
+
+
+def test_one_share_envelope_exact_units():
+    lim = envelope_limits(one_share_test=True)
+    assert lim["exact_units"] is True
+    assert lim["max_units"] == ONE_SHARE_TEST_EXACT_UNITS
+    ok, reasons = evaluate_envelope(
+        account_key="fidelity_rollover_ira", action="BUY", order_type="Market",
+        units=2, price=10.0, one_share_test=True)
+    assert not ok
+    assert any("exactly" in r for r in reasons)
+    ok2, _ = evaluate_envelope(
+        account_key="fidelity_rollover_ira", action="BUY", order_type="Market",
+        units=1, price=10.0, one_share_test=True)
+    assert ok2

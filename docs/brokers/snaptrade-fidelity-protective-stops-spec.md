@@ -64,6 +64,22 @@ After `--approve`, Open Trades cards on `fidelity_rollover_ira` use the **monito
 - `fidelity_401k` excluded (employer plan — no exchange stops).
 - Cancel monitored stop: `POST /api/v2/holdings/protective-stop/cancel` with `account=fidelity_rollover_ira` (no 2FA).
 
+## One-share live test (no sandbox)
+
+SnapTrade has no paper/sandbox — the first proof order is capped at **exactly 1 share**, **≤$50 notional**.
+
+```bash
+# Arm one-share test mode (typed phrase, today's date)
+python3 scripts/snaptrade_pilot_arm.py --arm-test --confirm "ARM SNAPTRADE ONE SHARE TEST $(date +%Y-%m-%d)"
+
+# API flow (after ENABLED=True commit + trade-capable broker connected)
+POST /api/v2/snaptrade/trade/preflight  { "symbol": "XAR", "account": "fidelity_rollover_ira", "one_share_test": true }
+POST /api/v2/snaptrade/trade/execute    { "intent_id": "...", "channel": "web", "code": "XAR" }
+```
+
+Requires: `snaptrade_trade.ENABLED=True` (commit) + `broker_allows_trading=True` + per-order 2FA.
+Fidelity read-only today — test path activates when a tradable brokerage is linked.
+
 ## Related docs
 
 - [`snaptrade-read-only-aggregation-spec.md`](snaptrade-read-only-aggregation-spec.md)
