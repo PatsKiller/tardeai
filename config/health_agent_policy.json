@@ -29,7 +29,12 @@
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
     "data_gaps_open": ".venv/bin/python scripts/data_gap_resolver.py",
     "agent_jobs_stuck": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 15",
-    "pipeline_failures": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 10"
+    "pipeline_failures": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 10",
+    "research_stale": ".venv/bin/python scripts/hermes_coordinator.py",
+    "hermes_rag_gap": ".venv/bin/python scripts/hermes_embedding_enqueue.py --backfill --limit 500",
+    "hermes_embed_backlog": ".venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",
+    "hermes_embed_failures": ".venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",
+    "hermes_coordinator_stale": ".venv/bin/python scripts/hermes_coordinator.py"
   },
   "strategy_output": {
     "_comment": "Catch silent-zero strategy failures (FIB-style). Gated to avoid morning false-positives.",
@@ -46,7 +51,7 @@
     "watch": [
       "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
       "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
-      "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log"
+      "data_gap_resolver.log", "rag_indexer.log", "hermes_coordinator.log", "health_agent_cron.log", "coder_dispatch_cron.log"
     ]
   }
 }

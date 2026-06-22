@@ -199,6 +199,45 @@ def collect_intelligence_quality() -> list[dict]:
         if aged and aged.get("d") and float(aged["d"]) > 14:
             out.append(_f("intelligence_quality", "research_stale", "warning",
                           f"oldest staged research is {int(float(aged['d']))}d old", days=int(float(aged["d"]))))
+        # Hermes → RAG pipeline (promoted research must reach content_embeddings)
+        promoted = int((_db("SELECT COUNT(*) AS c FROM hermes_research_intelligence WHERE status='promoted'", fetch="one") or {}).get("c", 0))
+        embedded = int((_db("SELECT COUNT(*) AS c FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}).get("c", 0))
+        pending = int((_db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='pending'", fetch="one") or {}).get("c", 0))
+        failed = int((_db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='failed'", fetch="one") or {}).get("c", 0))
+        if promoted >= 50:
+            cov = embedded / max(promoted, 1)
+            if cov < 0.10:
+                out.append(_f("intelligence_quality", "hermes_rag_gap", "critical",
+                              f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
+                              promoted=promoted, embedded=embedded, coverage_pct=round(cov * 100, 1)))
+            elif cov < 0.50:
+                out.append(_f("intelligence_quality", "hermes_rag_gap", "warning",
+                              f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
+                              promoted=promoted, embedded=embedded, coverage_pct=round(cov * 100, 1)))
+        if pending >= 2000:
+            out.append(_f("intelligence_quality", "hermes_embed_backlog", "critical",
+                          f"{pending} Hermes embeddings pending in queue", count=pending))
+        elif pending >= 200:
+            out.append(_f("intelligence_quality", "hermes_embed_backlog", "warning",
+                          f"{pending} Hermes embeddings pending in queue", count=pending))
+        if failed >= 10:
+            out.append(_f("intelligence_quality", "hermes_embed_failures", "warning",
+                          f"{failed} Hermes embedding jobs failed", count=failed))
+        elif failed > 0:
+            out.append(_f("intelligence_quality", "hermes_embed_failures", "info",
+                          f"{failed} Hermes embedding jobs failed", count=failed))
+        # Coordinator tick freshness (cron */15m)
+        coord = _db("""SELECT EXTRACT(EPOCH FROM (now() - created_at))/60 AS age_min
+                       FROM hermes_memory_events
+                       WHERE hermes_agent_name='chief_hermes_coordinator' AND event_type='agent_state_change'
+                       ORDER BY created_at DESC LIMIT 1""", fetch="one")
+        age_min = float((coord or {}).get("age_min") or 999)
+        if age_min > 60:
+            out.append(_f("intelligence_quality", "hermes_coordinator_stale", "critical",
+                          f"Hermes coordinator last tick {int(age_min)}m ago", age_min=int(age_min)))
+        elif age_min > 30:
+            out.append(_f("intelligence_quality", "hermes_coordinator_stale", "warning",
+                          f"Hermes coordinator last tick {int(age_min)}m ago", age_min=int(age_min)))
     except Exception as e:
         out.append(_f("intelligence_quality", "collector_error", "info", f"intelligence check error: {e}"))
     return out
@@ -378,6 +417,10 @@ WHY = {
     "local_llm_down": "The local LLM is the free-lane analysis brain; down means degraded intelligence or metered fallback.",
     "ensemble_failures": "Ensemble validation failures weaken proposal/decision confidence.",
     "research_stale": "Hermes research backlog isn't being promoted/refreshed.",
+    "hermes_rag_gap": "Promoted Hermes research isn't in RAG — agents read stale/missing context.",
+    "hermes_embed_backlog": "Hermes embedding queue is backing up — RAG won't catch up until drained.",
+    "hermes_embed_failures": "Ollama embedding failures — check nomic-embed-text and retry worker.",
+    "hermes_coordinator_stale": "Hermes coordinator hasn't ticked — auto-promote and fleet agents may be stalled.",
     "golden_window_missing": "Retirement Golden Window drives Roth-conversion guidance; missing = a planning gap.",
     "dividend_income_zero": "Zero dividend income is almost certainly a data inconsistency, not reality.",
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",

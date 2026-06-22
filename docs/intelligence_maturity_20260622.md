@@ -75,6 +75,19 @@ touch data/runtime/HERMES_DISABLED   # halt coordinator next tick
 rm data/runtime/HERMES_DISABLED      # resume
 ```
 
+## Health agent monitoring (2026-06-22 follow-up)
+
+`collect_intelligence_quality()` now checks:
+- `hermes_rag_gap` — promoted vs embedded coverage (&lt;50% warning, &lt;10% critical)
+- `hermes_embed_backlog` — pending queue (&gt;200 warning, &gt;2000 critical)
+- `hermes_embed_failures` — failed queue rows
+- `hermes_coordinator_stale` — no coordinator tick in 30m/60m
+
+Auto-remediation (`remediation_map` + escalation allowlist):
+- Backfill queue: `hermes_embedding_enqueue.py --backfill`
+- Drain queue: `hermes_embedding_worker.py --apply --limit 10`
+- Stale coordinator / staged research: `hermes_coordinator.py`
+
 ## Remaining ops (not code)
 
 | Item | Impact | Action |

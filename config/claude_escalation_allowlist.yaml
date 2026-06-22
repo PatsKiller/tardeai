@@ -19,6 +19,9 @@ allowed_script_patterns:
   - "scripts/process_watchlist_agent_jobs.py"
   - "scripts/build_deep_overnight_llm_queue.py"
   - "scripts/rag_indexer.py"
+  - "scripts/hermes_coordinator.py"
+  - "scripts/hermes_embedding_enqueue.py"
+  - "scripts/hermes_embedding_worker.py"
   # Cache rebuilds
   - "scripts/price_cache.py"
   - "scripts/portfolio_sync.py"
