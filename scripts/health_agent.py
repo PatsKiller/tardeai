@@ -362,6 +362,55 @@ def collect_log_errors() -> list[dict]:
     return out
 
 
+# ── Actionability: why each finding matters + what to do about it ────────────────────────────────────
+# Makes every finding self-justifying (impact) and actionable (recommended fix). The "what was actually
+# DONE + who/when" is attached at read time by the API from claude_interventions + coder_dispatch_audit.
+WHY = {
+    "log_errors": "A component log is throwing repeated errors — a job is failing/looping and silently dropping work.",
+    "strategy_zero_output": "An active, tilt-weighted strategy produced nothing today — missed setups/proposals for that edge.",
+    "pipeline_failures": "Failed pipeline runs mean downstream signals, proposals or decisions may be missing/stale.",
+    "agent_jobs_stuck": "Agent jobs aren't draining — analysis is backing up and results are going stale.",
+    "execution_escalations": "Critical execution escalations are unresolved failures already flagged by the integrity agent.",
+    "orphaned_stops": "Orphaned stop orders may not actually protect a live position — real risk exposure.",
+    "unprotected_positions": "Open positions with no stop = unbounded downside risk.",
+    "stop_alerts": "Stops in alert state may be mispriced or near trigger and need review.",
+    "siem_p0p1": "High-severity (P0/P1) protection/execution SIEM events are open and need review.",
+    "local_llm_down": "The local LLM is the free-lane analysis brain; down means degraded intelligence or metered fallback.",
+    "ensemble_failures": "Ensemble validation failures weaken proposal/decision confidence.",
+    "research_stale": "Hermes research backlog isn't being promoted/refreshed.",
+    "golden_window_missing": "Retirement Golden Window drives Roth-conversion guidance; missing = a planning gap.",
+    "dividend_income_zero": "Zero dividend income is almost certainly a data inconsistency, not reality.",
+    "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
+}
+
+
+def _annotate(f: dict, rmap: dict):
+    """Attach why-it-matters + recommended action + actionability to a finding (write-time)."""
+    t = f.get("type", "")
+    f["why"] = WHY.get(t) or ("Stale data product — dependent pages/decisions use old numbers."
+                              if t.endswith("_stale") else f"{f.get('category','')} signal needs review.")
+    if t in rmap:
+        f["action_type"] = "auto_retry"
+        f["recommended_action"] = f"Auto-retry (allowlisted): {rmap[t]}"
+        f["actionable"] = True
+    elif f.get("kind") in ("code", "single_file", "multi_file", "schema"):
+        f["action_type"] = "code_fix"
+        f["recommended_action"] = f"Route to AI coder ({f.get('kind')}) → worktree → verify → diff/PR"
+        f["actionable"] = True
+    elif t.endswith("_stale") or t in ("news_stale",):
+        f["action_type"] = "refresh"
+        f["recommended_action"] = "Re-run the producing job to refresh this data product."
+        f["actionable"] = True
+    elif f.get("severity") == "info":
+        f["action_type"] = "monitor"
+        f["recommended_action"] = "Monitor — informational, no action required yet."
+        f["actionable"] = False
+    else:
+        f["action_type"] = "review"
+        f["recommended_action"] = "Operator review."
+        f["actionable"] = True
+
+
 CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
               "risk_protection", "retirement_planning"]
 
@@ -396,6 +445,10 @@ def compute(policy: dict):
             all_findings.extend(fn() or [])
         except Exception as e:
             all_findings.append(_f("execution_health", "collector_error", "info", f"{fn.__name__}: {e}"))
+    # Annotate each finding with why-it-matters + recommended action (self-justifying + actionable).
+    rmap = (policy.get("remediation_map") or {})
+    for _f_ in all_findings:
+        _annotate(_f_, rmap)
     # Group findings by their tagged category so multiple collectors can feed one category.
     cat_findings = {c: [f for f in all_findings if f.get("category") == c] for c in CATEGORIES}
     cat_scores = {c: score_category(cat_findings[c], penalties) for c in CATEGORIES}

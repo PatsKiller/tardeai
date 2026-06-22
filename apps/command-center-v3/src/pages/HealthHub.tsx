@@ -9,6 +9,13 @@ interface Props { onDrill?: (ctx: DrillContext) => void }
 const SEV_COLOR: Record<string, string> = {
   critical: 'var(--red)', warning: 'var(--amber)', info: 'var(--text3)',
 }
+// Remediation status → color (what was actually DONE about the finding)
+const STATUS_COLOR: Record<string, string> = {
+  fixed: 'var(--green)', pr_opened: 'var(--green)', advisory_diff: 'var(--green)', verified: 'var(--green)',
+  queued: 'var(--amber)', investigating: 'var(--accent)',
+  detected: 'var(--text3)', no_changes: 'var(--text3)',
+  verify_failed: 'var(--red)', error: 'var(--red)', no_backend_available: 'var(--red)',
+}
 const STATUS_TO_BADGE: Record<string, string> = {
   healthy: 'fresh', degraded: 'warning', unhealthy: 'blocked', unknown: 'unknown',
 }
@@ -115,19 +122,56 @@ export default function HealthHub({ onDrill }: Props) {
             </div>
           )}
 
-          {/* Findings */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>Findings</div>
+          {/* Findings — each tells the full story: what → why → action → status (who/when) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)' }}>Findings</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)' }}>what · why · recommended action · status (who / when) — click a row for full detail</div>
+          </div>
           {findings.length === 0 && <div style={{ fontSize: 11, color: 'var(--green)' }}>✓ No active findings</div>}
-          {findings.map((f, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px',
-              background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 4,
-              borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}` }}>
-              <span style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity],
-                width: 56, flexShrink: 0 }}>{f.severity}</span>
-              <span style={{ fontSize: 11, color: 'var(--text1)', flex: 1 }}>{f.message}</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{CAT_LABEL[f.category] || f.category}</span>
-            </div>
-          ))}
+          {findings.map((f, i) => {
+            const rem = f.remediation || {}
+            const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
+            const when = rem.at ? new Date(rem.at).toLocaleString() : ''
+            return (
+              <div key={i} onClick={onDrill ? () => onDrill({
+                title: f.message, subtitle: `${CAT_LABEL[f.category] || f.category} · ${f.severity}`,
+                endpoint: '/api/v2/health',
+                rows: [{
+                  what: f.message, why: f.why, recommended_action: f.recommended_action,
+                  action_type: f.action_type, detected_by: f.detected_by, detected_at: f.detected_at,
+                  status: rem.status, handled_by: rem.by, handled_at: rem.at, detail: rem.detail,
+                  pr_url: rem.pr_url, lane: rem.lane, evidence: f,
+                }],
+              }) : undefined}
+                style={{ padding: '8px 10px', background: 'var(--bg1)', border: '1px solid var(--border)',
+                  borderRadius: 4, marginBottom: 5, borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}`,
+                  cursor: onDrill ? 'pointer' : 'default' }}>
+                {/* Row 1: severity · what · status badge */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity], width: 52, flexShrink: 0 }}>{f.severity}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text0)', flex: 1, fontWeight: 600 }}>{f.message}</span>
+                  <span title={`Handled by ${rem.by || '—'}${when ? ' @ ' + when : ''}${rem.detail ? '\n' + rem.detail : ''}`}
+                    style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.3px',
+                      color: sc, background: 'var(--bg2)', padding: '1px 7px', borderRadius: 9, whiteSpace: 'nowrap' }}>
+                    {rem.status || 'detected'}
+                  </span>
+                  <span style={{ fontSize: 9, color: 'var(--text3)', width: 92, flexShrink: 0, textAlign: 'right' }}>{CAT_LABEL[f.category] || f.category}</span>
+                </div>
+                {/* Row 2: why */}
+                {f.why && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 3, marginLeft: 60 }}>{f.why}</div>}
+                {/* Row 3: action + who/when */}
+                <div style={{ fontSize: 10, marginTop: 3, marginLeft: 60, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--accent)' }}>▸ {f.recommended_action}</span>
+                  <span style={{ color: 'var(--text3)' }}>
+                    detected by {f.detected_by}
+                    {rem.by && rem.by !== f.detected_by ? ` · ${rem.status} by ${rem.by}` : ''}
+                    {when ? ` @ ${when}` : ''}
+                  </span>
+                  {rem.pr_url && rem.pr_url.startsWith('http') && <a href={rem.pr_url} onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)' }}>PR ↗</a>}
+                </div>
+              </div>
+            )
+          })}
         </>
       )}
 
