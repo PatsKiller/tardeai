@@ -7,7 +7,7 @@ const card = { background: 'var(--bg1)', border: '1px solid var(--border)', bord
 const inp = { fontSize: 12, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.28)', background: 'rgba(15,23,42,.6)', color: TEXT0, width: '100%', fontFamily: 'monospace' } as const
 const lbl = { fontSize: 10, color: MUTED, display: 'block', marginBottom: 5, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }
 
-export type BrokerPromoteSeed = { proposal_id: number; symbol: string }
+export type BrokerPromoteSeed = { proposal_id: number; symbol: string; account?: string }
 
 type Props = {
   seed: BrokerPromoteSeed
@@ -122,7 +122,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
         const r = await fetch('/api/v2/broker-proposals/prepare-promote', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proposal_id: seed.proposal_id }),
+          body: JSON.stringify({ proposal_id: seed.proposal_id, account: seed.account || undefined }),
         }).then(x => x.json())
         const d = r.data ?? r
         if (!cancelled) {
@@ -137,7 +137,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
           })
           setEvaluation(d.evaluation ?? null)
           const rec = d.recommended || {}
-          const acct = rec.account || d.current_broker || ''
+          const acct = seed.account || rec.account || d.current_broker || ''
           prevAccount.current = acct
           sharesTouched.current = false
           setF({
@@ -156,7 +156,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
       }
     })()
     return () => { cancelled = true }
-  }, [seed.proposal_id])
+  }, [seed.proposal_id, seed.account])
 
   useEffect(() => {
     if (loading || !f.account || f.account === prevAccount.current) return

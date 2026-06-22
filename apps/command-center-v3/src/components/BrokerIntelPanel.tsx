@@ -67,9 +67,10 @@ function AnalystVoteBar({ dist }: { dist: Record<string, number> }) {
 
 function CatalystCritic({ cat, compact }: { cat: any; compact: boolean }) {
   const [open, setOpen] = useState(!compact && ['BLOCK', 'DOWNGRADE'].includes(String(cat.critic_verdict || '').toUpperCase()))
-  const reasoning = cat.critic_reasoning ? String(cat.critic_reasoning) : ''
-  const preview = reasoning.slice(0, compact ? 100 : 160)
-  const hasMore = reasoning.length > preview.length
+  const reasoning = cat.critic_reasoning ? String(cat.critic_reasoning).trim() : ''
+  const previewLen = compact ? 140 : 220
+  const preview = reasoning.slice(0, previewLen)
+  const hasMore = reasoning.length > previewLen
 
   return (
     <>
@@ -78,11 +79,11 @@ function CatalystCritic({ cat, compact }: { cat: any; compact: boolean }) {
           Critic: {cat.critic_verdict}
         </div>
       )}
-      {reasoning && (
+      {reasoning ? (
         <div style={{ marginTop: 6 }}>
           <div style={{ fontSize: 9, color: MUTED, marginBottom: 3 }}>Catalyst review</div>
           <div style={{ ...body, fontSize: 9.5, color: TEXT1 }}>
-            {open || !hasMore ? reasoning : `${preview}…`}
+            {open ? reasoning : (hasMore ? `${preview}…` : reasoning)}
           </div>
           {hasMore && (
             <button type="button" onClick={() => setOpen(v => !v)}
@@ -91,7 +92,9 @@ function CatalystCritic({ cat, compact }: { cat: any; compact: boolean }) {
             </button>
           )}
         </div>
-      )}
+      ) : cat.critic_verdict ? (
+        <div style={{ fontSize: 9, color: MUTED, marginTop: 4, fontStyle: 'italic' }}>No critic narrative stored for this scan.</div>
+      ) : null}
     </>
   )
 }
