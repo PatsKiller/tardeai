@@ -18277,6 +18277,22 @@ def _schwab_token_health(query=None):
                         if needs_reauth else "Schwab token healthy.")}
 
 
+def _synthetic_stops_list(query=None):
+    """GET /api/v2/holdings/synthetic-stops — armed (default) or all synthetic stops for fractional
+    positions. ?status=all|armed|triggered|canceled. Read-only."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import synthetic_stop_monitor as _ssm
+    q = query or {}
+    status = (q.get("status") or ["armed"])[0] if isinstance(q.get("status"), list) else (q.get("status") or "armed")
+    try:
+        return {"stops": [_json_clean(s) for s in _ssm.list_stops(status)],
+                "note": "Synthetic stops protect FRACTIONAL positions (Schwab rejects resting fractional STOPs). "
+                        "On breach the monitor requests a Market-Day sell-all 2FA — nothing fires without your approval."}
+    except Exception as e:
+        return {"stops": [], "error": str(e)[:160]}
+
+
 def _time_exit_proposals_list(query=None):
     """GET /api/v2/time-exit-proposals — pending max-hold close proposals (advisory). Approval-gated."""
     rows = _db_query("""SELECT id, trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
@@ -19596,6 +19612,7 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
+    "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
     "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,
     "/api/v2/broker-orders/events": _broker_orders_events,
@@ -20173,6 +20190,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     pass
                 return 200, {"ok": True, "symbol": sym, "days": days, "snoozed_until": str(until),
                              "note": "operator acknowledgement — stop alert snoozed; protective stop unchanged (no broker write)"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/synthetic-stop":
+            # ARM a synthetic stop on a FRACTIONAL position (Schwab rejects resting STOP on fractional qty).
+            # Advisory storage only — places NOTHING. The unified_stop_supervisor watches the level and, on a
+            # breach (RTH), requests per-order 2FA for a Market-Day sell-all (operator approves to fire). (2026-06-21)
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import synthetic_stop_monitor as _ssm
+                b = body or {}
+                res = _ssm.arm(str(b.get("symbol") or ""), str(b.get("account") or ""),
+                               b.get("stop_price"), b.get("qty"),
+                               note=b.get("note"), armed_by=str(b.get("armed_by") or "operator"))
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/synthetic-stop/cancel":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import synthetic_stop_monitor as _ssm
+                b = body or {}
+                res = _ssm.cancel(symbol=b.get("symbol"), account=b.get("account"), stop_id=b.get("id"))
+                return 200, res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

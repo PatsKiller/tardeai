@@ -145,6 +145,22 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
         log.error(f"protection_alerts hook failed (non-fatal): {_pe}")
         report["protection_alerts"] = {"error": str(_pe)}
 
+    # Synthetic stops for FRACTIONAL Schwab positions (operator 2026-06-21): Schwab rejects resting STOP
+    # orders on fractional qtys, so these positions are watched here — on a price breach (apply mode, RTH)
+    # a Market-Day sell-all 2FA is requested (operator approves to fire; never auto-submits). Best-effort.
+    try:
+        import synthetic_stop_monitor as _ssm
+        _syn = _ssm.check_and_trigger(dry_run=dry_run or not in_hours)
+        _trig = [r for r in _syn if r.get("status") == "triggered"]
+        _would = [r for r in _syn if r.get("status") == "would_trigger"]
+        report["synthetic_stops"] = {"checked": len(_syn), "triggered": len(_trig),
+                                     "would_trigger": len(_would), "detail": _syn}
+        if _trig:
+            log.warning(f"SYNTHETIC STOP: {len(_trig)} fractional position(s) breached → Market-Day sell-all 2FA requested")
+    except Exception as _se:
+        log.error(f"synthetic_stop hook failed (non-fatal): {_se}")
+        report["synthetic_stops"] = {"error": str(_se)}
+
     if reconcile_only:
         report["monitors_skipped"] = "reconcile_only mode"
         report["duration"] = round(time.time() - t0, 1)
