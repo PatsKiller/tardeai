@@ -24,5 +24,23 @@
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts.",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
     "data_gaps_open": ".venv/bin/python scripts/data_gap_resolver.py"
+  },
+  "strategy_output": {
+    "_comment": "Catch silent-zero strategy failures (FIB-style). Gated to avoid morning false-positives.",
+    "enabled": true,
+    "check_after_hour": 11,
+    "tilt_min": 1.0
+  },
+  "log_errors": {
+    "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
+    "enabled": true,
+    "window_hours": 3,
+    "error_threshold": 5,
+    "tail_lines": 400,
+    "watch": [
+      "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
+      "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
+      "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log"
+    ]
   }
 }
