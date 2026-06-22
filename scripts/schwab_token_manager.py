@@ -196,6 +196,92 @@ def canonical_token_key(broker="schwab", environment="live"):
     return r[0] if r else None
 
 
+# ── ground-truth degraded marking (operator 2026-06-21) ──────────────────────────────────────────────
+# The DB freshness timestamps can say "valid" while Schwab has actually REVOKED the refresh token server-
+# side (it returns invalid_grant on use). A pure timestamp health check shows green and never warns. So
+# whenever a live Schwab call fails with an auth signature, persist that into the token row — health()
+# then reflects reality and the UI can show "re-auth needed" BEFORE the next order attempt.
+_AUTH_FAIL_SIGNATURES = ("invalid_grant", "unsupported_token_type", "refresh token is invalid",
+                         "expired or revoked", "invalid_client", "token is invalid", "unauthorized_client")
+
+
+def is_auth_failure(text) -> bool:
+    """True if an error string looks like a Schwab OAuth/refresh-token failure (needs manual re-auth)."""
+    t = str(text or "").lower()
+    return any(sig in t for sig in _AUTH_FAIL_SIGNATURES)
+
+
+def mark_degraded(error, broker="schwab", environment="live", account_key=None):
+    """Mark the (canonical) Schwab token row degraded with last_error. Idempotent; never raises. Called
+    reactively when a live call returns an auth failure, so health()/the UI reflect server-side revocation
+    that the freshness timestamps alone cannot see. Cleared automatically by a successful re-auth (seed_token)."""
+    try:
+        conn = _conn(); cur = conn.cursor()
+        key = account_key or canonical_token_key(broker, environment)
+        if not key:
+            return False
+        cur.execute("""UPDATE broker_oauth_tokens SET degraded=TRUE, last_error=%s, updated_at=NOW()
+                       WHERE account_key=%s AND broker=%s AND environment=%s""",
+                    (str(error)[:300], key, broker, environment))
+        conn.commit()
+        try:
+            _audit(conn, key, "degraded_mark", "degraded", None, str(error)[:200])
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _clear_degraded(account_key, broker="schwab", environment="live"):
+    """Clear a degraded flag after a live call proves the token works again. Never raises."""
+    try:
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("""UPDATE broker_oauth_tokens SET degraded=FALSE, last_error=NULL, updated_at=NOW()
+                       WHERE account_key=%s AND broker=%s AND environment=%s AND degraded=TRUE""",
+                    (account_key, broker, environment))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def live_probe(account_key=None, broker="schwab", environment="live"):
+    """Ground-truth probe: exercise the SAME authenticated read path an order uses (schwab_transport read
+    → schwab-py refresh via the manager hooks) to learn whether the refresh token actually still works,
+    WITHOUT placing an order. On an auth failure it marks the token degraded so subsequent health() calls
+    are accurate. Returns {probed, live_ok, needs_reauth, error}. Never raises. NOTE: makes one live read
+    call — cache the result upstream (the API endpoint does, 5-min TTL) so the UI doesn't probe per render."""
+    out = {"probed": False, "live_ok": False, "needs_reauth": False, "error": None}
+    try:
+        key = account_key or canonical_token_key(broker, environment)
+        if not key:
+            out["error"] = "no token on file — manual OAuth login required"; out["needs_reauth"] = True
+            return out
+        import schwab_transport as st
+        res = st.get_orders_raw(key)
+        out["probed"] = True
+        if isinstance(res, list):
+            out["live_ok"] = True
+            _clear_degraded(key, broker, environment)   # proved usable → self-heal a stale degraded flag
+            return out
+        # dict ⇒ degraded/NOT_PROVEN/error — inspect for an auth signature
+        detail = ""
+        if isinstance(res, dict):
+            detail = " ".join(str(res.get(k, "")) for k in ("error", "reason", "detail", "body", "status"))
+        if is_auth_failure(detail):
+            out["needs_reauth"] = True; out["error"] = detail[:240]
+            mark_degraded(detail, broker, environment, key)
+        else:
+            out["error"] = (detail or "live read not proven")[:240]
+        return out
+    except Exception as e:
+        if is_auth_failure(str(e)):
+            out["needs_reauth"] = True
+            mark_degraded(str(e), broker, environment, account_key)
+        out["error"] = str(e)[:240]
+        return out
+
+
 def health(account_key, broker="schwab", environment="live"):
     """Fail-closed freshness/expiry health for one account. Never raises — returns degraded on any doubt."""
     base = {"account_key": account_key, "broker": broker, "has_token": False, "access_fresh": False,
@@ -219,10 +305,13 @@ def health(account_key, broker="schwab", environment="live"):
         base["refresh_valid"] = bool(rexp and rexp > now and rt_enc)
         if rexp:
             base["days_to_reauth"] = round((rexp - now).total_seconds() / 86400, 2)
-        # fail closed: degraded unless refresh is valid AND we can actually decrypt the token
+        # fail closed: degraded unless refresh timestamp is valid AND we can decrypt the token AND the
+        # persisted degraded flag is clear. HONOR degraded_flag (was previously masked to False by a buggy
+        # `bool(x) and False or False` — that let a server-side-revoked token read 'healthy' on a still-
+        # valid timestamp, the exact NOC failure 2026-06-21). A successful re-auth/probe clears the flag.
         if base["refresh_valid"]:
             try:
-                _dec(rt_enc); base["degraded"] = bool(degraded_flag) and False or False
+                _dec(rt_enc); base["degraded"] = bool(degraded_flag)
             except Exception:
                 base["degraded"] = True; base["last_error"] = "token undecryptable (key mismatch)"
         return base

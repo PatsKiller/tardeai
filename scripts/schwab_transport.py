@@ -119,6 +119,14 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     except Exception as e:
         cur.execute("UPDATE schwab_pilot_orders SET status='post_exception', detail=%s, updated_at=NOW() "
                     "WHERE id=%s", (str(e)[:300], row_id)); conn.commit()
+        # ground-truth: if Schwab rejected on auth (expired/revoked refresh token), persist degraded so the
+        # token-health badge flips to "re-auth needed" instead of staying green on the freshness timestamp.
+        try:
+            import schwab_token_manager as _tm
+            if _tm.is_auth_failure(e):
+                _tm.mark_degraded(f"place_order: {str(e)[:200]}")
+        except Exception:
+            pass
         return {"status": "error", "error": f"POST exception: {str(e)[:160]}", "pilot_row_id": row_id,
                 "note": "DO NOT blind-retry — reconcile open orders via GET first (Schwab does not dedupe)"}
     if resp.status_code not in (200, 201):
