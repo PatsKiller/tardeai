@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-22 - Options Module (Trading tab)
+
+Turnkey advisory options desk: `scripts/options_engine.py` (covered calls + defined-risk proposals,
+open-position monitoring), API `/api/v2/options/{proposals,positions,monitor,overview}`,
+`OptionsHub.tsx` under Trading → Options tab, `run_options_monitor.py` cadence script.
+Doc: `docs/options-module.md`. Execution remains advisory (Schwab options write blocked).
+
 ## 2026-06-22 - Fidelity monitored stops: operator approved (live)
 
 `snaptrade_pilot_arm.py --approve` with `APPROVE FIDELITY STOPS 2026-06-22` — DB
