@@ -4,11 +4,12 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=johnclaw
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/health_agent.py
-# Advisory by default. Set HEALTH_AGENT_MODE / CODER_DISPATCH_MODE in the environment to change behavior.
 Environment=HEALTH_AGENT_MODE=advisory
+Environment=HEALTH_AGENT_SCHEDULER=systemd
+Environment=CODER_DISPATCH_MODE=pr
+EnvironmentFile=-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
 
 [Install]
 WantedBy=multi-user.target

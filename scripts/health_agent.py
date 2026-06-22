@@ -547,13 +547,27 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
 
 # ── persistence + alerting ───────────────────────────────────────────────────────────────────────────
 
-def persist(snapshot: dict):
+def prune_old_snapshots(policy: dict):
+    """Drop snapshots older than retention_days (keeps DB/API history bounded)."""
+    days = int((policy.get("history") or {}).get("retention_days", 90))
+    if days <= 0:
+        return
+    try:
+        _db("DELETE FROM health_agent_snapshots WHERE captured_at < now() - (%s * interval '1 day')",
+            (days,), fetch=None)
+    except Exception:
+        pass
+
+
+def persist(snapshot: dict, policy: dict | None = None):
     ensure_snapshot_table()
     _db("""INSERT INTO health_agent_snapshots (overall_score,status,category_scores,findings,mode)
            VALUES (%s,%s,%s,%s,%s)""",
         (snapshot["overall_score"], snapshot["status"],
          json.dumps(snapshot["category_scores"]), json.dumps(snapshot["findings"]),
          snapshot["mode"]), fetch=None)
+    if policy:
+        prune_old_snapshots(policy)
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         STATUS_FILE.write_text(json.dumps(snapshot, indent=2, default=str))
@@ -610,15 +624,19 @@ def main():
     if not args.no_enqueue:
         enqueued = enqueue_escalations(policy, findings_flat)
 
+    scheduler = os.getenv("HEALTH_AGENT_SCHEDULER", "cron")
+    hist_cfg = policy.get("history") or {}
     snapshot = {
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "overall_score": overall, "status": status, "mode": mode,
         "category_scores": cat_scores, "findings": findings_flat,
         "trends": trends, "enqueued": enqueued,
+        "scheduler": scheduler,
+        "history_retention_days": int(hist_cfg.get("retention_days", 90)),
         "summary": f"{status} {overall}/100 · {len([f for f in findings_flat if f['severity']=='critical'])} critical · "
                    f"{len([f for f in findings_flat if f['severity']=='warning'])} warnings",
     }
-    persist(snapshot)
+    persist(snapshot, policy)
     if not args.no_alert:
         alert(policy, snapshot)
 

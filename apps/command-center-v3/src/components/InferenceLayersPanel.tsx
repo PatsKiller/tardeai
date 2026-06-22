@@ -72,7 +72,7 @@ function facetMatch(f: Facet, r: any): boolean {
 }
 
 export default function InferenceLayersPanel() {
-  const { data, stale, loading } = useApi<any>('/api/v2/inference/latest', 120_000)
+  const { data, stale, loading, error } = useApi<any>('/api/v2/inference/latest', 120_000)
   const { data: regional } = useApi<any>('/api/v2/inference/regional', 300_000)
   const { data: sizing } = useApi<any>('/api/v2/inference/sizing', 300_000)
 
@@ -98,6 +98,10 @@ export default function InferenceLayersPanel() {
     for (const r of allResults) c[r.severity] = (c[r.severity] || 0) + 1
     return c
   }, [allResults])
+
+  if (error && !data) {
+    return <div style={{ ...card, padding: 16, color: '#ef4444', fontSize: 12 }}>Failed to load inferences: {error}</div>
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

@@ -44,7 +44,7 @@ DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", 
 CAP_LIBRARIAN = 10
 CAP_AUTONOMOUS = 3
 CAP_PROMOTE = 10        # ungated by confidence (operator directive B); capped per tick for sanity
-CAP_EMBED = 2
+CAP_EMBED = 10
 
 
 def kill_switch_active():
@@ -72,11 +72,13 @@ def run_script(label, args, timeout=600):
 
 def auto_promote(conn):
     """Ungated auto-promote of staged research (operator directive B). Audited + reversible."""
+    from hermes_embedding_enqueue import enqueue_research
     cur = conn.cursor()
     cur.execute("""SELECT id, symbol, research_type, confidence_score FROM hermes_research_intelligence
                    WHERE status='staged' ORDER BY confidence_score DESC NULLS LAST LIMIT %s""", (CAP_PROMOTE,))
     rows = cur.fetchall()
     promoted = 0
+    enqueued = 0
     for rid, sym, rtype, conf in rows:
         rollback = f"UPDATE hermes_research_intelligence SET status='staged' WHERE id={rid};"
         cur.execute("UPDATE hermes_research_intelligence SET status='promoted' WHERE id=%s", (rid,))
@@ -86,9 +88,11 @@ def auto_promote(conn):
                        VALUES (NOW(),'hermes_research_intelligence',%s,'hermes_research_intelligence',%s,
                                'research_to_insight', false, 'coordinator_operator_directive', NOW(), %s, %s)""",
                     (rid, rid, rollback, f"Auto-promoted {sym or ''}/{rtype or ''} conf={conf} (ungated, directive B)"))
+        if enqueue_research(cur, rid):
+            enqueued += 1
         promoted += 1
     conn.commit()
-    log.info("  auto-promote: %d staged → promoted (reversible via hermes_promotion_audit.rollback_sql)", promoted)
+    log.info("  auto-promote: %d staged → promoted, %d enqueued for RAG (reversible via hermes_promotion_audit.rollback_sql)", promoted, enqueued)
     return promoted
 
 

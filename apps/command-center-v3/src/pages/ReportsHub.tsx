@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
-import SynthesizedReportCard from '../components/SynthesizedReportCard'
+import MorningCommandStrip, { buildStripCells } from '../components/reports/MorningCommandStrip'
+import ReportsArchive from '../components/reports/ReportsArchive'
+import BriefSectionPanels from '../components/reports/BriefSectionPanels'
+import ActionDeck, { buildDeckActions } from '../components/reports/ActionDeck'
+import ReportCoverageStrip from '../components/reports/ReportCoverageStrip'
+import ReportSearch from '../components/reports/ReportSearch'
+import DocxDownloads from '../components/reports/DocxDownloads'
+import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 
 // v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
 // digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
@@ -110,49 +117,11 @@ function SeverityBadge({ sev }: { sev?: string }) {
   return <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: c + '22', color: c, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{sev || 'info'}</span>
 }
 
-const CLASS_LABEL: Record<string, string> = {
-  stop_triggered: 'Stop triggered', unprotected_position: 'Unprotected', risk_review: 'Risk',
-  approval_needed: 'Approval', broker_manual: 'Broker manual', portfolio_review: 'Portfolio',
-  research_needed: 'Research', hermes_review: 'Hermes', system_health: 'System',
-  cron_or_backup: 'Cron/Backup', llm_review: 'LLM', informational: 'Info',
-}
-const CLASS_COLOR: Record<string, string> = {
-  stop_triggered: '#ef4444', unprotected_position: '#ef4444', risk_review: '#f59e0b',
-  approval_needed: '#a855f7', broker_manual: '#a855f7', portfolio_review: '#eab308',
-  research_needed: '#14b8a6', hermes_review: '#14b8a6', system_health: '#60a5fa',
-  cron_or_backup: '#60a5fa', llm_review: '#60a5fa', informational: 'var(--text3)',
-}
-function ActionPill({ cls }: { cls: string }) {
-  const c = CLASS_COLOR[cls] || '#60a5fa'
-  return <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: c + '1c', color: c, whiteSpace: 'nowrap' }}>{CLASS_LABEL[cls] || cls}</span>
-}
-
-function MiniBarChart({ rows, color }: { rows: { label: string; value: number; color?: string }[]; color?: string }) {
-  const max = Math.max(1, ...rows.map(r => r.value))
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      {rows.map((r, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontSize: 10, color: 'var(--text2)', width: 78, flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
-          <div style={{ flex: 1, height: 9, background: 'var(--bg2)', borderRadius: 5, overflow: 'hidden' }}>
-            <div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: r.color || color || '#60a5fa', borderRadius: 5 }} />
-          </div>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', width: 30, textAlign: 'right' }}>{r.value}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 // ── quick views: predicate over a list item + matching action classes / severities ────────────────────
 const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
 const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
 type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
-const QUICK_VIEWS: { key: QV; label: string }[] = [
-  { key: '', label: 'All' }, { key: 'today', label: 'Today' }, { key: 'needs_action', label: 'Needs action' },
-  { key: 'risk', label: 'Risk / Stops' }, { key: 'approvals', label: 'Approvals' }, { key: 'hermes', label: 'Hermes' },
-  { key: 'system', label: 'System' }, { key: 'critical', label: 'Critical' },
-]
+type HubMode = 'brief' | 'archive'
 const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
 function qvMatchesItem(qv: QV, it: any): boolean {
   const cls: string[] = it.action_classes || []
@@ -168,30 +137,7 @@ function qvMatchesItem(qv: QV, it: any): boolean {
     default: return true
   }
 }
-// ── Action Queue tabs (Phase 2): the right rail defaults to a small actionable "Now" set, not hundreds ──
-const APPROVAL_CLASSES = ['approval_needed', 'broker_manual']
-const RESEARCH_CLASSES = ['research_needed', 'hermes_review', 'portfolio_review']
-type AQTab = 'now' | 'risk' | 'approvals' | 'system' | 'research' | 'all'
-const AQ_TABS: { key: AQTab; label: string }[] = [
-  { key: 'now', label: 'Now' }, { key: 'risk', label: 'Risk' }, { key: 'approvals', label: 'Approvals' },
-  { key: 'system', label: 'System' }, { key: 'research', label: 'Research' }, { key: 'all', label: 'All' },
-]
-function aqMatch(tab: AQTab, a: any): boolean {
-  const cls: string[] = a._classes || (a.action_class ? [a.action_class] : [])
-  const urgent = ['urgent', 'critical'].includes((a.severity || '').toLowerCase())
-  const has = (set: string[]) => cls.some(c => set.includes(c))
-  switch (tab) {
-    case 'all': return true
-    case 'risk': return has(RISK_CLASSES)
-    case 'approvals': return has(APPROVAL_CLASSES)
-    case 'system': return has(SYSTEM_CLASSES)
-    case 'research': return has(RESEARCH_CLASSES)
-    case 'now': return urgent || isToday(a.created_at) || has([...RISK_CLASSES, ...APPROVAL_CLASSES, ...SYSTEM_CLASSES])
-    default: return true
-  }
-}
-
-// ── Reader "Key sections" (Phase 4): recognized markdown headers → anchor chips that scroll the body ──
+// ── Reader "Key sections": recognized markdown headers → anchor ids in Article body ──
 const SECTIONS = [
   { id: 'exec', label: 'Executive Summary', rx: /executive summary/i },
   { id: 'risk', label: 'Immediate Risk', rx: /immediate risk/i },
@@ -201,57 +147,12 @@ const SECTIONS = [
 ]
 const sectionIdOf = (text: string): string | undefined => SECTIONS.find(s => s.rx.test(text))?.id
 
-// "What matters" briefing groups (Phase 4) — the selected report's actions grouped by canonical target_type,
-// each a one-click exact deep-link. Order = operator priority.
-const WM_GROUPS: { tt: string; label: string; c: string }[] = [
-  { tt: 'risk_stop', label: 'Immediate risk', c: '#ef4444' },
-  { tt: 'approval', label: 'Approvals', c: '#f59e0b' },
-  { tt: 'recovery', label: 'Recovery', c: '#a855f7' },
-  { tt: 'research', label: 'Research', c: '#14b8a6' },
-  { tt: 'system', label: 'System', c: '#60a5fa' },
-  { tt: 'hermes', label: 'Hermes', c: '#22d3ee' },
-  { tt: 'portfolio', label: 'Portfolio', c: '#eab308' },
-]
-
-// Reader synthesis strip — surfaces the enriched fields (sector / trend / finance / retirement / ensemble
-// votes) that reports_portal now attaches per item. Only renders the facets that actually exist (honest).
-const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
-function SynthStrip({ it }: { it: any }) {
-  const fin = it.finance_score == null ? null : Math.round(it.finance_score)
-  const en = it.ensemble
-  const chips: ReactNode[] = []
-  const C = (key: string, label: string, color: string) => chips.push(
-    <span key={key} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: color + '18', color }}>{label}</span>)
-  if (it.sector) C('sec', it.sector, '#94a3b8')
-  if (it.trend) C('tr', it.trend, TREND_C(it.trend))
-  if (fin != null && fin >= 28) C('fin', `finance ${fin}`, fin >= 70 ? '#22c55e' : '#60a5fa')
-  if (it.retirement_relevance) C('ret', `retire ${it.retirement_relevance}`, it.retirement_relevance === 'high' ? '#f59e0b' : '#94a3b8')
-  if (en && en.decision) C('en', `ensemble ${en.decision}${en.score != null ? ` ${en.score}` : ''}${en.lanes?.length ? ` · ${en.lanes.join('/')}` : ''}`, en.decision === 'approve' ? '#22c55e' : '#ef4444')
-  if (!chips.length) return null
-  return <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>{chips}</div>
-}
-
-function Kpi({ label, value, color, active, onClick, sub, strong }: { label: string; value: number | string; color?: string; active?: boolean; onClick?: () => void; sub?: string; strong?: boolean }) {
-  // strong = higher visual priority (Risk/Stops, Approvals): persistent tinted border + left rail.
-  const c = color || '#60a5fa'
-  return (
-    <div onClick={onClick} style={{
-      ...card, padding: '11px 13px', cursor: onClick ? 'pointer' : 'default',
-      borderColor: active ? c : strong ? c + '66' : 'var(--border)',
-      borderLeft: strong ? `4px solid ${c}` : (card as any).border,
-      background: active ? c + '18' : strong ? c + '0b' : 'var(--bg1)',
-    }}>
-      <div style={{ fontSize: 23, fontWeight: 900, color: color || 'var(--text0)', lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 10, color: strong ? c : 'var(--text2)', marginTop: 3, textTransform: 'uppercase', letterSpacing: .3, fontWeight: 800 }}>{label}</div>
-      {sub && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{sub}</div>}
-    </div>
-  )
-}
-
 export default function ReportsHub({ onDrill }: Props) {
   void onDrill
   const { data: cats } = useApi<any>('/api/v2/reports/categories', 60_000)
   const categories = cats?.categories || []
+  const [mode, setMode] = useState<HubMode>('brief')
+  const [superTab, setSuperTab] = useState('briefs')
   const [active, setActive] = useState<string>('morning_briefs')
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
@@ -260,12 +161,25 @@ export default function ReportsHub({ onDrill }: Props) {
   const [qv, setQv] = useState<QV>('')
   const [purge, setPurge] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
-  const [aqTab, setAqTab] = useState<AQTab>('now')   // Action Queue defaults to the actionable "Now" set
+  const [briefExpanded, setBriefExpanded] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQ, setSearchQ] = useState('')
+
+  const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
+  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const briefListPath = '/api/v2/reports/list?category=morning_briefs&page=1&per_page=5&days=1'
+  const { data: briefList } = useApi<any>(briefListPath, 0)
 
   useEffect(() => { const t = setTimeout(() => { setQ(qInput); setPage(1) }, 350); return () => clearTimeout(t) }, [qInput])
+  useEffect(() => { const t = setTimeout(() => setSearchQ(searchInput), 350); return () => clearTimeout(t) }, [searchInput])
+  useEffect(() => {
+    const grp = SUPER_TABS.find(s => s.key === superTab)
+    if (grp && !grp.categories.includes(active)) setActive(grp.categories[0])
+  }, [superTab]) // eslint-disable-line
   useEffect(() => { setPage(1) }, [active, days, q])
-  useEffect(() => { setSelId(null); setExpanded(false) }, [active, days, q, page])
+  useEffect(() => { setSelId(null) }, [active, days, q, page])
 
   const effDays = qv === 'today' ? 1 : days
   const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`
@@ -288,286 +202,188 @@ export default function ReportsHub({ onDrill }: Props) {
 
   // auto-select first result when nothing selected
   const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
-  const allActions = actionsData?.actions || []   // raw extracted (full set); AQ tabs filter the deduped view
-  // the selected report's own actions (one per class) for the "What matters" briefing block
+  const allActions = actionsData?.actions || []
   const reportActions = useMemo(() => {
     if (!selected) return []
     const rid = `${selected.source}-${selected.id}`, seen = new Set<string>()
     return allActions.filter((a: any) => a.report_id === rid).filter((a: any) => { if (seen.has(a.action_class)) return false; seen.add(a.action_class); return true })
   }, [selected, allActions])
-  // Dedup: one underlying item emits the SAME symbol+text under several action_classes (e.g. an RTX recovery
-  // escalation shows as Stop-triggered + Unprotected + System). Collapse to one row, merging the classes
-  // into pills and keeping the highest severity — so the queue isn't 3× the same line.
-  const sevRank = (s: string) => ({ urgent: 4, critical: 4, warning: 2, info: 1 } as any)[(s || '').toLowerCase()] || 0
-  const dedupedActions = useMemo(() => {
-    const seen = new Map<string, any>()
-    for (const a of allActions) {
-      // Normalize volatile numbers ($ amounts, %, counts) out of the key so the SAME recurring advisory
-      // re-emitted daily — "Portfolio $1.28M … 8 stops triggered, 7 unprotected" vs the next day's
-      // "$1.26M … 6 stops triggered" — collapses to ONE card (the most recent) instead of 7 near-identical
-      // rows flooding the queue. Distinct symbols keep distinct keys.
-      const norm = (a.text || '').toLowerCase().replace(/[$%,]/g, '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim().slice(0, 90)
-      const key = `${(a.symbol || '').toUpperCase()}|${norm}`
-      const ex = seen.get(key)
-      if (!ex) { seen.set(key, { ...a, _classes: [a.action_class], _dupes: 1 }) }
-      else {
-        ex._dupes++
-        if (a.action_class && !ex._classes.includes(a.action_class)) ex._classes.push(a.action_class)
-        if (sevRank(a.severity) > sevRank(ex.severity)) ex.severity = a.severity
-        if (sevRank(a.severity) >= sevRank(ex.severity)) { ex.route = a.route; ex.route_label = a.route_label; ex.target = a.target }
-      }
-    }
-    return [...seen.values()]
-  }, [allActions])
-  // AQ tab filter + cap (Now is capped at 12 priority items; other tabs show up to 40). sev-then-recency order.
-  const aqRank = (a: any) => sevRank(a.severity) * 1e13 + (Date.parse(a.created_at || '') || 0)
-  const aqFiltered = useMemo(() => dedupedActions.filter((a: any) => aqMatch(aqTab, a)).sort((x: any, y: any) => aqRank(y) - aqRank(x)), [dedupedActions, aqTab])
-  const aqCap = aqTab === 'now' ? 12 : 40
-  const aqShown = aqFiltered.slice(0, aqCap)
 
   const k = summary?.kpis || {}
-  const sevRows = Object.entries(summary?.by_severity || {}).map(([label, value]: any) => ({ label, value, color: sevColor(label) }))
-    .sort((a: any, b: any) => b.value - a.value)
-  const catRows = (summary?.by_category || []).slice(0, 7).map((c: any) => ({ label: c.label, value: c.count }))
+
+  const archiveCategories = useMemo(() => {
+    const grp = SUPER_TABS.find(s => s.key === superTab)
+    if (!grp) return categories
+    return categories.filter((c: any) => grp.categories.includes(c.key))
+  }, [categories, superTab])
+
+  const todayBrief: any = (briefList?.items || [])[0] || null
+  const briefBody = todayBrief?.summary || ''
+  const briefSections = useMemo(() => parseBriefSections(briefBody), [briefBody])
+  const briefExec = useMemo(() => executiveSummaryText(briefBody), [briefBody])
+  const todayBriefActions = useMemo(() => {
+    if (!todayBrief) return []
+    const rid = `${todayBrief.source}-${todayBrief.id}`
+    const seen = new Map<string, any>()
+    for (const a of allActions.filter((x: any) => x.report_id === rid)) {
+      const norm = (a.text || '').toLowerCase().replace(/[$%,]/g, '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim().slice(0, 80)
+      const key = `${(a.symbol || '').toUpperCase()}|${a.action_class}|${norm}`
+      const ex = seen.get(key)
+      if (!ex) seen.set(key, { ...a, _classes: [a.action_class] })
+      else if (a.action_class && !ex._classes.includes(a.action_class)) ex._classes.push(a.action_class)
+    }
+    return [...seen.values()]
+  }, [todayBrief, allActions])
+  const positions = risk?.positions || []
+  const deckActions = useMemo(() => buildDeckActions({
+    briefActions: todayBriefActions,
+    triggeredPositions: positions.filter((p: any) => p.triggered).map((p: any) => ({
+      symbol: p.symbol, stop_price: p.stop_price ?? p.stop, market_value: p.market_value,
+    })),
+    rankedLines: rankedActionLines(briefBody),
+    cap: 8,
+  }), [todayBriefActions, positions, briefBody])
+  const triggeredN = positions.filter((p: any) => p.triggered).length
+  const unprotN = positions.filter((p: any) => !p.stop_price && !p.triggered).length
+  const stripCells = buildStripCells({
+    portfolioValue: overview?.portfolio_value,
+    todayChange: overview?.today_change,
+    heatPct: risk?.portfolio_heat_pct,
+    triggeredCount: triggeredN,
+    unprotectedCount: unprotN,
+    regimeLabel: regime?.regime_label,
+    vix: tradeAi?.vix,
+    onRisk: () => { window.open(FQDN + '/v3/risk', '_blank') },
+    onPortfolio: () => { window.open(FQDN + '/v3/portfolio', '_blank') },
+  })
+
+  const modeBtn = (m: HubMode, label: string) => {
+    const on = mode === m
+    return (
+      <button key={m} onClick={() => setMode(m)} style={{
+        fontSize: 11, fontWeight: on ? 800 : 600, padding: '6px 14px', borderRadius: 7, cursor: 'pointer',
+        border: `1px solid ${on ? '#60a5fa' : 'var(--border)'}`,
+        background: on ? 'rgba(96,165,250,.12)' : 'var(--bg1)',
+        color: on ? '#60a5fa' : 'var(--text2)',
+      }}>{label}</button>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1480, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>Reports Command Portal</h1>
-        <span style={{ fontSize: 12, color: 'var(--text3)' }}>operator reports, actions, briefings, alerts, and advisories</span>
+        <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>
+          {mode === 'brief' ? 'Morning Brief' : 'Report Archive'}
+        </h1>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+          {mode === 'brief'
+            ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
+            : 'searchable operator reports, alerts, and advisories'}
+        </span>
         <span style={{ flex: 1 }} />
-        <button onClick={() => setPurge(true)} style={{ fontSize: 10.5, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Retention / purge old reports</button>
-      </div>
-
-      {/* KPI grid (Phase 3): action-first hierarchy. Risk/Stops + Approvals get persistent visual priority.
-          Clicking a card focuses the report list AND the Action Queue tab. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-        <Kpi label="Needs action now" value={k.open_actions ?? '—'} color="#a855f7" sub={`${k.total ?? 0} reports · 7d`}
-          active={qv === 'needs_action'} onClick={() => { setQv(qv === 'needs_action' ? '' : 'needs_action'); setAqTab('now') }} />
-        <Kpi label="Critical / urgent" value={k.critical_urgent ?? '—'} color="#ef4444" sub={`${k.today ?? 0} today`}
-          active={qv === 'critical'} onClick={() => setQv(qv === 'critical' ? '' : 'critical')} />
-        <Kpi label="Risk / stops" value={k.risk_stop ?? '—'} color="#f59e0b" strong sub="open risk actions"
-          active={qv === 'risk'} onClick={() => { setQv(qv === 'risk' ? '' : 'risk'); setAqTab('risk') }} />
-        <Kpi label="Approvals" value={k.approvals ?? '—'} color="#f59e0b" strong sub="awaiting sign-off"
-          active={qv === 'approvals'} onClick={() => { setQv(qv === 'approvals' ? '' : 'approvals'); setAqTab('approvals') }} />
-        <Kpi label="System blockers" value={k.system_hermes ?? '—'} color="#60a5fa" sub="system · hermes"
-          active={qv === 'system'} onClick={() => { setQv(qv === 'system' ? '' : 'system'); setAqTab('system') }} />
-        <Kpi label="Reports today" value={k.today ?? '—'} color="var(--text0)" sub={`${k.total ?? 0} in ${effDays || 7}d`} />
-      </div>
-
-      {/* Quick views */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase' }}>Quick views</span>
-        {QUICK_VIEWS.map(v => {
-          const on = qv === v.key
-          return <button key={v.key || 'all'} onClick={() => setQv(v.key)} style={{ fontSize: 11, fontWeight: on ? 800 : 600, padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? '#a855f7' : 'var(--border)'}`, background: on ? 'rgba(168,85,247,.12)' : 'var(--bg1)', color: on ? '#d8b4fe' : 'var(--text2)' }}>{v.label}</button>
-        })}
-      </div>
-
-      {/* Category chips — compact, scrollable */}
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
-        {categories.map((c: any) => {
-          const on = c.key === active
-          return (
-            <button key={c.key} onClick={() => setActive(c.key)} style={{
-              fontSize: 11.5, fontWeight: on ? 800 : 600, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-              border: `1px solid ${on ? '#60a5fa' : 'var(--border)'}`, background: on ? 'rgba(96,165,250,.10)' : 'var(--bg1)',
-              color: on ? '#60a5fa' : 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5,
-            }}>
-              <span>{c.icon}</span>{c.label}
-              <span style={{ fontSize: 9.5, fontWeight: 800, padding: '0 5px', borderRadius: 7, background: on ? '#60a5fa22' : 'var(--bg2)', color: on ? '#60a5fa' : 'var(--text3)' }}>{c.count}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Three-pane body */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-
-        {/* LEFT — filters + list */}
-        <div style={{ flex: '1 1 340px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ ...card, padding: 9, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={qInput} onChange={e => setQInput(e.target.value)} placeholder={`Search ${activeCat?.label || ''}…`}
-              style={{ flex: 1, minWidth: 140, fontSize: 12, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }} />
-            <div style={{ display: 'flex', gap: 3 }}>
-              {([['', 'All'], [1, '1d'], [7, '7d'], [30, '30d'], [90, '90d']] as any).map(([v, l]: any) => (
-                <button key={l} onClick={() => setDays(v)} style={{ fontSize: 10, fontWeight: 700, padding: '5px 7px', borderRadius: 5, cursor: 'pointer',
-                  border: `1px solid ${days === v ? '#60a5fa' : 'var(--border)'}`, background: days === v ? 'rgba(96,165,250,.10)' : 'transparent', color: days === v ? '#60a5fa' : 'var(--text3)' }}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ fontSize: 10.5, color: 'var(--text3)', padding: '0 2px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>{items.length} shown{total > items.length ? ` · ${total} total` : ''}{qv ? ` · ${QUICK_VIEWS.find(v => v.key === qv)?.label}` : ''}</span>
-            {qv ? <span onClick={() => setQv('')} style={{ color: '#a855f7', cursor: 'pointer', fontWeight: 700 }}>clear quick view</span> : null}
-          </div>
-
-          {loading && rawItems.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>loading…</div>}
-          {!loading && items.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>no reports here{q ? ` matching “${q}”` : ''}{qv ? ` · ${QUICK_VIEWS.find(v => v.key === qv)?.label}` : ''}</div>}
-
-          {items.map((it: any) => {
-            const id = `${it.source}-${it.id}`
-            const on = !!(selected && `${selected.source}-${selected.id}` === id)
-            return (
-              <div key={id} onClick={() => setSelId(id)}>
-                <SynthesizedReportCard item={it} selected={on} compact />
-                {(it.has_actions || (it.action_classes || []).length > 0) && (
-                  <div style={{ display: 'flex', gap: 4, margin: '-4px 0 2px 12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)' }}>{it.action_count} action{it.action_count === 1 ? '' : 's'} →</span>
-                    {(it.action_classes || []).slice(0, 3).map((c: string) => <ActionPill key={c} cls={c} />)}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {pages > 1 && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', margin: '4px 0' }}>
-              <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page <= 1 ? 'var(--text3)' : 'var(--text1)', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>← Newer</button>
-              <span style={{ fontSize: 11, color: 'var(--text3)' }}>page {page} of {pages}</span>
-              <button disabled={page >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: page >= pages ? 'var(--text3)' : 'var(--text1)', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Older →</button>
-            </div>
-          )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {modeBtn('brief', "Today's Brief")}
+          {modeBtn('archive', 'Archive')}
         </div>
+      </div>
 
-        {/* CENTER — reader */}
-        <div style={{ flex: '1 1 440px', minWidth: 340 }}>
-          {!selected ? (
-            <div style={{ ...card, padding: 36, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>select a report to read it here</div>
-          ) : (() => {
-            const body = selected.summary || ''
-            const long = body.length > 1400
-            const cut = long ? (body.lastIndexOf('\n', 1400) > 600 ? body.lastIndexOf('\n', 1400) : 1400) : body.length
-            const shown = long && !expanded ? body.slice(0, cut) : body
-            return (
-              <article style={{ ...card, borderTop: `3px solid ${sevColor(selected.severity)}`, padding: '16px 20px' }}>
-                <header style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border-subtle)' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text0)', lineHeight: 1.3 }}>{selected.title}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <span>{fmtDate(selected.created_at)}</span><span>· {selected.channel}</span><span>· {selected.type}</span>
-                      {selected.symbol && <span style={{ fontWeight: 800, color: '#60a5fa' }}>· {selected.symbol}</span>}
-                    </div>
-                  </div>
-                  <SeverityBadge sev={selected.severity} />
-                </header>
-                <SynthStrip it={selected} />
-                {/* "What matters" briefing (Phase 4): the report's actions grouped by canonical target, each a
-                    one-click EXACT deep-link (stop drawer / approval modal / recovery / system tab / research). */}
-                {reportActions.length > 0 && (
-                  <div style={{ marginTop: 11, padding: '10px 12px', borderRadius: 9, background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 9, fontWeight: 900, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 7 }}>What matters</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {WM_GROUPS.map(g => {
-                        const grp = reportActions.filter((a: any) => (a.target?.target_type || '') === g.tt)
-                        if (!grp.length) return null
-                        return (
-                          <div key={g.tt} style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 9.5, fontWeight: 800, color: g.c, minWidth: 92 }}>{g.label}</span>
-                            {grp.slice(0, 6).map((a: any) => {
-                              const tg = a.target || {}; const low = tg.target_confidence === 'low'
-                              return <a key={a.id} href={relUrl(FQDN + (tg.route || a.route))} title={tg.reason || ''} style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, textDecoration: 'none', border: `1px solid ${low ? 'var(--border)' : g.c + '55'}`, background: low ? 'var(--bg1)' : g.c + '14', color: low ? 'var(--text3)' : g.c }}>{low ? 'Open related page' : (tg.route_label || a.route_label)} →</a>
-                            })}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                {/* Key sections anchor chips — scroll the (auto-expanded) body to a recognized header */}
-                {(() => {
-                  const present = SECTIONS.filter(s => s.rx.test(body))
-                  if (!present.length) return null
-                  return (
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>Jump to</span>
-                      {present.map(s => (
-                        <button key={s.id} onClick={() => { setExpanded(true); setTimeout(() => document.getElementById(`rsec-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) }}
-                          style={{ fontSize: 9.5, fontWeight: 700, padding: '3px 9px', borderRadius: 99, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)' }}>{s.label}</button>
-                      ))}
-                    </div>
-                  )
-                })()}
-                <div style={{ height: 12 }} />
-                <Article text={shown} />
-                {long && <button onClick={() => setExpanded(e => !e)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>{expanded ? '▲ show less' : '▼ read full report'}</button>}
-                {(selected.actions || []).length > 0 && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-                    {selected.actions.map((a: any, i: number) => (
-                      <a key={i} href={relUrl(a.url)} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
-                    ))}
-                  </div>
-                )}
-              </article>
-            )
-          })()}
-        </div>
+      {/* Global search — all Telegram / email / SIEM / ai_reports stores */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          placeholder="Search all reports (symbol, topic, retirement, weekly…)…"
+          style={{ flex: 1, fontSize: 12, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text0)' }}
+        />
+        {searchInput && (
+          <button onClick={() => { setSearchInput(''); setSearchQ('') }} style={{ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Clear</button>
+        )}
+      </div>
+      {searchQ && (
+        <ReportSearch
+          query={searchQ}
+          onSelect={(it) => { setMode('archive'); setActive(it.category || 'morning_briefs'); setSelId(`${it.source}-${it.id}`); setSearchInput(''); setSearchQ('') }}
+          onArchive={() => { setMode('archive'); setQInput(searchQ); setQ(searchQ); setSearchInput(''); setSearchQ('') }}
+        />
+      )}
 
-        {/* RIGHT — action queue + symbols + bars (sticky so it stays in view while the page scrolls) */}
-        <div style={{ flex: '1 1 240px', minWidth: 230, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 8, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}>
-          <div style={{ ...card, padding: 12 }}>
-            {/* sticky header so the queue title + tabs stay visible while the list scrolls */}
-            <div style={{ position: 'sticky', top: 0, background: 'var(--bg1)', zIndex: 1, paddingBottom: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 7 }}>Action Queue</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                {AQ_TABS.map(t => {
-                  const on = aqTab === t.key
-                  const n = dedupedActions.filter((a: any) => aqMatch(t.key, a)).length
-                  return <button key={t.key} onClick={() => setAqTab(t.key)} style={{ fontSize: 9.5, fontWeight: on ? 800 : 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
-                    border: `1px solid ${on ? '#a855f7' : 'var(--border)'}`, background: on ? 'rgba(168,85,247,.14)' : 'var(--bg2)', color: on ? '#d8b4fe' : 'var(--text3)' }}>{t.label} <span style={{ opacity: .7 }}>{n}</span></button>
-                })}
-              </div>
-              <div style={{ fontSize: 9.5, color: 'var(--text3)', fontWeight: 600 }}>
-                Showing {aqShown.length} {aqTab === 'now' ? 'priority' : aqTab} action{aqShown.length === 1 ? '' : 's'} of {allActions.length} extracted
-                {aqFiltered.length > aqShown.length ? ` · ${aqFiltered.length - aqShown.length} more` : ''}
-              </div>
+      {mode === 'brief' && !searchQ && (
+        <>
+      <ReportCoverageStrip categories={categories} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <MorningCommandStrip cells={stripCells} />
+          {!todayBrief ? (
+            <div style={{ ...card, padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+              No morning brief for today yet. Check Archive → Morning Briefs, or Home → Morning Command.
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto', marginTop: 4 }}>
-              {aqShown.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>no {aqTab === 'all' ? '' : aqTab + ' '}actions in this window</div>}
-              {aqShown.map((a: any) => (
-                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 9px', borderRadius: 7, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
-                  <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {(a._classes || [a.action_class]).map((c: string) => <ActionPill key={c} cls={c} />)}
-                    {a.symbol && <span style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa', fontFamily: 'monospace' }}>{a.symbol}</span>}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text2)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{a.text}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {(() => { const tg = a.target || {}; const low = tg.target_confidence === 'low'; return (
-                      <a href={relUrl(FQDN + (tg.route || a.route))} title={tg.reason || ''} style={{ fontSize: 9.5, fontWeight: 800, color: low ? 'var(--text3)' : '#60a5fa', textDecoration: 'none', border: `1px solid ${low ? 'var(--border)' : '#60a5fa44'}`, borderRadius: 5, padding: '2px 7px' }}>{low ? 'Open related page' : (tg.route_label || a.route_label)} →</a>
-                    ) })()}
-                    <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>{a.category}</span>
-                    <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>· {fmtDate(a.created_at)}</span>
-                  </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text0)' }}>{todayBrief.title}</div>
+                <SeverityBadge sev={todayBrief.severity} />
+                {todayBrief.has_actions && <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>{todayBrief.action_count} actions</span>}
+              </div>
+              <BriefSectionPanels sections={briefSections} executiveFallback={briefExec} />
+              <DocxDownloads itemDocx={todayBrief?.docx_file} />
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)' }}>Your action list</div>
+                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{deckActions.length} item{deckActions.length === 1 ? '' : 's'} · today&apos;s brief + live stops</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {(summary?.top_symbols || []).length > 0 && (
-            <div style={{ ...card, padding: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Top symbols</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {summary.top_symbols.slice(0, 10).map((s: any) => (
-                  <span key={s.symbol} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'var(--bg2)', color: '#60a5fa' }}>{s.symbol} <span style={{ color: 'var(--text3)', fontWeight: 600 }}>{s.count}</span></span>
-                ))}
+                <ActionDeck actions={deckActions} />
               </div>
-            </div>
-          )}
-
-          {sevRows.length > 0 && (
-            <div style={{ ...card, padding: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Severity</div>
-              <MiniBarChart rows={sevRows} />
-            </div>
-          )}
-          {catRows.length > 0 && (
-            <div style={{ ...card, padding: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text0)', marginBottom: 8 }}>Top categories</div>
-              <MiniBarChart rows={catRows} color="#60a5fa" />
-            </div>
+              {briefBody.length > 400 && (
+                <div style={{ ...card, padding: '12px 16px' }}>
+                  <button onClick={() => setBriefExpanded(e => !e)} style={{ fontSize: 11, fontWeight: 700, padding: 0, border: 'none', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>
+                    {briefExpanded ? '▲ Hide full report' : '▼ Full report (Telegram markdown)'}
+                  </button>
+                  {briefExpanded && <div style={{ marginTop: 12 }}><Article text={briefBody} /></div>}
+                </div>
+              )}
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+                Also on Home → Morning Command · Archive for historical briefs
+              </div>
+            </>
           )}
         </div>
-      </div>
+        </>
+      )}
+
+      {mode === 'archive' && !searchQ && (
+        <ReportsArchive
+          categories={categories}
+          superTab={superTab}
+          setSuperTab={setSuperTab}
+          active={active}
+          setActive={setActive}
+          archiveCategories={archiveCategories}
+          activeCat={activeCat}
+          qInput={qInput}
+          setQInput={setQInput}
+          days={days}
+          setDays={setDays}
+          qv={qv}
+          setQv={setQv}
+          items={items}
+          rawItems={rawItems}
+          loading={loading}
+          total={total}
+          pages={pages}
+          page={page}
+          setPage={setPage}
+          selId={selId}
+          setSelId={setSelId}
+          selected={selected}
+          kpis={k}
+          effDays={effDays}
+          reportActions={reportActions}
+          fmtDate={fmtDate}
+          renderArticle={(text) => <Article text={text} />}
+          onPurge={() => setPurge(true)}
+          onStatClick={(newQv) => setQv(newQv)}
+        />
+      )}
 
       {purge && <PurgeModal category={active} categoryLabel={activeCat?.label || ''} onClose={() => setPurge(false)} />}
     </div>
