@@ -23,6 +23,13 @@ const BASIS_C: Record<string, string> = { broker: GREEN, tax_grade: GREEN, verif
 const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED, none: MUTED }
 const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
 
+// Tolerate both raw top-level and {ok,data}-wrapped API responses (the protective-stop endpoints return
+// raw, but the generic dispatcher may wrap — unwrap defensively so neither shape silently breaks parsing).
+const unwrapApi = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
+// The REAL failure reason is often nested in result.error (e.g. a Schwab transport error like an expired
+// refresh token) — dig there first so the operator sees the actual cause, not a generic "failed".
+const apiReason = (j: any) => j?.result?.error ?? j?.error ?? j?.reason ?? j?.message ?? j?.hint ?? 'request failed'
+
 function Metric({ label, value, color = TEXT0, title }: any) {
   return <div style={metric} title={title}><div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', fontWeight: 850, letterSpacing: '.05em' }}>{label}</div><div style={{ fontSize: 13, color, fontWeight: 900, marginTop: 3, cursor: title ? 'help' : undefined }}>{value}</div></div>
 }
@@ -80,21 +87,47 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
                      stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null,
                      advised_stop: stopOrder.advised ?? null, current_price: stopOrder.cur ?? null,
                      replace_order_id: stopOrder.replace_order_id ?? null }
-      const r = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
-      if (r?.mode === 'awaiting_approval') { setStopIntent(r.intent_id); setStopMsg(r.note || 'Code sent to Telegram + email — approve from either, or type the ticker.') }
+      const raw = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
+      const r = unwrapApi(raw)
+      if (r?.mode === 'awaiting_approval') {
+        if (!r.intent_id) { setStopMsg('⛔ Approval request returned no intent_id — cannot confirm. Check backend protective-stop endpoint.'); return }
+        setStopIntent(r.intent_id)
+        const short = String(r.intent_id).slice(0, 8)
+        const ttl = r.ttl_min ? ` · expires ${r.ttl_min}min` : ''
+        setStopMsg(`Intent ${short}${ttl} · approve by ticker or 6-digit code · one channel is enough`)
+      }
       else if (r?.mode === 'ticket') { setStopTicket(r.ticket); setStopMsg('✅ ToS ticket ready — place it exactly in thinkorswim (no trading API on this account).') }
-      else setStopMsg(`⛔ ${r?.error ?? r?.reason ?? 'blocked'}`)
+      else setStopMsg(`⛔ ${apiReason(r)}`)
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
   // STEP 2 — confirm the per-order 2FA (EITHER channel) and submit LIVE.
   const _confirmStop = async (channel: 'web' | 'telegram') => {
+    if (!stopIntent) { setStopMsg('⛔ no active stop intent — click REQUEST LIVE STOP first'); return }
     setStopBusy(true); setStopMsg(channel === 'web' ? 'confirming by ticker…' : 'confirming by code…')
     try {
       const code = channel === 'web' ? stopTk.trim().toUpperCase() : stopCode.trim()
-      const r = await fetch('/api/v2/holdings/protective-stop/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent_id: stopIntent, channel, code }) }).then(x => x.json())
-      if (r?.stage === 'submit' && r?.ok) { setStopDone(true); setStopMsg(`✅ LIVE stop placed on Schwab · order #${r.broker_order_id ?? '—'} (${r.status})`) }
-      else if (r?.stage === 'confirm' && r?.fully_approved === false && r?.ok) setStopMsg('channel confirmed — waiting on the other factor')
-      else setStopMsg(`⛔ ${r?.error ?? r?.reason ?? 'confirmation failed'}`)
+      const raw = await fetch('/api/v2/holdings/protective-stop/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent_id: stopIntent, channel, code }) }).then(x => x.json())
+      const r = unwrapApi(raw)
+      const oid = r?.broker_order_id ?? r?.order_id ?? r?.result?.broker_order_id
+      const ostatus = r?.status ?? r?.order_status ?? r?.result?.status
+      const submitted = ostatus === 'submitted' || ostatus === 'filled' || r?.submitted === true
+      // TRUE submit success — a broker order id / submitted|filled status, and ok not explicitly false.
+      if ((r?.stage === 'submit' || submitted || oid) && submitted && r?.ok !== false) {
+        setStopDone(true); setStopMsg(`✅ LIVE stop placed on Schwab · order #${oid ?? '—'} (${ostatus ?? 'submitted'})`)
+      }
+      // 2FA accepted, still waiting on the other channel
+      else if (r?.stage === 'confirm' && r?.ok && r?.fully_approved === false) {
+        setStopMsg('channel confirmed — waiting on the other factor')
+      }
+      // approval accepted but the broker submit did NOT confirm (e.g. Schwab token expired) — DO NOT claim
+      // success; show the real cause (result.error) so the operator knows exactly what to fix.
+      else if (r?.stage === 'submit' && (ostatus === 'error' || r?.ok === false)) {
+        setStopMsg(`⛔ approved, but Schwab rejected the submit: ${apiReason(r)}`)
+      }
+      else if (r?.ok && r?.fully_approved === true && !oid && !submitted) {
+        setStopMsg('✅ approval accepted, but submit result was not returned — refresh broker orders / stop monitor to verify before retrying')
+      }
+      else setStopMsg(`⛔ ${apiReason(r)}`)
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
   // FULL STOP MONITORING — the live broker stop now showing on this card, + cancel ("remove") control.
@@ -167,15 +200,16 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
               <input autoFocus value={stopTk} onChange={e => setStopTk(e.target.value.toUpperCase())} placeholder={`type ${p.symbol}`}
                 style={{ flex: 1, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${tkOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0 }} />
-              <button onClick={() => _confirmStop('web')} disabled={stopBusy || !tkOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? '#b45309' : '#334155', color: tkOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>place</button>
+              <button onClick={() => _confirmStop('web')} disabled={stopBusy || !tkOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? '#b45309' : '#334155', color: tkOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>approve + submit</button>
             </div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>② or enter the 6-digit code (Telegram / email)</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
               <input value={stopCode} onChange={e => setStopCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric"
                 style={{ flex: 1, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${codeOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0, letterSpacing: 3, ...({ fontFamily: 'monospace' } as any) }} />
-              <button onClick={() => _confirmStop('telegram')} disabled={stopBusy || !codeOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !codeOk) ? 'not-allowed' : 'pointer', background: codeOk ? '#b45309' : '#334155', color: codeOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>place</button>
+              <button onClick={() => _confirmStop('telegram')} disabled={stopBusy || !codeOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !codeOk) ? 'not-allowed' : 'pointer', background: codeOk ? '#b45309' : '#334155', color: codeOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>approve + submit</button>
             </div>
-            <div style={{ fontSize: 9.5, color: MUTED, marginTop: 8 }}>You can also tap ✅ Approve in the Telegram message. Any one is enough.</div>
+            <div style={{ fontSize: 9.5, color: DIM, marginTop: 8, fontStyle: 'italic' }}>This still requires this typed ticker or 6-digit code. No agent bypass.</div>
+            <div style={{ fontSize: 9.5, color: MUTED, marginTop: 4 }}>You can also tap ✅ Approve in the Telegram message. Any one is enough.</div>
           </div>}
 
           {/* REVIEW PHASE — request the order (Schwab requests 2FA; no-API accounts return a ticket) */}
