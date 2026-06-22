@@ -93,15 +93,29 @@ def _finance_rubric(blob: str) -> str:
 _SUB_FIELDS = ("retirement_relevance", "finance_actionability", "risk_alignment")
 
 
+def _options_rubric(task: str, blob: str) -> str:
+    if "options" not in (task or "").lower():
+        return ""
+    return (
+        "\nOPTIONS PROPOSAL RUBRIC (covered calls / CSPs / spreads — score LOWER and lean 'block' if wrong):\n"
+        "• Covered call: confirm the investor OWNS enough shares (100 per contract); reject if strike is ITM "
+        "without acknowledging assignment risk; thin premium (<$0.10) on wide spreads is a block unless OI/volume OK.\n"
+        "• Income vs upside: capped gain above strike is intentional — do NOT block solely for 'limited upside'; "
+        "DO block if premium is trivial vs stock risk or POP is overstated.\n"
+        "• Account fit: Roth vs taxable matters for assignment/tax — flag if account context is missing on IRA trades.\n"
+        "• Liquidity: low OI (<50) or missing chain (BS estimate) requires 'confirm live quotes' — lean block if sizing is large.\n"
+        "• POP/edge: POP <55% on income trades or edge <62 without fallback note is weak; assignment within 14 DTE needs explicit warning.\n"
+    )
+
+
 def _prompt(content: str, context: str, task: str) -> str:
-    rubric = _finance_rubric(f"{content} {context} {task}")
+    rubric = _options_rubric(task, content) or _finance_rubric(f"{content} {context} {task}")
     # Finance-substantive items get three extra sub-scores; generic items keep the light 4-field schema.
     if rubric:
         extra = (
-            "\nAlso score each 0-10: retirement_relevance (bearing on Roth/MAPT/Medicare/IRMAA/SSDI/estate "
-            "planning for THIS investor), finance_actionability (a concrete sound next step — NAV signal, "
-            "protection review, conversion timing — vs vague commentary), risk_alignment (respects capital "
-            "preservation + the stated risk budget).\n")
+            "\nAlso score each 0-10: retirement_relevance (Roth/IRA income sleeve fit for THIS trade), "
+            "finance_actionability (concrete approve/pass/resize action — not vague 'manual review'), "
+            "risk_alignment (assignment + stock downside + liquidity vs premium collected).\n")
         schema = ('{"score": 0.0-10.0, "decision": "approve" | "block", "confidence": 0.0-1.0, '
                   '"reasoning": "<=25 words", "retirement_relevance": 0.0-10.0, '
                   '"finance_actionability": 0.0-10.0, "risk_alignment": 0.0-10.0}')
