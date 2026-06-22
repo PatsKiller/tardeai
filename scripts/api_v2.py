@@ -5971,11 +5971,65 @@ def _health_agent_dashboard():
                 "note": "Health Agent has not run yet. Run scripts/health_agent.py (cron-scheduled).",
                 "category_scores": {}, "findings": [], "trends": []}
     findings = snap.get("findings") or []
+
+    # Enrich each finding with WHAT WAS DONE + WHO + WHEN (read-time, reflects latest activity).
+    # Detection = health_agent @ snapshot time; remediation = escalation handler / coder dispatch.
+    _detected_at = snap.get("captured_at")
+    _interv, _coder, _queued = {}, {}, {}
+    try:
+        for r in (_db_query("SELECT component, status, diagnosis, solution, resolved_at, created_at "
+                            "FROM claude_interventions WHERE component LIKE 'health:%' "
+                            "AND created_at > now() - interval '48 hours' ORDER BY created_at DESC") or []):
+            _interv.setdefault(r.get("component"), r)  # newest first → first wins
+    except Exception:
+        pass
+    try:
+        for r in (_db_query("SELECT component, backend, outcome, pr_url, created_at "
+                            "FROM coder_dispatch_audit WHERE component LIKE 'health:%' "
+                            "AND created_at > now() - interval '7 days' ORDER BY created_at DESC") or []):
+            _coder.setdefault(r.get("component"), r)
+    except Exception:
+        pass
+    try:
+        import json as _j
+        _qf = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+        for it in (_j.loads(_qf.read_text()) if _qf.exists() else []):
+            c = it.get("component", "")
+            if c.startswith("health:"):
+                _queued[c] = it
+    except Exception:
+        pass
+
+    for f in findings:
+        key = f"health:{f.get('category')}:{f.get('type')}"
+        f["detected_by"] = "health_agent"
+        f["detected_at"] = _detected_at
+        if key in _coder:
+            r = _coder[key]
+            f["remediation"] = {"status": r.get("outcome"), "by": f"coder:{r.get('backend')}",
+                                "at": _json_clean(r.get("created_at")), "pr_url": r.get("pr_url"),
+                                "lane": "code_fix"}
+        elif key in _interv:
+            r = _interv[key]
+            f["remediation"] = {"status": r.get("status"), "by": "escalation_handler",
+                                "at": _json_clean(r.get("resolved_at") or r.get("created_at")),
+                                "detail": (r.get("solution") or r.get("diagnosis") or "")[:300],
+                                "lane": "retry_or_llm"}
+        elif key in _queued:
+            it = _queued[key]
+            f["remediation"] = {"status": "queued", "by": "health_agent",
+                                "detail": it.get("retry_cmd") or ("code-fix queued" if it.get("needs_code_fix") else "awaiting handler"),
+                                "lane": "code_fix" if it.get("needs_code_fix") else ("retry" if it.get("retry_cmd") else "review")}
+        else:
+            f["remediation"] = {"status": "detected", "by": "health_agent", "at": _detected_at,
+                                "detail": "not yet routed", "lane": f.get("action_type", "review")}
+
     snap["counts"] = {
         "critical": sum(1 for f in findings if f.get("severity") == "critical"),
         "warning": sum(1 for f in findings if f.get("severity") == "warning"),
         "info": sum(1 for f in findings if f.get("severity") == "info"),
         "total": len(findings),
+        "actionable": sum(1 for f in findings if f.get("actionable")),
     }
     return snap
 
