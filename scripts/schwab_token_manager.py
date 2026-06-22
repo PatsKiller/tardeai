@@ -48,6 +48,77 @@ def _conn():
     return _get_conn()
 
 
+# ── REFRESH SERIALIZATION (operator 2026-06-21) ──────────────────────────────────────────────────────
+# Schwab uses ROTATING refresh tokens: each access-token refresh mints a NEW refresh token and invalidates
+# the prior one. Multiple processes share ONE token (server + crons + watchers), and they all woke on the
+# same */15 cadence — on 2026-06-16 three refresh tokens were minted within <1s, a classic concurrent-refresh
+# race. When a second process refreshes with a now-superseded token, Schwab's reuse-detection revokes the
+# WHOLE family (invalid_grant) — exactly what killed the token. Fix: a cross-process Postgres advisory lock
+# so only ONE process refreshes at a time; the others wait, then re-read the freshly-rotated token instead
+# of racing. Best-effort + self-freeing (statement/idle timeouts) so it can NEVER hang a read.
+import threading as _threading
+_REFRESH_LOCK_TL = _threading.local()
+
+
+def _refresh_lock_key(broker, environment):
+    h = hashlib.sha256(f"schwab_token_refresh:{broker}:{environment}".encode()).digest()
+    return int.from_bytes(h[:8], "big") & 0x7FFFFFFFFFFFFFFF   # stable positive bigint
+
+
+def _open_lock_conn():
+    import psycopg2
+    c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
+                         dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                         password=os.getenv("DB_PASSWORD", ""), connect_timeout=10)
+    c.autocommit = True
+    try:
+        cur = c.cursor()
+        cur.execute("SET statement_timeout = 20000")     # never block a read more than 20s waiting for the lock
+        cur.execute("SET idle_session_timeout = 60000")  # PG14+: auto-free a leaked lock after 60s idle
+    except Exception:
+        pass
+    return c
+
+
+def _acquire_refresh_lock(broker="schwab", environment="live"):
+    """Take the cross-process refresh lock on a DEDICATED connection. Reentrant: releases any prior lock first
+    so a leak from a failed refresh can't accumulate. Best-effort — on timeout/error, proceed WITHOUT the lock
+    rather than hang (degrades to old behavior). Held across the schwab-py refresh; released in write_oauth_token."""
+    _release_refresh_lock()
+    c = None
+    try:
+        key = _refresh_lock_key(broker, environment)
+        c = _open_lock_conn()
+        cur = c.cursor()
+        cur.execute("SELECT pg_advisory_lock(%s)", (key,)); cur.fetchone()
+        _REFRESH_LOCK_TL.conn = c
+        _REFRESH_LOCK_TL.key = key
+        return True
+    except Exception:
+        try:
+            if c is not None:
+                c.close()
+        except Exception:
+            pass
+        return False
+
+
+def _release_refresh_lock():
+    c = getattr(_REFRESH_LOCK_TL, "conn", None)
+    if c is None:
+        return
+    try:
+        cur = c.cursor(); cur.execute("SELECT pg_advisory_unlock(%s)", (getattr(_REFRESH_LOCK_TL, "key", None),)); cur.fetchone()
+    except Exception:
+        pass
+    try:
+        c.close()
+    except Exception:
+        pass
+    _REFRESH_LOCK_TL.conn = None
+    _REFRESH_LOCK_TL.key = None
+
+
 # ── encryption (key only in the 0600 secrets file; never DB/Drive/logs/UI) ────────
 def _enc_key():
     import broker_secrets
@@ -152,12 +223,30 @@ def read_oauth_token(account_key, broker="schwab", environment="live"):
     {creation_timestamp, token:{...}} (decrypted in-memory) or None. The manager stays system-of-record;
     the wrapper only borrows the live token, never stores it."""
     conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, updated_at
+    cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, updated_at, degraded
                    FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
                 (account_key, broker, environment))
     row = cur.fetchone()
     if not row or not row[1]:
+        _release_refresh_lock()
         return None
+    # Rotating-refresh-token race guard: if the access token is still fresh, NO refresh is coming → don't
+    # hold the lock. If it's stale/expiring, a refresh is imminent → take the cross-process lock so only one
+    # process refreshes; then RE-READ so if a peer just rotated the token while we waited, we use the new one
+    # (and schwab-py sees a fresh access token → skips its own refresh). Released in write_oauth_token.
+    # Skip the lock when the token is already degraded (a known-dead token won't refresh — don't stall peers).
+    fresh = bool(row[0] and row[2] and row[2] > _now() + timedelta(seconds=ACCESS_REFRESH_MARGIN_S))
+    if fresh or row[4]:
+        _release_refresh_lock()
+    else:
+        if _acquire_refresh_lock(broker, environment):
+            cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, updated_at, degraded
+                           FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
+                        (account_key, broker, environment))
+            row = cur.fetchone()
+            if not row or not row[1]:
+                _release_refresh_lock()
+                return None
     inner = {"token_type": "Bearer", "refresh_token": _dec(row[1])}
     if row[0]:
         inner["access_token"] = _dec(row[0])
@@ -181,8 +270,12 @@ def write_oauth_token(token, account_key, broker="schwab", environment="live"):
         rt = (prior.get("token") or {}).get("refresh_token")
     aexp = inner.get("expires_at")
     a_exp_dt = datetime.fromtimestamp(int(aexp), tz=timezone.utc) if aexp else None
-    return seed_token(account_key, refresh_token=rt, access_token=inner.get("access_token"),
-                      access_expires_at=a_exp_dt, broker=broker, environment=environment, rotated=True)
+    try:
+        return seed_token(account_key, refresh_token=rt, access_token=inner.get("access_token"),
+                          access_expires_at=a_exp_dt, broker=broker, environment=environment, rotated=True)
+    finally:
+        # refresh persisted (or attempted) → release the cross-process refresh lock taken in read_oauth_token
+        _release_refresh_lock()
 
 
 def canonical_token_key(broker="schwab", environment="live"):
