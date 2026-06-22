@@ -18,6 +18,7 @@ const HUBS = [
   { to: '/rotation', label: 'Rotation' },
   { to: '/rec-intel', label: 'Rec Intelligence' },
   { to: '/advisor-changes', label: 'Advisor Changes' },
+  { to: '/health', label: 'Health' },
   { to: '/system', label: 'System' },
 ]
 

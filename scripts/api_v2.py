@@ -5951,6 +5951,100 @@ def _data_product_health():
     }
 
 
+def _health_agent_dashboard():
+    """GET /api/v2/health — centralized Health Agent snapshot (0-100 score + category breakdown +
+    findings + trends). Reads the cron-computed snapshot (health_agent.py) so the request path stays
+    fast; falls back to the DB snapshot table, then to a live note if neither exists yet."""
+    snap = _load_json(STATE_DIR / "health_agent_status.json")
+    if not snap:
+        row = _db_query("SELECT overall_score, status, category_scores, findings, mode, captured_at "
+                        "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 1", fetch="one")
+        if row:
+            snap = {
+                "overall_score": row.get("overall_score"), "status": row.get("status"),
+                "category_scores": row.get("category_scores") or {},
+                "findings": row.get("findings") or [], "trends": [],
+                "mode": row.get("mode"), "captured_at": _json_clean(row.get("captured_at")),
+            }
+    if not snap:
+        return {"overall_score": None, "status": "unknown",
+                "note": "Health Agent has not run yet. Run scripts/health_agent.py (cron-scheduled).",
+                "category_scores": {}, "findings": [], "trends": []}
+    findings = snap.get("findings") or []
+    snap["counts"] = {
+        "critical": sum(1 for f in findings if f.get("severity") == "critical"),
+        "warning": sum(1 for f in findings if f.get("severity") == "warning"),
+        "info": sum(1 for f in findings if f.get("severity") == "info"),
+        "total": len(findings),
+    }
+    return snap
+
+
+def _health_agent_history():
+    """GET /api/v2/health/history — recent Health Agent snapshots for the trend sparkline."""
+    rows = _db_query("SELECT captured_at, overall_score, status, category_scores "
+                     "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 50") or []
+    hist = [{
+        "captured_at": _json_clean(r.get("captured_at")),
+        "overall_score": r.get("overall_score"),
+        "status": r.get("status"),
+        "category_scores": r.get("category_scores") or {},
+    } for r in rows]
+    hist.reverse()  # oldest→newest for charting
+    return {"history": hist, "count": len(hist)}
+
+
+def _health_coder_status():
+    """GET /api/v2/health/coders — multi-coder auto-fix backend availability + recent dispatches."""
+    import urllib.request as _ur
+    reg = _load_json(PROJECT_ROOT / "config" / "coder_backends.json") or {}
+    backends = []
+    for b in sorted(reg.get("backends", []), key=lambda x: x.get("priority", 999)):
+        avail = False
+        if not b.get("enabled", True):
+            avail = False
+        elif b.get("kind") == "cli_agent":
+            _bin = b.get("bin", "")
+            avail = bool(_bin) and os.path.isfile(_bin) and os.access(_bin, os.X_OK)
+        elif b.get("kind") == "http_diff":
+            try:
+                with _ur.urlopen(b.get("base_url", "").rstrip("/") + "/models", timeout=2) as _r:
+                    avail = _r.status == 200
+            except Exception:
+                avail = False
+        backends.append({
+            "name": b.get("name"), "display": b.get("display"), "kind": b.get("kind"),
+            "priority": b.get("priority"), "available": avail,
+            "target": b.get("bin") or b.get("base_url"), "best_for": b.get("best_for", []),
+            "notes": b.get("notes", ""), "install": b.get("install", ""),
+            "timeout_sec": b.get("timeout_sec"),
+        })
+    recent = _db_query("SELECT created_at, component, backend, outcome, pr_url, kind "
+                       "FROM coder_dispatch_audit ORDER BY created_at DESC LIMIT 20") or []
+    # Routing map (problem kind -> ordered backend preference). Resolve each kind to the FIRST
+    # available backend so the UI can confirm "what coder actually handles what".
+    _avail = {b["name"]: b["available"] for b in backends}
+    _disp = {b["name"]: b["display"] for b in backends}
+    routing = {}
+    for kind, order in (reg.get("routing") or {}).items():
+        if kind.startswith("_") and kind != "_default":
+            continue
+        chosen = next((n for n in order if _avail.get(n)), None)
+        routing[kind] = {
+            "preference": order,
+            "active": _disp.get(chosen) if chosen else None,
+            "active_name": chosen,
+        }
+    return {
+        "mode_apply": reg.get("_apply_model", "worktree_test_pr"),
+        "strategy": reg.get("_dispatch_strategy", "router_pick_one"),
+        "backends": backends,
+        "routing": routing,
+        "available_count": sum(1 for b in backends if b["available"]),
+        "recent_dispatches": [{k: _json_clean(v) for k, v in r.items()} for r in recent],
+    }
+
+
 def _llm_health():
     """GET /api/v2/llm/health — LLM router health + budget status."""
     try:
@@ -19456,6 +19550,9 @@ def _rotation_summary(force=False):
 
 
 ROUTES = {
+    "/api/v2/health": lambda: _health_agent_dashboard(),
+    "/api/v2/health/history": lambda: _health_agent_history(),
+    "/api/v2/health/coders": lambda: _health_coder_status(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,

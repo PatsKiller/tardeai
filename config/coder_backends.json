@@ -1,0 +1,114 @@
+{
+  "_comment": "Coder backend registry for coder_dispatch.py. EVERY backend is wired here even if its CLI is not installed yet — set enabled:true and drop the binary in, and it activates automatically (availability is detected at runtime). See docs/HEALTH_AGENT.md. No hardcoded values in code: all backends, paths, priorities and routing live here. Override per-key via config_documents table key 'coder_backends'.",
+  "_apply_model": "worktree_test_pr",
+  "_dispatch_strategy": "router_pick_one",
+  "defaults": {
+    "timeout_sec": 900,
+    "verify_cmd": "",
+    "test_cmd": "",
+    "base_branch": "main"
+  },
+  "backends": [
+    {
+      "name": "claude_code",
+      "display": "Claude Code",
+      "kind": "cli_agent",
+      "bin": "/home/johnclaw/.local/bin/claude",
+      "args_template": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--output-format", "text"],
+      "cwd_is_worktree": true,
+      "enabled": true,
+      "priority": 10,
+      "best_for": ["multi_file", "code", "schema", "refactor", "default"],
+      "timeout_sec": 1200,
+      "notes": "Strongest at multi-file repo edits. Already used by claude_escalation_handler tier-3."
+    },
+    {
+      "name": "cursor_agent",
+      "display": "Cursor Agent",
+      "kind": "cli_agent",
+      "bin": "/home/johnclaw/.local/bin/cursor-agent",
+      "args_template": ["-p", "{prompt}", "--output-format", "text"],
+      "cwd_is_worktree": true,
+      "enabled": true,
+      "priority": 20,
+      "best_for": ["code", "single_file", "ui"],
+      "timeout_sec": 900,
+      "notes": "Cursor headless agent. Edits files in the worktree cwd."
+    },
+    {
+      "name": "grok_cli",
+      "display": "Grok CLI",
+      "kind": "cli_agent",
+      "bin": "/home/johnclaw/.grok/bin/grok",
+      "args_template": ["--no-interactive", "{prompt}"],
+      "cwd_is_worktree": true,
+      "enabled": true,
+      "priority": 30,
+      "best_for": ["code", "single_file", "quick"],
+      "timeout_sec": 900,
+      "notes": "xAI Grok agent CLI. Free OIDC auth lane."
+    },
+    {
+      "name": "chatgpt_codex_proxy",
+      "display": "ChatGPT / Codex (proxy :8646)",
+      "kind": "http_diff",
+      "base_url": "http://127.0.0.1:8646/v1",
+      "model": "gpt-5.4",
+      "cwd_is_worktree": false,
+      "enabled": true,
+      "priority": 40,
+      "best_for": ["single_file", "patch", "quick"],
+      "timeout_sec": 300,
+      "notes": "Free ChatGPT/Codex OAuth proxy. Returns a unified diff which the dispatcher git-applies in the worktree."
+    },
+    {
+      "name": "grok_proxy",
+      "display": "Grok (proxy :8645)",
+      "kind": "http_diff",
+      "base_url": "http://127.0.0.1:8645/v1",
+      "model": "grok-4",
+      "cwd_is_worktree": false,
+      "enabled": true,
+      "priority": 50,
+      "best_for": ["single_file", "patch"],
+      "timeout_sec": 300,
+      "notes": "Free Grok OAuth proxy. Returns a unified diff which the dispatcher git-applies."
+    },
+    {
+      "name": "codex_cli",
+      "display": "OpenAI Codex CLI",
+      "kind": "cli_agent",
+      "bin": "/home/johnclaw/.local/bin/codex",
+      "args_template": ["exec", "--full-auto", "{prompt}"],
+      "cwd_is_worktree": true,
+      "enabled": true,
+      "priority": 60,
+      "best_for": ["code", "single_file"],
+      "timeout_sec": 900,
+      "notes": "DORMANT — codex CLI not installed yet. OpenAI's standalone Codex agent; good for focused single/multi-file code edits.",
+      "install": "npm i -g @openai/codex  (then it activates automatically)"
+    },
+    {
+      "name": "aider",
+      "display": "Aider",
+      "kind": "cli_agent",
+      "bin": "/home/johnclaw/.local/bin/aider",
+      "args_template": ["--yes", "--no-auto-commits", "--message", "{prompt}"],
+      "cwd_is_worktree": true,
+      "enabled": true,
+      "priority": 70,
+      "best_for": ["code", "single_file"],
+      "timeout_sec": 900,
+      "notes": "DORMANT — aider not installed yet. Pair-programming CLI; strong at incremental single-file diffs.",
+      "install": "pipx install aider-chat  (then it activates automatically)"
+    }
+  ],
+  "routing": {
+    "_comment": "Map a problem 'kind' to an ordered preference of backend names. The router walks the list and picks the first AVAILABLE + enabled backend. Falls back to '_default' then to global priority order.",
+    "_default": ["claude_code", "cursor_agent", "grok_cli", "chatgpt_codex_proxy", "grok_proxy", "codex_cli", "aider"],
+    "multi_file": ["claude_code", "cursor_agent", "codex_cli", "aider"],
+    "single_file": ["cursor_agent", "grok_cli", "chatgpt_codex_proxy", "grok_proxy", "claude_code"],
+    "schema": ["claude_code", "cursor_agent"],
+    "ui": ["cursor_agent", "claude_code"]
+  }
+}
