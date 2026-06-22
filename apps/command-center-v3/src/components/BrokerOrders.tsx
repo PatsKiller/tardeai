@@ -203,6 +203,13 @@ function PilotConsole() {
   const [execMsg, setExecMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmTicker, setConfirmTicker] = useState('')  // type-the-ticker = fat-finger confirm + submit
+  // Schwab OAuth token health — surface re-auth UP FRONT (the freshness timestamp can read healthy while
+  // Schwab has revoked the token server-side; preflight catches it too, but this warns before any attempt).
+  const [tokenHealth, setTokenHealth] = useState<any>(null)
+  const needsReauth = tokenHealth?.needs_reauth === true
+  useEffect(() => {
+    fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth((j as any)?.data ?? j)).catch(() => {})
+  }, [])
   const post = async (path: string, body: any) => {
     setBusy(true)
     try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json(); return (j as any)?.data ?? j }
@@ -230,6 +237,13 @@ function PilotConsole() {
           : <button onClick={() => { setArmModal('arm'); setArmPhrase(''); setArmMsg('') }} style={btn('#1b5e20')}>○ ARM…</button>}
         <button onClick={() => refetch()} style={btn('#333')}>refresh</button>
       </div>
+
+      {/* SCHWAB TOKEN HEALTH — re-auth needed banner (shown up front; every live submit would be rejected) */}
+      {needsReauth && <div style={{ marginTop: 10, padding: 10, background: '#ef535022', border: '1px solid #ef5350', borderRadius: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#ef5350' }}>⚠ Schwab re-auth needed — orders will be rejected</div>
+        <div style={{ fontSize: 9.5, color: T.text, marginTop: 4, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} The refresh token must be renewed by a manual browser login before any live order can submit. Run:</div>
+        <div style={{ marginTop: 5, padding: '5px 8px', borderRadius: 4, background: '#0d0d0d', color: '#e0e0e0', fontSize: 10.5, ...({ fontFamily: 'monospace' } as any) }}>{tokenHealth?.reauth_command || 'python3 scripts/schwab_token_manager.py reauth-url schwab_taxable'}</div>
+      </div>}
       {s.pilot_armed_until && s.pilot_session_active && (
         <div style={{ fontSize: 9, color: '#66bb6a', marginTop: 4 }}>session armed until {new Date(s.pilot_armed_until).toLocaleTimeString()} · auto-expires · any restart disarms</div>
       )}
@@ -342,7 +356,8 @@ function PilotConsole() {
               placeholder={`type ${symbol} to submit`}
               style={{ ...inp, width: 150, fontSize: 13, padding: '8px 10px',
                 borderColor: confirmTicker === symbol ? '#66bb6a' : T.border }} />
-            <button disabled={busy || !armed || confirmTicker !== symbol}
+            <button disabled={busy || !armed || confirmTicker !== symbol || needsReauth}
+              title={needsReauth ? 'Schwab re-auth required before placing a live order' : undefined}
               onClick={async () => {
                 setBusy(true); setExecMsg('submitting…')
                 try {
@@ -365,8 +380,8 @@ function PilotConsole() {
                   setConfirmTicker(''); refetch()
                 } finally { setBusy(false) }
               }}
-              style={{ ...btn((armed && confirmTicker === symbol) ? T.buy : '#222', (armed && confirmTicker === symbol) ? '#fff' : '#555'), padding: '8px 18px', fontWeight: 800 }}>
-              {busy ? 'SUBMITTING…' : 'SUBMIT ORDER'}</button>
+              style={{ ...btn((armed && confirmTicker === symbol && !needsReauth) ? T.buy : '#222', (armed && confirmTicker === symbol && !needsReauth) ? '#fff' : '#555'), padding: '8px 18px', fontWeight: 800 }}>
+              {busy ? 'SUBMITTING…' : needsReauth ? 'RE-AUTH NEEDED' : 'SUBMIT ORDER'}</button>
             <span style={{ fontSize: 9, color: T.dim }}>type the ticker → SUBMIT = sends to Schwab (server still enforces the canary envelope + caps)</span>
           </div>
           {execMsg && <div style={{ fontSize: 10, color: execMsg.startsWith('✅') ? '#66bb6a' : execMsg.startsWith('⛔') ? '#ef5350' : T.text, marginTop: 7, ...mono }}>{execMsg}</div>}
