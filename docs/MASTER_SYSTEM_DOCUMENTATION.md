@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-06-02 (Doc consolidation audit — counts validated against live DB/crontab/config: 426 tables+23 views, 184 crons, 26 strategies; v3 dashboard canonical; qwen3:14b chat retired; Phases 188–198 protection/learning loop. Prior: 2026-05-31 master rewrite)
+**Document version:** 2026-06-22 (A1A consolidation — scale figures via `docs/LIVE_SYSTEM_FACTS.md`; regenerate with `scripts/generate_system_facts.py`. Prior: 2026-06-02 audit)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 
@@ -41,7 +41,7 @@ Trade AI v12 is an automated trading intelligence and portfolio management platf
 
 - **Data ingestion** from 15+ external sources (market data, news, SEC filings, transcripts, social, economic indicators)
 - **31-stage pipeline** organized into 7 groups running pre-market through overnight
-- **26 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
+- **23 dynamically loaded strategies** (YAML-driven, multi-assignment capable — see `config/strategies/*.yaml`; live count: `docs/LIVE_SYSTEM_FACTS.md`)
 - **LLM-assisted classification** with a local-first model routing (gemma3:12b primary chat, gemma3:4b fallback, gemma3:27b overnight batch; qwen3-embedding:8b for embeddings). **qwen3:14b (chat) is disabled + uninstalled.**
 - **6 AI agents** accessible via Telegram/WhatsApp (Maria, Steph, Alex, Aegis, Risk Agent, Tax Agent)
 - **Iris backend agent** for content hygiene + Scalp Critic for incubator gating
@@ -54,24 +54,21 @@ The platform manages a portfolio (see dashboard for current value) (taxable + IR
 
 ### System Scale
 
-| Metric | Value |
-|--------|-------|
-| Python scripts | 401 |
-| Cron jobs | 184 (flock-protected, weekday/weekend/monthly schedules) — *validated 2026-06-02* |
-| API endpoints | 280+ (api_v2.py + portfolio_server.py) |
-| Database tables | 426 tables + 23 views (public schema) — *validated 2026-06-02* |
-| SQL migrations | 37 |
-| Strategies | 26 (config/strategies/*.yaml) — *validated 2026-06-02* |
-| Strategies | 26 (YAML-driven, multi-assignment) |
-| Frontend | Command Center **v3** — 11 hubs / ~37–39 tabs (canonical); v2 63 pages (frozen) |
-| Nav items | 44 across 8 groups |
+> **Live counts:** `docs/LIVE_SYSTEM_FACTS.md` — regenerate via `scripts/generate_system_facts.py`. Do not patch hard-coded numbers here.
+
+| Metric | Live key / notes |
+|--------|------------------|
+| Python scripts | `codebase.python_script_count` |
+| Cron jobs | `codebase.cron_job_count` (flock-protected schedules) |
+| API endpoints | 280+ (`api_v2.py` + `portfolio_server.py`) |
+| Database tables | `database.table_count` (public schema) |
+| SQL migrations | `codebase.sql_migration_count` |
+| Strategies | `codebase.strategy_count` (`config/strategies/*.yaml`) |
+| Frontend | Command Center **v3** — 11 hubs / ~37–39 tabs (canonical); v2 frozen |
 | Agents | 6 conversational (Maria, Steph, Alex, Aegis, Risk, Tax) + 2 backend (Iris, Scalp Critic) |
 | External data sources | 15+ |
-| Research topics | 17 (DB-driven, LLM-curated) |
-| News articles ingested | 3,022+ |
-| Social posts ingested | 2,248+ |
-| Incubator symbols | 1,139 active |
-| Telegram alert scripts | 56 (routed through central alert_dispatcher) |
+| Research topics | DB-driven (`topic_monitor`) |
+| Health scoring | `scripts/health_agent.py` — 0–100 score, 5 categories |
 | LLM intelligence sections | 5 (generated daily via gemma3:12b) |
 
 ---
@@ -169,7 +166,7 @@ Trade AI v12 has 6 distinct service boundaries:
 ## 4. Database Layer
 
 - **Engine:** PostgreSQL 15
-- **Table count:** 330
+- **Table count:** see `database.table_count` in `docs/LIVE_SYSTEM_FACTS.md` (regenerate with `generate_system_facts.py`)
 - **Connection:** `localhost:5432`, database `trade_ai`, user `trade_ai`
 - **Backup:** 7-day rolling `pg_dump` to `backups/db/trade_ai_*.sql.gz`
 

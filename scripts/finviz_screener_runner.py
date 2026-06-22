@@ -9,12 +9,47 @@ Usage:
     python3 scripts/finviz_screener_runner.py --screener dividend_growth [--json]
     python3 scripts/finviz_screener_runner.py --dry-run [--json]
 """
-import json, os, re, sys, time, urllib.request
+import json, os, re, sys, time, urllib.request, urllib.error
 from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+# GLOBAL Finviz rate limiter (cross-process). The screener runner previously bypassed this and
+# hammered Finviz unthrottled — 29 screeners × (CSV + HTML fallback) tripped HTTP 429 storms that
+# collapsed the daily universe to ~40-70 symbols → 0 GO/A+ scans → 0 signals. Fail-open if missing.
+try:
+    from finviz_throttle import acquire as _fv_acquire, cooldown as _fv_cooldown
+except Exception:
+    def _fv_acquire(*a, **k): return 0.0
+    def _fv_cooldown(*a, **k): pass
+
+
+class _RateLimited(Exception):
+    """Raised on HTTP 429 after a global cooldown was recorded — caller must NOT retry/fall back."""
+
+
+def _http_get(url: str, headers: dict, timeout: int = 15) -> str:
+    """GET through the global Finviz throttle. Spaces every request across all processes; on HTTP 429
+    records a global cooldown (so EVERY Finviz consumer backs off) and raises _RateLimited."""
+    _fv_acquire()  # blocks until a global slot is free, honoring any active cooldown
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            retry_after = None
+            try:
+                _ra = e.headers.get("Retry-After") if e.headers else None
+                retry_after = float(_ra) if _ra else None
+            except (TypeError, ValueError):
+                retry_after = None
+            _fv_cooldown(retry_after)  # default 60s — applies to all Finviz consumers
+            raise _RateLimited() from e
+        raise
 
 
 def _get_conn():
@@ -34,6 +69,7 @@ def _get_finviz_cookie():
 def _fetch_screener_tickers(url: str, cookie: str) -> list:
     """Fetch tickers from a Finviz screener URL. Returns list of ticker strings."""
     tickers = []
+    rate_limited = False
     try:
         # Convert to export URL for CSV download
         export_url = url.replace("/screener.ashx?", "/export?").replace("elite.finviz.com", "elite.finviz.com")
@@ -45,34 +81,36 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
             "Cookie": cookie,
             "Referer": "https://elite.finviz.com/screener.ashx",
         }
-        req = urllib.request.Request(export_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
+        content = _http_get(export_url, headers)
 
-            # CSV format: first column is "No.", second is "Ticker"
-            lines = content.strip().split("\n")
-            if len(lines) > 1:
-                for line in lines[1:]:  # Skip header
-                    parts = line.split(",")
-                    if len(parts) >= 2:
-                        ticker = parts[1].strip().strip('"')
-                        if re.match(r'^[A-Z]{1,6}$', ticker):
-                            tickers.append(ticker)
+        # CSV format: first column is "No.", second is "Ticker"
+        lines = content.strip().split("\n")
+        if len(lines) > 1:
+            for line in lines[1:]:  # Skip header
+                parts = line.split(",")
+                if len(parts) >= 2:
+                    ticker = parts[1].strip().strip('"')
+                    if re.match(r'^[A-Z]{1,6}$', ticker):
+                        tickers.append(ticker)
+    except _RateLimited:
+        rate_limited = True
+        print("  [screener] Fetch error: HTTP 429 — global cooldown set, skipping HTML fallback")
     except Exception as e:
         print(f"  [screener] Fetch error: {e}")
 
-    # Fallback: try to scrape HTML if CSV fails
-    if not tickers:
+    # Fallback: scrape HTML only if the CSV genuinely failed (NOT on 429 — a fallback request would
+    # just hammer the rate limit again and prolong the cooldown).
+    if not tickers and not rate_limited:
         try:
-            req = urllib.request.Request(url, headers={
+            html = _http_get(url, {
                 "User-Agent": "Mozilla/5.0",
                 "Cookie": cookie if cookie else "",
             })
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                html = resp.read().decode("utf-8", errors="replace")
-                # Extract tickers from screener HTML
-                ticker_pattern = re.findall(r'quote\.ashx\?t=([A-Z]{1,6})', html)
-                tickers = list(dict.fromkeys(ticker_pattern))  # dedup preserving order
+            # Extract tickers from screener HTML
+            ticker_pattern = re.findall(r'quote\.ashx\?t=([A-Z]{1,6})', html)
+            tickers = list(dict.fromkeys(ticker_pattern))  # dedup preserving order
+        except _RateLimited:
+            print("  [screener] HTML fallback skipped — HTTP 429 (global cooldown set)")
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 

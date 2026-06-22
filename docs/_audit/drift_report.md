@@ -1,4 +1,22 @@
-# Documentation Drift Report — 2026-06-02
+# Documentation Drift Report
+
+## 2026-06-22 — A1A consolidation (live-facts pointers)
+
+**Policy change:** Canonical active docs no longer hard-code scale counts. Use `docs/LIVE_SYSTEM_FACTS.md`
++ `scripts/generate_system_facts.py`. Drift detector tightened (no CHANGELOG/_archive scans; fewer false positives).
+
+| Prior stale claim | Resolution |
+|---|---|
+| 330–426 tables in MASTER/CHEAT_SHEET/COST_MODEL | → `database.table_count` pointer |
+| 184–306 crons | → `codebase.cron_job_count` pointer |
+| 26 vs 23 strategies | → 23 live; pointer in MASTER + EXECUTIVE |
+| 401 vs 989 Python scripts | → `codebase.python_script_count` pointer |
+
+Closeout: `docs/project/DOCS_CONSOLIDATION_2026_06_22.md`
+
+---
+
+## 2026-06-02 (original audit)
 
 Doc claims vs **live** system (validated read-only). Source-of-truth commands in parentheses.
 

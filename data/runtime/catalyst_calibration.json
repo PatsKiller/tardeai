@@ -1,73 +1,129 @@
 {
-  "updated_at": "2026-06-08T13:57:41.630786+00:00",
+  "updated_at": "2026-06-22T09:30:03.261637+00:00",
   "settle_days": 2,
   "lookback_days": 120,
   "min_samples": 10,
-  "total_settled_catalysts": 4529,
-  "dropped_as_data_error": 219,
-  "credible_samples": 4310,
+  "total_settled_catalysts": 6713,
+  "dropped_as_data_error": 244,
+  "credible_samples": 6469,
   "by_type": {
     "other": {
-      "samples": 3945,
-      "hit_rate": 0.26,
-      "avg_abs_move_pct": 2.68,
-      "avg_move_pct": 0.02,
-      "weight_multiplier": 0.76,
+      "samples": 5479,
+      "hit_rate": 0.27,
+      "avg_abs_move_pct": 2.54,
+      "avg_move_pct": -0.21,
+      "weight_multiplier": 0.77,
       "trusted": true
     },
     "analyst_upgrade": {
-      "samples": 134,
-      "hit_rate": 0.239,
-      "avg_abs_move_pct": 2.45,
-      "avg_move_pct": 0.7,
-      "weight_multiplier": 0.739,
+      "samples": 282,
+      "hit_rate": 0.309,
+      "avg_abs_move_pct": 2.13,
+      "avg_move_pct": 0.12,
+      "weight_multiplier": 0.809,
+      "trusted": true
+    },
+    "news_momentum": {
+      "samples": 185,
+      "hit_rate": 0.357,
+      "avg_abs_move_pct": 2.19,
+      "avg_move_pct": -0.96,
+      "weight_multiplier": 0.857,
       "trusted": true
     },
     "merger_acquisition": {
-      "samples": 73,
-      "hit_rate": 0.26,
-      "avg_abs_move_pct": 3.47,
-      "avg_move_pct": 1.4,
-      "weight_multiplier": 0.76,
-      "trusted": true
-    },
-    "earnings_beat": {
-      "samples": 60,
-      "hit_rate": 0.367,
-      "avg_abs_move_pct": 5.13,
-      "avg_move_pct": 2.66,
-      "weight_multiplier": 0.867,
+      "samples": 137,
+      "hit_rate": 0.35,
+      "avg_abs_move_pct": 2.98,
+      "avg_move_pct": 0.11,
+      "weight_multiplier": 0.85,
       "trusted": true
     },
     "geopolitical": {
-      "samples": 29,
-      "hit_rate": 0.069,
-      "avg_abs_move_pct": 1.61,
-      "avg_move_pct": -0.14,
-      "weight_multiplier": 0.569,
+      "samples": 100,
+      "hit_rate": 0.29,
+      "avg_abs_move_pct": 1.83,
+      "avg_move_pct": -0.56,
+      "weight_multiplier": 0.79,
+      "trusted": true
+    },
+    "earnings_beat": {
+      "samples": 76,
+      "hit_rate": 0.382,
+      "avg_abs_move_pct": 4.45,
+      "avg_move_pct": 1.99,
+      "weight_multiplier": 0.882,
+      "trusted": true
+    },
+    "contract_win": {
+      "samples": 41,
+      "hit_rate": 0.293,
+      "avg_abs_move_pct": 1.54,
+      "avg_move_pct": -0.67,
+      "weight_multiplier": 0.793,
+      "trusted": true
+    },
+    "analyst_downgrade": {
+      "samples": 34,
+      "hit_rate": 0.735,
+      "avg_abs_move_pct": 2.35,
+      "avg_move_pct": -1.71,
+      "weight_multiplier": 1.235,
       "trusted": true
     },
     "earnings_miss": {
-      "samples": 19,
-      "hit_rate": 0.526,
-      "avg_abs_move_pct": 4.4,
-      "avg_move_pct": -3.69,
-      "weight_multiplier": 1.026,
+      "samples": 29,
+      "hit_rate": 0.517,
+      "avg_abs_move_pct": 3.43,
+      "avg_move_pct": -2.58,
+      "weight_multiplier": 1.017,
+      "trusted": true
+    },
+    "offering_dilution": {
+      "samples": 28,
+      "hit_rate": 0.643,
+      "avg_abs_move_pct": 3.49,
+      "avg_move_pct": -2.38,
+      "weight_multiplier": 1.143,
       "trusted": true
     },
     "buyback": {
-      "samples": 13,
-      "hit_rate": 0.231,
-      "avg_abs_move_pct": 2.49,
-      "avg_move_pct": 0.36,
-      "weight_multiplier": 0.731,
+      "samples": 16,
+      "hit_rate": 0.25,
+      "avg_abs_move_pct": 2.07,
+      "avg_move_pct": 0.25,
+      "weight_multiplier": 0.75,
       "trusted": true
     },
     "ceo_change": {
-      "samples": 9,
+      "samples": 13,
       "hit_rate": 0.0,
-      "avg_abs_move_pct": 0.96,
-      "avg_move_pct": 0.4,
+      "avg_abs_move_pct": 1.04,
+      "avg_move_pct": 0.59,
+      "weight_multiplier": 0.5,
+      "trusted": true
+    },
+    "insider_buy": {
+      "samples": 9,
+      "hit_rate": 0.333,
+      "avg_abs_move_pct": 1.78,
+      "avg_move_pct": 0.65,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "dividend_increase": {
+      "samples": 9,
+      "hit_rate": 0.667,
+      "avg_abs_move_pct": 1.68,
+      "avg_move_pct": 1.24,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "fda_approval": {
+      "samples": 7,
+      "hit_rate": 0.143,
+      "avg_abs_move_pct": 0.39,
+      "avg_move_pct": -0.33,
       "weight_multiplier": 1.0,
       "trusted": false
     },
@@ -79,27 +135,19 @@
       "weight_multiplier": 1.0,
       "trusted": false
     },
-    "contract_win": {
-      "samples": 5,
-      "hit_rate": 0.2,
-      "avg_abs_move_pct": 1.35,
-      "avg_move_pct": -0.09,
-      "weight_multiplier": 1.0,
-      "trusted": false
-    },
-    "insider_buy": {
-      "samples": 5,
-      "hit_rate": 0.2,
-      "avg_abs_move_pct": 2.13,
-      "avg_move_pct": 1.1,
-      "weight_multiplier": 1.0,
-      "trusted": false
-    },
     "short_squeeze": {
       "samples": 4,
       "hit_rate": 0.25,
       "avg_abs_move_pct": 2.28,
       "avg_move_pct": -2.28,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "bearish": {
+      "samples": 4,
+      "hit_rate": 0.5,
+      "avg_abs_move_pct": 3.44,
+      "avg_move_pct": -1.99,
       "weight_multiplier": 1.0,
       "trusted": false
     },
@@ -119,11 +167,11 @@
       "weight_multiplier": 1.0,
       "trusted": false
     },
-    "dividend_increase": {
+    "neutral": {
       "samples": 2,
-      "hit_rate": 0.0,
-      "avg_abs_move_pct": 0.99,
-      "avg_move_pct": -0.99,
+      "hit_rate": 0.5,
+      "avg_abs_move_pct": 2.33,
+      "avg_move_pct": -0.87,
       "weight_multiplier": 1.0,
       "trusted": false
     },
@@ -132,6 +180,22 @@
       "hit_rate": 0.0,
       "avg_abs_move_pct": 0.21,
       "avg_move_pct": -0.21,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "stock_price_movement": {
+      "samples": 1,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.49,
+      "avg_move_pct": -0.49,
+      "weight_multiplier": 1.0,
+      "trusted": false
+    },
+    "guidance_lower": {
+      "samples": 1,
+      "hit_rate": 0.0,
+      "avg_abs_move_pct": 0.0,
+      "avg_move_pct": 0.0,
       "weight_multiplier": 1.0,
       "trusted": false
     }

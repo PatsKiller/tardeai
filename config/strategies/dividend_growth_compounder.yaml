@@ -122,13 +122,13 @@ technical_indicators_required:
     - bollinger_squeeze
   note: "Fundamental entry — technicals only inform timing, not eligibility."
 performance_context:
-  last_updated: '2026-06-11T15:36:51+00:00'
-  closed_paper_trades: 5
-  win_rate: 0.2
-  avg_r_realized: -0.1712
+  last_updated: '2026-06-22T06:30:02+00:00'
+  closed_paper_trades: 2
+  win_rate: 0.5
+  avg_r_realized: -0.428
   profit_factor: 0.1572
   max_drawdown_pct:
-  expectancy_per_trade: -0.0342
+  expectancy_per_trade: -0.214
   best_trade_r: 0.21
   worst_trade_r: -1.066
   current_streak:

@@ -123,15 +123,15 @@ technical_indicators_required:
     - rsi_5
   note: FFO/AFFO and rate environment drive entry.
 performance_context:
-  last_updated: '2026-06-11T15:36:52+00:00'
-  closed_paper_trades: 1
-  win_rate: 0.0
-  avg_r_realized: 0.0
+  last_updated: '2026-06-22T06:30:03+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
   profit_factor:
   max_drawdown_pct:
   expectancy_per_trade:
-  best_trade_r: 0.0
-  worst_trade_r: 0.0
+  best_trade_r:
+  worst_trade_r:
   current_streak:
   ready_for_review: false
   review_thresholds:

@@ -2,7 +2,7 @@
 
 **Audience:** application owners / business stakeholders (non-technical)
 **Companion (technical):** `docs/MASTER_SYSTEM_DOCUMENTATION.md`
-**Status:** Paper-trading validation · **Last validated:** 2026-06-02
+**Status:** Paper-trading validation · **Last validated:** 2026-06-22
 
 ---
 
@@ -19,7 +19,7 @@ real-money decision. **It is currently paper-only** — no live brokerage funds 
 | Capability | What it delivers |
 |---|---|
 | **Market screening** | Scans 15+ data sources (prices, news, filings, transcripts, social, macro) to find candidates. |
-| **Strategy engine** | 26 configurable strategies (momentum, swing, income, dividend, defense, etc.) score and classify candidates. |
+| **Strategy engine** | 23 configurable strategies (momentum, swing, income, dividend, defense, etc.) score and classify candidates. |
 | **Trade proposals** | Generates reviewed proposals with entry/stop/target, risk sizing, and an AI rationale. |
 | **Automated paper trading** | Submits and manages paper trades via the broker (Alpaca), with safety gates and reconciliation. |
 | **Profit protection** | Continuously checks whether open winners are protected and advises stop/take-profit action — operator-approved. |
@@ -93,5 +93,5 @@ real-money decision. **It is currently paper-only** — no live brokerage funds 
 ---
 
 *This is a business-level overview. For component, schema, pipeline, and deployment detail, see the
-technical master document. Figures validated against the live system on 2026-06-02
-(426 tables + 23 views, 184 scheduled jobs, 26 strategies, paper-only).*
+technical master document. Live scale figures: `docs/LIVE_SYSTEM_FACTS.md` (regenerate via
+`scripts/generate_system_facts.py`). Paper-only; live trading gated.*

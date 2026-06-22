@@ -238,13 +238,13 @@ technical_indicators_required:
     - fib_618_distance
     - bollinger_squeeze
 performance_context:
-  last_updated: '2026-06-18T06:30:02+00:00'
-  closed_paper_trades: 4
-  win_rate: 0.5
-  avg_r_realized: 1.5425
-  profit_factor: 2.5464
+  last_updated: '2026-06-22T06:30:03+00:00'
+  closed_paper_trades: 3
+  win_rate: 0.3333
+  avg_r_realized: 1.0167
+  profit_factor: 1.2858
   max_drawdown_pct:
-  expectancy_per_trade: 0.7712
+  expectancy_per_trade: 0.3389
   best_trade_r: 3.19
   worst_trade_r: -0.14
   current_streak:

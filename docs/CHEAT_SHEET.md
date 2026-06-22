@@ -1,8 +1,7 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-21
-**POST-AUDIT-OPS-1:** 5/5 FIXED (REGIME-CRON-1, AGENT-WORKER-1, LLM-FIX-1, COUNT-TRUTH-1, ATTR-1)
-**Remaining:** A-5 final review after 2026-05-22
+**Last updated:** 2026-06-22
+**Live counts:** `docs/LIVE_SYSTEM_FACTS.md` — `.venv/bin/python3 scripts/generate_system_facts.py`
 
 ---
 
@@ -357,7 +356,7 @@ curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
 | **Alpaca data subscription** | Free tier (paper) | Paid tier for live market data |
 | **Symbol enrichment breadth** | 1,139 symbols | API costs scale linearly with symbol count |
 | **Agent processing volume** | 10-25 jobs/cycle | LLM inference cost per job |
-| **Database size** | Growing (330 tables) | Managed DB storage costs |
+| **Database size** | Growing — see `database.table_count` in LIVE_SYSTEM_FACTS | Managed DB storage costs |
 | **GPU compute** | Fixed (Intel Arc B50) | GPU instance pricing ($0.50-2.00/hr) |
 | **Log retention** | 7-day rolling | CloudWatch/Azure Monitor ingestion fees |
 

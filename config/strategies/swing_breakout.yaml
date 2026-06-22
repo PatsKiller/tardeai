@@ -193,13 +193,13 @@ technical_indicators_required:
     - vwap
     - opening_range
 performance_context:
-  last_updated: '2026-06-18T06:30:03+00:00'
-  closed_paper_trades: 8
-  win_rate: 0.25
-  avg_r_realized: 0.2213
+  last_updated: '2026-06-22T06:30:03+00:00'
+  closed_paper_trades: 4
+  win_rate: 0.5
+  avg_r_realized: 0.4425
   profit_factor: 5.8716
   max_drawdown_pct:
-  expectancy_per_trade: 0.0553
+  expectancy_per_trade: 0.2213
   best_trade_r: 1.32
   worst_trade_r: 0.0
   current_streak:

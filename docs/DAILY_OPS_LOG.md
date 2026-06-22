@@ -1,4 +1,10 @@
 
+## 2026-06-22 — Docs consolidation (A1A) + full commit
+
+Canonical docs aligned to live system: `LIVE_SYSTEM_FACTS.md`, MASTER/EXECUTIVE/CHEAT_SHEET/COST_MODEL
+use live-fact pointers; drift detector hardened. Committed 32 pending files (strategy YAML performance
+context, runtime JSON, finviz throttle + scripts). Closeout: `docs/project/DOCS_CONSOLIDATION_2026_06_22.md`.
+
 ## 2026-06-22 — Stabilization session + maturity audit (Grok CLI)
 
 Full triage of health-agent findings (score 64): agent queue backlog (36 jobs >2h, drain batch started),

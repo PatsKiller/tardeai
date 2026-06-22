@@ -4,12 +4,29 @@
 Source: Alpaca free historical bars (data.alpaca.markets, IEX feed) — OHLCV + VWAP, daily + intraday. Indicators
 (VWAP/MACD/RSI) computed from the bars. No metered API; uses the existing paper Alpaca keys. Read-only.
 """
-import os, json, urllib.request, urllib.error, datetime as dt
+import os, sys, json, urllib.request, urllib.error, datetime as dt
 
 ALPACA_DATA = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
 # Data feed: 'sip' = full consolidated tape (covers OTC/microcaps; historical SIP is free since 2024),
 # 'iex' = IEX-only (free, but misses many OTC names). Configurable, never hardcoded credentials.
 ALPACA_FEED = os.environ.get("ALPACA_DATA_FEED", "sip")
+
+# GLOBAL Alpaca rate limiter (cross-process). This path had no throttle/retry/cache, so a large scoring
+# batch (e.g. 547 candidates after a screener pool rebuild) burst-hammered the free-tier data API into
+# HTTP 429 → starved scoring → 0 signals. Fail-open if the module is unavailable.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from alpaca_throttle import acquire as _alp_acquire, cooldown as _alp_cooldown
+except Exception:
+    def _alp_acquire(*a, **k): return 0.0
+    def _alp_cooldown(*a, **k): pass
+
+# In-process memo cache for fetched bars (one scoring run touches the same symbols/windows repeatedly across
+# stages). Keyed by (symbol, start, end, timeframe, feed). Bounded; cleared per process lifetime.
+_BARS_CACHE = {}
+_BARS_CACHE_MAX = int(os.environ.get("OHLC_CACHE_MAX", "2000"))
+# How many times a single page may be retried after a global cooldown on 429 before giving up.
+_ALP_429_RETRIES = int(os.environ.get("ALPACA_429_RETRIES", "2"))
 
 try:
     from zoneinfo import ZoneInfo
@@ -48,19 +65,39 @@ def _fetch(symbol, start, end, timeframe):
     # isoformat() yields '+00:00' for UTC; in a URL query the '+' decodes to a SPACE -> Alpaca 400. Use 'Z'.
     start = str(start).replace("+00:00", "Z")
     end = str(end).replace("+00:00", "Z")
+    ckey = (symbol, start, end, timeframe, ALPACA_FEED)
+    if ckey in _BARS_CACHE:
+        return _BARS_CACHE[ckey], None
     bars, token = [], None
     for _ in range(6):  # page
         q = (f"?timeframe={timeframe}&start={start}&end={end}&limit=10000&feed={ALPACA_FEED}&adjustment=split"
              + (f"&page_token={token}" if token else ""))
-        req = urllib.request.Request(ALPACA_DATA.format(sym=symbol) + q,
-                                     headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec})
-        try:
-            with urllib.request.urlopen(req, timeout=15) as r:
-                d = json.load(r)
-        except urllib.error.HTTPError as e:
-            return [], f"alpaca {e.code}"
-        except Exception as e:
-            return [], str(e)[:80]
+        # Throttle every request globally; on 429 record a cooldown (all consumers back off) and retry the
+        # SAME page after it clears, so a transient rate-limit doesn't drop the symbol entirely.
+        d = None
+        for _attempt in range(_ALP_429_RETRIES + 1):
+            _alp_acquire()  # blocks until a global slot is free, honoring any active cooldown
+            req = urllib.request.Request(ALPACA_DATA.format(sym=symbol) + q,
+                                         headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec})
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    d = json.load(r)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    retry_after = None
+                    try:
+                        _ra = e.headers.get("Retry-After") if e.headers else None
+                        retry_after = float(_ra) if _ra else None
+                    except (TypeError, ValueError):
+                        retry_after = None
+                    _alp_cooldown(retry_after)  # default 30s — applies to ALL Alpaca data consumers
+                    continue  # next acquire() will block until the cooldown clears, then retry this page
+                return bars, f"alpaca {e.code}"
+            except Exception as e:
+                return bars, str(e)[:80]
+        if d is None:
+            return bars, "alpaca 429 (exhausted retries)"
         bars += d.get("bars") or []
         token = d.get("next_page_token")
         if not token:
@@ -68,6 +105,8 @@ def _fetch(symbol, start, end, timeframe):
     else:
         # hit the 6-page cap with a token still pending: data truncated — say so (audit: silent truncation)
         print(f"  [ohlc] WARNING {symbol} {timeframe}: hit 6-page Alpaca cap with more data pending — bars truncated")
+    if len(_BARS_CACHE) < _BARS_CACHE_MAX:
+        _BARS_CACHE[ckey] = bars
     return bars, None
 
 
