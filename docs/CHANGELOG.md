@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-22 - Docs sync: SnapTrade/Fidelity stops + one-share test
+
+MASTER Stage 2c row, DOCUMENTATION_INDEX broker table, DAILY_OPS_LOG, snaptrade-fidelity spec,
+snaptrade-read-only spec — aligned to monitor-only (no 2FA) + one-share test path.
+
 ## 2026-06-22 - Fidelity monitored stops: drop 2FA (monitor-only)
 
 SnapTrade/Fidelity path is advisory only (no broker execution). Arm monitored stop in one step without

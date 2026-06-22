@@ -9,7 +9,7 @@
 |----------|--------|
 | Can SnapTrade place stops on **Fidelity**? | **No** — Fidelity connection is `type=read`, `allows_trading=False` on SnapTrade. |
 | SnapTrade equity order types | `Market`, `Limit`, `Stop`, `StopLimit` — **no native TrailingStop** in SDK. |
-| Production path for Fidelity holdings | **Monitored stops** — software watch + same 2FA as Schwab + Fidelity Active Trader ticket on breach. |
+| Production path for Fidelity holdings | **Monitored stops** — software watch, **no 2FA**; alert + Fidelity Active Trader ticket on breach (manual). |
 | Broker API path (`snaptrade_trade.place`) | Scaffold only; `ENABLED=False`, `BROKER_API_ENABLED=False` until a trade-capable brokerage connects. |
 
 ## Architecture (mirrors Schwab Stage 2c)
@@ -33,8 +33,8 @@ Open Trades card (fidelity_rollover_ira)
 | File | Role |
 |------|------|
 | `scripts/brokers/snaptrade_protective_stop_policy.py` | Commit-only envelope; `MONITORED_ENABLED=True`, `BROKER_API_ENABLED=False` |
-| `scripts/brokers/snaptrade_protective_stop_pilot.py` | Intent + 2FA + route_after_2fa |
-| `scripts/fidelity_monitored_stop.py` | DB table + ratchet + breach → 2FA |
+| `scripts/brokers/snaptrade_protective_stop_pilot.py` | Legacy intent helpers (broker-API path only) |
+| `scripts/fidelity_monitored_stop.py` | DB table + ratchet + breach → alert/ticket |
 | `scripts/snaptrade_pilot_arm.py` | Operator approval (`--approve` / `--revoke` / `--capability`) |
 | `scripts/brokers/snaptrade_transport.py` | Future broker-API place (blocked for Fidelity) |
 | `scripts/brokers/snaptrade_trade.py` | Low-level SnapTrade SDK (still `ENABLED=False`) |
@@ -55,11 +55,11 @@ python3 scripts/snaptrade_pilot_arm.py --status
 python3 scripts/snaptrade_pilot_arm.py --revoke --confirm "REVOKE FIDELITY STOPS"
 ```
 
-After `--approve`, Open Trades cards on `fidelity_rollover_ira` use the **monitored + 2FA** route instead of ticket-only.
+After `--approve`, Open Trades cards on `fidelity_rollover_ira` arm **monitored stops in one step** (no 2FA).
 
 ## Safety invariants
 
-- Per-order 2FA unchanged (`approval_service`, `REQUIRED_CHANNELS=1`).
+- **Schwab** place/modify: per-order 2FA (`approval_service`, `REQUIRED_CHANNELS=1`). **Fidelity monitor:** none.
 - No broker HTTP to Fidelity until SnapTrade reports `allows_trading=True` **and** operator commits `BROKER_API_ENABLED=True`.
 - `fidelity_401k` excluded (employer plan — no exchange stops).
 - Cancel monitored stop: `POST /api/v2/holdings/protective-stop/cancel` with `account=fidelity_rollover_ira` (no 2FA).
