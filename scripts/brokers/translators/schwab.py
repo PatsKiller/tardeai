@@ -10,7 +10,7 @@ price?, stopPrice?, stopPriceLinkBasis?, stopPriceLinkType?, stopPriceOffset?, c
 from __future__ import annotations
 
 from ..order_intent import (OrderIntent, Direction, EntryMethod, TIF, SessionPolicy,
-                            StopSpec, TargetSpec)
+                            StopSpec, TargetSpec, AssetType, SpreadType)
 
 _TIF = {"DAY": "DAY", "GTC": "GOOD_TILL_CANCEL", "FOK": "FILL_OR_KILL",
         "IOC": "IMMEDIATE_OR_CANCEL", "EOW": "END_OF_WEEK", "EOM": "END_OF_MONTH"}
@@ -52,9 +52,65 @@ def _target_order(intent: OrderIntent, t: TargetSpec, qty: float) -> dict:
             "orderLegCollection": [_leg(intent, _exit_instruction(intent.direction), qty)]}
 
 
+def _occ_symbol(underlying: str, expiration: str, option_type: str, strike: float) -> str:
+    from datetime import datetime
+    exp = (expiration or "")[:10]
+    dt = datetime.strptime(exp, "%Y-%m-%d")
+    yymmdd = dt.strftime("%y%m%d")
+    cp = "C" if (option_type or "call").lower() == "call" else "P"
+    strike_int = int(round(float(strike) * 1000))
+    return f"{underlying.upper().strip()}{yymmdd}{cp}{strike_int:08d}"
+
+
+def _option_leg(leg: dict) -> dict:
+    occ = _occ_symbol(
+        leg["underlying"], leg["expiration"], leg.get("option_type", "call"), float(leg["strike"]),
+    )
+    side = (leg.get("side") or "BUY").upper()
+    instr = "BUY_TO_OPEN" if side == "BUY" else "SELL_TO_OPEN"
+    return {
+        "instruction": instr,
+        "quantity": int(leg.get("quantity") or 1),
+        "instrument": {"symbol": occ, "assetType": "OPTION"},
+    }
+
+
+def _translate_options(intent: OrderIntent) -> dict:
+    notes, unverified = [], []
+    legs = intent.instrument.option_legs or []
+    contracts = int(intent.quantity.contracts or 1)
+    if intent.instrument.spread_type == SpreadType.CREDIT_SPREAD and len(legs) == 2:
+        order = {
+            "session": intent.session.value,
+            "duration": "DAY",
+            "orderType": "NET_CREDIT",
+            "orderStrategyType": "SINGLE",
+            "orderLegCollection": [_option_leg(legs[0]), _option_leg(legs[1])],
+        }
+        if intent.entry.limit_price:
+            order["price"] = str(intent.entry.limit_price)
+        unverified.append("NET_CREDIT vertical spread: runtime acceptance UNVERIFIED")
+        return {"orders": [order], "notes": notes, "unverified": unverified}
+    leg = _option_leg(legs[0])
+    leg["quantity"] = contracts
+    order = {
+        "session": intent.session.value,
+        "duration": "DAY",
+        "orderType": "LIMIT" if intent.entry.limit_price else "MARKET",
+        "orderStrategyType": "SINGLE",
+        "orderLegCollection": [leg],
+    }
+    if intent.entry.limit_price:
+        order["price"] = str(intent.entry.limit_price)
+    unverified.append("single-leg option: runtime acceptance UNVERIFIED")
+    return {"orders": [order], "notes": notes, "unverified": unverified}
+
+
 def translate(intent: OrderIntent) -> dict:
     """Returns {"orders": [payload, ...], "notes": [...], "unverified": [...]}.
     Ladders expand into N orders; everything else is one (possibly TRIGGER/OCO) order."""
+    if intent.instrument.asset_type == AssetType.OPTION or intent.instrument.option_legs:
+        return _translate_options(intent)
     notes, unverified = [], []
     qty = float(intent.quantity.qty or 0)
     if intent.ladder:

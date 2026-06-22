@@ -55,13 +55,16 @@ Wired into `TradingHub.tsx` as the **Options** tab.
 .venv/bin/python scripts/run_options_monitor.py
 ```
 
-Suggested cron: every 10 minutes during market hours (with `flock`).
+Installed cron (see `crontab_backup.txt` + `linux_launchers/run_options_monitor.sh`):
+- `35,45,55 9`, `*/10 10-15`, `5 16` weekdays → `run_options_monitor.sh` (flock)
+- `20 16` weekdays → `options_iv_snapshot.py` (52-week IV rank history)
 
 ## Proposal types
 
 1. **Covered call** — Holdings ≥100 shares, Schwab chain strike selection, Aegis + intent overlay
 2. **Cash-secured put** — High-conviction names (Layer 4 / fused), defined max loss
 3. **Long call** — Bullish conviction plays (smaller set, higher edge bar)
+4. **Credit spread** — Bull put vertical (`NET_CREDIT` two-leg intent)
 
 ## Monitoring logic
 
@@ -75,18 +78,33 @@ Per position:
 
 ## Safety
 
-- All proposals include `execution_note`: advisory only
+- Proposals include `execution_note` reflecting arm state (advisory vs live path)
 - Respects `portfolio_intent.yaml` earnings blackout (via Aegis / FMP in CC path)
 - SSDI/retirement context: CSP copy reminds operator to verify income impact
-- No broker writes — action buttons open drill-down / ensemble validation
+- Live submit requires: policy `ENABLED` commit + DB `options_execution_enabled` + Schwab standing unlock + per-order 2FA
+
+## Execution (Schwab live)
+
+| Component | Path |
+|-----------|------|
+| Policy | `scripts/brokers/options_execution_policy.py` (ENABLED commit + envelope) |
+| Operator arm | `scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTION YYYY-MM-DD"` |
+| Pilot | `scripts/brokers/options_order_pilot.py` |
+| Guard | `execution_guard.py` → `OPTIONS_EXECUTION_MARKER` |
+| API | `POST /api/v2/options/preflight` → 2FA → `POST /api/v2/options/confirm` |
+| Status | `GET /api/v2/options/execution/status` |
+
+Requires: Schwab pilot standing unlock + `options_execution_enabled` DB flag + per-order 2FA.
+
+## Credit spreads
+
+`strategy: credit_spread` — bull put vertical via `NET_CREDIT` two-leg intent (`OptionLeg` + `SpreadType.CREDIT_SPREAD` in `order_intent.py`).
 
 ## Extending
 
-1. **Enable execution:** mirror `protective_stop_policy.py` → `options_execution_policy.py`, flip `capabilities.py`, wire Schwab option order translator
-2. **IV rank history:** persist chain IV daily → true rank vs 52-week
-3. **Credit spreads:** add `strategy: credit_spread` with two-leg intent in `order_intent.py`
-4. **Inference types:** add `covered_call` / `assignment_risk` to Layer 4 `ACTION_FOR` in `InferenceLayersPanel.tsx`
-5. **Journal feedback:** log closed proposal outcomes → edge calibration
+1. **Inference types:** add `covered_call` / `assignment_risk` to Layer 4 `ACTION_FOR`
+2. **Journal feedback:** log closed proposal outcomes → edge calibration
+3. **Roll automation:** wire monitor `roll` action to preflight with new expiration
 
 ## CLI
 

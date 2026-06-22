@@ -18669,6 +18669,12 @@ def _options_overview(query=None):
     return _json_clean(oe.get_overview())
 
 
+def _options_execution_status(query=None):
+    """GET /api/v2/options/execution/status — options pilot arm + policy state."""
+    import options_pilot_arm as opa
+    return _json_clean(opa.status())
+
+
 def _schwab_fundamentals(query=None):
     """GET /api/v2/schwab/fundamentals?symbols=A,B — READ-ONLY instrument fundamentals."""
     q = query or {}
@@ -20281,6 +20287,7 @@ ROUTES = {
     "/api/v2/options/positions": _options_positions,
     "/api/v2/options/monitor": _options_monitor,
     "/api/v2/options/overview": _options_overview,
+    "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,
@@ -23838,6 +23845,64 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _pilot_preflight(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/options/preflight":
+        try:
+            b = body if isinstance(body, dict) else {}
+            proposal_id = str(b.get("proposal_id") or "").strip()
+            if not proposal_id:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import options_engine as oe
+            cached = oe._load_json(oe.PROPOSALS_CACHE)
+            proposal = next((p for p in (cached.get("proposals") or []) if p.get("id") == proposal_id), None)
+            if not proposal:
+                fresh = oe.generate_proposals(force=True)
+                proposal = next((p for p in (fresh.get("proposals") or []) if p.get("id") == proposal_id), None)
+            if not proposal:
+                return 404, {"ok": False, "error": "proposal not found"}
+            account_key = str(b.get("account_key") or proposal.get("account") or "").strip()
+            if not account_key:
+                return 400, {"ok": False, "error": "account_key required (or set on proposal)"}
+            from brokers import options_order_pilot as oop
+            from brokers.execution_guard import authorize, ExecutionBlocked
+            held_qty, _ = _protective_holding_truth(account_key, proposal.get("underlying") or proposal.get("symbol"))
+            intent = oop.build_intent(account_key, proposal, held_qty=held_qty)
+            dec = authorize(intent, "submit")
+            if not dec.allowed:
+                return 200, {"ok": False, "mode": "blocked", "error": dec.reason, "proposal": proposal}
+            req = oop.request_2fa(intent)
+            spec = oop.build_order_spec(proposal)
+            return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
+                         "correlation_id": intent.correlation_id, "order_spec_preview": spec,
+                         "approval": req, "proposal": proposal}
+        except ExecutionBlocked as e:
+            return 200, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/options/confirm":
+        try:
+            b = body if isinstance(body, dict) else {}
+            intent_id = str(b.get("intent_id") or "").strip()
+            channel = str(b.get("channel") or "").strip().lower()
+            code = b.get("code")
+            if not intent_id or channel not in ("web", "telegram"):
+                return 400, {"ok": False, "error": "intent_id and channel required"}
+            from brokers import approval_service, options_order_pilot as oop
+            intent = oop.load_intent(intent_id)
+            if intent is None:
+                return 404, {"ok": False, "error": "options intent not found"}
+            cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
+            if not cr.get("ok"):
+                return 200, {"ok": False, "stage": "confirm", "error": cr.get("reason")}
+            if not cr.get("fully_approved"):
+                return 200, {"ok": True, "stage": "confirm", "fully_approved": False}
+            acct = intent.account_key
+            order_spec = oop.spec_from_intent(intent)
+            res = oop.submit(acct, order_spec, intent)
+            return 200, {"ok": True, "stage": "submit", "result": res}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
 
     if method == "POST" and base_path == "/api/v2/snaptrade/trade/preflight":
         try:

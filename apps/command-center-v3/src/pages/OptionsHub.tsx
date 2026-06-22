@@ -110,6 +110,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
   const [expandedEnsemble, setExpandedEnsemble] = useState<string | null>(null)
+  const [pendingIntent, setPendingIntent] = useState<string | null>(null)
+  const [execMsg, setExecMsg] = useState<string | null>(null)
 
   const q = useMemo(() => {
     const p = new URLSearchParams()
@@ -124,6 +126,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: proposals, loading: propLoading, refetch: refetchProps } = useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
   const { data: monitor, loading: monLoading, refetch: refetchMon } = useApi<any>('/api/v2/options/positions', 300_000)
   const { data: overview } = useApi<any>('/api/v2/options/overview', 300_000)
+  const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
 
   const propList: Proposal[] = proposals?.proposals ?? []
   const posList: Position[] = monitor?.positions ?? []
@@ -134,7 +137,9 @@ export default function OptionsHub({ onDrill }: Props) {
     setSearchParams({ tab: t }, { replace: true })
   }
 
-  const handleAction = (action: string, id: string, item: Proposal | Position) => {
+  const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_call', 'sell_credit_spread'])
+
+  const handleAction = async (action: string, id: string, item: Proposal | Position) => {
     if (action === 'review_chain') {
       const sym = 'symbol' in item && item.symbol ? item.symbol : (item as Position).underlying
       onDrill({
@@ -143,6 +148,32 @@ export default function OptionsHub({ onDrill }: Props) {
         endpoint: `/api/v2/schwab/option-chain?symbol=${sym}&strikes=12`,
         rows: [],
       })
+      return
+    }
+    if (action === 'hold') return
+    if (execActions.has(action) && 'id' in item) {
+      const p = item as Proposal
+      if (!execStatus?.armed_for_execution) {
+        setExecMsg('Options execution locked — run options_pilot_arm.py --approve on server.')
+        return
+      }
+      try {
+        const r = await fetch('/api/v2/options/preflight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proposal_id: p.id, account_key: 'schwab_taxable' }),
+        })
+        const j = await r.json()
+        const data = j.data ?? j
+        if (!data.ok) {
+          setExecMsg(data.error || 'Preflight blocked')
+          return
+        }
+        setPendingIntent(data.intent_id)
+        setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
+      } catch (e: any) {
+        setExecMsg(String(e?.message || e))
+      }
       return
     }
     onDrill({
@@ -172,6 +203,11 @@ export default function OptionsHub({ onDrill }: Props) {
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
             High-quality proposals only · {propList.length} ideas · {posList.length} open legs
             {alerts.length > 0 && <span style={{ color: '#f59e0b' }}> · {alerts.length} need action</span>}
+            {execStatus && (
+              <span style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}>
+                {' '}· execution {execStatus.armed_for_execution ? 'ARMED' : 'advisory'}
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -184,6 +220,13 @@ export default function OptionsHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {execMsg && (
+        <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #60a5fa', fontSize: 11, color: 'var(--text2)' }}>
+          {execMsg}
+          {pendingIntent && <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)' }}>Pending intent: {pendingIntent}</div>}
+        </div>
+      )}
 
       {tab === 'Proposals' && (
         <>
@@ -201,6 +244,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 <option value="covered_call">Covered Call</option>
                 <option value="cash_secured_put">Cash-Secured Put</option>
                 <option value="long_call">Long Call</option>
+                <option value="credit_spread">Credit Spread</option>
               </select>
             </label>
             <label style={{ fontSize: 10, color: 'var(--text3)' }}>
