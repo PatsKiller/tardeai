@@ -151,6 +151,16 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
     try:
         import synthetic_stop_monitor as _ssm
         _syn = _ssm.check_and_trigger(dry_run=dry_run or not in_hours)
+        try:
+            import fidelity_monitored_stop as _fms
+            _fms_out = _fms.check_and_trigger(dry_run=dry_run or not in_hours)
+            _ftrig = [r for r in _fms_out if r.get("status") == "triggered"]
+            report["fidelity_monitored_stops"] = {"checked": len(_fms_out), "triggered": len(_ftrig),
+                                                  "detail": _fms_out}
+            if _ftrig:
+                log.warning(f"FIDELITY MONITORED STOP: {len(_ftrig)} breach(es) → 2FA + Active Trader ticket requested")
+        except Exception as _fe:
+            report["fidelity_monitored_stops"] = {"error": str(_fe)}
         _trig = [r for r in _syn if r.get("status") == "triggered"]
         _would = [r for r in _syn if r.get("status") == "would_trigger"]
         report["synthetic_stops"] = {"checked": len(_syn), "triggered": len(_trig),

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-22 - Fidelity monitored stops (SnapTrade mirror, operator-approve)
+
+SnapTrade cannot trade Fidelity (read-only). Built Stage 2c mirror for `fidelity_rollover_ira`: monitored
+STOP/STOP_LIMIT/TRAILING ratchet + per-order 2FA + Active Trader ticket on breach. New modules:
+`snaptrade_protective_stop_policy/pilot`, `fidelity_monitored_stop`, `snaptrade_pilot_arm.py`. API routes
+fidelity holdings through monitored path when `fidelity_stops_enabled` DB flag set via typed-phrase
+`--approve`. Broker API path stays `ENABLED=False`. Doc: `docs/brokers/snaptrade-fidelity-protective-stops-spec.md`.
+
 ## 2026-06-22 - Docs consolidation (A1A) + runtime commit
 
 A1A consolidation: new `docs/LIVE_SYSTEM_FACTS.md` as canonical scale-count authority; MASTER,

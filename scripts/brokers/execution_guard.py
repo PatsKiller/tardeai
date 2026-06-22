@@ -100,11 +100,35 @@ def _protective_unlocked() -> bool:
 _MUTATING_ACTIONS = ("submit", "replace")   # cancel stays allowed-in-principle: cancelling is the safe direction
 
 PROTECTIVE_STOP_MARKER = "PROTECTIVE_STOP_2C"   # intent.meta.strategy_id stamp routing through protective_stop_policy
+FIDELITY_PROTECTIVE_MARKER = "FIDELITY_MONITORED_STOP"  # SnapTrade-read Fidelity holdings — monitored path
 
 
 def _is_protective_stop(intent: OrderIntent) -> bool:
     try:
-        return getattr(getattr(intent, "meta", None), "strategy_id", None) == PROTECTIVE_STOP_MARKER
+        return getattr(getattr(intent, "meta", None), "strategy_id", None) in (
+            PROTECTIVE_STOP_MARKER, FIDELITY_PROTECTIVE_MARKER)
+    except Exception:
+        return False
+
+
+def _is_fidelity_monitored(intent: OrderIntent) -> bool:
+    try:
+        return getattr(getattr(intent, "meta", None), "strategy_id", None) == FIDELITY_PROTECTIVE_MARKER
+    except Exception:
+        return False
+
+
+def _fidelity_monitored_unlocked() -> bool:
+    """Standing unlock for Fidelity monitored stops (operator snaptrade_pilot_arm.py --approve)."""
+    try:
+        from .snaptrade_protective_stop_policy import MONITORED_ENABLED
+        if not MONITORED_ENABLED:
+            return False
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        cur.execute("SELECT value FROM system_controls WHERE key='fidelity_stops_enabled'")
+        r = cur.fetchone()
+        return bool(r and str(r[0]).lower() == "true")
     except Exception:
         return False
 
@@ -114,7 +138,10 @@ def _protective_gate_reason(intent: OrderIntent) -> str | None:
     drift/qty/notional caps + POC proof layer). Returns None when allowed, else the joined reason(s).
     Pulls the non-intent fields (advised stop, live price, held qty, order_type) from meta.signal_evidence."""
     try:
-        from .protective_stop_policy import evaluate as _ps_eval
+        if _is_fidelity_monitored(intent):
+            from .snaptrade_protective_stop_policy import evaluate as _ps_eval
+        else:
+            from .protective_stop_policy import evaluate as _ps_eval
         ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
         ok, reasons = _ps_eval(
             account_key=intent.account_key,
@@ -170,7 +197,9 @@ def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
         d = GuardDecision(action in ("translate", "preview", "validate"), mode,
                           "dry-run: local translate/validate/audit only — order-endpoint I/O prohibited "
                           "(operator decision 2026-06-11)", intent.correlation_id)
-    elif (protective and _protective_unlocked()) or (mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked()):
+    elif ((protective and _is_fidelity_monitored(intent) and _fidelity_monitored_unlocked())
+          or (protective and not _is_fidelity_monitored(intent) and _protective_unlocked())
+          or (mode == BrokerExecutionMode.LIVE_ENABLED_FUTURE and _live_future_unlocked())):
         # GRANT branch. Two ways in:
         #   • protective stop + STANDING protective-unlock (no expiring arm session; operator 2026-06-15), or
         #   • canary/general write + the arm-session unlock (Stage 2b — still needs ARM).

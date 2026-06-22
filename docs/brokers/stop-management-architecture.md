@@ -30,6 +30,7 @@ Supersedes the design intent in [`stage2c-protective-stops-spec.md`](stage2c-pro
 | `schwab_roth_ira` | ✅ yes | ✅ live | **Manual + 2FA** |
 | `schwab_rollover_ira` | ✅ yes | ✅ live | **Manual + 2FA** |
 | `fidelity_401k` | ❌ none | ⛔ ticket only (manual ToS) | n/a (no API) |
+| `fidelity_rollover_ira` | ❌ SnapTrade read-only | 🔒 monitored + 2FA (after `--approve`) | **Manual + 2FA** → software watch + Active Trader ticket on breach |
 | `alpaca_paper` | ✅ yes (paper) | ✅ via paper pipeline | **Automatic (ratchet for R:R)** |
 
 ---
