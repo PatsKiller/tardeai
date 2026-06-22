@@ -20,6 +20,7 @@ from closed_trade_postmortem_model import build_postmortem, build_daily_summary
 _DIGEST_EXCLUDE_SQL = """
   AND COALESCE(outcome_verdict, '') NOT IN ('PHANTOM', 'CANCELLED')
   AND COALESCE(close_reason, '') NOT LIKE 'phantom%'
+  AND COALESCE(exit_reason, '') NOT LIKE 'cancelled_%'
   AND COALESCE(exit_reason, '') NOT IN (
       'phantom_no_alpaca_position',
       'revalidation_blocked_never_submitted',

@@ -134,18 +134,31 @@ def _fix_integrity_issues(conn, alpaca_symbols):
     cur.execute("""
         UPDATE paper_trades
         SET lifecycle_state = 'cancelled', status = 'cancelled',
-            close_reason = 'auto_cancel_never_submitted',
-            exit_reason = 'auto_cancel_never_submitted',
+            close_reason = 'cancelled_never_submitted_timeout',
+            exit_reason = 'cancelled_never_submitted_timeout',
+            notes = COALESCE(notes,'') || CASE WHEN COALESCE(notes,'')='' THEN '' ELSE ' | ' END
+                  || 'CANCELLED — Never submitted (timeout): no broker order within 15 minutes',
             closed_via = 'integrity_check', closed_at = NOW(),
             outcome_verdict = 'CANCELLED', pnl = 0, pnl_pct = 0, r_multiple = 0, unrealized_pnl = 0
         WHERE status IN ('pending', 'open')
           AND COALESCE(broker_order_id, '') = ''
           AND filled_at IS NULL
           AND created_at < NOW() - INTERVAL '15 minutes'
-        RETURNING id, symbol
+        RETURNING id, symbol, proposal_id
     """)
     for r in cur.fetchall():
-        log.info(f"[integrity] Auto-cancelled never-submitted: {r[1]} id={r[0]}")
+        log.warning(f"[integrity] CANCELLED never-submitted: {r[1]} id={r[0]} proposal={r[2]}")
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(
+                f"🚫 *TRADE CANCELLED — {r[1]}*\n\n"
+                f"Trade record #{r[0]} / proposal #{r[2] or '?'}\n"
+                f"*Reason:* Never submitted (timeout)\n"
+                f"*Detail:* No broker order within 15 minutes — auto-cancelled by monitor\n\n"
+                f"No Alpaca order was submitted. DB record marked `cancelled`."
+            )
+        except Exception:
+            pass
         fixed += 1
 
     # Fix 1b: Open trades with broker order but never filled after 30min → cancel
