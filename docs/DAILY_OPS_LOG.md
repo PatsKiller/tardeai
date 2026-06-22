@@ -1,4 +1,11 @@
 
+## 2026-06-22 — Intelligence engine + Command Center hub (all tabs A-grade)
+
+Hermes→RAG closed loop: `hermes_embedding_enqueue.py` on promote, 2246-row backfill,
+`hermes_research` in rag_indexer + library APIs, iris library-status deadlock fixed.
+Command Center v3 Intelligence hub rebuilt: News/Research/Sources/Rotation tabs, URL sync,
+Hermes/RAG KPIs. `CAP_EMBED` 2→10. Doc: `docs/intelligence_maturity_20260622.md`.
+
 ## 2026-06-22 — Docs consolidation (A1A) + full commit
 
 Canonical docs aligned to live system: `LIVE_SYSTEM_FACTS.md`, MASTER/EXECUTIVE/CHEAT_SHEET/COST_MODEL

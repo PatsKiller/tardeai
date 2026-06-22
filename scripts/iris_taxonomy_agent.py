@@ -1738,11 +1738,36 @@ def get_library_status():
     conn, cur = _get_conn_dict()
     result = {}
 
-    # RAG coverage
+    # RAG coverage — query DB directly (HTTP self-call deadlocks single-threaded api_v2)
     try:
-        import urllib.request as _ur
-        with _ur.urlopen("http://localhost:7777/api/v2/rag/status", timeout=5) as r:
-            result["rag"] = json.loads(r.read()).get("data", {})
+        cur.execute("SELECT count(*) as n FROM content_embeddings")
+        total_emb = int((cur.fetchone() or {}).get("n", 0))
+        sources = {
+            "news": "news_articles", "youtube": "youtube_transcripts", "social_post": "social_posts",
+            "sec_form4": "sec_form4", "hermes_research": "hermes_research_intelligence",
+        }
+        by_source = {}
+        total_rows = 0
+        total_embedded = 0
+        for src, tbl in sources.items():
+            if src == "hermes_research":
+                cur.execute("SELECT count(*) as n FROM hermes_research_intelligence WHERE status='promoted'")
+            else:
+                cur.execute(f"SELECT count(*) as n FROM {tbl}")
+            t = int((cur.fetchone() or {}).get("n", 0))
+            cur.execute("SELECT count(*) as n FROM content_embeddings WHERE source_type=%s", (src,))
+            e = int((cur.fetchone() or {}).get("n", 0))
+            by_source[src] = {"total": t, "embedded": e, "pct": round(e / max(t, 1) * 100, 1)}
+            total_rows += t
+            total_embedded += e
+        cur.execute("SELECT max(created_at) as t FROM content_embeddings")
+        last = (cur.fetchone() or {}).get("t")
+        result["rag"] = {
+            "total_rows": total_rows, "total_embedded": total_embedded,
+            "coverage_pct": round(total_embedded / max(total_rows, 1) * 100, 1),
+            "by_source": by_source, "total_embeddings": total_emb,
+            "last_indexed": str(last)[:19] if last else None,
+        }
     except Exception:
         result["rag"] = {"coverage_pct": 0}
 

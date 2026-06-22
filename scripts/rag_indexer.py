@@ -68,6 +68,13 @@ SOURCE_CONFIGS = {
         "sql": "SELECT id, COALESCE(topic,'')||' '||COALESCE(latest_findings,''), COALESCE(topic,''), COALESCE(latest_finding_at, updated_at) FROM user_research_topics WHERE status='active' AND latest_findings IS NOT NULL",
         "date_col": "latest_finding_at",
     },
+    "hermes_research": {
+        "sql": """SELECT id,
+            COALESCE(topic,'')||' '||COALESCE(summary,'')||' '||COALESCE(thesis,'')||' '||COALESCE(symbol,''),
+            COALESCE(topic,''), created_at
+            FROM hermes_research_intelligence WHERE status='promoted'""",
+        "date_col": "created_at",
+    },
 }
 
 

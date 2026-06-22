@@ -69,6 +69,106 @@ def _conn():
     return _get_conn()
 
 
+_DOCX_CACHE: dict = {"t": 0.0, "files": []}
+_DOCX_TTL = 300.0
+
+
+def _scan_docx_files() -> list[dict]:
+    """Index downloadable .docx report files under project data/archive (bounded scan)."""
+    import os, re, time
+    now = time.time()
+    if now - _DOCX_CACHE["t"] < _DOCX_TTL and _DOCX_CACHE["files"]:
+        return _DOCX_CACHE["files"]
+    root = PROJECT_ROOT
+    patterns = [
+        "data/portfolios/reports/weekly/weekly_*.docx",
+        "data/portfolios/reports/monthly/monthly_*.docx",
+        "data/portfolios/reports/portfolio_brief_*.docx",
+        "reports/2026-*/*/*.docx",
+        "archive/weekly/**/*.docx",
+    ]
+    out = []
+    for pat in patterns:
+        for fp in sorted(root.glob(pat), reverse=True)[:40]:
+            try:
+                if not fp.is_file():
+                    continue
+                rel = fp.relative_to(root)
+                url = "/" + str(rel).replace("\\", "/")
+                name = fp.name
+                # date token from filename when present
+                dm = re.search(r"(20\d{2}-\d{2}-\d{2})", name)
+                out.append({
+                    "filename": name,
+                    "url": url,
+                    "size_kb": round(fp.stat().st_size / 1024, 1),
+                    "modified": fp.stat().st_mtime,
+                    "date": dm.group(1) if dm else None,
+                    "kind": "weekly" if "weekly" in str(rel) else "monthly" if "monthly" in str(rel)
+                    else "portfolio" if "portfolio_brief" in name else "trade_ai" if "trade_ai" in name else "other",
+                })
+            except Exception:
+                continue
+    _DOCX_CACHE.update({"t": now, "files": out})
+    return out
+
+
+def _item_date_token(it: dict) -> str | None:
+    ca = it.get("created_at")
+    if not ca:
+        return None
+    if hasattr(ca, "strftime"):
+        return ca.strftime("%Y-%m-%d")
+    s = str(ca)[:10]
+    return s if _re.match(r"20\d{2}-\d{2}-\d{2}", s) else None
+
+
+def _resolve_docx(it: dict) -> dict | None:
+    """Attach a same-day (or same-month) Word file when one exists on disk."""
+    files = _scan_docx_files()
+    if not files:
+        return None
+    cat = it.get("category") or ""
+    rtype = (it.get("type") or "").lower()
+    title = (it.get("title") or "").lower()
+    day = _item_date_token(it)
+
+    def pick(kind: str | None = None, date: str | None = None, name_rx: str | None = None):
+        pool = [f for f in files if (not kind or f["kind"] == kind)]
+        if date:
+            exact = [f for f in pool if f.get("date") == date]
+            if exact:
+                return exact[0]
+            # monthly: same YYYY-MM prefix
+            if len(date) >= 7:
+                pref = date[:7]
+                month = [f for f in pool if (f.get("date") or "").startswith(pref)]
+                if month:
+                    return month[0]
+        if name_rx:
+            for f in pool:
+                if _re.search(name_rx, f["filename"], _re.I):
+                    return f
+        return pool[0] if pool else None
+
+    hit = None
+    if cat in ("weekly_reviews",) or rtype in ("strategy_weekly", "alex_review", "weekly_summary", "weekly", "weekly_health"):
+        hit = pick("weekly", day)
+    elif cat in ("monthly",) or rtype in ("monthly", "monthly_retirement", "monthly_report", "commanders_summary"):
+        hit = pick("monthly", day)
+    elif cat in ("portfolio_briefs",) or rtype == "portfolio_brief":
+        hit = pick("portfolio", day, r"portfolio_brief")
+    elif "retirement" in title or rtype == "monthly_retirement":
+        hit = pick("monthly", day)
+    elif day and rtype in ("trade_ai_brief", "aegis_morning_brief", "daily_digest"):
+        hit = pick("trade_ai", day)
+    if not hit and day:
+        hit = pick(None, day)
+    if not hit:
+        return None
+    return {"filename": hit["filename"], "url": hit["url"], "size_kb": hit["size_kb"]}
+
+
 def _full_body(payload, fallback: str) -> str:
     """The FULL report text. Briefs/digests store only a short body_summary in the DB; the complete
     readable markdown is written to payload.export — load it so the news reader shows the whole thing."""
@@ -479,6 +579,17 @@ def _enrich_item(it: dict) -> dict:
     it["has_actions"] = bool(acts)
     it["route_count"] = len(routes)
     _attach_synthesis(it)   # sector/trend/finance_score/retirement_relevance/ensemble (cheap, per-page)
+    blob = it.get("summary") or ""
+    m = _re.search(r"(?:#{1,2}\s*)?Executive\s+Summary\s*\n+([^\n#]+)", blob, _re.I)
+    if m:
+        it["synthesized_insight"] = _re.sub(r"\s+", " ", m.group(1).strip())[:280]
+    elif blob.strip():
+        flat = _re.sub(r"\s+", " ", blob.strip())
+        sm = _re.match(r".{40,240}?[.!?](?:\s|$)", flat)
+        it["synthesized_insight"] = (sm.group(0) if sm else flat[:200]).strip()
+    docx = _resolve_docx(it)
+    if docx:
+        it["docx_file"] = docx
     return it
 
 
@@ -682,6 +793,25 @@ def _dedup_rows(rows: list) -> list:
         seen[key] = it
         out.append(it)
     return out
+
+
+def search_items(q: str = "", days: int | None = 30, limit: int = 25) -> dict:
+    """Cross-category search across all portal stores (Telegram, notification_log, SIEM, ai_reports)."""
+    q = (q or "").strip()
+    if not q:
+        return {"items": [], "total": 0, "q": q}
+    limit = min(50, max(5, int(limit)))
+    days = int(days) if days else 30
+    rows = _gather_rows(category=None, q=q, days=days, per_cat_cap=80)
+    rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    total = len(rows)
+    items = rows[:limit]
+    cat_label = {c["key"]: c["label"] for c in CATEGORIES}
+    for it in items:
+        it["created_at"] = it["created_at"].isoformat() if it.get("created_at") else None
+        it["category_label"] = cat_label.get(it.get("category"), it.get("category"))
+        _enrich_item(it)
+    return {"items": items, "total": total, "q": q, "days": days}
 
 
 def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None) -> dict:

@@ -12,6 +12,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except Exception:
+    pass
+
 from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_local_llm_status
 
 
@@ -114,6 +120,16 @@ def _reports_list(query=None):
     return _rp.list_items(q.get("category", "morning_briefs"), q=q.get("q", ""),
                           page=int(q.get("page", 1) or 1), per_page=int(q.get("per_page", 25) or 25),
                           days=(int(q["days"]) if q.get("days") else None))
+
+
+def _reports_search(query=None):
+    """GET /api/v2/reports/search?q=&days=30&limit=25 — cross-category report search."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reports_portal as _rp
+    q = query or {}
+    return _rp.search_items(q=q.get("q", ""), days=int(q.get("days", 30) or 30),
+                            limit=int(q.get("limit", 25) or 25))
 
 
 def _reports_item(query=None):
@@ -274,6 +290,10 @@ def _system_pipeline_health():
             "corpus_7d": s1("SELECT COUNT(*) FROM content_embeddings WHERE created_at>NOW()-INTERVAL '7 days'"),
             "model": s1("SELECT embedding_model FROM content_embeddings WHERE embedding_model IS NOT NULL ORDER BY created_at DESC LIMIT 1"),
             "latest": ts("SELECT MAX(created_at) FROM content_embeddings"),
+            "hermes_promoted": hr.get("promoted", 0),
+            "hermes_embedded": s1("SELECT COUNT(*) FROM content_embeddings WHERE source_type='hermes_research'"),
+            "hermes_queue_pending": s1("SELECT COUNT(*) FROM hermes_embedding_queue WHERE embedding_status='pending'"),
+            "hermes_queue_failed": s1("SELECT COUNT(*) FROM hermes_embedding_queue WHERE embedding_status='failed'"),
         },
         "jobs": {
             "queued": jq.get("queued", 0), "processing": jq.get("processing", 0), "pending": jq.get("pending", 0),
@@ -5092,6 +5112,7 @@ def _intelligence_library():
         ("decision_outcome", "SELECT id, symbol||' outcome: '||COALESCE(recommendation,'') as title, symbol, strategy_type as strategy, CAST(outcome_score AS INT) as quality, NULL as url, created_at FROM decision_outcomes"),
         ("sec_form4", "SELECT id, symbol||' Form 4: '||COALESCE(filer_name,'') as title, symbol, 'sec_filing' as strategy, quality_score as quality, sec_url as url, created_at FROM sec_form4"),
         ("social_post", "SELECT id, LEFT(text,100) as title, NULL as symbol, 'social' as strategy, quality_score as quality, url, ingested_at as created_at FROM social_posts"),
+        ("hermes_research", "SELECT id, topic as title, symbol, research_type as strategy, CAST(confidence_score*100 AS INT) as quality, NULL as url, created_at FROM hermes_research_intelligence WHERE status='promoted'"),
     ]
 
     all_rows = []
@@ -5130,7 +5151,7 @@ def _intelligence_library():
             pass
         for r in page_rows:
             r["is_embedded"] = (r.get("source_type"), r.get("id")) in embedded_set
-            r["source_label"] = {"news": "News", "youtube": "YouTube", "agent_result": "Agent Memory", "agent_synthesis": "Synthesis", "cio_decision": "CIO Decision", "fused_signal": "Fused Signal", "decision_outcome": "Outcome", "sec_form4": "SEC Form 4", "social_post": "Social"}.get(r.get("source_type"), r.get("source_type"))
+            r["source_label"] = {"news": "News", "youtube": "YouTube", "agent_result": "Agent Memory", "agent_synthesis": "Synthesis", "cio_decision": "CIO Decision", "fused_signal": "Fused Signal", "decision_outcome": "Outcome", "sec_form4": "SEC Form 4", "social_post": "Social", "hermes_research": "Hermes Research"}.get(r.get("source_type"), r.get("source_type"))
 
     return {"items": page_rows, "total": total, "page": (offset // limit) + 1}
 
@@ -5148,6 +5169,7 @@ def _rag_status():
         "cio_decision": "SELECT count(*) FROM cio_decisions",
         "fused_signal": "SELECT count(*) FROM fused_signals",
         "decision_outcome": "SELECT count(*) FROM decision_outcomes",
+        "hermes_research": "SELECT count(*) FROM hermes_research_intelligence WHERE status='promoted'",
     }
     by_source = {}
     total_rows = 0
@@ -6011,10 +6033,15 @@ def _health_agent_dashboard():
                                 "lane": "code_fix"}
         elif key in _interv:
             r = _interv[key]
-            f["remediation"] = {"status": r.get("status"), "by": "escalation_handler",
+            rem_status = r.get("status")
+            rem_detail = (r.get("solution") or r.get("diagnosis") or "")[:300]
+            # Handler may mark "fixed" while the finding is still present in this snapshot — be honest.
+            if rem_status == "fixed":
+                rem_status = "attempted"
+                rem_detail = (rem_detail + " — " if rem_detail else "") + "issue still active in latest scan"
+            f["remediation"] = {"status": rem_status, "by": "escalation_handler",
                                 "at": _json_clean(r.get("resolved_at") or r.get("created_at")),
-                                "detail": (r.get("solution") or r.get("diagnosis") or "")[:300],
-                                "lane": "retry_or_llm"}
+                                "detail": rem_detail, "lane": "retry_or_llm"}
         elif key in _queued:
             it = _queued[key]
             f["remediation"] = {"status": "queued", "by": "health_agent",
@@ -6035,17 +6062,210 @@ def _health_agent_dashboard():
 
 
 def _health_agent_history():
-    """GET /api/v2/health/history — recent Health Agent snapshots for the trend sparkline."""
-    rows = _db_query("SELECT captured_at, overall_score, status, category_scores "
-                     "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 50") or []
-    hist = [{
-        "captured_at": _json_clean(r.get("captured_at")),
-        "overall_score": r.get("overall_score"),
-        "status": r.get("status"),
-        "category_scores": r.get("category_scores") or {},
-    } for r in rows]
-    hist.reverse()  # oldest→newest for charting
-    return {"history": hist, "count": len(hist)}
+    """GET /api/v2/health/history — recent Health Agent snapshots with score trends + per-run context."""
+    _hpol = _load_json(PROJECT_ROOT / "config" / "health_agent_policy.json") or {}
+    _limit = int((_hpol.get("history") or {}).get("api_limit", 500))
+    _retention = int((_hpol.get("history") or {}).get("retention_days", 90))
+    rows = _db_query("SELECT captured_at, overall_score, status, category_scores, findings, mode "
+                     f"FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT {_limit}") or []
+    # Process oldest→newest so deltas are chronological.
+    chrono = list(reversed(rows))
+    hist, prev_score = [], None
+    cat_keys = ["data_quality", "execution_health", "intelligence_quality",
+                "risk_protection", "retirement_planning"]
+    for r in chrono:
+        findings = r.get("findings") or []
+        if isinstance(findings, str):
+            try:
+                import json as _hj
+                findings = _hj.loads(findings)
+            except Exception:
+                findings = []
+        crit = sum(1 for f in findings if (f or {}).get("severity") == "critical")
+        warn = sum(1 for f in findings if (f or {}).get("severity") == "warning")
+        info = sum(1 for f in findings if (f or {}).get("severity") == "info")
+        top = [f.get("message", "")[:120] for f in findings
+               if (f or {}).get("severity") in ("critical", "warning")][:4]
+        score = r.get("overall_score")
+        delta = (score - prev_score) if prev_score is not None and score is not None else None
+        prev_score = score
+        cats = r.get("category_scores") or {}
+        if isinstance(cats, str):
+            try:
+                import json as _hj2
+                cats = _hj2.loads(cats)
+            except Exception:
+                cats = {}
+        degraded_cats = [c for c in cat_keys if (cats.get(c) or 100) < 65]
+        hist.append({
+            "captured_at": _json_clean(r.get("captured_at")),
+            "overall_score": score,
+            "status": r.get("status"),
+            "mode": r.get("mode"),
+            "category_scores": cats,
+            "delta": delta,
+            "findings_total": len(findings),
+            "findings_critical": crit,
+            "findings_warning": warn,
+            "findings_info": info,
+            "top_findings": top,
+            "degraded_categories": degraded_cats,
+        })
+    scores = [h["overall_score"] for h in hist if h.get("overall_score") is not None]
+    cat_series = {c: [{"at": h["captured_at"], "score": (h.get("category_scores") or {}).get(c)}
+                        for h in hist] for c in cat_keys}
+    first_at = hist[0]["captured_at"] if hist else None
+    last_at = hist[-1]["captured_at"] if hist else None
+    return {
+        "history": hist,
+        "count": len(hist),
+        "summary": {
+            "current": scores[-1] if scores else None,
+            "peak": max(scores) if scores else None,
+            "low": min(scores) if scores else None,
+            "delta_window": (scores[-1] - scores[0]) if len(scores) >= 2 else None,
+            "first_at": first_at,
+            "last_at": last_at,
+            "schedule": "every 30 minutes (systemd: tradeai-health-agent.timer)",
+            "retention_days": _retention,
+            "api_limit": _limit,
+            "mode": hist[-1].get("mode") if hist else None,
+        },
+        "category_series": cat_series,
+    }
+
+
+_CODER_OUTCOME_RESOLUTION = {
+    "pr_opened": "Fix passed verify gate; GitHub PR opened for merge review.",
+    "advisory_diff": "Fix passed verify gate; diff artifact saved (advisory mode).",
+    "verify_failed": "Coder edited files but verify gate (compile/tests) failed.",
+    "worktree_failed": "Could not create isolated git worktree for the fix.",
+    "no_changes": "Coder ran but made no file changes.",
+    "error": "Dispatch raised an exception.",
+    "no_backend_available": "No installed/online coder matched the problem kind.",
+    "planned": "Plan-only run; re-run with --apply to execute.",
+}
+
+
+def _coder_artifact_url(pr_url):
+    """Map local diff path or return http PR url as-is."""
+    if not pr_url:
+        return None
+    if str(pr_url).startswith("http"):
+        return pr_url
+    try:
+        p = Path(str(pr_url))
+        if p.exists() and "coder_dispatch_diffs" in str(p):
+            return f"/logs/coder_dispatch_diffs/{p.name}"
+    except Exception:
+        pass
+    return None
+
+
+def _health_dispatches():
+    """GET /api/v2/health/dispatches — coder queue, full dispatch ledger, escalation resolutions."""
+    reg = _load_json(PROJECT_ROOT / "config" / "coder_backends.json") or {}
+    disp_map = {b.get("name"): b.get("display") for b in reg.get("backends", [])}
+
+    # Pending code-fix queue (deduped by component)
+    queue, seen_q = [], set()
+    try:
+        qf = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+        for it in (_load_json(qf) or []):
+            if not (it.get("needs_code_fix") or it.get("kind") in
+                    ("code", "single_file", "multi_file", "schema")):
+                continue
+            comp = it.get("component", "")
+            if comp in seen_q:
+                continue
+            seen_q.add(comp)
+            queue.append({
+                "component": comp,
+                "detail": (it.get("detail") or "")[:400],
+                "kind": it.get("kind") or "code",
+                "severity": it.get("status"),
+                "source": it.get("source") or "escalation_queue",
+                "critical": bool(it.get("critical")),
+            })
+    except Exception:
+        pass
+
+    rows = _db_query("""SELECT id, created_at, component, problem, kind, backend, mode, branch,
+                               outcome, files_changed, pr_url, reasoning, detail
+                        FROM coder_dispatch_audit ORDER BY created_at DESC LIMIT 50""") or []
+    by_outcome, ledger = {}, []
+    for r in rows:
+        oc = (r.get("outcome") or "unknown").lower()
+        by_outcome[oc] = by_outcome.get(oc, 0) + 1
+        pr = r.get("pr_url")
+        fc = r.get("files_changed") or []
+        if isinstance(fc, str):
+            try:
+                fc = json.loads(fc)
+            except Exception:
+                fc = []
+        art = _coder_artifact_url(pr)
+        ledger.append({
+            "id": r.get("id"),
+            "created_at": _json_clean(r.get("created_at")),
+            "component": r.get("component"),
+            "problem": r.get("problem"),
+            "kind": r.get("kind"),
+            "backend": r.get("backend"),
+            "backend_display": disp_map.get(r.get("backend"), r.get("backend")),
+            "mode": r.get("mode") or os.getenv("CODER_DISPATCH_MODE", "advisory"),
+            "branch": r.get("branch"),
+            "outcome": oc,
+            "resolution": _CODER_OUTCOME_RESOLUTION.get(oc) or (r.get("detail") or "")[:200],
+            "files_changed": fc,
+            "pr_url": pr if str(pr or "").startswith("http") else None,
+            "artifact_url": art,
+            "reasoning": r.get("reasoning"),
+            "detail": r.get("detail"),
+        })
+
+    interventions = []
+    try:
+        for r in (_db_query("""SELECT component, status, diagnosis, solution,
+                                      COALESCE(resolved_at, created_at) AS at
+                               FROM claude_interventions WHERE component LIKE 'health:%'
+                               ORDER BY COALESCE(resolved_at, created_at) DESC LIMIT 30""") or []):
+            interventions.append({
+                "component": r.get("component"),
+                "status": r.get("status"),
+                "diagnosis": (r.get("diagnosis") or "")[:300],
+                "solution": (r.get("solution") or "")[:300],
+                "at": _json_clean(r.get("at")),
+            })
+    except Exception:
+        pass
+
+    try:
+        tr = _db_query("SELECT COUNT(*) AS c FROM coder_dispatch_audit WHERE created_at::date = now()::date "
+                         "AND outcome IN ('pr_opened','advisory_diff')", fetch="one")
+        today_ok = (tr or {}).get("c", 0) or 0
+    except Exception:
+        today_ok = 0
+    daily_cap = int(os.getenv("CODER_DISPATCH_DAILY_CAP", "6"))
+
+    failed_n = sum(by_outcome.get(k, 0) for k in
+                   ("verify_failed", "worktree_failed", "error", "no_backend_available"))
+    return {
+        "stats": {
+            "queued_code_fix": len(queue),
+            "total_dispatches": len(ledger),
+            "pr_opened": by_outcome.get("pr_opened", 0),
+            "advisory_diff": by_outcome.get("advisory_diff", 0),
+            "failed": failed_n,
+            "dispatched_today": today_ok,
+            "daily_cap": daily_cap,
+            "by_outcome": by_outcome,
+        },
+        "queue": queue,
+        "ledger": ledger,
+        "interventions": interventions,
+        "dispatch_mode": os.getenv("CODER_DISPATCH_MODE", "advisory"),
+    }
 
 
 def _health_coder_status():
@@ -6073,8 +6293,8 @@ def _health_coder_status():
             "notes": b.get("notes", ""), "install": b.get("install", ""),
             "timeout_sec": b.get("timeout_sec"),
         })
-    recent = _db_query("SELECT created_at, component, backend, outcome, pr_url, kind "
-                       "FROM coder_dispatch_audit ORDER BY created_at DESC LIMIT 20") or []
+    recent = _db_query("""SELECT id, created_at, component, problem, backend, outcome, pr_url, kind, detail, branch
+                          FROM coder_dispatch_audit ORDER BY created_at DESC LIMIT 20""") or []
     # Routing map (problem kind -> ordered backend preference). Resolve each kind to the FIRST
     # available backend so the UI can confirm "what coder actually handles what".
     _avail = {b["name"]: b["available"] for b in backends}
@@ -6092,10 +6312,16 @@ def _health_coder_status():
     return {
         "mode_apply": reg.get("_apply_model", "worktree_test_pr"),
         "strategy": reg.get("_dispatch_strategy", "router_pick_one"),
+        "dispatch_mode": os.getenv("CODER_DISPATCH_MODE", "advisory"),
         "backends": backends,
         "routing": routing,
         "available_count": sum(1 for b in backends if b["available"]),
-        "recent_dispatches": [{k: _json_clean(v) for k, v in r.items()} for r in recent],
+        "recent_dispatches": [{
+            **{k: _json_clean(v) for k, v in r.items()},
+            "backend_display": _disp.get(r.get("backend"), r.get("backend")),
+            "resolution": _CODER_OUTCOME_RESOLUTION.get((r.get("outcome") or "").lower()),
+            "artifact_url": _coder_artifact_url(r.get("pr_url")),
+        } for r in recent],
     }
 
 
@@ -6118,14 +6344,18 @@ def _health_activity():
     except Exception:
         pass
     try:
-        for r in (_db_query("SELECT component, backend, outcome, pr_url, created_at "
-                            "FROM coder_dispatch_audit "
-                            "WHERE created_at > now() - interval '7 days' "
-                            "ORDER BY created_at DESC LIMIT 40") or []):
+        for r in (_db_query("""SELECT component, backend, outcome, pr_url, problem, detail, created_at
+                              FROM coder_dispatch_audit
+                              WHERE created_at > now() - interval '7 days'
+                              ORDER BY created_at DESC LIMIT 40""") or []):
             comp = (r.get("component") or "").replace("health:", "")
+            oc = (r.get("outcome") or "").lower()
             feed.append({"at": _json_clean(r.get("created_at")), "actor": f"coder:{r.get('backend')}",
                          "component": comp, "action": r.get("outcome"),
-                         "detail": "", "lane": "code_fix", "pr_url": r.get("pr_url")})
+                         "detail": (r.get("problem") or r.get("detail") or "")[:200],
+                         "resolution": _CODER_OUTCOME_RESOLUTION.get(oc, ""),
+                         "lane": "code_fix", "pr_url": r.get("pr_url"),
+                         "artifact_url": _coder_artifact_url(r.get("pr_url"))})
     except Exception:
         pass
     feed.sort(key=lambda x: x.get("at") or "", reverse=True)
@@ -15582,15 +15812,46 @@ def _hermes_health():
         kill_file = Path(str(PROJECT_ROOT)) / "data" / "runtime" / "HERMES_DISABLED"
         kill_active = kill_file.exists()
 
-    # Autonomous loop status
+    # Coordinator + embedding pipeline health (cron */15m; gateway optional)
     import subprocess as _sp_h
     loop_active = False
     try:
         r = _sp_h.run(["systemctl", "--user", "is-active", "hermes-autonomous-loop.timer"],
                        capture_output=True, text=True, timeout=5)
         loop_active = r.stdout.strip() == "active"
-    except:
+    except Exception:
         pass
+
+    coord_row = _db_query(
+        """SELECT created_at FROM hermes_memory_events
+           WHERE hermes_agent_name='chief_hermes_coordinator' AND event_type='agent_state_change'
+           ORDER BY created_at DESC LIMIT 1""",
+        fetch="one",
+    ) or {}
+    coord_last = _json_clean(coord_row.get("created_at"))
+    coord_active = False
+    if coord_row.get("created_at"):
+        try:
+            from datetime import datetime, timezone
+            ts = coord_row["created_at"]
+            if hasattr(ts, "tzinfo") and ts.tzinfo:
+                age_min = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 60
+            else:
+                age_min = (datetime.now() - ts).total_seconds() / 60
+            coord_active = age_min < 30
+        except Exception:
+            pass
+
+    emb_stats = _db_query(
+        """SELECT
+             count(*) FILTER (WHERE embedding_status='pending') as pending,
+             count(*) FILTER (WHERE embedding_status='completed') as completed,
+             count(*) FILTER (WHERE embedding_status='failed') as failed
+           FROM hermes_embedding_queue""",
+        fetch="one",
+    ) or {}
+    promoted_n = (_db_query("SELECT count(*) as n FROM hermes_research_intelligence WHERE status='promoted'", fetch="one") or {}).get("n", 0)
+    embedded_n = (_db_query("SELECT count(*) as n FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}).get("n", 0)
 
     return {
         "ok": True,
@@ -15601,7 +15862,19 @@ def _hermes_health():
         "kill_switch_active": kill_active,
         "kill_switch_path": "data/runtime/HERMES_DISABLED",
         "kill_switch": kill_desc,
-        "autonomous_loop_active": loop_active,
+        "autonomous_loop_active": coord_active or loop_active,
+        "coordinator_active": coord_active,
+        "coordinator_last_tick": coord_last,
+        "embedding_queue": {
+            "pending": int(emb_stats.get("pending") or 0),
+            "completed": int(emb_stats.get("completed") or 0),
+            "failed": int(emb_stats.get("failed") or 0),
+        },
+        "rag_pipeline": {
+            "promoted": int(promoted_n or 0),
+            "embedded": int(embedded_n or 0),
+            "coverage_pct": round(int(embedded_n or 0) / max(int(promoted_n or 0), 1) * 100, 1),
+        },
     }
 
 
@@ -19641,6 +19914,7 @@ ROUTES = {
     "/api/v2/health": lambda: _health_agent_dashboard(),
     "/api/v2/health/history": lambda: _health_agent_history(),
     "/api/v2/health/coders": lambda: _health_coder_status(),
+    "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/rotation/summary": _rotation_summary,
@@ -19898,6 +20172,7 @@ ROUTES = {
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
     "/api/v2/reports/categories": _reports_categories,
     "/api/v2/reports/list": _reports_list,
+    "/api/v2/reports/search": _reports_search,
     "/api/v2/reports/item": _reports_item,
     "/api/v2/reports/portal-summary": _reports_portal_summary,
     "/api/v2/reports/action-items": _reports_action_items,

@@ -28,7 +28,7 @@ export default function IntelligenceWorkflow({ onDrill }: { onDrill: (ctx: Drill
     const defs = [
       { id: 'news', label: 'News Ingestion', sub: `${ing.news_today ?? 0} today · ${ing.news_7d ?? 0}/7d`, x: 0, y: 0, c: STAGE.ingestion, ts: ing.news_latest, rows: ing },
       { id: 'topics', label: 'Topics / Monitor', sub: `${ing.topics_active ?? 0} active`, x: 0, y: 95, c: STAGE.ingestion, ts: null, rows: ing },
-      { id: 'hermes', label: 'Hermes Research', sub: `${cur.hermes_staged ?? 0} staged · ${cur.hermes_promoted ?? 0} promoted`, x: 0, y: 190, c: STAGE.hermes, ts: null, rows: cur },
+      { id: 'hermes', label: 'Hermes Research', sub: `${cur.hermes_staged ?? 0} staged · ${cur.hermes_promoted ?? 0} promoted\nRAG ${rag.hermes_embedded ?? 0}/${rag.hermes_promoted ?? cur.hermes_promoted ?? 0} · q ${rag.hermes_queue_pending ?? 0}`, x: 0, y: 190, c: STAGE.hermes, ts: rag.latest, rows: { ...cur, rag_hermes: rag } },
       { id: 'curation', label: 'Curation / Scoring', sub: `${cur.iris_approved ?? 0} ok · ${cur.iris_pending ?? 0} pend`, x: 250, y: 95, c: STAGE.curation, ts: null, rows: cur },
       { id: 'catalyst', label: 'Catalyst Events', sub: `${cur.momentum_catalyst_today ?? 0} today`, x: 500, y: 25, c: STAGE.enhance, ts: null, rows: cur },
       { id: 'llm', label: 'LLM Enhancement', sub: `${llm.agent_results_today ?? 0} results today`, x: 500, y: 165, c: STAGE.enhance, ts: llm.holdings_llm_latest, rows: llm },

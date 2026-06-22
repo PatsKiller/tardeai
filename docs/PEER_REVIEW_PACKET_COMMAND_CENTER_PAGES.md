@@ -55,50 +55,55 @@ reports, with an Action Queue and a reader pane.
 
 ## 2. Intelligence — `pages/IntelligenceHub.tsx`
 
-Central intelligence surface: market intelligence, research topics, rotation summary, the
-signal-quality synthesis pages, and the Layer-4 inference panel.
+Central intelligence surface: consolidated command, signal quality, Layer-4 inferences, news
+library, research topics, sources/RAG coverage, pipeline workflow, and rotation summary.
+URL-synced tabs: `/v3/intelligence?tab=command|inferences|quality|news|research|sources|workflow|rotation`.
 
 **Component tree**
-- `IntelligenceHub.tsx`
+- `IntelligenceHub.tsx` — tab shell + header stats (articles, Hermes coordinator, RAG %)
   - `CentralIntelligencePages.tsx` — multi-feed signal synthesis + type-aware signal quality.
   - `InferenceLayersPanel.tsx` — Layer-4 inference results (regime/regional/sizing/inferences).
     - `EnsembleValidationCard.tsx` — free-lane ensemble verdict per inference.
+  - `components/intelligence/IntelligenceNewsTab.tsx` — paginated news articles.
+  - `components/intelligence/IntelligenceResearchTab.tsx` — user + monitor topics, gaps.
+  - `components/intelligence/IntelligenceSourcesTab.tsx` — RAG coverage, Hermes pipeline, library.
+  - `components/intelligence/IntelligenceRotationTab.tsx` — rotation summary embed.
   - `IntelligenceWorkflow.tsx`, `ResearchTopicsModal.tsx`.
 
 **Endpoints**
 | Endpoint | Component |
 |----------|-----------|
-| `GET /api/v2/market-intelligence` (120s) | Hub + CentralIntelligencePages |
-| `GET /api/v2/research-topics` (120s) | Hub + CentralIntelligencePages |
-| `GET /api/v2/rotation/summary` (300s) | Hub |
-| `GET /api/v2/command`, `/risk`, `/overview`, `/morning-brief`, `/open-trades/intelligence`, `/watchlist/items`, `/hermes/health`, `/hermes/subject-intel-map`, `/agents/intelligence-feedback`, `/trade-ai` | CentralIntelligencePages (multi-feed) |
+| `GET /api/v2/market-intelligence` (120s) | Hub header + CentralIntelligencePages |
+| `GET /api/v2/hermes/health` (120s) | Hub header + Sources + Signal Quality KPI |
+| `GET /api/v2/news/articles` (60s) | IntelligenceNewsTab |
+| `GET /api/v2/research-topics` (120s) | IntelligenceResearchTab + CentralIntelligencePages |
+| `GET /api/v2/rag/status`, `/intelligence/library`, `/intelligence-sources`, `/search-sources` | IntelligenceSourcesTab |
+| `GET /api/v2/rotation/summary` (300s) | IntelligenceRotationTab (lazy — tab only) |
+| `GET /api/v2/command`, `/risk`, `/overview`, `/morning-brief`, `/open-trades/intelligence`, `/watchlist/items`, `/hermes/subject-intel-map`, `/agents/intelligence-feedback`, `/trade-ai` | CentralIntelligencePages |
 | `GET /api/v2/inference/latest`, `/regional`, `/sizing` | InferenceLayersPanel |
+| `GET /api/v2/system/pipeline-health` (60s) | IntelligenceWorkflow |
 | `GET /api/v2/inference/ensemble`, `POST /inference/ensemble/request` | EnsembleValidationCard |
 
-**Backend**
+**Backend — autonomous intelligence**
+- `scripts/hermes_coordinator.py` — fleet orchestrator (*/15m cron); auto-promote + embed worker.
+- `scripts/hermes_embedding_enqueue.py` — enqueue promoted research → `hermes_embedding_queue`.
+- `scripts/hermes_embedding_worker.py` — Ollama embed → `content_embeddings` (`hermes_research`).
+- `scripts/rag_indexer.py` — universal indexer includes `hermes_research` source type.
+- `scripts/iris_taxonomy_agent.py` — `get_library_status()` uses direct DB (no HTTP self-deadlock).
+
+**Backend — inference**
 - `scripts/inference_api.py` — `/api/v2/inference/*` read-only router (delegated from api_v2).
 - `scripts/inference_layer_engine.py` — orchestrator (`--run`), persists `inference_runs/results`.
-- `scripts/inference_layers.py` — the 4 layers (Ingestion/Feature/Regional/HigherOrder); Aegis
-  signals ingested first-class (`aegis_portfolio_briefs` + `advisor_observations`).
-- `scripts/inference_ensemble.py` + `inference_ensemble_worker.py` — free-lane ensemble
-  (`ensemble_validate`), enqueue→worker model, finance rubric (`_FIN_RX` + `_finance_rubric`).
-- `scripts/inference_hermes_query.py`, `inference_financial_modeling.py` (NAV), `inference_sizing.py`.
+- `scripts/inference_layers.py` — 4 layers; Aegis signals first-class.
+- `scripts/inference_ensemble.py` + `inference_ensemble_worker.py` — free-lane ensemble.
 
-**Recent commits**
-- `c994408d` Ensemble: auto-enqueue high-severity inferences + Signal Quality card
-- `05d6ff65` Ensemble card: auto-load persisted verdict on mount
-- `75b1568b` Ensemble auto-enqueue: cover ALL high-severity (uncap)
-- `94ea1471` Ensemble: standardize on queued auto-enqueue (disable validate_in_loop)
-- `3cb24ea5` Ensemble finance rubric: broaden gate to portfolio-reasoning terms
-- `cd1daa46` Ensemble: finance-specific scoring rubric (NAV/income/retirement)
-- `f7af2c8a` Wire Aegis as a first-class Layer-4 signal
-- `af8b7a6b` Wire free-lane ensemble into the Layer-4 inference loop
-- `f70342ed`, `1cad708c`, `311fced2` CentralIntelligencePages signal-quality fixes
+**Maturity doc:** `docs/intelligence_maturity_20260622.md`
 
 **Review notes / known fixes**
-- Signal quality was degenerate (every card 39% from a flat 0.65 conf + null freshness).
-  Fixed: type-aware `qscore`, per-signal confidence from breach magnitude, `STRUCTURAL` regex,
-  command-feed price cross-ref via `priceBy`, external-LM series collapse via `lmGroups`.
+- Hermes→RAG was broken (queue never populated). Fixed 2026-06-22 with enqueue on promote + backfill.
+- Signal quality degenerate cards fixed: type-aware `qscore`, breach confidence, `STRUCTURAL` regex,
+  command-feed price cross-ref, external-LM series collapse via `lmGroups`.
+- Research gaps UI was showing raw JSON; API uses `display_name`, `reason`, `detail`.
 
 ---
 

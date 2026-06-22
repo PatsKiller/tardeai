@@ -22,6 +22,9 @@ export interface ReportCardItem {
   ensemble?: { score?: number; decision?: string; consensus?: boolean; lanes?: string[] } | null
   actions?: { label: string; url?: string }[]
   action_classes?: string[]
+  action_count?: number
+  has_actions?: boolean
+  docx_file?: { filename: string; url: string; size_kb?: number }
 }
 
 const SEV = (s?: string) => {
@@ -90,7 +93,12 @@ export default function SynthesizedReportCard(
             </div>
           )}
         </div>
-        <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 9.5, color: 'var(--text3)' }}>{ago(item.created_at)}{item.channel ? <><br />{item.channel}</> : null}</div>
+        <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 9.5, color: 'var(--text3)' }}>
+          {ago(item.created_at)}{item.channel ? <><br />{item.channel}</> : null}
+          {item.docx_file?.url && (
+            <><br /><a href={relUrl(item.docx_file.url)} download={item.docx_file.filename} onClick={e => e.stopPropagation()} style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Word ↓</a></>
+          )}
+        </div>
       </div>
       {/* footer slot (full card only) — live embeds like the ensemble verdict, above the action row */}
       {!compact && footer && <div style={{ marginTop: 8 }}>{footer}</div>}
