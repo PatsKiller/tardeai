@@ -24,6 +24,21 @@
     "retention_days": 90,
     "api_limit": 500
   },
+  "strategy_output": {
+    "_comment": "Catch silent-zero strategy failures (FIB-style). Gated to avoid morning false-positives.",
+    "enabled": true,
+    "check_after_hour": 11,
+    "tilt_min": 1.0
+  },
+  "proposal_maturity": {
+    "_comment": "Monitor proposal volume/quality across Options, Trades, Watchlist, Rotation.",
+    "enabled": true,
+    "options_min_count": 1,
+    "options_stale_hours": 4,
+    "check_after_hour": 10,
+    "trade_pending_warn": 25,
+    "watchlist_stale_warn": 15
+  },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts.",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
@@ -34,13 +49,9 @@
     "hermes_rag_gap": ".venv/bin/python scripts/hermes_embedding_enqueue.py --backfill --limit 500",
     "hermes_embed_backlog": ".venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",
     "hermes_embed_failures": ".venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",
-    "hermes_coordinator_stale": ".venv/bin/python scripts/hermes_coordinator.py"
-  },
-  "strategy_output": {
-    "_comment": "Catch silent-zero strategy failures (FIB-style). Gated to avoid morning false-positives.",
-    "enabled": true,
-    "check_after_hour": 11,
-    "tilt_min": 1.0
+    "hermes_coordinator_stale": ".venv/bin/python scripts/hermes_coordinator.py",
+    "options_zero_proposals": ".venv/bin/python scripts/run_options_monitor.py",
+    "options_proposals_stale": ".venv/bin/python scripts/run_options_monitor.py"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

@@ -18669,6 +18669,12 @@ def _options_overview(query=None):
     return _json_clean(oe.get_overview())
 
 
+def _health_proposals(query=None):
+    """GET /api/v2/health/proposals — cross-module proposal maturity metrics."""
+    import options_engine as oe
+    return _json_clean(oe.get_proposal_health_metrics())
+
+
 def _options_execution_status(query=None):
     """GET /api/v2/options/execution/status — options pilot arm + policy state."""
     import options_pilot_arm as opa
@@ -20015,6 +20021,7 @@ ROUTES = {
     "/api/v2/health/coders": lambda: _health_coder_status(),
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
+    "/api/v2/health/proposals": lambda: _health_proposals(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/rotation/summary": _rotation_summary,

@@ -23,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 MONITOR_CACHE = STATE_DIR / "options_monitor.json"
 PROPOSALS_CACHE = STATE_DIR / "options_proposals.json"
+AUDIT_JSONL = PROJECT_ROOT / "logs" / "options_engine.jsonl"
 
 # Quality gates — proposals below these are dropped (turnkey = no noise)
 MIN_EDGE_SCORE = 62
@@ -89,6 +90,17 @@ def _load_json(path: Path) -> dict:
 def _save_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+
+
+def _audit(event: str, **fields) -> None:
+    """Append-only decision audit (proposal generation, fallback, monitor)."""
+    try:
+        AUDIT_JSONL.parent.mkdir(parents=True, exist_ok=True)
+        row = {"ts": _iso(), "event": event, **fields}
+        with AUDIT_JSONL.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
 
 
 def _norm_cdf(x: float) -> float:
@@ -417,6 +429,7 @@ def generate_covered_call_proposals(
         chain = _schwab_chain(sym)
         und = _f(chain.get("underlying_price")) or price
         contract = _pick_chain_contract(chain, "call", target_strike, default_dte)
+        data_source = "schwab_chain"
         if contract:
             premium = contract["mid"]
             strike = contract["strike"]
@@ -424,6 +437,7 @@ def generate_covered_call_proposals(
             iv = contract.get("iv") or 0.25
             exp = contract.get("exp")
         else:
+            data_source = "bs_estimate"
             from portfolio_options import _estimate_premium
             atr = _f(tech.get("atr")) or price * 0.015
             iv_pct = _f(tech.get("iv"))
@@ -514,6 +528,7 @@ def generate_covered_call_proposals(
             ],
             "reasoning": _build_reasoning("Covered call", sym, ctx),
             "quality_pass": True,
+            "data_source": data_source,
             "execution_note": _execution_note(),
             "generated_at": _iso(),
         })
@@ -549,8 +564,17 @@ def generate_defined_risk_proposals(
         if bullish and conf >= 0.6:
             target_strike = round(und * 1.04 / 2.5) * 2.5 if und > 50 else round(und * 1.05, 1)
             contract = _pick_chain_contract(chain, "call", target_strike, 35)
+            data_source = "schwab_chain"
             if not contract:
-                continue
+                from portfolio_options import _estimate_premium
+                atr = _f(tech.get("atr")) or price * 0.02
+                iv_pct = _f(tech.get("iv"))
+                est = _estimate_premium(und, target_strike, atr, iv_pct, 35)
+                if est <= 0:
+                    continue
+                contract = {"mid": est, "strike": target_strike, "dte": 35,
+                              "exp": (_now().date() + timedelta(days=35)).isoformat(), "iv": iv_pct / 100.0 or 0.3}
+                data_source = "bs_estimate"
             premium = contract["mid"]
             strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
             pop = 100.0 - _pop_otm_call(und, strike, max(0.05, iv), dte)
@@ -597,14 +621,24 @@ def generate_defined_risk_proposals(
                     "technical": f"Conviction {conf:.0%}",
                 }),
                 "quality_pass": True,
+                "data_source": data_source,
                 "execution_note": _execution_note(),
                 "generated_at": _iso(),
             })
         elif conf >= 0.55:
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
             contract = _pick_chain_contract(chain, "put", target_strike, 30)
+            data_source = "schwab_chain"
             if not contract:
-                continue
+                from portfolio_options import _estimate_premium
+                atr = _f(tech.get("atr")) or price * 0.02
+                iv_pct = _f(tech.get("iv"))
+                est = _estimate_premium(und, target_strike, atr, iv_pct, 30)
+                if est <= 0:
+                    continue
+                contract = {"mid": est, "strike": target_strike, "dte": 30,
+                              "exp": (_now().date() + timedelta(days=30)).isoformat(), "iv": iv_pct / 100.0 or 0.3}
+                data_source = "bs_estimate"
             premium = contract["mid"]
             strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
             pop = _pop_otm_put(und, strike, max(0.05, iv), dte)
@@ -651,6 +685,7 @@ def generate_defined_risk_proposals(
                     "technical": f"Defined-risk entry, POP {pop:.0f}%",
                 }),
                 "quality_pass": True,
+                "data_source": data_source,
                 "execution_note": _execution_note(
                     "Verify buying power + SSDI income context before entry."
                 ),
@@ -929,18 +964,33 @@ def generate_proposals(force: bool = False) -> dict:
     convictions = _high_conviction_symbols()
     dr = generate_defined_risk_proposals(convictions, tech_map, owned)
     spreads = generate_credit_spread_proposals(convictions, tech_map)
-    all_p = cc + dr + spreads
-    all_p = [p for p in all_p if p.get("quality_pass") and p.get("edge_score", 0) >= MIN_EDGE_SCORE]
+    pool = cc + dr + spreads
+    strict = [p for p in pool if p.get("quality_pass") and p.get("edge_score", 0) >= MIN_EDGE_SCORE]
+    fallback_used = False
+    if not strict and pool:
+        relaxed = [
+            p for p in pool
+            if p.get("edge_score", 0) >= MIN_EDGE_CC_INTENT and _f(p.get("pop_pct")) >= (MIN_POP_PCT - 5)
+        ]
+        for p in relaxed:
+            p["fallback_tier"] = True
+            p["quality_pass"] = True
+            note = " · Fallback tier (relaxed gates — income sleeve / BS estimate when chain thin)"
+            p["reasoning"] = (p.get("reasoning") or "") + note
+        strict = relaxed[:8]
+        fallback_used = bool(strict)
+        if fallback_used:
+            _audit("fallback_tier", count=len(strict), symbols=[p.get("symbol") for p in strict])
+
     seen = set()
     deduped = []
-    for p in all_p:
+    for p in strict:
         key = (p.get("strategy"), p.get("symbol"), p.get("strike"), p.get("account"))
         if key in seen:
             continue
         seen.add(key)
         deduped.append(p)
-    all_p = deduped
-    all_p.sort(key=lambda x: -x["edge_score"])
+    all_p = sorted(deduped, key=lambda x: -x["edge_score"])
 
     out = {
         "generated_at": _iso(),
@@ -948,10 +998,12 @@ def generate_proposals(force: bool = False) -> dict:
         "covered_calls": len(cc),
         "defined_risk": len(dr),
         "credit_spreads": len(spreads),
+        "fallback_tier_used": fallback_used,
         "quality_gate": {
             "min_edge_score": MIN_EDGE_SCORE,
             "min_pop_pct": MIN_POP_PCT,
             "min_iv_rank": MIN_IV_RANK,
+            "relaxed_edge_floor": MIN_EDGE_CC_INTENT,
         },
         "proposals": all_p,
         "strategy_overview": {
@@ -963,7 +1015,51 @@ def generate_proposals(force: bool = False) -> dict:
         },
     }
     _save_json(PROPOSALS_CACHE, out)
+    _audit("proposals_generated", count=len(all_p), cc=len(cc), dr=len(dr), spreads=len(spreads),
+           fallback=fallback_used)
     return out
+
+
+def get_proposal_health_metrics() -> dict:
+    """Snapshot for Health Agent + /api/v2/health/proposals."""
+    props = _load_json(PROPOSALS_CACHE)
+    mon = _load_json(MONITOR_CACHE)
+    age_min = None
+    try:
+        if props.get("generated_at"):
+            age_min = round(
+                (_now() - datetime.fromisoformat(props["generated_at"].replace("Z", "+00:00"))).total_seconds() / 60, 1
+            )
+    except Exception:
+        pass
+    try:
+        from db_adapter import _execute, USE_DB
+        pending = int((_execute(
+            "SELECT COUNT(*) AS c FROM paper_trade_proposals WHERE status='PENDING'", fetch="one"
+        ) or {}).get("c", 0)) if USE_DB else None
+        wl_stale = int((_execute(
+            """SELECT COUNT(*) AS c FROM watchlist_items
+               WHERE status='active' AND updated_at < NOW() - INTERVAL '7 days'""", fetch="one"
+        ) or {}).get("c", 0)) if USE_DB else None
+        rot_pending = int((_execute(
+            "SELECT COUNT(*) AS c FROM strategy_rotation_recommendations WHERE status='proposed'", fetch="one"
+        ) or {}).get("c", 0)) if USE_DB else None
+    except Exception:
+        pending = wl_stale = rot_pending = None
+    return {
+        "captured_at": _iso(),
+        "options": {
+            "proposal_count": props.get("count", 0),
+            "cache_age_min": age_min,
+            "fallback_tier_used": props.get("fallback_tier_used", False),
+            "open_legs": mon.get("position_count", 0),
+            "needs_action": mon.get("needs_action_count", 0),
+        },
+        "trades": {"pending_proposals": pending},
+        "watchlist": {"stale_active_7d": wl_stale},
+        "rotation": {"pending_recommendations": rot_pending},
+        "maturity_level": 10 if props.get("count", 0) > 0 else 7,
+    }
 
 
 def monitor_positions(force: bool = False) -> dict:
