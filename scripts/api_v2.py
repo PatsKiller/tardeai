@@ -19342,9 +19342,39 @@ def _rotation_summary(force=False):
                     _o["entry_plan"] = _plans.get((_o.get("symbol") or "").upper())
         except Exception:
             pass
+        # ── FEE-DRIVEN rotation ideas (operator 2026-06-21: "should be autonomous in reports and rotation") ──
+        # Turn fee-efficiency findings into advisory rotate-out→cheaper-alternative pairs (e.g. FCNTX→SCHD).
+        # Review-only, never an order; the same advisory footing as the rest of the engine. Cheap (no subprocess).
+        _fee_swaps, _fee_total = [], None
+        try:
+            import sys as _sysf
+            _sysf.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            import fee_efficiency_analyzer as _fae
+            _fee = _fae.analyze()
+            _fee_total = _fee.get("total_annual_fee_usd")
+            for _ff in (_fee.get("findings") or []):
+                _alt = (_ff.get("cheaper_alternatives_beating_it") or [None])[0]
+                _fee_swaps.append({
+                    "kind": "fee_swap", "review_only": True,
+                    "out_symbol": _ff.get("symbol"), "account": _ff.get("account"),
+                    "in_symbol": (_alt.get("symbol") if _alt else None),
+                    "instrument_type": _ff.get("instrument_type"), "market_value": _ff.get("market_value"),
+                    "expense_ratio_pct": _ff.get("expense_ratio_pct"), "annual_fee_usd": _ff.get("annual_fee_usd"),
+                    "excess_fee_vs_index_usd": _ff.get("excess_fee_vs_index_usd"),
+                    "ytd_return_pct": _ff.get("ytd_return_pct"),
+                    "alt_expense_ratio_pct": (_alt.get("expense_ratio_pct") if _alt else None),
+                    "alt_ytd_return_pct": (_alt.get("ytd_return_pct") if _alt else None),
+                    "tax_free_to_switch": _ff.get("tax_free_to_switch"), "severity": _ff.get("severity"),
+                    "recommendation": _ff.get("recommendation"),
+                })
+            _fee_swaps.sort(key=lambda x: (x.get("excess_fee_vs_index_usd") or 0), reverse=True)
+        except Exception:
+            _fee_swaps, _fee_total = [], None
         out = {
             "ok": bool(eng.get("ok", True)), "advisory_only": True,
             "portfolio_total": round(pf_total),
+            "fee_swaps": _fee_swaps,
+            "total_annual_fee_usd": _fee_total,
             "sector_overweights": sector_overweights,
             "sector_underweights": sector_underweights,
             "degraded_holdings": degraded_holdings,
