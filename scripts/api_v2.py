@@ -17436,9 +17436,19 @@ def _broker_orders_capabilities(query=None):
             import schwab_pilot_arm as _arm
             st = _arm.status()
             if st.get("armed"):
-                notice = ("Schwab pilot is ARMED (Stage 2b). Drafts/previews here are advisory; ACTUAL "
-                          "execution happens ONLY in the Pilot Console, and every submit still passes the "
-                          "canary envelope + pilot caps + per-order 2FA. This panel never sends.")
+                _env_removed = False
+                try:
+                    from brokers.canary_gate import GATES_REMOVED as _gr
+                    _env_removed = bool(_gr)
+                except Exception:
+                    pass
+                notice = ("Schwab pilot is ARMED + LIVE. " +
+                          ("The $40 canary envelope is REMOVED (operator) — any BUY size/symbol is allowed; "
+                           "per-order 2FA (web typed-ticker + Telegram) is the only remaining gate. "
+                           if _env_removed else
+                           "Every submit still passes the canary envelope + pilot caps + per-order 2FA. ") +
+                          "Drafts/previews here are advisory; ACTUAL execution happens in the Pilot Console. "
+                          "Session auto-expires; any restart fails safe to disarmed.")
             else:
                 # Only the locks that are GENUINELY closed — so the notice is truthful + actionable instead
                 # of a blanket "DISABLED" (operator 2026-06-21). The arm session is the deliberate per-session
