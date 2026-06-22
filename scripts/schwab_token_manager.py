@@ -19,7 +19,8 @@ fully functional and testable now.
   python3 scripts/schwab_token_manager.py init-key            # one-time: generate the encryption key
   python3 scripts/schwab_token_manager.py health [account]
   python3 scripts/schwab_token_manager.py check-alerts [--send]
-  python3 scripts/schwab_token_manager.py reauth-url <account>
+  python3 scripts/schwab_token_manager.py reauth-url <account>                       # STEP 1: get login URL
+  python3 scripts/schwab_token_manager.py exchange-code <account> "<redirect URL>"    # STEP 2: SAVE the token
 """
 from __future__ import annotations
 import argparse, hashlib, json, os, sys, time
@@ -421,8 +422,10 @@ def reauth_url(account_key):
     url = (f"https://api.schwabapi.com/v1/oauth/authorize?client_id={appkey}"
            f"&redirect_uri={quote(cb)}&response_type=code")
     return {"ok": True, "account_key": account_key, "authorize_url": url,
-            "note": "Open in a browser, log in. The browser redirects to the callback with ?code=... (page may not load — "
-                    "that's fine). Copy the FULL redirect URL and run exchange_code(account_key, redirect_url)."}
+            "note": "STEP 1 of 2. Open authorize_url in a browser and log in. Schwab redirects to the callback "
+                    "with ?code=... (the page may not load — that's fine). Copy the FULL redirect URL from the "
+                    "address bar, then run STEP 2 to actually SAVE the token:",
+            "step2_command": f"python3 scripts/schwab_token_manager.py exchange-code {account_key} \"<FULL redirect URL with ?code=...>\""}
 
 
 def exchange_code(account_key, redirect_url, broker="schwab", environment="live"):
@@ -466,8 +469,10 @@ def exchange_code(account_key, redirect_url, broker="schwab", environment="live"
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["init-key", "health", "check-alerts", "reauth-url"])
+    ap.add_argument("cmd", choices=["init-key", "health", "check-alerts", "reauth-url", "exchange-code"])
     ap.add_argument("account", nargs="?", default=None)
+    ap.add_argument("redirect_url", nargs="?", default=None,
+                    help="for exchange-code: the FULL browser redirect URL containing ?code=...")
     ap.add_argument("--send", action="store_true")
     a = ap.parse_args()
     if a.cmd == "init-key":
@@ -482,6 +487,15 @@ def main():
         print(json.dumps(check_and_alert(send=a.send), indent=2))
     elif a.cmd == "reauth-url":
         print(json.dumps(reauth_url(a.account), indent=2))
+    elif a.cmd == "exchange-code":
+        # STEP 2 of re-auth: exchange the browser ?code=... for tokens + persist (this is what actually
+        # saves the new login — reauth-url alone does NOT). Redirect URL is never logged.
+        if not (a.account and a.redirect_url):
+            print(json.dumps({"ok": False, "reason": "usage: exchange-code <account> \"<full redirect URL with ?code=...>\""}, indent=2))
+        else:
+            res = exchange_code(a.account, a.redirect_url)
+            res.pop("redirect_url", None)
+            print(json.dumps(res, indent=2, default=str))
 
 
 if __name__ == "__main__":
