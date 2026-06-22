@@ -344,6 +344,12 @@ export default function PortfolioHub({ onDrill }: Props) {
                             {sc.analyst?.rating && <span title={`Yahoo consensus ${sc.analyst.mean} · target range $${sc.analyst.target_low}–$${sc.analyst.target_high}${sc.analyst.distribution ? ` · votes: ${sc.analyst.distribution.strong_buy ?? 0} strong buy / ${sc.analyst.distribution.buy ?? 0} buy / ${sc.analyst.distribution.hold ?? 0} hold / ${sc.analyst.distribution.sell ?? 0} sell` : ''}`}
                               style={{ color: String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
                               {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions} analysts · target ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}</span>}
+                            {sc.earnings && (sc.earnings.next_date || sc.earnings.surprise_pct != null) && (
+                              <span title={`${sc.earnings.next_date ? `Next earnings ${sc.earnings.next_date}` : ''}${sc.earnings.last_date ? ` · last ${sc.earnings.last_date}: est ${sc.earnings.eps_estimate} → actual ${sc.earnings.eps_actual}` : ''}`}>
+                                {sc.earnings.next_date && <span style={{ color: 'var(--text2)' }}>📅 {new Date(sc.earnings.next_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                {sc.earnings.surprise_pct != null && <span style={{ color: sc.earnings.beat ? '#22c55e' : '#ef4444', fontWeight: 700, marginLeft: sc.earnings.next_date ? 4 : 0 }}>{sc.earnings.next_date ? '· ' : ''}{sc.earnings.beat ? 'BEAT' : 'MISS'} {sc.earnings.surprise_pct >= 0 ? '+' : ''}{sc.earnings.surprise_pct}%</span>}
+                              </span>
+                            )}
                           </div>
                           <AnalystReviews symbol={h.symbol} map={aMap} />
                           {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (

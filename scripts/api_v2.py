@@ -17581,12 +17581,24 @@ def _symbol_cards(query=None):
     Portfolio (operator 2026-06-12): per symbol -> {description, sector, industry, sector_etf,
     perf_week, sector_perf_week, vs_sector_week, analyst{...}, news[top 3 relevant]}. Read-only."""
     profs = _db_query("""SELECT symbol, description_1s, sector, industry, instrument_type, direction_hint,
-                                expense_ratio, analyst_look_through_pct, analyst_basis FROM symbol_profiles""") or []
+                                expense_ratio, analyst_look_through_pct, analyst_basis,
+                                next_earnings_date, last_earnings_date, last_eps_estimate, last_eps_actual,
+                                last_eps_surprise_pct FROM symbol_profiles""") or []
     out = {p["symbol"]: {"description": p["description_1s"], "sector": p["sector"], "industry": p["industry"],
                          "instrument_type": p.get("instrument_type") or "stock", "direction_hint": p.get("direction_hint"),
                          "expense_ratio": _json_clean(p.get("expense_ratio")),
                          "analyst_look_through_pct": _json_clean(p.get("analyst_look_through_pct")),
-                         "analyst_basis": p.get("analyst_basis")} for p in profs}
+                         "analyst_basis": p.get("analyst_basis"),
+                         # earnings: next report date + last-quarter beat/miss (stocks only; null for ETFs/funds)
+                         "earnings": ({"next_date": _json_clean(p.get("next_earnings_date")),
+                                       "last_date": _json_clean(p.get("last_earnings_date")),
+                                       "eps_estimate": _json_clean(p.get("last_eps_estimate")),
+                                       "eps_actual": _json_clean(p.get("last_eps_actual")),
+                                       "surprise_pct": _json_clean(p.get("last_eps_surprise_pct")),
+                                       "beat": (None if p.get("last_eps_surprise_pct") is None
+                                                else float(p["last_eps_surprise_pct"]) >= 0)}
+                                      if (p.get("next_earnings_date") or p.get("last_earnings_date")) else None)}
+                          for p in profs}
     syms = list(out.keys())
     if not syms:
         return {"cards": {}, "count": 0}
