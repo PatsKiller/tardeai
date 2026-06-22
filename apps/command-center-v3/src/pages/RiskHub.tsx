@@ -22,7 +22,13 @@ export default function RiskHub({ onDrill }: Props) {
 
   const heat = risk?.portfolio_heat_pct ?? 0
   const overThreshold = heat > HEAT_THRESHOLD
-  const positions = risk?.positions ?? []
+  const allPositions = risk?.positions ?? []
+  // Real vs paper split (operator 2026-06-21): paper positions (Alpaca, environment="paper") carry real live
+  // stops but are NOT real-money risk — default to real-money view, toggle to include/isolate paper. The
+  // headline heat/risk KPIs are always real-money (precomputed, exclude paper).
+  const [env, setEnv] = useState<'real' | 'all' | 'paper'>('all')
+  const paperCount = allPositions.filter((p: any) => p.environment === 'paper').length
+  const positions = env === 'all' ? allPositions : allPositions.filter((p: any) => (p.environment || 'real') === env)
   const triggered = positions.filter((p: any) => p.triggered)
 
   // Deep-link params from the Reports Action Queue: ?symbol / ?symbols / ?drawer (stop|stops|unprotected|
@@ -149,7 +155,20 @@ export default function RiskHub({ onDrill }: Props) {
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Protection Coverage</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{positions.length} positions · verified live stops</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {paperCount > 0 && (
+                    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                      {(['all', 'real', 'paper'] as const).map((e) => (
+                        <button key={e} onClick={() => setEnv(e)} style={{
+                          fontSize: 9, fontWeight: 700, padding: '3px 8px', border: 'none', cursor: 'pointer',
+                          background: env === e ? 'var(--accent)' : 'transparent',
+                          color: env === e ? '#fff' : 'var(--text2)', textTransform: 'capitalize',
+                        }}>{e === 'all' ? `all (${allPositions.length})` : e === 'paper' ? `paper (${paperCount})` : `real (${allPositions.length - paperCount})`}</button>
+                      ))}
+                    </div>
+                  )}
+                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>{positions.length} positions · verified live stops</span>
+                </div>
               </div>
               {/* 3-way split (reconciled): VERIFIED (live broker / operator-confirmed) · PLANNED (intended stop,
                   not verified live) · NO STOP. A planned stop is not protection until it's live at the broker. */}
