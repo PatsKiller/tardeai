@@ -18230,6 +18230,53 @@ def _schwab_status(query=None):
             "note": "Read-only Schwab integration. Writes fenced (NotProvenWrite); api_write_enabled=false; MANUAL_REVIEW."}
 
 
+_SCHWAB_PROBE_CACHE = {"ts": 0.0, "result": None}
+
+
+def _schwab_token_health(query=None):
+    """GET /api/v2/brokers/schwab/token-health — is the Schwab OAuth refresh token actually usable RIGHT
+    NOW? Combines the DB freshness health with a CACHED ground-truth live probe (the freshness timestamp
+    can read 'valid' while Schwab has revoked the token server-side). Lets the protective-stop card warn
+    're-auth needed' BEFORE an order attempt. ?probe=1 forces a fresh probe (else 5-min cache). Read-only;
+    never exposes token material."""
+    import time as _t
+    q = query or {}
+    force = str((q.get("probe") or [""])[0] if isinstance(q.get("probe"), list) else q.get("probe") or "").lower() in ("1", "true", "yes")
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import schwab_token_manager as tm
+    key = tm.canonical_token_key("schwab", "live")
+    # canonical_token_key() filters out degraded rows — but a degraded token IS the login that needs
+    # re-auth, so fall back to the most recent schwab token row (degraded included) for a precise message.
+    if not key:
+        _row = _db_query("""SELECT account_key FROM broker_oauth_tokens WHERE broker='schwab'
+                            AND environment='live' AND refresh_token_enc IS NOT NULL
+                            ORDER BY updated_at DESC LIMIT 1""") or []
+        key = _row[0]["account_key"] if _row else None
+    h = tm.health(key, "schwab", "live") if key else {"has_token": False, "degraded": True, "refresh_valid": False,
+                                                       "last_error": "no token on file — manual OAuth login required"}
+    # cached live probe (5 min) — only worth probing when a token exists
+    probe = _SCHWAB_PROBE_CACHE["result"]
+    if key and h.get("has_token") and (force or probe is None or (_t.time() - _SCHWAB_PROBE_CACHE["ts"] > 300)):
+        probe = tm.live_probe(key, "schwab", "live")
+        _SCHWAB_PROBE_CACHE.update(ts=_t.time(), result=probe)
+        if probe.get("needs_reauth"):
+            h = tm.health(key, "schwab", "live")   # re-read: live_probe may have just marked it degraded
+    needs_reauth = bool((not h.get("has_token")) or h.get("degraded") or (not h.get("refresh_valid"))
+                        or (probe and probe.get("needs_reauth")))
+    return {"ok": not needs_reauth, "broker": "schwab", "token_key": key,
+            "needs_reauth": needs_reauth, "degraded": bool(h.get("degraded")),
+            "has_token": bool(h.get("has_token")), "refresh_valid": bool(h.get("refresh_valid")),
+            "access_fresh": bool(h.get("access_fresh")), "days_to_reauth": h.get("days_to_reauth"),
+            "refresh_expires_at": h.get("refresh_expires_at"), "next_reauth_due_at": h.get("next_reauth_due_at"),
+            "last_error": h.get("last_error"),
+            "live_probe": ({"probed": probe.get("probed"), "live_ok": probe.get("live_ok"),
+                            "needs_reauth": probe.get("needs_reauth"), "error": probe.get("error")} if probe else None),
+            "reauth_command": f"python3 scripts/schwab_token_manager.py reauth-url {key or 'schwab_taxable'}",
+            "message": ("Schwab login expired/revoked — re-authenticate before placing live orders."
+                        if needs_reauth else "Schwab token healthy.")}
+
+
 def _time_exit_proposals_list(query=None):
     """GET /api/v2/time-exit-proposals — pending max-hold close proposals (advisory). Approval-gated."""
     rows = _db_query("""SELECT id, trade_id, symbol, strategy_id, hold_days, max_hold_days, overdue_by_days,
@@ -19548,6 +19595,7 @@ ROUTES = {
     "/api/v2/discovery/results": _discovery_results,
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
+    "/api/v2/brokers/schwab/token-health": _schwab_token_health,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
     "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,
     "/api/v2/broker-orders/events": _broker_orders_events,

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
 
@@ -67,6 +67,14 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   const [stopIntent, setStopIntent] = useState<string>('')   // intent_id once 2FA requested (approve phase)
   const [stopTicket, setStopTicket] = useState<string>('')   // ticket string when account has no API
   const [stopDone, setStopDone] = useState(false)
+  // Schwab OAuth token health — surfaced UP FRONT so a dead/expired refresh token shows "re-auth needed"
+  // BEFORE an order attempt (the freshness timestamp alone can read healthy while Schwab has revoked it).
+  const [tokenHealth, setTokenHealth] = useState<any>(null)
+  const _needsReauth = _isSchwab && tokenHealth?.needs_reauth === true
+  useEffect(() => {
+    if (!_isSchwab || !stopOrder || tokenHealth) return
+    fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth(unwrapApi(j))).catch(() => {})
+  }, [_isSchwab, stopOrder, tokenHealth])
   const _resetStop = () => { setStopOrder(null); setStopTk(''); setStopCode(''); setStopMsg(''); setStopIntent(''); setStopTicket(''); setStopDone(false) }
   // "Ignore stop for a week" — operator acknowledgement granting a 7-day grace period. Suppresses the stop
   // ALERT (stop_snooze table); advisory only — does NOT change or cancel the protective stop at the broker.
@@ -184,6 +192,13 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>Account <b style={{ color: TEXT1 }}>{acctLbl}</b> · {route}</div>
           </div>
 
+          {/* SCHWAB TOKEN HEALTH — re-auth needed banner (shown UP FRONT, before any order attempt) */}
+          {_needsReauth && !stopDone && <div style={{ marginTop: 10, padding: 11, background: 'rgba(239,68,68,.12)', border: `1px solid ${RED}`, borderRadius: 8 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 900, color: RED }}>⚠ Schwab re-auth needed — orders will be rejected</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} The refresh token must be renewed by a manual browser login before any live order can submit. Run:</div>
+            <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: '#1e293b', color: TEXT0, fontSize: 11, ...({ fontFamily: 'monospace' } as any) }}>{tokenHealth?.reauth_command || 'python3 scripts/schwab_token_manager.py reauth-url schwab_taxable'}</div>
+          </div>}
+
           {/* DONE */}
           {stopDone && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 12, fontWeight: 700 }}>{stopMsg}</div>}
 
@@ -220,7 +235,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
           <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
             {stopMsg && !stopDone && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
             <button onClick={_resetStop} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
-            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: stopBusy ? 'not-allowed' : 'pointer', background: '#b45309', color: '#fff' }}>{stopBusy ? '…' : _isSchwab ? 'REQUEST LIVE STOP' : 'BUILD TICKET'}</button>}
+            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? 'REQUEST LIVE STOP' : 'BUILD TICKET'}</button>}
           </div>
         </div>
       </div>
