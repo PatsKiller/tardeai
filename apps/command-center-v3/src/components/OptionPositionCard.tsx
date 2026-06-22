@@ -1,4 +1,6 @@
 import { fmt$, fmtNum } from '../lib/format'
+import { plainEnglishPosition } from '../lib/optionsNovice'
+import { WhatIfBox } from './OptionsNovicePanel'
 
 const BLUE = '#60a5fa'
 const GREEN = '#22c55e'
@@ -72,10 +74,12 @@ function fmtExpiry(iso?: string): string {
 
 export default function OptionPositionCard({
   position: p,
+  novice,
   onAction,
   onDrill,
 }: {
   position: OptionPosition
+  novice?: boolean
   onAction: (action: string, id: string) => void
   onDrill?: () => void
 }) {
@@ -123,6 +127,18 @@ export default function OptionPositionCard({
         )}
       </div>
 
+      {novice && (
+        <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.22)', fontSize: 10.5, color: TEXT2, lineHeight: 1.5 }}>
+          <b style={{ color: BLUE }}>Your position:</b> {plainEnglishPosition(p)}
+        </div>
+      )}
+
+      {novice && p.still_working === false && (
+        <div style={{ marginTop: 8, padding: '6px 9px', borderRadius: 6, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', fontSize: 10, color: AMBER, fontWeight: 700 }}>
+          ⚠ This leg may need attention — see recommended action above.
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
         <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip="Current underlying price." />
         <Metric label="Mark" value={p.mark != null ? fmt$(p.mark, 2) : '—'} tip="Current option mark from broker." />
@@ -134,8 +150,11 @@ export default function OptionPositionCard({
         <Metric label="Edge" value={p.edge_score != null ? Math.round(p.edge_score) : '—'} tip="Monitor edge score from POP and IV." />
       </div>
 
+      {novice && p.strategy && <WhatIfBox strategy={(p.strategy === 'short_put' ? 'cash_secured_put' : p.strategy === 'short_call' ? 'covered_call' : p.strategy.replace(/^long_/, 'long_'))} symbol={p.underlying} />}
+
       {p.rationale && (
         <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: '1px solid var(--border-subtle)', paddingTop: 9 }}>
+          {novice && <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, display: 'block', marginBottom: 4 }}>WHY THIS ACTION</span>}
           {p.rationale}
         </div>
       )}

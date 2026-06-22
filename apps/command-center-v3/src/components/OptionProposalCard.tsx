@@ -1,4 +1,6 @@
 import { fmt$, fmtNum } from '../lib/format'
+import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
+import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 
 const BLUE = '#60a5fa'
 const GREEN = '#22c55e'
@@ -115,12 +117,14 @@ const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_call', 'sell
 export default function OptionProposalCard({
   proposal: p,
   armed,
+  novice,
   onAction,
   onDrill,
   footer,
 }: {
   proposal: OptionProposal
   armed?: boolean
+  novice?: boolean
   onAction: (action: string, id: string) => void
   onDrill?: () => void
   footer?: React.ReactNode
@@ -130,6 +134,9 @@ export default function OptionProposalCard({
   const edge = p.edge_score != null ? Math.round(p.edge_score) : null
   const ds = p.data_source === 'schwab_chain' ? { label: 'Schwab chain', c: GREEN } : p.data_source === 'bs_estimate' ? { label: 'BS estimate', c: AMBER } : null
   const isCredit = (p.side || '').toUpperCase() === 'SELL' || p.strategy === 'covered_call' || p.strategy === 'cash_secured_put' || p.strategy === 'credit_spread'
+  const guide = strategyGuide(p.strategy)
+  const dist = strikeDistance(p)
+  const risks = novice ? proposalRiskFlags(p) : []
 
   const btnStyle = (action: string): React.CSSProperties => {
     if (action === 'hold') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }
@@ -157,7 +164,7 @@ export default function OptionProposalCard({
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: sv.bg }}>{sv.label}</span>
-            <span style={{ fontSize: 9, color: MUTED }}>{strat}</span>
+            <span title={guide.oneLiner} style={{ fontSize: 9, color: MUTED, cursor: 'help' }}>{guide.emoji} {strat}</span>
             <span style={{ fontSize: 12, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.symbol}</span>
             {ds && <span title={ds.label === 'BS estimate' ? 'Premium estimated via Black-Scholes — confirm on chain before sizing.' : 'Live bid/ask mid from Schwab option chain.'} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: ds.c, background: `${ds.c}18`, border: `1px solid ${ds.c}44` }}>{ds.label}</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
@@ -173,6 +180,21 @@ export default function OptionProposalCard({
           </span>
         )}
       </div>
+
+      {novice && (
+        <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.22)', fontSize: 10.5, color: TEXT2, lineHeight: 1.5 }}>
+          <b style={{ color: BLUE }}>In plain English:</b> {plainEnglishProposal(p)}
+        </div>
+      )}
+
+      {novice && dist && p.underlying_price && (
+        <div title={dist.label}>
+          <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>{dist.label}</div>
+          <StrikeDistanceBar spot={p.underlying_price} strike={p.strike} side={dist.side} />
+        </div>
+      )}
+
+      {novice && <RiskFlagChips flags={risks} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
         <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip={TIPS.spot} />
@@ -191,8 +213,11 @@ export default function OptionProposalCard({
         {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} tip={TIPS.oi} />}
       </div>
 
+      {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} />}
+
       {p.reasoning && (
         <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: '1px solid var(--border-subtle)', paddingTop: 9 }}>
+          {novice && <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, display: 'block', marginBottom: 4 }}>ANALYST NOTES</span>}
           {p.reasoning}
         </div>
       )}
