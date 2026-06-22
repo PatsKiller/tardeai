@@ -635,6 +635,25 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s
                 )
+                ON CONFLICT (symbol, run_date) DO UPDATE SET
+                    run_id = EXCLUDED.run_id, run_label = EXCLUDED.run_label, run_type = EXCLUDED.run_type,
+                    score = EXCLUDED.score, grade = EXCLUDED.grade, decision = EXCLUDED.decision,
+                    original_decision = EXCLUDED.original_decision, rvol = EXCLUDED.rvol, price = EXCLUDED.price,
+                    change_pct = EXCLUDED.change_pct, gap_pct = EXCLUDED.gap_pct, float_m = EXCLUDED.float_m,
+                    catalyst = EXCLUDED.catalyst, catalyst_verified = EXCLUDED.catalyst_verified,
+                    catalyst_confidence = EXCLUDED.catalyst_confidence, catalyst_source = EXCLUDED.catalyst_source,
+                    critic_verdict = EXCLUDED.critic_verdict, critic_confidence = EXCLUDED.critic_confidence,
+                    critic_reasoning = EXCLUDED.critic_reasoning, decision_changed = EXCLUDED.decision_changed,
+                    disqualified = EXCLUDED.disqualified, disqualification_reason = EXCLUDED.disqualification_reason,
+                    sector = EXCLUDED.sector, industry = EXCLUDED.industry, country = EXCLUDED.country,
+                    sector_etf = EXCLUDED.sector_etf, ticker_perf_1m = EXCLUDED.ticker_perf_1m,
+                    sector_perf_1m = EXCLUDED.sector_perf_1m, vs_sector_pct = EXCLUDED.vs_sector_pct,
+                    social_sentiment = EXCLUDED.social_sentiment, social_score = EXCLUDED.social_score,
+                    social_reddit = EXCLUDED.social_reddit, social_stocktwits = EXCLUDED.social_stocktwits,
+                    social_bullish_pct = EXCLUDED.social_bullish_pct, social_wsb = EXCLUDED.social_wsb,
+                    source = EXCLUDED.source, screener_label = EXCLUDED.screener_label,
+                    source_detail = EXCLUDED.source_detail, pillar_breakdown = EXCLUDED.pillar_breakdown,
+                    scanned_at = now()
             """, (
                 _run_id, date_str, run_label, sym,
                 t.get("score", 0), t.get("grade", ""), t.get("decision", ""),
