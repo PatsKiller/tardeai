@@ -22,7 +22,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Schwab order_kind aliases — the UI uses "STOP" / "STOP_LIMIT" / "TRAILING"; normalize to policy names.
 _KIND_ALIASES = {"STOP": "STOP", "STOP_LIMIT": "STOP_LIMIT", "STOPLIMIT": "STOP_LIMIT",
-                 "TRAILING": "TRAILING_STOP", "TRAILING_STOP": "TRAILING_STOP", "TRAIL": "TRAILING_STOP"}
+                 "TRAILING": "TRAILING_STOP", "TRAILING_STOP": "TRAILING_STOP", "TRAIL": "TRAILING_STOP",
+                 # MARKET = the synthetic-stop EXIT for fractional positions: Schwab rejects a resting STOP on
+                 # a fractional qty but ACCEPTS a Market-Day sell of the full qty. Used as the sell-all trigger.
+                 "MARKET": "MARKET", "MKT": "MARKET", "SELL_ALL": "MARKET", "MARKET_DAY": "MARKET"}
 
 
 def _money(v) -> str:
@@ -58,6 +61,10 @@ def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
         spec["stopPriceLinkBasis"] = "LAST"
         spec["stopPriceLinkType"] = "PERCENT"
         spec["stopPriceOffset"] = float(trail_pct)
+    elif ot == "MARKET":
+        # Synthetic-stop EXIT: sell the FULL (fractional) qty at market. Schwab requires DAY for fractional
+        # market orders (no GTC, no stopPrice/price). This is the order the synthetic monitor fires on breach.
+        spec["duration"] = "DAY"
     return spec
 
 
@@ -76,6 +83,8 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
     elif ot == "STOP_LIMIT":
         entry = EntrySpec(method=EntryMethod.STOP_LIMIT, stop_price=float(stop_price),
                           limit_price=float(limit_price if limit_price is not None else stop_price))
+    elif ot == "MARKET":  # synthetic-stop EXIT: market sell-all of a fractional position (no resting price)
+        entry = EntrySpec(method=EntryMethod.MARKET)
     else:  # TRAILING_STOP — stamp the live reference so structural validation has a price
         entry = EntrySpec(method=EntryMethod.STOP,
                           stop_price=float(stop_price) if stop_price is not None else float(current_price or 0))
