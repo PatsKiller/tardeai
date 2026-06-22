@@ -76,6 +76,8 @@ type RotationData = {
   top_rotation_ideas?: RotationPair[]
   top_pairs?: RotationPair[]
   top_candidates?: any[]
+  fee_swaps?: any[]
+  total_annual_fee_usd?: number | null
   research_candidates?: any[]
   etf_candidates?: any[]
   research_rotation_ideas?: RotationPair[]
@@ -430,6 +432,8 @@ export default function RotationIntelligence() {
     if (drill === 'missing_analyst') return candidates.filter((c: any) => c.evidence?.missing_or_neutral_analyst_upside === true || (c.evidence?.positive_upside_pct == null && c.evidence?.analyst_not_applicable !== true))
     return candidates.filter((c: any) => (c.recommendation || '').toUpperCase() === drill)
   })()
+  const feeSwaps = (data?.fee_swaps ?? []) as any[]
+  const totalAnnualFee = data?.total_annual_fee_usd
   const researchIdeas = (data?.research_rotation_ideas ?? []) as any[]
   const researchCands = (data?.research_candidates ?? []) as any[]
   const etfCands = (data?.etf_candidates ?? []) as any[]
@@ -522,6 +526,44 @@ export default function RotationIntelligence() {
         <SummaryCard label="Missing Sector" value={data?.missing_sector ?? '—'} color="#a855f7" active={drill === 'missing_sector'} onClick={() => clickDrill('missing_sector', 'review-candidates')} />
         <SummaryCard label="Missing Analyst Upside" value={missingAnalyst ?? '—'} color="#a855f7" active={drill === 'missing_analyst'} onClick={() => clickDrill('missing_analyst', 'review-candidates')} />
       </section>
+
+      {/* Fee-driven swaps — autonomous cost-efficiency: rotate an expensive fund into a cheaper one held */}
+      {(feeSwaps.length > 0 || totalAnnualFee != null) && (
+        <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(245,158,11,.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>
+              Fee-Driven Swaps <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · cost vs return, not a price signal</span>
+            </div>
+            <span style={{ flex: 1 }} />
+            {totalAnnualFee != null && <span style={{ fontSize: 11, color: 'var(--text2)' }}>portfolio fees <b style={{ color: '#f59e0b' }}>{money(totalAnnualFee)}/yr</b></span>}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
+            Holdings where a cheaper fund you already own is matching or beating it. Annual fee = expense ratio × value.
+            <b> Review only</b> — operator confirms tax/sizing; nothing is placed.
+          </div>
+          {feeSwaps.length === 0
+            ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>No fee-inefficient holdings flagged.</div>
+            : <div style={{ display: 'grid', gap: 8 }}>
+                {feeSwaps.map((f: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 8, background: 'var(--bg2)', border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{f.out_symbol}</span>
+                    {f.in_symbol && <><span style={{ color: 'var(--text3)' }}>→</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#22c55e', fontFamily: 'monospace' }}>{f.in_symbol}</span></>}
+                    <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: f.severity === 'high' ? 'rgba(239,68,68,.15)' : 'rgba(245,158,11,.15)', color: f.severity === 'high' ? '#ef4444' : '#f59e0b' }}>{(f.severity || '').toUpperCase()}</span>
+                    {f.tax_free_to_switch && <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 3, background: 'rgba(34,197,94,.15)', color: '#22c55e' }}>TAX-FREE (IRA)</span>}
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 10, color: 'var(--text3)' }}>
+                      {f.expense_ratio_pct != null ? `${f.expense_ratio_pct}% ER` : 'ER unknown'}
+                      {f.alt_expense_ratio_pct != null && f.in_symbol ? ` vs ${f.alt_expense_ratio_pct}%` : ''}
+                      {f.ytd_return_pct != null ? ` · ${f.ytd_return_pct}% YTD` : ''}
+                      {f.alt_ytd_return_pct != null && f.in_symbol ? ` vs ${f.alt_ytd_return_pct}%` : ''}
+                    </span>
+                    {f.excess_fee_vs_index_usd != null && <span style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b' }}>{money(f.excess_fee_vs_index_usd)}/yr</span>}
+                  </div>
+                ))}
+              </div>}
+        </section>
+      )}
 
       {/* B2. Sleeve Balance — sector/theme overweight & underweight detection */}
       {hasSleeveImbalance && (
