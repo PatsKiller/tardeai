@@ -18,6 +18,16 @@ def account_key_to_snaptrade_id(account_key: str) -> str | None:
     return None
 
 
+def resolve_and_preview(*, account_id: str, symbol: str, action: str, order_type: str,
+                        units: float, price: float | None = None, stop: float | None = None) -> dict:
+    """Resolve universal_symbol_id and call non-executing get_order_impact."""
+    from brokers import snaptrade_trade as st
+    uid = st.resolve_universal_symbol_id(symbol)
+    return st.preview(
+        account_id=account_id, action=action, universal_symbol_id=uid,
+        order_type=order_type, units=units, price=price, stop=stop)
+
+
 def place_order(account_key: str, order_spec: dict, intent) -> dict:
     """Preview then place via SnapTrade SDK. Requires BROKER_API_ENABLED + per-order 2FA already consumed."""
     from brokers.execution_guard import require

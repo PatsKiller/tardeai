@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-22 - SnapTrade one-share test mode (no sandbox)
+
+Added `one_share_test` envelope (exactly 1 share, ≤$50), `snaptrade_trade_pilot.py` preflight/execute
+with 2FA, `--arm-test` on `snaptrade_pilot_arm.py`, and `POST /api/v2/snaptrade/trade/preflight|execute`.
+Preview works without place; live test requires ENABLED commit + DB arm + trade-capable broker.
+
 ## 2026-06-22 - Fidelity monitored stops (SnapTrade mirror, operator-approve)
 
 SnapTrade cannot trade Fidelity (read-only). Built Stage 2c mirror for `fidelity_rollover_ira`: monitored

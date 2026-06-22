@@ -19158,6 +19158,47 @@ def _fidelity_stops_status():
         return {"ok": False, "error": str(e)[:160]}
 
 
+def _snaptrade_trade_preflight(body=None):
+    """POST /api/v2/snaptrade/trade/preflight — one-share live test (no sandbox): preview + 2FA request."""
+    try:
+        b = body or {}
+        acct = str(b.get("account") or "").strip()
+        sym = str(b.get("symbol") or "").strip().upper()
+        if not (sym and acct):
+            return {"ok": False, "error": "symbol and account are required"}
+        from brokers import snaptrade_trade_pilot as _stp
+        res = _stp.preflight(
+            account_key=acct, symbol=sym,
+            action=str(b.get("action") or "BUY"),
+            order_type=str(b.get("order_type") or "Market"),
+            price=b.get("price"), stop=b.get("stop"),
+            units=b.get("units"), one_share_test=bool(b.get("one_share_test", True)))
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _snaptrade_trade_execute(body=None):
+    """POST /api/v2/snaptrade/trade/execute — confirm 2FA and place the previewed one-share test order."""
+    try:
+        b = body or {}
+        intent_id = str(b.get("intent_id") or "").strip()
+        channel = str(b.get("channel") or "").strip().lower()
+        code = b.get("code")
+        if not intent_id or channel not in ("web", "telegram"):
+            return {"ok": False, "error": "intent_id and channel ('web' or 'telegram') required"}
+        from brokers import approval_service
+        from brokers import snaptrade_trade_pilot as _stp
+        cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
+        if not cr.get("ok"):
+            return {"ok": False, "stage": "confirm", "error": cr.get("reason")}
+        if not cr.get("fully_approved"):
+            return {"ok": True, "stage": "confirm", "fully_approved": False}
+        return _stp.execute(intent_id)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _snaptrade_status():
     """Non-secret status of the SnapTrade keys + connection (for the credentials modal). Never returns any
     secret. `ready` = client keys present; `connected` = a brokerage user is linked (reads can run)."""
@@ -23727,6 +23768,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/broker-orders/pilot/preflight":
         try:
             return 200, _pilot_preflight(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/snaptrade/trade/preflight":
+        try:
+            res = _snaptrade_trade_preflight(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/snaptrade/trade/execute":
+        try:
+            res = _snaptrade_trade_execute(body if isinstance(body, dict) else {})
+            http = 200 if (res.get("ok") or res.get("stage") == "confirm") else 400
+            return http, res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
