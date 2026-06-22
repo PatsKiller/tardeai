@@ -54,7 +54,8 @@ def _symbol_card(symbol: str) -> dict:
             except Exception:
                 p = {}
         if isinstance(p, dict):
-            dist = {k: p.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell") if p.get(k)}
+            if any(p.get(k) is not None for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")):
+                dist = {k: int(p.get(k) or 0) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")}
 
     analyst = None
     if an:
@@ -223,7 +224,7 @@ def get_intel_packet(proposal_id: int) -> dict:
             "verified": bool(catalyst_verified),
             "confidence": float(row["catalyst_confidence"]) if row.get("catalyst_confidence") is not None else None,
             "critic_verdict": row.get("critic_verdict"),
-            "critic_reasoning": (str(row.get("critic_reasoning") or ""))[:300] or None,
+            "critic_reasoning": (str(row.get("critic_reasoning") or ""))[:600] or None,
         },
         "technicals": {
             "summary": " · ".join(tech_parts) if tech_parts else row.get("technical_summary"),
