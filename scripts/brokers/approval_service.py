@@ -146,6 +146,46 @@ def _approval_chat() -> str | None:
         return None
 
 
+def _load_intent_any(intent_id: str):
+    """Rehydrate ANY persisted OrderIntent (not just protective) from broker_order_intents. None on miss."""
+    try:
+        from db_adapter import _get_conn
+        from brokers.order_intent import OrderIntent
+        cur = _get_conn().cursor()
+        cur.execute("SELECT intent_json FROM broker_order_intents WHERE intent_id=%s", (str(intent_id),))
+        r = cur.fetchone()
+        if not r or not r[0]:
+            return None
+        payload = r[0] if isinstance(r[0], dict) else json.loads(r[0])
+        return OrderIntent.from_dict(payload)
+    except Exception:
+        return None
+
+
+def _execution_notice(intent) -> str:
+    """Truthful execution-gate state for THIS intent (replaces the old blanket 'DISABLED this phase' line,
+    which went stale once Stage-2c protective/trailing stops were gate-removed 2026-06-19 + DB-authorized —
+    telling the operator a live, enabled order is 'disabled' is the bug). Fail-safe: any uncertainty falls
+    back to the conservative disabled wording. The per-order 2FA above is always the last gate regardless."""
+    try:
+        from brokers import execution_guard as _g
+        if intent is not None and _g._is_protective_stop(intent):
+            if _g._protective_unlocked():
+                return ("✅ Protective/trailing stops are LIVE-ENABLED — this SELL stop WILL submit to "
+                        "Schwab once approved (the 2FA above is the final gate).")
+            return "⛔ Protective stops are currently locked (system control off)."
+        if intent is not None and _g._live_future_unlocked():
+            return "✅ Execution is LIVE — this order WILL submit once approved."
+    except Exception:
+        pass
+    return "(Execution remains DISABLED this phase)"
+
+
+def execution_notice(intent_id: str) -> str:
+    """Public: the truthful execution notice for a persisted intent id (used by the telegram callback)."""
+    return _execution_notice(_load_intent_any(intent_id))
+
+
 def _send_approval_request(intent, code: str) -> None:
     """Inline-button approval message (operator request 2026-06-11): one-tap Approve/Reject, code kept as
     manual fallback. TEST-fixture intents are labeled so scaffold smoke never reads like a real plan."""
@@ -164,7 +204,7 @@ def _send_approval_request(intent, code: str) -> None:
             f"manual fallback code: `{code}`\n"
             + (f"[Open this order in Command Center]({link})\n" if link else "")
             + f"_2nd factor: web popup — you must TYPE the ticker ({intent.instrument.symbol}) to confirm_\n"
-            f"_(Execution remains DISABLED this phase)_")
+            f"_{_execution_notice(intent)}_")
     kb = {"inline_keyboard": [[
         {"text": "✅ Approve", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
         {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"}]]}

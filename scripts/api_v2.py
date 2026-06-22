@@ -17440,15 +17440,32 @@ def _broker_orders_capabilities(query=None):
                           "execution happens ONLY in the Pilot Console, and every submit still passes the "
                           "canary envelope + pilot caps + per-order 2FA. This panel never sends.")
             else:
-                locks = [k for k, v in {"env flag": st.get("env_BROKER_LIVE_ENABLED"),
-                                        "db control": st.get("db_control_broker_live_enabled"),
-                                        "standing approval": (st.get("standing_approvals_active", 0) > 0),
-                                        "write flag": st.get("api_write_enabled", {}).get("schwab_taxable"),
-                                        "canary day": st.get("canary_session_is_today")}.items() if not v]
-                notice = (f"Mode LIVE_ENABLED_FUTURE but pilot DISARMED — every order BLOCKED. "
-                          f"Closed locks: {', '.join(locks)}. This panel only builds DRAFTS + previews; "
-                          f"real execution is the Pilot Console after arming. See "
-                          f"docs/brokers/stage2b-write-pilot-spec.md.")
+                # Only the locks that are GENUINELY closed — so the notice is truthful + actionable instead
+                # of a blanket "DISABLED" (operator 2026-06-21). The arm session is the deliberate per-session
+                # operator key (auto-expiring); the canary date must be today.
+                hard = {"db control": st.get("db_control_broker_live_enabled"),
+                        "standing approval": (st.get("standing_approvals_active", 0) > 0),
+                        "write flag": st.get("api_write_enabled", {}).get("schwab_taxable")}
+                closed_hard = [k for k, v in hard.items() if not v]
+                arm_ok = bool(st.get("env_BROKER_LIVE_ENABLED")) or bool(st.get("pilot_session_active"))
+                day_ok = bool(st.get("canary_session_is_today"))
+                cdate = st.get("canary_session_date")
+                steps = []
+                if not arm_ok:
+                    steps.append(f"arm the session (type the phrase \"{st.get('arm_phrase')}\" — auto-expires)")
+                if not day_ok:
+                    steps.append(f"set the canary session date to TODAY (currently {cdate})")
+                if closed_hard:
+                    steps.append(f"open: {', '.join(closed_hard)}")
+                if not steps:
+                    notice = ("Schwab canary pilot is READY — every BUY still passes the canary envelope "
+                              "($4/10sh/$40) + 5-order cap + per-order 2FA. This panel builds drafts; execute "
+                              "in the Pilot Console.")
+                else:
+                    notice = ("Schwab canary BUY pilot is LIVE-wired but not armed for this session. To enable "
+                              f"live test BUYs: {'; '.join(steps)}. Every submit still passes the $40 canary "
+                              "envelope + 5-order cap + per-order 2FA; the session auto-expires and any restart "
+                              "fails safe to disarmed. Protective/trailing SELL stops are separately LIVE now.")
         except Exception:
             notice = ("Execution gated (Stage 2b). Drafts and translation previews only on this panel. "
                       "See docs/brokers/execution-safety-guards.md.")
