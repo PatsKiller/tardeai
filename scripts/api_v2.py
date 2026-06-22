@@ -19953,6 +19953,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ot = _psp.normalize_kind(kind)
                 if not ot:
                     return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
+                # FRACTIONAL-SHARE GUARD (operator 2026-06-21): Schwab rejects STOP/STOP_LIMIT/TRAILING orders
+                # on fractional quantities ("As of May 21, 2025, fractional orders ... must use Market/Limit").
+                # A protective stop must be a WHOLE-share qty → floor it; the sub-share remainder cannot be
+                # stop-protected at Schwab. Under 1 whole share ⇒ no stop possible (block with guidance).
+                qty_note = None
+                if acct.startswith("schwab"):
+                    try:
+                        _qf = float(qty); _qi = int(_qf)   # floor (positive long qty)
+                        if _qi != _qf:
+                            if _qi < 1:
+                                return 200, {"ok": False, "mode": "blocked",
+                                             "error": f"{sym} is {_qf:g} share (under 1 whole share) — Schwab does not "
+                                                      "accept fractional STOP orders. Protect it with a market/limit sell instead.",
+                                             "account": acct}
+                            qty_note = (f"Schwab rejects fractional STOP orders — protecting {_qi} whole "
+                                        f"share{'s' if _qi > 1 else ''}; the {_qf - _qi:.4f} fractional remainder "
+                                        "isn't stop-eligible at Schwab.")
+                            qty = _qi
+                    except Exception:
+                        pass
                 summ = _psp.order_summary(sym, qty, kind, stop_price=stop_price,
                                           limit_price=limit_price, trail_pct=trail_pct)
                 ticket = summ["ticket"]
@@ -20000,8 +20020,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                      "ticket": ticket, "account": acct}
                     return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
                                  "order": summ, "account": acct, "channels": req.get("channels"),
-                                 "ttl_min": req.get("ttl_min"),
-                                 "note": "Code sent to Telegram + email. Approve from EITHER — enter the code "
+                                 "ttl_min": req.get("ttl_min"), "qty_note": qty_note,
+                                 "note": ((qty_note + " ") if qty_note else "")
+                                         + "Code sent to Telegram + email. Approve from EITHER — enter the code "
                                          "below, tap Approve in Telegram, or type the ticker. Then it submits LIVE."}
                 return 200, {"ok": True, "mode": "ticket", "ticket": ticket, "detail": ticket,
                              "order": summ, "account": acct,
