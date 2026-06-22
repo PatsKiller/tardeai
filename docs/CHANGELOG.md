@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-22 - APGE phantom fix: broker-blocked submits no longer pollute journal
+
+Root cause: ATM approved APGE (#96) but Alpaca rejected submit (CONCENTRATION_CAP 13.3% vs 8%).
+Pending row kept `lifecycle_state=open` (DB default) → monitor voided as phantom at 16m → digest
+surfaced DATA_OR_BROKER_REVIEW. Fixes: `lifecycle_state='pending'` on approve; cancel pending row on
+`ALPACA_PAPER_SUBMIT_BLOCKED`; ATM counts broker reject as rejected not approved; monitor only
+phantom-checks broker-submitted opens; digest excludes PHANTOM/CANCELLED bookkeeping closes;
+health_agent flags pending lifecycle mismatches + stale never-submitted rows.
+
 ## 2026-06-22 - Options Module v2: cron, execution, IV history, credit spreads
 
 1. **Cron** — `run_options_monitor.sh` every 10m market hours; daily `options_iv_snapshot.py` at 16:20 ET.

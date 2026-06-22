@@ -1403,7 +1403,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 signal_id, source_signal_id, source_strategy_card_id, strategy_card_id, candidate_id,
                 source_proposal_id, execution_account, execution_broker, execution_environment,
                 lineage_source, lineage_stamped_at, lineage_confidence, lineage_notes,
-                status, broker, opened_via, logged_by, automation_source
+                status, lifecycle_state, broker, opened_via, logged_by, automation_source
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -1414,7 +1414,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, NOW(), %s, %s,
-                'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
+                'pending', 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
             prop['strategy_id'], prop['symbol'],

@@ -16,6 +16,20 @@ sys.path.insert(0, str(PROJ / "scripts"))
 from db_adapter import _get_conn
 from closed_trade_postmortem_model import build_postmortem, build_daily_summary
 
+# Exclude bookkeeping-only closes — not real round-trips for operator review
+_DIGEST_EXCLUDE_SQL = """
+  AND COALESCE(outcome_verdict, '') NOT IN ('PHANTOM', 'CANCELLED')
+  AND COALESCE(close_reason, '') NOT LIKE 'phantom%'
+  AND COALESCE(exit_reason, '') NOT IN (
+      'phantom_no_alpaca_position',
+      'revalidation_blocked_never_submitted',
+      'broker_submit_blocked_never_filled',
+      'auto_cancel_never_submitted',
+      'auto_fix_never_filled'
+  )
+  AND NOT (COALESCE(broker_order_id, '') = '' AND COALESCE(exit_reason, '') LIKE 'phantom%')
+"""
+
 
 def _load_closed_trades(conn, date_filter):
     """Load closed trades, optionally filtered by date."""
@@ -25,8 +39,8 @@ def _load_closed_trades(conn, date_filter):
 
     if date_filter == "today":
         cur.execute(
-            """SELECT * FROM paper_trades WHERE status='closed' AND closed_at::date = CURRENT_DATE
-               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')"""
+            f"""SELECT * FROM paper_trades WHERE status='closed' AND closed_at::date = CURRENT_DATE
+               {_DIGEST_EXCLUDE_SQL}"""
         )
         rows = cur.fetchall()
         # No silent all-time fallback (2026-06-11): with zero closes today the digest used to report ALL
@@ -35,8 +49,8 @@ def _load_closed_trades(conn, date_filter):
             return {"status": "ok", "closed_count": 0,
                     "message": "Closed Trade Review -- no trades closed today (nothing to review)."}
     else:
-        cur.execute("""SELECT * FROM paper_trades WHERE status='closed'
-               AND NOT (COALESCE(broker_order_id,'')='' AND exit_reason LIKE 'phantom%')""")
+        cur.execute(f"""SELECT * FROM paper_trades WHERE status='closed'
+               {_DIGEST_EXCLUDE_SQL}""")
         rows = cur.fetchall()
 
     return [dict(zip(cols, row)) for row in rows]

@@ -564,17 +564,47 @@ def run_cycle():
             # Submit to broker
             trade_id = result.get("paper_trade_id")
             broker_status = "not_attempted"
+            sub_result = {}
             try:
                 from proposal_paper_submitter import submit_paper
                 from session13_db import get_conn as _sub_conn
                 sub_conn = _sub_conn()
                 if sub_conn:
-                    sub_result = submit_paper(sub_conn, pid, dry_run=False)
+                    sub_result = submit_paper(sub_conn, pid, dry_run=False) or {}
                     sub_conn.close()
                     broker_status = sub_result.get("status", "unknown")
             except Exception as se:
                 broker_status = f"error: {se}"
                 log.error(f"  {sym}: broker submit failed: {se}")
+
+            _broker_ok = broker_status in ("submitted", "simulation", "dry_run")
+            if not _broker_ok:
+                fail_detail = (
+                    sub_result.get("reason")
+                    or sub_result.get("error")
+                    or (sub_result.get("blockers") or [None])[0]
+                    or broker_status
+                )
+                reasons.append({"gate": "broker_submit_failed", "detail": str(fail_detail)[:200]})
+                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                             "rejected", reasons, health, pos_open, pos_total,
+                             new_today, new_total, pnl_acct, total_pnl_pct,
+                             b1_flag, config_hash, mode, trade_id)
+                cur.execute("""
+                    UPDATE paper_trade_proposals
+                    SET atm_evaluation_count = atm_evaluation_count + 1,
+                        atm_last_evaluation_at = NOW(),
+                        atm_last_failure_reason = %s
+                    WHERE id = %s
+                """, (f"broker_submit_failed: {str(fail_detail)[:150]}", pid))
+                conn.commit()
+                rejected_count += 1
+                log.warning(f"  {sym}: REJECTED — trade #{trade_id} created but broker={broker_status} ({fail_detail})")
+                _telegram_both(
+                    f"ATM broker block: {sym} ({sid.replace('_', ' ')}) "
+                    f"proposal #{pid} — {fail_detail}"
+                )
+                continue
 
             # Stamp ATM provenance on the trade
             decision_id = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,

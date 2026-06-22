@@ -49,6 +49,34 @@ def _log_event(conn, proposal_id, symbol, event_type, payload):
             pass
 
 
+def _cancel_never_submitted_pending(conn, proposal_id: int, exit_reason: str, closed_via: str) -> int:
+    """Cancel pre-created pending paper_trades rows that never received a broker order."""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE paper_trades
+               SET status='cancelled', lifecycle_state='cancelled',
+                   exit_reason=%s, close_reason=%s,
+                   closed_via=%s, closed_at=NOW(),
+                   outcome_verdict='CANCELLED', pnl=0, pnl_pct=0, r_multiple=0, unrealized_pnl=0
+               WHERE proposal_id=%s AND status='pending'
+                 AND COALESCE(broker_order_id,'')='' AND filled_at IS NULL""",
+            (exit_reason, exit_reason, closed_via, proposal_id),
+        )
+        n = cur.rowcount
+        if n:
+            conn.commit()
+            log.info(f"[submitter] cancelled {n} never-submitted pending row(s) for proposal {proposal_id}")
+        return n
+    except Exception as e:
+        log.warning(f"[submitter] pending-row cleanup failed for proposal {proposal_id}: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0
+
+
 def _create_evidence_snapshot(conn, proposal_id, symbol, strategy_id):
     """Capture point-in-time evidence snapshot before submission."""
     cur = conn.cursor()
@@ -528,20 +556,11 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             # ATOS phantom fix (2026-06-11): the approval flow pre-creates a 'pending' paper_trades row;
             # when revalidation BLOCKS submission, cancel that row immediately instead of leaving it for
             # phantom detection 16 minutes later (it was polluting closed-trade reviews as $0 'F' trades).
-            try:
-                cur_c = conn.cursor()
-                cur_c.execute("""UPDATE paper_trades
-                                 SET status='cancelled', lifecycle_state='cancelled',
-                                     exit_reason='revalidation_blocked_never_submitted',
-                                     closed_via='revalidation_block', closed_at=NOW()
-                                 WHERE proposal_id=%s AND status='pending'
-                                   AND COALESCE(broker_order_id,'')=''""", (proposal_id,))
-                if cur_c.rowcount:
-                    log.info(f"[revalidation] cancelled {cur_c.rowcount} never-submitted pending row(s) "
-                             f"for proposal {proposal_id}")
-                conn.commit()
-            except Exception as _ce:
-                log.warning(f"[revalidation] pending-row cleanup failed: {_ce}")
+            _cancel_never_submitted_pending(
+                conn, proposal_id,
+                exit_reason="revalidation_blocked_never_submitted",
+                closed_via="revalidation_block",
+            )
             # ── Gap 6: Telegram alert for NEEDS_REVALIDATION ──
             try:
                 from telegram_alert import send_telegram
@@ -650,6 +669,13 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             [_new_state, _new_state, proposal_id])
         conn.commit()
 
+        if event_type == "ALPACA_PAPER_SUBMIT_BLOCKED":
+            _cancel_never_submitted_pending(
+                conn, proposal_id,
+                exit_reason="broker_submit_blocked_never_filled",
+                closed_via="broker_submit_block",
+            )
+
         return {
             "status": result.get("status"),
             "proposal_id": proposal_id,
@@ -664,6 +690,11 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
         _log_event(conn, proposal_id, p["symbol"],
                    "ALPACA_PAPER_SUBMIT_BLOCKED",
                    {"error": str(e)})
+        _cancel_never_submitted_pending(
+            conn, proposal_id,
+            exit_reason="broker_submit_blocked_never_filled",
+            closed_via="broker_submit_block",
+        )
         return {
             "status": "error",
             "proposal_id": proposal_id,
