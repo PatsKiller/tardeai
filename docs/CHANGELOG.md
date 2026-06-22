@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-22 - Schwab pilot: all 3 accounts + standing unlock (2FA retained)
+
+`PILOT_ACCOUNT_ALLOWLIST` = taxable + both IRAs; `schwab_pilot_standing_unlock` DB flag (no expiry);
+`CANARY_SESSION_DATE` → 2099-12-31. Per-order 2FA unchanged on every submit.
+
 ## 2026-06-22 - Docs sync: SnapTrade/Fidelity stops + one-share test
 
 MASTER Stage 2c row, DOCUMENTATION_INDEX broker table, DAILY_OPS_LOG, snaptrade-fidelity spec,

@@ -44,13 +44,9 @@ def mode_for(broker: str) -> BrokerExecutionMode:
 
 
 def _live_future_unlocked() -> bool:
-    """Standing locks open? The 'physical key' is EITHER the shell env flag (BROKER_LIVE_ENABLED) OR
-    an unexpired UI-armed session (system_controls['pilot_armed_until'] > now) — operator chose the
-    UI path (2026-06-13). PLUS the DB control row AND a standing approval. Any error => locked.
-
-    The armed session AUTO-EXPIRES (set ~6h at arm) and is cleared by any server restart's resting
-    state, so a forgotten disarm can never leave writes armed. The real per-trade second surface is
-    the Telegram 2FA at execute-time — clicking arm alone still cannot place an order."""
+    """Standing locks open? Physical key = env flag OR non-expired session OR standing DB unlock
+    (operator 2026-06-22: all 3 Schwab accounts, no session expiry). PLUS broker_live_enabled +
+    standing approval. Per-order 2FA still required for every submit."""
     try:
         from db_adapter import _get_conn
         cur = _get_conn().cursor()
@@ -64,7 +60,10 @@ def _live_future_unlocked() -> bool:
                 session_ok = _dt.datetime.fromisoformat(str(sr[0])) > _dt.datetime.now(_dt.timezone.utc)
             except Exception:
                 session_ok = False
-        if not (env_ok or session_ok):
+        cur.execute("SELECT value FROM system_controls WHERE key='schwab_pilot_standing_unlock'")
+        st = cur.fetchone()
+        standing_ok = bool(st and str(st[0]).lower() == "true")
+        if not (env_ok or session_ok or standing_ok):
             return False
         cur.execute("SELECT value FROM system_controls WHERE key='broker_live_enabled'")
         r = cur.fetchone()
