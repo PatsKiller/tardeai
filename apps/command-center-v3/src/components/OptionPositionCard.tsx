@@ -1,0 +1,154 @@
+import { fmt$, fmtNum } from '../lib/format'
+
+const BLUE = '#60a5fa'
+const GREEN = '#22c55e'
+const AMBER = '#f59e0b'
+const RED = '#ef4444'
+const MUTED = 'var(--text3)'
+const TEXT0 = 'var(--text0)'
+const TEXT1 = 'var(--text1)'
+const TEXT2 = 'var(--text2)'
+
+const SEV = (s?: string, working?: boolean) => {
+  const v = (s || '').toLowerCase()
+  if (/crit|urgent/.test(v)) return { c: RED, label: 'CRITICAL' }
+  if (/warn/.test(v) || working === false) return { c: AMBER, label: 'ACTION' }
+  if (/pos/.test(v)) return { c: GREEN, label: 'WORKING' }
+  return { c: BLUE, label: 'INFO' }
+}
+
+const metricBox = {
+  background: 'rgba(2,6,23,.32)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  padding: '7px 8px',
+} as const
+
+function Metric({ label, value, color = TEXT0, tip }: { label: string; value: React.ReactNode; color?: string; tip?: string }) {
+  return (
+    <div style={metricBox} title={tip}>
+      <div style={{ fontSize: 8, color: MUTED, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}>{label}</div>
+      <div style={{ fontSize: 12.5, color, fontWeight: 850, marginTop: 2, cursor: tip ? 'help' : undefined }}>{value}</div>
+    </div>
+  )
+}
+
+export type OptionPosition = {
+  id: string
+  underlying: string
+  occ_symbol?: string
+  strategy?: string
+  strike?: number
+  expiration?: string
+  dte?: number
+  moneyness?: string
+  pop_otm_pct?: number
+  pop_itm_pct?: number
+  unrealized_pnl?: number
+  edge_score?: number
+  still_working?: boolean
+  recommended_action?: string
+  rationale?: string
+  severity?: string
+  action_buttons?: { action: string; label: string }[]
+  mark?: number
+  underlying_price?: number
+  avg_entry?: number
+  qty?: number
+  account_key?: string
+  iv_rank?: number
+}
+
+function fmtExpiry(iso?: string): string {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch {
+    return iso
+  }
+}
+
+export default function OptionPositionCard({
+  position: p,
+  onAction,
+  onDrill,
+}: {
+  position: OptionPosition
+  onAction: (action: string, id: string) => void
+  onDrill?: () => void
+}) {
+  const sv = SEV(p.severity, p.still_working)
+  const pnl = p.unrealized_pnl
+  const pnlColor = pnl == null ? TEXT1 : pnl >= 0 ? GREEN : RED
+  const strat = (p.strategy || 'option').replace(/_/g, ' ')
+
+  const btnStyle = (action: string): React.CSSProperties => {
+    if (action === 'hold') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }
+    if (action === 'review_chain') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'transparent', color: BLUE, cursor: 'pointer' }
+    if (/close|roll/.test(action)) return { fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: 'none', background: AMBER, color: '#0f172a', cursor: 'pointer' }
+    return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: TEXT1, cursor: 'pointer' }
+  }
+
+  return (
+    <div
+      onClick={onDrill}
+      style={{
+        background: 'var(--bg1)',
+        border: '1px solid var(--border)',
+        borderLeft: `4px solid ${sv.c}`,
+        borderRadius: 11,
+        padding: '14px 15px',
+        cursor: onDrill ? 'pointer' : 'default',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: `${sv.c}22` }}>{sv.label}</span>
+            <span style={{ fontSize: 9, color: MUTED }}>{strat}</span>
+            <span style={{ fontSize: 13, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.underlying}</span>
+            {p.moneyness && <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.moneyness === 'ITM' ? RED : p.moneyness === 'OTM' ? GREEN : AMBER, background: 'var(--bg2)' }}>{p.moneyness}</span>}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 850, color: TEXT0, marginTop: 6 }}>
+            ${fmtNum(p.strike, 2)} · {p.dte ?? '—'} DTE
+            <span style={{ fontSize: 10, color: MUTED, marginLeft: 8 }}>{fmtExpiry(p.expiration)}</span>
+          </div>
+        </div>
+        {p.recommended_action && (
+          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${sv.c}18`, color: sv.c, whiteSpace: 'nowrap' }}>
+            {p.recommended_action}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
+        <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip="Current underlying price." />
+        <Metric label="Mark" value={p.mark != null ? fmt$(p.mark, 2) : '—'} tip="Current option mark from broker." />
+        <Metric label="Entry" value={p.avg_entry != null ? fmt$(p.avg_entry, 2) : '—'} tip="Average entry premium per contract." />
+        <Metric label="P/L" value={pnl != null ? fmt$(pnl) : '—'} color={pnlColor} tip="Unrealized P&L on this leg." />
+        <Metric label="POP OTM" value={p.pop_otm_pct != null ? `${p.pop_otm_pct.toFixed(0)}%` : '—'} color={GREEN} tip="Chance option expires out of the money." />
+        <Metric label="POP ITM" value={p.pop_itm_pct != null ? `${p.pop_itm_pct.toFixed(0)}%` : '—'} tip="Chance option finishes in the money." />
+        <Metric label="Qty" value={p.qty ?? '—'} tip="Contracts held (negative = short)." />
+        <Metric label="Edge" value={p.edge_score != null ? Math.round(p.edge_score) : '—'} tip="Monitor edge score from POP and IV." />
+      </div>
+
+      {p.rationale && (
+        <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: '1px solid var(--border-subtle)', paddingTop: 9 }}>
+          {p.rationale}
+        </div>
+      )}
+
+      {p.occ_symbol && <div style={{ fontSize: 9, color: MUTED, marginTop: 6, fontFamily: 'monospace' }}>{p.occ_symbol}</div>}
+
+      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
+        {(p.action_buttons || []).map((b, i) => (
+          <button key={`${b.action}-${i}`} type="button" onClick={() => onAction(b.action, p.id)} style={btnStyle(b.action)}>
+            {b.label}{b.action !== 'hold' ? ' →' : ''}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}

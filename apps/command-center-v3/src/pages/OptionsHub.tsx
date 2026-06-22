@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import SynthesizedReportCard, { type ReportCardItem } from '../components/SynthesizedReportCard'
+import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
+import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
 import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -12,92 +13,8 @@ const TABS = ['Proposals', 'Open Positions', 'Strategy Overview'] as const
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
 
-type Proposal = {
-  id: string
-  strategy: string
-  symbol: string
-  strike: number
-  expiration?: string
-  dte?: number
-  premium?: number
-  premium_total?: number
-  pop_pct?: number
-  edge_score?: number
-  iv_rank?: number
-  max_profit?: number | string
-  max_loss?: number | string
-  breakeven?: number
-  risk_reward?: number
-  expected_value?: number
-  reasoning?: string
-  recommended_action?: string
-  action_buttons?: { action: string; label: string }[]
-  severity?: string
-  underlying_price?: number
-  contracts?: number
-}
-
-type Position = {
-  id: string
-  underlying: string
-  occ_symbol?: string
-  strategy?: string
-  strike?: number
-  dte?: number
-  moneyness?: string
-  pop_otm_pct?: number
-  pop_itm_pct?: number
-  unrealized_pnl?: number
-  edge_score?: number
-  still_working?: boolean
-  recommended_action?: string
-  rationale?: string
-  severity?: string
-  action_buttons?: { action: string; label: string }[]
-  mark?: number
-  underlying_price?: number
-}
-
-function proposalToCard(p: Proposal): ReportCardItem {
-  const stratLabel = p.strategy === 'covered_call' ? 'Covered Call'
-    : p.strategy === 'cash_secured_put' ? 'Cash-Secured Put'
-    : p.strategy === 'long_call' ? 'Long Call' : p.strategy
-  return {
-    id: p.id,
-    type: stratLabel,
-    symbol: p.symbol,
-    title: `${p.symbol} $${p.strike} · ${p.dte ?? '—'} DTE`,
-    synthesized_insight: p.reasoning,
-    severity: p.severity || (p.edge_score && p.edge_score >= 75 ? 'positive' : 'info'),
-    quality_score: p.edge_score,
-    summary: [
-      `POP ${p.pop_pct ?? '—'}% · Edge ${p.edge_score ?? '—'} · IV rank ${p.iv_rank ?? '—'}%`,
-      `Premium ${fmt$(p.premium_total)} · Max profit ${typeof p.max_profit === 'number' ? fmt$(p.max_profit) : p.max_profit}`,
-      `Breakeven $${p.breakeven ?? '—'} · R/R ${p.risk_reward ?? '—'} · EV ${fmt$(p.expected_value)}`,
-    ].join('\n'),
-    actions: (p.action_buttons || []).map(b => ({ label: b.label, url: `#${b.action}` })),
-    has_actions: true,
-  }
-}
-
-function positionToCard(p: Position): ReportCardItem {
-  return {
-    id: p.id,
-    type: p.strategy?.replace(/_/g, ' ') || 'Option',
-    symbol: p.underlying,
-    title: `${p.underlying} $${p.strike ?? '—'} · ${p.moneyness ?? '—'} · ${p.dte ?? '—'} DTE`,
-    synthesized_insight: p.rationale,
-    severity: p.severity || (p.still_working ? 'positive' : 'warning'),
-    quality_score: p.edge_score,
-    summary: [
-      `POP OTM ${p.pop_otm_pct ?? '—'}% · ITM ${p.pop_itm_pct ?? '—'}%`,
-      `Mark $${p.mark ?? '—'} · Spot $${p.underlying_price ?? '—'} · P/L ${fmt$(p.unrealized_pnl)}`,
-      `Action: ${p.recommended_action ?? 'Hold'}`,
-    ].join('\n'),
-    actions: (p.action_buttons || []).map(b => ({ label: b.label, url: `#${b.action}` })),
-    has_actions: true,
-  }
-}
+type Proposal = OptionProposal
+type Position = OptionPosition
 
 export default function OptionsHub({ onDrill }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -168,7 +85,10 @@ export default function OptionsHub({ onDrill }: Props) {
       })
       return
     }
-    if (action === 'hold') return
+    if (action === 'hold') {
+      setExecMsg(`Passed on ${'symbol' in item ? item.symbol : (item as Position).underlying} — no action taken.`)
+      return
+    }
     if (execActions.has(action) && 'id' in item) {
       const p = item as Proposal
       if (!execStatus?.armed_for_execution) {
@@ -306,36 +226,41 @@ export default function OptionsHub({ onDrill }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
-            {propList.map(p => {
-              const card = proposalToCard(p)
-              return (
-                <div key={p.id}>
-                  <SynthesizedReportCard
-                    item={card}
-                    onAction={(a, id) => handleAction(a.replace('#', ''), id, p)}
-                    footer={
-                      <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => setExpandedEnsemble(expandedEnsemble === p.id ? null : p.id)}
-                          style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          {expandedEnsemble === p.id ? '▾ Hide ensemble' : '▸ Validate with ensemble'}
-                        </button>
-                        {expandedEnsemble === p.id && (
-                          <EnsembleValidationInline
-                            targetType="options_proposal"
-                            targetId={p.id}
-                            subject={`${p.symbol} ${p.strategy}`}
-                            content={[p.reasoning, `POP ${p.pop_pct}%`, `Edge ${p.edge_score}`].join(' · ')}
-                          />
-                        )}
-                      </div>
-                    }
-                  />
-                </div>
-              )
-            })}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+            {propList.map(p => (
+              <OptionProposalCard
+                key={p.id}
+                proposal={p}
+                armed={!!execStatus?.armed_for_execution}
+                onAction={(a, id) => handleAction(a, id, p)}
+                onDrill={() => onDrill({
+                  title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
+                  subtitle: `$${p.strike} · ${p.dte} DTE · ${p.expiration ?? ''}`,
+                  endpoint: `/api/v2/options/proposals`,
+                  rows: [p],
+                  subjectType: 'options_proposal',
+                  subjectKey: p.id,
+                })}
+                footer={
+                  <div>
+                    <button
+                      onClick={() => setExpandedEnsemble(expandedEnsemble === p.id ? null : p.id)}
+                      style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      {expandedEnsemble === p.id ? '▾ Hide ensemble' : '▸ Validate with ensemble'}
+                    </button>
+                    {expandedEnsemble === p.id && (
+                      <EnsembleValidationInline
+                        targetType="options_proposal"
+                        targetId={p.id}
+                        subject={`${p.symbol} ${p.strategy}`}
+                        content={[p.reasoning, `POP ${p.pop_pct}%`, `Edge ${p.edge_score}`, `R:R ${p.risk_reward}`, `EV ${fmt$(p.expected_value)}`].filter(Boolean).join(' · ')}
+                      />
+                    )}
+                  </div>
+                }
+              />
+            ))}
           </div>
         </>
       )}
@@ -360,12 +285,20 @@ export default function OptionsHub({ onDrill }: Props) {
               </div>
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {posList.map(p => (
-              <SynthesizedReportCard
+              <OptionPositionCard
                 key={p.id}
-                item={positionToCard(p)}
-                onAction={(a, id) => handleAction(a.replace('#', ''), id, p)}
+                position={p}
+                onAction={(a, id) => handleAction(a, id, p)}
+                onDrill={() => onDrill({
+                  title: `${p.underlying} option leg`,
+                  subtitle: p.occ_symbol || p.strategy || '',
+                  endpoint: '/api/v2/options/positions',
+                  rows: [p],
+                  subjectType: 'options_position',
+                  subjectKey: p.id,
+                })}
               />
             ))}
           </div>
