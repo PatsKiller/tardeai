@@ -23853,6 +23853,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
+    if method == "POST" and base_path == "/api/v2/options/ensemble/enqueue":
+        try:
+            import options_engine as oe
+            b = body if isinstance(body, dict) else {}
+            force = str(b.get("force") or "").lower() in ("1", "true", "yes")
+            fresh_hours = int(b.get("fresh_hours") or 24)
+            data = oe.generate_proposals(force=force)
+            proposals = data.get("proposals") or []
+            ens = oe.enqueue_ensemble_for_proposals(proposals, fresh_hours=fresh_hours)
+            return 200, {"ok": True, "proposal_count": len(proposals), **ens}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path == "/api/v2/options/preflight":
         try:
             b = body if isinstance(body, dict) else {}

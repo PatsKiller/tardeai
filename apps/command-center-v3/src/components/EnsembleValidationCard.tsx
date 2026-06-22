@@ -34,6 +34,31 @@ export interface EnsembleResult {
 const decColor = (d?: string) => (d === 'approve' ? '#22c55e' : '#ef4444')
 const scoreColor = (s?: number) => (s == null ? 'var(--text2)' : s >= 8 ? '#34d399' : s >= 6 ? '#facc15' : '#f87171')
 const LANE_ICON: Record<string, string> = { grok: '𝕏', chatgpt: '◎', local: '🖥', claude: '✶' }
+const LANE_LABEL: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', local: 'Gemma', claude: 'Claude' }
+
+/** DB rows store votes/lanes_used as JSON strings — normalize for the card. */
+export function normalizeEnsembleResult(raw: any): EnsembleResult | null {
+  if (!raw) return null
+  try {
+    const votes = typeof raw.votes === 'string' ? JSON.parse(raw.votes) : raw.votes
+    const lanes_used = typeof raw.lanes_used === 'string' ? JSON.parse(raw.lanes_used) : raw.lanes_used
+    if (!raw.final_decision && !votes?.length) return null
+    return {
+      final_decision: raw.final_decision === 'approve' ? 'approve' : 'block',
+      final_score: Number(raw.final_score) || 0,
+      final_confidence: Number(raw.final_confidence) || 0,
+      consensus_reached: !!raw.consensus_reached,
+      lanes_used: Array.isArray(lanes_used) ? lanes_used : [],
+      votes: Array.isArray(votes) ? votes : [],
+      reasoning_summary: raw.reasoning_summary,
+      retirement_relevance: raw.retirement_relevance,
+      finance_actionability: raw.finance_actionability,
+      risk_alignment: raw.risk_alignment,
+    }
+  } catch {
+    return null
+  }
+}
 
 // ── Pure display card ────────────────────────────────────────────────────────
 // finance sub-scores: prefer the aggregate the backend put on the result; else average the per-lane votes.
@@ -116,22 +141,28 @@ const linkBtn: React.CSSProperties = {
 }
 
 // ── Self-contained: button → enqueue → poll → render. Reusable on any surface. ──
-export function EnsembleValidationInline({ targetType, targetId, subject, content }: {
+export function EnsembleValidationInline({ targetType, targetId, subject, content, task, autoRequest, compact }: {
   targetType: string
   targetId: string | number
   subject?: string
   content: string
+  task?: string
+  /** Auto-enqueue if no fresh verdict (options desk). */
+  autoRequest?: boolean
+  compact?: boolean
 }) {
   const [state, setState] = useState<'loading' | 'idle' | 'queued' | 'done' | 'error'>('loading')
   const [result, setResult] = useState<EnsembleResult | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
+  const autoFired = useRef(false)
 
   // Read the latest persisted verdict / pending-job status for this target.
   const fetchOnce = useCallback(async (): Promise<'done' | 'pending' | 'none' | 'error'> => {
     try {
       const r = await fetch(`/api/v2/inference/ensemble?target_type=${targetType}&target_id=${targetId}`)
       const j = await r.json()
-      if (j.result) { setResult(j.result); return 'done' }
+      const norm = normalizeEnsembleResult(j.result)
+      if (norm) { setResult(norm); return 'done' }
       if (j.job?.status === 'queued' || j.job?.status === 'running') return 'pending'
       return 'none'
     } catch { return 'error' }
@@ -157,31 +188,58 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
       if (cancelled) return
       if (s === 'done') setState('done')
       else if (s === 'pending') poll()
+      else if (s === 'none' && autoRequest && !autoFired.current) { autoFired.current = true; request() }
       else setState('idle')
     })
     return () => { cancelled = true; clearInterval(pollRef.current) }
-  }, [fetchOnce, poll])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- request stable enough; autoFired prevents double enqueue
+  }, [fetchOnce, poll, autoRequest])
 
   const request = useCallback(async () => {
     setState('queued'); setResult(null)
     try {
       await fetch('/api/v2/inference/ensemble/request', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_type: targetType, target_id: targetId, subject, content }),
+        body: JSON.stringify({ target_type: targetType, target_id: targetId, subject, content, task: task || 'inference_quality' }),
       })
       poll()
     } catch { setState('error') }
-  }, [targetType, targetId, subject, content, poll])
+  }, [targetType, targetId, subject, content, task, poll])
 
-  if (state === 'loading') return <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>checking ensemble…</div>
-  if (state === 'done' && result) return <EnsembleValidationCard result={result} onRevalidate={request} />
+  if (state === 'loading') return <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
+  if (state === 'done' && result) {
+    if (compact) {
+      return (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+            {(result.votes || []).map((v, i) => (
+              <span key={i} title={v.reasoning || ''} style={{
+                fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
+                color: v.decision === 'approve' ? '#22c55e' : '#ef4444',
+                background: 'var(--bg1)', border: `1px solid ${v.decision === 'approve' ? '#22c55e44' : '#ef444444'}`,
+                cursor: v.reasoning ? 'help' : undefined,
+              }}>
+                {LANE_ICON[v.lane] || '•'} {LANE_LABEL[v.lane] || v.lane} {v.score?.toFixed(1)} {(v.decision || '').toUpperCase()}
+              </span>
+            ))}
+            <span style={{ fontSize: 9, fontWeight: 900, color: result.final_decision === 'approve' ? '#22c55e' : '#ef4444' }}>
+              → {(result.final_decision || '').toUpperCase()} {result.final_score?.toFixed(1)}/10
+            </span>
+            <button onClick={request} style={{ ...linkBtn, marginLeft: 4 }}>re-run</button>
+          </div>
+          {result.reasoning_summary && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{result.reasoning_summary}</div>}
+        </div>
+      )
+    }
+    return <EnsembleValidationCard result={result} onRevalidate={request} />
+  }
   return (
     <button onClick={request} disabled={state === 'queued'} style={{
-      fontSize: 10, marginTop: 6, padding: '3px 9px', borderRadius: 5, cursor: state === 'queued' ? 'default' : 'pointer',
+      fontSize: 10, marginTop: compact ? 0 : 6, padding: '3px 9px', borderRadius: 5, cursor: state === 'queued' ? 'default' : 'pointer',
       border: '1px solid var(--border)', background: 'var(--bg2)',
       color: state === 'error' ? '#f87171' : state === 'queued' ? 'var(--text3)' : '#a855f7',
     }}>
-      {state === 'queued' ? '⏳ ensemble validating…' : state === 'error' ? '⚠ validation failed — retry' : '⚖ Ensemble validate (Grok+ChatGPT+local)'}
+      {state === 'queued' ? '⏳ Grok + ChatGPT + Gemma validating…' : state === 'error' ? '⚠ validation failed — retry' : '⚖ Run Grok + ChatGPT + Gemma review'}
     </button>
   )
 }

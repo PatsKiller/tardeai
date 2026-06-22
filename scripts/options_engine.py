@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -363,8 +362,85 @@ def _edge_score(
     return round(pop_s + iv_s + rr_s + cat_s + conv_s, 1)
 
 
-def _proposal_id() -> str:
-    return str(uuid.uuid4())
+def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "") -> str:
+    """Stable id so Grok/ChatGPT ensemble verdicts persist across proposal rescans."""
+    acct = re.sub(r"[^a-z0-9]+", "_", (account or "default").lower()).strip("_")[:22]
+    exp = (expiration or "")[:10].replace("-", "")
+    try:
+        st = f"{float(strike):.4f}".replace(".", "p")
+    except (TypeError, ValueError):
+        st = str(strike or "0").replace(".", "p")
+    base = f"opt_{strategy}_{sym.upper()}_{acct}_{st}_{exp}"
+    return base[:72]
+
+
+def _proposal_ensemble_content(p: dict) -> str:
+    """Payload for free-lane ensemble (Grok OAuth + ChatGPT OAuth + local gemma)."""
+    lines = [
+        f"OPTIONS PROPOSAL — {p.get('strategy', '').replace('_', ' ')}",
+        f"Symbol: {p.get('symbol')} · Account: {p.get('account') or '—'}",
+        f"Strike: ${p.get('strike')} · Expiration: {p.get('expiration')} · DTE: {p.get('dte')}",
+        f"Contracts: {p.get('contracts')} · Premium/contract: ${p.get('premium')} · Total credit: ${p.get('premium_total')}",
+        f"Spot: ${p.get('underlying_price')} · POP: {p.get('pop_pct')}% · Edge: {p.get('edge_score')}",
+        f"IV rank: {p.get('iv_rank')}% · R:R: {p.get('risk_reward')} · EV: ${p.get('expected_value')}",
+        f"Breakeven: ${p.get('breakeven')} · Max profit: {p.get('max_profit')} · Stock risk: {p.get('stock_downside_risk') or p.get('max_loss')}",
+        f"Upside cap: {p.get('upside_cap') or '—'} · Data: {p.get('data_source') or '—'}",
+    ]
+    if p.get("aegis_note"):
+        lines.append(f"Aegis screening (local): {p['aegis_note']}")
+    if p.get("reasoning"):
+        lines.append(f"Engine notes: {p['reasoning']}")
+    return "\n".join(lines)[:4000]
+
+
+def enqueue_ensemble_for_proposals(proposals: List[dict], fresh_hours: int = 24) -> dict:
+    """Enqueue Grok+ChatGPT+local ensemble jobs for options proposals (idempotent)."""
+    try:
+        from db_adapter import _get_conn, USE_DB
+        if not USE_DB:
+            return {"ok": False, "error": "db disabled", "enqueued": 0, "skipped": len(proposals)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120], "enqueued": 0, "skipped": len(proposals)}
+
+    conn = _get_conn()
+    cur = conn.cursor()
+    enqueued = skipped = 0
+    for p in proposals:
+        tid = str(p.get("id") or "")
+        if not tid:
+            skipped += 1
+            continue
+        cur.execute(
+            """SELECT 1 FROM inference_ensemble_results
+               WHERE target_type='options_proposal' AND target_id=%s
+                 AND created_at > NOW() - make_interval(hours => %s) LIMIT 1""",
+            (tid, fresh_hours),
+        )
+        if cur.fetchone():
+            skipped += 1
+            continue
+        cur.execute(
+            """SELECT 1 FROM inference_ensemble_jobs
+               WHERE target_type='options_proposal' AND target_id=%s
+                 AND status IN ('queued','running') LIMIT 1""",
+            (tid,),
+        )
+        if cur.fetchone():
+            skipped += 1
+            continue
+        subject = f"{p.get('symbol')} {str(p.get('strategy', '')).replace('_', ' ')} · ${p.get('strike')}"
+        content = _proposal_ensemble_content(p)
+        cur.execute(
+            """INSERT INTO inference_ensemble_jobs
+               (target_type, target_id, subject, content, task, requested_by, status)
+               VALUES ('options_proposal', %s, %s, %s, 'options_proposal_quality', 'options_engine', 'queued')""",
+            (tid, subject[:300], content),
+        )
+        enqueued += 1
+    conn.commit()
+    if enqueued:
+        _audit("ensemble_enqueued", count=enqueued, skipped=skipped)
+    return {"ok": True, "enqueued": enqueued, "skipped": skipped, "total": len(proposals)}
 
 
 def _build_reasoning(
@@ -381,8 +457,7 @@ def _build_reasoning(
         parts.append(ctx["technical"])
     if ctx.get("income_note"):
         parts.append(ctx["income_note"])
-    if ctx.get("aegis"):
-        parts.append(f"Aegis: {ctx['aegis'][:120]}")
+    # Aegis note is stored separately on the proposal (aegis_note) — not duplicated here.
     if ctx.get("layer4"):
         parts.append(f"Layer 4: {ctx['layer4'][:120]}")
     if not parts:
@@ -499,11 +574,13 @@ def generate_covered_call_proposals(
             "income_note": f"Est. ${premium * 100 * contracts:,.0f} premium ({contracts} contract{'s' if contracts > 1 else ''})",
         }
         proposals.append({
-            "id": _proposal_id(),
+            "id": _proposal_id("covered_call", sym, h.get("account_display") or h.get("account") or "", strike, exp),
             "strategy": "covered_call",
             "symbol": sym,
             "underlying": sym,
             "account": h.get("account_display") or h.get("account") or "",
+            "aegis_note": (aegis.get("reasoning") or "")[:160] or None,
+            "aegis_verdict": aegis.get("verdict"),
             "side": "SELL",
             "option_type": "call",
             "strike": strike,
@@ -594,7 +671,7 @@ def generate_defined_risk_proposals(
             if edge < MIN_EDGE_SCORE + 5:
                 continue
             proposals.append({
-                "id": _proposal_id(),
+                "id": _proposal_id("long_call", sym, "", strike, contract.get("exp") or ""),
                 "strategy": "long_call",
                 "symbol": sym,
                 "underlying": sym,
@@ -658,7 +735,7 @@ def generate_defined_risk_proposals(
             if edge < MIN_EDGE_SCORE or pop < MIN_POP_PCT:
                 continue
             proposals.append({
-                "id": _proposal_id(),
+                "id": _proposal_id("cash_secured_put", sym, "", strike, contract.get("exp") or ""),
                 "strategy": "cash_secured_put",
                 "symbol": sym,
                 "underlying": sym,
@@ -741,7 +818,7 @@ def generate_credit_spread_proposals(
         if edge < MIN_EDGE_SCORE or pop < MIN_POP_PCT:
             continue
         proposals.append({
-            "id": _proposal_id(),
+            "id": _proposal_id("credit_spread", sym, "", short_strike, short_c.get("exp") or ""),
             "strategy": "credit_spread",
             "symbol": sym,
             "underlying": sym,
@@ -1025,6 +1102,11 @@ def generate_proposals(force: bool = False) -> dict:
     _save_json(PROPOSALS_CACHE, out)
     _audit("proposals_generated", count=len(all_p), cc=len(cc), dr=len(dr), spreads=len(spreads),
            fallback=fallback_used)
+    try:
+        ens = enqueue_ensemble_for_proposals(all_p)
+        out["ensemble_enqueue"] = ens
+    except Exception as e:
+        out["ensemble_enqueue"] = {"ok": False, "error": str(e)[:120]}
     return out
 
 

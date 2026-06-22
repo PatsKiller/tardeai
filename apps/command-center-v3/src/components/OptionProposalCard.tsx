@@ -100,6 +100,8 @@ export type OptionProposal = {
   upside_cap?: string
   max_loss_note?: string
   upside_cap_note?: string
+  aegis_note?: string
+  aegis_verdict?: string
   breakeven?: number
   risk_reward?: number
   expected_value?: number
@@ -125,14 +127,14 @@ export default function OptionProposalCard({
   novice,
   onAction,
   onDrill,
-  footer,
+  reviewBar,
 }: {
   proposal: OptionProposal
   armed?: boolean
   novice?: boolean
   onAction: (action: string, id: string) => void
   onDrill?: () => void
-  footer?: React.ReactNode
+  reviewBar?: React.ReactNode
 }) {
   const sv = SEV(p.severity || (p.edge_score && p.edge_score >= 75 ? 'positive' : 'info'))
   const strat = STRAT_LABEL[p.strategy] || p.strategy.replace(/_/g, ' ')
@@ -232,10 +234,12 @@ export default function OptionProposalCard({
 
       {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} />}
 
+      {reviewBar}
+
       {p.reasoning && (
-        <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: '1px solid var(--border-subtle)', paddingTop: 9 }}>
-          {novice && <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, display: 'block', marginBottom: 4 }}>ANALYST NOTES</span>}
-          {p.reasoning}
+        <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: reviewBar ? undefined : '1px solid var(--border-subtle)', paddingTop: reviewBar ? 0 : 9 }}>
+          {novice && <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, display: 'block', marginBottom: 4 }}>ENGINE NOTES</span>}
+          {p.reasoning.replace(/\s*·\s*Aegis:[^·]+/g, '').replace(/\s*Aegis:[^·]+/g, '').trim() || p.reasoning}
         </div>
       )}
 
@@ -244,8 +248,6 @@ export default function OptionProposalCard({
           {p.execution_note}
         </div>
       )}
-
-      {footer && <div onClick={e => e.stopPropagation()} style={{ marginTop: 8 }}>{footer}</div>}
 
       <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
         {(p.action_buttons || []).map((b, i) => (

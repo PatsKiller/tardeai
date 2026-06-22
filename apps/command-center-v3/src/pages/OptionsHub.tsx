@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
 import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
-import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
+import OptionReviewBar from '../components/OptionReviewBar'
 import { Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
 import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
 import { fmt$ } from '../lib/format'
@@ -28,7 +28,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [strategyFilter, setStrategyFilter] = useState('')
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
-  const [expandedEnsemble, setExpandedEnsemble] = useState<string | null>(null)
+  const [ensembleBusy, setEnsembleBusy] = useState(false)
+  const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
   const [novice, setNovice] = useState(isNoviceMode)
@@ -146,6 +147,26 @@ export default function OptionsHub({ onDrill }: Props) {
     })
   }
 
+  const validateAllEnsemble = async () => {
+    setEnsembleBusy(true)
+    setEnsembleMsg(null)
+    try {
+      const r = await fetch('/api/v2/options/ensemble/enqueue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: 0, fresh_hours: 12 }),
+      })
+      const j = await r.json()
+      const d = j.data ?? j
+      setEnsembleMsg(`Queued ${d.enqueued ?? 0} Grok+ChatGPT+Gemma reviews · ${d.skipped ?? 0} already warm`)
+      refetchProps()
+    } catch (e: any) {
+      setEnsembleMsg(String(e?.message || e))
+    } finally {
+      setEnsembleBusy(false)
+    }
+  }
+
   const chipBtn = (label: string, active: boolean, onClick: () => void, color = '#60a5fa') => (
     <button key={label} onClick={onClick} style={{
       padding: '4px 10px', fontSize: 10, borderRadius: 5, cursor: 'pointer',
@@ -245,6 +266,10 @@ export default function OptionsHub({ onDrill }: Props) {
             </label>
             <button onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
             <button onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'pointer', color: '#60a5fa' }}>Force scan</button>
+            <button onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'pointer', color: '#a855f7' }} title="Enqueue Grok + ChatGPT OAuth + local Gemma for every proposal">
+              {ensembleBusy ? 'Queuing…' : 'Validate all (Grok+GPT)'}
+            </button>
+            {ensembleMsg && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{ensembleMsg}</span>}
             {propLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
             {propStale && <span style={{ fontSize: 10, color: '#f59e0b' }}>Reconnecting…</span>}
           </div>
@@ -279,24 +304,7 @@ export default function OptionsHub({ onDrill }: Props) {
                   subjectType: 'options_proposal',
                   subjectKey: p.id,
                 })}
-                footer={
-                  <div>
-                    <button
-                      onClick={() => setExpandedEnsemble(expandedEnsemble === p.id ? null : p.id)}
-                      style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                    >
-                      {expandedEnsemble === p.id ? '▾ Hide ensemble' : '▸ Validate with ensemble'}
-                    </button>
-                    {expandedEnsemble === p.id && (
-                      <EnsembleValidationInline
-                        targetType="options_proposal"
-                        targetId={p.id}
-                        subject={`${p.symbol} ${p.strategy}`}
-                        content={[p.reasoning, `POP ${p.pop_pct}%`, `Edge ${p.edge_score}`, `R:R ${p.risk_reward}`, `EV ${fmt$(p.expected_value)}`].filter(Boolean).join(' · ')}
-                      />
-                    )}
-                  </div>
-                }
+                reviewBar={<OptionReviewBar proposal={p} autoRequest />}
               />
             ))}
           </div>
