@@ -12545,6 +12545,48 @@ def _broker_proposals():
                 row["intel"] = _bpi.get_intel_packet(row.get("id"))
             except Exception:
                 row["intel"] = {"ok": False}
+            # Sizing + AI oversight gates for queue cards (Edit trade / routing)
+            try:
+                import broker_promote_sizing as _bps
+                strat = str(row.get("strategy_id") or "momentum_scalp")
+                qd = {}
+                if row.get("quote_last") is not None:
+                    qd = {
+                        "last_price": row.get("quote_last"),
+                        "bid": row.get("quote_bid"),
+                        "ask": row.get("quote_ask"),
+                        "spread_pct": row.get("quote_spread_pct"),
+                    }
+                if acct:
+                    ev = _bps.evaluate_broker_promote(
+                        acct, strat, en, st, tg, int(sh or 0), quote=qd,
+                    )
+                    ev = _merge_broker_oversight(ev, row.get("id"))
+                    row["evaluation"] = ev
+                    row["oversight"] = ev.get("oversight") or {}
+                    row["gate_status"] = ev.get("status")
+                    max_sh = int(ev.get("max_shares") or 0)
+                    row["broker_sizing"] = {
+                        "max_shares": max_sh,
+                        "recommended_shares": ev.get("recommended_shares"),
+                        "oversized": bool(sh and max_sh and int(sh) > max_sh),
+                        "binding": (ev.get("sizing") or {}).get("binding"),
+                        "violations": ev.get("violations") or [],
+                        "warnings": ev.get("warnings") or [],
+                    }
+                    if isinstance(row.get("intel"), dict) and row["intel"].get("ok"):
+                        row["intel"]["oversight"] = row["oversight"]
+                        if row["oversight"].get("status"):
+                            row["intel"]["oversight"]["status"] = row["oversight"]["status"]
+                        if row["oversight"].get("violations"):
+                            row["intel"]["oversight"]["violations"] = row["oversight"]["violations"]
+                        if row["oversight"].get("warnings"):
+                            row["intel"]["oversight"]["warnings"] = row["oversight"]["warnings"]
+            except Exception:
+                row["evaluation"] = {}
+                row["oversight"] = {}
+                row["gate_status"] = None
+                row["broker_sizing"] = {}
             prop_rows.append(row)
         acct_rows = []
         for a in accounts:
