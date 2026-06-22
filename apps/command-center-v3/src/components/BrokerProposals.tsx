@@ -117,6 +117,21 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
+  const tradeEconomics = (shares: number, entry: number, stop: number, target: number) => {
+    const sh = Number(shares) || 0
+    const en = Number(entry) || 0
+    const st = Number(stop) || 0
+    const tg = Number(target) || 0
+    const riskPs = Math.max(0, en - st)
+    const rewardPs = Math.max(0, tg - en)
+    return {
+      shares: sh,
+      investment: sh && en ? sh * en : null,
+      max_risk: sh && riskPs ? riskPs * sh : null,
+      profit_at_target: sh && rewardPs ? rewardPs * sh : null,
+    }
+  }
+
   const fetchAccountPreview = useCallback(async (p: any, acct: string) => {
     if (!acct) return
     const pid = p.id
@@ -268,6 +283,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           const acctMeta = accounts.find(a => a.account_key === dest)
           const activity = usingPreview ? (preview?.activity || acctMeta?.activity) : (acctMeta?.activity || p.activity)
           const sizingViolations = bs.violations?.length ? bs.violations : (evalData?.violations || p.evaluation?.violations || [])
+          const savedEcon = tradeEconomics(Number(p.proposed_shares), Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
+          const previewSh = usingPreview && recSh != null ? Number(recSh) : null
+          const showSized = previewSh != null && previewSh > 0 && previewSh !== savedEcon.shares
+          const dispEcon = showSized
+            ? tradeEconomics(previewSh!, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
+            : savedEcon
           const intel = p.intel?.ok ? {
             ...p.intel,
             oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
@@ -341,20 +362,41 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, padding: '10px 12px', fontSize: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, padding: '10px 12px', fontSize: 10, background: showSized ? 'rgba(96,165,250,.04)' : undefined }}>
+                {showSized && (
+                  <div style={{ gridColumn: '1 / -1', fontSize: 9, color: BLUE, fontWeight: 700, marginBottom: -2 }}>
+                    Sized for {dest} — {dispEcon.shares.toLocaleString()} sh (saved proposal {savedEcon.shares.toLocaleString()} sh)
+                  </div>
+                )}
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Position</div>
-                  <div style={{ color: oversized ? RED : TEXT0, fontWeight: 700, fontFamily: 'monospace' }}>{Number(p.proposed_shares).toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}</div>
+                  <div style={{ color: showSized ? BLUE : (oversized ? RED : TEXT0), fontWeight: 700, fontFamily: 'monospace' }}>
+                    {dispEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
+                  </div>
+                  {showSized && (
+                    <div style={{ color: MUTED, fontSize: 8, textDecoration: 'line-through' }}>
+                      saved {savedEcon.shares.toLocaleString()} sh
+                    </div>
+                  )}
                   {maxSh != null && oversized && <div style={{ color: AMBER, fontSize: 8 }}>cap {Number(maxSh).toLocaleString()} sh</div>}
                   <div style={{ color: MUTED, fontSize: 9 }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
                 </div>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Investment</div>
-                  <div style={{ color: BLUE, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(p.investment)}</div>
+                  <div style={{ color: BLUE, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(dispEcon.investment)}</div>
+                  {showSized && savedEcon.investment != null && (
+                    <div style={{ color: MUTED, fontSize: 8, textDecoration: 'line-through' }}>{fmt(savedEcon.investment)} saved</div>
+                  )}
                 </div>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Max risk</div>
-                  <div style={{ color: RED, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(p.max_risk)}</div>
+                  <div style={{ color: RED, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(dispEcon.max_risk)}</div>
+                  {showSized && savedEcon.max_risk != null && (
+                    <div style={{ color: MUTED, fontSize: 8, textDecoration: 'line-through' }}>{fmt(savedEcon.max_risk)} saved</div>
+                  )}
                 </div>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Profit @ target</div>
-                  <div style={{ color: GREEN, fontWeight: 800, fontFamily: 'monospace' }}>+{fmt(p.profit_at_target)}</div>
+                  <div style={{ color: GREEN, fontWeight: 800, fontFamily: 'monospace' }}>+{fmt(dispEcon.profit_at_target)}</div>
+                  {showSized && savedEcon.profit_at_target != null && (
+                    <div style={{ color: MUTED, fontSize: 8, textDecoration: 'line-through' }}>+{fmt(savedEcon.profit_at_target)} saved</div>
+                  )}
                 </div>
                 <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>R:R</div>
                   <div style={{ color: TEXT0, fontWeight: 800, fontFamily: 'monospace' }}>{p.proposed_rr ? `${Number(p.proposed_rr).toFixed(1)}:1` : '—'}</div>

@@ -9,6 +9,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db_adapter import _get_conn
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
+
 
 def _q(sql, params=None, one=False):
     try:
@@ -26,26 +30,45 @@ def _q(sql, params=None, one=False):
         return None if one else []
 
 
-def _symbol_card(symbol: str) -> dict:
-    sym = (symbol or "").upper().strip()
-    if not sym:
-        return {}
-    prof = _q(
-        "SELECT description_1s, sector, industry FROM symbol_profiles WHERE symbol=%s",
-        (sym,), one=True,
-    ) or {}
+def _load_enrichment_cache(sym: str) -> dict:
+    try:
+        path = STATE_DIR / "ticker_enrichment_cache.json"
+        if path.exists():
+            row = json.loads(path.read_text()).get(sym.upper(), {})
+            return row if isinstance(row, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _load_pro_analyst_pill(sym: str) -> dict:
+    try:
+        path = RUNTIME_DIR / "pro_analyst_pills_latest.json"
+        if path.exists():
+            for pill in json.loads(path.read_text()).get("pills", []):
+                if str(pill.get("symbol") or "").upper() == sym:
+                    return pill if isinstance(pill, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _analyst_intel(sym: str) -> dict | None:
+    """Multi-source analyst view: Yahoo (primary), Finviz (if valid), pro_analyst monitor."""
     an = _q(
         """SELECT recommendation_key, recommendation_mean, number_of_analyst_opinions,
-                  target_mean_price, target_high_price, target_low_price, current_price
+                  target_mean_price, target_high_price, target_low_price, current_price, snapshot_date
            FROM yahoo_analyst_targets_history WHERE symbol=%s
            ORDER BY created_at DESC LIMIT 1""",
         (sym,), one=True,
     ) or {}
     dist_row = _q(
-        "SELECT payload FROM analyst_data_history WHERE symbol=%s ORDER BY as_of DESC LIMIT 1",
+        "SELECT payload, as_of FROM analyst_data_history WHERE symbol=%s ORDER BY as_of DESC LIMIT 1",
         (sym,), one=True,
     )
     dist = {}
+    dist_provider = None
+    dist_as_of = None
     if dist_row and dist_row.get("payload"):
         p = dist_row["payload"]
         if isinstance(p, str):
@@ -54,13 +77,21 @@ def _symbol_card(symbol: str) -> dict:
             except Exception:
                 p = {}
         if isinstance(p, dict):
+            dist_provider = p.get("provider")
+            dist_as_of = str(dist_row.get("as_of") or "")[:10] or None
             if any(p.get(k) is not None for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")):
                 dist = {k: int(p.get(k) or 0) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")}
 
-    analyst = None
+    enrich = _load_enrichment_cache(sym)
+    pill = _load_pro_analyst_pill(sym)
+    sources = []
+    warnings = []
+
+    yahoo = None
     if an:
         tm, cp = an.get("target_mean_price"), an.get("current_price")
-        analyst = {
+        yahoo = {
+            "source": "yahoo",
             "rating": an.get("recommendation_key"),
             "mean": float(an["recommendation_mean"]) if an.get("recommendation_mean") is not None else None,
             "opinions": an.get("number_of_analyst_opinions"),
@@ -69,8 +100,106 @@ def _symbol_card(symbol: str) -> dict:
             "target_low": float(an["target_low_price"]) if an.get("target_low_price") is not None else None,
             "upside_pct": round((float(tm) - float(cp)) / float(cp) * 100, 1)
             if tm and cp and float(cp) > 0 else None,
+            "as_of": str(an.get("snapshot_date") or "")[:10] or None,
             "distribution": dist or None,
+            "distribution_provider": dist_provider,
+            "distribution_as_of": dist_as_of,
         }
+        sources.append(yahoo)
+        n = int(an.get("number_of_analyst_opinions") or 0)
+        if n < 3:
+            warnings.append(f"Thin Yahoo coverage — only {n} sell-side analyst{'s' if n != 1 else ''}")
+
+    finviz = None
+    rs = enrich.get("recom_score")
+    try:
+        rs_f = float(rs) if rs is not None else None
+    except Exception:
+        rs_f = None
+    if rs_f is not None and 1.0 <= rs_f <= 5.0:
+        finviz = {
+            "source": "finviz",
+            "rating": enrich.get("analyst_rating"),
+            "recom_score": rs_f,
+            "as_of": enrich.get("as_of") or enrich.get("updated_at"),
+        }
+        sources.append(finviz)
+        if yahoo and finviz.get("rating") and yahoo.get("rating"):
+            y_r = str(yahoo["rating"]).replace("_", " ").lower()
+            f_r = str(finviz["rating"]).lower()
+            if y_r not in f_r and f_r not in y_r and not (
+                ("buy" in y_r and "buy" in f_r) or ("hold" in y_r and "hold" in f_r) or ("sell" in y_r and "sell" in f_r)
+            ):
+                warnings.append(f"Yahoo ({yahoo['rating']}) vs Finviz ({finviz['rating']}) disagree")
+    elif enrich.get("recom") is not None or enrich.get("analyst_rating"):
+        warnings.append("Finviz recom present but invalid — ignored (micro-cap field noise)")
+
+    if pill:
+        sources.append({
+            "source": "pro_analyst",
+            "rating": pill.get("recommendation_key"),
+            "opinions": pill.get("number_of_analyst_opinions"),
+            "target": pill.get("target_mean_price"),
+            "upside_pct": pill.get("upside_to_mean_target_pct"),
+            "divergence": pill.get("divergence"),
+            "confidence": pill.get("confidence"),
+            "internal_direction": pill.get("internal_direction"),
+            "street_direction": pill.get("street_direction"),
+            "latest_event": pill.get("latest_event_headline"),
+            "latest_event_type": pill.get("latest_event_type"),
+            "latest_event_at": str(pill.get("latest_event_at") or "")[:19],
+            "has_professional_coverage": pill.get("has_professional_coverage"),
+            "provenance": pill.get("provenance"),
+        })
+        if pill.get("divergence") in ("mixed", "divergent"):
+            warnings.append(
+                f"Internal ({pill.get('internal_direction')}) vs Street ({pill.get('street_direction')}) — {pill.get('divergence')}"
+            )
+        if str(pill.get("confidence") or "").lower() == "low":
+            warnings.append("Pro-analyst layer confidence: LOW")
+
+    if not sources:
+        return None
+
+    primary = yahoo or sources[0]
+    opinions = int(primary.get("opinions") or pill.get("number_of_analyst_opinions") or 0)
+    coverage = "none"
+    if opinions >= 10:
+        coverage = "broad"
+    elif opinions >= 3:
+        coverage = "moderate"
+    elif opinions >= 1:
+        coverage = "thin"
+
+    return {
+        "rating": primary.get("rating"),
+        "mean": primary.get("mean"),
+        "opinions": primary.get("opinions"),
+        "target": primary.get("target"),
+        "target_high": primary.get("target_high"),
+        "target_low": primary.get("target_low"),
+        "upside_pct": primary.get("upside_pct"),
+        "distribution": primary.get("distribution") or dist or None,
+        "primary_source": primary.get("source") or "yahoo",
+        "sources": sources,
+        "quality": {
+            "coverage": coverage,
+            "confidence": pill.get("confidence") if pill else ("low" if opinions < 3 else "moderate"),
+            "warnings": warnings,
+            "source_count": len(sources),
+        },
+    }
+
+
+def _symbol_card(symbol: str) -> dict:
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return {}
+    prof = _q(
+        "SELECT description_1s, sector, industry FROM symbol_profiles WHERE symbol=%s",
+        (sym,), one=True,
+    ) or {}
+    analyst = _analyst_intel(sym)
 
     news = _q(
         """SELECT title, source, published_at FROM news_articles

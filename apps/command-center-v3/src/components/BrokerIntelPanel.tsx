@@ -37,6 +37,86 @@ const VOTE_BUCKETS = [
   { key: 'strong_sell', label: 'Strong sell', color: '#ef4444' },
 ] as const
 
+const SOURCE_LABELS: Record<string, string> = {
+  yahoo: 'Yahoo',
+  finviz: 'Finviz',
+  pro_analyst: 'Pro-analyst',
+  finnhub: 'Finnhub',
+}
+
+function coverageColor(cov: string | null | undefined) {
+  const c = String(cov || '').toLowerCase()
+  if (c === 'broad') return GREEN
+  if (c === 'moderate') return BLUE
+  if (c === 'thin') return AMBER
+  return MUTED
+}
+
+function fmtRating(r: string | null | undefined) {
+  return String(r || '—').replace(/_/g, ' ')
+}
+
+function AnalystSourceRow({ src, compact = false }: { src: any; compact?: boolean }) {
+  const label = SOURCE_LABELS[src.source] || src.source || '—'
+  const rating = fmtRating(src.rating)
+  const ratingColor = String(src.rating || '').includes('buy') ? GREEN
+    : String(src.rating || '').includes('sell') ? RED : TEXT0
+
+  if (src.source === 'pro_analyst') {
+    return (
+      <div style={{ fontSize: 9.5, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.08)' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <b style={{ color: PURPLE, minWidth: 72 }}>{label}</b>
+          <span style={{ color: TEXT1 }}>
+            Internal <b style={{ color: src.internal_direction === 'bearish' ? RED : src.internal_direction === 'bullish' ? GREEN : TEXT0 }}>{src.internal_direction || '—'}</b>
+            {' vs '}Street <b>{src.street_direction || '—'}</b>
+            {src.divergence ? <span style={{ color: src.divergence === 'mixed' || src.divergence === 'divergent' ? AMBER : MUTED }}> · {src.divergence}</span> : null}
+          </span>
+          {src.confidence && <span style={{ color: String(src.confidence).toLowerCase() === 'low' ? AMBER : MUTED }}>conf {src.confidence}</span>}
+        </div>
+        {src.target != null && (
+          <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
+            Target ${src.target}
+            {src.upside_pct != null && <span style={{ color: src.upside_pct >= 0 ? GREEN : RED, marginLeft: 6 }}>{src.upside_pct >= 0 ? '+' : ''}{src.upside_pct}%</span>}
+            {src.opinions != null ? ` · ${src.opinions} analyst${src.opinions === 1 ? '' : 's'}` : ''}
+          </div>
+        )}
+        {src.latest_event && (
+          <div style={{ fontSize: 9, color: AMBER, marginTop: 3 }}>
+            Latest: {src.latest_event_type ? `${src.latest_event_type.replace(/_/g, ' ')} — ` : ''}{String(src.latest_event).slice(0, compact ? 100 : 180)}
+            {src.latest_event_at ? <span style={{ color: MUTED }}> · {String(src.latest_event_at).slice(0, 10)}</span> : null}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontSize: 9.5, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.08)' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <b style={{ color: label === 'Yahoo' ? BLUE : TEXT0, minWidth: 72 }}>{label}</b>
+        <span style={{ color: ratingColor, fontWeight: 700, fontFamily: 'monospace' }}>{rating}</span>
+        {src.opinions != null && <span style={{ color: MUTED }}>{src.opinions} analyst{src.opinions === 1 ? '' : 's'}</span>}
+        {src.recom_score != null && <span style={{ color: MUTED, fontFamily: 'monospace' }}>score {Number(src.recom_score).toFixed(2)}</span>}
+        {src.mean != null && <span style={{ color: MUTED, fontFamily: 'monospace' }}>mean {src.mean}</span>}
+      </div>
+      {(src.target != null || src.upside_pct != null) && (
+        <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
+          {src.target != null && <>Target <b style={{ color: BLUE }}>${src.target}</b></>}
+          {src.upside_pct != null && (
+            <span style={{ color: src.upside_pct >= 0 ? GREEN : RED, marginLeft: src.target != null ? 6 : 0 }}>
+              {src.upside_pct >= 0 ? '+' : ''}{src.upside_pct}% vs current
+            </span>
+          )}
+          {(src.target_low != null || src.target_high != null) && (
+            <span style={{ marginLeft: 6 }}>range ${src.target_low ?? '—'} – ${src.target_high ?? '—'}</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AnalystVoteBar({ dist }: { dist: Record<string, number> }) {
   const total = VOTE_BUCKETS.reduce((s, b) => s + (Number(dist[b.key]) || 0), 0)
   if (!total) return null
@@ -243,11 +323,23 @@ export default function BrokerIntelPanel({
 
       {an && (
         <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.15)' }}>
-          <div style={sec}>Analyst consensus (Yahoo)</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+            <div style={{ ...sec, marginBottom: 0 }}>
+              Analyst consensus
+              {an.quality?.source_count ? ` · ${an.quality.source_count} source${an.quality.source_count === 1 ? '' : 's'}` : ''}
+            </div>
+            {an.quality?.coverage && (
+              <span style={{ fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: `${coverageColor(an.quality.coverage)}18`, color: coverageColor(an.quality.coverage) }}>
+                {String(an.quality.coverage).toUpperCase()} COVERAGE
+              </span>
+            )}
+          </div>
+
           <div style={{ fontSize: 11, fontWeight: 700, color: String(an.rating || '').includes('buy') ? GREEN : TEXT0, fontFamily: 'monospace' }}>
-            {String(an.rating || '—').replace(/_/g, ' ')}
+            {fmtRating(an.rating)}
             {an.opinions != null ? ` · ${an.opinions} analyst${an.opinions === 1 ? '' : 's'}` : ''}
             {an.mean != null ? ` · score ${an.mean}` : ''}
+            {an.primary_source && <span style={{ fontSize: 9, color: MUTED, fontWeight: 500 }}> ({SOURCE_LABELS[an.primary_source] || an.primary_source})</span>}
           </div>
           <div style={{ fontSize: 10, color: TEXT1, marginTop: 5, fontFamily: 'monospace' }}>
             {an.target != null && <span>Mean target <b style={{ color: BLUE }}>${an.target}</b></span>}
@@ -262,14 +354,38 @@ export default function BrokerIntelPanel({
               Street range ${an.target_low ?? '—'} – ${an.target_high ?? '—'}
             </div>
           )}
+
+          {(an.quality?.warnings?.length > 0) && (
+            <div style={{ marginTop: 6 }}>
+              {an.quality.warnings.map((w: string, i: number) => (
+                <div key={i} style={{ fontSize: 9, color: AMBER, marginTop: i ? 2 : 0 }}>⚠ {w}</div>
+              ))}
+            </div>
+          )}
+
+          {an.opinions === 1 && (
+            <div style={{ fontSize: 9, color: AMBER, marginTop: 6, padding: '5px 8px', borderRadius: 6, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)' }}>
+              Single-analyst coverage is unreliable for micro-caps — treat street target as directional only, not a sizing input.
+            </div>
+          )}
+
+          {(an.sources?.length > 1) && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 9, color: MUTED, marginBottom: 2 }}>Sources</div>
+              {an.sources.map((src: any, i: number) => (
+                <AnalystSourceRow key={`${src.source}-${i}`} src={src} compact={compact} />
+              ))}
+            </div>
+          )}
+
           {hasDist ? (
             <>
-              <div style={{ fontSize: 9, color: MUTED, marginTop: 6 }}>Analyst vote distribution</div>
+              <div style={{ fontSize: 9, color: MUTED, marginTop: 6 }}>Analyst vote distribution{an.sources?.[0]?.distribution_provider ? ` (${an.sources[0].distribution_provider})` : ''}</div>
               <AnalystVoteBar dist={dist!} />
             </>
           ) : (
             <div style={{ fontSize: 9, color: MUTED, marginTop: 6, fontStyle: 'italic' }}>
-              Vote breakdown not loaded — consensus rating/target from Yahoo only.
+              Vote breakdown not loaded — rating/target from {an.sources?.length ? an.sources.map((s: any) => SOURCE_LABELS[s.source] || s.source).join(', ') : 'Yahoo'}.
             </div>
           )}
         </div>
