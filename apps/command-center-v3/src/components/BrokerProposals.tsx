@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
@@ -32,6 +32,19 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [oversightBusy, setOversightBusy] = useState<Record<number, boolean>>({})
   const [cloudBusy, setCloudBusy] = useState<Record<number, boolean>>({})
   const [oversightMsg, setOversightMsg] = useState<Record<number, string>>({})
+  const [acctPreview, setAcctPreview] = useState<Record<number, { account: string; evaluation: any; activity: any; loading?: boolean }>>({})
+  const [acctPreviewBusy, setAcctPreviewBusy] = useState<Record<number, boolean>>({})
+
+  useEffect(() => {
+    if (!proposals.length) return
+    setDestAccount(prev => {
+      const next = { ...prev }
+      for (const p of proposals) {
+        if (!next[p.id]) next[p.id] = p.account || accounts[0]?.account_key || ''
+      }
+      return next
+    })
+  }, [proposals, accounts])
 
   const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
   const heldN = proposals.filter(p => isHeld(p.symbol)).length
@@ -90,6 +103,62 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     } finally {
       setOversightBusy(m => ({ ...m, [pid]: false }))
     }
+  }
+
+  const buildBrokerSizing = (ev: any, shares: number) => {
+    const maxSh = Number(ev?.max_shares ?? 0)
+    return {
+      max_shares: maxSh,
+      recommended_shares: ev?.recommended_shares,
+      oversized: Boolean(shares && maxSh && shares > maxSh),
+      binding: ev?.sizing?.binding,
+      violations: ev?.violations || [],
+      warnings: ev?.warnings || [],
+    }
+  }
+
+  const fetchAccountPreview = useCallback(async (p: any, acct: string) => {
+    if (!acct) return
+    const pid = p.id
+    if (acct === (p.account || '')) {
+      setAcctPreview(prev => { const n = { ...prev }; delete n[pid]; return n })
+      return
+    }
+    setAcctPreviewBusy(b => ({ ...b, [pid]: true }))
+    try {
+      const r = await fetch('/api/v2/broker-proposals/evaluate-promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposal_id: pid,
+          account: acct,
+          strategy_id: p.strategy_id,
+          shares: Number(p.proposed_shares),
+          entry: Number(p.proposed_entry),
+          stop: Number(p.proposed_stop),
+          target: Number(p.proposed_target1),
+        }),
+      }).then(x => x.json())
+      const ev = r.data ?? r
+      const meta = accounts.find(a => a.account_key === acct)
+      setAcctPreview(prev => ({
+        ...prev,
+        [pid]: {
+          account: acct,
+          evaluation: ev,
+          activity: meta?.activity || ev.account_activity || ev.sizing,
+        },
+      }))
+    } catch {
+      setAcctPreview(prev => ({ ...prev, [pid]: { account: acct, evaluation: null, activity: null } }))
+    } finally {
+      setAcctPreviewBusy(b => ({ ...b, [pid]: false }))
+    }
+  }, [accounts])
+
+  const onDestAccountChange = (p: any, acct: string) => {
+    setDestAccount(prev => ({ ...prev, [p.id]: acct }))
+    fetchAccountPreview(p, acct)
   }
 
   const runCloudOversight = async (pid: number) => {
@@ -182,16 +251,23 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {shown.map(p => {
-          const fid = brokerOf(p.account) === 'Fidelity' || p.execution_mode === 'manual'
           const dest = destAccount[p.id] ?? p.account ?? ''
+          const preview = acctPreview[p.id]
+          const usingPreview = Boolean(preview && preview.account === dest && dest !== (p.account || ''))
+          const evalData = usingPreview ? preview?.evaluation : p.evaluation
+          const fid = brokerOf(dest || p.account) === 'Fidelity' || p.execution_mode === 'manual'
           const fmt = (n: number | null | undefined) => n == null ? '—' : n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}`
-          const gate = p.gate_status || p.evaluation?.status
-          const ov = p.oversight || p.intel?.oversight || p.evaluation?.oversight || {}
+          const gate = evalData?.status || p.gate_status
+          const ov = evalData?.oversight || p.oversight || p.intel?.oversight || p.evaluation?.oversight || {}
           const ovStatus = ov.status || (ov.violations?.length ? 'BLOCK' : ov.warnings?.length ? 'WARN' : null)
-          const bs = p.broker_sizing || {}
+          const bs = usingPreview && evalData ? buildBrokerSizing(evalData, Number(p.proposed_shares)) : (p.broker_sizing || {})
           const oversized = bs.oversized
-          const maxSh = bs.max_shares ?? p.evaluation?.max_shares
+          const maxSh = bs.max_shares ?? evalData?.max_shares ?? p.evaluation?.max_shares
+          const recSh = bs.recommended_shares ?? evalData?.recommended_shares
           const gateBlocked = gate === 'BLOCK' || ovStatus === 'BLOCK'
+          const acctMeta = accounts.find(a => a.account_key === dest)
+          const activity = usingPreview ? (preview?.activity || acctMeta?.activity) : (acctMeta?.activity || p.activity)
+          const sizingViolations = bs.violations?.length ? bs.violations : (evalData?.violations || p.evaluation?.violations || [])
           const intel = p.intel?.ok ? {
             ...p.intel,
             oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
@@ -223,7 +299,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                   const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 9, color: MUTED }}>{l}<b style={{ color: col, fontFamily: 'monospace', marginLeft: 2 }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
                   return <span title="Finviz daily metrics" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>{c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</span> })()}
                 <span style={{ flex: 1 }} />
-                <button onClick={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol })} style={{ ...btn(AMBER), fontSize: 12, padding: '7px 16px' }} title="Edit shares, entry, stop, target, spread-aware levels">
+                {acctPreviewBusy[p.id] && <span style={{ fontSize: 9, color: MUTED }}>Sizing…</span>}
+                <button onClick={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })} style={{ ...btn(AMBER), fontSize: 12, padding: '7px 16px' }} title="Edit shares, entry, stop, target, spread-aware levels">
                   ✎ Edit trade
                 </button>
               </div>
@@ -244,12 +321,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 </div>
               )}
 
-              {p.activity && (
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '8px 12px', fontSize: 10, borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(34,197,94,.04)' }}>
-                  <span style={{ color: MUTED }}>Account <b style={{ color: TEXT0 }}>{p.account}</b></span>
-                  <span style={{ color: MUTED }}>Cash <b style={{ color: GREEN, fontFamily: 'monospace' }}>{fmt(p.activity.cash)}</b></span>
-                  <span style={{ color: MUTED }}>Open <b style={{ color: TEXT0 }}>{p.activity.open_trades ?? '—'}</b>{p.activity.max_concurrent_positions != null ? ` / ${p.activity.max_concurrent_positions}` : ''}</span>
-                  <span style={{ color: MUTED }}>New today <b style={{ color: (p.activity.daily_limit_reached) ? RED : TEXT0 }}>{p.activity.slots_used_today ?? p.activity.new_trades_today ?? 0}{p.activity.max_new_positions_per_day != null ? ` / ${p.activity.max_new_positions_per_day}` : ''}</b></span>
+              {activity && (
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '8px 12px', fontSize: 10, borderBottom: '1px solid rgba(148,163,184,.1)', background: usingPreview ? 'rgba(96,165,250,.06)' : 'rgba(34,197,94,.04)' }}>
+                  <span style={{ color: MUTED }}>Sizing for <b style={{ color: TEXT0 }}>{dest}</b>{usingPreview ? ' (preview)' : ''}</span>
+                  <span style={{ color: MUTED }}>Cash <b style={{ color: GREEN, fontFamily: 'monospace' }}>{fmt(activity.cash ?? activity.cash_available)}</b></span>
+                  <span style={{ color: MUTED }}>Open <b style={{ color: TEXT0 }}>{activity.open_trades ?? '—'}</b>{activity.max_concurrent_positions != null ? ` / ${activity.max_concurrent_positions}` : ''}</span>
+                  <span style={{ color: MUTED }}>New today <b style={{ color: (activity.daily_limit_reached) ? RED : TEXT0 }}>{activity.slots_used_today ?? activity.new_trades_today ?? 0}{activity.max_new_positions_per_day != null ? ` / ${activity.max_new_positions_per_day}` : ''}</b></span>
+                  {recSh != null && oversized && (
+                    <span style={{ color: AMBER }}>Resized cap <b style={{ fontFamily: 'monospace' }}>{Number(recSh).toLocaleString()} sh</b></span>
+                  )}
                 </div>
               )}
 
@@ -257,7 +337,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 <div style={{ padding: '8px 12px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)' }}>
                   {oversized && maxSh != null && <div>⛔ {Number(p.proposed_shares).toLocaleString()} sh exceeds broker cap {Number(maxSh).toLocaleString()} — use ✎ Edit trade to resize.</div>}
                   {(ov.violations || []).map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
-                  {(bs.violations || p.evaluation?.violations || []).filter((v: string) => !(ov.violations || []).includes(v)).map((v: string, i: number) => <div key={`s${i}`}>⛔ {v}</div>)}
+                  {sizingViolations.filter((v: string) => !(ov.violations || []).includes(v)).map((v: string, i: number) => <div key={`s${i}`}>⛔ {v}</div>)}
                 </div>
               )}
 
@@ -289,7 +369,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               </div>
 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 12px', background: 'rgba(0,0,0,.15)' }}>
-                <select title="Destination account" style={{ ...inp, width: 'auto', minWidth: 160, fontSize: 10 }} value={dest} onChange={e => setDestAccount({ ...destAccount, [p.id]: e.target.value })}>
+                <select title="Destination account — re-runs sizing caps for this account" style={{ ...inp, width: 'auto', minWidth: 200, fontSize: 10 }} value={dest} onChange={e => onDestAccountChange(p, e.target.value)}>
                   {accounts.map(a => <option key={a.account_key} value={a.account_key}>{brokerOf(a.account_key)} · {a.display_name || a.account_key}</option>)}
                 </select>
                 {routeMsg[p.id] && <span style={{ fontSize: 10, color: routeMsg[p.id].startsWith('✅') || routeMsg[p.id].startsWith('📝') ? GREEN : routeMsg[p.id].startsWith('🔒') ? PURPLE : AMBER }}>{routeMsg[p.id]}</span>}
