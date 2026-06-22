@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-06-19
+**Updated:** 2026-06-22
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -103,16 +103,18 @@
 
 ---
 
-## Open Items Tracking (as of 2026-06-19)
+## Open Items Tracking (as of 2026-06-22)
 
 | Item | Priority | Status | Next action |
 |------|----------|--------|-------------|
-| OpenAI API key rotation | **P0** | OPEN | Dedicated session — before canary 2026-06-22 |
+| OpenAI API key rotation | **P0** | OPEN | Dedicated session — blocks Stage 2a canary |
 | OpenClaw API key rotation | **P0** | OPEN | Same session |
+| Overnight LLM cron re-enable | **P1** | OPEN | `run_deep_overnight_llm_window.sh` PHASE102-RETIRED; 1,941 pending |
+| KTOS/KBR stop-out review | P1 | OPEN | Schwab taxable stops filled 2026-06-22 — operator confirm flat |
 | Pre-deploy state guard (zip wipe vector) | P1 | OPEN | Standalone session |
 | `basis_unknown` resolution (~12 symbols) | P1 | OPEN | CSV import workflow |
-| momentum_scalp suspension | P2 | MONITORING | Revisit at ≥5 trades (currently 3, 33% WR, 1.02R — NOT 0%) |
-| Stage 2a canary session | GATE | SET | **2026-06-22** — requires P0 key rotation first |
+| momentum_scalp suspension | P2 | MONITORING | Revisit at ≥5 trades |
+| Stage 2a canary session | GATE | BLOCKED | Requires P0 key rotation first |
 | gemma4:26b-a4b re-evaluation | CALENDAR | GATED | **2026-08-11** — see `v4_1_deployment_log.md` |
 
 ---
@@ -125,8 +127,16 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 - **Marked purged** (not in tree): llm_fleet_strategy_v3_4_1, IMPROVEMENT_PLAN_2026-05-11, SYSTEM_AUDIT_2026-05-11, candidate_freshness_3_bucket_design.
 - **Added** the canonical Reference Architecture DOCX and the live `config/strategies/*.yaml` as the authoritative strategy source.
 
+## Session Docs (2026-06-22)
+
+| Document | Purpose |
+|----------|---------|
+| `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Track-1 stabilize: agent backlog, screener upsert, SIEM triage, LLM queue root cause |
+| `docs/project/MATURITY_AUDIT_2026_06_22.md` | Area maturity scores (≈7.1/10) from live probe + Jun-11 baseline |
+
 ## Change Log
 
 | Date | Change |
 |------|--------|
+| 2026-06-22 | Added stabilization + maturity audit docs; open-items updated (overnight LLM cron, KTOS/KBR stops); SYSTEM_FACTS + STATE_OF_REPO regenerated. |
 | 2026-06-19 | Index created + path/status verified against filesystem (14 corrections vs draft). Reflects commits d09a653c (deployment log) / 075bd602 (canary 2026-06-22) / 94e7275d (rotate-gap directives) / 65b3c751 (watchpool gap chip). |

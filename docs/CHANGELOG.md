@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-22 - Stabilization session docs + maturity audit (≈7.1/10)
+
+Operator requested system maturity scoring and Track-1 stabilization. Live probe: health score 64
+(execution_health=0 from agent backlog + pre-fix screener log errors); paper gate 18 closed @ 61.1% WR /
+3.02 PF; overnight LLM queue 1,941 pending (root cause: PHASE102-RETIRED `run_deep_overnight_llm_window.sh`
+cron). Actions: acked resolved SIEM alerts (fused_signals midnight stale, DB SSL transient); started agent
+drain batch (--limit 40) + daytime LLM catch-up (--limit 15); confirmed screener upsert fix `53636262`.
+Operator items: review KTOS/KBR Schwab stop-outs, re-enable overnight LLM cron, P0 key rotation. Docs:
+`docs/project/STABILIZATION_SESSION_2026_06_22.md`, `docs/project/MATURITY_AUDIT_2026_06_22.md`;
+`DOCUMENTATION_INDEX.md` + `DAILY_OPS_LOG.md` updated; `SYSTEM_FACTS_LATEST.md` + `STATE_OF_REPO_LATEST.md`
+regenerated.
+
 ## 2026-06-20 - Operator research topics route to BOTH trends + knowledge research
 
 Verification (operator: "make sure these added, not hallucinations, in research engine; retirement/estate/

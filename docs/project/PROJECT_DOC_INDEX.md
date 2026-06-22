@@ -1,3 +1,9 @@
+## Stabilization + Maturity Audit (2026-06-22)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Track-1 stabilize: agent backlog, screener upsert fix, SIEM triage, overnight LLM queue root cause |
+| `docs/project/MATURITY_AUDIT_2026_06_22.md` | Area maturity scores (≈7.1/10) from live health/DB probe |
+
 | `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Scoreboard R:R + Expectancy columns, ∞ for no-loss, expectancy-aware status (display), self-healing freshness |
 ## Portfolio Lookthrough Cadence Migration — ALL CADENCES COMPLETE (Phase 210, 2026-06-07)
 | Document | Purpose |
