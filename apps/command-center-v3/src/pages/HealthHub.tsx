@@ -45,6 +45,29 @@ export default function HealthHub({ onDrill }: Props) {
   const { data: health, loading, error } = useApi<any>('/api/v2/health', 120_000)
   const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000)
   const { data: hist } = useApi<any>('/api/v2/health/history', 300_000)
+  const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000)
+  const [acting, setActing] = useState<Record<string, string>>({})
+
+  async function remediate(f: any, e: any) {
+    e.stopPropagation()
+    const key = `${f.category}:${f.type}`
+    setActing(s => ({ ...s, [key]: 'working' }))
+    try {
+      const r = await fetch('/api/v2/health/remediate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: f.type, category: f.category, action_type: f.action_type,
+          kind: f.kind || 'single_file', message: f.message,
+          operator: localStorage.getItem('admin_operator') || 'operator',
+        }),
+      })
+      const j = await r.json()
+      setActing(s => ({ ...s, [key]: j.ok ? (j.status || 'triggered') : `failed: ${j.error || ''}` }))
+      setTimeout(refetchActivity, 2500)
+    } catch (err: any) {
+      setActing(s => ({ ...s, [key]: `failed: ${err?.message || 'error'}` }))
+    }
+  }
 
   if (loading) return <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading health…</div>
   if (error) return <div style={{ color: 'var(--red)', fontSize: 11, padding: 20 }}>Error: {error}</div>
@@ -94,6 +117,29 @@ export default function HealthHub({ onDrill }: Props) {
               {health?.note && <div style={{ fontSize: 10, color: 'var(--amber)', marginTop: 4 }}>{health.note}</div>}
             </div>
           </div>
+
+          {/* Recent changes — rolling feed of remediations so fixed items stay visible a while */}
+          {(activity?.activity || []).length > 0 && (
+            <div style={{ marginBottom: 16, padding: '8px 12px', background: 'var(--bg1)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text2)', marginBottom: 6,
+                textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                Recent Changes <span style={{ fontWeight: 400, color: 'var(--text3)', textTransform: 'none' }}>— what was fixed/queued, by whom</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 132, overflowY: 'auto' }}>
+                {(activity.activity || []).map((a: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10.5 }}
+                    title={a.detail || ''}>
+                    <span style={{ color: 'var(--text3)', width: 116, flexShrink: 0 }}>{a.at ? new Date(a.at).toLocaleString() : ''}</span>
+                    <span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 8, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 78, flexShrink: 0 }}>{a.action}</span>
+                    <span style={{ color: 'var(--text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.component}</span>
+                    <span style={{ color: 'var(--accent)', flexShrink: 0 }}>{a.actor}</span>
+                    {a.pr_url && a.pr_url.startsWith('http') && <a href={a.pr_url} style={{ color: 'var(--accent)' }}>PR ↗</a>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Category scores */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10, marginBottom: 18 }}>
@@ -159,8 +205,8 @@ export default function HealthHub({ onDrill }: Props) {
                 </div>
                 {/* Row 2: why */}
                 {f.why && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 3, marginLeft: 60 }}>{f.why}</div>}
-                {/* Row 3: action + who/when */}
-                <div style={{ fontSize: 10, marginTop: 3, marginLeft: 60, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {/* Row 3: action + who/when + manual Fix-now button */}
+                <div style={{ fontSize: 10, marginTop: 3, marginLeft: 60, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ color: 'var(--accent)' }}>▸ {f.recommended_action}</span>
                   <span style={{ color: 'var(--text3)' }}>
                     detected by {f.detected_by}
@@ -168,6 +214,20 @@ export default function HealthHub({ onDrill }: Props) {
                     {when ? ` @ ${when}` : ''}
                   </span>
                   {rem.pr_url && rem.pr_url.startsWith('http') && <a href={rem.pr_url} onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)' }}>PR ↗</a>}
+                  {f.actionable && ['auto_retry', 'refresh', 'code_fix'].includes(f.action_type) && (() => {
+                    const k = `${f.category}:${f.type}`; const st = acting[k]
+                    const label = f.action_type === 'code_fix' ? 'Route to coder' : 'Fix now'
+                    return (
+                      <button onClick={e => remediate(f, e)} disabled={st === 'working'}
+                        title={`Manually trigger: ${f.recommended_action}`}
+                        style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 10, fontWeight: 700,
+                          borderRadius: 5, border: '1px solid var(--accent)', cursor: st === 'working' ? 'default' : 'pointer',
+                          background: st && st !== 'working' && !st.startsWith('failed') ? 'var(--green-dim)' : 'var(--accent-dim)',
+                          color: st && st.startsWith('failed') ? 'var(--red)' : 'var(--accent)' }}>
+                        {st === 'working' ? '…' : st ? st.replace('_', ' ') : label}
+                      </button>
+                    )
+                  })()}
                 </div>
               </div>
             )
