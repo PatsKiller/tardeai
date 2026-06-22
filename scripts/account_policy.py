@@ -151,15 +151,50 @@ def _equity_from_holdings(account_key: str) -> float | None:
     return None
 
 
+def cash_for_account(account_key: str) -> tuple[float | None, str]:
+    """Settled cash / buying power for notional cap. Returns (cash, source). Never raises."""
+    key = (account_key or "").strip()
+    low = key.lower()
+
+    if low.startswith("schwab"):
+        try:
+            import schwab_transport as st
+            acct = st.get_account(key) or {}
+            if acct.get("status") == "active":
+                cash = _f(acct.get("cash"))
+                bp = _f(acct.get("buying_power"))
+                val = cash if cash and cash > 0 else bp
+                if val and val > 0:
+                    return val, "schwab_live"
+        except Exception:
+            pass
+
+    if low in ("alpaca_paper", "alpaca"):
+        try:
+            from alpaca_paper_adapter import AlpacaPaperAdapter
+            acct = AlpacaPaperAdapter().get_account() or {}
+            cash = _f(acct.get("cash")) or _f(acct.get("buying_power"))
+            if cash and cash > 0:
+                return cash, "alpaca_live"
+        except Exception:
+            pass
+
+    return None, "unavailable"
+
+
 def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
-                   desired_shares: int | None = None, tilt: float = 1.0) -> dict:
+                   desired_shares: int | None = None, tilt: float = 1.0,
+                   cash_available: float | None = None,
+                   sizing_base: float | None = None) -> dict:
     """The ONE sizing implementation. Shares = min(desired_shares?, position-cap shares, risk-cap shares).
-    percent_equity engine: caps = equity * pct/100; fixed_dollar engine (or missing policy/equity): the
+    percent_equity engine: caps = base * pct/100 where base defaults to equity; pass sizing_base=cash for
+    live broker promotes. fixed_dollar engine (or missing policy/equity): the
     fail-safe fixed caps. Optional absolute ceilings (max_risk_dollars_per_trade / max_notional_per_trade)
     clamp the percent caps when the admin sets them. `tilt` (per-strategy allocation tilt, default 1.0)
     scales the RISK budget up AND, for boosted winners (tilt>1.0), TIGHTENS the position cap inversely
     (÷tilt) — winners get more trades + risk budget, but smaller individual positions (concentration
-    control). Returns a basis dict for audit/reproducibility."""
+    control). Optional `cash_available` further caps notional to settled cash/buying power.
+    Returns a basis dict for audit/reproducibility."""
     entry = _f(entry) or 0.0
     stop = _f(stop) or 0.0
     risk_per_share = abs(entry - stop)
@@ -171,11 +206,13 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
     risk_pct = (policy or {}).get("risk_per_trade_pct")
     pos_pct = (policy or {}).get("max_position_allocation_pct")
     eq = _f(equity) or 0.0
+    base = _f(sizing_base) if sizing_base is not None else eq
+    use_cash_base = sizing_base is not None and base > 0
 
-    if engine == "percent_equity" and eq > 0 and risk_pct and pos_pct:
-        max_dollar_risk = eq * (risk_pct / 100.0)
-        max_dollar_size = eq * (pos_pct / 100.0)
-        basis_engine = "percent_equity"
+    if engine == "percent_equity" and base > 0 and risk_pct and pos_pct:
+        max_dollar_risk = base * (risk_pct / 100.0)
+        max_dollar_size = base * (pos_pct / 100.0)
+        basis_engine = "percent_cash" if use_cash_base else "percent_equity"
     else:
         max_dollar_risk = FALLBACK_RISK_DOLLARS
         max_dollar_size = FALLBACK_SIZE_DOLLARS
@@ -207,13 +244,22 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
     max_by_risk = int(max_dollar_risk / risk_per_share) if risk_per_share > 0 else 0
     max_by_size = int(max_dollar_size / entry) if entry > 0 else 0
 
+    cash_cap_shares = None
+    cash_avail = _f(cash_available)
+    if cash_avail and cash_avail > 0 and entry > 0:
+        cash_cap_shares = int(cash_avail / entry)
+
     candidates = [max_by_size, max_by_risk]
+    if cash_cap_shares is not None:
+        candidates.append(cash_cap_shares)
     if desired_shares and int(desired_shares) > 0:
         candidates.append(int(desired_shares))
     shares = max(0, min(candidates))
 
-    binding = "risk_cap" if max_by_risk <= max_by_size else "position_cap"
-    if desired_shares and int(desired_shares) == shares and shares < min(max_by_size, max_by_risk):
+    binding = "risk_cap" if max_by_risk <= min(max_by_size, cash_cap_shares or max_by_size) else "position_cap"
+    if cash_cap_shares is not None and shares == cash_cap_shares and shares < min(max_by_size, max_by_risk):
+        binding = "cash_cap"
+    if desired_shares and int(desired_shares) == shares and shares < min(max_by_size, max_by_risk, cash_cap_shares or max_by_size):
         binding = "signal_shares"
 
     return {
@@ -222,6 +268,8 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
         "shares": shares,
         "engine": basis_engine,
         "equity": round(eq, 2),
+        "sizing_base": round(base, 2) if base else None,
+        "sizing_base_label": "cash" if use_cash_base else "equity",
         "risk_pct": risk_pct,
         "pos_pct": pos_pct,
         "risk_per_share": round(risk_per_share, 4),
@@ -229,6 +277,8 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
         "max_dollar_size": round(max_dollar_size, 2),
         "max_shares_by_risk": max_by_risk,
         "max_shares_by_size": max_by_size,
+        "max_shares_by_cash": cash_cap_shares,
+        "cash_available": round(cash_avail, 2) if cash_avail else None,
         "dollar_size": round(shares * entry, 2),
         "dollar_risk": round(shares * risk_per_share, 2),
         "binding": binding,

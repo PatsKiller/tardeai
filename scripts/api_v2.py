@@ -9555,6 +9555,20 @@ def _paper_proposals_enriched():
             prop['strategy_timeframe_display'] = scfg.get('timeframe') or prop.get('proposal_timeframe_class') or None
             prop['strategy_timeframe_class'] = scfg.get('timeframe_class') or prop.get('proposal_timeframe_class') or None
             prop['strategy_status'] = scfg.get('status') or None
+            try:
+                from proposal_lifecycle import get_strategy_metadata, STRATEGY_TYPE_LABELS
+                _sm = get_strategy_metadata(sid)
+                prop['strategy_type'] = prop.get('strategy_type') or _sm.get('strategy_type')
+                prop['strategy_type_label'] = _sm.get('strategy_type_label') or STRATEGY_TYPE_LABELS.get(
+                    str(prop.get('strategy_type') or '').upper(),
+                    str(prop.get('strategy_type') or '').replace('_', ' ').title() or None,
+                )
+                if not prop.get('strategy_timeframe_class'):
+                    prop['strategy_timeframe_class'] = _sm.get('strategy_type')
+            except Exception:
+                _tc = str(prop.get('strategy_type') or prop.get('proposal_timeframe_class') or '').upper()
+                prop['strategy_type'] = prop.get('strategy_type') or _tc or None
+                prop['strategy_type_label'] = _tc.replace('_', ' ').title() if _tc else None
 
             # Entry criteria from YAML
             _ec = scfg.get('entry_criteria') or []
@@ -12454,6 +12468,23 @@ def _strategy_leaderboard():
         return {"error": str(e)[:160], "leaderboard": []}
 
 
+def _broker_account_execution_meta(account_key: str) -> dict:
+    """Label auto vs manual execution path + cash/day-activity snapshot per broker account."""
+    key = (account_key or "").lower()
+    if "fidelity" in key:
+        meta = {"execution_mode": "manual", "execution_label": "Manual · Fidelity", "auto_eligible": False}
+    elif "schwab" in key:
+        meta = {"execution_mode": "auto_or_manual", "execution_label": "Schwab · auto or manual", "auto_eligible": True}
+    else:
+        meta = {"execution_mode": "manual", "execution_label": "Manual", "auto_eligible": False}
+    try:
+        import broker_promote_sizing as bps
+        meta["activity"] = bps.account_activity_snapshot(account_key)
+    except Exception:
+        meta["activity"] = {}
+    return meta
+
+
 def _broker_proposals():
     """GET /api/v2/broker-proposals — Schwab + Fidelity queue proposals + form options (accounts +
     strategies) for the Trading-hub Broker Proposals tab (operator 2026-06-19)."""
@@ -12474,11 +12505,417 @@ def _broker_proposals():
         sd = PROJECT_ROOT / "config" / "strategies"
         strategies = sorted([f.stem for f in sd.glob("*.yaml")
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
-        return {"proposals": [{k: _json_clean(v) for k, v in r.items()} for r in proposals],
-                "accounts": [{k: _json_clean(v) for k, v in a.items()} for a in accounts],
-                "strategies": strategies}
+        # Live quotes for queue symbols (Schwab batch, one call)
+        quote_map = {}
+        try:
+            import schwab_transport as _st
+            syms = sorted({str(r.get("symbol") or "").upper() for r in proposals if r.get("symbol")})
+            if syms:
+                sq = _st.get_quotes(syms)
+                if sq.get("status") == "ok":
+                    quote_map = sq.get("quotes") or {}
+        except Exception:
+            pass
+
+        prop_rows = []
+        for r in proposals:
+            row = {k: _json_clean(v) for k, v in r.items()}
+            acct = row.get("account") or ""
+            row.update(_broker_account_execution_meta(acct))
+            sym = str(row.get("symbol") or "").upper()
+            sh = float(row.get("proposed_shares") or 0)
+            en = float(row.get("proposed_entry") or 0)
+            st = float(row.get("proposed_stop") or 0)
+            tg = float(row.get("proposed_target1") or 0)
+            risk_ps = max(0.0, en - st)
+            reward_ps = max(0.0, tg - en)
+            row["investment"] = round(sh * en, 2) if sh and en else None
+            row["max_risk"] = round(risk_ps * sh, 2) if sh and risk_ps else None
+            row["profit_at_target"] = round(reward_ps * sh, 2) if sh and reward_ps else None
+            q = quote_map.get(sym) or {}
+            bid, ask = q.get("bid"), q.get("ask")
+            if bid is not None and ask is not None and float(bid) > 0:
+                row["quote_bid"] = float(bid)
+                row["quote_ask"] = float(ask)
+                row["quote_last"] = float(q.get("last") or en)
+                row["quote_spread"] = round(float(ask) - float(bid), 4)
+                row["quote_spread_pct"] = round(row["quote_spread"] / float(bid) * 100, 3)
+            try:
+                import broker_proposal_intel as _bpi
+                row["intel"] = _bpi.get_intel_packet(row.get("id"))
+            except Exception:
+                row["intel"] = {"ok": False}
+            prop_rows.append(row)
+        acct_rows = []
+        for a in accounts:
+            row = {k: _json_clean(v) for k, v in a.items()}
+            row.update(_broker_account_execution_meta(row.get("account_key") or ""))
+            acct_rows.append(row)
+        return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies}
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
+
+
+def _broker_promote_quote(symbol: str) -> dict:
+    sym = str(symbol or "").upper()
+    quote = {}
+    try:
+        import schwab_transport as _st
+        sq = _st.get_quotes([sym]) if sym else {}
+        if sq.get("status") == "ok":
+            q = (sq.get("quotes") or {}).get(sym) or {}
+            bid, ask, last = q.get("bid"), q.get("ask"), q.get("last")
+            spread = None
+            spread_pct = None
+            if bid is not None and ask is not None and float(bid) > 0:
+                spread = round(float(ask) - float(bid), 4)
+                spread_pct = round(spread / float(bid) * 100, 3)
+            quote = {
+                "last": last, "bid": bid, "ask": ask,
+                "spread": spread, "spread_pct": spread_pct,
+                "provider": "schwab",
+            }
+    except Exception:
+        pass
+    if not quote.get("last"):
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(sym) or {}
+            quote = {
+                "last": q.get("last_price"), "bid": q.get("bid"), "ask": q.get("ask"),
+                "spread": q.get("spread"), "spread_pct": q.get("spread_pct"),
+                "provider": q.get("provider"),
+                "quote_timestamp": q.get("quote_timestamp"),
+            }
+        except Exception:
+            pass
+    return quote
+
+
+def _merge_broker_oversight(ev: dict, proposal_id: int | None) -> dict:
+    if not proposal_id:
+        return ev
+    try:
+        import broker_promote_oversight as bpo
+        oversight = bpo.evaluate_oversight(int(proposal_id))
+        return bpo.merge_evaluation_with_oversight(ev, oversight)
+    except Exception:
+        return ev
+
+
+def _evaluate_broker_promote(body: dict):
+    """POST /api/v2/broker-proposals/evaluate-promote — sizing caps + PASS/WARN/BLOCK for modal."""
+    import broker_promote_sizing as bps
+    b = body or {}
+    pid = int(b["proposal_id"]) if b.get("proposal_id") else None
+    acct = str(b.get("account") or "").strip()
+    shares = b.get("shares")
+    entry = b.get("entry")
+    stop = b.get("stop")
+    target = b.get("target")
+    strategy_id = str(b.get("strategy_id") or "").strip()
+    if pid and not strategy_id:
+        row = _db_query(
+            "SELECT strategy_id, symbol FROM paper_trade_proposals WHERE id=%s",
+            (pid,), fetch="one") or {}
+        strategy_id = str(row.get("strategy_id") or "momentum_scalp")
+        symbol = str(row.get("symbol") or "")
+    else:
+        symbol = str(b.get("symbol") or "")
+    if not (acct and shares is not None and entry is not None and stop is not None and target is not None):
+        return {"ok": False, "error": "account, shares, entry, stop, target are required"}
+    quote = b.get("quote") if isinstance(b.get("quote"), dict) else _broker_promote_quote(symbol)
+    ev = bps.evaluate_broker_promote(
+        acct, strategy_id or "momentum_scalp",
+        float(entry), float(stop), float(target), int(shares),
+        quote=quote,
+    )
+    ev = _merge_broker_oversight(ev, pid)
+    return {"ok": True, "data": ev, "quote": quote}
+
+
+def _prepare_broker_promote(body: dict):
+    """POST /api/v2/broker-proposals/prepare-promote — pre-fill Send-to-Broker modal from paper proposal."""
+    import manual_execution_tracker as met
+    import broker_promote_sizing as bps
+    b = body or {}
+    pid = int(b["proposal_id"]) if b.get("proposal_id") else None
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    row = _db_query(
+        """SELECT id, symbol, strategy_id, status, proposed_entry, proposed_stop, proposed_target1,
+                  proposed_shares, proposed_rr, intended_broker, target_account
+           FROM paper_trade_proposals WHERE id=%s""",
+        (pid,), fetch="one") or {}
+    if not row:
+        return {"ok": False, "error": f"proposal #{pid} not found"}
+    acct = str(b.get("account") or "").strip()
+    if not acct:
+        acct = str(row.get("target_account") or row.get("intended_broker") or "").strip()
+    if not acct:
+        accounts = _db_query(
+            """SELECT account_key, broker, display_name FROM broker_accounts
+               WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%'
+               ORDER BY account_key""") or []
+        for a in accounts:
+            if "schwab" in (a.get("account_key") or "").lower():
+                acct = a["account_key"]
+                break
+        if not acct and accounts:
+            acct = accounts[0]["account_key"]
+    prep = met.prepare_manual_execution(
+        symbol=str(row.get("symbol") or ""), account=acct, proposal_id=pid)
+    broker_key = (row.get("intended_broker") or row.get("target_account") or "").lower()
+    already_broker = broker_key.startswith("schwab") or broker_key.startswith("fidelity")
+    accounts = _db_query(
+        """SELECT account_key, broker, display_name FROM broker_accounts
+           WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%'
+           ORDER BY account_key""") or []
+    acct_rows = []
+    for a in accounts:
+        ar = {k: _json_clean(v) for k, v in a.items()}
+        ar.update(_broker_account_execution_meta(ar.get("account_key") or ""))
+        acct_rows.append(ar)
+    rec = prep.get("recommended") or {}
+    sym = str(row.get("symbol") or "").upper()
+    quote = _broker_promote_quote(sym)
+
+    def _econ(shares, entry, stop, target):
+        sh = float(shares or 0)
+        en = float(entry or 0)
+        st = float(stop or 0)
+        tg = float(target or 0)
+        risk_ps = max(0.0, en - st)
+        reward_ps = max(0.0, tg - en)
+        return {
+            "investment": round(sh * en, 2) if sh and en else None,
+            "max_risk": round(risk_ps * sh, 2) if sh and risk_ps else None,
+            "profit_at_target": round(reward_ps * sh, 2) if sh and reward_ps else None,
+            "risk_per_share": round(risk_ps, 4) if risk_ps else None,
+            "reward_per_share": round(reward_ps, 4) if reward_ps else None,
+            "rr": round(reward_ps / risk_ps, 2) if risk_ps > 0 and reward_ps else None,
+        }
+
+    rec_sh = rec.get("shares") or row.get("proposed_shares")
+    rec_en = rec.get("entry_price") or row.get("proposed_entry")
+    rec_st = rec.get("stop_price") or row.get("proposed_stop")
+    rec_tg = rec.get("target_price") or row.get("proposed_target1")
+    strategy_id = str(row.get("strategy_id") or "momentum_scalp")
+
+    sizing = bps.compute_broker_sizing(acct, strategy_id, float(rec_en or 0), float(rec_st or 0))
+    rec_sh = sizing.get("shares") or rec_sh
+    evaluation = bps.evaluate_broker_promote(
+        acct, strategy_id,
+        float(rec_en or 0), float(rec_st or 0), float(rec_tg or 0),
+        int(rec_sh or 0), quote=quote,
+    )
+    evaluation = _merge_broker_oversight(evaluation, pid)
+    intel = {}
+    oversight = (evaluation.get("oversight") or {})
+    try:
+        import broker_proposal_intel as _bpi
+        intel = _bpi.get_intel_packet(pid)
+        if isinstance(intel, dict):
+            intel["oversight"] = oversight
+    except Exception:
+        intel = {"ok": False, "oversight": oversight}
+    return {
+        "ok": True,
+        "data": {
+            "proposal_id": pid,
+            "symbol": sym,
+            "strategy_id": strategy_id,
+            "intel": intel,
+            "oversight": oversight,
+            "status": row.get("status"),
+            "already_on_broker_queue": already_broker,
+            "current_broker": row.get("intended_broker"),
+            "accounts": acct_rows,
+            "quote": quote,
+            "economics": _econ(rec_sh, rec_en, rec_st, rec_tg),
+            "sizing": sizing,
+            "evaluation": evaluation,
+            "recommended": {
+                "account": acct,
+                "shares": rec_sh,
+                "entry": rec_en,
+                "stop": rec_st,
+                "target": rec_tg,
+                "risk_reward": rec.get("risk_reward") or row.get("proposed_rr"),
+            },
+            "paper_original": {
+                "shares": row.get("proposed_shares"),
+                "entry": row.get("proposed_entry"),
+                "dollar_size": round(float(row.get("proposed_shares") or 0) * float(row.get("proposed_entry") or 0), 2)
+                    if row.get("proposed_shares") and row.get("proposed_entry") else None,
+            },
+            "origins": prep.get("origins") or [],
+        },
+    }
+
+
+def _broker_oversight_snapshot(body: dict):
+    """POST /api/v2/broker-proposals/oversight — AI review snapshot for modal."""
+    import broker_promote_oversight as bpo
+    pid = int((body or {}).get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    oversight = bpo.evaluate_oversight(pid)
+    return {"ok": True, "data": oversight}
+
+
+def _broker_run_cloud_oversight(body: dict):
+    """POST /api/v2/broker-proposals/run-cloud-oversight — Grok+ChatGPT second opinion."""
+    import broker_promote_oversight as bpo
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    timeout = min(180, max(30, int(b.get("timeout") or 120)))
+    cloud = bpo.run_cloud_oversight(pid, timeout=timeout)
+    if not cloud.get("ok") and cloud.get("error"):
+        return {"ok": False, "error": cloud["error"], "data": cloud}
+    oversight = bpo.evaluate_oversight(pid, cloud=cloud)
+    return {"ok": True, "data": {"cloud": cloud, "oversight": oversight}}
+
+
+def _broker_queue_oversight(body: dict):
+    """POST /api/v2/broker-proposals/queue-oversight — queue local agents + LLM for proposal."""
+    import subprocess as _sp
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    row = _db_query("SELECT symbol FROM paper_trade_proposals WHERE id=%s", (pid,), fetch="one") or {}
+    sym = str(row.get("symbol") or "").upper()
+    py = str(PROJECT_ROOT / ".venv/bin/python")
+    scripts = PROJECT_ROOT / "scripts"
+    started = []
+    for script, args in (
+        ("queue_proposal_agent_reviews.py", ["--symbol", sym, "--apply"] if sym else ["--apply"]),
+        ("proposal_intelligence_analyzer.py", ["--proposal-id", str(pid), "--apply"]),
+        ("proposal_agent_review.py", ["--proposal-id", str(pid)]),
+    ):
+        try:
+            _sp.Popen(
+                [py, str(scripts / script)] + args,
+                cwd=str(PROJECT_ROOT),
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+            started.append(script)
+        except Exception:
+            pass
+    return {"ok": True, "message": f"Oversight jobs started for #{pid} {sym}", "started": started}
+
+
+def _promote_paper_to_broker(body: dict):
+    """POST /api/v2/broker-proposals/promote-from-paper — move paper proposal to Schwab/Fidelity queue."""
+    import paper_trade_logger as ptl
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    acct = str(b.get("account") or "").strip()
+    shares, entry, stop, target = b.get("shares"), b.get("entry"), b.get("stop"), b.get("target")
+    if not (pid and acct and shares is not None and entry is not None and stop is not None and target is not None):
+        return {"ok": False, "error": "proposal_id, account, shares, entry, stop, target are required"}
+    rr = b.get("risk_reward")
+    if rr is not None:
+        rr = float(rr)
+    res = ptl.promote_proposal_to_broker(
+        pid, acct, int(shares), float(entry), float(stop), float(target),
+        risk_reward=rr, operator=str(b.get("operator") or "operator")[:60],
+    )
+    return res if res.get("ok") else {"ok": False, "error": res.get("error", "promote failed"), "data": res}
+
+
+def _prepare_manual_broker(body: dict):
+    """POST /api/v2/broker-proposals/prepare-manual — pre-fill adjustment modal."""
+    import manual_execution_tracker as met
+    b = body or {}
+    sym = str(b.get("symbol") or "").strip().upper()
+    acct = str(b.get("account") or "").strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    data = met.prepare_manual_execution(
+        symbol=sym,
+        account=acct,
+        proposal_id=int(b["proposal_id"]) if b.get("proposal_id") else None,
+        options_proposal_id=str(b.get("options_proposal_id") or "") or None,
+        shares=int(b["shares"]) if b.get("shares") is not None else None,
+        entry=float(b["entry"]) if b.get("entry") is not None else None,
+        stop=float(b["stop"]) if b.get("stop") is not None else None,
+        target=float(b["target"]) if b.get("target") is not None else None,
+        strike=float(b["strike"]) if b.get("strike") is not None else None,
+        expiration=str(b.get("expiration") or "") or None,
+        contracts=int(b["contracts"]) if b.get("contracts") is not None else None,
+        risk_reward=float(b["risk_reward"]) if b.get("risk_reward") is not None else None,
+    )
+    return {"ok": True, "data": data}
+
+
+def _log_manual_execution(body: dict):
+    """POST /api/v2/executions/log-manual — tag + persist manual execution lineage."""
+    import manual_execution_tracker as met
+    b = body or {}
+    sym = str(b.get("symbol") or "").strip().upper()
+    acct = str(b.get("account") or "").strip()
+    if not (sym and acct):
+        return {"ok": False, "error": "symbol and account are required"}
+    exec_type = str(b.get("execution_type") or ("option" if b.get("strike") else "equity"))
+    res = met.log_manual_execution(
+        symbol=sym,
+        account=acct,
+        execution_type=exec_type,
+        origin_type=b.get("origin_type"),
+        origin_id=b.get("origin_id"),
+        proposal_id=int(b["proposal_id"]) if b.get("proposal_id") else None,
+        options_proposal_id=str(b.get("options_proposal_id") or "") or None,
+        strategy_id=str(b.get("strategy_id") or "") or None,
+        shares=int(b["shares"]) if b.get("shares") is not None else None,
+        contracts=int(b["contracts"]) if b.get("contracts") is not None else None,
+        entry_price=float(b["entry_price"] or b.get("entry")) if (b.get("entry_price") is not None or b.get("entry") is not None) else None,
+        stop_price=float(b["stop_price"] or b.get("stop")) if (b.get("stop_price") is not None or b.get("stop") is not None) else None,
+        target_price=float(b["target_price"] or b.get("target")) if (b.get("target_price") is not None or b.get("target") is not None) else None,
+        strike=float(b["strike"]) if b.get("strike") is not None else None,
+        expiration=str(b.get("expiration") or "") or None,
+        option_side=str(b.get("option_side") or "") or None,
+        risk_reward=float(b["risk_reward"]) if b.get("risk_reward") is not None else None,
+        outcome=str(b.get("outcome") or "pending"),
+        outcome_pnl=float(b["outcome_pnl"]) if b.get("outcome_pnl") is not None else None,
+        outcome_pnl_pct=float(b["outcome_pnl_pct"]) if b.get("outcome_pnl_pct") is not None else None,
+        notes=str(b.get("notes") or "") or None,
+        adjusted_params=b.get("adjusted_params") if isinstance(b.get("adjusted_params"), dict) else None,
+    )
+    return res
+
+
+def _manual_execution_metrics(query=None):
+    """GET /api/v2/executions/tracking-metrics — proposal→execution conversion stats."""
+    import manual_execution_tracker as met
+    q = query or {}
+    days = int((q.get("days") or ["14"])[0] if isinstance(q.get("days"), list) else (q.get("days") or 14))
+    return met.get_tracking_metrics(days=days)
+
+
+def _manual_execution_log(query=None):
+    """GET /api/v2/executions/manual-log — recent manual executions + tagging metrics."""
+    import manual_execution_tracker as met
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    limit = int(g("limit", 50) or 50)
+    symbol = (g("symbol") or "").upper()
+    exec_type = (g("execution_type") or "").lower()
+    metrics = met.get_tracking_metrics(days=int(g("days", 14) or 14))
+    rows = met.list_manual_executions(
+        limit=limit,
+        symbol=symbol or None,
+        execution_type=exec_type if exec_type in ("equity", "option") else None,
+    )
+    return {
+        "metrics": metrics,
+        "executions": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "count": len(rows),
+    }
 
 
 def _governance_pipeline_status():
@@ -18107,6 +18544,39 @@ def _symbol_cards(query=None):
         c["sector_perf_week"] = perf.get(etf) if etf else None
         c["vs_sector_week"] = (round(c["perf_week"] - c["sector_perf_week"], 2)
                                if c["perf_week"] is not None and c["sector_perf_week"] is not None else None)
+    # On-demand analyst fetch for actionable symbols missing rating/target (proposals + watchlist).
+    try:
+        import analyst_coverage as _ac
+        _prio_rows = _db_query("""
+            SELECT DISTINCT upper(symbol) AS symbol FROM (
+                SELECT symbol FROM paper_trade_proposals
+                 WHERE status IN ('PENDING','APPROVED','MODIFIED') AND symbol IS NOT NULL
+                UNION SELECT symbol FROM watchlist_items
+                 WHERE status='active' AND symbol IS NOT NULL
+            ) u
+        """) or []
+        _prio = [r["symbol"] for r in _prio_rows if r.get("symbol")]
+        _need_analyst = [
+            s for s in _prio
+            if s in out and not out[s].get("analyst")
+            and not _ac.is_analyst_exempt(s, instrument_type=out[s].get("instrument_type"))
+        ]
+        if _need_analyst:
+            _conn = None
+            try:
+                from session13_db import get_conn as _gc
+                _conn = _gc()
+                _ac.ensure_analyst_batch(_conn, _need_analyst, limit=20)
+            except Exception:
+                pass
+            finally:
+                if _conn:
+                    try:
+                        _conn.close()
+                    except Exception:
+                        pass
+    except Exception:
+        pass
     # analyst consensus (latest per symbol)
     an = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation_key, recommendation_mean,
                         number_of_analyst_opinions, target_mean_price, target_high_price,
@@ -20015,6 +20485,34 @@ def _rotation_summary(force=False):
                 "summary": {}, "data_quality": {}, "top_rotation_ideas": [], "top_pairs": []}
 
 
+def _small_cap_rotation_bridge_status():
+    """GET /api/v2/rotation/small-cap-bridge — autopilot state + latest screening audit."""
+    import json as _j
+    from pathlib import Path as _P
+    out = {"ok": True, "advisory_only": True, "autonomous": True}
+    for key, path in (
+        ("autopilot", PROJECT_ROOT / "data" / "runtime" / "rotation_autopilot_latest.json"),
+        ("state", PROJECT_ROOT / "data" / "runtime" / "rotation_autopilot_state.json"),
+        ("bridge", PROJECT_ROOT / "data" / "runtime" / "small_cap_rotation_bridge_latest.json"),
+    ):
+        try:
+            if path.exists():
+                out[key] = _j.loads(path.read_text())
+        except Exception:
+            pass
+    if out.get("bridge") or out.get("autopilot"):
+        return out
+    try:
+        import market_rotation_signals as mrs
+        rot = mrs.detect_small_cap_rotation()
+        out["rotation"] = rot
+        out["coverage"] = mrs.coverage_gap(rot)
+        out["note"] = "autopilot has not run a bridge cycle yet"
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 ROUTES = {
     "/api/v2/health": lambda: _health_agent_dashboard(),
     "/api/v2/health/history": lambda: _health_agent_history(),
@@ -20025,6 +20523,7 @@ ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/rotation/summary": _rotation_summary,
+    "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
     "/api/v2/rec-intel/ticker": _rec_intel_ticker,
@@ -20119,6 +20618,8 @@ ROUTES = {
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(),
+    "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
+    "/api/v2/executions/manual-log": lambda: _manual_execution_log(_current_query),
     "/api/v2/strategy-leaderboard": lambda: _strategy_leaderboard(),
     "/api/v2/llm-health": lambda: _llm_health(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
@@ -20596,6 +21097,71 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": {"status": "started"}}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/broker-proposals/prepare-promote":
+            try:
+                res = _prepare_broker_promote(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/evaluate-promote":
+            try:
+                res = _evaluate_broker_promote(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/oversight":
+            try:
+                res = _broker_oversight_snapshot(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/run-cloud-oversight":
+            try:
+                res = _broker_run_cloud_oversight(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/queue-oversight":
+            try:
+                res = _broker_queue_oversight(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/promote-from-paper":
+            try:
+                res = _promote_paper_to_broker(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/prepare-manual":
+            try:
+                res = _prepare_manual_broker(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/executions/log-manual":
+            try:
+                res = _log_manual_execution(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/options/executions/log-manual":
+            try:
+                b = dict(body or {})
+                b.setdefault("execution_type", "option")
+                res = _log_manual_execution(b)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
         if base_path == "/api/v2/broker-proposals/manual-submit":
             # Manual trade submission for a Schwab/Fidelity account → a manual proposal mapped to a chosen
             # strategy (operator 2026-06-19). Lands in the SAME unified queue (origin=manual, intended_broker

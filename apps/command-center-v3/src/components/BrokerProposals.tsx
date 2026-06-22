@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
+import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
+import BrokerIntelPanel from './BrokerIntelPanel'
+import ManualExecutionLog from './ManualExecutionLog'
 
-// Schwab / Fidelity proposals + manual submit (operator 2026-06-19). Same features for both brokers:
-// a manual-submit form (maps to a manual proposal + strategy in the unified queue) and a proposals list
-// with a Submit action — Schwab routes via gated 2FA (prepared, no live order yet), Fidelity is
-// record-only (no trading API; execute at the broker).
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa', RED = '#ef4444'
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
@@ -12,7 +12,8 @@ const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, paddi
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
   const { data, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
-  const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold history per symbol
+  const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
+
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const outMap: Record<string, any> = outcomesData?.outcomes ?? {}
@@ -24,15 +25,18 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [busy, setBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<Record<number, string>>({})
   const [heldOnly, setHeldOnly] = useState(false)
-  // Deep-link focus from a Reports approval action (?symbol=NEE&modal=approval) — show JUST that symbol's
-  // proposal first, with a banner to clear back to all.
   const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
+  const [modalSeed, setModalSeed] = useState<ManualExecSeed | null>(null)
+  const [adjustSeed, setAdjustSeed] = useState<BrokerPromoteSeed | null>(null)
+  const [destAccount, setDestAccount] = useState<Record<number, string>>({})
+
   const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
   const heldN = proposals.filter(p => isHeld(p.symbol)).length
   let shown = heldOnly ? proposals.filter(p => isHeld(p.symbol)) : proposals
   if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) shown = shown.filter(p => String(p.symbol).toUpperCase() === focus)
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
   const brokerOf = (a: string) => (a || '').toLowerCase().startsWith('fidelity') ? 'Fidelity' : (a || '').toLowerCase().startsWith('schwab') ? 'Schwab' : '—'
+  const refreshAll = () => { refetch?.() }
 
   const submit = async () => {
     if (!(f.account && f.symbol && f.shares && f.entry && f.stop && f.target)) { setMsg('fill account, symbol, shares, entry, stop, target'); return }
@@ -44,7 +48,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           shares: Number(f.shares), entry: Number(f.entry), stop: Number(f.stop), target: Number(f.target) })
       }).then(x => x.json())
       const d = r.data ?? r
-      if (d.success) { setMsg(`✅ Manual proposal #${d.proposal_id} created for ${f.symbol.toUpperCase()} (${brokerOf(f.account)})`); setF({ ...f, symbol: '', shares: '', entry: '', stop: '', target: '' }); refetch?.() }
+      if (d.success) { setMsg(`✅ Manual proposal #${d.proposal_id} created for ${f.symbol.toUpperCase()} (${brokerOf(f.account)})`); setF({ ...f, symbol: '', shares: '', entry: '', stop: '', target: '' }); refreshAll() }
       else setMsg(`⛔ ${d.message || d.error || 'failed'}`)
     } catch (e: any) { setMsg('⛔ ' + String(e).slice(0, 80)) } finally { setBusy(false) }
   }
@@ -61,27 +65,41 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     } catch (e: any) { setRouteMsg({ ...routeMsg, [pid]: '⛔ ' + String(e).slice(0, 60) }) }
   }
 
+  const openManual = (p: any) => {
+    const acct = destAccount[p.id] || p.account || accounts[0]?.account_key || ''
+    setModalSeed({ symbol: p.symbol, account: acct, proposal_id: p.id, execution_type: 'equity' })
+  }
+
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    {modalSeed && (
+      <ManualExecutionModal seed={modalSeed} onClose={() => setModalSeed(null)} onLogged={refreshAll} />
+    )}
+    {adjustSeed && (
+      <BrokerPromoteModal seed={adjustSeed} mode="adjust" onClose={() => setAdjustSeed(null)} onPromoted={refreshAll} />
+    )}
+
     {focus && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, fontSize: 11.5, background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.35)', color: '#93c5fd' }}>
         <span>Focused on <b style={{ fontFamily: 'monospace', color: TEXT0 }}>{focus}</b> approval (from Reports).{!proposals.some(p => String(p.symbol).toUpperCase() === focus) ? ' No matching proposal in the current queue.' : ''}</span>
         <button onClick={() => setFocus('')} style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>show all</button>
       </div>
     )}
+
     <div style={{ fontSize: 10.5, color: MUTED }}>
-      Schwab + Fidelity proposals share the unified queue. Manual submit maps to a manual proposal + strategy.
-      <b style={{ color: AMBER }}> Schwab</b> routing is wired for 2FA submit but <b>disabled</b> (gated — no live order).
-      <b style={{ color: PURPLE }}> Fidelity</b> has no trading API — submit is record-only (execute at Fidelity).
+      <b style={{ color: TEXT0 }}>Broker Proposals</b> — Schwab supports automatic (2FA-gated) or manual execution.
+      <b style={{ color: PURPLE }}> Fidelity</b> is manual-only (no trading API).
+      {' '}Click <b style={{ color: AMBER }}>✎ Edit trade</b> to adjust shares, spread, investment, risk & profit before routing.
     </div>
 
-    {/* Manual submit form */}
+    <ManualExecutionLog mode="equity" onRefresh={refreshAll} />
+
     <div style={card}>
       <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0, marginBottom: 10 }}>Manual submit</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, fontSize: 11 }}>
-        <label>Account
+        <label>Destination account
           <select style={inp} value={f.account} onChange={e => set('account', e.target.value)}>
             <option value="">— select —</option>
-            {accounts.map(a => <option key={a.account_key} value={a.account_key}>{brokerOf(a.account_key)} · {a.display_name || a.account_key}</option>)}
+            {accounts.map(a => <option key={a.account_key} value={a.account_key}>{brokerOf(a.account_key)} · {a.display_name || a.account_key}{a.auto_eligible ? ' (auto+manual)' : ' (manual)'}</option>)}
           </select>
         </label>
         <label>Strategy
@@ -101,10 +119,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       {msg && <div style={{ fontSize: 11, marginTop: 9, color: msg.startsWith('✅') ? GREEN : AMBER }}>{msg}</div>}
     </div>
 
-    {/* Proposals list */}
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>Schwab / Fidelity proposals ({shown.length}{heldOnly ? ` of ${proposals.length}` : ''})</div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>Broker proposals queue ({shown.length}{heldOnly ? ` of ${proposals.length}` : ''})</div>
         <span style={{ flex: 1 }} />
         <button onClick={() => setHeldOnly(h => !h)} title="show only proposals for symbols you currently hold"
           style={{ fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -118,34 +135,80 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       </div>
       {proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
       {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {shown.map(p => {
-          const fid = brokerOf(p.account) === 'Fidelity'
-          return <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 9, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.18)' }}>
-            <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{brokerOf(p.account)}</span>
-            <span style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>{p.symbol}</span>
-            {(() => { const fv = fvMap[String(p.symbol).toUpperCase()]; if (!fv) return null
-              const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
-              const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
-              const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 9, color: MUTED }}>{l}<b style={{ color: col, fontFamily: 'monospace', marginLeft: 2 }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
-              return <span title="Finviz daily metrics" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>{c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</span> })()}
-            {(() => { const o = outMap[String(p.symbol).toUpperCase()]; return o?.origin
-              ? <span title="auto-detected discovery origin — where this symbol was first surfaced in the lineage" style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(96,165,250,.14)', color: BLUE }}>via {o.origin}</span>
-              : null })()}
-            {(() => { const o = outMap[String(p.symbol).toUpperCase()]; if (!o) return null
-              const sold = (o.closed_trades ?? 0) > 0, up = (o.last_pnl_pct ?? 0) >= 0, hUp = (o.unrealized_pnl_pct ?? 0) >= 0
-              const chip = (txt: string, c: string, tip: string) => <span title={tip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: `${c}1f`, color: c }}>{txt}</span>
-              return <>
-                {o.held && chip(`● held ${hUp ? '+' : ''}${o.unrealized_pnl_pct ?? '?'}% unrl`, hUp ? BLUE : AMBER, `currently held${o.held_since ? ` since ${String(o.held_since).slice(0, 10)}` : ''}${o.origin ? ` · origin: ${o.origin}` : ''} · unrealized $${o.unrealized_pnl ?? '?'} (monitoring till sale)`)}
-                {sold && chip(`✓ sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`, up ? GREEN : RED, `prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ''}`)}
-              </> })()}
-            <span style={{ fontSize: 10.5, color: MUTED }}>{p.strategy_id} · {p.account}</span>
-            <span style={{ fontSize: 10.5, color: TEXT1 }}>{p.proposed_shares} sh @ ${Number(p.proposed_entry).toFixed(2)} · stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}{p.proposed_rr ? ` · R:R ${Number(p.proposed_rr).toFixed(1)}` : ''}</span>
-            <span style={{ fontSize: 9, color: MUTED }}>{p.origin} · {p.routing_state}</span>
-            <span style={{ flex: 1 }} />
-            {routeMsg[p.id] && <span style={{ fontSize: 10, color: routeMsg[p.id].startsWith('✅') || routeMsg[p.id].startsWith('📝') ? GREEN : routeMsg[p.id].startsWith('🔒') ? PURPLE : AMBER }}>{routeMsg[p.id]}</span>}
-            <button onClick={() => route(p.id)} style={btn(fid ? PURPLE : AMBER)} title={fid ? 'Record-only (no API)' : 'Schwab submit — gated 2FA, disabled'}>{fid ? 'Record' : 'Submit (2FA)'}</button>
-          </div>
+          const fid = brokerOf(p.account) === 'Fidelity' || p.execution_mode === 'manual'
+          const dest = destAccount[p.id] ?? p.account ?? ''
+          const fmt = (n: number | null | undefined) => n == null ? '—' : n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}`
+          return (
+            <div key={p.id} style={{ borderRadius: 12, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.2)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 12px', borderBottom: '1px solid rgba(148,163,184,.12)' }}>
+                <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: fid ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: fid ? PURPLE : AMBER }}>{p.execution_label || (fid ? 'Manual · Fidelity' : 'Schwab · auto or manual')}</span>
+                <span style={{ fontSize: 15, fontWeight: 900, color: TEXT0, fontFamily: 'monospace' }}>{p.symbol}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}>{p.strategy_id}</span>
+                {(() => { const fv = fvMap[String(p.symbol).toUpperCase()]; if (!fv) return null
+                  const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
+                  const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
+                  const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 9, color: MUTED }}>{l}<b style={{ color: col, fontFamily: 'monospace', marginLeft: 2 }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
+                  return <span title="Finviz daily metrics" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>{c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</span> })()}
+                <span style={{ flex: 1 }} />
+                <button onClick={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol })} style={{ ...btn(AMBER), fontSize: 12, padding: '7px 16px' }} title="Edit shares, entry, stop, target, spread-aware levels">
+                  ✎ Edit trade
+                </button>
+              </div>
+
+              {p.intel?.ok && (
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(15,23,42,.35)' }}>
+                  <BrokerIntelPanel intel={p.intel} compact />
+                </div>
+              )}
+
+              {p.activity && (
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '8px 12px', fontSize: 10, borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(34,197,94,.04)' }}>
+                  <span style={{ color: MUTED }}>Account <b style={{ color: TEXT0 }}>{p.account}</b></span>
+                  <span style={{ color: MUTED }}>Cash <b style={{ color: GREEN, fontFamily: 'monospace' }}>{fmt(p.activity.cash)}</b></span>
+                  <span style={{ color: MUTED }}>Open <b style={{ color: TEXT0 }}>{p.activity.open_trades ?? '—'}</b>{p.activity.max_concurrent_positions != null ? ` / ${p.activity.max_concurrent_positions}` : ''}</span>
+                  <span style={{ color: MUTED }}>New today <b style={{ color: (p.activity.daily_limit_reached) ? RED : TEXT0 }}>{p.activity.slots_used_today ?? p.activity.new_trades_today ?? 0}{p.activity.max_new_positions_per_day != null ? ` / ${p.activity.max_new_positions_per_day}` : ''}</b></span>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, padding: '10px 12px', fontSize: 10 }}>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Position</div>
+                  <div style={{ color: TEXT0, fontWeight: 700, fontFamily: 'monospace' }}>{Number(p.proposed_shares).toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}</div>
+                  <div style={{ color: MUTED, fontSize: 9 }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
+                </div>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Investment</div>
+                  <div style={{ color: BLUE, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(p.investment)}</div>
+                </div>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Max risk</div>
+                  <div style={{ color: RED, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(p.max_risk)}</div>
+                </div>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Profit @ target</div>
+                  <div style={{ color: GREEN, fontWeight: 800, fontFamily: 'monospace' }}>+{fmt(p.profit_at_target)}</div>
+                </div>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>R:R</div>
+                  <div style={{ color: TEXT0, fontWeight: 800, fontFamily: 'monospace' }}>{p.proposed_rr ? `${Number(p.proposed_rr).toFixed(1)}:1` : '—'}</div>
+                </div>
+                <div><div style={{ color: MUTED, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>Spread</div>
+                  <div style={{ color: p.quote_spread_pct != null && Number(p.quote_spread_pct) > 1 ? AMBER : TEXT1, fontWeight: 700, fontFamily: 'monospace' }}>
+                    {p.quote_spread != null ? `$${Number(p.quote_spread).toFixed(2)}` : '—'}
+                    {p.quote_spread_pct != null ? ` (${Number(p.quote_spread_pct).toFixed(2)}%)` : ''}
+                  </div>
+                  {p.quote_bid != null && <div style={{ color: MUTED, fontSize: 8 }}>bid ${Number(p.quote_bid).toFixed(2)} · ask ${Number(p.quote_ask).toFixed(2)}</div>}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 12px', background: 'rgba(0,0,0,.15)' }}>
+                <select title="Destination account" style={{ ...inp, width: 'auto', minWidth: 160, fontSize: 10 }} value={dest} onChange={e => setDestAccount({ ...destAccount, [p.id]: e.target.value })}>
+                  {accounts.map(a => <option key={a.account_key} value={a.account_key}>{brokerOf(a.account_key)} · {a.display_name || a.account_key}</option>)}
+                </select>
+                {routeMsg[p.id] && <span style={{ fontSize: 10, color: routeMsg[p.id].startsWith('✅') || routeMsg[p.id].startsWith('📝') ? GREEN : routeMsg[p.id].startsWith('🔒') ? PURPLE : AMBER }}>{routeMsg[p.id]}</span>}
+                <span style={{ flex: 1 }} />
+                <button onClick={() => openManual(p)} style={btn(BLUE)} title="Log after you filled at broker">Executed manually</button>
+                <button onClick={() => route(p.id)} style={btn(fid ? PURPLE : AMBER)} title={fid ? 'Record-only' : 'Schwab 2FA submit'}>{fid ? 'Record' : 'Auto (2FA)'}</button>
+              </div>
+            </div>
+          )
         })}
       </div>
     </div>
