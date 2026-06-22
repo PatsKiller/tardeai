@@ -100,15 +100,18 @@ def main():
                         m = _QMAP.get(q)
                         if m and cls[s].get("source") != "universe":
                             cls[s]["type"] = m              # quoteType wins over the heuristic
-                    er = info.get("netExpenseRatio")
-                    if er is None:
-                        er = info.get("annualReportExpenseRatio")
-                    if isinstance(er, (int, float)) and er > 0:
-                        # yfinance is inconsistent (fraction 0.0009 vs percent 0.09 vs 3.0). Normalize to a
-                        # fraction: real expense ratios are < ~2%, so anything implying >2% is mis-scaled.
-                        v = float(er)
-                        while v > 0.02:
-                            v /= 100.0
+                    # DETERMINISTIC expense-ratio normalization (fix 2026-06-21, was a `while v>0.02` heuristic
+                    # that let stale/mis-scaled values through — FCNTX read 1.47% vs true 0.74%). yfinance gives
+                    # annualReportExpenseRatio as a FRACTION (0.0074) and netExpenseRatio as a PERCENT (0.74) —
+                    # prefer the fraction, else percent/100. Reject >2.5% as mis-scaled. See validate_expense_ratios.py.
+                    _ar = info.get("annualReportExpenseRatio")
+                    _net = info.get("netExpenseRatio")
+                    v = None
+                    if isinstance(_ar, (int, float)) and _ar > 0:
+                        v = float(_ar)
+                    elif isinstance(_net, (int, float)) and _net > 0:
+                        v = float(_net) / 100.0
+                    if v is not None and 0 < v <= 0.025:
                         exp[s] = round(v, 6)
                 except Exception:
                     continue
