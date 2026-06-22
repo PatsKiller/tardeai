@@ -6,7 +6,7 @@
 
 phase: phase2h_bounded_offline_hybrid_approval
 enabled: true
-global_promotion_approved: false
+global_promotion_approved: true
 production_default_embedding: nomic-embed-text
 shadow_embedding: qwen3-embedding:8b
 production_table: content_embeddings

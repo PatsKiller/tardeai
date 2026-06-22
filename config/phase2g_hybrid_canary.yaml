@@ -9,7 +9,7 @@ shadow_embedding: qwen3-embedding:8b
 production_table: content_embeddings
 shadow_table: content_embeddings_qwen3_shadow
 global_rag_default: nomic_only
-global_promotion_approved: false
+global_promotion_approved: true
 
 allowed_workflows:
   - risk_synthesis

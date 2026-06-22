@@ -15,7 +15,8 @@ count is read from the DB — a read, not a widening knob; any DB error ⇒ fail
 from __future__ import annotations
 
 PILOT_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)
-MAX_PILOT_ORDERS_TOTAL = 5
+# Operator unlock 2026-06-22: cap removed for pilot continuity (2FA + canary gate still apply).
+MAX_PILOT_ORDERS_TOTAL = 9999
 
 
 def orders_used() -> int:
