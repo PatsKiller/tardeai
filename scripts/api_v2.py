@@ -18497,7 +18497,10 @@ def _pilot_cancel(body=None):
     if not oid:
         return _json_clean({"ok": False, "error": "broker_order_id required"})
     try:
-        res = st.cancel_order(PILOT_ACCOUNT_ALLOWLIST[0], oid)
+        acct = str(b.get("account_key") or b.get("account") or "").strip()
+        if acct not in PILOT_ACCOUNT_ALLOWLIST:
+            return _json_clean({"ok": False, "error": f"account_key required and must be in {list(PILOT_ACCOUNT_ALLOWLIST)}"})
+        res = st.cancel_order(acct, oid)
     except Exception as e:
         return _json_clean({"ok": False, "blocked": True, "reason": str(e)[:240]})
     return _json_clean({"ok": res.get("status") == "cancel_requested", **res})

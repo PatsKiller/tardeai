@@ -3,8 +3,8 @@
 Sits BEHIND the canary gate in execution_guard (canary first, then these). The canary gate bounds
 WHAT an order can be (symbol/price/qty/notional/date); this module bounds HOW MANY and WHERE:
 
-  • PILOT_ACCOUNT_ALLOWLIST — the ONLY account a Schwab write may ever target this stage.
-    IRAs are structurally excluded (operator decision 2026-06-12). Changing this = git commit.
+  • PILOT_ACCOUNT_ALLOWLIST — the ONLY accounts a Schwab canary write may target this stage.
+    Operator unlock 2026-06-22: all three Schwab accounts (taxable + both IRAs). Changing = git commit.
   • MAX_PILOT_ORDERS_TOTAL — cumulative lifetime cap for the whole pilot (operator: 5).
     Counted from schwab_pilot_orders (every row that reached the POST boundary, regardless of
     broker outcome). Order #6 is blocked forever until a NEW pilot is committed.
@@ -14,7 +14,9 @@ count is read from the DB — a read, not a widening knob; any DB error ⇒ fail
 """
 from __future__ import annotations
 
-PILOT_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)
+PILOT_ACCOUNT_ALLOWLIST: tuple[str, ...] = (
+    "schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira",
+)
 # Operator unlock 2026-06-22: cap removed for pilot continuity (2FA + canary gate still apply).
 MAX_PILOT_ORDERS_TOTAL = 9999
 
@@ -46,7 +48,7 @@ def evaluate(account_key: str | None) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     if (account_key or "").strip() not in PILOT_ACCOUNT_ALLOWLIST:
         reasons.append(f"account {account_key!r} not in committed pilot allowlist "
-                       f"{PILOT_ACCOUNT_ALLOWLIST} (IRAs are structurally excluded)")
+                       f"{PILOT_ACCOUNT_ALLOWLIST}")
     used = orders_used()
     if used >= MAX_PILOT_ORDERS_TOTAL:
         reasons.append(f"pilot order cap reached ({used}/{MAX_PILOT_ORDERS_TOTAL}) — "

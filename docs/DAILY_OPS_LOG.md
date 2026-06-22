@@ -1,4 +1,9 @@
 
+## 2026-06-22 — Schwab canary: all 3 accounts, standing unlock (2FA retained)
+
+Pilot allowlist expanded to `schwab_taxable` + both IRAs; `schwab_pilot_standing_unlock` (no session
+expiry, armed_until 2099); `CANARY_SESSION_DATE=2099-12-31`; cap 9999. Per-order 2FA unchanged.
+
 ## 2026-06-22 — SnapTrade / Fidelity stops + one-share test (docs sync)
 
 **Fidelity (`fidelity_rollover_ira`):** SnapTrade read-only — monitor-only stops (`fidelity_monitored_stop`),

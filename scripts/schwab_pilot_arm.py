@@ -4,7 +4,7 @@
 Arms the three STANDING locks the execution guard requires (env flag is the operator's manual step):
   1. system_controls['broker_live_enabled'] = 'true'
   2. broker_live_approvals — a standing signed approval row (revocable)
-  3. broker_accounts.api_write_enabled = true for the committed pilot account ONLY (taxable)
+  3. broker_accounts.api_write_enabled = true for every account in PILOT_ACCOUNT_ALLOWLIST (all 3 Schwab)
 
 It can NEVER widen the per-order locks: the canary envelope (brokers/canary_gate.py) and pilot caps
 (brokers/pilot_caps.py) are commit-only literals, and per-trade 2FA always applies. Disarm reverses
@@ -66,7 +66,11 @@ def status() -> dict:
     from brokers import canary_gate as cg
     env_flag = os.getenv("BROKER_LIVE_ENABLED", "false").lower() == "true"
     today = dt.date.today().isoformat()
-    key_present = env_flag or session_active   # the 'physical key' (shell env OR UI session)
+    cur.execute("SELECT value FROM system_controls WHERE key='schwab_pilot_standing_unlock'")
+    sr2 = cur.fetchone()
+    standing_unlock = bool(sr2 and str(sr2[0]).lower() == "true")
+    key_present = env_flag or session_active or standing_unlock
+    all_writes = all(accounts.get(k) is True for k in PILOT_ACCOUNT_ALLOWLIST)
     return {
         "env_BROKER_LIVE_ENABLED": env_flag,
         "pilot_armed_until": session_until,
@@ -84,10 +88,10 @@ def status() -> dict:
         "canary_allowlist": list(cg.CANARY_SYMBOL_ALLOWLIST),
         "canary_envelope": {"max_price": cg.MAX_PRICE_USD, "max_qty": cg.MAX_QTY_SHARES,
                             "max_notional": cg.MAX_NOTIONAL_USD},
-        "armed": key_present and control and approvals > 0 and accounts.get(PILOT_ACCOUNT_ALLOWLIST[0]) is True,
-        "note": "armed=true still places NOTHING by itself: per-order canary envelope + pilot caps + "
-                "2FA (web typed-ticker AND telegram) gate every submit. Session auto-expires; any "
-                "restart fails safe to disarmed.",
+        "schwab_pilot_standing_unlock": standing_unlock,
+        "armed": key_present and control and approvals > 0 and all_writes,
+        "note": "armed=true still places NOTHING by itself: per-order 2FA gates every submit. "
+                "Standing unlock (no expiry) OR env BROKER_LIVE_ENABLED OR session key required.",
     }
 
 
@@ -103,29 +107,19 @@ def arm(confirm: str) -> dict:
     cur.execute("""INSERT INTO broker_live_approvals (broker, approved_by, scope)
                    VALUES ('schwab', 'operator', %s)""",
                 (f"stage2b_pilot {today} (typed-phrase confirmed)",))
-    cur.execute("UPDATE broker_accounts SET api_write_enabled=true WHERE account_key=%s",
-                (PILOT_ACCOUNT_ALLOWLIST[0],))
-    # UI-armed session = the 'physical key': auto-expires at the committed protective-POC deadline
-    # (operator 2026-06-15 "set pilot next friday expire") so one arm covers the test window, or at least
-    # 6h. NOTE: the canary self-date-locks to CANARY_SESSION_DATE (today only), so a longer window
-    # practically opens only the protective path; every order still needs per-order 2FA + the DRS/$1k
-    # envelope. Disarm anytime with the DISARM button.
-    now = dt.datetime.now(dt.timezone.utc)
-    try:
-        from brokers.protective_stop_policy import POC_SESSION_THROUGH
-        window_end = dt.datetime.fromisoformat(POC_SESSION_THROUGH).replace(
-            tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
-    except Exception:
-        window_end = dt.datetime.fromisoformat(today).replace(tzinfo=dt.timezone.utc) + dt.timedelta(hours=23, minutes=59)
-    six_h = now + dt.timedelta(hours=6)
-    armed_until = window_end if window_end > six_h else six_h
+    for acct in PILOT_ACCOUNT_ALLOWLIST:
+        cur.execute("UPDATE broker_accounts SET api_write_enabled=true WHERE account_key=%s", (acct,))
+    # Standing unlock (operator 2026-06-22): no session expiry — survives restarts until disarm.
+    standing_until = dt.datetime(2099, 12, 31, 23, 59, 59, tzinfo=dt.timezone.utc)
+    cur.execute("""INSERT INTO system_controls (key, value) VALUES ('schwab_pilot_standing_unlock','true')
+                   ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW()""")
     cur.execute("""INSERT INTO system_controls (key, value) VALUES ('pilot_armed_until', %s)
                    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
-                (armed_until.isoformat(),))
+                (standing_until.isoformat(),))
     conn.commit()
-    return {"ok": True, "armed_db": True, "armed_until": armed_until.isoformat(),
-            "note": "ARMED via auto-expiring session — no env flag / restart needed. Per-order "
-                    "Telegram 2FA still gates every submit.",
+    return {"ok": True, "armed_db": True, "standing_unlock": True, "armed_until": standing_until.isoformat(),
+            "pilot_accounts": list(PILOT_ACCOUNT_ALLOWLIST),
+            "note": "ARMED — all 3 Schwab accounts, standing unlock (no expiry). Per-order 2FA still required.",
             "status": status()}
 
 
@@ -138,6 +132,8 @@ def disarm(confirm: str) -> dict:
                    ON CONFLICT (key) DO UPDATE SET value='false', updated_at=NOW()""")
     # expire the armed session immediately (the auto-expiring 'physical key')
     cur.execute("""INSERT INTO system_controls (key, value) VALUES ('pilot_armed_until','')
+                   ON CONFLICT (key) DO UPDATE SET value='', updated_at=NOW()""")
+    cur.execute("""INSERT INTO system_controls (key, value) VALUES ('schwab_pilot_standing_unlock','')
                    ON CONFLICT (key) DO UPDATE SET value='', updated_at=NOW()""")
     cur.execute("UPDATE broker_live_approvals SET revoked_at=NOW() WHERE revoked_at IS NULL")
     cur.execute("UPDATE broker_accounts SET api_write_enabled=false WHERE broker ILIKE '%schwab%'")

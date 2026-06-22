@@ -69,7 +69,7 @@ def _pilot_preconditions(account_key, kind="canary"):
     else:
         from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
         allow = PILOT_ACCOUNT_ALLOWLIST
-        desc = "canary pilot allowlist (taxable-only by commit)"
+        desc = "canary pilot allowlist"
     if (account_key or "").strip() not in allow:
         raise NotProvenWrite(f"account {account_key!r} is not in the committed {desc} {allow}")
     from db_adapter import _get_conn

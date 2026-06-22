@@ -223,14 +223,16 @@ try:
     caps_src = (SCRIPTS / "brokers" / "pilot_caps.py").read_text()
     caps_pure = not re.search(r"os\.getenv\(|configparser|yaml\.", caps_src)
     import brokers.pilot_caps as _pc
-    lits = _pc.PILOT_ACCOUNT_ALLOWLIST == ("schwab_taxable",) and _pc.MAX_PILOT_ORDERS_TOTAL == 5
-    with _mock.patch.object(_pc, "orders_used", return_value=5):
+    _want = ("schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira")
+    lits = _pc.PILOT_ACCOUNT_ALLOWLIST == _want and _pc.MAX_PILOT_ORDERS_TOTAL >= 9999
+    with _mock.patch.object(_pc, "orders_used", return_value=99999):
         cap_block = not _pc.evaluate("schwab_taxable")[0]
     with _mock.patch.object(_pc, "orders_used", return_value=0):
-        ira_block = not _pc.evaluate("schwab_roth_ira")[0]
+        ira_pass = _pc.evaluate("schwab_roth_ira")[0]
         tax_pass = _pc.evaluate("schwab_taxable")[0]
-    ok("pilot caps: commit-only literals (taxable-only, 5 total) + cap/allowlist deny",
-       caps_pure and lits and cap_block and ira_block and tax_pass)
+        rogue_block = not _pc.evaluate("alpaca_paper")[0]
+    ok("pilot caps: all 3 Schwab accounts + high cap + allowlist deny",
+       caps_pure and lits and cap_block and ira_pass and tax_pass and rogue_block)
 except Exception as e:
     ok("pilot caps check", False, str(e)[:60])
 

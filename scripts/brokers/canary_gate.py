@@ -43,7 +43,7 @@ GATES_REMOVED = True
 # AUTO-EXPIRY: the allowlist is honored ONLY on this committed date. Any other date ⇒ the gate treats
 # the allowlist as EMPTY — fail-closed — so a forgotten post-session rotate-back can never leave the
 # envelope armed. Rescheduling = commit a new date.
-CANARY_SESSION_DATE = "2026-06-22"   # [OPERATOR_SET 2026-06-19] Monday — prior gate auto-expired 2026-06-15
+CANARY_SESSION_DATE = "2099-12-31"   # [OPERATOR_SET 2026-06-22] no session-date expiry (GATES_REMOVED=True bypasses)
 MAX_PRICE_USD = 4.00
 MAX_QTY_SHARES = 10
 MAX_NOTIONAL_USD = 40.00
