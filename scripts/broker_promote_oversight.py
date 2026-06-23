@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,8 @@ WATCHLIST_REC_TO_VOTE = {
 }
 CLOUD_CACHE_HOURS = int(os.getenv("BROKER_CLOUD_OVERSIGHT_CACHE_HOURS", "24"))
 REQUIRE_CLOUD = os.getenv("BROKER_REQUIRE_CLOUD_OVERSIGHT", "0") == "1"
+AUTO_CLOUD_OVERSIGHT = os.getenv("BROKER_AUTO_CLOUD_OVERSIGHT", "1") == "1"
+CLOUD_INFLIGHT_STALE_SEC = int(os.getenv("BROKER_CLOUD_INFLIGHT_STALE_SEC", "300"))
 INTEL_READINESS_BLOCK = float(os.getenv("BROKER_INTEL_READINESS_BLOCK", "50"))
 INTEL_READINESS_WARN = float(os.getenv("BROKER_INTEL_READINESS_WARN", "75"))
 
@@ -51,6 +54,47 @@ def _q(sql, params=None, one=False):
         return [dict(zip(cols, r)) for r in cur.fetchall()]
     except Exception:
         return None if one else []
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _cloud_inflight_path(proposal_id: int) -> Path:
+    d = _project_root() / "data" / "broker_cloud_inflight"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{proposal_id}.lock"
+
+
+def _is_cloud_inflight(proposal_id: int) -> bool:
+    p = _cloud_inflight_path(proposal_id)
+    if not p.exists():
+        return False
+    try:
+        age = time.time() - p.stat().st_mtime
+        if age > CLOUD_INFLIGHT_STALE_SEC:
+            p.unlink(missing_ok=True)
+            return False
+    except Exception:
+        return False
+    return True
+
+
+def _mark_cloud_inflight(proposal_id: int) -> bool:
+    if _is_cloud_inflight(proposal_id):
+        return False
+    try:
+        _cloud_inflight_path(proposal_id).write_text(str(os.getpid()), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def _clear_cloud_inflight(proposal_id: int) -> None:
+    try:
+        _cloud_inflight_path(proposal_id).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _lane_availability() -> dict:
@@ -242,6 +286,53 @@ def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def needs_cloud_oversight(proposal_id: int) -> bool:
+    """True when Grok+ChatGPT should run automatically for this proposal."""
+    if not AUTO_CLOUD_OVERSIGHT:
+        return False
+    if _fetch_cached_cloud_review(proposal_id):
+        return False
+    if _is_cloud_inflight(proposal_id):
+        return False
+    lanes = _lane_availability()
+    if not any(lanes.values()):
+        return False
+    local = _fetch_local_llm(proposal_id)
+    if local.get("status") in ("missing", "queued", "error"):
+        return False
+    if not (local.get("thesis") or "").strip():
+        return False
+    return True
+
+
+def queue_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
+    """Spawn background Grok+ChatGPT review (non-blocking for API/UI)."""
+    if not needs_cloud_oversight(proposal_id):
+        return {"ok": True, "skipped": True, "reason": "not_needed"}
+    if not _mark_cloud_inflight(proposal_id):
+        return {"ok": True, "skipped": True, "reason": "already_running"}
+    import subprocess as sp
+    root = _project_root()
+    py = str(root / ".venv/bin/python")
+    script = str(root / "scripts/broker_promote_oversight.py")
+    try:
+        sp.Popen(
+            [py, script, "--run-cloud-oversight", str(proposal_id), "--timeout", str(timeout)],
+            cwd=str(root),
+            stdout=sp.DEVNULL,
+            stderr=sp.DEVNULL,
+        )
+        return {"ok": True, "queued": True, "proposal_id": proposal_id}
+    except Exception as e:
+        _clear_cloud_inflight(proposal_id)
+        return {"ok": False, "error": str(e)[:120]}
+
+
+def maybe_queue_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
+    """Safe to call from hot API paths — queues cloud review when prerequisites are met."""
+    return queue_cloud_oversight(proposal_id, timeout=timeout)
+
+
 def _dedupe(items: list[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -363,6 +454,15 @@ def get_oversight_snapshot(proposal_id: int) -> dict:
     completed = [a for a in REQUIRED_AGENTS if a not in pending and by_agent.get(a, {}).get("vote")]
     local = _fetch_local_llm(proposal_id)
     cloud = _fetch_cached_cloud_review(proposal_id)
+    if not cloud and _is_cloud_inflight(proposal_id):
+        cloud = {
+            "status": "running",
+            "consensus": None,
+            "lanes": {},
+            "ran_at": None,
+            "cached": False,
+            "auto_queued": True,
+        }
     lanes = _lane_availability()
     return {
         "agents": {
@@ -380,6 +480,7 @@ def get_oversight_snapshot(proposal_id: int) -> dict:
             "cached": False,
         },
         "lanes_available": lanes,
+        "cloud_auto_enabled": AUTO_CLOUD_OVERSIGHT,
     }
 
 
@@ -426,9 +527,13 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         violations.append("Grok/ChatGPT cloud review DISAGREE with local thesis")
     elif cloud_status == "caution" and lanes_ok >= 1:
         warnings.append("Grok/ChatGPT cloud review CAUTION — review concerns before sending")
+    elif cloud_status == "running":
+        warnings.append("Cloud oversight running (Grok+ChatGPT) — refresh in a minute")
     elif cloud_status in ("not_run", "unknown", ""):
         if REQUIRE_CLOUD:
             violations.append("Cloud oversight required but not run (Grok+ChatGPT)")
+        elif AUTO_CLOUD_OVERSIGHT and needs_cloud_oversight(proposal_id):
+            warnings.append("Cloud oversight queued automatically (Grok+ChatGPT)")
         else:
             avail = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
             if avail:
@@ -565,8 +670,12 @@ def build_promote_diligence_stages(
         cloud_stage = _stage("WARN", "Cloud CAUTION", "Read cloud concerns")
     elif cloud_st == "agree":
         cloud_stage = _stage("PASS", "Cloud AGREE")
+    elif cloud_st == "running":
+        cloud_stage = _stage("PENDING", "Grok+ChatGPT running", "Wait for cloud review")
     elif REQUIRE_CLOUD:
         cloud_stage = _stage("BLOCK", "Not run", "Run Grok+ChatGPT review")
+    elif AUTO_CLOUD_OVERSIGHT and needs_cloud_oversight(proposal_id):
+        cloud_stage = _stage("PENDING", "Auto-queuing cloud", "Grok+ChatGPT will run shortly")
     else:
         lanes = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
         cloud_stage = _stage("WARN" if lanes else "PENDING", "Not run", "Run Grok+ChatGPT (optional)")
@@ -786,6 +895,11 @@ def advance_broker_diligence(proposal_id: int) -> dict:
         if q.get("started"):
             actions.append("oversight_queued")
 
+    if needs_cloud_oversight(proposal_id):
+        cq = queue_cloud_oversight(proposal_id)
+        if cq.get("queued"):
+            actions.append("cloud_oversight_queued")
+
     plan = build_promote_diligence_plan(proposal_id)
     return {
         "ok": True,
@@ -819,3 +933,29 @@ def merge_evaluation_with_oversight(evaluation: dict, oversight: dict) -> dict:
             if w not in out["warnings"]:
                 out["warnings"].append(w)
     return out
+
+
+def _cli_run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> int:
+    """CLI entry for background cloud review worker."""
+    try:
+        result = run_cloud_oversight(proposal_id, timeout=timeout)
+        if not result.get("ok"):
+            print(json.dumps(result, default=str))
+            return 1
+        print(json.dumps(result, default=str))
+        return 0
+    finally:
+        _clear_cloud_inflight(proposal_id)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Broker promote AI oversight utilities")
+    parser.add_argument("--run-cloud-oversight", type=int, metavar="PROPOSAL_ID")
+    parser.add_argument("--timeout", type=int, default=120)
+    args = parser.parse_args()
+    if args.run_cloud_oversight:
+        raise SystemExit(_cli_run_cloud_oversight(args.run_cloud_oversight, timeout=args.timeout))
+    parser.print_help()
+    raise SystemExit(1)

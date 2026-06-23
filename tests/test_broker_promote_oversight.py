@@ -109,6 +109,31 @@ class TestBrokerPromoteOversight(unittest.TestCase):
         ]
         self.assertEqual(bpo._next_action_from_stages(stages), "Queue agent reviews")
 
+    def test_warns_when_cloud_running(self):
+        snap = {
+            "agents": {"required": list(bpo.REQUIRED_AGENTS), "pending": [], "reviews": []},
+            "local_llm": {"status": "complete"},
+            "cloud_review": {"status": "running", "auto_queued": True},
+            "lanes_available": {"grok": True, "chatgpt": True},
+        }
+        with patch.object(bpo, "get_oversight_snapshot", return_value=snap):
+            ev = bpo.evaluate_oversight(1)
+        self.assertEqual(ev["status"], "WARN")
+        self.assertTrue(any("running" in w.lower() for w in ev["warnings"]))
+
+    def test_needs_cloud_when_thesis_ready(self):
+        with patch.object(bpo, "AUTO_CLOUD_OVERSIGHT", True), \
+             patch.object(bpo, "_fetch_cached_cloud_review", return_value=None), \
+             patch.object(bpo, "_is_cloud_inflight", return_value=False), \
+             patch.object(bpo, "_lane_availability", return_value={"grok": True, "chatgpt": False}), \
+             patch.object(bpo, "_fetch_local_llm", return_value={"status": "complete", "thesis": "Buy CRMT on momentum"}):
+            self.assertTrue(bpo.needs_cloud_oversight(282))
+
+    def test_skips_cloud_when_cached(self):
+        with patch.object(bpo, "AUTO_CLOUD_OVERSIGHT", True), \
+             patch.object(bpo, "_fetch_cached_cloud_review", return_value={"status": "agree"}):
+            self.assertFalse(bpo.needs_cloud_oversight(282))
+
     def test_intel_diligence_avoids_oversight_recursion(self):
         """evaluate_intel_diligence must not re-enter evaluate_oversight via get_intel_packet."""
         import broker_proposal_intel as bpi
