@@ -32,18 +32,20 @@ export default function TradingHub({ onDrill }: Props) {
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
-  const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
+  // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
+  const brokerDesk = tab === 'Broker Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
+  const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
-  const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000)
-  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
+  const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
+  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: tab === 'Proposals' || tab === 'Trade AI' })
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
-  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
-  const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000)
-  const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000)
-  const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000)
+  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
+  const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
+  const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
+  const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
   const scalpExtMap: Record<string, any[]> = scalpExt?.map ?? {}
-  const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000)
-  const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000)
+  const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000, { enabled: tab === 'Open Trades' || tab === 'ATM Controls' })
+  const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000, { enabled: tab === 'Broker Recon' })
 
   const advMap: Record<string, any> = {}
   const advBySym: Record<string, any> = {}
@@ -71,7 +73,7 @@ export default function TradingHub({ onDrill }: Props) {
                 unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
             {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
               ? <span>{trades.length} open (paper) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : <span>{trades.length} open · {pending.length} pending proposals · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
+              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pending.length} pending proposals`} · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
             {readiness && <span> · P-level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
