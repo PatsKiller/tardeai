@@ -43,14 +43,23 @@ Each proposal carries:
 
 ## Broker Proposals (`/v3/trading` → Broker Proposals tab)
 
-Unified queue for Schwab + Fidelity equity proposals from `paper_trade_proposals`.
+Unified live queue for Schwab + Fidelity equity proposals from `paper_trade_proposals`.
+**Full UI guide:** `docs/BROKER_PROPOSALS_UI.md`
+
+### Card layout (2026-06-23 redesign)
+
+- **Thesis validity bar** — visual drift gap (green/yellow/red) from `broker_thesis_validity.py`
+- **Account picker** — Schwab (auto+manual) vs Fidelity (FA manual only) with cash/slot preview
+- **↻ Refresh prices** — `POST /api/v2/broker-proposals/refresh-prices` (quote + recalibrate sizing)
+- **AI oversight** — Queue local reviews · **Run Grok+ChatGPT** (per-lane verdicts + consensus)
+- **Actions** — Executed manually · Edit trade · Auto route (2FA) / Record (Fidelity)
 
 ### Account selection
 
-Each row has a **destination account** dropdown:
+Grouped destination picker per row:
 
-- **Charles Schwab** — `Auto (2FA)` (gated live path) or **Executed manually**
-- **Fidelity** — manual only (record / log)
+- **Charles Schwab** — **Auto route (2FA)** when pilot armed, or **Executed manually**
+- **Fidelity** — **Active Trader Pro (FA)** manual only → **Executed manually** to close the loop
 
 ### Manual adjustment modal
 
@@ -114,6 +123,9 @@ Monitored by `health_agent.py` → `collect_proposal_maturity()`:
 |----------|--------|---------|
 | `/api/v2/options/proposals` | GET | Options proposals (filters: strategy, min_pop, min_edge) |
 | `/api/v2/broker-proposals` | GET | Schwab/Fidelity queue + account metadata |
+| `/api/v2/broker-proposals/refresh-prices` | POST | Live quote + thesis band + sizing recalc |
+| `/api/v2/broker-proposals/run-cloud-oversight` | POST | Grok+ChatGPT second opinion |
+| `/api/v2/broker-proposals/queue-oversight` | POST | Queue local agent + LLM reviews |
 | `/api/v2/broker-proposals/prepare-manual` | POST | Pre-fill adjustment modal |
 | `/api/v2/executions/log-manual` | POST | Log equity manual execution + tagging |
 | `/api/v2/options/executions/log-manual` | POST | Log options manual execution |
