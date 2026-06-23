@@ -358,7 +358,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
 
 def maybe_sync_on_load() -> dict:
     """Light sync hook for broker-proposals / paper-proposals API loads."""
-    if os.getenv("WATCHLIST_PROPOSAL_SYNC_ON_LOAD", "true").lower() != "true":
+    if os.getenv("WATCHLIST_PROPOSAL_SYNC_ON_LOAD", "false").lower() != "true":
         return {"skipped": True, "reason": "WATCHLIST_PROPOSAL_SYNC_ON_LOAD=false"}
     try:
         return sync_watchlist_proposals(dry_run=False, max_new=int(os.getenv("WATCHLIST_PROPOSAL_SYNC_CAP", "25")))

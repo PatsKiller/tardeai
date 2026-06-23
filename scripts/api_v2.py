@@ -8833,11 +8833,6 @@ def _derive_pipeline_stages(prop):
 def _paper_proposals_enriched():
     """GET /api/v2/paper-proposals — enriched decision packet proposals."""
     try:
-        try:
-            import watchlist_proposal_bridge as _wpb
-            _wpb.maybe_sync_on_load()
-        except Exception:
-            pass
         # Expire stale proposals before reading
         try:
             from db_adapter import _get_conn as _gc
@@ -12848,12 +12843,6 @@ def _broker_proposals_audit():
 def _broker_proposals():
     """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail."""
     try:
-        wl_sync = {}
-        try:
-            import watchlist_proposal_bridge as _wpb
-            wl_sync = _wpb.maybe_sync_on_load()
-        except Exception:
-            pass
         proposals = _db_query("""
             SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                    intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
@@ -12868,12 +12857,6 @@ def _broker_proposals():
              ORDER BY CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END,
                       COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST,
                       created_at DESC LIMIT 100""") or []
-        hygiene_meta = {}
-        try:
-            import broker_queue_hygiene as _bqh
-            hygiene_meta = _bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
-        except Exception:
-            pass
         accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
             WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
         sd = PROJECT_ROOT / "config" / "strategies"
@@ -12903,12 +12886,8 @@ def _broker_proposals():
             row["activity_pending"] = True
             row["intel"] = {"ok": False, "lazy": True}
             row["detail_pending"] = True
-            try:
-                import broker_promote_oversight as _bpo
-                row["broker_diligence"] = _bpo.get_broker_diligence_summary(row.get("id"))
-                row["oversight"] = {"status": row["broker_diligence"].get("status")}
-            except Exception:
-                row["broker_diligence"] = None
+            row["broker_diligence"] = None
+            row["oversight"] = {"status": None, "lazy": True}
             prop_rows.append(row)
 
         acct_rows = []
@@ -12923,8 +12902,6 @@ def _broker_proposals():
             "accounts": acct_rows,
             "strategies": strategies,
             "list_mode": "fast",
-            "hygiene": hygiene_meta if hygiene_meta else None,
-            "watchlist_sync": wl_sync if wl_sync else None,
         }
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
