@@ -9806,6 +9806,11 @@ def _paper_proposals_enriched():
             prop['screener_display_name'] = _resolve_screener_display(
                 prop.get('screener_name'), prop.get('source_table'))
             prop['pipeline_stages'] = _derive_pipeline_stages(prop)
+            try:
+                import broker_promote_oversight as _bpo
+                prop['broker_diligence'] = _bpo.get_broker_diligence_summary(prop.get('id'))
+            except Exception:
+                prop['broker_diligence'] = None
 
         # Session 25: Expired today + summary
         expired_today = []
@@ -12764,6 +12769,12 @@ def _prepare_broker_promote(body: dict):
             evaluation = _bpo.merge_evaluation_with_oversight(evaluation, oversight)
     except Exception:
         pass
+    diligence_plan = {}
+    try:
+        import broker_promote_oversight as _bpo2
+        diligence_plan = _bpo2.build_promote_diligence_plan(pid)
+    except Exception:
+        diligence_plan = {}
     try:
         import broker_proposal_intel as _bpi
         intel = _bpi.get_intel_packet(pid)
@@ -12779,8 +12790,9 @@ def _prepare_broker_promote(body: dict):
             "strategy_id": strategy_id,
             "intel": intel,
             "oversight": oversight,
+            "diligence_plan": diligence_plan,
             "diligence_auto_queued": diligence_auto_queued,
-            "promote_ready": bool(oversight.get("promote_ready")),
+            "promote_ready": bool(diligence_plan.get("promote_ready") or oversight.get("promote_ready")),
             "status": row.get("status"),
             "already_on_broker_queue": already_broker,
             "current_broker": row.get("intended_broker"),
@@ -12831,6 +12843,25 @@ def _broker_run_cloud_oversight(body: dict):
         return {"ok": False, "error": cloud["error"], "data": cloud}
     oversight = bpo.evaluate_oversight(pid, cloud=cloud)
     return {"ok": True, "data": {"cloud": cloud, "oversight": oversight}}
+
+
+def _broker_diligence_plan(body: dict):
+    """POST /api/v2/paper-proposals/broker-diligence — maturity checklist for promote."""
+    import broker_promote_oversight as bpo
+    pid = int((body or {}).get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    plan = bpo.build_promote_diligence_plan(pid)
+    return {"ok": True, "data": plan}
+
+
+def _advance_broker_diligence(body: dict):
+    """POST /api/v2/paper-proposals/advance-broker-diligence — auto-run next diligence steps."""
+    import broker_promote_oversight as bpo
+    pid = int((body or {}).get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    return bpo.advance_broker_diligence(pid)
 
 
 def _broker_queue_oversight(body: dict):
@@ -25082,6 +25113,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 conn.close()
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/broker-diligence":
+        try:
+            res = _broker_diligence_plan(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/advance-broker-diligence":
+        try:
+            res = _advance_broker_diligence(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
 
     if method == "POST" and base_path == "/api/v2/paper-proposals/run-ai-review":
         try:

@@ -5,6 +5,7 @@ import { StatusBadge } from './StatusBadge'
 import { StateCard } from './StateCard'
 import { ActionButton } from './ActionButton'
 import BrokerPromoteModal from './BrokerPromoteModal'
+import BrokerDiligenceStrip from './BrokerDiligenceStrip'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
 
 function isPaperQueueProposal(p: any): boolean {
@@ -200,6 +201,8 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
   const [showConfirm, setShowConfirm] = useState(false)
   const [showBrokerPromote, setShowBrokerPromote] = useState(false)
   const [runningAction, setRunningAction] = useState<string | null>(null)
+  const bd = p.broker_diligence
+  const brokerDiligenceBlocked = bd && (bd.status === 'BLOCK' || bd.status === 'PENDING')
 
   const norm = normalizeProposal(p)
 
@@ -547,6 +550,12 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
         {p.trust_audit?.strategy_fit && <span>Strategy fit: <strong style={{ color: p.trust_audit.strategy_fit.fit_status === 'PASS' ? '#22C55E' : p.trust_audit.strategy_fit.fit_status === 'PARTIAL' ? '#F59E0B' : '#EF4444' }}>{p.trust_audit.strategy_fit.fit_status}</strong></span>}
       </div>
 
+      {isPaperQueueProposal(p) && bd && (
+        <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)' }}>
+          <BrokerDiligenceStrip summary={bd} compact />
+        </div>
+      )}
+
       {/* G. ACTION WORKFLOW */}
       <div style={{ padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <ActionButton variant="secondary" size="sm" loading={runningAction === 'refreshPrice'} disabled={runningAction !== null} onClick={() => runAction('refreshPrice', `/api/v2/paper-proposals/refresh-data`, { proposal_id: p.id })} style={{ border: '1px solid rgba(59,130,246,0.3)', color: '#60A5FA' }}>
@@ -558,8 +567,19 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
         <ActionButton variant="secondary" size="sm" loading={runningAction === 'aiReview'} disabled={runningAction !== null} onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} style={{ border: '1px solid rgba(168,85,247,0.3)', color: '#A855F7' }}>
           {runningAction === 'aiReview' ? 'Running...' : '3. AI Review'}
         </ActionButton>
-        <ActionButton variant="secondary" size="sm" onClick={() => setShowBrokerPromote(true)} style={{ border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B', fontWeight: 800 }} title="Requires agent reviews, AI Review, catalyst/analyst intel, and account sizing gates before broker queue">
-          Send to Broker
+        {isPaperQueueProposal(p) && (
+          <ActionButton variant="secondary" size="sm" loading={runningAction === 'brokerDiligence'} disabled={runningAction !== null}
+            onClick={() => runAction('brokerDiligence', `/api/v2/paper-proposals/advance-broker-diligence`, { proposal_id: p.id })}
+            style={{ border: '1px solid rgba(168,85,247,0.35)', color: '#C084FC', fontWeight: 700 }}
+            title="Auto-queue enrichment, agent reviews, and LLM analysis">
+            {runningAction === 'brokerDiligence' ? 'Running…' : '3b. Broker diligence'}
+          </ActionButton>
+        )}
+        <ActionButton variant="secondary" size="sm" onClick={() => setShowBrokerPromote(true)}
+          disabled={brokerDiligenceBlocked}
+          style={{ border: '1px solid rgba(245,158,11,0.35)', color: brokerDiligenceBlocked ? '#64748B' : '#F59E0B', fontWeight: 800 }}
+          title={bd?.next_action || 'Complete broker diligence before queueing at Schwab/Fidelity'}>
+          {bd?.promote_ready ? '4. Send to Broker' : '4. Send to Broker (locked)'}
         </ActionButton>
         <div style={{ flex: 1 }} />
         <ActionButton
