@@ -413,6 +413,40 @@ def collect_proposal_maturity() -> list[dict]:
         if rot is not None and rot == 0 and trading and datetime.now().hour >= 14:
             out.append(_f("intelligence_quality", "rotation_empty", "info",
                           "No pending rotation recommendations", count=0))
+        try:
+            import market_rotation_signals as mrs
+            rot_sig = mrs.detect_small_cap_rotation()
+            cov = mrs.coverage_gap(rot_sig)
+            if cov.get("has_market_signal") and cov.get("gaps"):
+                out.append(_f("intelligence_quality", "small_cap_signal_gap", "warning",
+                              f"Small-cap outperformance detected but system gaps: {', '.join(cov['gaps'])}",
+                              rs_20d=rot_sig.get("rs_20d"), rs_1d=rot_sig.get("rs_1d"),
+                              gaps=cov.get("gaps"), news_count=cov.get("news_count"),
+                              proposal_count=cov.get("proposal_count"),
+                              watchlist_count=cov.get("watchlist_count")))
+        except Exception:
+            pass
+        # Proposal → manual execution conversion + tagging (closed-loop monitor)
+        track = metrics.get("execution_tracking") or {}
+        if track:
+            tag_pct = float(track.get("tagging_rate_pct") or 100)
+            conv_pct = float(track.get("proposal_conversion_pct") or 0)
+            untagged = int(track.get("untagged_manual") or 0)
+            opt_active = int(track.get("options_proposals_active") or 0)
+            opt_logged = int(track.get("options_executions_logged") or 0)
+            if untagged >= 3 and tag_pct < 70:
+                out.append(_f("execution_health", "manual_tagging_failing", "warning",
+                              f"{untagged} manual executions untagged ({tag_pct:.0f}% tagging rate)",
+                              untagged=untagged, tagging_rate_pct=tag_pct))
+            pending_broker = int(track.get("broker_proposals_pending_7d") or 0)
+            if pending_broker >= 5 and conv_pct < 15:
+                out.append(_f("execution_health", "proposal_conversion_low", "warning",
+                              f"Only {conv_pct:.0f}% broker proposals logged as executed ({pending_broker} pending)",
+                              conversion_pct=conv_pct, pending=pending_broker))
+            if opt_active >= 4 and opt_logged == 0 and trading:
+                out.append(_f("execution_health", "options_proposals_ignored", "info",
+                              f"{opt_active} quality options proposals — none logged as manually executed",
+                              options_active=opt_active, options_logged=opt_logged))
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info",
                       f"proposal_maturity check error: {e}"))
@@ -489,6 +523,7 @@ WHY = {
     "trade_proposals_backlog": "Many trade proposals are pending — approval queue may be clogged.",
     "watchlist_stale": "Watchlist items haven't been refreshed — rotation/options synergy may be weak.",
     "rotation_empty": "No rotation recommendations staged — capital redeployment signals may be missing.",
+    "small_cap_signal_gap": "IWM/Russell 2000 is outperforming SPY in the market, but news curation, proposals, or watchlist lack small-cap coverage.",
     "golden_window_missing": "Retirement Golden Window drives Roth-conversion guidance; missing = a planning gap.",
     "dividend_income_zero": "Zero dividend income is almost certainly a data inconsistency, not reality.",
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
