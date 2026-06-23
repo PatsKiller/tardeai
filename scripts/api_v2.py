@@ -12898,6 +12898,11 @@ def _broker_proposal_detail(body: dict):
     acct = base.get("account") or ""
     base.update(_broker_account_execution_meta(acct))
     base["activity"] = base.get("activity") or {}
+    try:
+        import broker_promote_oversight as _bpo
+        _bpo.maybe_queue_cloud_oversight(pid)
+    except Exception:
+        pass
     enriched = _enrich_broker_proposal_row(base)
     return {"ok": True, "data": enriched}
 
@@ -13066,6 +13071,10 @@ def _prepare_broker_promote(body: dict):
             diligence_auto_queued = True
             oversight = _bpo.evaluate_oversight(pid)
             evaluation = _bpo.merge_evaluation_with_oversight(evaluation, oversight)
+        if _bpo.needs_cloud_oversight(pid):
+            cq = _bpo.queue_cloud_oversight(pid)
+            if cq.get("queued"):
+                diligence_auto_queued = True
     except Exception:
         pass
     diligence_plan = {}

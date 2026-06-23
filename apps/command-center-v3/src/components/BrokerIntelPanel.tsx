@@ -18,6 +18,7 @@ function cloudColor(status: string | null | undefined) {
   if (s === 'agree') return GREEN
   if (s === 'caution') return AMBER
   if (s === 'disagree') return RED
+  if (s === 'running') return AMBER
   return MUTED
 }
 
@@ -232,9 +233,9 @@ export default function BrokerIntelPanel({
                 </button>
               )}
               {onRunCloudOversight && (
-                <button type="button" onClick={onRunCloudOversight} disabled={cloudBusy}
-                  style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: `1px solid ${PURPLE}`, background: 'rgba(168,85,247,.12)', color: PURPLE, cursor: cloudBusy ? 'wait' : 'pointer' }}>
-                  {cloudBusy ? 'Running Grok+ChatGPT…' : 'Run Grok+ChatGPT'}
+                <button type="button" onClick={onRunCloudOversight} disabled={cloudBusy || cloud.status === 'running'}
+                  style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: `1px solid ${PURPLE}`, background: 'rgba(168,85,247,.12)', color: PURPLE, cursor: (cloudBusy || cloud.status === 'running') ? 'wait' : 'pointer' }}>
+                  {(cloudBusy || cloud.status === 'running') ? 'Cloud running…' : 'Re-run Grok+ChatGPT'}
                 </button>
               )}
             </div>

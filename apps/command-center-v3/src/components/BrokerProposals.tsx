@@ -48,9 +48,10 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [detailBusy, setDetailBusy] = useState<Record<number, boolean>>({})
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
+  const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
 
-  const fetchProposalDetail = useCallback(async (pid: number) => {
-    if (detailLoadedRef.current.has(pid) || detailInflightRef.current.has(pid)) return
+  const fetchProposalDetail = useCallback(async (pid: number, opts?: { force?: boolean }) => {
+    if (!opts?.force && (detailLoadedRef.current.has(pid) || detailInflightRef.current.has(pid))) return
     detailInflightRef.current.add(pid)
     setDetailBusy(b => ({ ...b, [pid]: true }))
     try {
@@ -63,12 +64,32 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       if (r.ok && d?.id) {
         detailLoadedRef.current.add(pid)
         setDetailMap(prev => ({ ...prev, [pid]: d }))
+        const cloudSt = String(d?.oversight?.cloud_review?.status || d?.intel?.oversight?.cloud_review?.status || '').toLowerCase()
+        if (cloudSt === 'running') {
+          setCloudBusy(m => ({ ...m, [pid]: true }))
+          if (!cloudPollRef.current[pid]) {
+            cloudPollRef.current[pid] = setInterval(() => {
+              detailLoadedRef.current.delete(pid)
+              fetchProposalDetail(pid, { force: true })
+            }, 15_000)
+          }
+        } else {
+          setCloudBusy(m => ({ ...m, [pid]: false }))
+          if (cloudPollRef.current[pid]) {
+            clearInterval(cloudPollRef.current[pid])
+            delete cloudPollRef.current[pid]
+          }
+        }
       }
     } catch { /* keep list row */ }
     finally {
       detailInflightRef.current.delete(pid)
       setDetailBusy(b => ({ ...b, [pid]: false }))
     }
+  }, [])
+
+  useEffect(() => () => {
+    for (const t of Object.values(cloudPollRef.current)) clearInterval(t)
   }, [])
 
   useEffect(() => {
