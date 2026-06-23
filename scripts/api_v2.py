@@ -12864,8 +12864,8 @@ def _broker_proposals(query=None):
         strategy_f = str(_broker_qp(query, "strategy_id", _broker_qp(query, "strategy", "")) or "").strip()
 
         where = [
-            "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%'"
-            " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%')",
+            "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'"
+            " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')",
             "status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')",
         ]
         params: list = []
@@ -12888,7 +12888,7 @@ def _broker_proposals(query=None):
         where_sql = " AND ".join(where)
         total_row = _db_query(
             f"SELECT COUNT(*) AS n FROM paper_trade_proposals WHERE {where_sql}",
-            params, fetch="one",
+            tuple(params) if params else None, fetch="one",
         ) or {}
         db_total = int(total_row.get("n") or 0)
 
@@ -12923,7 +12923,7 @@ def _broker_proposals(query=None):
                  WHERE {where_sql}
                  ORDER BY {order_sql}
                  LIMIT %s OFFSET %s""",
-            params + [fetch_limit, fetch_offset],
+            tuple(params + [fetch_limit, fetch_offset]),
         ) or []
 
         accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
