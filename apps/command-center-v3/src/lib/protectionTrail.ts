@@ -31,9 +31,12 @@ export function resolvedTrailPct(pr: any): TrailResolution | null {
   return null
 }
 
-export function protectionExplain(pr: any, trail: TrailResolution | null): string {
+export function protectionExplain(pr: any, trail: TrailResolution | null, opts?: { brokerFixedActive?: boolean }): string {
   const dist = trail?.stopDistPct ?? pr?.stop_distance_pct
   const distLbl = dist != null ? `${Number(dist).toFixed(1)}%` : '—'
+  if (opts?.brokerFixedActive) {
+    return `Live fixed stop @ $${Number(pr?.stop_price).toFixed(2)} (${distLbl} below) — trigger stays at $${Number(pr?.stop_price).toFixed(2)} until hit or you cancel/replace. Trail ${trail?.pct ?? distLbl}% is optional if you later want the stop to ratchet up with price.`
+  }
   if (pr?.trail_recommended && trail) {
     return `Advisor recommends ${trail.pct}% trailing (ratchets up with price). Fixed stop is the fallback if you want a non-moving trigger.`
   }
