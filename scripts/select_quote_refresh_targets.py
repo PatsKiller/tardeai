@@ -34,7 +34,7 @@ def _db_query(sql, params=None, fetch="all"):
 
 def main():
     p = argparse.ArgumentParser(description="Select quote refresh targets (read-only)")
-    p.add_argument("--mode", choices=["pending", "incubator", "all"], default="all")
+    p.add_argument("--mode", choices=["pending", "incubator", "broker", "all"], default="all")
     p.add_argument("--limit", type=int, default=100)
     p.add_argument("--output-json", type=str)
     p.add_argument("--output-md", type=str)
@@ -80,6 +80,33 @@ def main():
                 "reason": "pending_proposal_needs_fresh_quote",
                 "priority": 1,
             })
+
+    # Live broker queue (APPROVED_FOR_PAPER_TEST at Schwab/Fidelity)
+    if args.mode in ("broker", "all"):
+        try:
+            from broker_queue_hygiene import fetch_broker_queue_rows
+            brows = fetch_broker_queue_rows()[: args.limit]
+            for r in brows:
+                age = None
+                if r.get("updated_at"):
+                    try:
+                        ua = r["updated_at"]
+                        if hasattr(ua, "tzinfo") and ua.tzinfo is None:
+                            ua = ua.replace(tzinfo=timezone.utc)
+                        age = (datetime.now(timezone.utc) - ua).total_seconds()
+                    except Exception:
+                        pass
+                targets.append({
+                    "symbol": r["symbol"],
+                    "source": "broker_queue",
+                    "proposal_id": r.get("id"),
+                    "strategy_id": r.get("strategy_id"),
+                    "last_checked_age_seconds": round(age) if age else None,
+                    "reason": "broker_queue_needs_fresh_quote",
+                    "priority": 0,
+                })
+        except Exception:
+            pass
 
     # Incubator candidates — use family-specific min_score thresholds (MAP-5D)
     if args.mode in ("incubator", "all"):

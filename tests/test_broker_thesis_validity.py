@@ -46,6 +46,25 @@ def test_stale_db_price_skips_live_rr():
     assert tv["current_price"] == 101
 
 
+def test_live_quote_last_bypasses_stale_db():
+    old = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
+    row = {
+        "proposed_entry": 100,
+        "proposed_stop": 95,
+        "proposed_target1": 115,
+        "current_price": 101,
+        "updated_at": old,
+        "quote_last": 102.5,
+        "quote_provider": "schwab",
+        "refreshed_at": datetime.now(timezone.utc).isoformat()[:19],
+        "strategy_id": "momentum_scalp",
+    }
+    attach_thesis_validity(row)
+    assert row["price_stale"] is False
+    assert row["thesis_validity"]["zone_status"] != "stale_price"
+    assert row["thesis_validity"]["current_rr"] is not None
+
+
 def test_fresh_refresh_bypasses_stale():
     row = {
         "proposed_entry": 100,
@@ -67,5 +86,6 @@ if __name__ == "__main__":
     test_at_risk_above_band()
     test_invalid_below_stop()
     test_stale_db_price_skips_live_rr()
+    test_live_quote_last_bypasses_stale_db()
     test_fresh_refresh_bypasses_stale()
     print("OK")

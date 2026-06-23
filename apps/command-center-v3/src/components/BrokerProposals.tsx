@@ -105,6 +105,14 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
   const pagination = data?.pagination ?? { page: 1, page_size: 15, total: 0, total_pages: 1 }
+  const queueTotal = Number(pagination.total || proposals.length || 0)
+  const queuePageSize = Number(pagination.page_size || listFilters.pageSize || 15)
+  const queueTotalPages = Math.max(
+    Number(pagination.total_pages || 1),
+    queueTotal > 0 ? Math.ceil(queueTotal / queuePageSize) : 1,
+  )
+  const queuePage = Number(pagination.page || listFilters.page || 1)
+  const hasQueuePages = queueTotalPages > 1
 
   const patchFilters = (patch: Partial<ListFilters>) => {
     setListFilters(prev => {
@@ -194,7 +202,22 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }, [proposals, accounts])
 
   const mergeProposal = (raw: any) => {
-    const merged = { ...raw, ...(detailMap[raw.id] || {}) }
+    const detail = detailMap[raw.id] || {}
+    const merged = { ...raw, ...detail }
+    // Light detail prefetch uses DB price — must not clobber list live-quote thesis band.
+    const listFresh = raw.price_stale === false || (raw.thesis_validity && !raw.thesis_validity.price_stale)
+    const detailStale = detail.price_stale === true || detail.thesis_validity?.zone_status === 'stale_price'
+    if (listFresh && detailStale) {
+      merged.thesis_validity = raw.thesis_validity
+      merged.price_stale = raw.price_stale
+      merged.live_rr = raw.live_rr
+      merged.quote_last = raw.quote_last
+      merged.quote_bid = raw.quote_bid
+      merged.quote_ask = raw.quote_ask
+      merged.refreshed_at = raw.refreshed_at
+      merged.quote_provider = raw.quote_provider
+      merged.price_drift_pct = raw.price_drift_pct
+    }
     const preview = acctPreview[raw.id]
     if (preview) merged._preview = preview
     return merged
@@ -447,9 +470,28 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
+  const [refreshAllBusy, setRefreshAllBusy] = useState(false)
+
   const refreshAllPrices = async () => {
-    for (const raw of shown) {
-      await refreshPrices(mergeProposal(raw))
+    const ids = shown.map((p: any) => p.id).filter(Boolean)
+    if (!ids.length) return
+    setRefreshAllBusy(true)
+    try {
+      const r = await fetch('/api/v2/broker-proposals/refresh-prices-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_ids: ids }),
+      }).then(x => x.json())
+      if (r.ok) {
+        setBypassCache(true)
+        detailLoadedRef.current.clear()
+        setDetailMap({})
+        refetch?.()
+        setTimeout(() => setBypassCache(false), 2500)
+      }
+    } catch { /* ignore */ }
+    finally {
+      setRefreshAllBusy(false)
     }
   }
 
@@ -546,8 +588,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             {loading ? '…' : '↻ Reload queue'}
           </button>
           {shown.length > 0 && (
-            <button onClick={refreshAllPrices} style={btn(GREEN)} title="Refresh live prices + recalc thesis/sizing for all visible cards">
-              ↻ Refresh all prices
+            <button onClick={refreshAllPrices} disabled={refreshAllBusy} style={btn(GREEN, refreshAllBusy)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
+              {refreshAllBusy ? '…' : '↻ Refresh all prices'}
             </button>
           )}
         </div>
@@ -585,7 +627,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>
             Proposals ({shown.length}{heldOnly ? ` on page` : ''}
-            {pagination.total ? ` · ${pagination.total} total` : ''})
+            {queueTotal ? ` · ${queueTotal} total` : ''}
+            {hasQueuePages ? ` · page ${queuePage}/${queueTotalPages}` : ''})
           </div>
           <button onClick={() => setHeldOnly(h => !h)} style={{
             fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
@@ -596,9 +639,23 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               {data?.cached ? `cached ${data.cache_age_sec ?? ''}s` : 'cached data'}
             </span>
           )}
+          {data?.autocal?.updated > 0 && (
+            <span style={{ fontSize: 9, color: GREEN }}>
+              auto-recal {data.autocal.updated} row(s)
+            </span>
+          )}
+          {data?.autocal?.skipped && data?.autocal?.reason === 'throttled' && (
+            <span style={{ fontSize: 9, color: MUTED }} title="Background job recalibrates stale prices every 5m">
+              prices auto-sync · next ~{data.autocal.sec_until_next ?? '?'}s
+            </span>
+          )}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        <div style={{ ...card, marginBottom: 12, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: TEXT0, marginBottom: 8 }}>
+            Queue filters · sort · pagination
+          </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
             Sort
             <select style={sel} value={listFilters.sort} onChange={e => patchFilters({ sort: e.target.value })}>
@@ -628,6 +685,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               <option value="approaching">Approaching</option>
               <option value="at_risk">At risk</option>
               <option value="invalid">Invalid</option>
+              <option value="stale_price">Stale price (refresh needed)</option>
             </select>
           </label>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -680,12 +738,43 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           </button>
           <button
             onClick={() => queueCloudBatch('filtered')}
-            disabled={batchCloudBusy || !(pagination.total > 0)}
+            disabled={batchCloudBusy || !(queueTotal > 0)}
             title="Queue Grok+ChatGPT for up to 30 proposals matching current filters"
-            style={btn(AMBER, batchCloudBusy || !(pagination.total > 0))}
+            style={btn(AMBER, batchCloudBusy || !(queueTotal > 0))}
           >
-            {batchCloudBusy ? '…' : `☁ Run cloud · filtered (≤30 of ${pagination.total || 0})`}
+            {batchCloudBusy ? '…' : `☁ Run cloud · filtered (≤30 of ${queueTotal || 0})`}
           </button>
+          {hasQueuePages && (
+            <>
+              <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 2px' }} />
+              <button
+                disabled={queuePage <= 1 || loading}
+                onClick={() => patchFilters({ page: Math.max(1, queuePage - 1) })}
+                style={btn(BLUE, loading || queuePage <= 1)}
+              >
+                ← Prev
+              </button>
+              <span style={{ fontSize: 10, color: MUTED }}>Page {queuePage} / {queueTotalPages}</span>
+              <button
+                disabled={queuePage >= queueTotalPages || loading}
+                onClick={() => patchFilters({ page: Math.min(queueTotalPages, queuePage + 1) })}
+                style={btn(BLUE, loading || queuePage >= queueTotalPages)}
+              >
+                Next →
+              </button>
+              <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+                Per page
+                <select
+                  style={sel}
+                  value={listFilters.pageSize}
+                  onChange={e => patchFilters({ pageSize: Number(e.target.value), page: 1 })}
+                >
+                  {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </>
+          )}
+        </div>
         </div>
         {(listFilters.rrPreset === 'live_2' || listFilters.rrPreset === 'live_15' || listFilters.rrPreset === 'best') && (
           <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>
@@ -713,38 +802,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>
         )}
 
-        {pagination.total_pages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-            <button
-              disabled={pagination.page <= 1 || loading}
-              onClick={() => patchFilters({ page: Math.max(1, pagination.page - 1) })}
-              style={btn(BLUE, loading || pagination.page <= 1)}
-            >
-              ← Prev
-            </button>
-            <span style={{ fontSize: 11, color: MUTED }}>
-              Page {pagination.page} / {pagination.total_pages}
-              {pagination.total ? ` (${pagination.total} proposals)` : ''}
-            </span>
-            <button
-              disabled={pagination.page >= pagination.total_pages || loading}
-              onClick={() => patchFilters({ page: Math.min(pagination.total_pages, pagination.page + 1) })}
-              style={btn(BLUE, loading || pagination.page >= pagination.total_pages)}
-            >
-              Next →
-            </button>
-            <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-              Per page
-              <select
-                style={sel}
-                value={listFilters.pageSize}
-                onChange={e => patchFilters({ pageSize: Number(e.target.value), page: 1 })}
-              >
-                {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-          </div>
-        )}
+
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {shown.map(rawP => {
@@ -786,20 +844,20 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           })}
         </div>
 
-        {pagination.total_pages > 1 && shown.length > 0 && (
+        {hasQueuePages && shown.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
             <button
-              disabled={pagination.page <= 1 || loading}
-              onClick={() => patchFilters({ page: Math.max(1, pagination.page - 1) })}
-              style={btn(BLUE, loading || pagination.page <= 1)}
+              disabled={queuePage <= 1 || loading}
+              onClick={() => patchFilters({ page: Math.max(1, queuePage - 1) })}
+              style={btn(BLUE, loading || queuePage <= 1)}
             >
               ← Prev
             </button>
-            <span style={{ fontSize: 11, color: MUTED }}>Page {pagination.page} / {pagination.total_pages}</span>
+            <span style={{ fontSize: 11, color: MUTED }}>Page {queuePage} / {queueTotalPages}{queueTotal ? ` (${queueTotal} proposals)` : ''}</span>
             <button
-              disabled={pagination.page >= pagination.total_pages || loading}
-              onClick={() => patchFilters({ page: Math.min(pagination.total_pages, pagination.page + 1) })}
-              style={btn(BLUE, loading || pagination.page >= pagination.total_pages)}
+              disabled={queuePage >= queueTotalPages || loading}
+              onClick={() => patchFilters({ page: Math.min(queueTotalPages, queuePage + 1) })}
+              style={btn(BLUE, loading || queuePage >= queueTotalPages)}
             >
               Next →
             </button>

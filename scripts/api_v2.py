@@ -12751,6 +12751,9 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_
         row["quote_spread_pct"] = round(row["quote_spread"] / float(bid) * 100, 3)
     elif q.get("last") is not None:
         row["quote_last"] = float(q.get("last"))
+    if q.get("provider"):
+        row["quote_provider"] = q.get("provider")
+        row["refreshed_at"] = q.get("refreshed_at") or datetime.now(timezone.utc).isoformat()[:19]
     try:
         from broker_thesis_validity import attach_thesis_validity
         attach_thesis_validity(row)
@@ -12902,6 +12905,7 @@ def _broker_qp(query, key, default=None):
 _BROKER_LIST_CACHE: dict[str, tuple[float, dict]] = {}
 _BROKER_LIST_CACHE_TTL = int(os.getenv("BROKER_LIST_CACHE_SEC", "120"))
 _BROKER_LIST_DISK = PROJECT_ROOT / "data" / "runtime" / "broker_list_cache.json"
+BROKER_LIST_LIVE_QUOTES = os.getenv("BROKER_LIST_LIVE_QUOTES", "1").lower() not in ("0", "false", "no")
 
 
 def _broker_list_cache_key(query: dict | None) -> str:
@@ -12957,6 +12961,18 @@ def _broker_list_cache_put(key: str, data: dict) -> None:
         pass
 
 
+def _broker_batch_live_quotes(symbols: list[str]) -> dict:
+    from broker_proposal_autocal import batch_live_quotes
+    return batch_live_quotes(symbols)
+
+
+def _broker_reprice_proposal_rows(rows: list[dict]) -> list[dict]:
+    if not rows or not BROKER_LIST_LIVE_QUOTES:
+        return rows
+    from broker_proposal_autocal import apply_live_quotes_to_rows
+    return apply_live_quotes_to_rows(rows)
+
+
 def _broker_parse_rr_filters(query: dict | None) -> dict:
     """Normalize R:R / quality filter query params."""
     q = query or {}
@@ -12998,12 +13014,22 @@ def _broker_proposals(query=None):
     Query: page, page_size, sort, source, zone, symbol|q, account, strategy_id,
            min_live_rr, min_planned_rr, actionable, rr_preset (best|live_2|live_15|planned_2|actionable)
     Cached in-memory + disk (~120s) for fast tab load.
+    Auto-recalibrates stale broker rows in DB (throttled ~5m) before serve.
     """
+    autocal_meta: dict = {}
+    try:
+        from broker_proposal_autocal import maybe_auto_recalibrate
+        autocal_meta = maybe_auto_recalibrate() or {}
+    except Exception:
+        pass
     cache_key = _broker_list_cache_key(query)
     if str(_broker_qp(query, "refresh", "") or "").lower() not in ("1", "true", "yes"):
         cached = _broker_list_cache_get(cache_key)
         if cached:
-            return cached
+            out = dict(cached)
+            out["proposals"] = _broker_reprice_proposal_rows(out.get("proposals") or [])
+            out["quotes_live"] = True
+            return out
     try:
         page = max(1, int(_broker_qp(query, "page", 1) or 1))
         page_size = min(50, max(5, int(_broker_qp(query, "page_size", 15) or 15)))
@@ -13094,14 +13120,17 @@ def _broker_proposals(query=None):
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
         quote_map: dict = {}
         if needs_post and (rr_f.get("min_live_rr") is not None or sort == "rr_live"):
-            for r in proposals:
-                sym = str(r.get("symbol") or "").upper()
-                px = r.get("current_price")
-                if sym and px is not None:
-                    try:
-                        quote_map[sym] = {"last": float(px)}
-                    except Exception:
-                        pass
+            post_syms = [str(r.get("symbol") or "").upper() for r in proposals if r.get("symbol")]
+            quote_map = _broker_batch_live_quotes(post_syms) if BROKER_LIST_LIVE_QUOTES else {}
+            if not quote_map:
+                for r in proposals:
+                    sym = str(r.get("symbol") or "").upper()
+                    px = r.get("current_price")
+                    if sym and px is not None:
+                        try:
+                            quote_map[sym] = {"last": float(px)}
+                        except Exception:
+                            pass
 
         wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
         acct_meta_cache: dict = {}
@@ -13171,6 +13200,8 @@ def _broker_proposals(query=None):
 
         total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
 
+        prop_rows = _broker_reprice_proposal_rows(prop_rows)
+
         acct_rows = []
         for a in accounts:
             row = {k: _json_clean(v) for k, v in a.items()}
@@ -13181,6 +13212,8 @@ def _broker_proposals(query=None):
             acct_rows.append(row)
         result = {
             "proposals": prop_rows,
+            "quotes_live": bool(BROKER_LIST_LIVE_QUOTES),
+            "autocal": autocal_meta or None,
             "accounts": acct_rows,
             "strategies": strategies,
             "list_mode": "fast",
@@ -13307,6 +13340,60 @@ def _broker_refresh_prices(body: dict):
     return {"ok": True, "data": enriched, "recalibration": recal}
 
 
+def _broker_refresh_prices_batch(body: dict):
+    """POST /api/v2/broker-proposals/refresh-prices-batch — batch live quotes + DB persist for many cards."""
+    b = body or {}
+    ids = b.get("proposal_ids") or b.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return {"ok": False, "error": "proposal_ids required"}
+    ids = [int(x) for x in ids[:50] if x]
+    if not ids:
+        return {"ok": False, "error": "no valid proposal ids"}
+    rows = _db_query(
+        """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                  intended_broker, status, proposed_entry, proposed_stop, proposed_target1,
+                  proposed_shares, proposed_rr, current_price
+           FROM paper_trade_proposals WHERE id = ANY(%s)""",
+        (ids,),
+    ) or []
+    if not rows:
+        return {"ok": False, "error": "proposals not found"}
+    qmap = _broker_batch_live_quotes([r.get("symbol") for r in rows])
+    refreshed = []
+    for row in rows:
+        pid = int(row.get("id") or 0)
+        sym = str(row.get("symbol") or "").upper()
+        q = qmap.get(sym) or {}
+        last = q.get("last")
+        drift_pct = None
+        if last is not None and row.get("proposed_entry"):
+            try:
+                drift_pct = round((float(last) - float(row["proposed_entry"])) / float(row["proposed_entry"]) * 100, 2)
+            except Exception:
+                pass
+        if last is not None:
+            try:
+                _db_query(
+                    """UPDATE paper_trade_proposals
+                       SET current_price=%s, price_drift_pct=%s, updated_at=NOW()
+                       WHERE id=%s""",
+                    [last, drift_pct, pid],
+                )
+            except Exception:
+                pass
+            row["quote_provider"] = q.get("provider")
+            row["refreshed_at"] = q.get("refreshed_at") or datetime.now(timezone.utc).isoformat()[:19]
+            row["updated_at"] = row["refreshed_at"]
+        quote_map = {sym: q} if sym and q else {}
+        base = _broker_proposal_row_base(row, quote_map)
+        refreshed.append({"id": pid, "symbol": sym, "thesis_validity": base.get("thesis_validity"), "price_stale": base.get("price_stale")})
+    try:
+        _BROKER_LIST_CACHE.clear()
+    except Exception:
+        pass
+    return {"ok": True, "refreshed_count": len(refreshed), "data": refreshed}
+
+
 def _broker_proposal_detail(body: dict):
     """POST /api/v2/broker-proposals/detail — lazy-load gates for one queue card.
 
@@ -13331,17 +13418,23 @@ def _broker_proposal_detail(body: dict):
     )
     if not row:
         return {"ok": False, "error": f"proposal #{pid} not found"}
-    quote_map = {}
     sym = str(row.get("symbol") or "").upper()
+    quote_map = _broker_batch_live_quotes([sym]) if sym else {}
     if not light or full:
         try:
             import schwab_transport as _st
             sq = _st.get_quotes([sym])
             if sq.get("status") == "ok":
-                quote_map = sq.get("quotes") or {}
-                if quote_map.get(sym):
-                    row["quote_provider"] = "schwab"
-                    row["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
+                live = (sq.get("quotes") or {}).get(sym) or {}
+                if live.get("last") is not None:
+                    quote_map[sym] = {
+                        **(quote_map.get(sym) or {}),
+                        "last": float(live["last"]),
+                        "bid": live.get("bid"),
+                        "ask": live.get("ask"),
+                        "provider": "schwab",
+                        "refreshed_at": datetime.now(timezone.utc).isoformat()[:19],
+                    }
         except Exception:
             pass
     wl_buy = _fetch_watchlist_buy_symbols([sym])
@@ -22017,6 +22110,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/broker-proposals/refresh-prices":
             try:
                 res = _broker_refresh_prices(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/refresh-prices-batch":
+            try:
+                res = _broker_refresh_prices_batch(body)
                 return (200 if res.get("ok") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}

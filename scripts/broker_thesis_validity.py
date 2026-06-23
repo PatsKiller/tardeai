@@ -211,7 +211,7 @@ def attach_thesis_validity(row: dict, quote: dict | None = None) -> dict:
     entry = float(row.get("proposed_entry") or 0)
     stop = float(row.get("proposed_stop") or 0)
     target = float(row.get("proposed_target1") or 0)
-    # Only explicit refresh (refresh-prices / live Schwab) bypasses DB age check.
+    # Live quote on row (list batch Schwab / refresh-prices) bypasses DB updated_at age check.
     live_quote = bool(row.get("refreshed_at") or row.get("quote_provider"))
     live = row.get("quote_last") or row.get("current_price")
     if quote:
