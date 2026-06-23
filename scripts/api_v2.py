@@ -12848,10 +12848,46 @@ def _broker_qp(query, key, default=None):
     return default if v in (None, "") else v
 
 
+def _broker_parse_rr_filters(query: dict | None) -> dict:
+    """Normalize R:R / quality filter query params."""
+    q = query or {}
+    preset = str(_broker_qp(q, "rr_preset", _broker_qp(q, "quality", "")) or "").lower()
+    min_live = _broker_qp(q, "min_live_rr", "")
+    min_planned = _broker_qp(q, "min_planned_rr", "")
+    actionable = str(_broker_qp(q, "actionable", "") or "").lower() in ("1", "true", "yes")
+    sort_hint = None
+    if preset == "best":
+        min_live, actionable, sort_hint = "2", True, "rr_live"
+    elif preset == "live_2":
+        min_live, sort_hint = "2", "rr_live"
+    elif preset == "live_15":
+        min_live, sort_hint = "1.5", "rr_live"
+    elif preset == "planned_2":
+        min_planned, sort_hint = "2", "rr"
+    elif preset == "actionable":
+        actionable = True
+    try:
+        min_live_f = float(min_live) if min_live not in (None, "") else None
+    except Exception:
+        min_live_f = None
+    try:
+        min_planned_f = float(min_planned) if min_planned not in (None, "") else None
+    except Exception:
+        min_planned_f = None
+    return {
+        "preset": preset or None,
+        "min_live_rr": min_live_f,
+        "min_planned_rr": min_planned_f,
+        "actionable": actionable,
+        "sort_hint": sort_hint,
+    }
+
+
 def _broker_proposals(query=None):
     """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail.
 
-    Query: page, page_size, sort, source (watchlist|proposal|both), zone, symbol|q, account, strategy_id
+    Query: page, page_size, sort, source, zone, symbol|q, account, strategy_id,
+           min_live_rr, min_planned_rr, actionable, rr_preset (best|live_2|live_15|planned_2|actionable)
     """
     try:
         page = max(1, int(_broker_qp(query, "page", 1) or 1))
@@ -12862,6 +12898,9 @@ def _broker_proposals(query=None):
         symbol_f = str(_broker_qp(query, "symbol", _broker_qp(query, "q", "")) or "").upper().strip()
         account_f = str(_broker_qp(query, "account", "") or "").strip()
         strategy_f = str(_broker_qp(query, "strategy_id", _broker_qp(query, "strategy", "")) or "").strip()
+        rr_f = _broker_parse_rr_filters(query)
+        if sort == "priority" and rr_f.get("sort_hint"):
+            sort = rr_f["sort_hint"]
 
         where = [
             "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'"
@@ -12907,8 +12946,15 @@ def _broker_proposals(query=None):
             "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
         ))
 
-        # Zone, live-rr sort, and source=both need post-row filtering before pagination.
-        needs_post = bool(zone_f) or sort in ("zone", "rr_live") or source_f == "both"
+        # Zone, R:R filters, live-rr sort, and source=both need post-row filtering before pagination.
+        needs_post = (
+            bool(zone_f)
+            or sort in ("zone", "rr_live")
+            or source_f == "both"
+            or rr_f.get("min_live_rr") is not None
+            or rr_f.get("min_planned_rr") is not None
+            or rr_f.get("actionable")
+        )
         fetch_limit = min(1000, db_total) if needs_post else page_size
         fetch_offset = 0 if needs_post else (page - 1) * page_size
 
@@ -12916,7 +12962,7 @@ def _broker_proposals(query=None):
             f"""SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                        intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
                        COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
-                       proposed_entry, proposed_stop, proposed_target1,
+                       proposed_entry, proposed_stop, proposed_target1, current_price,
                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
                        created_at, expires_at
                   FROM paper_trade_proposals
@@ -12932,6 +12978,15 @@ def _broker_proposals(query=None):
         strategies = sorted([f.stem for f in sd.glob("*.yaml")
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
         quote_map: dict = {}
+        if needs_post and (rr_f.get("min_live_rr") is not None or sort == "rr_live"):
+            for r in proposals:
+                sym = str(r.get("symbol") or "").upper()
+                px = r.get("current_price")
+                if sym and px is not None:
+                    try:
+                        quote_map[sym] = {"last": float(px)}
+                    except Exception:
+                        pass
 
         wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
         acct_meta_cache: dict = {}
@@ -12959,6 +13014,24 @@ def _broker_proposals(query=None):
                 p for p in prop_rows
                 if str((p.get("thesis_validity") or {}).get("zone_status") or "").lower() == zone_f
             ]
+        if rr_f.get("min_live_rr") is not None:
+            floor = float(rr_f["min_live_rr"])
+            prop_rows = [
+                p for p in prop_rows
+                if float((p.get("thesis_validity") or {}).get("current_rr") or p.get("live_rr") or 0) >= floor
+            ]
+        if rr_f.get("min_planned_rr") is not None:
+            floor = float(rr_f["min_planned_rr"])
+            prop_rows = [
+                p for p in prop_rows
+                if float(
+                    (p.get("thesis_validity") or {}).get("planned_rr")
+                    or p.get("proposed_rr")
+                    or 0
+                ) >= floor
+            ]
+        if rr_f.get("actionable"):
+            prop_rows = [p for p in prop_rows if (p.get("thesis_validity") or {}).get("actionable")]
 
         zone_rank = {"comfortable": 0, "approaching": 1, "at_risk": 2, "invalid": 3, "unknown": 4}
         if sort == "zone":
@@ -13008,6 +13081,10 @@ def _broker_proposals(query=None):
                 "symbol": symbol_f or None,
                 "account": account_f or None,
                 "strategy_id": strategy_f or None,
+                "rr_preset": rr_f.get("preset"),
+                "min_live_rr": rr_f.get("min_live_rr"),
+                "min_planned_rr": rr_f.get("min_planned_rr"),
+                "actionable": rr_f.get("actionable") or None,
             },
         }
     except Exception as e:

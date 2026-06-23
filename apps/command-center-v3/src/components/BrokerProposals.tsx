@@ -27,6 +27,7 @@ type ListFilters = {
   zone: string
   account: string
   symbol: string
+  rrPreset: string
 }
 
 const DEFAULT_FILTERS: ListFilters = {
@@ -37,6 +38,14 @@ const DEFAULT_FILTERS: ListFilters = {
   zone: '',
   account: '',
   symbol: '',
+  rrPreset: '',
+}
+
+const RR_PRESET_SORT: Record<string, string> = {
+  best: 'rr_live',
+  live_2: 'rr_live',
+  live_15: 'rr_live',
+  planned_2: 'rr',
 }
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
@@ -45,11 +54,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     const p = new URLSearchParams()
     p.set('page', String(listFilters.page))
     p.set('page_size', String(listFilters.pageSize))
-    if (listFilters.sort) p.set('sort', listFilters.sort)
+    const sort = listFilters.rrPreset && RR_PRESET_SORT[listFilters.rrPreset]
+      ? RR_PRESET_SORT[listFilters.rrPreset]
+      : listFilters.sort
+    if (sort) p.set('sort', sort)
     if (listFilters.source) p.set('source', listFilters.source)
     if (listFilters.zone) p.set('zone', listFilters.zone)
     if (listFilters.account) p.set('account', listFilters.account)
     if (listFilters.symbol) p.set('symbol', listFilters.symbol)
+    if (listFilters.rrPreset) p.set('rr_preset', listFilters.rrPreset)
     return `/api/v2/broker-proposals?${p.toString()}`
   }, [listFilters])
 
@@ -448,11 +461,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             scope: 'filtered',
             max,
             filters: {
-              sort: listFilters.sort,
+              sort: listFilters.rrPreset && RR_PRESET_SORT[listFilters.rrPreset] ? RR_PRESET_SORT[listFilters.rrPreset] : listFilters.sort,
               source: listFilters.source || undefined,
               zone: listFilters.zone || undefined,
               account: listFilters.account || undefined,
               symbol: listFilters.symbol || undefined,
+              rr_preset: listFilters.rrPreset || undefined,
             },
           }
       const r = await fetch('/api/v2/broker-proposals/queue-cloud-batch', {
@@ -606,6 +620,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             </select>
           </label>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            R:R / quality
+            <select style={sel} value={listFilters.rrPreset} onChange={e => patchFilters({ rrPreset: e.target.value })}>
+              <option value="">Any</option>
+              <option value="best">Best setups (actionable · live ≥2)</option>
+              <option value="live_2">Live R:R ≥ 2.0</option>
+              <option value="live_15">Live R:R ≥ 1.5</option>
+              <option value="planned_2">Planned R:R ≥ 2.0</option>
+              <option value="actionable">Actionable thesis only</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
             Account
             <select style={sel} value={listFilters.account} onChange={e => patchFilters({ account: e.target.value })}>
               <option value="">All</option>
@@ -625,7 +650,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               onChange={e => patchFilters({ symbol: e.target.value.toUpperCase() })}
             />
           </label>
-          {(listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.sort !== 'priority') && (
+          {(listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.rrPreset || listFilters.sort !== 'priority') && (
             <button
               onClick={() => patchFilters({ ...DEFAULT_FILTERS })}
               style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}
@@ -651,6 +676,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             {batchCloudBusy ? '…' : `☁ Run cloud · filtered (≤30 of ${pagination.total || 0})`}
           </button>
         </div>
+        {(listFilters.rrPreset === 'live_2' || listFilters.rrPreset === 'live_15' || listFilters.rrPreset === 'best') && (
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>
+            Live R:R uses stored prices — ↻ Refresh all prices on a page if counts look stale.
+          </div>
+        )}
         {batchCloudMsg && (
           <div style={{ fontSize: 11, marginBottom: 10, color: batchCloudMsg.startsWith('✅') ? GREEN : AMBER }}>
             {batchCloudMsg}
