@@ -52,13 +52,15 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 3. Open **Broker Proposals** — see `docs/BROKER_PROPOSALS_UI.md` for the live desk UI.
 4. **Refresh prices** — thesis validity band + sizing recalc for chosen account.
 5. **Run oversight** — local agents + optional Grok+ChatGPT cloud review.
-6. **Schwab auto:** **Auto route (2FA)** when pilot armed → approve 2FA → order submits.
+6. **Schwab auto:** **Auto route (2FA)** when pilot armed → OTOCO (LIMIT+STOP) → approve 2FA → `route/confirm` submits.
 7. **Fidelity / manual Schwab:** Place in **FA** or Schwab UI → **Executed manually** → journal/rec-intel.
 
 ### Code touchpoints
 
 - `scripts/paper_trade_logger.py` — `promote_proposal_to_broker()`
-- `scripts/queue_router.py` — Schwab / Fidelity branches
+- `scripts/queue_router.py` — Schwab OTOCO + Fidelity branches
+- `scripts/brokers/broker_entry_pilot.py` — Schwab bracket build + 2FA + submit
+- `scripts/watchlist_proposal_bridge.py` — watchlist BUY+ → broker queue
 - `scripts/broker_thesis_validity.py` — drift gap / thesis validity range
 - `scripts/broker_promote_oversight.py` — local + cloud AI gates
 - `scripts/manual_execution_tracker.py` — manual fill tagging
@@ -69,16 +71,25 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 ## Shared upstream (same for both paths)
 
 ```
-Scan / Incubator GO → paper_trade_proposals (PENDING, routing unassigned)
-        ↓
+┌─────────────────────────┬──────────────────────────────────────┐
+│ Screener / Incubator GO │ Watchlist BUY+ (bridge, 2026-06-23)  │
+│ auto_proposal_generator │ watchlist_proposal_bridge            │
+└───────────┬─────────────┴──────────────────┬───────────────────┘
+            ↓                                ↓
+     paper_trade_proposals (PENDING)
+     origin: auto | watchlist · discovery_source tagged
+            ↓
    Enrich + Check Execution + optional AI review
-        ↓
+   Source badges: ◆ Watchlist · ◆ Proposal · both
+            ↓
     ┌───────────────┴────────────────┐
     │                                │
- Path A: Approve (paper)      Path B: Promote to Broker
+ Path A: Approve (paper)      Path B: Promote to Broker OR watchlist direct
     │                                │
- Alpaca auto test              Schwab 2FA auto OR FA manual
+ Alpaca auto test              Schwab OTOCO 2FA OR FA manual
 ```
+
+Watchlist bridge rows land directly on `schwab_taxable` (configurable) — no manual promote step. See `docs/WATCHLIST_PROPOSAL_BRIDGE.md`.
 
 ## Routing fields (`paper_trade_proposals`)
 
@@ -97,6 +108,7 @@ Scan / Incubator GO → paper_trade_proposals (PENDING, routing unassigned)
 
 ## Related docs
 
+- `docs/WATCHLIST_PROPOSAL_BRIDGE.md` — watchlist → broker queue sync + source badges
 - `docs/BROKER_PROPOSALS_UI.md` — Broker Proposals tab (thesis band, refresh, cloud oversight)
 - `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` — options desk (same auto vs manual split)
 - `docs/DAILY_OPS_LOG.md` — Schwab canary / Fidelity monitored stops

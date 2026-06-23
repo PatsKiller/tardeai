@@ -101,6 +101,7 @@ _MUTATING_ACTIONS = ("submit", "replace")   # cancel stays allowed-in-principle:
 PROTECTIVE_STOP_MARKER = "PROTECTIVE_STOP_2C"   # intent.meta.strategy_id stamp routing through protective_stop_policy
 FIDELITY_PROTECTIVE_MARKER = "FIDELITY_MONITORED_STOP"  # SnapTrade-read Fidelity holdings — monitored path
 OPTIONS_EXECUTION_MARKER = "OPTIONS_EXECUTION_1"  # options_execution_policy envelope
+QUEUE_ENTRY_MARKER = "QUEUE_ENTRY_BRACKET"  # Schwab queue entry OTOCO (LIMIT buy + STOP child)
 
 
 def _is_protective_stop(intent: OrderIntent) -> bool:

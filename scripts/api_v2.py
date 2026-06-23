@@ -8833,6 +8833,11 @@ def _derive_pipeline_stages(prop):
 def _paper_proposals_enriched():
     """GET /api/v2/paper-proposals — enriched decision packet proposals."""
     try:
+        try:
+            import watchlist_proposal_bridge as _wpb
+            _wpb.maybe_sync_on_load()
+        except Exception:
+            pass
         # Expire stale proposals before reading
         try:
             from db_adapter import _get_conn as _gc
@@ -8938,6 +8943,7 @@ def _paper_proposals_enriched():
             _srcw = {w["source_key"]: w for w in _w}
         except Exception:
             pass
+        wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in rows])
         proposals = []
         for r in rows:
             p = {k: _json_clean(v) for k, v in r.items()}
@@ -9171,9 +9177,13 @@ def _paper_proposals_enriched():
                 except Exception:
                     pass
 
-            proposals.append({
+            proposal_row = {
                 'id': p.get('id'),
                 'symbol': p.get('symbol'),
+                'origin': p.get('origin'),
+                'auto_created': p.get('auto_created'),
+                'cio_view': p.get('cio_view'),
+                'sizing_basis': p.get('sizing_basis'),
                 'strategy_id': p.get('strategy_id'),
                 'setup_type': p.get('setup_type'),
                 'setup_description': p.get('setup_description'),
@@ -9313,7 +9323,9 @@ def _paper_proposals_enriched():
                 'llm_review_stage': p.get('llm_review_stage'),
                 'llm_review_chunks': _json_clean(p.get('llm_review_chunks')),
                 'enrichment_attempt_count': p.get('enrichment_attempt_count') or 0,
-            })
+                'signal_evidence': p.get('signal_evidence'),
+            }
+            proposals.append(_attach_source_attribution(proposal_row, wl_buy_syms))
 
             # Session 23D: Enrich with technical snapshot + execution readiness from DB
             try:
@@ -12628,9 +12640,102 @@ def _broker_account_execution_meta(account_key: str) -> dict:
     return meta
 
 
-def _broker_proposal_row_base(r: dict, quote_map: dict | None = None) -> dict:
+def _fetch_watchlist_buy_symbols(symbols: list[str] | None = None) -> set[str]:
+    """Symbols with active BUY+ watchlist rating (for dual-source attribution)."""
+    if not symbols:
+        return set()
+    syms = sorted({str(s or "").upper() for s in symbols if s})
+    if not syms:
+        return set()
+    rows = _db_query(
+        """SELECT DISTINCT UPPER(wi.symbol) AS symbol
+           FROM watchlist_items wi
+           LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+           LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol) = UPPER(wi.symbol)
+           WHERE wi.status <> 'removed'
+             AND UPPER(wi.symbol) = ANY(%s)
+             AND (
+               lower(COALESCE(rc.latest_recommendation, '')) IN
+                 ('buy','strong_buy','add','add_on_pullback','strong buy','add on pullback')
+               OR lower(COALESCE(fs.recommendation, '')) IN
+                 ('buy','strong_buy','add','add_on_pullback','strong buy','add on pullback')
+             )""",
+        (syms,),
+    ) or []
+    return {str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")}
+
+
+def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = None) -> dict:
+    """Tag row with watchlist / proposal / both source badges for UI."""
+    origin = str(row.get("origin") or "").lower()
+    discovery = str(row.get("discovery_source") or "").lower()
+    proposed_by = str(row.get("proposed_by") or "").lower()
+    sym = str(row.get("symbol") or "").upper()
+    basis = row.get("sizing_basis") or {}
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    rating = row.get("cio_view") or row.get("watchlist_rating") or (basis.get("watchlist_rating") if isinstance(basis, dict) else None)
+    has_signal = bool(
+        (row.get("signal_evidence") or {}).get("screener")
+        or row.get("screener_name")
+        or row.get("scan_screener")
+    )
+    watchlist_bridge = origin == "watchlist" or discovery == "watchlist" or proposed_by == "watchlist_proposal_bridge"
+    also_on_watchlist = sym in (watchlist_buy_syms or set())
+    watchlist = watchlist_bridge or also_on_watchlist
+    auto_proposal = (
+        origin == "auto"
+        or discovery in ("screener", "incubator", "signal")
+        or has_signal
+        or "auto_proposal" in proposed_by
+        or "incubator" in proposed_by
+        or (bool(row.get("auto_created")) and not watchlist_bridge)
+    )
+    proposal = auto_proposal and not (watchlist_bridge and not has_signal)
+    if watchlist and proposal:
+        label = "both"
+    elif watchlist:
+        label = "watchlist"
+    elif proposal:
+        label = "proposal"
+    else:
+        label = "unknown"
+    channel = None
+    if proposal:
+        sc = (row.get("signal_evidence") or {}).get("screener") or row.get("screener_name") or row.get("scan_screener")
+        if discovery == "screener" or sc:
+            channel = f"Screener · {sc}" if sc else "Screener"
+        elif discovery == "incubator":
+            channel = "Incubator"
+        elif discovery and discovery != "watchlist":
+            channel = discovery.replace("_", " ").title()
+        else:
+            channel = "Proposal"
+    row["also_on_watchlist"] = also_on_watchlist
+    row["source_attribution"] = {
+        "watchlist": watchlist,
+        "proposal": proposal,
+        "watchlist_rating": str(rating or "BUY").upper().replace(" ", "_") if watchlist else None,
+        "proposal_channel": channel,
+        "label": label,
+    }
+    return row
+
+
+def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_buy_syms: set[str] | None = None) -> dict:
     """Lightweight broker queue row — economics + quotes only."""
     row = {k: _json_clean(v) for k, v in r.items()}
+    basis = row.get("sizing_basis")
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    if isinstance(basis, dict) and basis.get("watchlist_rating"):
+        row["watchlist_rating"] = basis["watchlist_rating"]
     sym = str(row.get("symbol") or "").upper()
     sh = float(row.get("proposed_shares") or 0)
     en = float(row.get("proposed_entry") or 0)
@@ -12656,7 +12761,7 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None) -> dict:
         attach_thesis_validity(row)
     except Exception:
         pass
-    return row
+    return _attach_source_attribution(row, watchlist_buy_syms)
 
 
 def _enrich_broker_proposal_row(row: dict) -> dict:
@@ -12743,23 +12848,32 @@ def _broker_proposals_audit():
 def _broker_proposals():
     """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail."""
     try:
-        hygiene_meta = {}
+        wl_sync = {}
         try:
-            import broker_queue_hygiene as _bqh
-            hygiene_meta = _bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
+            import watchlist_proposal_bridge as _wpb
+            wl_sync = _wpb.maybe_sync_on_load()
         except Exception:
             pass
         proposals = _db_query("""
             SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                    intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
-                   COALESCE(origin,'auto') AS origin, proposed_entry, proposed_stop, proposed_target1,
+                   COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
+                   proposed_entry, proposed_stop, proposed_target1,
                    proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
                    created_at, expires_at
               FROM paper_trade_proposals
              WHERE (lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'
                     OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')
                AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
-             ORDER BY created_at DESC LIMIT 100""") or []
+             ORDER BY CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END,
+                      COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST,
+                      created_at DESC LIMIT 100""") or []
+        hygiene_meta = {}
+        try:
+            import broker_queue_hygiene as _bqh
+            hygiene_meta = _bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
+        except Exception:
+            pass
         accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
             WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
         sd = PROJECT_ROOT / "config" / "strategies"
@@ -12776,10 +12890,11 @@ def _broker_proposals():
         except Exception:
             pass
 
+        wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
         acct_meta_cache: dict = {}
         prop_rows = []
         for r in proposals:
-            row = _broker_proposal_row_base(r, quote_map)
+            row = _broker_proposal_row_base(r, quote_map, wl_buy_syms)
             acct = row.get("account") or ""
             if acct not in acct_meta_cache:
                 acct_meta_cache[acct] = _broker_account_label_meta(acct)
@@ -12809,6 +12924,7 @@ def _broker_proposals():
             "strategies": strategies,
             "list_mode": "fast",
             "hygiene": hygiene_meta if hygiene_meta else None,
+            "watchlist_sync": wl_sync if wl_sync else None,
         }
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
@@ -12906,7 +13022,8 @@ def _broker_proposal_detail(body: dict):
     row = _db_query(
         """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                   intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
-                  COALESCE(origin,'auto') AS origin, proposed_entry, proposed_stop, proposed_target1,
+                  COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
+                  proposed_entry, proposed_stop, proposed_target1,
                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
                   created_at, expires_at
            FROM paper_trade_proposals WHERE id=%s""",
@@ -12923,7 +13040,8 @@ def _broker_proposal_detail(body: dict):
             quote_map = sq.get("quotes") or {}
     except Exception:
         pass
-    base = _broker_proposal_row_base(row, quote_map)
+    wl_buy = _fetch_watchlist_buy_symbols([sym])
+    base = _broker_proposal_row_base(row, quote_map, wl_buy)
     acct = base.get("account") or ""
     base.update(_broker_account_execution_meta(acct))
     base["activity"] = base.get("activity") or {}
@@ -21651,18 +21769,52 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:160]}
 
         if base_path == "/api/v2/broker-proposals/route":
-            # Submit a queued broker proposal: Schwab → gated 2FA (prepared, no order); Fidelity →
-            # record-only (no API). Routed by queue_router; audited.
+            # STEP 1 — Schwab armed: build OTOCO bracket (LIMIT+STOP) + request per-order 2FA.
+            # Ungated: preview spec only. Fidelity → record-only. Audited via queue_router.
             try:
                 b = body or {}
                 pid = int(b.get("proposal_id"))
                 actor = str(b.get("operator") or "operator")[:60]
                 import queue_router as _qr
                 res = _qr.route_proposal(pid, actor=actor)
-                http = 200 if (res.get("ok") or res.get("gated")) else 400
+                http = 200 if (res.get("ok") or res.get("gated") or res.get("mode") == "awaiting_approval") else 400
                 return http, {"ok": bool(res.get("ok")), "data": res}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/route/confirm":
+            # STEP 2 — CONFIRM 2FA then submit Schwab OTOCO bracket. Spec rebuilt server-side from intent.
+            try:
+                b = body or {}
+                intent_id = str(b.get("intent_id") or "").strip()
+                channel = str(b.get("channel") or "").strip().lower()
+                code = b.get("code")
+                if not intent_id or channel not in ("web", "telegram"):
+                    return 400, {"ok": False, "error": "intent_id and channel ('web' or 'telegram') required"}
+                from brokers import approval_service, broker_entry_pilot as _bep
+                intent = _bep.load_intent(intent_id)
+                if intent is None:
+                    return 404, {"ok": False, "error": "no queue-entry intent for that id (expired?)"}
+                cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
+                if not cr.get("ok"):
+                    return 200, {"ok": False, "stage": "confirm", "error": cr.get("reason")}
+                if not cr.get("fully_approved"):
+                    return 200, {"ok": True, "stage": "confirm", "fully_approved": False,
+                                 "note": "channel confirmed; waiting on the rest"}
+                from brokers import intent_submit_router as _isr
+                sub = _isr.submit_fully_approved(intent_id)
+                if sub.get("stage") == "submit" and not sub.get("ok"):
+                    return 200, {"ok": False, "stage": "submit", "error": sub.get("error"),
+                                 "result": sub.get("result")}
+                res = sub.get("result") or {}
+                inner = res.get("result") if isinstance(res.get("result"), dict) else res
+                return 200, {"ok": bool(sub.get("ok")), "stage": "submit",
+                             "result": res, "broker_order_id": sub.get("broker_order_id") or inner.get("broker_order_id"),
+                             "status": sub.get("status") or inner.get("status"),
+                             "account": sub.get("account"), "proposal_id": sub.get("proposal_id") or res.get("proposal_id"),
+                             "summary": _bep.order_summary(intent)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
 
         if base_path == "/api/v2/paper-trades/scale":
             # Mid-trade scale-IN / scale-OUT of an OPEN position (operator 2026-06-19). Broker-routed via

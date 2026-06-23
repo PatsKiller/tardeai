@@ -8,7 +8,7 @@ from __future__ import annotations
 def submit_fully_approved(intent_id: str) -> dict:
     """Submit a persisted intent once is_fully_approved() is true. Consumes 2FA on successful transport."""
     from brokers import approval_service
-    from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER, PROTECTIVE_STOP_MARKER
+    from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER, PROTECTIVE_STOP_MARKER, QUEUE_ENTRY_MARKER
 
     iid = str(intent_id or "").strip()
     if not iid:
@@ -34,6 +34,9 @@ def submit_fully_approved(intent_id: str) -> dict:
             from brokers import protective_stop_pilot as _psp
             order_spec = _psp.spec_from_intent(intent)
             res = _psp.submit(acct, order_spec, intent)
+        elif marker == QUEUE_ENTRY_MARKER:
+            from brokers import broker_entry_pilot as _bep
+            return _bep.confirm_and_submit(iid)
         else:
             # Options and other Schwab live intents use their own pilots when wired.
             try:

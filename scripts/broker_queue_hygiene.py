@@ -38,17 +38,26 @@ def _get_conn():
 
 def _q(sql, params=None, one=False):
     try:
-        cur = _get_conn().cursor()
+        conn = _get_conn()
+        cur = conn.cursor()
         cur.execute(sql, params or ())
         if one:
             row = cur.fetchone()
             if not row:
+                conn.commit()
                 return None
             cols = [d[0] for d in cur.description]
+            conn.commit()
             return dict(zip(cols, row))
         cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        conn.commit()
+        return rows
     except Exception:
+        try:
+            _get_conn().rollback()
+        except Exception:
+            pass
         return None if one else []
 
 
@@ -138,6 +147,8 @@ def classify_broker_queue_row(
     pid = int(row.get("id") or 0)
     sym = str(row.get("symbol") or "").upper()
     strat = str(row.get("strategy_id") or "")
+    origin = str(row.get("origin") or "").lower()
+    is_watchlist = origin == "watchlist"
     reasons: list[str] = []
     action = "keep"
     new_status = None
@@ -153,43 +164,52 @@ def classify_broker_queue_row(
     if drift_f is None and live_f is not None and entry > 0:
         drift_f = round((live_f - entry) / entry * 100, 2)
 
-    if expires and now > expires:
-        reasons.append(f"Past expires_at ({expires.strftime('%Y-%m-%d %H:%M')} UTC)")
-        action = "expire"
-        new_status = "EXPIRED"
-
-    thresh = _drift_threshold(strat)
-    zone = str(row.get("entry_zone_status") or "").upper()
-    if drift_f is not None and abs(drift_f) > thresh * ENTRY_MISSED_DRIFT_MULT:
-        reasons.append(f"Entry missed — drift {drift_f:+.1f}% > {thresh * ENTRY_MISSED_DRIFT_MULT:.1f}% band")
-        action = "expire"
-        new_status = "EXPIRED"
-    elif zone == "ENTRY_MISSED":
-        reasons.append("Entry zone status ENTRY_MISSED")
-        action = "expire"
-        new_status = "EXPIRED"
-
-    if live_f is not None and stop > 0 and live_f <= stop:
-        reasons.append(f"Stop breached — live ${live_f:.4f} <= stop ${stop:.4f}")
-        action = "expire"
-        new_status = "EXPIRED"
-
-    if created and BROKER_MAX_AGE_HOURS > 0:
-        age_h = (now - created).total_seconds() / 3600
-        if age_h > BROKER_MAX_AGE_HOURS:
-            reasons.append(f"Broker queue age {age_h:.1f}h > {BROKER_MAX_AGE_HOURS:.0f}h cap")
+    # Watchlist-origin rows persist while BUY/STRONG_BUY — bridge handles rating-based expiry.
+    if not is_watchlist:
+        if expires and now > expires:
+            reasons.append(f"Past expires_at ({expires.strftime('%Y-%m-%d %H:%M')} UTC)")
             action = "expire"
             new_status = "EXPIRED"
 
+        thresh = _drift_threshold(strat)
+        zone = str(row.get("entry_zone_status") or "").upper()
+        if drift_f is not None and abs(drift_f) > thresh * ENTRY_MISSED_DRIFT_MULT:
+            reasons.append(f"Entry missed — drift {drift_f:+.1f}% > {thresh * ENTRY_MISSED_DRIFT_MULT:.1f}% band")
+            action = "expire"
+            new_status = "EXPIRED"
+        elif zone == "ENTRY_MISSED":
+            reasons.append("Entry zone status ENTRY_MISSED")
+            action = "expire"
+            new_status = "EXPIRED"
+
+        if live_f is not None and stop > 0 and live_f <= stop:
+            reasons.append(f"Stop breached — live ${live_f:.4f} <= stop ${stop:.4f}")
+            action = "expire"
+            new_status = "EXPIRED"
+
+        if created and BROKER_MAX_AGE_HOURS > 0:
+            age_h = (now - created).total_seconds() / 3600
+            if age_h > BROKER_MAX_AGE_HOURS:
+                reasons.append(f"Broker queue age {age_h:.1f}h > {BROKER_MAX_AGE_HOURS:.0f}h cap")
+                action = "expire"
+                new_status = "EXPIRED"
+
     if newer_same_symbol and int(newer_same_symbol.get("id") or 0) != pid:
         newer_at = _parse_ts(newer_same_symbol.get("created_at"))
+        newer_origin = str(newer_same_symbol.get("origin") or "").lower()
         if newer_at and created and newer_at > created:
-            reasons.append(
-                f"Superseded by newer active proposal #{newer_same_symbol.get('id')} "
-                f"({newer_same_symbol.get('origin') or 'unknown'})"
-            )
-            action = "reject"
-            new_status = "REJECTED"
+            # Duplicate watchlist rows: reject older copy only (bridge should dedupe on sync).
+            if is_watchlist and newer_origin == "watchlist":
+                reasons.append(f"Duplicate watchlist row — keep #{newer_same_symbol.get('id')}")
+                action = "reject"
+                new_status = "REJECTED"
+            elif not is_watchlist:
+                reasons.append(
+                    f"Superseded by newer active proposal #{newer_same_symbol.get('id')} "
+                    f"({newer_same_symbol.get('origin') or 'unknown'})"
+                )
+                action = "reject"
+                new_status = "REJECTED"
 
     return {
         "proposal_id": pid,

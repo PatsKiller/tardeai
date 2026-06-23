@@ -194,10 +194,32 @@ def intent_action_summary(intent) -> dict:
     instr = str(ev.get("instruction") or "").upper()
     ot = str(ev.get("order_type") or "").upper()
     try:
-        from brokers.execution_guard import PROTECTIVE_STOP_MARKER
-        is_protective = getattr(getattr(intent, "meta", None), "strategy_id", None) == PROTECTIVE_STOP_MARKER
+        from brokers.execution_guard import PROTECTIVE_STOP_MARKER, QUEUE_ENTRY_MARKER
+        sid = getattr(getattr(intent, "meta", None), "strategy_id", None)
+        is_protective = sid == PROTECTIVE_STOP_MARKER
+        is_queue_entry = sid == QUEUE_ENTRY_MARKER
     except Exception:
         is_protective = False
+        is_queue_entry = False
+
+    if is_queue_entry:
+        entry_px = getattr(getattr(intent, "entry", None), "limit_price", None)
+        stop_px = (intent.exit_policy.stop.price if intent.exit_policy and intent.exit_policy.stop else None)
+        tgt_px = (intent.exit_policy.targets[0].price if intent.exit_policy and intent.exit_policy.targets else None)
+        ep = f"${float(entry_px):.2f}" if entry_px is not None else "limit"
+        sp = f"${float(stop_px):.2f}" if stop_px is not None else "stop"
+        detail = f"BUY LIMIT {ep} + child STOP {sp} GTC"
+        if tgt_px:
+            detail += f" + TARGET ${float(tgt_px):.2f} (OCO)"
+        return {
+            "kind": "trade",
+            "symbol": sym,
+            "action": "buy",
+            "action_label": "Queue entry bracket",
+            "approve_btn": "Approve BUY",
+            "headline": f"BUY {qty_s} sh {sym} LIMIT {ep} + STOP {sp} ({acct})",
+            "detail": detail,
+        }
 
     if is_protective and instr == "SELL":
         if ot == "MARKET":

@@ -7,11 +7,22 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 
 ## Operator workflow
 
-1. **Promote** from Proposals tab → row lands in Broker Proposals queue.
-2. **Pick destination account** — Schwab (auto+2FA or manual) or Fidelity (FA manual only).
-3. **Refresh prices** — live quote + thesis validity band + sizing recalc.
-4. **Run oversight** — local agents (Maria/Risk/Steph) + optional **Grok+ChatGPT** cloud review.
-5. **Execute** — Schwab **Auto route (2FA)** when armed, or place at broker and **Executed manually**.
+1. **Arrive** via **Promote to Broker** (screener/incubator) **or** watchlist bridge (BUY+ names auto-synced — see `docs/WATCHLIST_PROPOSAL_BRIDGE.md`).
+2. **Read source badges** — green **◆ Watchlist**, blue **◆ Screener/Proposal**, or both when dual-attributed.
+3. **Pick destination account** — Schwab (auto+2FA or manual) or Fidelity (FA manual only).
+4. **Refresh prices** — live quote + thesis validity band + sizing recalc.
+5. **Run oversight** — local agents (Maria/Risk/Steph) + optional **Grok+ChatGPT** cloud review.
+6. **Execute** — Schwab **Auto route (2FA)** OTOCO bracket when armed, or place at broker and **Executed manually**.
+
+## Source badges
+
+| Badge | Meaning |
+|-------|---------|
+| **◆ Watchlist BUY** (green) | Synced from watchlist bridge; persists while BUY/STRONG_BUY rating holds |
+| **◆ Screener / Incubator** (blue) | Auto-proposal from scan/incubator pipeline |
+| **Both** | Symbol on watchlist **and** has screener signal on the same card |
+
+Hover for full `source_attribution` (API-computed on each row). Component: `ProposalSourceBadges.tsx`.
 
 ## UI sections (per proposal card)
 
@@ -82,6 +93,22 @@ Backend: `scripts/broker_promote_oversight.py` → `cloud_review.review()`.
 
 Requires local thesis text — run **AI Review** on the paper proposal first if cloud returns "No local thesis".
 
+## Schwab auto route — OTOCO bracket + 2FA
+
+When Schwab pilot is **armed**, **Auto route (2FA)** submits a single **OTOCO** order (LIMIT buy + protective STOP child) — not a naked limit.
+
+| Step | Endpoint | Action |
+|------|----------|--------|
+| 1 | `POST /api/v2/broker-proposals/route` | Build bracket intent, request per-order 2FA |
+| 2 | Operator approves | Web ticker, Telegram, or email code |
+| 3 | `POST /api/v2/broker-proposals/route/confirm` | Submit after 2FA approval |
+
+Backend: `scripts/brokers/broker_entry_pilot.py` → `queue_router.py` (armed Schwab branch).
+
+Post-fill monitoring: `scripts/schwab_broker_trade_monitor.py` (cron `*/5` market hours) — R-trails stops, requests protective-stop MODIFY 2FA when needed.
+
+Tests: `tests/test_broker_entry_pilot.py`
+
 ## Manual execution (closed loop)
 
 **Executed manually** on any card → `ManualExecutionModal` → `POST /api/v2/executions/log-manual`.
@@ -98,22 +125,29 @@ Tagging + journal linkage: `scripts/manual_execution_tracker.py` (see `docs/OPTI
 | `/api/v2/broker-proposals/evaluate-promote` | POST | Account-preview sizing when destination changes |
 | `/api/v2/broker-proposals/run-cloud-oversight` | POST | Grok+ChatGPT second opinion |
 | `/api/v2/broker-proposals/queue-oversight` | POST | Queue Maria/Risk/Steph + local LLM |
-| `/api/v2/broker-proposals/route` | POST | Schwab auto submit (gated) or Fidelity record-only |
+| `/api/v2/broker-proposals/route` | POST | Schwab OTOCO bracket + 2FA request (gated) |
+| `/api/v2/broker-proposals/route/confirm` | POST | Confirm 2FA and submit Schwab bracket |
 | `/api/v2/executions/log-manual` | POST | Log manual fill + lineage |
+
+Each list row includes `source_attribution` for badge rendering.
 
 ## Code map
 
 | Layer | Files |
 |-------|-------|
-| UI | `BrokerProposals.tsx`, `BrokerProposalCard.tsx`, `ThesisValidityBar.tsx`, `BrokerAccountPicker.tsx`, `BrokerIntelPanel.tsx` |
+| UI | `BrokerProposals.tsx`, `BrokerProposalCard.tsx`, `ProposalSourceBadges.tsx`, `ThesisValidityBar.tsx`, `BrokerAccountPicker.tsx`, `BrokerIntelPanel.tsx` |
+| Watchlist bridge | `scripts/watchlist_proposal_bridge.py` |
+| Schwab entry | `scripts/brokers/broker_entry_pilot.py`, `scripts/queue_router.py`, `scripts/schwab_broker_trade_monitor.py` |
+| Queue hygiene | `scripts/broker_queue_hygiene.py` (watchlist-exempt expiry) |
 | Thesis math | `scripts/broker_thesis_validity.py` |
 | Oversight | `scripts/broker_promote_oversight.py` |
 | Sizing | `scripts/broker_promote_sizing.py` |
-| API | `scripts/api_v2.py` — `_broker_proposals`, `_broker_refresh_prices`, `_enrich_broker_proposal_row` |
-| Tests | `tests/test_broker_thesis_validity.py`, `tests/test_broker_promote_oversight.py` |
+| API | `scripts/api_v2.py` — `_broker_proposals`, `_attach_source_attribution`, `_broker_refresh_prices` |
+| Tests | `tests/test_broker_entry_pilot.py`, `tests/test_broker_thesis_validity.py`, `tests/test_broker_promote_oversight.py` |
 
 ## Related docs
 
+- `docs/WATCHLIST_PROPOSAL_BRIDGE.md` — watchlist BUY+ → broker queue sync
 - `docs/PROPOSAL_EXECUTION_PATHS.md` — Path A vs Path B
 - `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` — options desk + shared manual-log flow
 - `docs/broker-promote-sizing.md` — cash-based sizing caps (if present)

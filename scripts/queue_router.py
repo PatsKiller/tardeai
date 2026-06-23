@@ -44,12 +44,14 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
         _tm = None
     cur = _get_conn().cursor()
     cur.execute("""SELECT symbol, intended_broker, target_account, status, routing_state,
-                          proposed_entry, proposed_shares
+                          proposed_entry, proposed_shares, proposed_stop, proposed_target1,
+                          strategy_id
                      FROM paper_trade_proposals WHERE id=%s""", (pid,))
     r = cur.fetchone()
     if not r:
         return {"ok": False, "error": "proposal not found"}
-    symbol, broker, account, status, routing_state, entry, shares = r
+    (symbol, broker, account, status, routing_state, entry, shares,
+     proposed_stop, proposed_target1, strategy_id) = r
 
     def _audit(after, reason):
         if _tm:
@@ -85,35 +87,44 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
             _audit({"broker": broker, "error": str(e)[:120]}, "alpaca submit error")
             return {"ok": False, "broker": broker, "error": str(e)[:160]}
 
-    # ── Schwab — REAL API submit WIRED, but GATED (no live order until explicitly armed) ──
+    # ── Schwab — OTOCO bracket (LIMIT entry + STOP child) via per-order 2FA when armed ──
     if broker.startswith(SCHWAB_PREFIX):
-        # Build the real Schwab LIMIT-BUY order spec + intent so the submit path is fully wired — what
-        # WOULD be POSTed is returned for transparency. The arm gate is checked BEFORE any submit; while
-        # closed, NOTHING is placed. When armed, the same path calls the fenced transport
-        # (schwab_transport.place_order → execution_guard gate + per-order 2FA).
-        order_spec = _build_schwab_order_spec(symbol, shares, entry)
+        from brokers import broker_entry_pilot as _bep
+        preview_spec = None
+        try:
+            _pi = _bep.build_intent(
+                account or broker, symbol, int(shares or 0), float(entry or 0), float(proposed_stop or 0),
+                target=float(proposed_target1) if proposed_target1 else None,
+                strategy_id=str(strategy_id or "momentum_scalp"), proposal_id=pid,
+            )
+            preview_spec = _bep.spec_from_intent(_pi)
+        except Exception:
+            preview_spec = _build_schwab_order_spec(symbol, shares, entry)
         armed, gate_reason = _schwab_routing_armed(account)
         if not armed:
-            _set_routing_state(pid, "queued")  # stays queued; nothing placed
-            _audit({"broker": broker, "gated": True, "reason": gate_reason, "order_spec": order_spec},
+            _set_routing_state(pid, "queued")
+            _audit({"broker": broker, "gated": True, "reason": gate_reason, "order_spec": preview_spec,
+                    "bracket": True},
                    "schwab routing wired but gated")
-            return {"ok": False, "broker": broker, "gated": True, "symbol": symbol, "order_spec": order_spec,
+            return {"ok": False, "broker": broker, "gated": True, "symbol": symbol,
+                    "order_spec": preview_spec, "bracket": True,
                     "detail": f"Schwab API submit wired but GATED: {gate_reason}. No order placed."}
-        # ARMED PATH (future flip) — the real fenced submit. Reached only when explicitly armed.
+        # ARMED: step 1 — build OTOCO bracket + request per-order 2FA (submit at route/confirm).
         try:
-            import schwab_transport as _st
-            intent = _build_schwab_intent(account, symbol, shares, entry)
             _set_routing_state(pid, "routing")
-            res = _st.place_order(account, order_spec, intent, kind="queue_entry")
-            ok = isinstance(res, dict) and res.get("status") in ("submitted", "filled")
-            _set_routing_state(pid, "routed" if ok else "rejected")
-            _audit({"broker": broker, "ok": ok, "transport": res}, "schwab live submit (armed)")
-            return {"ok": ok, "broker": broker, "symbol": symbol, "order_spec": order_spec, "detail": res}
+            res = _bep.request_route(pid)
+            ok = bool(res.get("ok"))
+            if not ok:
+                _set_routing_state(pid, "rejected")
+            _audit({"broker": broker, "ok": ok, "mode": res.get("mode"), "intent_id": res.get("intent_id")},
+                   "schwab bracket 2FA requested (armed)")
+            return {"ok": ok, "broker": broker, "symbol": symbol, **res}
         except Exception as e:
             _set_routing_state(pid, "rejected")
-            _audit({"broker": broker, "error": str(e)[:160]}, "schwab submit blocked/error")
-            return {"ok": False, "broker": broker, "gated": True, "symbol": symbol, "order_spec": order_spec,
-                    "detail": f"Schwab submit blocked: {str(e)[:160]}"}
+            _audit({"broker": broker, "error": str(e)[:160]}, "schwab bracket 2FA request error")
+            return {"ok": False, "broker": broker, "gated": False, "symbol": symbol,
+                    "order_spec": preview_spec, "bracket": True,
+                    "detail": f"Schwab 2FA request failed: {str(e)[:160]}"}
 
     # ── Fidelity — no trading API; the proposal IS the record (operator executes at Fidelity) ──
     if broker.startswith("fidelity"):
