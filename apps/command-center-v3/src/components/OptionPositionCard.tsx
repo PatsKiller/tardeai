@@ -40,6 +40,8 @@ export type OptionPosition = {
   underlying: string
   occ_symbol?: string
   strategy?: string
+  side?: string
+  option_type?: string
   strike?: number
   expiration?: string
   dte?: number

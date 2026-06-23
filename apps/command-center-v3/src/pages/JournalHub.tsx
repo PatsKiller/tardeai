@@ -9,6 +9,7 @@ import BacktestPanel from '../components/BacktestPanel'
 import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
 import SchwabJournal from '../components/SchwabJournal'
 import ExecutionCoachPanel from '../components/ExecutionCoachPanel'
+import DrawdownChart from '../components/risk/DrawdownChart'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts'] as const
@@ -761,6 +762,19 @@ export default function JournalHub({ onDrill }: Props) {
             )
             return (
               <>
+                {(ec.underwater?.length > 1 || ec.drawdown_series?.length > 1) && (
+                  <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                    <DrawdownChart
+                      title="Underwater / drawdown"
+                      data={(ec.drawdown_series || ec.underwater || []).map((p: any, i: number) => ({
+                        date: p.date?.slice?.(5) || p.label || String(i),
+                        drawdown: Number(p.drawdown ?? p.value ?? 0),
+                        value: Number(p.equity ?? p.cumulative ?? 0),
+                      }))}
+                      valueKey="drawdown"
+                    />
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, margin: '14px 0' }}>
                   {[
                     { l: 'Net P&L (round-trips)', v: fmt$(ec.net_pnl ?? 0, 0), c: (ec.net_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' },

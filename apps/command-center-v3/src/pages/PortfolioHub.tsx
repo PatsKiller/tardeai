@@ -8,6 +8,7 @@ import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
 import AskAgents from '../components/AskAgents'
 import HoldingProtectionActions from '../components/HoldingProtectionActions'
+import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
@@ -255,6 +256,21 @@ export default function PortfolioHub({ onDrill }: Props) {
               </div>
             ))}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/overview → sectors</div>
+            {sectors.length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <RiskHeatmapGrid
+                  title="Sector exposure"
+                  valueLabel="allocation"
+                  columns={2}
+                  cells={sectors.slice(0, 8).map((s: any) => ({
+                    key: s.name,
+                    label: s.name,
+                    value: Number(s.value) || 0,
+                    sub: s.pct != null ? `${s.pct}%` : undefined,
+                  }))}
+                />
+              </div>
+            )}
           </div>
 
           {/* Holdings — large graphical cards (operator request 2026-06-12) */}

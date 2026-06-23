@@ -10,6 +10,8 @@ import { Options101Banner, NoviceToggle, PreflightConfirmModal } from '../compon
 import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
+import GreeksOverview from '../components/risk/GreeksOverview'
+import OptionsPnLProfile from '../components/risk/OptionsPnLProfile'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -342,6 +344,24 @@ export default function OptionsHub({ onDrill }: Props) {
                   <b style={{ color: '#60a5fa' }}>{a.underlying}</b> — {a.message} → <span style={{ color: '#f59e0b' }}>{a.action}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {posList.length > 0 && (
+            <div style={{ ...panel, marginBottom: 14, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)', gap: 16 }}>
+              <GreeksOverview positions={posList} />
+              {posList[0] && (
+                <OptionsPnLProfile
+                  underlying={posList[0].underlying}
+                  side={posList[0].side || posList[0].strategy}
+                  optionType={posList[0].option_type || 'call'}
+                  strike={Number(posList[0].strike)}
+                  spot={Number(posList[0].underlying_price)}
+                  qty={Number(posList[0].qty) || 1}
+                  avgEntry={Number(posList[0].avg_entry)}
+                  mark={Number(posList[0].mark)}
+                  compact
+                />
+              )}
             </div>
           )}
           {monLoading && <div style={{ fontSize: 11, color: 'var(--text3)' }}>Loading positions…</div>}

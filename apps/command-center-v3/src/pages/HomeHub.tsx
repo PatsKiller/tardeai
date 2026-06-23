@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
+import RiskGauge from '../components/risk/RiskGauge'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -135,6 +136,18 @@ export default function HomeHub({ onDrill }: Props) {
                   <div style={{ fontSize: 14, fontWeight: 600, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+              <RiskGauge value={heat} max={15} threshold={5} label="Portfolio heat" unit="%" height={100} />
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+              <RiskGauge value={triggered.length} max={Math.max(triggered.length, 5)} threshold={1} label="Stops triggered" unit="" height={100} />
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+              <RiskGauge value={positions.filter((p: any) => !p.has_stop).length} max={Math.max(positions.length, 8)} threshold={2} label="Unprotected" unit="" height={100} />
             </div>
           </div>
 
