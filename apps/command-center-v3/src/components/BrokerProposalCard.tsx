@@ -179,6 +179,28 @@ export default function BrokerProposalCard({
               Refreshed {p.refreshed_at}{p.quote_provider ? ` · ${p.quote_provider}` : ''}
             </div>
           )}
+          {(p.support_1 != null || p.resistance_1 != null) && (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {p.support_1 != null && (
+                <span>Support <b style={{ color: GREEN, fontFamily: 'monospace' }}>${Number(p.support_1).toFixed(2)}</b></span>
+              )}
+              {p.resistance_1 != null && (
+                <span>Resistance <b style={{ color: RED, fontFamily: 'monospace' }}>${Number(p.resistance_1).toFixed(2)}</b></span>
+              )}
+              {p.levels_source && <span style={{ opacity: 0.7 }}>({p.levels_source})</span>}
+            </div>
+          )}
+          {(p.last_curated_at || p.curation_status) && (
+            <div style={{ fontSize: 8.5, color: MUTED, marginTop: 4 }}>
+              Curated {p.last_curated_at ? String(p.last_curated_at).slice(0, 19).replace('T', ' ') : '—'}
+              {p.curation_status && (
+                <span style={{
+                  marginLeft: 6, fontWeight: 800,
+                  color: p.curation_status === 'fresh' ? GREEN : p.curation_status === 'warn' ? AMBER : RED,
+                }}>· {p.curation_status}</span>
+              )}
+            </div>
+          )}
 
           <div style={{
             marginTop: 10, padding: '8px 10px', borderRadius: 8,
