@@ -60,10 +60,26 @@ Computed by `scripts/broker_thesis_validity.py` and attached to every broker que
 - **Zone status** — `comfortable` (green) · `approaching` (yellow) · `at_risk` / `invalid` (red).
 - **Visual** — stop / entry / valid zone / target markers + live price dot on `ThesisValidityBar.tsx`.
 
-## Refresh prices + recalibrate
+## Auto price recalibration (automated)
+
+Broker queue prices are **persisted in DB** automatically — not display-only.
+
+| Trigger | Script / path | Interval |
+|---------|---------------|----------|
+| **Cron** | `scripts/run_broker_queue_autocal.sh` → `broker_proposal_autocal.py --apply --force` | Every **5 min** 9:00–16:00 ET weekdays |
+| **API list load** | `GET /api/v2/broker-proposals` calls `maybe_auto_recalibrate()` | Throttled ~5 min for stale rows |
+| **Proactive quote refresh** | `run_proactive_quote_refresh.py` | Includes `APPROVED_FOR_PAPER_TEST` broker rows |
+
+Autocal batch-fetches Schwab quotes (50 symbols/call), writes `current_price`, `price_drift_pct`, `entry_zone_status`, `last_price_source`, `updated_at`, then clears list cache.
+
+Env: `BROKER_PRICE_MAX_AGE_MIN` (default 20), `BROKER_AUTOCAL_INTERVAL_SEC` (default 300), `BROKER_AUTOCAL_DISABLE=1` to turn off API trigger.
+
+**UI note:** List rows use live quotes; light detail prefetch must not overwrite them (fixed in `mergeProposal`).
+
+## Refresh prices + recalibrate (manual)
 
 **Per card:** `↻ Refresh prices`  
-**Queue:** `↻ Refresh all prices`
+**Queue:** `↻ Refresh all prices` (batch API `refresh-prices-batch`)
 
 ```bash
 curl -s -X POST http://localhost:7777/api/v2/broker-proposals/refresh-prices \

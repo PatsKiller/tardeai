@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 def main():
     p = argparse.ArgumentParser(description="Proactive quote refresh (default: dry-run)")
-    p.add_argument("--mode", choices=["pending", "incubator", "all"], default="all")
+    p.add_argument("--mode", choices=["pending", "incubator", "broker", "all"], default="all")
     p.add_argument("--limit", type=int, default=100)
     p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--apply", action="store_true")
@@ -88,7 +88,13 @@ def main():
                                     last_price_source = %s,
                                     current_price = %s,
                                     updated_at = NOW()
-                                WHERE symbol = %s AND status = 'PENDING'
+                                WHERE symbol = %s
+                                  AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
+                                  AND (
+                                    lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'
+                                    OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%'
+                                    OR status = 'PENDING'
+                                  )
                             """, [_src, _px, symbol])
                             conn.commit()
                         except Exception as _we:
