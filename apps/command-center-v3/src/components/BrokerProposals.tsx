@@ -50,10 +50,12 @@ const RR_PRESET_SORT: Record<string, string> = {
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
   const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
+  const [bypassCache, setBypassCache] = useState(false)
   const listPath = useMemo(() => {
     const p = new URLSearchParams()
     p.set('page', String(listFilters.page))
     p.set('page_size', String(listFilters.pageSize))
+    if (bypassCache) p.set('refresh', '1')
     const sort = listFilters.rrPreset && RR_PRESET_SORT[listFilters.rrPreset]
       ? RR_PRESET_SORT[listFilters.rrPreset]
       : listFilters.sort
@@ -64,7 +66,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     if (listFilters.symbol) p.set('symbol', listFilters.symbol)
     if (listFilters.rrPreset) p.set('rr_preset', listFilters.rrPreset)
     return `/api/v2/broker-proposals?${p.toString()}`
-  }, [listFilters])
+  }, [listFilters, bypassCache])
 
   const { data, loading, error, stale, refetch } = useApi<any>(listPath, 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
@@ -124,7 +126,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       const r = await fetch('/api/v2/broker-proposals/detail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: pid }),
+        body: JSON.stringify({ proposal_id: pid, light: true }),
       }).then(x => x.json())
       const d = r.data ?? r
       if (r.ok && d?.id) {
@@ -158,26 +160,27 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     for (const t of Object.values(cloudPollRef.current)) clearInterval(t)
   }, [])
 
-  // Prefetch detail for visible page only — matches page_size default.
-  const DETAIL_PREFETCH_MAX = listFilters.pageSize
+  // Light detail for first 2 cards only — avoids blocking single-threaded API with Schwab calls.
+  const DETAIL_PREFETCH_MAX = 2
   useEffect(() => {
-    if (!proposals.length) return
+    if (!proposals.length || loading) return
     let cancelled = false
     const run = async () => {
-      await new Promise(r => setTimeout(r, 800))
+      await new Promise(r => setTimeout(r, 2500))
       if (cancelled) return
       let n = 0
       for (const p of proposals) {
         if (!p.detail_pending) continue
         if (n >= DETAIL_PREFETCH_MAX) break
-        await fetchProposalDetail(p.id)
+        fetchProposalDetail(p.id)
         n++
+        await new Promise(r => setTimeout(r, 400))
         if (cancelled) return
       }
     }
     run()
     return () => { cancelled = true }
-  }, [proposals, fetchProposalDetail])
+  }, [proposals, fetchProposalDetail, loading])
 
   useEffect(() => {
     if (!proposals.length) return
@@ -535,7 +538,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => refetch?.()} disabled={loading} style={btn(BLUE, loading)}>
+          <button
+            onClick={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }}
+            disabled={loading}
+            style={btn(BLUE, loading)}
+          >
             {loading ? '…' : '↻ Reload queue'}
           </button>
           {shown.length > 0 && (
@@ -584,7 +591,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
             border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,
           }}>● Held only{heldN ? ` (${heldN})` : ''}</button>
-          {stale && <span style={{ fontSize: 9, color: AMBER }}>cached data</span>}
+          {(stale || data?.cached) && (
+            <span style={{ fontSize: 9, color: AMBER }}>
+              {data?.cached ? `cached ${data.cache_age_sec ?? ''}s` : 'cached data'}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>

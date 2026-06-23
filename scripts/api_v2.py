@@ -12759,6 +12759,57 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_
     return _attach_source_attribution(row, watchlist_buy_syms)
 
 
+def _enrich_broker_proposal_row_light(row: dict) -> dict:
+    """Fast detail — oversight + sizing gates without intel packet or live Schwab account calls."""
+    acct = row.get("account") or ""
+    sh = float(row.get("proposed_shares") or 0)
+    en = float(row.get("proposed_entry") or 0)
+    st = float(row.get("proposed_stop") or 0)
+    tg = float(row.get("proposed_target1") or 0)
+    pid = row.get("id")
+    row["intel"] = {"ok": False, "lazy": True}
+    row["activity_pending"] = True
+    try:
+        import broker_promote_sizing as _bps
+        import broker_promote_oversight as _bpo
+        strat = str(row.get("strategy_id") or "momentum_scalp")
+        qd = {}
+        if row.get("quote_last") is not None:
+            qd = {
+                "last_price": row.get("quote_last"),
+                "bid": row.get("quote_bid"),
+                "ask": row.get("quote_ask"),
+                "spread_pct": row.get("quote_spread_pct"),
+            }
+        if acct:
+            ev = _bps.evaluate_broker_promote(
+                acct, strat, en, st, tg, int(sh or 0), quote=qd,
+            )
+            ev = _merge_broker_oversight(ev, pid)
+            row["evaluation"] = ev
+            row["oversight"] = ev.get("oversight") or {}
+            row["gate_status"] = ev.get("status")
+            max_sh = int(ev.get("max_shares") or 0)
+            row["broker_sizing"] = {
+                "max_shares": max_sh,
+                "recommended_shares": ev.get("recommended_shares"),
+                "oversized": bool(sh and max_sh and int(sh) > max_sh),
+                "binding": (ev.get("sizing") or {}).get("binding"),
+                "violations": ev.get("violations") or [],
+                "warnings": ev.get("warnings") or [],
+            }
+        else:
+            row["oversight"] = _bpo.evaluate_oversight(int(pid)) if pid else {}
+    except Exception:
+        row["evaluation"] = row.get("evaluation") or {}
+        row["oversight"] = row.get("oversight") or {}
+        row["gate_status"] = row.get("gate_status")
+        row["broker_sizing"] = row.get("broker_sizing") or {}
+    row["detail_loaded"] = True
+    row["detail_mode"] = "light"
+    return row
+
+
 def _enrich_broker_proposal_row(row: dict) -> dict:
     """Full gates + intel for a single broker queue card (slow — lazy-load only)."""
     acct = row.get("account") or ""
@@ -12848,6 +12899,64 @@ def _broker_qp(query, key, default=None):
     return default if v in (None, "") else v
 
 
+_BROKER_LIST_CACHE: dict[str, tuple[float, dict]] = {}
+_BROKER_LIST_CACHE_TTL = int(os.getenv("BROKER_LIST_CACHE_SEC", "120"))
+_BROKER_LIST_DISK = PROJECT_ROOT / "data" / "runtime" / "broker_list_cache.json"
+
+
+def _broker_list_cache_key(query: dict | None) -> str:
+    q = query or {}
+    parts = []
+    for k in sorted(q.keys()):
+        v = q[k]
+        if isinstance(v, list):
+            v = v[0] if len(v) == 1 else v
+        parts.append(f"{k}={v}")
+    return "|".join(parts) or "default"
+
+
+def _broker_list_cache_get(key: str) -> dict | None:
+    import time as _t
+    hit = _BROKER_LIST_CACHE.get(key)
+    if hit and (_t.time() - hit[0]) < _BROKER_LIST_CACHE_TTL:
+        out = dict(hit[1])
+        out["cached"] = True
+        out["cache_age_sec"] = int(_t.time() - hit[0])
+        return out
+    try:
+        if _BROKER_LIST_DISK.exists():
+            blob = json.loads(_BROKER_LIST_DISK.read_text(encoding="utf-8"))
+            entry = (blob or {}).get(key)
+            if entry and (_t.time() - float(entry.get("ts") or 0)) < _BROKER_LIST_CACHE_TTL:
+                out = dict(entry.get("data") or {})
+                out["cached"] = True
+                out["cache_age_sec"] = int(_t.time() - float(entry.get("ts") or 0))
+                _BROKER_LIST_CACHE[key] = (_t.time(), out)
+                return out
+    except Exception:
+        pass
+    return None
+
+
+def _broker_list_cache_put(key: str, data: dict) -> None:
+    import time as _t
+    payload = dict(data)
+    payload.pop("cached", None)
+    payload.pop("cache_age_sec", None)
+    _BROKER_LIST_CACHE[key] = (_t.time(), payload)
+    try:
+        _BROKER_LIST_DISK.parent.mkdir(parents=True, exist_ok=True)
+        blob = {}
+        if _BROKER_LIST_DISK.exists():
+            blob = json.loads(_BROKER_LIST_DISK.read_text(encoding="utf-8")) or {}
+        blob[key] = {"ts": _t.time(), "data": payload}
+        if len(blob) > 24:
+            blob = dict(sorted(blob.items(), key=lambda kv: float((kv[1] or {}).get("ts") or 0))[-24:])
+        _BROKER_LIST_DISK.write_text(json.dumps(blob, default=str)[:800000], encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _broker_parse_rr_filters(query: dict | None) -> dict:
     """Normalize R:R / quality filter query params."""
     q = query or {}
@@ -12888,7 +12997,13 @@ def _broker_proposals(query=None):
 
     Query: page, page_size, sort, source, zone, symbol|q, account, strategy_id,
            min_live_rr, min_planned_rr, actionable, rr_preset (best|live_2|live_15|planned_2|actionable)
+    Cached in-memory + disk (~120s) for fast tab load.
     """
+    cache_key = _broker_list_cache_key(query)
+    if str(_broker_qp(query, "refresh", "") or "").lower() not in ("1", "true", "yes"):
+        cached = _broker_list_cache_get(cache_key)
+        if cached:
+            return cached
     try:
         page = max(1, int(_broker_qp(query, "page", 1) or 1))
         page_size = min(50, max(5, int(_broker_qp(query, "page_size", 15) or 15)))
@@ -13063,11 +13178,12 @@ def _broker_proposals(query=None):
             row["activity"] = None
             row["activity_pending"] = True
             acct_rows.append(row)
-        return {
+        result = {
             "proposals": prop_rows,
             "accounts": acct_rows,
             "strategies": strategies,
             "list_mode": "fast",
+            "cached": False,
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -13087,7 +13203,13 @@ def _broker_proposals(query=None):
                 "actionable": rr_f.get("actionable") or None,
             },
         }
+        _broker_list_cache_put(cache_key, result)
+        return result
     except Exception as e:
+        stale = _broker_list_cache_get(cache_key)
+        if stale:
+            stale["error"] = str(e)[:120]
+            return stale
         return {
             "error": str(e)[:160],
             "proposals": [],
@@ -13182,15 +13304,22 @@ def _broker_refresh_prices(body: dict):
 
 
 def _broker_proposal_detail(body: dict):
-    """POST /api/v2/broker-proposals/detail — lazy-load intel + sizing gates for one queue card."""
-    pid = int((body or {}).get("proposal_id") or 0)
+    """POST /api/v2/broker-proposals/detail — lazy-load gates for one queue card.
+
+    Default light=1: no Schwab quote/account API — uses stored current_price.
+    Pass light=0 or full=1 for intel packet + live broker snapshot (slow).
+    """
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
     if not pid:
         return {"ok": False, "error": "proposal_id required"}
+    light = str(b.get("light", "1")).lower() not in ("0", "false", "no", "full")
+    full = str(b.get("full", "0")).lower() in ("1", "true", "yes")
     row = _db_query(
         """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                   intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
                   COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
-                  proposed_entry, proposed_stop, proposed_target1,
+                  proposed_entry, proposed_stop, proposed_target1, current_price,
                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
                   created_at, expires_at
            FROM paper_trade_proposals WHERE id=%s""",
@@ -13200,19 +13329,33 @@ def _broker_proposal_detail(body: dict):
         return {"ok": False, "error": f"proposal #{pid} not found"}
     quote_map = {}
     sym = str(row.get("symbol") or "").upper()
-    try:
-        import schwab_transport as _st
-        sq = _st.get_quotes([sym])
-        if sq.get("status") == "ok":
-            quote_map = sq.get("quotes") or {}
-    except Exception:
-        pass
+    if light and not full:
+        px = row.get("current_price")
+        if sym and px is not None:
+            try:
+                quote_map[sym] = {"last": float(px)}
+            except Exception:
+                pass
+    else:
+        try:
+            import schwab_transport as _st
+            sq = _st.get_quotes([sym])
+            if sq.get("status") == "ok":
+                quote_map = sq.get("quotes") or {}
+        except Exception:
+            pass
     wl_buy = _fetch_watchlist_buy_symbols([sym])
     base = _broker_proposal_row_base(row, quote_map, wl_buy)
     acct = base.get("account") or ""
-    base.update(_broker_account_execution_meta(acct))
-    base["activity"] = base.get("activity") or {}
-    enriched = _enrich_broker_proposal_row(base)
+    if light and not full:
+        base.update(_broker_account_label_meta(acct))
+        base["activity"] = None
+        base["activity_pending"] = True
+        enriched = _enrich_broker_proposal_row_light(base)
+    else:
+        base.update(_broker_account_execution_meta(acct))
+        base["activity"] = base.get("activity") or {}
+        enriched = _enrich_broker_proposal_row(base)
     return {"ok": True, "data": enriched}
 
 
