@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
@@ -11,7 +11,7 @@ const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px so
 const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, padding: '6px 13px', borderRadius: 7, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
-  const { data, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
+  const { data, loading, error, stale, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
 
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
@@ -34,6 +34,40 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [oversightMsg, setOversightMsg] = useState<Record<number, string>>({})
   const [acctPreview, setAcctPreview] = useState<Record<number, { account: string; evaluation: any; activity: any; loading?: boolean }>>({})
   const [acctPreviewBusy, setAcctPreviewBusy] = useState<Record<number, boolean>>({})
+  const [detailMap, setDetailMap] = useState<Record<number, any>>({})
+  const [detailBusy, setDetailBusy] = useState<Record<number, boolean>>({})
+  const detailLoadedRef = useRef<Set<number>>(new Set())
+  const detailInflightRef = useRef<Set<number>>(new Set())
+
+  const fetchProposalDetail = useCallback(async (pid: number) => {
+    if (detailLoadedRef.current.has(pid) || detailInflightRef.current.has(pid)) return
+    detailInflightRef.current.add(pid)
+    setDetailBusy(b => ({ ...b, [pid]: true }))
+    try {
+      const r = await fetch('/api/v2/broker-proposals/detail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: pid }),
+      }).then(x => x.json())
+      const d = r.data ?? r
+      if (r.ok && d?.id) {
+        detailLoadedRef.current.add(pid)
+        setDetailMap(prev => ({ ...prev, [pid]: d }))
+      }
+    } catch { /* keep fast list row */ }
+    finally {
+      detailInflightRef.current.delete(pid)
+      setDetailBusy(b => ({ ...b, [pid]: false }))
+    }
+  }, [])
+
+  useEffect(() => {
+    for (const p of proposals) {
+      if (p.detail_pending) fetchProposalDetail(p.id)
+    }
+  }, [proposals, fetchProposalDetail])
+
+  const mergeProposal = (p: any) => ({ ...p, ...(detailMap[p.id] || {}) })
 
   useEffect(() => {
     if (!proposals.length) return
@@ -262,11 +296,16 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             Reset all</button>
         )}
       </div>
-      {proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
+      {loading && proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>Loading broker queue…</div>}
+      {error && proposals.length === 0 && <div style={{ fontSize: 11, color: AMBER }}>Broker queue unavailable ({error}) — retrying…</div>}
+      {stale && proposals.length > 0 && <div style={{ fontSize: 10, color: AMBER, marginBottom: 8 }}>Showing cached queue — reconnecting…</div>}
+      {!loading && !error && proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
       {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {shown.map(p => {
+        {shown.map(rawP => {
+          const p = mergeProposal(rawP)
           const dest = destAccount[p.id] ?? p.account ?? ''
+          const detailLoading = Boolean(rawP.detail_pending && !detailMap[p.id] && detailBusy[p.id])
           const preview = acctPreview[p.id]
           const usingPreview = Boolean(preview && preview.account === dest && dest !== (p.account || ''))
           const evalData = usingPreview ? preview?.evaluation : p.evaluation
@@ -320,12 +359,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                   const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 9, color: MUTED }}>{l}<b style={{ color: col, fontFamily: 'monospace', marginLeft: 2 }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
                   return <span title="Finviz daily metrics" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>{c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</span> })()}
                 <span style={{ flex: 1 }} />
-                {acctPreviewBusy[p.id] && <span style={{ fontSize: 9, color: MUTED }}>Sizing…</span>}
+                {(acctPreviewBusy[p.id] || detailLoading) && <span style={{ fontSize: 9, color: MUTED }}>{detailLoading ? 'Loading gates…' : 'Sizing…'}</span>}
                 <button onClick={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })} style={{ ...btn(AMBER), fontSize: 12, padding: '7px 16px' }} title="Edit shares, entry, stop, target, spread-aware levels">
                   ✎ Edit trade
                 </button>
               </div>
 
+              {detailLoading && !intel?.ok && (
+                <div style={{ padding: '10px 12px', fontSize: 10, color: MUTED, fontStyle: 'italic', borderBottom: '1px solid rgba(148,163,184,.12)' }}>
+                  Loading decision context, sizing gates & oversight…
+                </div>
+              )}
               {intel?.ok && (
                 <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(15,23,42,.35)' }}>
                   <BrokerIntelPanel
