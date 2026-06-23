@@ -35,8 +35,12 @@ export function useApi<T>(path: string, intervalMs?: number) {
     const clearFailing = () => { if (failingRef.current) { failingRef.current = false; _bumpFail(-1) } }
 
     const load = async () => {
+      const controller = new AbortController()
+      const timeoutMs = path.includes('broker-proposals') ? 45_000 : 30_000
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        const r = await fetch(path)
+        const r = await fetch(path, { signal: controller.signal })
+        clearTimeout(timer)
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const json = await r.json()
         if (cancelled) return
@@ -48,8 +52,10 @@ export function useApi<T>(path: string, intervalMs?: number) {
         clearFailing()
         retries = 0
       } catch (e: any) {
+        clearTimeout(timer)
         if (cancelled) return
-        setError(e?.message || 'fetch failed')
+        const msg = e?.name === 'AbortError' ? 'request timed out — server busy, retry' : (e?.message || 'fetch failed')
+        setError(msg)
         // Keep last-good data; flag it stale so the UI can show a 'reconnecting' hint instead of
         // collapsing to zeros. Only mark stale when we actually have prior data to keep showing.
         if (dataRef.current != null) setStale(true)

@@ -12862,16 +12862,8 @@ def _broker_proposals():
         sd = PROJECT_ROOT / "config" / "strategies"
         strategies = sorted([f.stem for f in sd.glob("*.yaml")
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
-        quote_map = {}
-        try:
-            import schwab_transport as _st
-            syms = sorted({str(r.get("symbol") or "").upper() for r in proposals if r.get("symbol")})
-            if syms:
-                sq = _st.get_quotes(syms)
-                if sq.get("status") == "ok":
-                    quote_map = sq.get("quotes") or {}
-        except Exception:
-            pass
+        # Live quotes deferred to POST refresh-prices / detail — batch quote for 100 symbols blocked UI load.
+        quote_map: dict = {}
 
         wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
         acct_meta_cache: dict = {}
@@ -12894,8 +12886,9 @@ def _broker_proposals():
         for a in accounts:
             row = {k: _json_clean(v) for k, v in a.items()}
             ak = row.get("account_key") or ""
-            row.update(_broker_account_execution_meta(ak))
-            row["activity_pending"] = False
+            row.update(_broker_account_label_meta(ak))
+            row["activity"] = None
+            row["activity_pending"] = True
             acct_rows.append(row)
         return {
             "proposals": prop_rows,

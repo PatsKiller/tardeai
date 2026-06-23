@@ -96,14 +96,25 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     for (const t of Object.values(cloudPollRef.current)) clearInterval(t)
   }, [])
 
+  // Prefetch detail for a few visible cards only — loading all 100 blocked the single-threaded API.
+  const DETAIL_PREFETCH_MAX = 6
   useEffect(() => {
     if (!proposals.length) return
-    const t = setTimeout(() => {
+    let cancelled = false
+    const run = async () => {
+      await new Promise(r => setTimeout(r, 800))
+      if (cancelled) return
+      let n = 0
       for (const p of proposals) {
-        if (p.detail_pending) fetchProposalDetail(p.id)
+        if (!p.detail_pending) continue
+        if (n >= DETAIL_PREFETCH_MAX) break
+        await fetchProposalDetail(p.id)
+        n++
+        if (cancelled) return
       }
-    }, 1500)
-    return () => clearTimeout(t)
+    }
+    run()
+    return () => { cancelled = true }
   }, [proposals, fetchProposalDetail])
 
   useEffect(() => {
@@ -462,7 +473,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
 
         {loading && proposals.length === 0 && !error && (
-          <div style={{ fontSize: 11, color: MUTED }}>Loading broker queue…</div>
+          <div style={{ fontSize: 11, color: MUTED }}>
+            Loading broker queue… {stale ? '(showing cached)' : '(API may take 10–20s when server is busy)'}
+          </div>
         )}
         {error && proposals.length === 0 && (
           <div style={{ fontSize: 11, color: AMBER }}>Unavailable ({error}) — <span onClick={() => refetch?.()} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>retry</span></div>
@@ -503,7 +516,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 onRouteApproveCodeChange={v => setRouteApproveCode(prev => ({ ...prev, [p.id]: v }))}
                 onConfirmRoute={ch => confirmRoute(p.id, ch)}
                 acctPreviewBusy={!!acctPreviewBusy[p.id]}
-                onRefresh={() => refreshPrices(p)}
+                onRefresh={() => { refreshPrices(p); if (p.detail_pending) fetchProposalDetail(p.id, { force: true }) }}
                 onEdit={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })}
                 onManual={() => openManual(p)}
                 onRoute={() => route(p.id)}
