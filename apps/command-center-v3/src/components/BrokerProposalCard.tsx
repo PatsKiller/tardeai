@@ -57,24 +57,27 @@ export default function BrokerProposalCard({
   onRunCloudOversight,
 }: Props) {
   const preview = p._preview
-  const usingPreview = Boolean(preview && preview.account === dest && dest !== (p.account || ''))
-  const evalData = usingPreview ? preview?.evaluation : p.evaluation
+  const previewForDest = Boolean(preview && preview.account === dest)
+  const evalData = (previewForDest ? preview?.evaluation : null) || p.evaluation
   const fid = brokerOf(dest || p.account) === 'Fidelity' || p.execution_mode === 'manual'
   const gate = evalData?.status || p.gate_status
   const ov = evalData?.oversight || p.oversight || p.intel?.oversight || {}
   const ovStatus = ov.status || (ov.violations?.length ? 'BLOCK' : ov.warnings?.length ? 'WARN' : null)
-  const bs = usingPreview && evalData ? buildBrokerSizing(evalData, Number(p.proposed_shares)) : (p.broker_sizing || {})
-  const oversized = bs.oversized
-  const maxSh = bs.max_shares ?? evalData?.max_shares ?? p.evaluation?.max_shares
-  const recSh = bs.recommended_shares ?? evalData?.recommended_shares
+  const savedShares = Number(p.proposed_shares) || 0
+  const maxSh = evalData?.max_shares ?? p.broker_sizing?.max_shares ?? p.evaluation?.max_shares
+  const recSh = evalData?.recommended_shares ?? p.broker_sizing?.recommended_shares ?? p.evaluation?.recommended_shares
+  const capShares = recSh != null ? Number(recSh) : (maxSh != null ? Number(maxSh) : savedShares)
+  const oversized = Boolean(savedShares && capShares && savedShares > capShares)
+    || Boolean(p.broker_sizing?.oversized)
+    || (evalData?.violations || []).some((v: string) => /exceed max/i.test(v))
   const gateBlocked = gate === 'BLOCK' || ovStatus === 'BLOCK'
-  const sizingViolations = bs.violations?.length ? bs.violations : (evalData?.violations || p.evaluation?.violations || [])
-  const savedEcon = tradeEconomics(Number(p.proposed_shares), Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
-  const previewSh = usingPreview && recSh != null ? Number(recSh) : null
-  const showSized = previewSh != null && previewSh > 0 && previewSh !== savedEcon.shares
-  const dispEcon = showSized
-    ? tradeEconomics(previewSh!, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
-    : savedEcon
+  const sizingViolations = evalData?.violations || p.broker_sizing?.violations || p.evaluation?.violations || []
+  const savedEcon = tradeEconomics(savedShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
+  const capEcon = oversized && capShares > 0 && capShares !== savedShares
+    ? tradeEconomics(capShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
+    : null
+  const accountLabel = dest || p.account || 'account'
+  const previewNote = previewForDest && dest !== (p.account || '') ? ' (preview)' : ''
   const intel = p.intel?.ok ? {
     ...p.intel,
     oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
@@ -154,18 +157,38 @@ export default function BrokerProposalCard({
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
         <section style={{ padding: '12px 14px', borderRight: '1px solid rgba(148,163,184,.1)' }}>
-          <ThesisValidityBar tv={p.thesis_validity} />
+          <ThesisValidityBar tv={p.thesis_validity} showSourceNote />
           {p.refreshed_at && (
             <div style={{ fontSize: 8.5, color: MUTED, marginTop: 6 }}>
               Refreshed {p.refreshed_at}{p.quote_provider ? ` · ${p.quote_provider}` : ''}
             </div>
           )}
 
+          <div style={{
+            marginTop: 10, padding: '8px 10px', borderRadius: 8,
+            background: oversized ? 'rgba(239,68,68,.06)' : 'rgba(15,23,42,.4)',
+            border: `1px solid ${oversized ? 'rgba(239,68,68,.25)' : 'rgba(148,163,184,.15)'}`,
+            fontSize: 10,
+          }}>
+            <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Share sizing</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'baseline' }}>
+              <span style={{ color: oversized ? RED : TEXT0 }}>
+                <b style={{ fontFamily: 'monospace' }}>Queued:</b> {savedShares.toLocaleString()} sh
+                {p.account && p.account !== dest ? ` · routed ${p.account}` : ''}
+              </span>
+              <span style={{ color: BLUE }}>
+                <b style={{ fontFamily: 'monospace' }}>Cap for {accountLabel}{previewNote}:</b> {capShares.toLocaleString()} sh
+              </span>
+            </div>
+            {oversized && (
+              <div style={{ marginTop: 6, color: AMBER, fontSize: 9.5 }}>
+                Queued size is paper/promote sizing — use <b>✎ Edit trade</b> to resize to {capShares.toLocaleString()} sh before routing live.
+              </div>
+            )}
+          </div>
+
           {(gateBlocked || oversized) && (
-            <div style={{ marginTop: 10, padding: '8px 10px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)' }}>
-              {oversized && maxSh != null && (
-                <div>Position {Number(p.proposed_shares).toLocaleString()} sh exceeds cap {Number(maxSh).toLocaleString()} — edit or use recommended {recSh != null ? Number(recSh).toLocaleString() : 'size'}.</div>
-              )}
+            <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)' }}>
               {(ov.violations || []).map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
               {sizingViolations.filter((v: string) => !(ov.violations || []).includes(v)).map((v: string, i: number) => <div key={`s${i}`}>⛔ {v}</div>)}
             </div>
@@ -173,23 +196,41 @@ export default function BrokerProposalCard({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             <div style={metricBox}>
-              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Position</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: showSized ? BLUE : oversized ? RED : TEXT0 }}>
-                {dispEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
+              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
+              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
+                {savedEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
               </div>
               <div style={{ fontSize: 9, color: MUTED }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
             </div>
             <div style={metricBox}>
-              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Max risk</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(dispEcon.max_risk)}</div>
-              <div style={{ fontSize: 9, color: MUTED }}>invest {fmtMoney(dispEcon.investment)}</div>
+              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ queued</div>
+              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(savedEcon.max_risk)}</div>
+              <div style={{ fontSize: 9, color: MUTED }}>invest {fmtMoney(savedEcon.investment)}</div>
             </div>
             <div style={metricBox}>
               <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ tgt</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(dispEcon.profit_at_target)}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(savedEcon.profit_at_target)}</div>
               <div style={{ fontSize: 9, color: MUTED }}>R:R {p.live_rr ?? p.proposed_rr ?? '—'}{p.live_rr ? ' live' : ''}</div>
             </div>
           </div>
+          {capEcon && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8, opacity: 0.92 }}>
+              <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
+                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>If resized to cap</div>
+                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>
+                  {capEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
+                </div>
+              </div>
+              <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
+                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ cap</div>
+                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>{fmtMoney(capEcon.max_risk)}</div>
+              </div>
+              <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
+                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ cap</div>
+                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>+{fmtMoney(capEcon.profit_at_target)}</div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -255,14 +296,3 @@ export default function BrokerProposalCard({
   )
 }
 
-function buildBrokerSizing(ev: any, shares: number) {
-  const maxSh = Number(ev?.max_shares ?? 0)
-  return {
-    max_shares: maxSh,
-    recommended_shares: ev?.recommended_shares,
-    oversized: Boolean(shares && maxSh && shares > maxSh),
-    binding: ev?.sizing?.binding,
-    violations: ev?.violations || [],
-    warnings: ev?.warnings || [],
-  }
-}

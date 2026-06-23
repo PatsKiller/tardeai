@@ -6,9 +6,10 @@ const TEXT0 = '#f8fafc'
 type Props = {
   tv?: ThesisValidity | null
   compact?: boolean
+  showSourceNote?: boolean
 }
 
-export default function ThesisValidityBar({ tv, compact }: Props) {
+export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props) {
   if (!tv?.ok) {
     return (
       <div style={{ fontSize: 10, color: MUTED, fontStyle: 'italic', padding: compact ? '4px 0' : '8px 10px',
@@ -93,6 +94,11 @@ export default function ThesisValidityBar({ tv, compact }: Props) {
       <div style={{ fontSize: 9.5, color: TEXT0, fontWeight: 600, marginBottom: 4 }}>
         {tv.label || `Valid $${low.toFixed(2)} – $${high.toFixed(2)}`}
       </div>
+      {showSourceNote && (
+        <div style={{ fontSize: 8.5, color: MUTED, marginBottom: 4 }}>
+          Price math from entry/stop/target + live quote — not Grok/ChatGPT cloud review.
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 9, color: MUTED }}>
         <span>↓ room {tv.room_down_pct != null ? `${tv.room_down_pct.toFixed(1)}%` : '—'}</span>
         <span>↑ room {tv.room_up_pct != null ? `${tv.room_up_pct.toFixed(1)}%` : '—'}</span>

@@ -191,6 +191,16 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }, [])
 
+  useEffect(() => {
+    if (!proposals.length) return
+    for (const p of proposals) {
+      const dest = destAccount[p.id] ?? p.account ?? ''
+      if (dest && dest !== p.account && !acctPreview[p.id]) {
+        fetchAccountPreview(p, dest)
+      }
+    }
+  }, [proposals, destAccount, acctPreview, fetchAccountPreview])
+
   const refreshPrices = async (p: any) => {
     const pid = p.id
     const dest = destAccount[pid] || p.account || ''

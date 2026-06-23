@@ -53,7 +53,7 @@ def _load_pro_analyst_pill(sym: str) -> dict:
     return {}
 
 
-def _analyst_intel(sym: str) -> dict | None:
+def _analyst_intel(sym: str, live_price: float | None = None) -> dict | None:
     """Multi-source analyst view: Yahoo (primary), Finviz (if valid), pro_analyst monitor."""
     an = _q(
         """SELECT recommendation_key, recommendation_mean, number_of_analyst_opinions,
@@ -90,6 +90,17 @@ def _analyst_intel(sym: str) -> dict | None:
     yahoo = None
     if an:
         tm, cp = an.get("target_mean_price"), an.get("current_price")
+        price_for_upside = live_price if live_price and live_price > 0 else cp
+        upside = None
+        if tm and price_for_upside and float(price_for_upside) > 0:
+            upside = round((float(tm) - float(price_for_upside)) / float(price_for_upside) * 100, 1)
+        if live_price and cp and float(cp) > 0:
+            stale_drift = abs(float(live_price) - float(cp)) / float(cp) * 100
+            if stale_drift > 12:
+                warnings.append(
+                    f"Analyst snapshot price ${float(cp):.2f} is stale vs live ${float(live_price):.2f} "
+                    f"({stale_drift:.0f}% drift) — upside % recalculated on live"
+                )
         yahoo = {
             "source": "yahoo",
             "rating": an.get("recommendation_key"),
@@ -98,8 +109,9 @@ def _analyst_intel(sym: str) -> dict | None:
             "target": float(tm) if tm is not None else None,
             "target_high": float(an["target_high_price"]) if an.get("target_high_price") is not None else None,
             "target_low": float(an["target_low_price"]) if an.get("target_low_price") is not None else None,
-            "upside_pct": round((float(tm) - float(cp)) / float(cp) * 100, 1)
-            if tm and cp and float(cp) > 0 else None,
+            "upside_pct": upside,
+            "snapshot_price": float(cp) if cp is not None else None,
+            "live_price": float(live_price) if live_price else None,
             "as_of": str(an.get("snapshot_date") or "")[:10] or None,
             "distribution": dist or None,
             "distribution_provider": dist_provider,
@@ -191,7 +203,7 @@ def _analyst_intel(sym: str) -> dict | None:
     }
 
 
-def _symbol_card(symbol: str) -> dict:
+def _symbol_card(symbol: str, live_price: float | None = None) -> dict:
     sym = (symbol or "").upper().strip()
     if not sym:
         return {}
@@ -199,7 +211,7 @@ def _symbol_card(symbol: str) -> dict:
         "SELECT description_1s, sector, industry FROM symbol_profiles WHERE symbol=%s",
         (sym,), one=True,
     ) or {}
-    analyst = _analyst_intel(sym)
+    analyst = _analyst_intel(sym, live_price=live_price)
 
     news = _q(
         """SELECT title, source, published_at FROM news_articles
@@ -230,7 +242,7 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     row = _q(
         """SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.catalyst, ptp.catalyst_verified,
                   ptp.proposed_entry, ptp.proposed_stop, ptp.proposed_target1, ptp.proposed_rr,
-                  ptp.rvol, ptp.float_m, ptp.gap_pct, ptp.intel_readiness,
+                  ptp.current_price, ptp.rvol, ptp.float_m, ptp.gap_pct, ptp.intel_readiness,
                   scan.catalyst as scan_catalyst, scan.catalyst_verified as scan_catalyst_verified,
                   scan.catalyst_confidence, scan.critic_verdict, scan.critic_reasoning,
                   scan.sector, scan.industry, scan.rvol as scan_rvol, scan.gap_pct as scan_gap_pct,
@@ -256,7 +268,19 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
         return {"ok": False, "error": f"proposal #{pid} not found"}
 
     sym = str(row.get("symbol") or "").upper()
-    card = _symbol_card(sym)
+    live_px = row.get("current_price")
+    if live_px is None:
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(sym) or {}
+            live_px = q.get("last_price") or q.get("last")
+        except Exception:
+            live_px = None
+    try:
+        live_px = float(live_px) if live_px is not None else None
+    except (TypeError, ValueError):
+        live_px = None
+    card = _symbol_card(sym, live_price=live_px)
 
     catalyst = row.get("catalyst") or row.get("scan_catalyst")
     catalyst_verified = row.get("scan_catalyst_verified") if row.get("scan_catalyst_verified") is not None else row.get("catalyst_verified")

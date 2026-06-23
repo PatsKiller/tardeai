@@ -32,6 +32,15 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 
 Changing account re-runs `evaluate-promote` sizing caps for that destination (cash, daily limits).
 
+**Share sizing display:** The card always shows two numbers when they differ:
+
+- **Queued** — `proposed_shares` saved on the proposal (often paper/promote sizing, e.g. 6,760 sh).
+- **Cap for [account]** — max allowed for the selected Schwab/Fidelity account (e.g. 292 sh on rollover IRA cash).
+
+Risk metrics show **at queued size** first, then **if resized to cap**. Use **✎ Edit trade** to persist the cap before routing live.
+
+Thesis validity band uses entry/stop/target + live quote — **not** Grok/ChatGPT (cloud is a separate oversight step).
+
 ## Thesis validity / drift gap
 
 Computed by `scripts/broker_thesis_validity.py` and attached to every broker queue row as `thesis_validity`.
