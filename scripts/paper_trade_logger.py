@@ -1074,7 +1074,7 @@ def promote_proposal_to_broker(
     risk_reward: float = None,
     operator: str = "operator",
 ) -> dict:
-    """Promote an Alpaca-paper proposal to the Schwab/Fidelity broker queue (in-place update)."""
+    """Promote a broker-agnostic proposal to the Schwab/Fidelity execution queue (in-place update)."""
     acct = (account or "").strip()
     acct_l = acct.lower()
     if not acct or not ("schwab" in acct_l or "fidelity" in acct_l):
@@ -1472,6 +1472,21 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         if prop['status'] != 'PENDING':
             conn.close()
             return {'success': False, 'message': f'Proposal #{proposal_id} is {prop["status"]}, not PENDING'}
+
+        try:
+            from proposal_routing import is_broker_routed
+            if is_broker_routed(prop):
+                conn.close()
+                return {
+                    'success': False,
+                    'message': (
+                        f'Proposal #{proposal_id} is routed for live broker execution (Path B). '
+                        'Use Broker Proposals — not paper approve.'
+                    ),
+                    'routing_required': True,
+                }
+        except Exception:
+            pass
 
         # Apply overrides
         entry = override_entry or prop['proposed_entry']

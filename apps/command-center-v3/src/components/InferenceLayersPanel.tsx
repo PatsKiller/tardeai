@@ -13,7 +13,7 @@ const REGIME_COLOR: Record<string, string> = {
 }
 const TYPE_ICON: Record<string, string> = {
   regional_impact: '🌏', journal_pattern: '📓', nav_signal: '💰', opportunity: '🎯',
-  risk: '⚠️', sizing: '📐', market_regime: '🌡️', data_gap: '🕳️', research_gap: '🔎', aegis_thesis: '🛡',
+  risk: '⚠️', sizing: '📐', market_regime: '🌡️', sector_rotation: '🔄', data_gap: '🕳️', research_gap: '🔎', aegis_thesis: '🛡',
 }
 const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const pct = (v: any) => (v == null ? '—' : `${Math.round(Number(v) * 100)}%`)
@@ -34,6 +34,7 @@ const ACTION_FOR: Record<string, { label: string; url: string }[]> = {
   regional_impact: [{ label: 'Intelligence', url: '/v3/intelligence' }],
   research_gap: [{ label: 'Research', url: '/v3/intelligence' }],
   market_regime: [{ label: 'Portfolio', url: '/v3/portfolio' }],
+  sector_rotation: [{ label: 'Rotation Desk', url: '/v3/rotation' }, { label: 'Watchlist', url: '/v3/watchlist' }],
 }
 
 function toCard(r: any): ReportCardItem {
@@ -66,7 +67,7 @@ function facetMatch(f: Facet, r: any): boolean {
     case 'risk': return r.inference_type === 'risk' || r.inference_type === 'aegis_thesis'
     case 'opportunity': return r.inference_type === 'opportunity'
     case 'nav': return r.inference_type === 'nav_signal'
-    case 'regime': return ['market_regime', 'regional_impact'].includes(r.inference_type)
+    case 'regime': return ['market_regime', 'regional_impact', 'sector_rotation'].includes(r.inference_type)
     default: return true
   }
 }

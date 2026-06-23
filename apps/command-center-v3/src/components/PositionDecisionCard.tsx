@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
+import { resolvedTrailPct } from '../lib/protectionTrail'
 
 const TEXT0 = '#f8fafc'
 const TEXT1 = '#dbeafe'
@@ -22,6 +23,7 @@ const RSI_C = (b: string) => b === 'oversold' ? GREEN : b === 'overbought' ? RED
 const BASIS_C: Record<string, string> = { broker: GREEN, tax_grade: GREEN, verified: BLUE, entry: BLUE, owner_provided: PURPLE, unknown: RED }
 const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED, none: MUTED }
 const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
+const SCHWAB_SELL_ALL_MAX_SHARES = 40
 
 // Tolerate both raw top-level and {ok,data}-wrapped API responses (the protective-stop endpoints return
 // raw, but the generic dispatcher may wrap — unwrap defensively so neither shape silently breaks parsing).
@@ -91,8 +93,19 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   // SYNTHETIC stop instead: a monitored level that, on breach, requests a Market-Day sell-all 2FA.
   const _shares = Number(p.shares) || 0
   const _isFractional = _isSchwab && _shares > 0 && Math.abs(_shares - Math.round(_shares)) > 1e-9
+  const _needsSellAll = _isSchwab && _shares > 0 && _shares < SCHWAB_SELL_ALL_MAX_SHARES
+  const _sellAllTif = _isFractional ? 'DAY' : 'GTC'
   const [synthBusy, setSynthBusy] = useState(false)
   const [synthMsg, setSynthMsg] = useState('')
+  const _openSellAll = () => {
+    if (!window.confirm(`Sell ALL ${_shares} ${p.symbol} @ MARKET (${_sellAllTif}) on ${_acct}? Requires 2FA before submit.`)) return
+    _resetStop()
+    setStopOrder({
+      kind: 'MARKET', qty: _shares, stop: null, trailPct: null,
+      label: `SELL ALL ${_shares} ${p.symbol} @ MARKET ${_sellAllTif}`,
+      advised: _advStop, cur: Number(p.current_price) || null,
+    })
+  }
   const _armSynthetic = async (level: number) => {
     setSynthBusy(true); setSynthMsg('')
     try {
@@ -105,7 +118,8 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     setStopBusy(true); setStopMsg('requesting…')
     try {
       const body = { symbol: p.symbol, account: p.account, qty: stopOrder.qty, order_kind: stopOrder.kind,
-                     stop_price: stopOrder.stop, trail_pct: stopOrder.trailPct ?? null,
+                     stop_price: stopOrder.kind === 'MARKET' ? null : stopOrder.stop,
+                     trail_pct: stopOrder.trailPct ?? null,
                      advised_stop: stopOrder.advised ?? null, current_price: stopOrder.cur ?? null,
                      replace_order_id: stopOrder.replace_order_id ?? null }
       const raw = await fetch('/api/v2/holdings/protective-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
@@ -118,6 +132,12 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         setStopMsg(`Intent ${short}${ttl} · approve by ticker or 6-digit code · one channel is enough`)
       }
       else if (r?.mode === 'ticket') { setStopTicket(r.ticket); setStopMsg('✅ ToS ticket ready — place it exactly in thinkorswim (no trading API on this account).') }
+      else if (r?.mode === 'monitored_armed') {
+        const t = r?.result?.ticket || r?.order?.ticket || ''
+        if (t) setStopTicket(t)
+        setStopDone(true)
+        setStopMsg(`✅ Monitored stop armed — tracking ${p.symbol}. On breach: alert + Fidelity Active Trader ticket.`)
+      }
       else setStopMsg(`⛔ ${apiReason(r)}`)
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
@@ -134,7 +154,10 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       const submitted = ostatus === 'submitted' || ostatus === 'filled' || r?.submitted === true
       // TRUE submit success — a broker order id / submitted|filled status, and ok not explicitly false.
       if ((r?.stage === 'submit' || submitted || oid) && submitted && r?.ok !== false) {
-        setStopDone(true); setStopMsg(`✅ LIVE stop placed on Schwab · order #${oid ?? '—'} (${ostatus ?? 'submitted'})`)
+        setStopDone(true)
+        setStopMsg(stopOrder?.kind === 'MARKET'
+          ? `✅ LIVE sell placed on Schwab · order #${oid ?? '—'} (${ostatus ?? 'submitted'})`
+          : `✅ LIVE stop placed on Schwab · order #${oid ?? '—'} (${ostatus ?? 'submitted'})`)
       }
       // 2FA accepted, still waiting on the other channel
       else if (r?.stage === 'confirm' && r?.ok && r?.fully_approved === false) {
@@ -191,16 +214,18 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       const acctLbl = String(p.account ?? '').replace(/_/g, ' ').toUpperCase()
       const route = _isSchwab ? 'Submits LIVE to Schwab via API (per-order 2FA)' : 'No API on this account → builds a thinkorswim ticket to place manually'
       const inApprove = !!stopIntent && !stopDone
+      const isMarketSell = stopOrder.kind === 'MARKET'
+      const orderTif = isMarketSell ? _sellAllTif : 'GTC'
       return <div onClick={() => !stopBusy && _resetStop()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-        <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: `1px solid ${AMBER}`, borderRadius: 12, padding: 18, width: 'min(440px,94vw)' }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: AMBER }}>{inApprove ? '🔐 Approve to place LIVE' : '⚠ Confirm protective stop'}</div>
-          <div style={{ marginTop: 10, padding: 11, background: 'rgba(245,158,11,.10)', border: `1px solid rgba(245,158,11,.3)`, borderRadius: 8 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: `1px solid ${isMarketSell ? RED : AMBER}`, borderRadius: 12, padding: 18, width: 'min(440px,94vw)' }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: isMarketSell ? RED : AMBER }}>{inApprove ? '🔐 Approve to place LIVE' : isMarketSell ? '⚠ Confirm market sell-all' : '⚠ Confirm protective stop'}</div>
+          <div style={{ marginTop: 10, padding: 11, background: isMarketSell ? 'rgba(239,68,68,.10)' : 'rgba(245,158,11,.10)', border: `1px solid ${isMarketSell ? 'rgba(239,68,68,.3)' : 'rgba(245,158,11,.3)'}`, borderRadius: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 950, color: TEXT0, ...({ fontFamily: 'monospace' } as any) }}>{stopOrder.label}</div>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 7, fontSize: 11 }}>
               <span style={{ color: MUTED }}>Qty <b style={{ color: TEXT0 }}>{stopOrder.qty}</b></span>
-              <span style={{ color: MUTED }}>Type <b style={{ color: TEXT0 }}>{stopOrder.kind === 'TRAILING' ? `TRAILING ${stopOrder.trailPct?.toFixed(0)}%` : stopOrder.kind}</b></span>
-              <span style={{ color: MUTED }}>{stopOrder.kind === 'TRAILING' ? 'Start' : 'Stop'} <b style={{ color: TEXT0 }}>${Number(stopOrder.stop).toFixed(2)}</b></span>
-              <span style={{ color: MUTED }}>TIF <b style={{ color: TEXT0 }}>GTC</b></span>
+              <span style={{ color: MUTED }}>Type <b style={{ color: TEXT0 }}>{isMarketSell ? 'MARKET' : stopOrder.kind === 'TRAILING' ? `TRAILING ${stopOrder.trailPct?.toFixed(0)}%` : stopOrder.kind}</b></span>
+              {!isMarketSell && stopOrder.stop != null && <span style={{ color: MUTED }}>{stopOrder.kind === 'TRAILING' ? 'Start' : 'Stop'} <b style={{ color: TEXT0 }}>${Number(stopOrder.stop).toFixed(2)}</b></span>}
+              <span style={{ color: MUTED }}>TIF <b style={{ color: TEXT0 }}>{orderTif}</b></span>
             </div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>Account <b style={{ color: TEXT1 }}>{acctLbl}</b> · {route}</div>
           </div>
@@ -242,13 +267,17 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
 
           {/* REVIEW PHASE — request the order (Schwab requests 2FA; no-API accounts return a ticket) */}
           {!stopDone && !inApprove && !stopTicket && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 11 }}>
-            {_isSchwab ? 'Requesting will send a one-time approval to Telegram + email; the order is placed only after you confirm (next step).' : 'This account has no trading API — you’ll get the exact ToS ticket to place manually.'}
+            {_isSchwab
+              ? (isMarketSell
+                ? `Market sell-all of the full ${_shares} sh (fractional OK). Approval goes to Telegram + email; order submits only after you confirm.`
+                : 'Requesting will send a one-time approval to Telegram + email; the order is placed only after you confirm (next step).')
+              : 'This account has no trading API — you’ll get the exact ToS ticket to place manually.'}
           </div>}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
             {stopMsg && !stopDone && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
             <button onClick={_resetStop} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
-            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? 'REQUEST LIVE STOP' : 'BUILD TICKET'}</button>}
+            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : isMarketSell ? RED : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? (isMarketSell ? 'REQUEST LIVE SELL' : 'REQUEST LIVE STOP') : 'BUILD TICKET'}</button>}
           </div>
         </div>
       </div>
@@ -328,35 +357,46 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             </div>
           )}
           {stop != null && unprotected && !mf && (() => {
-            const trailReady = off != null && trailPct != null
+            const trailRes = resolvedTrailPct(protectionRec)
+            const effectiveTrailPct = trailRes?.pct ?? ((off != null && trailPct != null) ? trailPct : null)
+            const trailReady = effectiveTrailPct != null && stop != null
             const stopTip = `Queue a FIXED sell stop (stop-market) GTC at $${stop.toFixed(2)}. If the price falls to $${stop.toFixed(2)} a MARKET sell fires — it ALWAYS fills, but the fill can slip below $${stop.toFixed(2)} in a fast drop. The trigger does NOT move.\n\n${STAGE2C_TIP}`
             const limitTip = `Queue a FIXED sell stop-limit GTC triggering at $${stop.toFixed(2)}. If the price hits $${stop.toFixed(2)} a LIMIT sell (~$${stop.toFixed(2)}) fires — it avoids a bad fill, but may NOT fill if the price gaps straight through, leaving you unprotected on the way down. The trigger does NOT move.\n\n${STAGE2C_TIP}`
-            const trailTip = trailReady ? `Queue a native TRAILING sell stop GTC, trailing ${trailPct.toFixed(0)}%${trailDollar != null ? ` (≈$${trailDollar.toFixed(2)})` : ''}. The stop starts near $${stop.toFixed(2)} and RATCHETS UP as the price rises (never down), locking in profit; if the price then falls ${trailPct.toFixed(0)}% from its high a MARKET sell fires. This is the order the advisory recommends.\n\n${STAGE2C_TIP}` : ''
+            const trailTip = trailReady ? `Queue a native TRAILING sell stop GTC, trailing ${effectiveTrailPct!.toFixed(0)}%${trailDollar != null ? ` (≈$${trailDollar.toFixed(2)})` : ''}. The stop starts near $${stop.toFixed(2)} and RATCHETS UP as the price rises (never down), locking in profit; if the price then falls ${effectiveTrailPct!.toFixed(0)}% from its high a MARKET sell fires.${off == null ? ' (optional trail — advisor recommended fixed only)' : ''}\n\n${STAGE2C_TIP}` : ''
             const modifyTip = `Modify an ACTIVE stop — change the stop price, the trail %, or switch order type — once a protective order is already working at the broker.\n\n${STAGE2C_TIP}`
             const actBtn = { ...lockBtn, cursor: 'pointer', border: '1px solid #64748b', color: TEXT1 }
             const recBtn = { ...lockBtn, cursor: 'pointer', border: `1px solid ${AMBER}`, background: 'rgba(245,158,11,.18)', color: AMBER }
             // Income holdings are held for yield — frame the level as OPTIONAL, not "ADVISED".
             const headColor = income ? BLUE : AMBER
-            const orderTxt = trailReady ? `SELL TRAILING STOP, trail ${trailPct.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`
+            const orderTxt = trailReady ? `SELL TRAILING STOP, trail ${effectiveTrailPct!.toFixed(0)}% (starts ~$${stop.toFixed(2)})` : `SELL STOP $${stop.toFixed(2)}`
             const head = income ? `▸ OPTIONAL stop (income hold): ${orderTxt} GTC` : `▸ ADVISED: ${orderTxt} GTC`
             const qty = p.shares
-            const open = (kind: string, label: string) => () => { _resetStop(); setStopOrder({ kind, qty, stop, trailPct: kind === 'TRAILING' ? trailPct : null, income, label, advised: stop, cur: price ?? (Number(p.current_price) || null) }) }
+            const open = (kind: string, label: string) => () => { _resetStop(); setStopOrder({ kind, qty, stop, trailPct: kind === 'TRAILING' ? effectiveTrailPct : null, income, label, advised: stop, cur: price ?? (Number(p.current_price) || null) }) }
             return <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: income ? 'rgba(96,165,250,.10)' : 'rgba(245,158,11,.10)', border: `1px solid ${income ? 'rgba(96,165,250,.32)' : 'rgba(245,158,11,.32)'}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10.5, fontWeight: 950, color: headColor }}>{head}</span>
               <span style={{ flex: 1 }} />
               <button onClick={open('STOP', `SELL ${qty} ${p.symbol} STOP $${stop.toFixed(2)} GTC`)} title={stopTip} style={trailReady ? actBtn : recBtn}>Queue stop (fixed){trailReady ? '' : ' ★'}</button>
               <button onClick={open('STOP_LIMIT', `SELL ${qty} ${p.symbol} STOP-LIMIT $${stop.toFixed(2)} GTC`)} title={limitTip} style={actBtn}>Queue stop-limit (fixed)</button>
-              {trailReady && <button onClick={open('TRAILING', `SELL ${qty} ${p.symbol} TRAILING STOP ${trailPct.toFixed(0)}% GTC`)} title={trailTip} style={recBtn}>Queue trailing stop ★</button>}
+              {trailReady && <button onClick={open('TRAILING', `SELL ${qty} ${p.symbol} TRAILING STOP ${effectiveTrailPct!.toFixed(0)}% GTC`)} title={trailTip} style={recBtn}>Queue trailing stop ★</button>}
               <button onClick={_snoozeStop} disabled={snoozeBusy} title="Acknowledge this stop and grant a 1-week grace period — suppresses the stop ALERT for 7 days. Advisory only: does NOT change or cancel the protective stop at the broker." style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: snoozeBusy ? 'not-allowed' : 'pointer' }}>{snoozeBusy ? '…' : '⏸ Ignore 1 week'}</button>
             </div>
           })()}
           {/* FRACTIONAL position: a broker STOP covers only whole shares (Schwab rejects fractional stops). Offer a
               synthetic stop that protects the FULL position via a monitored Market-Day sell-all on breach. */}
           {_isFractional && stop != null && unprotected && !mf && (
-            <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(168,85,247,.10)', border: '1px solid rgba(168,85,247,.32)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 900, color: '#d8b4fe' }}>▸ Fractional ({_shares} sh) — a broker stop covers only {Math.floor(_shares)} whole share{Math.floor(_shares) === 1 ? '' : 's'}. Synthetic stop covers all {_shares}.</span>
-              <span style={{ flex: 1 }} />
-              <button onClick={() => _armSynthetic(stop)} disabled={synthBusy} title={`Arm a synthetic stop at $${stop.toFixed(2)} on the FULL ${_shares} sh. The monitor watches the price; on a breach it requests a Market-Day sell-all 2FA (Schwab accepts market sells of fractional qty). Nothing is placed at the broker now.`} style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid #a855f7', background: 'rgba(168,85,247,.18)', color: '#d8b4fe', cursor: synthBusy ? 'not-allowed' : 'pointer' }}>{synthBusy ? '…' : `Arm synthetic stop @ $${stop.toFixed(2)}`}</button>
+            <div style={{ marginTop: 8, padding: '7px 9px', borderRadius: 8, background: 'rgba(168,85,247,.10)', border: '1px solid rgba(168,85,247,.32)' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 900, color: '#d8b4fe' }}>▸ Fractional ({_shares} sh) — broker stop covers only {Math.floor(_shares)} whole share{Math.floor(_shares) === 1 ? '' : 's'}. Synthetic stop or market sell-all covers all {_shares}.</span>
+                <span style={{ flex: 1 }} />
+                {_needsSellAll && (
+                  <button onClick={_openSellAll} disabled={stopBusy || _needsReauth || stopDone} title={_needsReauth ? 'Schwab re-auth required' : `Market sell ALL ${_shares} sh · ${_sellAllTif} · per-order 2FA before live submit`}
+                    style={{ fontSize: 10.5, fontWeight: 900, padding: '6px 11px', borderRadius: 6, border: '1px solid #ef4444', background: 'rgba(239,68,68,.16)', color: RED, cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                    {stopDone ? '✓ Submitted' : `Sell all @ MKT ${_sellAllTif}`}
+                  </button>
+                )}
+                <button onClick={() => _armSynthetic(stop)} disabled={synthBusy} title={`Arm a synthetic stop at $${stop.toFixed(2)} on the FULL ${_shares} sh. The monitor watches the price; on a breach it requests a Market-Day sell-all 2FA (Schwab accepts market sells of fractional qty). Nothing is placed at the broker now.`} style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 11px', borderRadius: 6, border: '1px solid #a855f7', background: 'rgba(168,85,247,.18)', color: '#d8b4fe', cursor: synthBusy ? 'not-allowed' : 'pointer' }}>{synthBusy ? '…' : `Arm synthetic stop @ $${stop.toFixed(2)}`}</button>
+              </div>
+              {_isFractional && <div style={{ fontSize: 8.5, color: MUTED, marginTop: 5, lineHeight: 1.4 }}>Schwab fractional market orders use DAY (not GTC). Use Sell all @ MKT for immediate exit; use synthetic stop for monitored protection.</div>}
             </div>
           )}
           {synthMsg && <div style={{ fontSize: 10.5, color: synthMsg.startsWith('✓') ? GREEN : '#ef4444', marginTop: 5 }}>{synthMsg}</div>}

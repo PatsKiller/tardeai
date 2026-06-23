@@ -1,6 +1,7 @@
 import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
+import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from './DetailDrawer'
 
 interface Props {
@@ -34,6 +35,7 @@ export default function MetricStrip({ onDrill }: Props) {
   const vix = tradeAi?.vix
   const runLabel = tradeAi?.run_label
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
+  const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
 
   const tiles = [
     {
@@ -97,8 +99,19 @@ export default function MetricStrip({ onDrill }: Props) {
   ]
 
   return (
-    <div className="metric-strip" style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#60a5fa', marginRight: 24, whiteSpace: 'nowrap' }}>Command Center v3</div>
+    <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+      <div style={{ marginRight: 24, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#60a5fa' }}>Command Center v3</div>
+        {priceStamp && (
+          <div
+            title={`Holdings repriced via ${overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'} · /api/v2/overview`}
+            onClick={() => onDrill({ title: 'Price Freshness', subtitle: priceStamp, endpoint: '/api/v2/overview',
+              rows: overview?.pricing ? [overview.pricing] : [{ last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source }] })}
+            style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2, cursor: 'pointer', maxWidth: 280 }}
+          >{priceStamp}</div>
+        )}
+      </div>
       {tiles.map(t => (
         <div key={t.label}
           onClick={() => onDrill(t.drill)}
@@ -123,6 +136,7 @@ export default function MetricStrip({ onDrill }: Props) {
       }}>
         {isBlocked ? 'LIVE BLOCKED' : 'LIVE ENABLED'}
       </div>
+    </div>
     </div>
   )
 }

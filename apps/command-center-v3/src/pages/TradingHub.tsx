@@ -58,7 +58,7 @@ export default function TradingHub({ onDrill }: Props) {
   const trades = openTrades?.trades ?? []
   const execList: any[] = Array.isArray(execQual) ? execQual : []
   const propList = proposals?.proposals ?? []
-  const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED')
+  const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
   const alpaca = paperStatus?.alpaca ?? {}
 
   return (

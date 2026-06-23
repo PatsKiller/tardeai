@@ -43,7 +43,7 @@ DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", 
 BANDS = {
     "premarket_scalp": {"min_rvol": 5.0, "min_score": 30, "max": 8, "gen_proposals": True, "prop_cap": 3, "kind": "scalp"},
     "market_swing":    {"min_rvol": 3.0, "min_score": 40, "max": 6, "gen_proposals": True, "prop_cap": 2, "kind": "swing"},
-    "overnight":       {"min_rvol": 5.0, "min_score": 30, "max": 4, "gen_proposals": False, "prop_cap": 0, "kind": "scalp"},
+    "overnight":       {"min_rvol": 5.0, "min_score": 30, "max": 4, "gen_proposals": True, "prop_cap": 1, "kind": "swing"},
 }
 
 

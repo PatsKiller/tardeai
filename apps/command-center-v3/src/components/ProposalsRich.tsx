@@ -6,12 +6,9 @@ import { StateCard } from './StateCard'
 import { ActionButton } from './ActionButton'
 import BrokerPromoteModal from './BrokerPromoteModal'
 import BrokerDiligenceStrip from './BrokerDiligenceStrip'
+import { isBrokerRouted, routingColor, routingLabel } from '../lib/proposalRouting'
+import ExecutionPathsStrip from './ExecutionPathsStrip'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
-
-function isPaperQueueProposal(p: any): boolean {
-  const b = String(p.intended_broker || p.target_account || p.proposed_account || 'alpaca_paper').toLowerCase()
-  return !b.startsWith('schwab') && !b.startsWith('fidelity')
-}
 
 // Full v2-parity proposal review surface, ported into v3 (canonical).
 // Same /api/v2/paper-proposals contract + write workflow as the frozen v2 page.
@@ -379,6 +376,11 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <StatusBadge status={actionStateToStatus[effectiveActionState] || 'warning'} label={(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')} />
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
+          <span title="Execution route — set via Promote to Broker or approve to paper"
+            style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+              background: `${routingColor(p)}22`, color: routingColor(p), border: `1px solid ${routingColor(p)}44` }}>
+            {routingLabel(p)}
+          </span>
           {p.signal_evidence?.screener && (
             <span title={`Why this signal won (arbitration evidence)\nlist: ${p.signal_evidence.screener}${p.signal_evidence.source_weight ? ` · source weight ${p.signal_evidence.source_weight}` : ''}${p.signal_evidence.source_hit_rate ? ` · hit ${(p.signal_evidence.source_hit_rate * 100).toFixed(0)}%` : ''}\ntop pillars: ${(p.signal_evidence.top_pillars || []).map((t: any) => `${t.pillar} ${t.pts}`).join(', ') || '—'}${p.signal_evidence.outcome_scar && p.signal_evidence.outcome_scar !== 1 ? `\noutcome scar ${p.signal_evidence.outcome_scar}` : ''}`}
               style={{ fontSize: 8, fontWeight: 600, padding: '1px 5px', borderRadius: 3, cursor: 'help', background: 'var(--bg2)', color: 'var(--text2)' }}>
@@ -550,7 +552,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
         {p.trust_audit?.strategy_fit && <span>Strategy fit: <strong style={{ color: p.trust_audit.strategy_fit.fit_status === 'PASS' ? '#22C55E' : p.trust_audit.strategy_fit.fit_status === 'PARTIAL' ? '#F59E0B' : '#EF4444' }}>{p.trust_audit.strategy_fit.fit_status}</strong></span>}
       </div>
 
-      {isPaperQueueProposal(p) && bd && (
+      {!isBrokerRouted(p) && bd && (
         <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)' }}>
           <BrokerDiligenceStrip summary={bd} compact />
         </div>
@@ -567,7 +569,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
         <ActionButton variant="secondary" size="sm" loading={runningAction === 'aiReview'} disabled={runningAction !== null} onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} style={{ border: '1px solid rgba(168,85,247,0.3)', color: '#A855F7' }}>
           {runningAction === 'aiReview' ? 'Running...' : '3. AI Review'}
         </ActionButton>
-        {isPaperQueueProposal(p) && (
+        {!isBrokerRouted(p) && (
           <ActionButton variant="secondary" size="sm" loading={runningAction === 'brokerDiligence'} disabled={runningAction !== null}
             onClick={() => runAction('brokerDiligence', `/api/v2/paper-proposals/advance-broker-diligence`, { proposal_id: p.id })}
             style={{ border: '1px solid rgba(168,85,247,0.35)', color: '#C084FC', fontWeight: 700 }}
@@ -576,28 +578,35 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
           </ActionButton>
         )}
         <ActionButton variant="secondary" size="sm" onClick={() => setShowBrokerPromote(true)}
-          disabled={brokerDiligenceBlocked}
-          style={{ border: '1px solid rgba(245,158,11,0.35)', color: brokerDiligenceBlocked ? '#64748B' : '#F59E0B', fontWeight: 800 }}
-          title={bd?.next_action || 'Complete broker diligence before queueing at Schwab/Fidelity'}>
-          {bd?.promote_ready ? '4. Send to Broker' : '4. Send to Broker (locked)'}
+          disabled={brokerDiligenceBlocked || isBrokerRouted(p)}
+          style={{ border: '1px solid rgba(245,158,11,0.35)', color: brokerDiligenceBlocked || isBrokerRouted(p) ? '#64748B' : '#F59E0B', fontWeight: 800 }}
+          title={isBrokerRouted(p) ? 'Already routed live — open Broker Proposals tab' : (bd?.next_action || 'Path B: Schwab 2FA auto or Fidelity FA manual')}>
+          {isBrokerRouted(p) ? 'Path B · routed' : bd?.promote_ready ? '4a. Promote to Broker (live)' : '4a. Promote to Broker (locked)'}
         </ActionButton>
         <div style={{ flex: 1 }} />
-        <ActionButton
-          variant={p.operator_verdict === 'READY' ? 'primary' : 'disabled'}
-          size="md"
-          loading={acting[p.id] === 'approve'}
-          disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm) || (p.approval_blockers || []).some((b: any) => b.gate === 'execution' || b.gate === 'rsi')}
-          title={
-            (p.approval_blockers || []).length > 0
-              ? `Blocked: ${(p.approval_blockers || []).map((b: any) => b.reason).join('; ')}`
-              : p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready')
-              : 'Approve for paper test'
-          }
-          onClick={handleApprove}
-          style={p.operator_verdict === 'READY' ? { background: '#22C55E', color: '#fff' } : {}}
-        >
-          {acting[p.id] === 'approve' ? 'Approving...' : '4. Approve'}
-        </ActionButton>
+        {isBrokerRouted(p) ? (
+          <span style={{ fontSize: 10, fontWeight: 700, color: routingColor(p), padding: '6px 10px', borderRadius: 6, background: `${routingColor(p)}18`, border: `1px solid ${routingColor(p)}44` }}
+            title="Path B — execute on Broker Proposals tab (Schwab auto/manual or Fidelity FA)">
+            Path B only — use Broker Proposals
+          </span>
+        ) : (
+          <ActionButton
+            variant={p.operator_verdict === 'READY' ? 'primary' : 'disabled'}
+            size="md"
+            loading={acting[p.id] === 'approve'}
+            disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm) || (p.approval_blockers || []).some((b: any) => b.gate === 'execution' || b.gate === 'rsi')}
+            title={
+              (p.approval_blockers || []).length > 0
+                ? `Blocked: ${(p.approval_blockers || []).map((b: any) => b.reason).join('; ')}`
+                : p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready')
+                : 'Path A: Alpaca paper auto — no real money'
+            }
+            onClick={handleApprove}
+            style={p.operator_verdict === 'READY' ? { background: '#A855F7', color: '#fff' } : {}}
+          >
+            {acting[p.id] === 'approve' ? 'Approving...' : '4b. Approve (paper test)'}
+          </ActionButton>
+        )}
         <ActionButton variant="danger" size="md" loading={acting[p.id] === 'reject'} onClick={() => act(p.id, 'reject')}>
           {acting[p.id] === 'reject' ? 'Rejecting...' : '✗ Reject'}
         </ActionButton>
@@ -774,7 +783,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
 
 // -- Main proposals surface --
 export default function ProposalsRich() {
-  const { data, refetch } = useApi<any>('/api/v2/paper-proposals', 30000)
+  const { data, refetch, loading, error, stale } = useApi<any>('/api/v2/paper-proposals', 30000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const [acting, setActing] = useState<Record<number, string>>({})
@@ -882,7 +891,8 @@ export default function ProposalsRich() {
 
   const summary = data?.summary || {}
   const allProposals = data?.proposals ?? []
-  const pending = allProposals.filter(isPaperQueueProposal)
+  const pending = allProposals.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
+  const brokerRouted = pending.filter(isBrokerRouted)
 
   const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
 
@@ -923,12 +933,16 @@ export default function ProposalsRich() {
 
   return (
     <div style={{ overflow: 'visible', paddingBottom: 24 }}>
+      <ExecutionPathsStrip variant="full" />
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>Automated Trade Proposals</div>
           <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-            {pending.length} pending{summary.expired_today ? ` · ${summary.expired_today} expired today` : ''}{summary.incubator_ready_count ? ` · ${summary.incubator_ready_count} incubator ready` : ''}
+            {loading && !data ? 'Loading proposals…' : `${pending.length} pending`}
+            {stale ? ' · showing cached data' : ''}
+            {summary.expired_today ? ` · ${summary.expired_today} expired today` : ''}{summary.incubator_ready_count ? ` · ${summary.incubator_ready_count} incubator ready` : ''}
+            {brokerRouted.length ? ` · ${brokerRouted.length} broker-routed` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1079,7 +1093,11 @@ export default function ProposalsRich() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'visible' }}>
         {displayed.length === 0 ? (
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-            {pending.length === 0 ? (
+            {loading && !data ? (
+              <>Loading proposals from /api/v2/paper-proposals… (this can take 10–15s)</>
+            ) : error && !data ? (
+              <>Failed to load proposals: {error}. <ActionButton variant="secondary" size="sm" onClick={refetch}>Retry</ActionButton></>
+            ) : pending.length === 0 ? (
               <>
                 No pending proposals.
                 {runHealth?.latest_run ? (

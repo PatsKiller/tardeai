@@ -30,6 +30,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 DEFAULT_MAX_DOLLAR_SIZE = 2000
 DEFAULT_MAX_DOLLAR_RISK = 150
 DEFAULT_RISK_PER_TRADE = 150
+MAX_QUOTE_AGE_MINUTES = 15
+TREND_LOOKBACK_DAYS = 2
 # Consolidated 2026-06-11: 4-strategy trading core (gap_and_go->momentum_scalp, swing_trade->swing_breakout;
 # others archived/parked/reclassified — see docs/project/SYSTEM_DEEP_REVIEW_20260611.md section F)
 STRATEGY_PRIORITY = ["momentum_scalp", "swing_breakout", "fib_retracement_bounce", "earnings_post_momentum"]
@@ -623,18 +625,62 @@ def check_rejection_cooldown(conn, symbol: str, force: bool = False) -> dict | N
     return None
 
 
-def check_scan_decision(conn, symbol: str) -> dict | None:
-    """Check if latest scan decision is not GO. Returns skip reason or None."""
+def _cap_sizing_risk(sizing: dict, max_risk: float) -> dict:
+    """Clamp proposal dollar risk to a ceiling (trend-bridge guardrail)."""
+    if not sizing or not sizing.get("valid") or max_risk is None:
+        return sizing
+    risk = float(sizing.get("adjusted_dollar_risk") or 0)
+    if risk <= max_risk:
+        return sizing
+    entry = float(sizing.get("adjusted_dollar_size") or 0) / max(int(sizing.get("adjusted_shares") or 1), 1)
+    shares = int(sizing.get("adjusted_shares") or 0)
+    if shares <= 0 or entry <= 0:
+        return sizing
+    stop_pct = float(sizing.get("stop_pct") or 0)
+    if stop_pct <= 0:
+        return sizing
+    risk_per_share = entry * stop_pct / 100.0
+    if risk_per_share <= 0:
+        return sizing
+    max_shares = max(1, int(max_risk / risk_per_share))
+    if max_shares >= shares:
+        return sizing
+    out = dict(sizing)
+    out["adjusted_shares"] = max_shares
+    out["adjusted_dollar_size"] = round(max_shares * entry, 2)
+    out["adjusted_dollar_risk"] = round(max_shares * risk_per_share, 2)
+    out["sizing_adjusted"] = True
+    out["sizing_reason"] = (f"trend_risk_cap ${max_risk:.0f}: {shares}→{max_shares} shares")
+    return out
+
+
+def check_scan_decision(conn, symbol: str, *, trend_qualified: bool = False,
+                        lookback_days: int = TREND_LOOKBACK_DAYS) -> dict | None:
+    """Check if scan decision blocks proposal. Returns skip reason or None.
+
+    trend_qualified: use best GO/A+ hit in lookback (trend bridge) instead of today's row only,
+    so a name that qualified on a trend screen isn't blocked because a later full-universe pass
+    marked it AVOID."""
     cur = conn.cursor()
-    cur.execute("""
-        SELECT decision, score, grade, critic_verdict
-        FROM trade_ai_scans
-        WHERE symbol = %s AND scanned_at::date = CURRENT_DATE
-        ORDER BY scanned_at DESC LIMIT 1
-    """, [symbol])
+    if trend_qualified:
+        cur.execute("""
+            SELECT decision, score, grade, critic_verdict
+            FROM trade_ai_scans
+            WHERE symbol = %s AND decision IN ('GO', 'A+')
+              AND scanned_at > NOW() - (%s || ' days')::interval
+              AND COALESCE(score, 0) >= 40
+            ORDER BY score DESC NULLS LAST, scanned_at DESC LIMIT 1
+        """, [symbol, str(lookback_days)])
+    else:
+        cur.execute("""
+            SELECT decision, score, grade, critic_verdict
+            FROM trade_ai_scans
+            WHERE symbol = %s AND scanned_at::date = CURRENT_DATE
+            ORDER BY scanned_at DESC LIMIT 1
+        """, [symbol])
     row = cur.fetchone()
     if not row:
-        return None  # no scan today, let other checks handle
+        return None  # no qualifying scan, let other checks handle
 
     decision, score, grade, critic = row
 
@@ -826,6 +872,17 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
             except Exception:
                 pass
 
+        _quote_age_h = None
+        _quote_price = None
+        try:
+            from market_quote_provider import check_fresh_quote
+            _fq = check_fresh_quote(signal.get("symbol"), strategy_id=signal.get("strategy_id"))
+            if _fq.get("age_minutes") is not None:
+                _quote_age_h = float(_fq["age_minutes"]) / 60.0
+            _quote_price = _fq.get("last_price")
+        except Exception:
+            pass
+
         _pre = evaluate_pre_promotion_readiness({
             "symbol": signal.get("symbol"), "strategy_id": signal.get("strategy_id"),
             "proposed_entry": signal.get("entry_high"), "proposed_stop": signal.get("stop_loss"),
@@ -833,6 +890,8 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
             "catalyst": signal.get("catalyst"), "catalyst_verified": signal.get("catalyst_verified"),
             "discovery_source": "screener",
             "scan_age_hours": _scan_age,
+            "quote_age_hours": _quote_age_h,
+            "quote_price": _quote_price,
         })
         if _pre["blockers"]:
             log.warning(f"[auto_gen] BLOCKED by pre-promotion gate: {signal.get('symbol')} — {_pre['blockers']}")
@@ -845,18 +904,20 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
     target = float(signal.get("target_1") or 0)
     target2 = float(signal.get("target_2") or 0) if signal.get("target_2") else None
     shares = sizing["adjusted_shares"]
-    # Session 24A: Strategy-aware expiry
+    # Session 24A: Strategy-aware expiry + strategy type stamp
     _strat = signal.get("strategy_id", "momentum_scalp")
     try:
         from proposal_lifecycle import (get_expiry_datetime, get_max_expiry_datetime,
-                                        get_timeframe_class, is_overnight)
+                                        get_timeframe_class, get_strategy_metadata, is_overnight)
+        _strat_meta = get_strategy_metadata(_strat)
         _now = datetime.now(timezone.utc)
         expires = get_expiry_datetime(_strat, _now)
         _max_expires = get_max_expiry_datetime(_strat, _now)
         _base_expires = expires
-        _timeframe_class = get_timeframe_class(_strat)
+        _timeframe_class = _strat_meta.get("timeframe_class") or get_timeframe_class(_strat)
         _overnight = is_overnight(_strat)
     except Exception:
+        _strat_meta = {}
         expires = datetime.now(timezone.utc) + timedelta(hours=4)
         _max_expires = expires
         _base_expires = expires
@@ -877,7 +938,6 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "catalyst": (signal.get("catalyst") or "")[:200],
         "catalyst_verified": signal.get("catalyst_verified", False),
         "intel_readiness": signal.get("intel_readiness"),
-        "proposed_account": _resolve_proposal_account(signal.get("strategy_id")),
         "proposed_entry": entry,
         "proposed_stop": stop,
         "proposed_target1": target,
@@ -899,6 +959,7 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "max_expires_at": _max_expires,
         "lifecycle_status": "ACTIVE",
         "proposal_timeframe_class": _timeframe_class,
+        "strategy_type": _strat_meta.get("strategy_type"),
         "overnight_monitoring_enabled": _overnight,
         "auto_created": True,
         "auto_proposal_run_id": auto_run_id,
@@ -911,11 +972,9 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "setup_description": signal.get("setup_description"),
         "source_run_label": signal.get("scan_run_label"),
         "auto_execution_label": auto_context.get("execution_label", "manual") if auto_context else "manual",
-        # Unified queue + percent-of-equity audit (operator 2026-06-19)
+        # Unified queue — broker-agnostic at creation; routing set at promote/approve
         "origin": "auto",
-        "target_account": _resolve_proposal_account(signal.get("strategy_id")),
-        "intended_broker": "alpaca_paper",
-        "routing_state": "queued",
+        "routing_state": "unassigned",
         "equity_at_proposal": (sizing.get("sizing_basis") or {}).get("equity"),
         "sizing_basis": json.dumps(sizing.get("sizing_basis") or {}),
     }
@@ -980,7 +1039,9 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                        min_score: int = 40, limit: int = 20,
                        dry_run: bool = True,
                        execution_label: str = "manual",
-                       force: bool = False) -> dict:
+                       force: bool = False,
+                       max_risk_dollars: float | None = None,
+                       trend_lookback_days: int = TREND_LOOKBACK_DAYS) -> dict:
     """Main auto-proposal generation. Returns audit summary."""
     shared_rules = _load_shared_risk_rules()
     proposal_cols = _get_available_cols(conn, "paper_trade_proposals")
@@ -1079,13 +1140,32 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
         sig_id = sig["id"]
 
         try:
-            # 0. Regular-hours gate for intraday strategies (RTH-gate-on-generation).
-            # Intraday proposals (momentum_scalp/gap_and_go) minted premarket die on stale
-            # quotes before the 9:30 open — they EXPIRE or auto-reject (price-drift / blocked-
-            # too-long), so a real GO signal never becomes an approvable proposal (e.g. XOS &
-            # FOFO, 2026-06-04). Defer intraday generation to regular hours so it runs on live
-            # quotes; swing/position may still pre-stage after hours. force=True bypasses.
+            # 0. Fresh quote gate — Schwab/Alpaca/Polygon; swing relaxes to 24h outside RTH.
+            _fresh_quote = None
             if not force:
+                try:
+                    from market_quote_provider import check_fresh_quote
+                    _fresh_quote = check_fresh_quote(sym, strategy_id=sid)
+                    if not _fresh_quote.get("ok"):
+                        stats["proposals_skipped"] += 1
+                        reason = f"SKIPPED_STALE_QUOTE ({_fresh_quote.get('reason')})"
+                        log.info(f"  {sym}: {reason}")
+                        if not dry_run:
+                            record_decision(conn, run_label, sig, "SKIPPED_STALE_QUOTE",
+                                            [_fresh_quote.get("reason", "")], None, None, None)
+                        stats["details"].append({"symbol": sym, "decision": "SKIPPED_STALE_QUOTE", "reason": reason})
+                        continue
+                except Exception as exc:
+                    stats["proposals_skipped"] += 1
+                    reason = f"SKIPPED_QUOTE_ERROR ({exc})"
+                    log.info(f"  {sym}: {reason}")
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_QUOTE_ERROR", [str(exc)], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_QUOTE_ERROR", "reason": reason})
+                    continue
+
+            # 0a. Regular-hours gate for intraday — bypass when fresh extended-hours quote exists.
+            if not force and not (_fresh_quote and _fresh_quote.get("ok")):
                 try:
                     from proposal_lifecycle import get_timeframe_class as _gtc
                     _is_intraday = _gtc(sid) == "intraday"
@@ -1096,7 +1176,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     _sess = current_market_session()
                     if _sess != "regular":
                         stats["proposals_skipped"] += 1
-                        reason = f"SKIPPED_OUTSIDE_RTH ({sid}: market {_sess}, deferred to regular hours)"
+                        reason = f"SKIPPED_OUTSIDE_RTH ({sid}: market {_sess}, no fresh quote)"
                         log.info(f"  {sym}: {reason}")
                         if not dry_run:
                             record_decision(conn, run_label, sig, "SKIPPED_OUTSIDE_RTH", [reason], None, None, None)
@@ -1166,8 +1246,12 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["details"].append({"symbol": sym, "decision": cooldown["reason"], "reason": reason})
                 continue
 
-            # 2c. Scan decision gate
-            scan_block = check_scan_decision(conn, sym)
+            # 2c. Scan decision gate (trend bridge uses lookback GO/A+, not today's AVOID rerate)
+            _trend_q = "rotation" in (execution_label or "") or "trend" in (execution_label or "")
+            scan_block = check_scan_decision(
+                conn, sym, trend_qualified=_trend_q,
+                lookback_days=trend_lookback_days if _trend_q else 7,
+            )
             if scan_block:
                 stats["proposals_skipped"] += 1
                 reason = f"{scan_block['reason']} ({scan_block['detail']})"
@@ -1219,10 +1303,36 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     stats["details"].append({"symbol": sym, "decision": "SKIPPED_LIQUIDITY", "reason": reason})
                     continue
 
+            # 2f. Analyst gate — equities need rating + price target (ETFs exempt).
+            if not force:
+                try:
+                    from analyst_coverage import check_analyst_gate
+                    _an_ok, _an_reason, _an_snap = check_analyst_gate(conn, sym, fetch_if_missing=True)
+                    if not _an_ok:
+                        stats["proposals_skipped"] += 1
+                        reason = f"SKIPPED_NO_ANALYST ({_an_reason})"
+                        log.info(f"  {sym}: {reason}")
+                        if not dry_run:
+                            record_decision(conn, run_label, sig, "SKIPPED_NO_ANALYST", [_an_reason], None, None, None)
+                        stats["details"].append({"symbol": sym, "decision": "SKIPPED_NO_ANALYST", "reason": reason})
+                        continue
+                    if _an_snap:
+                        sig["_analyst_snapshot"] = _an_snap
+                except Exception as exc:
+                    stats["proposals_skipped"] += 1
+                    reason = f"SKIPPED_ANALYST_ERROR ({exc})"
+                    log.info(f"  {sym}: {reason}")
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_ANALYST_ERROR", [str(exc)], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_ANALYST_ERROR", "reason": reason})
+                    continue
+
             # 3. Normalize sizing (percent-of-equity; run-level policy + equity)
             strategy_cfg = _load_strategy_config(sid)
             sizing = normalize_size(sig, strategy_cfg, shared_rules,
                                     account_key=_size_account, equity=_size_equity, policy=_size_policy)
+            if max_risk_dollars:
+                sizing = _cap_sizing_risk(sizing, float(max_risk_dollars))
             if not sizing.get("valid"):
                 stats["proposals_skipped"] += 1
                 reason = f"SKIPPED_SIZE ({sizing.get('reason')})"

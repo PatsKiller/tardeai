@@ -124,23 +124,36 @@ def main():
     recent_keys = set()
 
     for pr in proposals:
-        # ── Auto-reject proposals with stale entry prices (>5% drift from live) ──
+        # ── Auto-reject stale entry prices — strategy-aware threshold, grace period for new proposals ──
         _entry = float(pr.get("proposed_entry") or 0)
         if _entry > 0:
             try:
-                from market_quote_provider import get_best_quote as _abq
-                _lq = _abq(pr.get("symbol", ""))
-                if _lq and _lq.get("last_price") and _lq["last_price"] > 0:
-                    _drift = abs(float(_lq["last_price"]) - _entry) / _entry * 100
-                    if _drift > 5.0:
-                        try:
-                            from paper_trade_logger import reject_proposal
-                            reject_proposal(pr["id"], f"auto_stale_price_drift_{_drift:.0f}pct")
-                            print(f"  [alert] Auto-rejected #{pr['id']} {pr.get('symbol')}: "
-                                  f"entry=${_entry:.2f} live=${_lq['last_price']:.2f} ({_drift:.1f}% drift)")
-                        except Exception:
-                            pass
-                        continue
+                _created = pr.get("created_at")
+                _age_min = 999.0
+                if _created:
+                    if hasattr(_created, 'timestamp'):
+                        _age_min = (datetime.now(timezone.utc) - _created).total_seconds() / 60
+                    elif isinstance(_created, str):
+                        from dateutil.parser import parse as _dp0
+                        _age_min = (datetime.now(timezone.utc) - _dp0(_created)).total_seconds() / 60
+                # Let the operator review Telegram alerts before hygiene auto-rejects (esp. gap names).
+                if _age_min >= 120:
+                    from proposal_lifecycle import get_price_drift_threshold
+                    _drift_max = get_price_drift_threshold(pr.get("strategy_id") or "")
+                    from market_quote_provider import get_best_quote as _abq
+                    _lq = _abq(pr.get("symbol", ""))
+                    if _lq and _lq.get("last_price") and _lq["last_price"] > 0:
+                        _drift = abs(float(_lq["last_price"]) - _entry) / _entry * 100
+                        if _drift > _drift_max:
+                            try:
+                                from paper_trade_logger import reject_proposal
+                                reject_proposal(pr["id"], f"auto_stale_price_drift_{_drift:.0f}pct")
+                                print(f"  [alert] Auto-rejected #{pr['id']} {pr.get('symbol')}: "
+                                      f"entry=${_entry:.2f} live=${_lq['last_price']:.2f} "
+                                      f"({_drift:.1f}% > {_drift_max}% threshold)")
+                            except Exception:
+                                pass
+                            continue
             except Exception:
                 pass
 
@@ -190,13 +203,15 @@ def main():
             "quote_execution_eligible": pr.get("quote_execution_eligible"),
             "spread_pct": pr.get("spread_pct"),
         }
-        pr["approval_blockers"] = []
         if pr.get("er_blockers"):
             bl = pr["er_blockers"]
             if isinstance(bl, str):
                 try: bl = json.loads(bl)
                 except: bl = [bl]
             pr["approval_blockers"] = [{"reason": b} if isinstance(b, str) else b for b in (bl or [])]
+        else:
+            pr.setdefault("approval_blockers", [])
+        pr.setdefault("approval_allowed", False)
 
         packet = build_proposal_alert_packet(pr)
         check = should_send_alert(pr, recent_keys)

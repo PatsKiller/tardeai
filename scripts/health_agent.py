@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,6 +134,147 @@ def _f(category, ftype, severity, message, **extra):
     return {"category": category, "type": ftype, "severity": severity, "message": message, **extra}
 
 
+def _check_portfolio_totals_drift(hp: dict, pcfg: dict) -> list[dict]:
+    """Detect holdings.json total_value diverging from sum(position MV) — root cause of header vs
+    Portfolio page mismatch after SnapTrade sync without portfolio_repricer _recalc_totals."""
+    out = []
+    min_drift = float(pcfg.get("totals_drift_min_dollars", 5000))
+    min_pct = float(pcfg.get("totals_drift_min_pct", 0.5))
+    holdings = hp.get("holdings") or []
+    derived = round(sum(float(p.get("market_value") or 0) for p in holdings), 2)
+    canonical = float((hp.get("portfolio_totals") or {}).get("total_value") or 0)
+    if derived <= 0 or canonical <= 0:
+        return out
+    drift = round(abs(derived - canonical), 2)
+    drift_pct = drift / canonical * 100 if canonical else 0
+    if drift >= min_drift or drift_pct >= min_pct:
+        sev = "critical" if drift >= min_drift * 3 or drift_pct >= min_pct * 4 else "warning"
+        out.append(_f("data_quality", "portfolio_totals_drift", sev,
+                      f"portfolio_totals ${canonical:,.0f} vs holdings sum ${derived:,.0f} "
+                      f"(drift ${drift:,.0f} / {drift_pct:.2f}%) — run portfolio_repricer",
+                      derived_total=derived, canonical_total=canonical, drift_dollars=drift,
+                      drift_pct=round(drift_pct, 3)))
+    # Per-account: stale manual/reported totals (Fidelity rollover after SnapTrade position merge).
+    for acct_key, acct in (hp.get("account_summaries") or {}).items():
+        if not isinstance(acct, dict):
+            continue
+        ah = [p for p in holdings if p.get("account") == acct_key and not p.get("is_loan")]
+        acct_derived = round(sum(float(p.get("market_value") or 0) for p in ah), 2)
+        acct_stored = float(acct.get("total_value") or 0)
+        if acct_derived <= 0 or acct_stored <= 0:
+            continue
+        adrift = round(abs(acct_derived - acct_stored), 2)
+        if adrift >= min_drift:
+            sev = "critical" if adrift >= min_drift * 2 else "warning"
+            out.append(_f("data_quality", "account_summary_drift", sev,
+                          f"{acct_key}: account_summary ${acct_stored:,.0f} vs holdings "
+                          f"${acct_derived:,.0f} (drift ${adrift:,.0f})",
+                          account=acct_key, derived_total=acct_derived, stored_total=acct_stored,
+                          drift_dollars=adrift))
+    return out
+
+
+def _check_snaptrade_cash_stale(hp: dict, pcfg: dict) -> list[dict]:
+    """Fidelity/SnapTrade: SPAXX position units lag after stock buys; cash must use buying_power."""
+    out = []
+    min_gap = float(pcfg.get("snaptrade_cash_gap_min_dollars", 5000))
+    for acct in (pcfg.get("snaptrade_accounts") or ["fidelity_rollover_ira"]):
+        rows = [p for p in (hp.get("holdings") or []) if p.get("account") == acct]
+        if not rows:
+            continue
+        cash_rows = [p for p in rows if p.get("is_cash") or str(p.get("symbol") or "").upper()
+                     in ("SPAXX", "FDRXX", "FZFXX", "SPRXX")]
+        equity_mv = round(sum(float(p.get("market_value") or 0) for p in rows if p not in cash_rows), 2)
+        if not cash_rows or equity_mv < min_gap:
+            continue
+        spaxx = max(cash_rows, key=lambda p: float(p.get("market_value") or 0))
+        cash_mv = float(spaxx.get("market_value") or 0)
+        src = str(spaxx.get("cash_source") or spaxx.get("position_source") or "")
+        if src == "snaptrade_buying_power":
+            continue
+        # Stale: position-unit cash with large equity book (post-deploy pattern)
+        if cash_mv > equity_mv * 0.8 and src in ("snaptrade_position_units", "snaptrade", ""):
+            out.append(_f("data_quality", "snaptrade_cash_stale", "warning",
+                          f"{acct}: SPAXX ${cash_mv:,.0f} looks stale vs ${equity_mv:,.0f} "
+                          f"equity — re-sync with balances.buying_power",
+                          account=acct, spaxx_mv=cash_mv, equity_mv=equity_mv, cash_source=src))
+    return out
+
+
+REMEDIATION_STATE = STATE_DIR / "health_agent_remediation_state.json"
+REMEDIATION_LOG = LOG_DIR / "health_agent_remediation.jsonl"
+
+
+def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
+    """Execute allowlisted fix scripts immediately for portfolio-pricing findings (no escalation wait).
+    Cooldown per finding-type prevents repricer storms."""
+    cfg = policy.get("auto_remediate") or {}
+    if not cfg.get("enabled", True):
+        return []
+    types = set(cfg.get("finding_types") or [
+        "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
+        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
+    ])
+    cooldown_m = float(cfg.get("cooldown_minutes", 10))
+    rmap = policy.get("remediation_map") or {}
+    actionable = [f for f in findings
+                  if f.get("severity") in ("warning", "critical") and f.get("type") in types]
+    if not actionable:
+        return []
+    try:
+        state = json.loads(REMEDIATION_STATE.read_text()) if REMEDIATION_STATE.exists() else {}
+    except Exception:
+        state = {}
+    now = datetime.now(timezone.utc)
+    results = []
+    ran_cmds: set[str] = set()
+    for f in actionable:
+        ftype = f.get("type")
+        cmd = rmap.get(ftype)
+        if not cmd or cmd in ran_cmds:
+            continue
+        last = state.get(ftype)
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+                if (now - last_dt).total_seconds() < cooldown_m * 60:
+                    continue
+            except Exception:
+                pass
+        # Safe portfolio-pricing scripts only (no broker order submission).
+        if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
+                and "snaptrade_sync.py" not in cmd:
+            continue
+        try:
+            proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
+                                  capture_output=True, text=True, timeout=180)
+            ok = proc.returncode == 0
+            entry = {
+                "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
+                "exit_code": proc.returncode,
+                "stdout_tail": (proc.stdout or "")[-400:],
+                "stderr_tail": (proc.stderr or "")[-400:],
+                "trigger": f.get("message", "")[:200],
+            }
+            results.append(entry)
+            REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(REMEDIATION_LOG, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            if ok:
+                state[ftype] = now.isoformat()
+                ran_cmds.add(cmd)
+        except Exception as ex:
+            results.append({"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                            "error": str(ex)[:200], "trigger": f.get("message", "")[:200]})
+    if state:
+        try:
+            REMEDIATION_STATE.parent.mkdir(parents=True, exist_ok=True)
+            REMEDIATION_STATE.write_text(json.dumps(state, indent=2))
+        except Exception:
+            pass
+    return results
+
+
 # ── category collectors (each returns a list of findings; never raises) ──────────────────────────────
 
 def collect_data_quality() -> list[dict]:
@@ -190,7 +332,8 @@ def collect_data_quality() -> list[dict]:
             hp = STATE_DIR / "holdings.json"
             if hp.exists():
                 try:
-                    age_m = _parse_et_ts_minutes(json.loads(hp.read_text(encoding="utf-8")).get("last_repriced") or "")
+                    hp_data = json.loads(hp.read_text(encoding="utf-8"))
+                    age_m = _parse_et_ts_minutes(hp_data.get("last_repriced") or "")
                     if age_m is None:
                         out.append(_f("data_quality", "portfolio_repriced_unknown", "warning",
                                       "holdings.json missing last_repriced"))
@@ -199,6 +342,8 @@ def collect_data_quality() -> list[dict]:
                         out.append(_f("data_quality", "portfolio_repricer_stale", sev,
                                       f"Portfolio last_repriced stale {age_m:.0f}m (max {max_m:.0f}m)",
                                       age_minutes=age_m))
+                    out.extend(_check_portfolio_totals_drift(hp_data, pcfg))
+                    out.extend(_check_snaptrade_cash_stale(hp_data, pcfg))
                 except Exception as ex:
                     out.append(_f("data_quality", "portfolio_repriced_error", "warning",
                                   f"holdings last_repriced check error: {ex}"))
@@ -220,8 +365,10 @@ def collect_data_quality() -> list[dict]:
 def collect_execution_health() -> list[dict]:
     out = []
     try:
-        # recent pipeline failures
-        pf = _db("SELECT COUNT(*) AS c FROM pipeline_runs WHERE status='failed' AND started_at > now() - interval '24 hours'", fetch="one")
+        # recent pipeline failures (exclude zombie bookkeeping rows — not real failures)
+        pf = _db("""SELECT COUNT(*) AS c FROM pipeline_runs
+                    WHERE status='failed' AND started_at > now() - interval '24 hours'
+                      AND (summary IS NULL OR summary::text NOT LIKE '%%zombie run cleared%%')""", fetch="one")
         if pf and pf.get("c", 0) > 0:
             out.append(_f("execution_health", "pipeline_failures", "warning" if pf["c"] < 5 else "critical",
                           f"{pf['c']} pipeline run failures in 24h", count=pf["c"]))
@@ -235,7 +382,13 @@ def collect_execution_health() -> list[dict]:
             items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
         except Exception:
             items = []
-        crit = [i for i in items if i.get("severity") in ("CRITICAL", "critical") or i.get("critical")]
+        # Only count non-health_agent escalations (system_health_agent, etc.) — health_agent must not
+        # count its own enqueued findings or the execution_escalations meta-type (feedback loop).
+        _META = frozenset({"health:execution_health:execution_escalations"})
+        crit = [i for i in items
+                if (i.get("severity") in ("CRITICAL", "critical") or i.get("critical"))
+                and i.get("component") not in _META
+                and (i.get("source") or "") not in ("health_agent", "health_agent_meta")]
         if crit:
             out.append(_f("execution_health", "execution_escalations", "critical",
                           f"{len(crit)} critical execution escalations open",
@@ -605,6 +758,9 @@ WHY = {
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
     "finviz_quote_cache_stale": "Finviz quote cache is the authoritative portfolio price layer — stale cache = wrong Command Center P/L.",
     "portfolio_repricer_stale": "portfolio_repricer.py has not run — holdings prices lag Finviz/broker reality.",
+    "portfolio_totals_drift": "Header portfolio_value disagrees with sum of position market values — Command Center shows two different totals.",
+    "account_summary_drift": "An account_summary total is stale vs its holdings rows (common after SnapTrade sync without repricer).",
+    "snaptrade_cash_stale": "Fidelity SPAXX cash is stale (SnapTrade position units); should use balances.buying_power (~Fidelity core MM).",
     "market_quotes_stale": "Alpaca market_quotes backup feed is stale — Fidelity fallback prices may be wrong.",
 }
 
@@ -740,6 +896,10 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
     for f in findings_flat:
         if f.get("severity") not in ("warning", "critical"):
             continue
+        # Never enqueue the meta execution_escalations finding — it only describes queue depth and
+        # re-enqueueing it creates a critical-count feedback loop in Telegram alerts.
+        if f.get("type") == "execution_escalations":
+            continue
         comp = f"health:{f['category']}:{f['type']}"
         key = f"{comp}:{f['message'][:40]}"
         if key in seen:
@@ -825,6 +985,9 @@ def alert(policy: dict, snapshot: dict):
         lines.append(f"↘ {t['message']}")
     if snapshot.get("enqueued"):
         lines.append(f"→ {snapshot['enqueued']} finding(s) queued for auto-remediation")
+    fixed = [r for r in (snapshot.get("remediated") or []) if r.get("ok")]
+    if fixed:
+        lines.append(f"✅ Auto-fixed: {', '.join(r.get('type', '?') for r in fixed)}")
     try:
         from telegram_alert import send_telegram
         send_telegram("\n".join(lines))
@@ -850,13 +1013,17 @@ def main():
     if not args.no_enqueue:
         enqueued = enqueue_escalations(policy, findings_flat)
 
+    remediated = []
+    if not args.no_enqueue:
+        remediated = run_auto_remediation(policy, findings_flat)
+
     scheduler = os.getenv("HEALTH_AGENT_SCHEDULER", "cron")
     hist_cfg = policy.get("history") or {}
     snapshot = {
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "overall_score": overall, "status": status, "mode": mode,
         "category_scores": cat_scores, "findings": findings_flat,
-        "trends": trends, "enqueued": enqueued,
+        "trends": trends, "enqueued": enqueued, "remediated": remediated,
         "scheduler": scheduler,
         "history_retention_days": int(hist_cfg.get("retention_days", 90)),
         "summary": f"{status} {overall}/100 · {len([f for f in findings_flat if f['severity']=='critical'])} critical · "
@@ -871,7 +1038,8 @@ def main():
     else:
         print(f"Health: {status.upper()} {overall}/100  |  " +
               "  ".join(f"{c}={s}" for c, s in cat_scores.items()) +
-              f"  |  {len(findings_flat)} findings, {enqueued} enqueued, {len(trends)} trends")
+              f"  |  {len(findings_flat)} findings, {enqueued} enqueued, "
+              f"{len(remediated)} auto-remediated, {len(trends)} trends")
 
 
 if __name__ == "__main__":

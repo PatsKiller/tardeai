@@ -31,6 +31,10 @@ allowed_script_patterns:
   - "scripts/finviz_screener_runner.py"
   # Data gap resolution (Health Agent enqueues this; read+enrich, no order submission)
   - "scripts/data_gap_resolver.py"
+  # Portfolio pricing (Finviz repricer + quotes ingest — updates holdings.json only, no broker orders)
+  - "scripts/portfolio_repricer.py"
+  - "scripts/external_market_data_ingest.py"
+  - "scripts/snaptrade_sync.py"
 
 blocked_patterns:
   # Order/broker mutations

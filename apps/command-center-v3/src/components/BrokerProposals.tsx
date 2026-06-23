@@ -4,6 +4,7 @@ import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModa
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
 import BrokerIntelPanel from './BrokerIntelPanel'
 import ManualExecutionLog from './ManualExecutionLog'
+import ExecutionPathsStrip from './ExecutionPathsStrip'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa', RED = '#ef4444'
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
@@ -62,9 +63,14 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }, [])
 
   useEffect(() => {
-    for (const p of proposals) {
-      if (p.detail_pending) fetchProposalDetail(p.id)
-    }
+    if (!proposals.length) return
+    // Defer heavy detail enrichment so the fast list isn't blocked behind 60s+ intel/oversight work.
+    const t = setTimeout(() => {
+      for (const p of proposals) {
+        if (p.detail_pending) fetchProposalDetail(p.id)
+      }
+    }, 2000)
+    return () => clearTimeout(t)
   }, [proposals, fetchProposalDetail])
 
   const mergeProposal = (p: any) => ({ ...p, ...(detailMap[p.id] || {}) })
@@ -248,10 +254,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       </div>
     )}
 
+    <ExecutionPathsStrip variant="live" />
     <div style={{ fontSize: 10.5, color: MUTED }}>
-      <b style={{ color: TEXT0 }}>Broker Proposals</b> — Schwab supports automatic (2FA-gated) or manual execution.
-      <b style={{ color: PURPLE }}> Fidelity</b> is manual-only (no trading API).
-      {' '}Click <b style={{ color: AMBER }}>✎ Edit trade</b> to adjust shares, spread, investment, risk & profit before routing.
+      <b style={{ color: TEXT0 }}>Path B — Live execution queue</b> (promoted from Proposals).
+      <b style={{ color: BLUE }}> Schwab:</b> auto API submit when pilot armed (per-order 2FA) or execute manually at Schwab then log.
+      <b style={{ color: GREEN }}> Fidelity:</b> place in <b>Active Trader Pro (FA)</b> — no API — then <b style={{ color: AMBER }}>Executed manually</b>.
+      {' '}Use <b style={{ color: AMBER }}>✎ Edit trade</b> to adjust size/risk before routing.
     </div>
 
     <ManualExecutionLog mode="equity" onRefresh={refreshAll} />
@@ -286,6 +294,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>Broker proposals queue ({shown.length}{heldOnly ? ` of ${proposals.length}` : ''})</div>
         <span style={{ flex: 1 }} />
+        <button onClick={() => refetch?.()} disabled={loading} title="Reload broker queue"
+          style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', border: '1px solid var(--border)', background: 'transparent', color: MUTED }}>
+          {loading ? '…' : '↻ Refresh'}</button>
         <button onClick={() => setHeldOnly(h => !h)} title="show only proposals for symbols you currently hold"
           style={{ fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
             border: `1px solid ${heldOnly ? '#60a5fa' : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED }}>
@@ -296,8 +307,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             Reset all</button>
         )}
       </div>
-      {loading && proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>Loading broker queue…</div>}
-      {error && proposals.length === 0 && <div style={{ fontSize: 11, color: AMBER }}>Broker queue unavailable ({error}) — retrying…</div>}
+      {loading && proposals.length === 0 && !error && (
+        <div style={{ fontSize: 11, color: MUTED }}>
+          Loading broker queue…{stale ? ' (showing last good data when available)' : ''}
+        </div>
+      )}
+      {error && proposals.length === 0 && (
+        <div style={{ fontSize: 11, color: AMBER }}>
+          Broker queue unavailable ({error}) — retrying…{' '}
+          <span onClick={() => refetch?.()} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Refresh now</span>
+        </div>
+      )}
       {stale && proposals.length > 0 && <div style={{ fontSize: 10, color: AMBER, marginBottom: 8 }}>Showing cached queue — reconnecting…</div>}
       {!loading && !error && proposals.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals in the queue.</div>}
       {proposals.length > 0 && shown.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>}

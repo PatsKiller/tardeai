@@ -226,10 +226,18 @@ class FeatureLayer:
         ctx.scratch["regime_confidence"] = conf
         ctx.scratch["sentiment"] = round(sentiment, 3)
 
+        # Small-cap / Russell 2000 relative strength (IWM vs SPY) — rotation into small caps
+        rot = {}
+        try:
+            import market_rotation_signals as mrs
+            rot = mrs.detect_small_cap_rotation(news=news)
+        except Exception as e:
+            log.debug("small-cap rotation detect skipped: %s", e)
+
         res.data = {"regime": regime, "regime_confidence": conf, "sentiment": round(sentiment, 3),
                     "risk_on_hits": ro, "risk_off_hits": rn, "vix": vix,
                     "top_bucket": top_bucket, "top_bucket_pct": top_bucket_pct,
-                    "recent_win_rate": win_rate}
+                    "recent_win_rate": win_rate, "small_cap_rotation": rot}
         res.summary = (f"regime={regime} (conf {conf:.0%}) sentiment={sentiment:+.2f} "
                        f"vix={vix} top_bucket={top_bucket} {top_bucket_pct}%")
         remember(f"regime:{ctx.account}", "regime",
@@ -252,6 +260,23 @@ class FeatureLayer:
                      "size new correlated adds conservatively.",
                 confidence=0.8, severity="medium", source_lane="heuristic",
                 payload={"bucket": top_bucket, "pct": top_bucket_pct}))
+
+        if rot.get("signal") == "small_cap_outperform":
+            rs = rot.get("rs_20d") or rot.get("rs_5d") or rot.get("rs_1d")
+            conf_rot = min(0.9, 0.55 + float(rot.get("strength") or 0) * 0.35)
+            body = (
+                f"Russell 2000 / IWM is outperforming large caps (SPY). {rot.get('explain', '')} "
+                "Review small-cap swing setups, sector rotation, and watchlist adds — "
+                "only trade names with catalyst + edge."
+            )
+            res.inferences.append(Inference(
+                inference_type="sector_rotation", subject="IWM",
+                title=f"Small-cap rotation: IWM leading SPY ({rs:+.2f}% RS)" if rs is not None
+                      else "Small-cap rotation: IWM leading SPY",
+                body=body, confidence=conf_rot, severity="medium", source_lane="heuristic",
+                reasoning_trace=[rot.get("explain", "")],
+                payload=rot))
+            remember("rotation:small_cap", "sector_rotation", rot, salience=0.72)
         return res
 
     @staticmethod

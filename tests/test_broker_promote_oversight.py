@@ -109,6 +109,20 @@ class TestBrokerPromoteOversight(unittest.TestCase):
         ]
         self.assertEqual(bpo._next_action_from_stages(stages), "Queue agent reviews")
 
+    def test_intel_diligence_avoids_oversight_recursion(self):
+        """evaluate_intel_diligence must not re-enter evaluate_oversight via get_intel_packet."""
+        import broker_proposal_intel as bpi
+
+        with patch.object(bpi, "get_intel_packet") as mock_pkt:
+            mock_pkt.return_value = {
+                "ok": True,
+                "catalyst": {"text": "earnings", "verified": True, "critic_verdict": "CONFIRM"},
+                "analyst": {"quality": {"warnings": [], "coverage": "adequate"}},
+                "intel_readiness": 92.0,
+            }
+            bpo.evaluate_intel_diligence(1)
+        mock_pkt.assert_called_once_with(1, include_oversight=False)
+
 
 if __name__ == "__main__":
     unittest.main()

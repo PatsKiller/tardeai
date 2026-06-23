@@ -50,15 +50,28 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
     if not r:
         return {"ok": False, "error": "proposal not found"}
     symbol, broker, account, status, routing_state, entry, shares = r
-    broker = (broker or ALPACA).strip()
 
     def _audit(after, reason):
         if _tm:
             _tm.audit_decision("route", proposal_id=pid, actor=actor, channel="system",
                                after=after, reason=reason)
 
-    # ── Alpaca paper — the live path today (paper-only) ──
-    if broker == ALPACA:
+    from proposal_routing import resolve_dispatch_broker
+    broker, route_err = resolve_dispatch_broker(
+        {"intended_broker": broker, "target_account": account})
+    if not broker:
+        _audit({"routing_required": True}, route_err or "routing not set")
+        return {"ok": False, "routing_required": True, "error": route_err, "symbol": symbol}
+    broker = broker.strip()
+
+    # ── Paper (Alpaca) — default paper path when not Schwab/Fidelity ──
+    if broker == ALPACA or (not broker.startswith(SCHWAB_PREFIX) and not broker.startswith("fidelity")):
+        if broker != ALPACA:
+            try:
+                from broker_config import get_default_paper_account
+                broker = get_default_paper_account() or ALPACA
+            except Exception:
+                broker = ALPACA
         _set_routing_state(pid, "routing")
         try:
             from proposal_paper_submitter import submit_paper

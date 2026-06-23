@@ -220,8 +220,12 @@ def _symbol_card(symbol: str) -> dict:
     }
 
 
-def get_intel_packet(proposal_id: int) -> dict:
-    """Full broker decision context for a paper_trade_proposals row."""
+def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dict:
+    """Full broker decision context for a paper_trade_proposals row.
+
+    include_oversight=False breaks the evaluate_oversight→evaluate_intel_diligence cycle
+    when diligence only needs catalyst/analyst fields from the packet.
+    """
     pid = int(proposal_id)
     row = _q(
         """SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.catalyst, ptp.catalyst_verified,
@@ -331,11 +335,12 @@ def get_intel_packet(proposal_id: int) -> dict:
         strategy_purpose = None
 
     oversight = {}
-    try:
-        import broker_promote_oversight as bpo
-        oversight = bpo.evaluate_oversight(pid)
-    except Exception:
-        oversight = {}
+    if include_oversight:
+        try:
+            import broker_promote_oversight as bpo
+            oversight = bpo.evaluate_oversight(pid)
+        except Exception:
+            oversight = {}
 
     return {
         "ok": True,

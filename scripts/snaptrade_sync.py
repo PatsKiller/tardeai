@@ -184,7 +184,9 @@ def run(apply: bool = False) -> dict:
             continue  # account not opted into the sync
         try:
             raw = sr.holdings(user, aid)
-            positions = _overlay_live_prices(sr.normalize_positions(raw, key))
+            bal = sr.balances(user, aid)
+            positions = sr.reconcile_cash_positions(sr.normalize_positions(raw, key), bal, key)
+            positions = _overlay_live_prices(positions)
         except Exception as e:
             report.append(f"  {key} ({aid}): read error — {e}")
             continue
@@ -256,6 +258,15 @@ def run(apply: bool = False) -> dict:
     result = sps.protected_holdings_write(merged, source="snaptrade",
                                           account_key=",".join(sorted(synced.keys())), protect_basis=False)
     print(f"holdings write: {result.get('status')} (wrote={result.get('wrote')})")
+    if result.get("wrote"):
+        try:
+            import portfolio_repricer as _pr
+            _hp = json.loads(HOLDINGS_PATH.read_text())
+            _repriced = _pr.reprice_portfolio(_hp, PROJECT_ROOT / "data" / "portfolios" / "state")
+            HOLDINGS_PATH.write_text(json.dumps(_repriced, indent=2, default=str))
+            print("holdings repriced after SnapTrade merge (totals + Finviz overlay)")
+        except Exception as _e:
+            print(f"WARNING: post-sync repricer failed ({_e}) — run portfolio_repricer.py manually")
     return {"ok": bool(result.get("wrote")), "applied": True, "accounts": len(synced),
             "zeroed": zeroed, "write": result}
 

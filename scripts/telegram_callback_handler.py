@@ -123,17 +123,37 @@ def handle_callback_query(cb):
                 r = approval_service.confirm(iid, "telegram", code)
                 if r.get("ok"):
                     full = r.get("fully_approved")
-                    answer_callback(cb_id, "Telegram channel approved" +
-                                    (" — APPROVED" if full else " — another channel still required"))
+                    submit_line = ""
+                    if full:
+                        try:
+                            from brokers import intent_submit_router as _isr
+                            sub = _isr.submit_fully_approved(iid)
+                            if sub.get("stage") == "submit" and sub.get("ok"):
+                                oid = sub.get("broker_order_id") or (sub.get("result") or {}).get("broker_order_id")
+                                submit_line = f"\n✅ LIVE order submitted · #{oid or '—'} ({sub.get('status') or 'submitted'})"
+                            elif sub.get("stage") == "submit":
+                                submit_line = f"\n⛔ Submit failed: {(sub.get('error') or (sub.get('result') or {}).get('error') or 'unknown')[:160]}"
+                        except Exception as se:
+                            submit_line = f"\n⛔ Submit error: {str(se)[:120]}"
+                    summ = approval_service.intent_action_summary_for_id(iid)
+                    act = summ.get("action_label") or summ.get("action") or "order"
+                    answer_callback(cb_id, f"{act} approved" +
+                                    (" — submitting" if full else " — need web ticker"))
                     try:
                         _notice = approval_service.execution_notice(iid)
                     except Exception:
-                        _notice = "(Execution remains DISABLED this phase)"
+                        _notice = ""
+                    if full and submit_line.startswith("\n✅"):
+                        status_line = f"APPROVED — {act} submitting to Schwab"
+                    elif full:
+                        status_line = f"APPROVED — {act} ready to submit"
+                    else:
+                        tick = summ.get("symbol") or "ticker"
+                        status_line = f"Telegram OK — type {tick} in web to finish"
                     edit_message(chat_id, message_id,
-                                 f"✅ Telegram approval confirmed by {user_name} {now_short}\n"
-                                 f"intent {iid[:8]} · " +
-                                 ("APPROVED (telegram alone is enough)" if full else "waiting on another channel") +
-                                 f"\n{_notice}")
+                                 f"✅ {act} approved by {user_name} {now_short}\n"
+                                 f"intent {iid[:8]} · {status_line}"
+                                 + (f"\n{_notice}" if _notice else "") + submit_line)
                 else:
                     answer_callback(cb_id, f"Denied: {r.get('reason','')}"[:180], show_alert=True)
             else:

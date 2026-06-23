@@ -799,6 +799,29 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     except Exception as exc:
         _err("trade_plan_backfill", f"{exc}  — continuing without plan backfill")
 
+    # 18e2 Rotation autopilot — autonomous watchlist + signal sync when IWM leads SPY (non-fatal)
+    try:
+        from rotation_autopilot import run_autopilot_tick
+        _rot_result = run_autopilot_tick(
+            force_bridge=True, run_label=run_label,
+            trigger=f"orchestrator:{run_label}",
+        )
+        _bridge = _rot_result.get("bridge") or {}
+        if _rot_result.get("rotation", {}).get("signal") != "small_cap_outperform":
+            _skip("rotation_autopilot", "no IWM/SPY rotation signal")
+        elif _rot_result.get("bridge_ran"):
+            _wl = _bridge.get("watchlist_promoted", 0)
+            _qi = _bridge.get("qualified_intel_added", 0)
+            _ps = len(_bridge.get("proposal_symbols") or [])
+            _ins = (_bridge.get("proposal_sync") or {}).get("sync_inserted", 0)
+            _pc = int((_bridge.get("proposals") or {}).get("proposals_created") or 0)
+            _ok("rotation_autopilot",
+                f"{_wl} watchlist  {_qi} qualified  {_ps} proposal-tier  {_ins} signals  {_pc} proposals")
+        else:
+            _skip("rotation_autopilot", _rot_result.get("bridge_reason") or "throttled")
+    except Exception as exc:
+        _err("rotation_autopilot", f"{exc}  — continuing without rotation autopilot")
+
     # 18f Auto paper proposal generation (non-fatal)
     if not getattr(args, '_skip_auto_proposals', False) if 'args' in dir() else True:
         try:
