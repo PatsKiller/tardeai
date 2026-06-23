@@ -16,9 +16,12 @@ export function useConnectionHealth() {
   return { degraded: n > 0, failing: n }
 }
 
-export function useApi<T>(path: string, intervalMs?: number) {
+export type UseApiOptions = { enabled?: boolean }
+
+export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOptions) {
+  const enabled = options?.enabled !== false
   const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
   const [stale, setStale] = useState(false)   // showing last-good data after a failed refetch
   const [tick, setTick] = useState(0)
@@ -30,6 +33,10 @@ export function useApi<T>(path: string, intervalMs?: number) {
   const refetch = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     let retries = 0
     const clearFailing = () => { if (failingRef.current) { failingRef.current = false; _bumpFail(-1) } }
@@ -79,7 +86,7 @@ export function useApi<T>(path: string, intervalMs?: number) {
       clearTimeout(retryRef.current)
       clearFailing()   // don't leave a stuck failure registered when this hook unmounts / path changes
     }
-  }, [path, intervalMs, tick])
+  }, [path, intervalMs, tick, enabled])
 
   return { data, loading, error, stale, refetch }
 }
