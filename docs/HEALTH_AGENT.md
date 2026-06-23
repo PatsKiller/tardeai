@@ -24,7 +24,8 @@ This adds exactly those, reusing the existing escalation queue rather than dupli
 | Backend registry | `config/coder_backends.json` | Every coder wired (available or dormant), routing map |
 | API | `scripts/api_v2.py` | `/api/v2/health`, `/api/v2/health/history`, `/api/v2/health/coders` |
 | Dashboard | `apps/command-center-v3/src/pages/HealthHub.tsx` | Score hero, categories, findings, trends, coders, history |
-| Schedule | crontab + `config/systemd/tradeai-health-agent.{service,timer}` | Cron every 30 min; coder-dispatch advisory every 3h weekdays |
+| Schedule | `scripts/install_health_agent_cron.sh` + `config/systemd/tradeai-health-agent.{service,timer}` | Cron every 30 min (`health_agent_cron.log`); coder-dispatch advisory every 3h weekdays |
+| Execution integrity (cron liveness) | `scripts/system_health_agent.py` | Every 5 min weekdays — log freshness per registered cron, including portfolio repricer |
 
 ## Health score
 
@@ -33,7 +34,7 @@ weighted overall. Weights/penalties/thresholds live in `config/health_agent_poli
 
 | Category | Weight | Signals |
 |---|---|---|
-| Data Quality | 0.25 | holdings/risk/dividends/news/CIO/agent-job freshness + open data gaps |
+| Data Quality | 0.25 | holdings/risk/dividends/news/CIO/agent-job freshness + open data gaps + **portfolio Finviz price freshness** (market hours) |
 | Execution Health | 0.25 | pipeline failures, stuck agent jobs, critical execution escalations, orphaned stops |
 | Intelligence Quality | 0.20 | local LLM reachability, ensemble failures, stale research backlog |
 | Risk Protection | 0.20 | unprotected positions, stops in alert, recent P0/P1 SIEM |
@@ -113,10 +114,32 @@ Dashboard: Command Center → **Health** hub (Overview / Coders / History; toolt
 - Free-lane LLM only for routine health work (Ollama / OAuth proxies); no metered calls.
 - The verify gate must pass before any PR. Worktrees are isolated and auto-cleaned.
 
+## Portfolio price monitoring (2026-06-22)
+
+**Problem:** `holdings.json` file mtime stays fresh when SnapTrade sync runs, even if Finviz prices are
+hours stale. Proposal `proactive_quote_refresh` is a different pipeline — it does not protect Command
+Center portfolio cards.
+
+**Fix (two layers):**
+
+1. **`system_health_agent.py`** — registers cron liveness for:
+   - `portfolio_repricer_intraday` → `logs/portfolio_repricer_intraday.log` (`*/15 9-16` + `5 9` ET)
+   - `portfolio_repricer_postclose` → `logs/portfolio_repricer_postclose.log` (`10 16` ET)
+   - `market_quotes_intraday` → `logs/market_data.log`
+   - `snaptrade_sync` → positions/basis only (not prices)
+   - During market hours: checks `finviz_quote_cache._meta.last_fetched` and `holdings.last_repriced`
+
+2. **`health_agent.py`** — `portfolio_price_freshness` policy block flags stale cache/repriced timestamps
+   and enqueues `portfolio_repricer.py` / `external_market_data_ingest.py --quotes` via remediation_map.
+
+Install cron: `bash scripts/install_health_agent_cron.sh` (was comment-only in crontab before 2026-06-22).
+
 ## Extending
 
 - **New health check** → add a collector in `health_agent.py` (`collect_*`), return findings; the scorer
   and dashboard pick them up automatically.
+- **New cron job** → add a row to `MONITORED_COMPONENTS` in `system_health_agent.py` with `schedule`,
+  `log_file`, and `max_age_min`.
 - **New coder backend** → add an entry to `config/coder_backends.json` (`cli_agent` or `http_diff`) and,
   optionally, slot it into `routing`. No code change needed.
 - **New safe retry** → add the finding-type → command mapping in `health_agent_policy.json`

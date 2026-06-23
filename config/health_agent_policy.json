@@ -39,6 +39,12 @@
     "trade_pending_warn": 25,
     "watchlist_stale_warn": 15
   },
+  "portfolio_price_freshness": {
+    "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",
+    "enabled": true,
+    "max_age_minutes": 25,
+    "market_quotes_max_age_minutes": 25
+  },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts.",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
@@ -51,7 +57,10 @@
     "hermes_embed_failures": ".venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",
     "hermes_coordinator_stale": ".venv/bin/python scripts/hermes_coordinator.py",
     "options_zero_proposals": ".venv/bin/python scripts/run_options_monitor.py",
-    "options_proposals_stale": ".venv/bin/python scripts/run_options_monitor.py"
+    "options_proposals_stale": ".venv/bin/python scripts/run_options_monitor.py",
+    "finviz_quote_cache_stale": ".venv/bin/python scripts/portfolio_repricer.py",
+    "portfolio_repricer_stale": ".venv/bin/python scripts/portfolio_repricer.py",
+    "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
@@ -62,7 +71,8 @@
     "watch": [
       "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
       "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
-      "data_gap_resolver.log", "rag_indexer.log", "hermes_coordinator.log", "health_agent_cron.log", "coder_dispatch_cron.log"
+      "data_gap_resolver.log", "rag_indexer.log", "hermes_coordinator.log", "health_agent_cron.log", "coder_dispatch_cron.log",
+      "portfolio_repricer_intraday.log", "portfolio_repricer_postclose.log", "snaptrade_sync.log"
     ]
   }
 }

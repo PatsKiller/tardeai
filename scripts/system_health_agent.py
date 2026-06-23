@@ -43,6 +43,12 @@ MONITORED_COMPONENTS = [
      "max_age_min": 60, "max_runtime_sec": 300, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/auto_proposal_generator.py --today --apply",
      "downstream": "proposals, ATM execution"},
+    {"component": "rotation_autopilot", "display": "Rotation Autopilot (IWM/SPY trend switch)",
+     "schedule": "*/15 4-16 * * 1-5", "log_file": "rotation_autopilot.log",
+     "max_age_min": 45, "max_runtime_sec": 180, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/rotation_autopilot.py --tick --trigger health_retry",
+     "downstream": "watchlist, qualified_intelligence, strategy_signals, proposals",
+     "lock_file": "/tmp/tradeai_rotation_autopilot.lock"},
     {"component": "incubator_proposal_promoter", "display": "Incubator Promoter",
      "schedule": "0 7-17 * * 1-5", "log_file": "incubator_promoter.log",
      "max_age_min": 180, "max_runtime_sec": 300, "critical": True,
@@ -203,6 +209,30 @@ MONITORED_COMPONENTS = [
      "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
      "retry_cmd": "bash scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50",
      "downstream": "proposal price freshness"},
+
+    # ── Portfolio live prices (Finviz authoritative — NOT SnapTrade) ──
+    {"component": "portfolio_repricer_intraday", "display": "Portfolio Repricer (Finviz intraday)",
+     "schedule": ["5 9 * * 1-5", "*/15 9-16 * * 1-5"], "log_file": "portfolio_repricer_intraday.log",
+     "max_age_min": 25, "max_runtime_sec": 180, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
+     "downstream": "holdings.json prices, finviz_quote_cache, Command Center P/L",
+     "lock_file": "/tmp/portfolio_repricer.lock"},
+    {"component": "portfolio_repricer_postclose", "display": "Portfolio Repricer (EOD close)",
+     "schedule": "10 16 * * 1-5", "log_file": "portfolio_repricer_postclose.log",
+     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
+     "downstream": "official close capture, holdings reconcile"},
+    {"component": "market_quotes_intraday", "display": "Alpaca Market Quotes (intraday backup)",
+     "schedule": "*/15 9-16 * * 1-5", "log_file": "market_data.log",
+     "max_age_min": 25, "max_runtime_sec": 120, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+     "downstream": "market_quotes DB — Fidelity price fallback behind Finviz",
+     "lock_file": "/tmp/mkt_quotes_intraday.lock"},
+    {"component": "snaptrade_sync", "display": "SnapTrade Holdings Sync (positions/basis only)",
+     "schedule": ["50 9 * * 1-5", "0 13 * * 1-5", "35 17 * * 1-5"], "log_file": "snaptrade_sync.log",
+     "max_age_min": 480, "max_runtime_sec": 120, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/snaptrade_sync.py --apply",
+     "downstream": "Fidelity shares/cost_basis — never authoritative for live quotes"},
 
     # ── Recurring Backtesting (v4.0) ──
     {"component": "enterprise_backtester", "display": "Enterprise Backtester",
@@ -605,6 +635,77 @@ def _attempt_retry(comp, conn):
         _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200],
                    action=cmd[:100], success=False)
         return False
+
+
+def _is_portfolio_market_hours(now_et) -> bool:
+    """Weekday 9:30 AM – 4:00 PM ET — when intraday Finviz repricing must be live."""
+    if now_et.weekday() >= 5:
+        return False
+    mins = now_et.hour * 60 + now_et.minute
+    return 570 <= mins <= 960
+
+
+def _parse_et_timestamp(ts_str: str):
+    """Parse 'YYYY-MM-DD HH:MM:SS ET' (or ISO) to aware UTC datetime."""
+    if not ts_str:
+        return None
+    s = str(ts_str).strip().replace(" ET", "").replace("ET", "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            naive = datetime.strptime(s[:19], fmt)
+            import pytz as _ptz_et
+            return _ptz_et.timezone("US/Eastern").localize(naive).astimezone(timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list[str]:
+    """Finviz cache + holdings repriced timestamps — authoritative portfolio quote layer."""
+    if not _is_portfolio_market_hours(now_et):
+        return []
+    alerts = []
+    state_dir = PROJECT_ROOT / "data" / "portfolios" / "state"
+    now_utc = datetime.now(timezone.utc)
+
+    # finviz_quote_cache.json _meta.last_fetched
+    cache_path = state_dir / "finviz_quote_cache.json"
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            meta = cache.get("_meta") or {}
+            lf = _parse_et_timestamp(meta.get("last_fetched") or meta.get("last_updated") or "")
+            if lf:
+                age = (now_utc - lf).total_seconds() / 60.0
+                if age > max_age_min:
+                    alerts.append(
+                        f"🚨 Finviz quote cache stale {age:.0f}m (>{max_age_min:.0f}m) — "
+                        f"portfolio cards may show wrong P/L")
+            else:
+                alerts.append("⚠️ Finviz quote cache missing last_fetched timestamp")
+        except Exception as e:
+            alerts.append(f"⚠️ Finviz quote cache unreadable: {str(e)[:80]}")
+    else:
+        alerts.append("🚨 finviz_quote_cache.json missing")
+
+    # holdings.json last_repriced (not file mtime — SnapTrade sync can mask staleness)
+    holdings_path = state_dir / "holdings.json"
+    if holdings_path.exists():
+        try:
+            hp = json.loads(holdings_path.read_text(encoding="utf-8"))
+            lr = _parse_et_timestamp(hp.get("last_repriced") or "")
+            if lr:
+                age = (now_utc - lr).total_seconds() / 60.0
+                if age > max_age_min:
+                    alerts.append(
+                        f"🚨 Portfolio last_repriced stale {age:.0f}m (>{max_age_min:.0f}m) — "
+                        f"run portfolio_repricer.py")
+            else:
+                alerts.append("⚠️ holdings.json missing last_repriced")
+        except Exception as e:
+            alerts.append(f"⚠️ holdings.json repriced check failed: {str(e)[:80]}")
+
+    return alerts
 
 
 def _escalate(comp, check_result, conn):
@@ -1159,6 +1260,9 @@ def run_health_check(dry_run=True, verbose=False):
         _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
         if _stale_trade_cnt > 0:
             portfolio_alerts.append(f"📊 {_stale_trade_cnt} paper trade(s) not synced in 4h+")
+
+        # 6. Portfolio live prices (Finviz repricer — not SnapTrade, not holdings file mtime)
+        portfolio_alerts.extend(_portfolio_price_freshness_alerts(_now_et))
 
         if portfolio_alerts:
             report["portfolio_alerts"] = portfolio_alerts

@@ -132,7 +132,10 @@ Crontab env: `PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, `P
 | */3 | M-F 9-16 | `unified_stop_supervisor.py --apply` | Stop monitor — trailing stops, time stops, news stops | paper_trades exit | `/tmp/unified_stop_supervisor.lock` |
 | */5 | M-F 9-16 | `paper_execution_sweep.py` | Execution sweep — catch unfilled/partial orders | paper_trades | `/tmp/paper_sweep.lock` |
 | */5 | M-F 9-16 | `quote_refresh (pending)` | Refresh pending proposal quotes | market_quotes | lock |
-| */5 | M-F 9-20 | `system_health_agent.py --apply` | System health agent — 18 components, auto-retry, escalation | system_health_checks, system_health_events | — |
+| */5 | M-F 9-20 | `system_health_agent.py --apply` | System health agent — cron liveness + portfolio Finviz freshness, auto-retry | system_health_checks, system_health_events | — |
+| */15 | M-F 9-16 | `portfolio_repricer.py` | Finviz live repricing → holdings + finviz_quote_cache (authoritative prices) | holdings.json, finviz_quote_cache | `/tmp/portfolio_repricer.lock` |
+| */15 | M-F 9-16 | `external_market_data_ingest.py --quotes` | Alpaca intraday quotes (Fidelity fallback behind Finviz) | market_quotes | `/tmp/mkt_quotes_intraday.lock` |
+| */30 | 7 days | `health_agent.py` | Centralized health score + portfolio price staleness + escalation queue | health_agent_snapshots, health_agent_cron.log | — |
 | */5 | 24/7 | `telegram_poller_watchdog.sh` | Watchdog for Telegram poller daemon | restart if dead | — |
 | */5 | 24/7 | `cleanup_stale_locks.sh` | Clean up stale lock files | /tmp/tradeai_*.lock | — |
 | */10 | M-F 10-16 | `data_gap_resolver.py` | Resolve data gaps (missing enrichment, quotes, etc.) | data_gap_resolutions | — |
@@ -282,7 +285,9 @@ Several cron jobs are wrapped in `market_day_gate.sh` which skips execution on m
 
 All logs write to `$PROJ/logs/`. Key logs to check:
 - `logs/atm.log` — ATM auto-approver decisions
-- `logs/system_health_agent.log` — health monitoring
+- `logs/system_health_agent.log` — execution-integrity / cron liveness monitoring
+- `logs/health_agent_cron.log` — centralized health score + findings
+- `logs/portfolio_repricer_intraday.log` — Finviz intraday portfolio repricing
 - `logs/claude_escalation.log` — escalation handler
 - `logs/auto_proposal.log` — proposal generation
 - `logs/paper_execution.log` — execution sweep

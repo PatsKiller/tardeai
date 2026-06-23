@@ -71,28 +71,43 @@ def _load_env(root: Path) -> None:
 
 
 # ── Get all symbols to quote ───────────────────────────────────────────────────
+def _tradeable_equity_symbol(h: dict) -> Optional[str]:
+    """Standard US exchange ticker (Schwab + Fidelity IRA stocks/ETFs). Skips cash, loans, plan codes."""
+    sym = (h.get("symbol") or "").upper().strip()
+    if not sym or sym in _CASH_SYMBOLS or h.get("is_loan") or h.get("is_cash"):
+        return None
+    core = sym.split(".")[0]
+    if not (core.isalpha() and 1 <= len(core) <= 5):
+        return None   # 401k/plan codes (OG51, SP500-D) — no Finviz series
+    return sym
+
+
+# Intraday Finviz refresh cadence (portfolio_live_monitor + cron share this target).
+FINVIZ_REFRESH_INTERVAL_MIN = 15
+
+
 def _get_all_symbols(portfolio: Dict, root: Path) -> Dict[str, List[str]]:
     """
     Returns dict of symbol lists by source:
-      finviz: portfolio Schwab symbols + watchlist symbols
-      yahoo:  Fidelity fund symbols (via fidelity_ticker_map)
+      finviz: ALL tradeable portfolio equities (Schwab + fidelity_rollover_ira + watchlist)
+      fidelity: proprietary mutual-fund / plan codes (Yahoo NAV after 8 PM)
     """
     holdings = portfolio.get("holdings", [])
 
-    # Portfolio Schwab symbols (skip Fidelity proprietary, cash, loans)
-    schwab_syms = list(set(
-        h["symbol"] for h in holdings
-        if not h.get("is_loan") and not h.get("is_cash")
-        and h.get("symbol") not in _CASH_SYMBOLS
-        and h.get("broker") != "fidelity"
-        and h.get("symbol") and len(h["symbol"]) <= 6
-    ))
+    portfolio_syms = sorted({s for h in holdings if (s := _tradeable_equity_symbol(h))})
+    schwab_syms = sorted({s for h in holdings if (s := _tradeable_equity_symbol(h))
+                          and str(h.get("account") or "").startswith("schwab")})
+    fidelity_ira_syms = sorted({s for h in holdings if (s := _tradeable_equity_symbol(h))
+                                and str(h.get("account") or "").startswith("fidelity")
+                                and str(h.get("account") or "") != "fidelity_401k"})
 
-    # Fidelity proprietary symbols
-    fidelity_syms = [
-        h["symbol"] for h in holdings
-        if h.get("broker") == "fidelity" and not h.get("is_loan")
-    ]
+    # Fidelity proprietary / plan symbols (not on Finviz)
+    fidelity_syms = sorted({
+        (h.get("symbol") or "").upper() for h in holdings
+        if (h.get("broker") == "fidelity" or str(h.get("account") or "").startswith("fidelity"))
+        and not h.get("is_loan") and not _tradeable_equity_symbol(h)
+        and (h.get("symbol") or "")
+    })
 
     # Watchlist symbols from watchlist.json
     watchlist_syms = []
@@ -107,14 +122,16 @@ def _get_all_symbols(portfolio: Dict, root: Path) -> Dict[str, List[str]]:
         except Exception:
             pass
 
-    # All Finviz symbols = Schwab portfolio + watchlist (deduplicated)
-    finviz_syms = sorted(set(schwab_syms + watchlist_syms))
+    # All Finviz symbols = full portfolio tradeables + watchlist (deduplicated)
+    finviz_syms = sorted(set(portfolio_syms + watchlist_syms))
 
     return {
         "finviz": finviz_syms,
         "fidelity": fidelity_syms,
         "watchlist": watchlist_syms,
         "schwab": schwab_syms,
+        "fidelity_ira": fidelity_ira_syms,
+        "portfolio": portfolio_syms,
     }
 
 
@@ -267,25 +284,33 @@ def _update_quote_cache(
                 changed[fld] = new_data[fld]
 
         if changed or not old:
-            # Merge: keep old fields, overlay changed fields
             merged = dict(old)
             merged.update(changed)
             merged["symbol"]       = sym
             merged["source"]       = new_data.get("source", "finviz_elite")
             merged["last_updated"] = now_str
+            merged["last_fetched"] = now_str
+            existing[sym] = merged
+            updated_count += 1
+        else:
+            # Price within delta — still stamp fetch time so staleness checks stay honest
+            merged = dict(old)
+            merged["last_fetched"] = now_str
             existing[sym] = merged
             updated_count += 1
 
     # Update meta
     existing["_meta"] = {
         "last_updated":   now_str,
+        "last_fetched":   now_str,
         "symbols_cached": len([k for k in existing if k != "_meta"]),
         "source":         "finviz_elite_v152_v141",
+        "refresh_interval_minutes": FINVIZ_REFRESH_INTERVAL_MIN,
         "fields":         ["price", "change_pct", "prev_close", "volume", "analyst",
                            "target", "perf_week", "perf_month", "perf_quarter",
                            "perf_halfyr", "perf_ytd", "perf_year",
                            "volatility_w", "volatility_m", "rvol"],
-        "update_policy":  "delta — only changed fields overwritten",
+        "update_policy":  "delta fields + always refresh last_fetched timestamp",
     }
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,8 +334,9 @@ def _apply_to_holdings(
             continue
         shares = float(h.get("shares") or 0)
         broker = h.get("broker", "")
+        acct = str(h.get("account") or "")
 
-        if broker == "fidelity":
+        if broker == "fidelity" and sym not in live_prices:
             if sym in fidelity_prices and shares > 0:
                 new_price = fidelity_prices[sym]
                 old_price = float(h.get("price") or new_price)
@@ -323,26 +349,29 @@ def _apply_to_holdings(
                 h["day_change"]     = round((new_price - old_price) * shares, 2)
                 h["day_change_pct"] = round(((new_price - old_price) / old_price * 100) if old_price else 0, 4)
                 updated += 1
-        else:
-            if sym in live_prices and shares > 0:
-                p          = live_prices[sym]
-                new_price  = p["price"]
-                prev_close = p["prev_close"]
-                chg_pct    = p["change_pct"]
-                old_price  = float(h.get("price") or new_price)
-                # Sanity: reject price jumps > 50% in a single reprice
-                if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
-                    print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
-                    continue
-                h["price"]          = round(new_price, 4)
-                h["market_value"]   = round(new_price * shares, 2)
-                h["day_change"]     = round((new_price - prev_close) * shares, 2)
-                h["day_change_pct"] = round(chg_pct, 4)
-                cost = h.get("cost_basis") or 0
-                if cost:
-                    h["gain_loss"]     = round(h["market_value"] - cost, 2)
-                    h["gain_loss_pct"] = round(h["gain_loss"] / cost * 100, 4)
-                updated += 1
+        elif sym in live_prices and shares > 0:
+            p          = live_prices[sym]
+            new_price  = p["price"]
+            prev_close = p["prev_close"]
+            chg_pct    = p["change_pct"]
+            old_price  = float(h.get("price") or h.get("current_price") or new_price)
+            if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
+                print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
+                continue
+            h["price"]          = round(new_price, 4)
+            h["current_price"]  = round(new_price, 4)  # always keep in sync — guard must not split these
+            h["market_value"]   = round(new_price * shares, 2)
+            h["day_change"]     = round((new_price - prev_close) * shares, 2)
+            h["day_change_pct"] = round(chg_pct, 4)
+            h["price_source"]   = "finviz"
+            cost = h.get("cost_basis") or 0
+            if not cost and h.get("avg_cost"):
+                cost = float(h["avg_cost"]) * shares
+                h["cost_basis"] = round(cost, 2)
+            if cost:
+                h["gain_loss"]     = round(h["market_value"] - float(cost), 2)
+                h["gain_loss_pct"] = round(h["gain_loss"] / float(cost) * 100, 4) if float(cost) else None
+            updated += 1
     return updated
 
 
@@ -352,7 +381,8 @@ def _recalc_totals(portfolio: Dict) -> None:
     holdings = portfolio.get("holdings", [])
     account_summaries = portfolio.get("account_summaries", {})
 
-    def _choose_anchor(ah):
+    def _choose_fund_anchor(ah):
+        """401k proprietary fund codes — residual lands on largest plan holding."""
         candidates = [h for h in ah if not h.get("is_loan") and not h.get("is_cash") and h.get("symbol") not in _CASH_SYMBOLS]
         if not candidates:
             return None
@@ -364,27 +394,69 @@ def _recalc_totals(portfolio: Dict) -> None:
             return max(proprietary, key=lambda x: x.get("market_value", 0) or 0)
         return max(candidates, key=lambda x: x.get("market_value", 0) or 0)
 
+    def _choose_cash_anchor(ah):
+        """Cash / money-market — safe sink for brokerage total drift (never corrupts live quotes)."""
+        cash = [h for h in ah if h.get("is_cash") or str(h.get("symbol") or "").upper() in _CASH_SYMBOLS]
+        return max(cash, key=lambda x: x.get("market_value", 0) or 0) if cash else None
+
+    def _reported_total_stale(acct: dict, now: datetime) -> bool:
+        as_of = str(acct.get("reported_total_as_of") or acct.get("as_of") or "")
+        if not as_of:
+            return False
+        try:
+            ref = datetime.strptime(as_of[:10], "%Y-%m-%d")
+            return (now.date() - ref.date()).days > 2
+        except ValueError:
+            return False
+
+    now = _et_now()
+
     for acct_key, acct in account_summaries.items():
         ah = [h for h in holdings if h.get("account") == acct_key and not h.get("is_loan")]
         derived_total = round(sum(h.get("market_value") or 0 for h in ah), 2)
         reported_total = float(acct.get("reported_total_value") or 0)
         source = str(acct.get("source", "")).lower()
         acct_total = derived_total
+        is_fidelity = str(acct_key).startswith("fidelity") or "fidelity" in source
+        is_401k = str(acct_key) == "fidelity_401k"
 
-        if reported_total > 0 and (str(acct_key).startswith("fidelity") or "fidelity" in source):
+        if reported_total > 0 and is_fidelity:
             drift = round(reported_total - derived_total, 2)
             if abs(drift) >= 0.01:
-                anchor = _choose_anchor(ah)
-                if anchor:
-                    before = round(anchor.get("market_value", 0) or 0, 2)
-                    anchor["market_value"] = round(before + drift, 2)
-                    shares = float(anchor.get("shares") or 0)
-                    if shares > 0 and not anchor.get("is_cash"):
-                        anchor["price"] = round(anchor["market_value"] / shares, 6)
-                    acct_total = reported_total
-                    print(f"  [repricer][guard] {acct_key}: derived ${derived_total:,.2f} vs reported ${reported_total:,.2f} → residual ${drift:+,.2f} applied to {anchor.get('symbol')}")
+                if _reported_total_stale(acct, now) and not is_401k:
+                    acct_total = derived_total
+                    acct["reported_total_stale"] = True
+                    print(f"  [repricer][guard] {acct_key}: reported ${reported_total:,.2f} stale "
+                          f"(as_of {acct.get('reported_total_as_of') or acct.get('as_of')}) — using derived ${derived_total:,.2f}")
                 else:
-                    print(f"  [repricer][guard] WARNING {acct_key}: no anchor found for drift ${drift:+,.2f}")
+                    anchor = _choose_cash_anchor(ah) if not is_401k else _choose_fund_anchor(ah)
+                    if anchor and (anchor.get("is_cash") or str(anchor.get("symbol") or "").upper() in _CASH_SYMBOLS):
+                        before = round(anchor.get("market_value", 0) or 0, 2)
+                        after = round(before + drift, 2)
+                        if after >= 0:
+                            anchor["market_value"] = after
+                            anchor["shares"] = after
+                            anchor["price"] = 1.0
+                            anchor["current_price"] = 1.0
+                            acct_total = reported_total
+                            print(f"  [repricer][guard] {acct_key}: derived ${derived_total:,.2f} vs reported "
+                                  f"${reported_total:,.2f} → residual ${drift:+,.2f} applied to cash {anchor.get('symbol')}")
+                        else:
+                            acct_total = derived_total
+                            print(f"  [repricer][guard] {acct_key}: cash residual ${drift:+,.2f} would go negative — "
+                                  f"using derived ${derived_total:,.2f}")
+                    elif anchor and is_401k:
+                        before = round(anchor.get("market_value", 0) or 0, 2)
+                        anchor["market_value"] = round(before + drift, 2)
+                        shares = float(anchor.get("shares") or 0)
+                        if shares > 0:
+                            anchor["price"] = round(anchor["market_value"] / shares, 6)
+                        acct_total = reported_total
+                        print(f"  [repricer][guard] {acct_key}: residual ${drift:+,.2f} applied to fund {anchor.get('symbol')}")
+                    else:
+                        acct_total = derived_total
+                        print(f"  [repricer][guard] {acct_key}: no cash anchor for drift ${drift:+,.2f} — "
+                              f"using derived ${derived_total:,.2f}")
             else:
                 acct_total = reported_total
 
@@ -471,10 +543,12 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     live_prices: Dict[str, Dict] = {}
     if finviz_syms:
         live_prices = _fetch_finviz(finviz_syms, root)
-        priced = len([s for s in sym_groups["schwab"] if s in live_prices])
+        priced_schwab = len([s for s in sym_groups["schwab"] if s in live_prices])
+        priced_fid = len([s for s in sym_groups.get("fidelity_ira", []) if s in live_prices])
         print(f"  [repricer] Finviz: {len(live_prices)}/{len(finviz_syms)} symbols priced "
-              f"({priced}/{len(sym_groups['schwab'])} portfolio, "
-              f"{len([s for s in sym_groups['watchlist'] if s in live_prices])}/{len(sym_groups['watchlist'])} watchlist)")
+              f"(schwab {priced_schwab}/{len(sym_groups['schwab'])}, "
+              f"fidelity_ira {priced_fid}/{len(sym_groups.get('fidelity_ira', []))}, "
+              f"watchlist {len([s for s in sym_groups['watchlist'] if s in live_prices])}/{len(sym_groups['watchlist'])})")
 
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
     cache_path = state_dir / "finviz_quote_cache.json"
