@@ -45,14 +45,22 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props
         </div>
         {live != null && (
           <div style={{ fontSize: 10, fontFamily: 'monospace', color: TEXT0 }}>
-            Live <b style={{ color }}>${live.toFixed(2)}</b>
-            {tv.drift_pct != null && (
+            {tv.price_stale ? 'Last' : 'Live'} <b style={{ color: tv.price_stale ? MUTED : color }}>${live.toFixed(2)}</b>
+            {tv.price_stale && (
+              <span style={{ color: '#f59e0b', marginLeft: 6, fontWeight: 700 }}>
+                stale{tv.price_age_min != null ? ` ${tv.price_age_min}m` : ''}
+              </span>
+            )}
+            {!tv.price_stale && tv.drift_pct != null && (
               <span style={{ color: Math.abs(tv.drift_pct) > 3 ? '#f59e0b' : MUTED, marginLeft: 6 }}>
                 {tv.drift_pct >= 0 ? '+' : ''}{tv.drift_pct}%
               </span>
             )}
             {tv.current_rr != null && (
               <span style={{ color: MUTED, marginLeft: 6 }}>R:R {tv.current_rr}:1</span>
+            )}
+            {tv.price_stale && (
+              <span style={{ color: MUTED, marginLeft: 6 }}>R:R — refresh</span>
             )}
           </div>
         )}

@@ -689,7 +689,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
         {(listFilters.rrPreset === 'live_2' || listFilters.rrPreset === 'live_15' || listFilters.rrPreset === 'best') && (
           <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>
-            Live R:R uses stored prices — ↻ Refresh all prices on a page if counts look stale.
+            Live R:R excludes prices older than 20m — ↻ Refresh all prices first; stale cards show gray “stale_price”.
           </div>
         )}
         {batchCloudMsg && (

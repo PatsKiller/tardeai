@@ -5,7 +5,69 @@ the long thesis remains valid (entry zone + minimum R:R).
 """
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
+
 MIN_RR_DEFAULT = 2.0
+BROKER_PRICE_MAX_AGE_MIN = int(os.getenv("BROKER_PRICE_MAX_AGE_MIN", "20"))
+
+
+def _parse_ts(val) -> datetime | None:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s[:26])
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def assess_price_freshness(row: dict, *, live_quote: bool = False) -> dict:
+    """True when stored DB current_price is fresh enough for live R:R / zone math."""
+    max_age = BROKER_PRICE_MAX_AGE_MIN
+    if live_quote or row.get("refreshed_at") or row.get("quote_provider"):
+        as_of = row.get("refreshed_at") or row.get("updated_at")
+        return {
+            "price_stale": False,
+            "price_age_min": 0.0,
+            "price_as_of": str(as_of or "")[:19] or None,
+            "price_source": str(row.get("quote_provider") or "live_quote"),
+            "max_age_min": max_age,
+        }
+    px = row.get("current_price")
+    if px is None:
+        return {
+            "price_stale": True,
+            "price_age_min": None,
+            "price_as_of": None,
+            "price_source": "missing",
+            "max_age_min": max_age,
+        }
+    ts = _parse_ts(row.get("updated_at"))
+    if not ts:
+        return {
+            "price_stale": True,
+            "price_age_min": None,
+            "price_as_of": None,
+            "price_source": "db",
+            "max_age_min": max_age,
+        }
+    age_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60.0
+    stale = age_min > max_age
+    return {
+        "price_stale": stale,
+        "price_age_min": round(age_min, 1),
+        "price_as_of": ts.isoformat()[:19],
+        "price_source": "db",
+        "max_age_min": max_age,
+    }
 
 
 def _rr_at_price(price: float, stop: float, target: float) -> float | None:
@@ -149,17 +211,54 @@ def attach_thesis_validity(row: dict, quote: dict | None = None) -> dict:
     entry = float(row.get("proposed_entry") or 0)
     stop = float(row.get("proposed_stop") or 0)
     target = float(row.get("proposed_target1") or 0)
+    # Only explicit refresh (refresh-prices / live Schwab) bypasses DB age check.
+    live_quote = bool(row.get("refreshed_at") or row.get("quote_provider"))
     live = row.get("quote_last") or row.get("current_price")
     if quote:
         live = quote.get("last") or quote.get("last_price") or live
+    fresh = assess_price_freshness(row, live_quote=live_quote)
+    row["price_freshness"] = fresh
+    row["price_stale"] = bool(fresh.get("price_stale"))
+
+    use_live = float(live) if live is not None and not fresh.get("price_stale") else None
     tv = compute_thesis_validity(
         entry, stop, target,
-        float(live) if live is not None else None,
+        use_live,
         strategy_id=str(row.get("strategy_id") or ""),
     )
+    if fresh.get("price_stale") and live is not None:
+        try:
+            stale_px = float(live)
+        except Exception:
+            stale_px = None
+        if stale_px is not None:
+            tv["current_price"] = stale_px
+            tv["stale_display_price"] = stale_px
+        tv["current_rr"] = None
+        tv["drift_pct"] = None
+        tv["zone_status"] = "stale_price"
+        tv["zone_color"] = "gray"
+        tv["actionable"] = False
+        age = fresh.get("price_age_min")
+        age_txt = f"{age:.0f}m" if age is not None else "unknown age"
+        tv["reasons"] = [
+            f"Stored price {age_txt} old (max {fresh.get('max_age_min')}m) — refresh for live R:R",
+            *(tv.get("reasons") or []),
+        ]
+        tv["price_stale"] = True
+        tv["price_age_min"] = fresh.get("price_age_min")
+        tv["price_as_of"] = fresh.get("price_as_of")
+        tv["price_source"] = fresh.get("price_source")
+        row["live_rr"] = None
+    else:
+        tv["price_stale"] = False
+        tv["price_age_min"] = fresh.get("price_age_min")
+        tv["price_as_of"] = fresh.get("price_as_of")
+        tv["price_source"] = fresh.get("price_source")
+        if tv.get("current_rr") is not None:
+            row["live_rr"] = tv["current_rr"]
+
     row["thesis_validity"] = tv
     if tv.get("drift_pct") is not None:
         row["price_drift_pct"] = tv["drift_pct"]
-    if tv.get("current_rr") is not None:
-        row["live_rr"] = tv["current_rr"]
     return row
