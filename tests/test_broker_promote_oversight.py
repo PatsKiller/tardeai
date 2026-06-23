@@ -134,6 +134,26 @@ class TestBrokerPromoteOversight(unittest.TestCase):
              patch.object(bpo, "_fetch_cached_cloud_review", return_value={"status": "agree"}):
             self.assertFalse(bpo.needs_cloud_oversight(282))
 
+    def test_needs_cloud_when_watchlist_thesis_fallback(self):
+        """Watchlist bridge rows lack paper_proposal_analysis but have price-plan thesis."""
+        with patch.object(bpo, "AUTO_CLOUD_OVERSIGHT", True), \
+             patch.object(bpo, "_fetch_cached_cloud_review", return_value=None), \
+             patch.object(bpo, "_is_cloud_inflight", return_value=False), \
+             patch.object(bpo, "_lane_availability", return_value={"grok": True, "chatgpt": True}), \
+             patch.object(bpo, "_fetch_local_llm", return_value={
+                 "status": "missing",
+                 "thesis": "Watchlist buy. Plan: entry $16.50, stop $14.50, target $20.50",
+             }):
+            self.assertTrue(bpo.needs_cloud_oversight(99))
+
+    def test_skips_cloud_when_queued(self):
+        with patch.object(bpo, "AUTO_CLOUD_OVERSIGHT", True), \
+             patch.object(bpo, "_fetch_cached_cloud_review", return_value=None), \
+             patch.object(bpo, "_is_cloud_inflight", return_value=False), \
+             patch.object(bpo, "_lane_availability", return_value={"grok": True, "chatgpt": True}), \
+             patch.object(bpo, "_fetch_local_llm", return_value={"status": "queued", "thesis": "thesis text"}):
+            self.assertFalse(bpo.needs_cloud_oversight(99))
+
     def test_intel_diligence_avoids_oversight_recursion(self):
         """evaluate_intel_diligence must not re-enter evaluate_oversight via get_intel_packet."""
         import broker_proposal_intel as bpi
