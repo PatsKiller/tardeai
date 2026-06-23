@@ -451,6 +451,257 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
     }
 
 
+def _stage(status: str, detail: str | None = None, action: str | None = None) -> dict:
+    return {"status": status, "detail": detail, "action": action}
+
+
+def _proposal_intel_row(proposal_id: int) -> dict:
+    return _q(
+        """SELECT ptp.intel_readiness, ptp.local_llm_review_status, ptp.llm_review_status,
+                  ptp.catalyst_verified, ptp.packet_last_enriched_at,
+                  scan.critic_verdict, scan.catalyst_verified AS scan_catalyst_verified
+           FROM paper_trade_proposals ptp
+           LEFT JOIN LATERAL (
+               SELECT critic_verdict, catalyst_verified
+               FROM trade_ai_scans WHERE symbol = ptp.symbol ORDER BY scanned_at DESC LIMIT 1
+           ) scan ON true
+           WHERE ptp.id=%s""",
+        (proposal_id,), one=True,
+    ) or {}
+
+
+def build_promote_diligence_stages(
+    proposal_id: int,
+    *,
+    snap: dict | None = None,
+    intel_row: dict | None = None,
+    intel_dd: dict | None = None,
+    oversight: dict | None = None,
+) -> list[dict]:
+    """Six-step broker promote maturity checklist."""
+    snap = snap or get_oversight_snapshot(proposal_id)
+    intel_row = intel_row or _proposal_intel_row(proposal_id)
+    if intel_dd is None:
+        intel_dd = evaluate_intel_diligence(proposal_id)
+    if oversight is None:
+        oversight = evaluate_oversight(proposal_id)
+
+    ir = intel_row.get("intel_readiness")
+    ir_f = float(ir) if ir is not None else None
+    critic = str(intel_row.get("critic_verdict") or "").upper()
+    pending = snap.get("agents", {}).get("pending") or []
+    reviews = snap.get("agents", {}).get("reviews") or []
+    local = snap.get("local_llm") or {}
+    local_st = local.get("status") or "missing"
+    cloud = snap.get("cloud_review") or {}
+    cloud_st = str(cloud.get("status") or "not_run").lower()
+
+    # 1 Enrich
+    if ir_f is None:
+        enrich = _stage("PENDING", "Not enriched", "Run Enrich / refresh proposal data")
+    elif ir_f < INTEL_READINESS_BLOCK:
+        enrich = _stage("BLOCK", f"Intel {ir_f:.0f}%", "Run proposal enrichment")
+    elif ir_f < INTEL_READINESS_WARN:
+        enrich = _stage("WARN", f"Intel {ir_f:.0f}%", "Re-enrich before live promote")
+    else:
+        enrich = _stage("PASS", f"Intel {ir_f:.0f}%")
+
+    # 2 Agent reviews
+    if pending:
+        agents = _stage(
+            "PENDING",
+            f"Pending: {', '.join(pending)}",
+            "Queue agent reviews",
+        )
+    else:
+        warn_votes = [
+            f"{r['agent']} {r.get('vote')}"
+            for r in reviews
+            if r.get("agent") in REQUIRED_AGENTS and str(r.get("vote") or "").upper() in WARN_VOTES
+        ]
+        block_votes = [
+            r["agent"] for r in reviews
+            if r.get("agent") in REQUIRED_AGENTS and str(r.get("vote") or "").upper() in BLOCK_VOTES
+        ]
+        if block_votes:
+            agents = _stage("BLOCK", f"Blocked: {', '.join(block_votes)}", "Review agent dissent")
+        elif warn_votes:
+            agents = _stage("WARN", "; ".join(warn_votes[:2]), "Review cautious agent votes")
+        else:
+            agents = _stage("PASS", f"{len(REQUIRED_AGENTS)} agents complete")
+
+    # 3 Local LLM
+    if local_st == "missing":
+        llm = _stage("BLOCK", "No decision packet", "Run AI Review (step 3)")
+    elif local_st == "queued":
+        llm = _stage("PENDING", "Queued", "Wait for AI Review to finish")
+    elif local_st == "error":
+        llm = _stage("WARN", "Review errored", "Re-run AI Review")
+    else:
+        llm = _stage("PASS", local.get("model") or "complete")
+
+    # 4 Research intel (catalyst + analyst)
+    if not intel_dd.get("ok"):
+        research = _stage("BLOCK", "Intel packet missing", "Run Enrich")
+    elif intel_dd.get("violations"):
+        research = _stage("BLOCK", intel_dd["violations"][0][:80], "Fix intel blockers")
+    elif intel_dd.get("warnings"):
+        research = _stage("WARN", f"Critic {critic or '—'} · {intel_dd.get('analyst_coverage') or '—'} coverage")
+    else:
+        research = _stage("PASS", f"Critic {critic or '—'}")
+
+    # 5 Cloud oversight
+    if cloud_st == "disagree":
+        cloud_stage = _stage("BLOCK", "Grok+ChatGPT DISAGREE", "Reconcile thesis or reject")
+    elif cloud_st == "caution":
+        cloud_stage = _stage("WARN", "Cloud CAUTION", "Read cloud concerns")
+    elif cloud_st == "agree":
+        cloud_stage = _stage("PASS", "Cloud AGREE")
+    elif REQUIRE_CLOUD:
+        cloud_stage = _stage("BLOCK", "Not run", "Run Grok+ChatGPT review")
+    else:
+        lanes = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
+        cloud_stage = _stage("WARN" if lanes else "PENDING", "Not run", "Run Grok+ChatGPT (optional)")
+
+    # 6 Broker gate (oversight + sizing deferred to modal/account)
+    ov_st = oversight.get("status") or "PASS"
+    if ov_st == "BLOCK":
+        broker = _stage("BLOCK", f"{len(oversight.get('violations') or [])} blocker(s)", "Resolve diligence blockers")
+    elif ov_st == "WARN":
+        broker = _stage("WARN", f"{len(oversight.get('warnings') or [])} warning(s)", "Review then size for account")
+    else:
+        broker = _stage("PASS", "Diligence clear — pick account & size")
+
+    return [
+        {"id": "enrich", "label": "Enrich", **enrich},
+        {"id": "agents", "label": "Agents", **agents},
+        {"id": "local_llm", "label": "AI Review", **llm},
+        {"id": "research", "label": "Intel", **research},
+        {"id": "cloud", "label": "Cloud", **cloud_stage},
+        {"id": "broker", "label": "Broker", **broker},
+    ]
+
+
+def _next_action_from_stages(stages: list[dict]) -> str:
+    for s in stages:
+        if s.get("status") in ("BLOCK", "PENDING", "WARN"):
+            return s.get("action") or f"Complete {s.get('label')}"
+    return "Open Send to Broker — pick account and confirm sizing"
+
+
+def build_promote_diligence_plan(proposal_id: int) -> dict:
+    """Full broker promote maturity plan for UI + API."""
+    snap = get_oversight_snapshot(proposal_id)
+    intel_row = _proposal_intel_row(proposal_id)
+    intel_dd = evaluate_intel_diligence(proposal_id)
+    oversight = evaluate_oversight(proposal_id)
+    stages = build_promote_diligence_stages(
+        proposal_id, snap=snap, intel_row=intel_row, intel_dd=intel_dd, oversight=oversight,
+    )
+    blockers = [s for s in stages if s.get("status") == "BLOCK"]
+    pending = [s for s in stages if s.get("status") == "PENDING"]
+    done = sum(1 for s in stages if s.get("status") == "PASS")
+    current_idx = next(
+        (i for i, s in enumerate(stages) if s.get("status") in ("BLOCK", "PENDING", "WARN")),
+        len(stages) - 1,
+    )
+    overall = "BLOCK" if blockers or oversight.get("status") == "BLOCK" else (
+        "WARN" if oversight.get("status") == "WARN" or any(s.get("status") == "WARN" for s in stages) else "PASS"
+    )
+    return {
+        "proposal_id": proposal_id,
+        "status": overall,
+        "promote_ready": bool(oversight.get("promote_ready")),
+        "stages": stages,
+        "current_step": current_idx + 1,
+        "total_steps": len(stages),
+        "completed_steps": done,
+        "next_action": _next_action_from_stages(stages),
+        "auto_queue_recommended": needs_oversight_queue(proposal_id),
+        "oversight": oversight,
+        "intel_diligence": intel_dd,
+    }
+
+
+def get_broker_diligence_summary(proposal_id: int) -> dict:
+    """Lightweight diligence summary for paper proposal cards."""
+    snap = get_oversight_snapshot(proposal_id)
+    intel_row = _proposal_intel_row(proposal_id)
+    pending = snap.get("agents", {}).get("pending") or []
+    local_st = (snap.get("local_llm") or {}).get("status") or "missing"
+    ir = intel_row.get("intel_readiness")
+    ir_f = float(ir) if ir is not None else None
+    critic = str(intel_row.get("critic_verdict") or "").upper()
+
+    blockers: list[str] = []
+    if pending:
+        blockers.append(f"agents pending ({', '.join(pending)})")
+    if local_st in ("missing", "queued"):
+        blockers.append(f"AI review {local_st}")
+    if critic == "BLOCK":
+        blockers.append("catalyst critic BLOCK")
+    if ir_f is not None and ir_f < INTEL_READINESS_BLOCK:
+        blockers.append(f"intel {ir_f:.0f}%")
+
+    if blockers:
+        status = "BLOCK"
+    elif pending or local_st in ("missing", "queued"):
+        status = "PENDING"
+    elif critic == "DOWNGRADE" or (ir_f is not None and ir_f < INTEL_READINESS_WARN):
+        status = "WARN"
+    else:
+        status = "PASS"
+    next_action = (
+        "Run broker diligence" if pending or local_st in ("missing", "queued")
+        else "Resolve blockers" if blockers
+        else "Send to Broker"
+    )
+    return {
+        "status": status,
+        "promote_ready": status == "PASS",
+        "blockers": blockers,
+        "next_action": next_action,
+        "agents_pending": pending,
+        "local_llm_status": local_st,
+        "intel_readiness": ir_f,
+        "critic_verdict": critic or None,
+    }
+
+
+def advance_broker_diligence(proposal_id: int) -> dict:
+    """Auto-run the next diligence steps (enrich queue, agents, LLM)."""
+    actions: list[str] = []
+    row = _proposal_intel_row(proposal_id)
+    ir = row.get("intel_readiness")
+    ir_f = float(ir) if ir is not None else 0.0
+
+    if ir_f < INTEL_READINESS_WARN:
+        try:
+            import subprocess as sp
+            root = Path(__file__).resolve().parent.parent
+            sp.Popen(
+                [str(root / ".venv/bin/python"), str(root / "scripts/proposal_enrichment_loop.py"),
+                 "--run", "--proposal-id", str(proposal_id)],
+                cwd=str(root), stdout=sp.DEVNULL, stderr=sp.DEVNULL,
+            )
+            actions.append("enrichment_queued")
+        except Exception:
+            pass
+
+    if needs_oversight_queue(proposal_id):
+        q = queue_oversight_jobs(proposal_id)
+        if q.get("started"):
+            actions.append("oversight_queued")
+
+    plan = build_promote_diligence_plan(proposal_id)
+    return {
+        "ok": True,
+        "actions": actions,
+        "message": "Diligence advanced" if actions else "No automatic steps needed — check plan",
+        "plan": plan,
+    }
+
+
 def merge_evaluation_with_oversight(evaluation: dict, oversight: dict) -> dict:
     """Combine sizing/market evaluation with AI oversight (worst status wins)."""
     out = dict(evaluation or {})

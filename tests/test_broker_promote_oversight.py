@@ -84,6 +84,31 @@ class TestBrokerPromoteOversight(unittest.TestCase):
         self.assertEqual(merged["status"], "WARN")
         self.assertTrue(merged["allowed"])
 
+    def test_diligence_plan_has_six_stages(self):
+        snap = {
+            "agents": {"required": list(bpo.REQUIRED_AGENTS), "pending": ["maria"], "reviews": []},
+            "local_llm": {"status": "queued"},
+            "cloud_review": {"status": "not_run"},
+            "lanes_available": {"grok": True, "chatgpt": True},
+        }
+        intel_row = {"intel_readiness": 80, "critic_verdict": "CONFIRM"}
+        intel_dd = {"ok": True, "violations": [], "warnings": ["Thin coverage"], "analyst_coverage": "thin"}
+        oversight = {"status": "BLOCK", "allowed": False, "violations": ["Agent reviews incomplete"], "promote_ready": False}
+        stages = bpo.build_promote_diligence_stages(
+            1, snap=snap, intel_row=intel_row, intel_dd=intel_dd, oversight=oversight,
+        )
+        self.assertEqual(len(stages), 6)
+        self.assertEqual(stages[0]["id"], "enrich")
+        self.assertEqual(stages[1]["status"], "PENDING")
+        self.assertEqual(stages[5]["id"], "broker")
+
+    def test_next_action_from_stages(self):
+        stages = [
+            {"label": "Enrich", "status": "PASS"},
+            {"label": "Agents", "status": "PENDING", "action": "Queue agent reviews"},
+        ]
+        self.assertEqual(bpo._next_action_from_stages(stages), "Queue agent reviews")
+
 
 if __name__ == "__main__":
     unittest.main()

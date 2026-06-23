@@ -71,6 +71,25 @@ Tune per account in **ATM Controls** (v3 admin modal).
 
 These are absolute ceilings applied on top of account policy.
 
+## Broker diligence pipeline (matured 2026-06-22)
+
+Six explicit steps before **Send to Broker** unlocks on paper proposals:
+
+| Step | Label | Blocks promote |
+|------|-------|----------------|
+| 1 | Enrich | Intel readiness &lt; 50% |
+| 2 | Agents | Maria / Risk / Steph pending or BLOCK |
+| 3 | AI Review | Local LLM missing or queued |
+| 4 | Intel | Catalyst critic BLOCK, thin intel packet |
+| 5 | Cloud | DISAGREE (optional unless `BROKER_REQUIRE_CLOUD_OVERSIGHT=1`) |
+| 6 | Broker | Combined oversight PASS — then size per account in modal |
+
+**UI:** Paper proposal cards show a **Broker diligence** strip + **3b. Broker diligence** button (auto-queues enrichment + agents + LLM). **4. Send to Broker** stays locked until summary status is PASS.
+
+**API:**
+- `POST /api/v2/paper-proposals/broker-diligence` — full checklist + next action
+- `POST /api/v2/paper-proposals/advance-broker-diligence` — run next automated steps
+
 ## Execution tolerance
 
 From `validate_paper_proposal_live_market()`:

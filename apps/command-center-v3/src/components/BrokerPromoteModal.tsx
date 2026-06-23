@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import BrokerIntelPanel from './BrokerIntelPanel'
+import BrokerDiligenceStrip from './BrokerDiligenceStrip'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa', RED = '#ef4444'
 const overlay = { position: 'fixed' as const, inset: 0, background: 'rgba(2,6,23,.78)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
@@ -133,6 +134,7 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
           const oversight = d.oversight || d.evaluation?.oversight
           setData({
             ...d,
+            diligence_plan: d.diligence_plan,
             intel: d.intel ? { ...d.intel, oversight: oversight || d.intel.oversight } : d.intel,
           })
           setEvaluation(d.evaluation ?? null)
@@ -390,6 +392,22 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
 
         {loading ? <div style={{ fontSize: 11, color: MUTED, padding: '24px 0' }}>Loading proposal & live quote…</div> : (
           <>
+            {data?.diligence_plan?.stages?.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <BrokerDiligenceStrip
+                  stages={data.diligence_plan.stages}
+                  summary={{
+                    status: data.diligence_plan.status,
+                    promote_ready: data.diligence_plan.promote_ready,
+                    next_action: data.diligence_plan.next_action,
+                    current_step: data.diligence_plan.current_step,
+                    total_steps: data.diligence_plan.total_steps,
+                    completed_steps: data.diligence_plan.completed_steps,
+                  }}
+                />
+              </div>
+            )}
+
             <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.18)' }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Decision context</div>
               <BrokerIntelPanel
