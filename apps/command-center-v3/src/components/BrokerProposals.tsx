@@ -84,6 +84,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [acctPreviewBusy, setAcctPreviewBusy] = useState<Record<number, boolean>>({})
   const [detailMap, setDetailMap] = useState<Record<number, any>>({})
   const [detailBusy, setDetailBusy] = useState<Record<number, boolean>>({})
+  const [batchCloudBusy, setBatchCloudBusy] = useState(false)
+  const [batchCloudMsg, setBatchCloudMsg] = useState('')
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
@@ -435,6 +437,57 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
+  const queueCloudBatch = async (scope: 'page' | 'filtered') => {
+    setBatchCloudBusy(true)
+    setBatchCloudMsg('Queuing Grok+ChatGPT…')
+    try {
+      const max = 30
+      const body = scope === 'page'
+        ? { scope: 'ids', proposal_ids: shown.map((p: any) => p.id), max }
+        : {
+            scope: 'filtered',
+            max,
+            filters: {
+              sort: listFilters.sort,
+              source: listFilters.source || undefined,
+              zone: listFilters.zone || undefined,
+              account: listFilters.account || undefined,
+              symbol: listFilters.symbol || undefined,
+            },
+          }
+      const r = await fetch('/api/v2/broker-proposals/queue-cloud-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(x => x.json())
+      const d = r.data ?? r
+      if (r.ok) {
+        const n = d.queued_count ?? (d.queued?.length ?? 0)
+        const sk = d.skipped_count ?? (d.skipped?.length ?? 0)
+        setBatchCloudMsg(`✅ Queued cloud for ${n}${sk ? ` · skipped ${sk} (cached/running)` : ''}`)
+        for (const pid of (d.queued || [])) {
+          setCloudBusy(m => ({ ...m, [pid]: true }))
+          detailLoadedRef.current.delete(pid)
+          if (!cloudPollRef.current[pid]) {
+            cloudPollRef.current[pid] = setInterval(() => {
+              detailLoadedRef.current.delete(pid)
+              fetchProposalDetail(pid, { force: true })
+            }, 15_000)
+          }
+        }
+        setTimeout(() => {
+          for (const pid of (d.queued || [])) fetchProposalDetail(pid, { force: true })
+        }, 4000)
+      } else {
+        setBatchCloudMsg(`⛔ ${r.error || d.error || 'failed'}`)
+      }
+    } catch (e: any) {
+      setBatchCloudMsg(`⛔ ${String(e).slice(0, 80)}`)
+    } finally {
+      setBatchCloudBusy(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {modalSeed && (
@@ -580,7 +633,29 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               Clear filters
             </button>
           )}
+          <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 2px' }} />
+          <button
+            onClick={() => queueCloudBatch('page')}
+            disabled={batchCloudBusy || shown.length === 0}
+            title="Queue Grok+ChatGPT for visible cards on this page only"
+            style={btn(AMBER, batchCloudBusy || shown.length === 0)}
+          >
+            {batchCloudBusy ? '…' : `☁ Run cloud · page (${shown.length})`}
+          </button>
+          <button
+            onClick={() => queueCloudBatch('filtered')}
+            disabled={batchCloudBusy || !(pagination.total > 0)}
+            title="Queue Grok+ChatGPT for up to 30 proposals matching current filters"
+            style={btn(AMBER, batchCloudBusy || !(pagination.total > 0))}
+          >
+            {batchCloudBusy ? '…' : `☁ Run cloud · filtered (≤30 of ${pagination.total || 0})`}
+          </button>
         </div>
+        {batchCloudMsg && (
+          <div style={{ fontSize: 11, marginBottom: 10, color: batchCloudMsg.startsWith('✅') ? GREEN : AMBER }}>
+            {batchCloudMsg}
+          </div>
+        )}
 
         {loading && proposals.length === 0 && !error && (
           <div style={{ fontSize: 11, color: MUTED }}>

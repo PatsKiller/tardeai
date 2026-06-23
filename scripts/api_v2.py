@@ -12982,16 +12982,6 @@ def _broker_proposals(query=None):
 
         total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
 
-        # Kick cloud oversight for first page rows (non-blocking subprocess).
-        try:
-            import broker_promote_oversight as _bpo
-            for row in prop_rows[:min(8, page_size)]:
-                pid = int(row.get("id") or 0)
-                if pid:
-                    _bpo.maybe_queue_cloud_oversight(pid)
-        except Exception:
-            pass
-
         acct_rows = []
         for a in accounts:
             row = {k: _json_clean(v) for k, v in a.items()}
@@ -13145,11 +13135,6 @@ def _broker_proposal_detail(body: dict):
     acct = base.get("account") or ""
     base.update(_broker_account_execution_meta(acct))
     base["activity"] = base.get("activity") or {}
-    try:
-        import broker_promote_oversight as _bpo
-        _bpo.maybe_queue_cloud_oversight(pid)
-    except Exception:
-        pass
     enriched = _enrich_broker_proposal_row(base)
     return {"ok": True, "data": enriched}
 
@@ -13398,6 +13383,38 @@ def _broker_run_cloud_oversight(body: dict):
         return {"ok": False, "error": cloud["error"], "data": cloud}
     oversight = bpo.evaluate_oversight(pid, cloud=cloud)
     return {"ok": True, "data": {"cloud": cloud, "oversight": oversight}}
+
+
+def _broker_filtered_proposal_ids(query: dict | None, *, max_ids: int = 30) -> list[int]:
+    """First N proposal IDs matching list filters (zone/source/etc.), up to max_ids."""
+    list_res = _broker_proposals({**(query or {}), "page": "1", "page_size": str(max_ids)})
+    return [int(r["id"]) for r in (list_res.get("proposals") or []) if r.get("id")]
+
+
+def _broker_queue_cloud_batch(body: dict):
+    """POST /api/v2/broker-proposals/queue-cloud-batch — queue cloud for filtered/page IDs only."""
+    import broker_promote_oversight as bpo
+    b = body or {}
+    timeout = min(180, max(30, int(b.get("timeout") or 120)))
+    max_batch = min(50, max(1, int(b.get("max") or 30)))
+    scope = str(b.get("scope") or "ids").lower()
+    if scope == "filtered":
+        filt = b.get("filters") if isinstance(b.get("filters"), dict) else b
+        ids = _broker_filtered_proposal_ids(filt, max_ids=max_batch)
+    else:
+        ids = []
+        for raw in b.get("proposal_ids") or []:
+            try:
+                ids.append(int(raw))
+            except Exception:
+                pass
+        ids = ids[:max_batch]
+    if not ids:
+        return {"ok": False, "error": "no proposal IDs to queue — adjust filters or select a page"}
+    result = bpo.queue_cloud_oversight_batch(ids, timeout=timeout, max_batch=max_batch)
+    result["scope"] = scope
+    result["requested"] = len(ids)
+    return {"ok": True, "data": result}
 
 
 def _broker_diligence_plan(body: dict):
@@ -21808,6 +21825,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/broker-proposals/run-cloud-oversight":
             try:
                 res = _broker_run_cloud_oversight(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/queue-cloud-batch":
+            try:
+                res = _broker_queue_cloud_batch(body)
                 return (200 if res.get("ok") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}

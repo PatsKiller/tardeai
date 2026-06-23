@@ -355,6 +355,42 @@ def maybe_queue_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict
     return queue_cloud_oversight(proposal_id, timeout=timeout)
 
 
+def queue_cloud_oversight_batch(
+    proposal_ids: list[int],
+    *,
+    timeout: int = 120,
+    max_batch: int = 30,
+) -> dict:
+    """Queue background Grok+ChatGPT for an explicit ID list (filter-then-run workflow)."""
+    queued: list[int] = []
+    skipped: list[dict] = []
+    seen: set[int] = set()
+    for raw in proposal_ids or []:
+        try:
+            pid = int(raw)
+        except Exception:
+            continue
+        if pid <= 0 or pid in seen:
+            continue
+        seen.add(pid)
+        if len(queued) + len(skipped) >= max_batch:
+            skipped.append({"id": pid, "reason": "batch_cap"})
+            continue
+        result = queue_cloud_oversight(pid, timeout=timeout)
+        if result.get("queued"):
+            queued.append(pid)
+        else:
+            skipped.append({"id": pid, "reason": result.get("reason") or result.get("error") or "skipped"})
+    return {
+        "ok": True,
+        "queued": queued,
+        "skipped": skipped,
+        "queued_count": len(queued),
+        "skipped_count": len(skipped),
+        "max_batch": max_batch,
+    }
+
+
 def _dedupe(items: list[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
