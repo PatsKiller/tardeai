@@ -12490,9 +12490,96 @@ def _broker_account_execution_meta(account_key: str) -> dict:
     return meta
 
 
+def _broker_proposal_row_base(r: dict, quote_map: dict | None = None) -> dict:
+    """Lightweight broker queue row — economics + quotes only."""
+    row = {k: _json_clean(v) for k, v in r.items()}
+    sym = str(row.get("symbol") or "").upper()
+    sh = float(row.get("proposed_shares") or 0)
+    en = float(row.get("proposed_entry") or 0)
+    st = float(row.get("proposed_stop") or 0)
+    tg = float(row.get("proposed_target1") or 0)
+    risk_ps = max(0.0, en - st)
+    reward_ps = max(0.0, tg - en)
+    row["investment"] = round(sh * en, 2) if sh and en else None
+    row["max_risk"] = round(risk_ps * sh, 2) if sh and risk_ps else None
+    row["profit_at_target"] = round(reward_ps * sh, 2) if sh and reward_ps else None
+    q = (quote_map or {}).get(sym) or {}
+    bid, ask = q.get("bid"), q.get("ask")
+    if bid is not None and ask is not None and float(bid) > 0:
+        row["quote_bid"] = float(bid)
+        row["quote_ask"] = float(ask)
+        row["quote_last"] = float(q.get("last") or en)
+        row["quote_spread"] = round(float(ask) - float(bid), 4)
+        row["quote_spread_pct"] = round(row["quote_spread"] / float(bid) * 100, 3)
+    return row
+
+
+def _enrich_broker_proposal_row(row: dict) -> dict:
+    """Full gates + intel for a single broker queue card (slow — lazy-load only)."""
+    acct = row.get("account") or ""
+    sym = str(row.get("symbol") or "").upper()
+    sh = float(row.get("proposed_shares") or 0)
+    en = float(row.get("proposed_entry") or 0)
+    st = float(row.get("proposed_stop") or 0)
+    tg = float(row.get("proposed_target1") or 0)
+    pid = row.get("id")
+    try:
+        import broker_proposal_intel as _bpi
+        row["intel"] = _bpi.get_intel_packet(pid)
+    except Exception:
+        row["intel"] = {"ok": False}
+    try:
+        import broker_promote_sizing as _bps
+        strat = str(row.get("strategy_id") or "momentum_scalp")
+        qd = {}
+        if row.get("quote_last") is not None:
+            qd = {
+                "last_price": row.get("quote_last"),
+                "bid": row.get("quote_bid"),
+                "ask": row.get("quote_ask"),
+                "spread_pct": row.get("quote_spread_pct"),
+            }
+        if acct:
+            ev = _bps.evaluate_broker_promote(
+                acct, strat, en, st, tg, int(sh or 0), quote=qd,
+            )
+            ev = _merge_broker_oversight(ev, pid)
+            row["evaluation"] = ev
+            row["oversight"] = ev.get("oversight") or {}
+            row["gate_status"] = ev.get("status")
+            max_sh = int(ev.get("max_shares") or 0)
+            row["broker_sizing"] = {
+                "max_shares": max_sh,
+                "recommended_shares": ev.get("recommended_shares"),
+                "oversized": bool(sh and max_sh and int(sh) > max_sh),
+                "binding": (ev.get("sizing") or {}).get("binding"),
+                "violations": ev.get("violations") or [],
+                "warnings": ev.get("warnings") or [],
+            }
+            if isinstance(row.get("intel"), dict) and row["intel"].get("ok"):
+                row["intel"]["oversight"] = row["oversight"]
+                if row["oversight"].get("status"):
+                    row["intel"]["oversight"]["status"] = row["oversight"]["status"]
+                if row["oversight"].get("violations"):
+                    row["intel"]["oversight"]["violations"] = row["oversight"]["violations"]
+                if row["oversight"].get("warnings"):
+                    row["intel"]["oversight"]["warnings"] = row["oversight"]["warnings"]
+        try:
+            import broker_promote_oversight as _bpo
+            row["broker_diligence"] = _bpo.get_broker_diligence_summary(pid)
+        except Exception:
+            pass
+    except Exception:
+        row["evaluation"] = row.get("evaluation") or {}
+        row["oversight"] = row.get("oversight") or {}
+        row["gate_status"] = row.get("gate_status")
+        row["broker_sizing"] = row.get("broker_sizing") or {}
+    row["detail_loaded"] = True
+    return row
+
+
 def _broker_proposals():
-    """GET /api/v2/broker-proposals — Schwab + Fidelity queue proposals + form options (accounts +
-    strategies) for the Trading-hub Broker Proposals tab (operator 2026-06-19)."""
+    """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail."""
     try:
         proposals = _db_query("""
             SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
@@ -12510,7 +12597,6 @@ def _broker_proposals():
         sd = PROJECT_ROOT / "config" / "strategies"
         strategies = sorted([f.stem for f in sd.glob("*.yaml")
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
-        # Live quotes for queue symbols (Schwab batch, one call)
         quote_map = {}
         try:
             import schwab_transport as _st
@@ -12522,85 +12608,69 @@ def _broker_proposals():
         except Exception:
             pass
 
+        acct_meta_cache: dict = {}
         prop_rows = []
         for r in proposals:
-            row = {k: _json_clean(v) for k, v in r.items()}
+            row = _broker_proposal_row_base(r, quote_map)
             acct = row.get("account") or ""
-            row.update(_broker_account_execution_meta(acct))
-            sym = str(row.get("symbol") or "").upper()
-            sh = float(row.get("proposed_shares") or 0)
-            en = float(row.get("proposed_entry") or 0)
-            st = float(row.get("proposed_stop") or 0)
-            tg = float(row.get("proposed_target1") or 0)
-            risk_ps = max(0.0, en - st)
-            reward_ps = max(0.0, tg - en)
-            row["investment"] = round(sh * en, 2) if sh and en else None
-            row["max_risk"] = round(risk_ps * sh, 2) if sh and risk_ps else None
-            row["profit_at_target"] = round(reward_ps * sh, 2) if sh and reward_ps else None
-            q = quote_map.get(sym) or {}
-            bid, ask = q.get("bid"), q.get("ask")
-            if bid is not None and ask is not None and float(bid) > 0:
-                row["quote_bid"] = float(bid)
-                row["quote_ask"] = float(ask)
-                row["quote_last"] = float(q.get("last") or en)
-                row["quote_spread"] = round(float(ask) - float(bid), 4)
-                row["quote_spread_pct"] = round(row["quote_spread"] / float(bid) * 100, 3)
+            if acct not in acct_meta_cache:
+                acct_meta_cache[acct] = _broker_account_execution_meta(acct)
+            row.update(acct_meta_cache.get(acct) or {})
+            row["activity"] = (acct_meta_cache.get(acct) or {}).get("activity")
+            row["intel"] = {"ok": False, "lazy": True}
+            row["detail_pending"] = True
             try:
-                import broker_proposal_intel as _bpi
-                row["intel"] = _bpi.get_intel_packet(row.get("id"))
+                import broker_promote_oversight as _bpo
+                row["broker_diligence"] = _bpo.get_broker_diligence_summary(row.get("id"))
+                row["oversight"] = {"status": row["broker_diligence"].get("status")}
             except Exception:
-                row["intel"] = {"ok": False}
-            # Sizing + AI oversight gates for queue cards (Edit trade / routing)
-            try:
-                import broker_promote_sizing as _bps
-                strat = str(row.get("strategy_id") or "momentum_scalp")
-                qd = {}
-                if row.get("quote_last") is not None:
-                    qd = {
-                        "last_price": row.get("quote_last"),
-                        "bid": row.get("quote_bid"),
-                        "ask": row.get("quote_ask"),
-                        "spread_pct": row.get("quote_spread_pct"),
-                    }
-                if acct:
-                    ev = _bps.evaluate_broker_promote(
-                        acct, strat, en, st, tg, int(sh or 0), quote=qd,
-                    )
-                    ev = _merge_broker_oversight(ev, row.get("id"))
-                    row["evaluation"] = ev
-                    row["oversight"] = ev.get("oversight") or {}
-                    row["gate_status"] = ev.get("status")
-                    max_sh = int(ev.get("max_shares") or 0)
-                    row["broker_sizing"] = {
-                        "max_shares": max_sh,
-                        "recommended_shares": ev.get("recommended_shares"),
-                        "oversized": bool(sh and max_sh and int(sh) > max_sh),
-                        "binding": (ev.get("sizing") or {}).get("binding"),
-                        "violations": ev.get("violations") or [],
-                        "warnings": ev.get("warnings") or [],
-                    }
-                    if isinstance(row.get("intel"), dict) and row["intel"].get("ok"):
-                        row["intel"]["oversight"] = row["oversight"]
-                        if row["oversight"].get("status"):
-                            row["intel"]["oversight"]["status"] = row["oversight"]["status"]
-                        if row["oversight"].get("violations"):
-                            row["intel"]["oversight"]["violations"] = row["oversight"]["violations"]
-                        if row["oversight"].get("warnings"):
-                            row["intel"]["oversight"]["warnings"] = row["oversight"]["warnings"]
-            except Exception:
-                row["evaluation"] = {}
-                row["oversight"] = {}
-                row["gate_status"] = None
-                row["broker_sizing"] = {}
+                row["broker_diligence"] = None
             prop_rows.append(row)
+
         acct_rows = []
         for a in accounts:
             row = {k: _json_clean(v) for k, v in a.items()}
-            row.update(_broker_account_execution_meta(row.get("account_key") or ""))
+            ak = row.get("account_key") or ""
+            if ak not in acct_meta_cache:
+                acct_meta_cache[ak] = _broker_account_execution_meta(ak)
+            row.update(acct_meta_cache.get(ak) or {})
             acct_rows.append(row)
-        return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies}
+        return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies, "list_mode": "fast"}
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
+
+
+def _broker_proposal_detail(body: dict):
+    """POST /api/v2/broker-proposals/detail — lazy-load intel + sizing gates for one queue card."""
+    pid = int((body or {}).get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    row = _db_query(
+        """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                  intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
+                  COALESCE(origin,'auto') AS origin, proposed_entry, proposed_stop, proposed_target1,
+                  proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                  created_at, expires_at
+           FROM paper_trade_proposals WHERE id=%s""",
+        (pid,), fetch="one",
+    )
+    if not row:
+        return {"ok": False, "error": f"proposal #{pid} not found"}
+    quote_map = {}
+    sym = str(row.get("symbol") or "").upper()
+    try:
+        import schwab_transport as _st
+        sq = _st.get_quotes([sym])
+        if sq.get("status") == "ok":
+            quote_map = sq.get("quotes") or {}
+    except Exception:
+        pass
+    base = _broker_proposal_row_base(row, quote_map)
+    acct = base.get("account") or ""
+    base.update(_broker_account_execution_meta(acct))
+    base["activity"] = base.get("activity") or {}
+    enriched = _enrich_broker_proposal_row(base)
+    return {"ok": True, "data": enriched}
 
 
 def _broker_promote_quote(symbol: str) -> dict:
@@ -21168,6 +21238,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": {"status": "started"}}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/broker-proposals/detail":
+            try:
+                res = _broker_proposal_detail(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
         if base_path == "/api/v2/broker-proposals/prepare-promote":
             try:
                 res = _prepare_broker_promote(body)
