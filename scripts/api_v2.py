@@ -438,11 +438,27 @@ def overview():
     if j_stats.get("total_pnl") is not None:
         j_total_pnl = j_stats["total_pnl"]
 
+    _derived_total = round(sum(p.get("market_value") or 0 for p in holdings), 2)
+    if _derived_total > 0 and (not total_val or abs(_derived_total - total_val) > 500):
+        total_val = _derived_total
+        today_change = round(sum(p.get("day_change") or 0 for p in holdings), 2)
+        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
+    _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
     return {
         "portfolio_value": total_val,
+        "derived_total_value": _derived_total,
         "total_cash": totals.get("total_cash", 0),
         "today_change": round(today_change, 2),
         "today_pct": round(today_pct, 2),
+        "reprice_source": h.get("reprice_source", ""),
+        "pricing": {
+            "last_repriced": h.get("last_repriced", ""),
+            "reprice_source": h.get("reprice_source", ""),
+            "finviz_cache_updated": _fv_meta.get("last_updated", ""),
+            "holdings_as_of": h.get("as_of", ""),
+            "derived_total_value": _derived_total,
+            "canonical_total_value": totals.get("total_value", 0),
+        },
         "today_by_account": today_by_account,
         "position_count": len(active_positions),
         "account_count": len(h.get("account_summaries", {})),
@@ -797,8 +813,36 @@ def portfolio_holdings():
         if total > 0:
             equity_curve.append({"date": s["date"], "value": round(total, 0)})
 
-    return {"count": len(rows), "holdings": rows, "as_of": h.get("as_of", ""),
-            "enrichment_as_of": _enrich_as_of, "equity_curve": equity_curve}
+    _priced_total = round(sum(r.get("market_value") or 0 for r in rows), 2)
+    _day_total = round(sum(r.get("day_change") or 0 for r in rows), 2)
+    _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
+    _mq_as_of = None
+    try:
+        _mqr = _db_query("SELECT MAX(fetched_at) AS ts FROM market_quotes", fetch="one") or {}
+        _mq_as_of = _json_clean(_mqr.get("ts"))
+    except Exception:
+        pass
+    _src_counts: dict[str, int] = {}
+    for r in rows:
+        s = r.get("price_source") or "unknown"
+        _src_counts[s] = _src_counts.get(s, 0) + 1
+    return {
+        "count": len(rows), "holdings": rows, "as_of": h.get("as_of", ""),
+        "enrichment_as_of": _enrich_as_of, "equity_curve": equity_curve,
+        "total_value": _priced_total,
+        "today_change": _day_total,
+        "last_repriced": h.get("last_repriced", ""),
+        "reprice_source": h.get("reprice_source", ""),
+        "pricing": {
+            "last_repriced": h.get("last_repriced", ""),
+            "reprice_source": h.get("reprice_source", ""),
+            "finviz_cache_updated": _fv_meta.get("last_updated", ""),
+            "market_quotes_as_of": _mq_as_of,
+            "enrichment_as_of": _enrich_as_of,
+            "price_sources": _src_counts,
+            "note": "Schwab accounts: broker-synced prices in holdings.json. Fidelity/SnapTrade: Finviz Elite or market_quotes overlay (not SnapTrade lag). Technicals timestamp is separate from live price.",
+        },
+    }
 
 
 def portfolio_performance():
@@ -9138,6 +9182,9 @@ def _paper_proposals_enriched():
                 'discovery_source': p.get('discovery_source') or p.get('scan_source'),
                 'proposed_by': p.get('proposed_by'),
                 'proposed_account': p.get('proposed_account'),
+                'intended_broker': p.get('intended_broker'),
+                'target_account': p.get('target_account'),
+                'routing_state': p.get('routing_state'),
                 'proposed_entry': entry, 'proposed_stop': stop,
                 'proposed_target1': t1, 'proposed_target2': t2,
                 'proposed_shares': shares,
@@ -9945,7 +9992,15 @@ def _paper_proposals_enriched():
 
         # Add strategy perf, operator verdict, age to each proposal
         ready_count = 0; review_count = 0; stale_count = 0; missed_count = 0; unknown_quote_count = 0; exec_missing_count = 0
+        try:
+            from proposal_routing import routing_label as _routing_label, execution_path_display as _path_display
+        except Exception:
+            _routing_label = lambda _p: "unassigned"
+            _path_display = lambda _p: "Choose path"
         for prop in pending_list:
+            prop['routing_label'] = _routing_label(prop)
+            prop['execution_path'] = _routing_label(prop)
+            prop['execution_path_display'] = _path_display(prop)
             sid = prop.get('strategy_id')
             if sid and sid in strategy_perf:
                 prop['strategy_win_rate'] = strategy_perf[sid]['win_rate']
@@ -11748,7 +11803,7 @@ def _pipeline_run_health():
     _pp = _db_query("""
         SELECT COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
                COUNT(CASE WHEN status='eligible' THEN 1 END) AS eligible
-        FROM paper_proposals
+        FROM paper_trade_proposals
         WHERE created_at::date = CURRENT_DATE
     """, fetch="one") or {}
 
@@ -12286,7 +12341,7 @@ def _atm_gate_status():
 def _atm_actionable_proposals():
     """GET /api/v2/atm/actionable-proposals — proposals the operator can act on (approve/adjust/edit)."""
     rows = _db_query("""SELECT id, symbol, status, strategy_id, signal_grade,
-                          COALESCE(target_account, proposed_account, 'alpaca_paper') AS account,
+                          NULLIF(COALESCE(target_account, proposed_account, intended_broker), '') AS account,
                           proposed_entry, proposed_stop, proposed_target1, proposed_target2, proposed_shares
                         FROM paper_trade_proposals
                         WHERE status IN ('PENDING','APPROVED_FOR_PAPER_TEST','MODIFIED')
@@ -21534,17 +21589,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
                 # FRACTIONAL-SHARE GUARD (operator 2026-06-21): Schwab rejects STOP/STOP_LIMIT/TRAILING orders
                 # on fractional quantities ("As of May 21, 2025, fractional orders ... must use Market/Limit").
-                # A protective stop must be a WHOLE-share qty → floor it; the sub-share remainder cannot be
-                # stop-protected at Schwab. Under 1 whole share ⇒ no stop possible (block with guidance).
+                # MARKET sell-all keeps the FULL qty (fractional OK — DAY TIF). Stops floor to whole shares.
                 qty_note = None
-                if acct.startswith("schwab"):
+                if acct.startswith("schwab") and ot != "MARKET":
                     try:
                         _qf = float(qty); _qi = int(_qf)   # floor (positive long qty)
                         if _qi != _qf:
                             if _qi < 1:
                                 return 200, {"ok": False, "mode": "blocked",
                                              "error": f"{sym} is {_qf:g} share (under 1 whole share) — Schwab does not "
-                                                      "accept fractional STOP orders. Protect it with a market/limit sell instead.",
+                                                      "accept fractional STOP orders. Use Sell all @ Market instead.",
                                              "account": acct}
                             qty_note = (f"Schwab rejects fractional STOP orders — protecting {_qi} whole "
                                         f"share{'s' if _qi > 1 else ''}; the {_qf - _qi:.4f} fractional remainder "
@@ -21552,6 +21606,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             qty = _qi
                     except Exception:
                         pass
+                elif acct.startswith("schwab") and ot == "MARKET":
+                    held_qty, _ = _protective_holding_truth(acct, sym)
+                    if held_qty is not None:
+                        try:
+                            _hq = float(held_qty)
+                            if _hq > 0:
+                                qty = _hq
+                                qty_note = f"Sell-all uses server-held qty {_hq:g} sh."
+                        except Exception:
+                            pass
                 summ = _psp.order_summary(sym, qty, kind, stop_price=stop_price,
                                           limit_price=limit_price, trail_pct=trail_pct,
                                           account_key=acct)
@@ -21704,38 +21768,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         return 200, {"ok": False, "stage": "modify_cancel",
                                      "error": f"could not cancel the existing stop #{_replace_id}: {str(ce)[:160]} — "
                                               "new stop NOT placed (avoiding a double stop). Try again or cancel in ToS."}
-                try:
-                    if is_fidelity_intent:
-                        from brokers import snaptrade_protective_stop_pilot as _fpsp
-                        res = _fpsp.route_after_2fa(acct, intent)
-                        res = {"status": "monitored_armed" if res.get("ok") else "rejected", **res}
-                    else:
-                        from brokers import protective_stop_pilot as _psp
-                        order_spec = _psp.spec_from_intent(intent)
-                        res = _psp.submit(acct, order_spec, intent)
-                except Exception as se:
-                    return 200, {"ok": False, "stage": "submit", "error": str(se)[:240],
-                                 "modify_cancel_result": replace_result}
-                try:
-                    from alert_event_writer import save_alert_event
-                    save_alert_event(alert_type="strategic_alert", severity="warning",
-                                     source_script="protective_stop", symbol=intent.instrument.symbol,
-                                     raw_text=f"[protective-stop:submit] {acct} · {res.get('status')} · {res.get('broker_order_id')}",
-                                     parsed_payload={"kind": "protective_stop", "phase": "submit",
-                                                     "account": acct, "result": res})
-                except Exception:
-                    pass
-                # bust the broker-stop monitor cache so the Open Trades card flips to PROTECTED promptly
-                _ok_status = res.get("status") in ("submitted", "filled", "monitored_armed")
-                if _ok_status:
-                    try:
-                        import open_trades_intelligence as _oti
-                        _oti._BSTOP_CACHE["ts"] = 0.0
-                    except Exception:
-                        pass
-                return 200, {"ok": _ok_status, "stage": "submit",
-                             "result": res, "broker_order_id": res.get("broker_order_id"),
-                             "status": res.get("status"), "account": acct,
+                from brokers import intent_submit_router as _isr
+                sub = _isr.submit_fully_approved(intent_id)
+                if sub.get("stage") == "submit" and not sub.get("ok"):
+                    return 200, {"ok": False, "stage": "submit", "error": sub.get("error"),
+                                 "result": sub.get("result"), "modify_cancel_result": replace_result}
+                res = sub.get("result") or {}
+                return 200, {"ok": bool(sub.get("ok")), "stage": "submit",
+                             "result": res, "broker_order_id": sub.get("broker_order_id"),
+                             "status": sub.get("status"), "account": acct,
                              "replaced_order_id": _replace_id, "modify_cancel_result": replace_result,
                              "monitored_stop_id": res.get("id")}
             except Exception as e:
@@ -24940,6 +24981,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                        "gate_sequence": ["session_policy"], "audit_created": True},
                 }
 
+            _route_key = str(
+                (_prop_snap.get("intended_broker") or _prop_snap.get("target_account") or "")
+            ).lower()
+            if _route_key.startswith("schwab") or _route_key.startswith("fidelity"):
+                if _audit_conn and audit_id:
+                    finalize_approval_audit(_audit_conn, audit_id, "blocked_live_routed",
+                        "Proposal routed for live broker — use Broker Proposals (Path B)")
+                if _audit_conn:
+                    try: _audit_conn.close()
+                    except Exception: pass
+                return 400, {
+                    "ok": False,
+                    "error": "Proposal is routed for live broker (Path B). Use Broker Proposals — not paper approve.",
+                    "execution_path": "live",
+                    "approval_audit": {"audit_id": audit_id, "status": "blocked_live_routed", "audit_created": True},
+                }
+
             from paper_trade_logger import approve_proposal
             result = approve_proposal(int(pid),
                 override_shares=body.get('shares'),
@@ -25026,9 +25084,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception:
                 pass
 
-            # ── INSTANT EXECUTION: attempt Alpaca paper submission immediately ──
+            # ── INSTANT EXECUTION: paper submit only when not routed to Schwab/Fidelity ──
             alpaca_result = None
-            if result.get('success') and result.get('paper_trade_id'):
+            _route_key = str(
+                (_prop_snap.get("intended_broker") or _prop_snap.get("target_account") or "")
+            ).lower()
+            _broker_routed = _route_key.startswith("schwab") or _route_key.startswith("fidelity")
+            if result.get('success') and result.get('paper_trade_id') and not _broker_routed:
                 try:
                     from proposal_paper_submitter import submit_paper
                     from session13_db import get_conn as _get_sub_conn

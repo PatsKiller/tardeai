@@ -10,6 +10,7 @@ reused/partial approvals all deny. This is the FOURTH lock (env flag + DB contro
 from __future__ import annotations
 
 import os
+import sys
 import secrets
 import datetime as dt
 import json
@@ -162,6 +163,116 @@ def _load_intent_any(intent_id: str):
         return None
 
 
+def _acct_label(acct: str | None) -> str:
+    """Display account for Telegram/HTML — underscores break legacy Markdown (_schwab_taxable_)."""
+    return str(acct or "broker").replace("_", " ")
+
+
+def _tg_html(s: str) -> str:
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _intent_qty(intent) -> float | None:
+    q = getattr(getattr(intent, "quantity", None), "qty", None)
+    if q is None:
+        q = getattr(getattr(intent, "quantity", None), "notional", None)
+    if q is None:
+        q = getattr(getattr(intent, "quantity", None), "contracts", None)
+    try:
+        return float(q) if q is not None else None
+    except Exception:
+        return None
+
+
+def intent_action_summary(intent) -> dict:
+    """Human labels for 2FA messages: distinguish market sell-all vs stop vs trailing vs buy."""
+    sym = (getattr(getattr(intent, "instrument", None), "symbol", None) or "?").upper()
+    qty = _intent_qty(intent)
+    qty_s = f"{qty:g}" if qty is not None else "?"
+    acct = _acct_label(getattr(intent, "account_key", None) or getattr(intent, "broker", None))
+    ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+    instr = str(ev.get("instruction") or "").upper()
+    ot = str(ev.get("order_type") or "").upper()
+    try:
+        from brokers.execution_guard import PROTECTIVE_STOP_MARKER
+        is_protective = getattr(getattr(intent, "meta", None), "strategy_id", None) == PROTECTIVE_STOP_MARKER
+    except Exception:
+        is_protective = False
+
+    if is_protective and instr == "SELL":
+        if ot == "MARKET":
+            try:
+                from brokers.protective_stop_pilot import market_tif
+                tif = market_tif(qty)
+            except Exception:
+                tif = "DAY"
+            return {
+                "kind": "sell",
+                "symbol": sym,
+                "action": "selling",
+                "action_label": "Market sell-all",
+                "approve_btn": "Approve SELL",
+                "headline": f"SELL {qty_s} sh {sym} @ MARKET {tif} ({acct})",
+                "detail": f"Fractional OK · immediate exit · {tif} TIF",
+            }
+        if ot == "TRAILING_STOP":
+            pct = ev.get("trail_pct")
+            pct_s = f"{float(pct):g}%" if pct is not None else "trail"
+            return {
+                "kind": "stop",
+                "symbol": sym,
+                "action": "trailing stop",
+                "action_label": "Trailing stop",
+                "approve_btn": "Approve STOP",
+                "headline": f"SELL {qty_s} sh {sym} TRAILING STOP {pct_s} GTC ({acct})",
+                "detail": "Protective trailing stop · GTC",
+            }
+        if ot == "STOP_LIMIT":
+            sp = ev.get("stop_price") or getattr(getattr(intent, "entry", None), "stop_price", None)
+            sp_s = f"${float(sp):.2f}" if sp is not None else "stop"
+            return {
+                "kind": "stop",
+                "symbol": sym,
+                "action": "stop",
+                "action_label": "Stop-limit",
+                "approve_btn": "Approve STOP",
+                "headline": f"SELL {qty_s} sh {sym} STOP-LIMIT {sp_s} GTC ({acct})",
+                "detail": "Protective stop-limit · GTC",
+            }
+        sp = ev.get("stop_price") or getattr(getattr(intent, "entry", None), "stop_price", None)
+        sp_s = f"${float(sp):.2f}" if sp is not None else "stop"
+        return {
+            "kind": "stop",
+            "symbol": sym,
+            "action": "stop",
+            "action_label": "Protective stop",
+            "approve_btn": "Approve STOP",
+            "headline": f"SELL {qty_s} sh {sym} STOP {sp_s} GTC ({acct})",
+            "detail": "Protective sell stop · GTC",
+        }
+
+    direction = getattr(getattr(intent, "direction", None), "value", "LONG")
+    entry = getattr(getattr(intent, "entry", None), "method", None)
+    entry_s = getattr(entry, "value", str(entry or "LIMIT"))
+    return {
+        "kind": "trade",
+        "symbol": sym,
+        "action": direction.lower(),
+        "action_label": direction.title(),
+        "approve_btn": "Approve",
+        "headline": f"{direction} {qty_s} sh {sym} ({acct})",
+        "detail": f"entry {entry_s}",
+    }
+
+
+def intent_action_summary_for_id(intent_id: str) -> dict:
+    intent = _load_intent_any(intent_id)
+    if intent is None:
+        return {"kind": "unknown", "action": "order", "action_label": "Order",
+                "approve_btn": "Approve", "headline": "Unknown order", "detail": ""}
+    return intent_action_summary(intent)
+
+
 def _execution_notice(intent) -> str:
     """Truthful execution-gate state for THIS intent (replaces the old blanket 'DISABLED this phase' line,
     which went stale once Stage-2c protective/trailing stops were gate-removed 2026-06-19 + DB-authorized —
@@ -170,10 +281,17 @@ def _execution_notice(intent) -> str:
     try:
         from brokers import execution_guard as _g
         if intent is not None and _g._is_protective_stop(intent):
+            summ = intent_action_summary(intent)
             if _g._protective_unlocked():
-                return ("✅ Protective/trailing stops are LIVE-ENABLED — this SELL stop WILL submit to "
-                        "Schwab once approved (the 2FA above is the final gate).")
-            return "⛔ Protective stops are currently locked (system control off)."
+                if summ.get("kind") == "sell":
+                    return ("✅ Live SELL enabled — this market sell-all WILL submit to Schwab once you "
+                            "approve (2FA above is the final gate).")
+                if summ.get("action") == "trailing stop":
+                    return ("✅ Live STOP enabled — this trailing stop WILL submit to Schwab once you "
+                            "approve (2FA above is the final gate).")
+                return ("✅ Live STOP enabled — this sell stop WILL submit to Schwab once you "
+                        "approve (2FA above is the final gate).")
+            return "⛔ Protective orders are currently locked (system control off)."
         if intent is not None and _g._is_options_execution(intent):
             if _g._options_unlocked() and _g._live_future_unlocked():
                 return ("✅ Options execution LIVE — this order WILL submit to Schwab once approved "
@@ -191,35 +309,99 @@ def execution_notice(intent_id: str) -> str:
     return _execution_notice(_load_intent_any(intent_id))
 
 
+def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | None:
+    """Build (html_text, plain_text, inline_keyboard) for a 2FA approval ping."""
+    chat = _approval_chat()
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not (chat and token):
+        return None
+    is_test = intent.instrument.symbol in ("TEST", "ZZGUARD") or (intent.meta.thesis or "").startswith("scaffold")
+    link = intent_deep_link(intent.intent_id)
+    summ = intent_action_summary(intent)
+    sym = intent.instrument.symbol
+    title = summ["action_label"].upper() + " APPROVAL" + (" — ⚠️ SCAFFOLD TEST" if is_test else "")
+    notice = _execution_notice(intent)
+    html = (f"🔐 <b>{_tg_html(title)}</b>\n\n"
+            f"<b>{_tg_html(summ['headline'])}</b>\n"
+            f"<i>{_tg_html(summ['detail'])}</i>\n"
+            f"intent <code>{_tg_html(intent.intent_id[:8])}</code> · expires {TTL_MIN}min\n"
+            f"manual fallback code: <code>{_tg_html(code)}</code>\n"
+            + (f'<a href="{_tg_html(link)}">Open this order in Command Center</a>\n' if link else "")
+            + f"<i>2nd factor: type ticker <b>{_tg_html(sym)}</b> in web OR tap {_tg_html(summ['approve_btn'])} here</i>\n"
+            f"<i>{_tg_html(notice)}</i>")
+    plain = (f"🔐 {title}\n\n{summ['headline']}\n{summ['detail']}\n"
+             f"intent {intent.intent_id[:8]} · expires {TTL_MIN}min\nmanual fallback code: {code}\n"
+             + (f"Open: {link}\n" if link else "")
+             + f"2nd factor: type ticker {sym} in web OR tap {summ['approve_btn']} in Telegram\n{notice}")
+    kb = {"inline_keyboard": [[
+        {"text": f"✅ {summ['approve_btn']}", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
+        {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"}]]}
+    return html, plain, kb
+
+
+def _post_telegram_approval(chat: str, token: str, html: str, plain: str, kb: dict) -> bool:
+    """Send approval message; HTML first, plain-text fallback. Logs failures (never silent)."""
+    import requests
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    for mode, text in (("HTML", html), (None, plain)):
+        try:
+            payload = {"chat_id": chat, "text": text, "reply_markup": kb}
+            if mode:
+                payload["parse_mode"] = mode
+            r = requests.post(url, json=payload, timeout=10)
+            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.ok and body.get("ok"):
+                return True
+            err = body.get("description") or r.text[:200]
+            print(f"[approval_service] telegram send failed ({mode or 'plain'}): {err}", file=sys.stderr)
+        except Exception as e:
+            print(f"[approval_service] telegram send error ({mode or 'plain'}): {e}", file=sys.stderr)
+    return False
+
+
+def resend_pending_telegram(intent_id: str) -> dict:
+    """Re-push the Telegram approval ping for a pending intent (e.g. after a Markdown parse failure)."""
+    intent = _load_intent_any(intent_id)
+    if intent is None:
+        return {"ok": False, "reason": "intent not found"}
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT code, status, expires_at FROM trade_approvals
+                   WHERE intent_id=%s AND channel='telegram' ORDER BY id DESC LIMIT 1""", (intent_id,))
+    r = cur.fetchone()
+    if not r:
+        return {"ok": False, "reason": "no telegram approval row"}
+    code, status, expires = r
+    if status != "pending":
+        return {"ok": False, "reason": f"telegram channel not pending ({status})"}
+    if expires and expires < dt.datetime.now(dt.timezone.utc):
+        return {"ok": False, "reason": "approval expired"}
+    chat = _approval_chat()
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    built = _approval_telegram_payload(intent, code)
+    if not built:
+        return {"ok": False, "reason": "telegram not configured (token/chat missing)"}
+    html, plain, kb = built
+    sent = _post_telegram_approval(chat, token, html, plain, kb)
+    return {"ok": sent, "intent_id": intent_id, "code": code}
+
+
 def _send_approval_request(intent, code: str) -> None:
     """Inline-button approval message (operator request 2026-06-11): one-tap Approve/Reject, code kept as
     manual fallback. TEST-fixture intents are labeled so scaffold smoke never reads like a real plan."""
     chat = _approval_chat()
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not (chat and token):
+        print("[approval_service] telegram skipped: TELEGRAM_BOT_TOKEN or approval chat not set",
+              file=sys.stderr)
+        _send_approval_email(intent, code,
+                             intent.instrument.symbol in ("TEST", "ZZGUARD")
+                             or (intent.meta.thesis or "").startswith("scaffold"))
         return
-    qty = intent.quantity.qty or intent.quantity.notional or intent.quantity.contracts
+    built = _approval_telegram_payload(intent, code)
+    if built:
+        html, plain, kb = built
+        _post_telegram_approval(chat, token, html, plain, kb)
     is_test = intent.instrument.symbol in ("TEST", "ZZGUARD") or (intent.meta.thesis or "").startswith("scaffold")
-    link = intent_deep_link(intent.intent_id)
-    text = (f"🔐 *TRADE APPROVAL REQUEST*{' — ⚠️ SCAFFOLD TEST FIXTURE' if is_test else ''}\n\n"
-            f"{intent.direction.value} *{qty} sh* {intent.instrument.symbol} ({intent.broker})\n"
-            f"entry {intent.entry.method.value}"
-            f"{' @' + str(intent.entry.limit_price) if intent.entry.limit_price else ''}\n"
-            f"intent `{intent.intent_id[:8]}` · expires {TTL_MIN}min\n"
-            f"manual fallback code: `{code}`\n"
-            + (f"[Open this order in Command Center]({link})\n" if link else "")
-            + f"_2nd factor: web popup — you must TYPE the ticker ({intent.instrument.symbol}) to confirm_\n"
-            f"_{_execution_notice(intent)}_")
-    kb = {"inline_keyboard": [[
-        {"text": "✅ Approve", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
-        {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"}]]}
-    try:
-        import requests, json as _j
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown",
-                            "reply_markup": kb}, timeout=10)
-    except Exception:
-        pass
     _send_approval_email(intent, code, is_test)
 
 
@@ -232,14 +414,12 @@ def _send_approval_email(intent, code: str, is_test: bool) -> None:
         from pathlib import Path as _P
         _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
         import email_notifier
-        qty = intent.quantity.qty or intent.quantity.notional or intent.quantity.contracts
         sym = intent.instrument.symbol
-        subj = f"[Trade AI] Approval code {code} — {intent.direction.value} {qty} {sym}" + (" (SCAFFOLD TEST)" if is_test else "")
-        body = (f"Trade approval requested.\n\n"
-                f"{intent.direction.value} {qty} sh {sym} ({intent.broker})\n"
-                f"entry {intent.entry.method.value}"
-                f"{(' @ ' + str(intent.entry.limit_price)) if intent.entry.limit_price else ''}"
-                f"{(' stop ' + str(intent.entry.stop_price)) if getattr(intent.entry, 'stop_price', None) else ''}\n"
+        summ = intent_action_summary(intent)
+        subj = f"[Trade AI] {summ['action_label']} approval {code} — {sym}" + (" (SCAFFOLD TEST)" if is_test else "")
+        body = (f"{summ['action_label']} approval requested.\n\n"
+                f"{summ['headline']}\n"
+                f"{summ['detail']}\n"
                 f"intent {intent.intent_id[:8]} · expires {TTL_MIN} min\n\n"
                 f"ONE-TIME CODE: {code}\n\n"
                 f"Approve from EITHER channel — enter this code in the Command Center confirm box, "

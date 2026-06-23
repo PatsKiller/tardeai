@@ -199,9 +199,151 @@ def _parse_occ(symbol: str) -> Optional[dict]:
     }
 
 
+def _execution_profile(account: str) -> dict:
+    """Map account → broker + auto vs manual execution path."""
+    a = (account or "").lower()
+    if "fidelity" in a:
+        return {
+            "broker": "fidelity",
+            "execution_mode": "manual",
+            "execution_label": "Manual · Fidelity",
+            "auto_eligible": False,
+        }
+    if "schwab" in a:
+        return {
+            "broker": "schwab",
+            "execution_mode": "auto_or_manual",
+            "execution_label": "Schwab · auto or manual",
+            "auto_eligible": True,
+        }
+    if "alpaca" in a:
+        return {
+            "broker": "alpaca",
+            "execution_mode": "auto",
+            "execution_label": "Auto · Alpaca paper",
+            "auto_eligible": True,
+        }
+    return {
+        "broker": "other",
+        "execution_mode": "manual",
+        "execution_label": "Manual",
+        "auto_eligible": False,
+    }
+
+
+def _stamp_execution(p: dict, account: str = "") -> dict:
+    """Attach broker + execution_mode labels to a proposal row."""
+    acct = account or p.get("account") or ""
+    prof = _execution_profile(acct)
+    p["account"] = acct or p.get("account")
+    p["broker"] = prof["broker"]
+    p["execution_mode"] = prof["execution_mode"]
+    p["execution_label"] = prof["execution_label"]
+    p["auto_eligible"] = prof["auto_eligible"]
+    return p
+
+
+def _holding_quality_gates(h: dict) -> dict:
+    """Account-aware quality gates — Fidelity/manual sleeves use relaxed IV/edge floors."""
+    prof = _execution_profile(h.get("account") or "")
+    manual = prof.get("broker") == "fidelity" or prof.get("execution_mode") == "manual"
+    return {
+        "min_iv": 12 if manual else MIN_IV_RANK,
+        "min_edge": MIN_EDGE_CC_INTENT if manual else MIN_EDGE_SCORE,
+        "edge_boost": 22.0 if manual else 0.0,
+        "manual": manual,
+        "broker": prof.get("broker"),
+    }
+
+
+def _estimate_option_contract(
+    sym: str,
+    price: float,
+    tech: dict,
+    side: str,
+    target_strike: float,
+    target_dte: int,
+) -> Optional[dict]:
+    """Black-Scholes fallback when Schwab chain is thin or unavailable."""
+    if price <= 0 or target_strike <= 0:
+        return None
+    try:
+        from portfolio_options import _estimate_premium
+    except Exception:
+        return None
+    atr = _f(tech.get("atr")) or price * (0.02 if side == "call" else 0.015)
+    iv_pct = _f(tech.get("iv"))
+    est = _estimate_premium(price, target_strike, atr, iv_pct, target_dte)
+    if est <= 0:
+        return None
+    iv = (iv_pct / 100.0) if iv_pct else 0.25
+    return {
+        "exp": (_now().date() + timedelta(days=target_dte)).isoformat(),
+        "dte": target_dte,
+        "strike": target_strike,
+        "bid": round(est * 0.95, 2),
+        "ask": round(est * 1.05, 2),
+        "mid": round(est, 2),
+        "iv": iv,
+        "delta": None,
+        "oi": None,
+        "volume": 0,
+        "data_source": "bs_estimate",
+    }
+
+
+def _resolve_option_contract(
+    sym: str,
+    price: float,
+    tech: dict,
+    side: str,
+    target_strike: float,
+    target_dte: int,
+    strikes: int = 10,
+) -> Tuple[Optional[dict], str]:
+    """Pick live chain contract or BS estimate."""
+    chain = _schwab_chain(sym, strikes=strikes)
+    und = _f(chain.get("underlying_price")) or price
+    contract = _pick_chain_contract(chain, side, target_strike, target_dte)
+    if contract:
+        contract["data_source"] = "schwab_chain"
+        return contract, "schwab_chain"
+    est = _estimate_option_contract(sym, und, tech, side, target_strike, target_dte)
+    if est:
+        return est, "bs_estimate"
+    return None, ""
+
+
+def _normalize_holding(h: dict) -> dict:
+    """Unify Schwab + Fidelity/SnapTrade holding shapes for the options engine."""
+    out = dict(h)
+    price = _f(h.get("price")) or _f(h.get("current_price"))
+    out["price"] = price
+    acct = h.get("account") or h.get("account_id") or ""
+    out["account"] = acct
+    out["account_display"] = h.get("account_display") or acct.replace("_", " ").title()
+    out.update(_execution_profile(acct))
+    if h.get("is_cash") or (out.get("symbol") or "").upper() in ("CASH", "SPAXX", "FCASH", "CORE"):
+        out["is_cash"] = True
+    return out
+
+
 def _load_holdings() -> Tuple[List[dict], dict]:
     h = _load_json(STATE_DIR / "holdings.json") or {}
-    return h.get("holdings") or [], h
+    raw = h.get("holdings") or []
+    normalized = [_normalize_holding(x) for x in raw if (x.get("symbol") or "").upper()]
+    return normalized, h
+
+
+def _cash_by_account(holdings: List[dict]) -> Dict[str, float]:
+    """Available cash per account (SPAXX/CASH rows + is_cash flags)."""
+    cash: Dict[str, float] = {}
+    for h in holdings:
+        if not h.get("is_cash"):
+            continue
+        acct = h.get("account") or ""
+        cash[acct] = cash.get(acct, 0.0) + _f(h.get("market_value") or h.get("shares") * h.get("price"))
+    return cash
 
 
 def _load_technicals() -> dict:
@@ -493,6 +635,9 @@ def generate_covered_call_proposals(
         if contracts < 1:
             continue
 
+        gates = _holding_quality_gates(h)
+        min_iv_h = gates["min_iv"] if gates["manual"] else min_iv
+
         target_strike = price * (1 + default_otm)
         if price < 50:
             target_strike = round(target_strike / 0.5) * 0.5
@@ -501,29 +646,20 @@ def generate_covered_call_proposals(
         else:
             target_strike = round(target_strike / 5.0) * 5.0
 
-        chain = _schwab_chain(sym)
-        und = _f(chain.get("underlying_price")) or price
-        contract = _pick_chain_contract(chain, "call", target_strike, default_dte)
-        data_source = "schwab_chain"
-        if contract:
-            premium = contract["mid"]
-            strike = contract["strike"]
-            dte = contract["dte"]
-            iv = contract.get("iv") or 0.25
-            exp = contract.get("exp")
-        else:
-            data_source = "bs_estimate"
-            from portfolio_options import _estimate_premium
-            atr = _f(tech.get("atr")) or price * 0.015
-            iv_pct = _f(tech.get("iv"))
-            premium = _estimate_premium(price, target_strike, atr, iv_pct, default_dte)
-            strike = target_strike
-            dte = default_dte
-            iv = (iv_pct / 100.0) if iv_pct else 0.25
-            exp = (_now().date() + timedelta(days=dte)).isoformat()
+        contract, data_source = _resolve_option_contract(
+            sym, price, tech, "call", target_strike, default_dte,
+        )
+        if not contract:
+            continue
+        premium = contract["mid"]
+        strike = contract["strike"]
+        dte = contract["dte"]
+        iv = contract.get("iv") or 0.25
+        exp = contract.get("exp")
+        und = _f(price)
 
         iv_rank = _iv_rank_proxy(sym, tech, chain_iv=iv)
-        if iv_rank < min_iv and sym not in cc_syms:
+        if iv_rank < min_iv_h and sym not in cc_syms:
             continue
 
         pop = _pop_otm_call(und, strike, max(0.05, iv), dte)
@@ -555,12 +691,14 @@ def generate_covered_call_proposals(
             pop,
             iv_rank,
             rr,
-            catalyst_boost=12.0 if in_intent else 3.0,
+            catalyst_boost=12.0 if in_intent else (8.0 if gates["manual"] else 3.0),
             conviction=_f(aegis.get("confidence"), 0.6),
         )
         if in_intent and pop >= MIN_POP_PCT:
             edge = max(edge, pop * 0.55 + 18.0)
-        min_edge = MIN_EDGE_CC_INTENT if in_intent else MIN_EDGE_SCORE
+        if gates["manual"]:
+            edge = round(edge + gates["edge_boost"], 1)
+        min_edge = gates["min_edge"] if (in_intent or gates["manual"]) else MIN_EDGE_SCORE
         if edge < min_edge or pop < MIN_POP_PCT:
             continue
         if aegis and not aegis_ok and (aegis.get("verdict") or "").lower() in ("reject", "avoid", "wait"):
@@ -573,12 +711,13 @@ def generate_covered_call_proposals(
             "aegis": aegis.get("reasoning") or "",
             "income_note": f"Est. ${premium * 100 * contracts:,.0f} premium ({contracts} contract{'s' if contracts > 1 else ''})",
         }
-        proposals.append({
-            "id": _proposal_id("covered_call", sym, h.get("account_display") or h.get("account") or "", strike, exp),
+        acct = h.get("account_display") or h.get("account") or ""
+        proposals.append(_stamp_execution({
+            "id": _proposal_id("covered_call", sym, acct, strike, exp),
             "strategy": "covered_call",
             "symbol": sym,
             "underlying": sym,
-            "account": h.get("account_display") or h.get("account") or "",
+            "account": acct,
             "intent_sleeve": in_intent,
             "aegis_note": (aegis.get("reasoning") or "")[:160] or None,
             "aegis_verdict": aegis.get("verdict"),
@@ -617,9 +756,180 @@ def generate_covered_call_proposals(
             "data_source": data_source,
             "execution_note": _execution_note(),
             "generated_at": _iso(),
-        })
+        }, acct))
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals
+
+
+def generate_holdings_put_proposals(
+    holdings: List[dict],
+    tech_map: dict,
+    cash_map: Dict[str, float],
+    aegis_map: dict,
+) -> List[dict]:
+    """Cash-secured puts (manual accounts) + protective long puts on large positions."""
+    proposals: List[dict] = []
+    owned_by_acct: Dict[str, set] = {}
+    for h in holdings:
+        if h.get("is_cash"):
+            continue
+        acct = h.get("account") or ""
+        owned_by_acct.setdefault(acct, set()).add((h.get("symbol") or "").upper())
+
+    # Cash-secured puts — use account cash to sell puts on liquid names (incl. Fidelity SPAXX)
+    for h in holdings:
+        if h.get("is_cash"):
+            continue
+        sym = (h.get("symbol") or "").upper()
+        price = _f(h.get("price"))
+        mv = _f(h.get("market_value"))
+        acct = h.get("account") or ""
+        if price <= 0 or mv < MIN_POSITION_MV:
+            continue
+        cash = cash_map.get(acct, 0.0)
+        if cash < 5000:
+            continue
+        gates = _holding_quality_gates(h)
+        tech = tech_map.get(sym) or {}
+        und = price
+        iv_rank = _iv_rank_proxy(sym, tech)
+        if iv_rank < gates["min_iv"]:
+            continue
+        target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
+        if cash < target_strike * 100:
+            continue
+        contract, data_source = _resolve_option_contract(sym, price, tech, "put", target_strike, 30)
+        if not contract:
+            continue
+        premium = contract["mid"]
+        strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
+        pop = _pop_otm_put(und, strike, max(0.05, iv), dte)
+        max_profit = round(premium * 100, 2)
+        max_loss = round((strike - premium) * 100, 2)
+        rr = max_profit / max(max_loss, 1)
+        edge = _edge_score(pop, iv_rank, rr, conviction=0.55)
+        if gates["manual"]:
+            edge = round(edge + gates["edge_boost"] * 0.65, 1)
+        min_edge = gates["min_edge"] if gates["manual"] else MIN_EDGE_SCORE
+        if edge < min_edge or pop < MIN_POP_PCT:
+            continue
+        acct_disp = h.get("account_display") or acct
+        proposals.append(_stamp_execution({
+            "id": _proposal_id("cash_secured_put", sym, acct_disp, strike, contract.get("exp") or ""),
+            "strategy": "cash_secured_put",
+            "symbol": sym,
+            "underlying": sym,
+            "side": "SELL",
+            "option_type": "put",
+            "strike": strike,
+            "expiration": contract.get("exp"),
+            "dte": dte,
+            "contracts": 1,
+            "premium": premium,
+            "premium_total": round(premium * 100, 2),
+            "underlying_price": round(und, 2),
+            "pop_pct": pop,
+            "max_profit": max_profit,
+            "max_loss": max_loss,
+            "breakeven": round(strike - premium, 2),
+            "risk_reward": round(rr, 3),
+            "expected_value": round(premium * 100 * (pop / 100.0), 2),
+            "edge_score": edge,
+            "iv_rank": iv_rank,
+            "severity": "positive" if edge >= 72 else "info",
+            "recommended_action": "Sell Cash-Secured Put",
+            "action_buttons": [
+                {"action": "sell_put", "label": "Sell Put (manual)"},
+                {"action": "review_chain", "label": "View Chain"},
+                {"action": "hold", "label": "Pass"},
+            ],
+            "reasoning": _build_reasoning("Cash-secured put", sym, {
+                "iv_rank": iv_rank,
+                "technical": f"CSP on held name · ${cash:,.0f} cash available in account",
+            }),
+            "quality_pass": True,
+            "data_source": data_source,
+            "execution_note": _execution_note("Execute manually at broker — verify buying power."),
+            "generated_at": _iso(),
+        }, acct))
+
+    # Protective long puts on large positions (≥$15k MV)
+    for h in holdings:
+        if h.get("is_cash"):
+            continue
+        sym = (h.get("symbol") or "").upper()
+        price = _f(h.get("price"))
+        mv = _f(h.get("market_value"))
+        shares = _f(h.get("shares"))
+        acct = h.get("account") or ""
+        if mv < 15000 or price <= 0 or shares < 50:
+            continue
+        gates = _holding_quality_gates(h)
+        tech = tech_map.get(sym) or {}
+        und = price
+        iv_rank = _iv_rank_proxy(sym, tech)
+        if iv_rank < gates["min_iv"]:
+            continue
+        # Protective put: ~5% OTM put, 45-60 DTE
+        target_strike = round(und * 0.95 / 2.5) * 2.5 if und > 50 else round(und * 0.95, 1)
+        contract, data_source = _resolve_option_contract(sym, price, tech, "put", target_strike, 45)
+        if not contract:
+            continue
+        premium = contract["mid"]
+        if premium <= 0:
+            continue
+        strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
+        pop = 100.0 - _pop_otm_put(und, strike, max(0.05, iv), dte)
+        contracts = max(1, int(shares // 100))
+        cost = round(premium * 100 * contracts, 2)
+        edge = _edge_score(pop, iv_rank, 0.4, conviction=0.5)
+        if gates["manual"]:
+            edge = round(edge + gates["edge_boost"] * 0.5, 1)
+        min_edge = (MIN_EDGE_SCORE - 8) if gates["manual"] else (MIN_EDGE_SCORE - 5)
+        if edge < min_edge:
+            continue
+        acct_disp = h.get("account_display") or acct
+        proposals.append(_stamp_execution({
+            "id": _proposal_id("protective_put", sym, acct_disp, strike, contract.get("exp") or ""),
+            "strategy": "protective_put",
+            "symbol": sym,
+            "underlying": sym,
+            "side": "BUY",
+            "option_type": "put",
+            "strike": strike,
+            "expiration": contract.get("exp"),
+            "dte": dte,
+            "contracts": contracts,
+            "premium": premium,
+            "premium_total": cost,
+            "underlying_price": round(und, 2),
+            "pop_pct": round(pop, 1),
+            "max_profit": "hedge",
+            "max_loss": cost,
+            "breakeven": round(strike - premium, 2),
+            "risk_reward": round(mv / max(cost, 1), 2),
+            "expected_value": round(-cost * 0.5, 2),
+            "edge_score": edge,
+            "iv_rank": iv_rank,
+            "severity": "info",
+            "recommended_action": "Buy Protective Put",
+            "action_buttons": [
+                {"action": "buy_put", "label": "Buy Put (hedge)"},
+                {"action": "review_chain", "label": "View Chain"},
+                {"action": "hold", "label": "Pass"},
+            ],
+            "reasoning": _build_reasoning("Protective put", sym, {
+                "iv_rank": iv_rank,
+                "technical": f"Hedge ${mv:,.0f} position ({contracts} contracts)",
+            }),
+            "quality_pass": True,
+            "data_source": data_source,
+            "execution_note": _execution_note("Manual hedge — size to shares held."),
+            "generated_at": _iso(),
+        }, acct))
+
+    proposals.sort(key=lambda x: -x["edge_score"])
+    return proposals[:12]
 
 
 def generate_defined_risk_proposals(
@@ -671,7 +981,7 @@ def generate_defined_risk_proposals(
             edge = _edge_score(pop, iv_rank, rr * 0.5, conviction=conf)
             if edge < MIN_EDGE_SCORE + 5:
                 continue
-            proposals.append({
+            proposals.append(_stamp_execution({
                 "id": _proposal_id("long_call", sym, "", strike, contract.get("exp") or ""),
                 "strategy": "long_call",
                 "symbol": sym,
@@ -710,7 +1020,7 @@ def generate_defined_risk_proposals(
                 "data_source": data_source,
                 "execution_note": _execution_note(),
                 "generated_at": _iso(),
-            })
+            }))
         elif conf >= 0.55:
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
             contract = _pick_chain_contract(chain, "put", target_strike, 30)
@@ -735,7 +1045,7 @@ def generate_defined_risk_proposals(
             edge = _edge_score(pop, iv_rank, rr, conviction=conf)
             if edge < MIN_EDGE_SCORE or pop < MIN_POP_PCT:
                 continue
-            proposals.append({
+            proposals.append(_stamp_execution({
                 "id": _proposal_id("cash_secured_put", sym, "", strike, contract.get("exp") or ""),
                 "strategy": "cash_secured_put",
                 "symbol": sym,
@@ -776,7 +1086,7 @@ def generate_defined_risk_proposals(
                     "Verify buying power + SSDI income context before entry."
                 ),
                 "generated_at": _iso(),
-            })
+            }))
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:12]
 
@@ -818,7 +1128,7 @@ def generate_credit_spread_proposals(
         edge = _edge_score(pop, iv_rank, rr, conviction=conf)
         if edge < MIN_EDGE_SCORE or pop < MIN_POP_PCT:
             continue
-        proposals.append({
+        proposals.append(_stamp_execution({
             "id": _proposal_id("credit_spread", sym, "", short_strike, short_c.get("exp") or ""),
             "strategy": "credit_spread",
             "symbol": sym,
@@ -856,7 +1166,7 @@ def generate_credit_spread_proposals(
             "quality_pass": True,
             "execution_note": _execution_note(),
             "generated_at": _iso(),
-        })
+        }))
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:8]
 
@@ -1047,10 +1357,12 @@ def generate_proposals(force: bool = False) -> dict:
     owned = {h.get("symbol", "").upper() for h in holdings if _f(h.get("shares")) >= 100}
 
     cc = generate_covered_call_proposals(holdings, tech_map, intent_cfg, aegis_map)
+    cash_map = _cash_by_account(holdings)
+    puts = generate_holdings_put_proposals(holdings, tech_map, cash_map, aegis_map)
     convictions = _high_conviction_symbols()
     dr = generate_defined_risk_proposals(convictions, tech_map, owned)
     spreads = generate_credit_spread_proposals(convictions, tech_map)
-    pool = cc + dr + spreads
+    pool = cc + puts + dr + spreads
     cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
 
     def _passes_quality_gate(p: dict) -> bool:
@@ -1058,9 +1370,16 @@ def generate_proposals(force: bool = False) -> dict:
             return False
         edge = _f(p.get("edge_score"))
         sym = (p.get("symbol") or "").upper()
+        strat = p.get("strategy") or ""
+        manual = p.get("execution_mode") == "manual" or p.get("broker") == "fidelity"
         # Income-sleeve names (V, SCHD, LMT in portfolio_intent) use relaxed floor — final
         # filter must match per-proposal generation or borderline intent CCs vanish (V ~61 vs 62).
-        min_e = MIN_EDGE_CC_INTENT if p.get("strategy") == "covered_call" and sym in cc_syms else MIN_EDGE_SCORE
+        if strat == "covered_call" and sym in cc_syms:
+            min_e = MIN_EDGE_CC_INTENT
+        elif manual and strat in ("covered_call", "cash_secured_put", "protective_put"):
+            min_e = MIN_EDGE_CC_INTENT
+        else:
+            min_e = MIN_EDGE_SCORE
         return edge >= min_e
 
     strict = [p for p in pool if _passes_quality_gate(p)]
@@ -1094,8 +1413,11 @@ def generate_proposals(force: bool = False) -> dict:
         "generated_at": _iso(),
         "count": len(all_p),
         "covered_calls": len(cc),
+        "puts": len(puts),
         "defined_risk": len(dr),
         "credit_spreads": len(spreads),
+        "fidelity_holdings": sum(1 for h in holdings if (h.get("broker") == "fidelity" and not h.get("is_cash"))),
+        "schwab_holdings": sum(1 for h in holdings if (h.get("broker") == "schwab" and not h.get("is_cash"))),
         "fallback_tier_used": fallback_used,
         "quality_gate": {
             "min_edge_score": MIN_EDGE_SCORE,
@@ -1108,7 +1430,8 @@ def generate_proposals(force: bool = False) -> dict:
             "total_edge_avg": round(sum(p["edge_score"] for p in all_p) / max(len(all_p), 1), 1),
             "avg_pop": round(sum(p.get("pop_pct", 50) for p in all_p) / max(len(all_p), 1), 1),
             "income_opportunities": sum(1 for p in all_p if p["strategy"] == "covered_call"),
-            "conviction_plays": sum(1 for p in all_p if p["strategy"] != "covered_call"),
+            "put_plays": sum(1 for p in all_p if "put" in (p.get("strategy") or "")),
+            "conviction_plays": sum(1 for p in all_p if p["strategy"] not in ("covered_call", "cash_secured_put", "protective_put")),
             "note": "High-quality only — proposals below edge/POP gates are excluded.",
         },
     }
@@ -1149,10 +1472,18 @@ def get_proposal_health_metrics() -> dict:
         ) or {}).get("c", 0)) if USE_DB else None
     except Exception:
         pending = wl_stale = rot_pending = None
+    tracking = {}
+    try:
+        import manual_execution_tracker as met
+        tracking = met.get_tracking_metrics(days=14)
+    except Exception:
+        tracking = {}
     return {
         "captured_at": _iso(),
         "options": {
             "proposal_count": props.get("count", 0),
+            "put_plays": props.get("puts", 0),
+            "fidelity_holdings": props.get("fidelity_holdings", 0),
             "cache_age_min": age_min,
             "fallback_tier_used": props.get("fallback_tier_used", False),
             "open_legs": mon.get("position_count", 0),
@@ -1161,6 +1492,7 @@ def get_proposal_health_metrics() -> dict:
         "trades": {"pending_proposals": pending},
         "watchlist": {"stale_active_7d": wl_stale},
         "rotation": {"pending_recommendations": rot_pending},
+        "execution_tracking": tracking,
         "maturity_level": 10 if props.get("count", 0) > 0 else 7,
     }
 

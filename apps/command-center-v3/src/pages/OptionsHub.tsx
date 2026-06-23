@@ -4,6 +4,8 @@ import { useApi } from '../hooks/useApi'
 import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
 import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
 import OptionReviewBar from '../components/OptionReviewBar'
+import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
+import ManualExecutionLog from '../components/ManualExecutionLog'
 import { Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
 import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
 import { fmt$ } from '../lib/format'
@@ -14,6 +16,7 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Proposals', 'Open Positions', 'Strategy Overview'] as const
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
+const PURPLE = '#a855f7'
 
 type Proposal = OptionProposal
 type Position = OptionPosition
@@ -35,6 +38,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const [novice, setNovice] = useState(isNoviceMode)
   const [guideCollapsed, setGuideCollapsed] = useState(false)
   const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
+  const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
 
   useEffect(() => { setNoviceMode(novice) }, [novice])
 
@@ -80,7 +84,7 @@ export default function OptionsHub({ onDrill }: Props) {
     setSearchParams({ tab: t }, { replace: true })
   }
 
-  const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_call', 'sell_credit_spread'])
+  const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
 
   const runPreflight = async (p: Proposal) => {
     if (!execStatus?.armed_for_execution) {
@@ -130,6 +134,11 @@ export default function OptionsHub({ onDrill }: Props) {
     }
     if (execActions.has(action) && 'symbol' in item) {
       const p = item as Proposal
+      const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || p.auto_eligible === false
+      if (manualOnly) {
+        setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })
+        return
+      }
       if (novice) {
         setPreflightProposal(p)
         return
@@ -223,6 +232,10 @@ export default function OptionsHub({ onDrill }: Props) {
         />
       )}
 
+      {manualSeed && (
+        <ManualExecutionModal seed={manualSeed} onClose={() => setManualSeed(null)} onLogged={() => refetchProps()} />
+      )}
+
       {execMsg && (
         <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #60a5fa', fontSize: 11, color: 'var(--text2)' }}>
           {execMsg}
@@ -232,6 +245,9 @@ export default function OptionsHub({ onDrill }: Props) {
 
       {tab === 'Proposals' && (
         <>
+          <div style={{ marginBottom: 14 }}>
+            <ManualExecutionLog mode="option" borderColor="#a855f7" />
+          </div>
           <div style={{ ...panel, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <input
               placeholder="Ticker filter"
@@ -245,6 +261,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 <option value="">All</option>
                 <option value="covered_call">Covered Call</option>
                 <option value="cash_secured_put">Cash-Secured Put</option>
+                <option value="protective_put">Protective Put</option>
                 <option value="long_call">Long Call</option>
                 <option value="credit_spread">Credit Spread</option>
               </select>
@@ -299,6 +316,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 armed={!!execStatus?.armed_for_execution}
                 novice={novice}
                 onAction={(a, id) => handleAction(a, id, p)}
+                onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
                 onDrill={() => onDrill({
                   title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
                   subtitle: `$${p.strike} · ${p.dte} DTE · ${p.expiration ?? ''}`,
@@ -362,6 +380,7 @@ export default function OptionsHub({ onDrill }: Props) {
             { label: 'Avg Edge Score', value: overview?.proposals?.total_edge_avg ?? '—', color: '#22c55e' },
             { label: 'Avg POP', value: overview?.proposals?.avg_pop != null ? `${overview.proposals.avg_pop}%` : '—', color: '#a855f7' },
             { label: 'Income (CC)', value: overview?.proposals?.income_opportunities ?? 0, color: '#f59e0b' },
+            { label: 'Put plays', value: overview?.proposals?.put_plays ?? proposals?.puts ?? 0, color: PURPLE },
             { label: 'Open Positions', value: overview?.open_positions ?? posList.length, color: '#60a5fa' },
             { label: 'Needs Action', value: overview?.needs_action ?? alerts.length, color: '#ef4444' },
             { label: 'Unrealized P/L', value: fmt$(overview?.monitor?.total_unrealized_pnl), color: '#22c55e' },

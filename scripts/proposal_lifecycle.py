@@ -74,6 +74,41 @@ def _load_timeframe_class_map():
 TIMEFRAME_CLASS_MAP = _load_timeframe_class_map()
 INTRADAY_STRATEGIES = {sid for sid, tc in TIMEFRAME_CLASS_MAP.items() if tc == "intraday"}
 
+STRATEGY_TYPE_LABELS = {
+    "INTRADAY": "Intraday",
+    "SHORT_SWING": "Short Swing",
+    "MEDIUM_SWING": "Medium Swing",
+    "POSITION": "Position",
+    "CASH": "Cash",
+}
+
+
+def get_strategy_metadata(strategy_id: str) -> dict:
+    """Resolve display name, timeframe, and strategy type for a proposal."""
+    sid = (strategy_id or "").strip()
+    cfg = {}
+    try:
+        from strategy_config_loader import load_strategy_config
+        cfg = load_strategy_config(sid) or {}
+    except Exception:
+        pass
+    tc_raw = cfg.get("timeframe_class") or ""
+    if tc_raw:
+        strategy_type = str(tc_raw).upper()
+    else:
+        strategy_type = get_timeframe_class(sid).upper()
+    return {
+        "strategy_id": sid,
+        "display_name": cfg.get("display_name") or sid.replace("_", " ").title(),
+        "timeframe": cfg.get("timeframe"),
+        "timeframe_class": strategy_type.lower(),
+        "strategy_type": strategy_type,
+        "strategy_type_label": STRATEGY_TYPE_LABELS.get(
+            strategy_type, strategy_type.replace("_", " ").title()
+        ),
+        "status": cfg.get("status"),
+    }
+
 # Drift thresholds by timeframe class
 PRICE_DRIFT_THRESHOLDS = {
     "intraday": 2.0,

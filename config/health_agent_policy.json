@@ -43,7 +43,24 @@
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",
     "enabled": true,
     "max_age_minutes": 25,
-    "market_quotes_max_age_minutes": 25
+    "market_quotes_max_age_minutes": 25,
+    "totals_drift_min_dollars": 5000,
+    "totals_drift_min_pct": 0.5,
+    "snaptrade_cash_gap_min_dollars": 5000,
+    "snaptrade_accounts": ["fidelity_rollover_ira"]
+  },
+  "auto_remediate": {
+    "_comment": "Health agent runs these allowlisted scripts immediately when matching findings fire (no 15m escalation-handler wait). Cooldown prevents repricer loops.",
+    "enabled": true,
+    "cooldown_minutes": 10,
+    "finding_types": [
+      "portfolio_totals_drift",
+      "account_summary_drift",
+      "snaptrade_cash_stale",
+      "portfolio_repricer_stale",
+      "finviz_quote_cache_stale",
+      "market_quotes_stale"
+    ]
   },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts.",
@@ -60,6 +77,9 @@
     "options_proposals_stale": ".venv/bin/python scripts/run_options_monitor.py",
     "finviz_quote_cache_stale": ".venv/bin/python scripts/portfolio_repricer.py",
     "portfolio_repricer_stale": ".venv/bin/python scripts/portfolio_repricer.py",
+    "portfolio_totals_drift": ".venv/bin/python scripts/portfolio_repricer.py",
+    "account_summary_drift": ".venv/bin/python scripts/portfolio_repricer.py",
+    "snaptrade_cash_stale": ".venv/bin/python scripts/snaptrade_sync.py --apply",
     "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
   },
   "log_errors": {

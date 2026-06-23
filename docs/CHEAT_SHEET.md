@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-23
 **Live counts:** `docs/LIVE_SYSTEM_FACTS.md` — `.venv/bin/python3 scripts/generate_system_facts.py`
 
 ---
@@ -445,6 +445,15 @@ python3 scripts/send_alert_digest.py evening
 ---
 
 ## Paper Proposals
+
+**Two execution paths** (same queue until you choose):
+
+| Path | Where | Method |
+|------|-------|--------|
+| **A — Paper auto (test)** | Proposals → **Approve** | Alpaca bracket, no 2FA |
+| **B — Live** | Proposals → **Promote to Broker** → **Broker Proposals** | Schwab API+2FA or **Fidelity Active Trader (FA)** manual + log fill |
+
+Full doc: `docs/PROPOSAL_EXECUTION_PATHS.md`
 
 ```bash
 # View pending proposals (JSON)

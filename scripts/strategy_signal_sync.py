@@ -55,10 +55,16 @@ def _get_strategy_signals_columns(conn):
     return {row[0] for row in cur.fetchall()}
 
 
-def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None):
-    """Get today's GO/A+ scans from trade_ai_scans."""
+def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None, lookback_days=None):
+    """Get GO/A+ scans from trade_ai_scans (today by default, or lookback window)."""
     cur = conn.cursor()
-    date_clause = "CURRENT_DATE" if not target_date else f"'{target_date}'::date"
+    if lookback_days:
+        time_clause = "scanned_at > NOW() - (%s || ' days')::interval"
+        time_params = [str(lookback_days)]
+    else:
+        date_clause = "CURRENT_DATE" if not target_date else f"'{target_date}'::date"
+        time_clause = f"(scanned_at AT TIME ZONE 'America/New_York')::date = {date_clause}"
+        time_params = []
 
     sql = f"""
         SELECT DISTINCT ON (symbol)
@@ -71,12 +77,12 @@ def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None):
             ticker_perf_1m, sector_perf_1m, vs_sector_pct
         FROM trade_ai_scans
         WHERE decision IN ('GO', 'A+')
-        AND (scanned_at AT TIME ZONE 'America/New_York')::date = {date_clause}
+        AND {time_clause}
         {"AND run_label = %s" if run_label else ""}
         {"AND symbol = ANY(%s)" if symbols else ""}
         ORDER BY symbol, score DESC, scanned_at DESC
     """
-    params = []
+    params = list(time_params)
     if run_label:
         params.append(run_label)
     if symbols:
@@ -275,7 +281,8 @@ def build_setup_description(scan: dict, plan: dict) -> str:
 
 
 def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
-                           sync_run_id: str, dry_run=False, route_data: dict = None) -> dict:
+                           sync_run_id: str, dry_run=False, route_data: dict = None,
+                           max_price_drift_pct: float = 3.0) -> dict:
     """Insert or update a strategy_signal row. Returns status dict."""
     symbol = scan['symbol']
     strategy_id = scan.get('strategy_id') or infer_strategy_id(scan)
@@ -303,7 +310,7 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
             if live_q and live_q.get("last_price"):
                 live_px = float(live_q["last_price"])
                 drift_pct = abs(live_px - price) / price * 100
-                if drift_pct > 3.0:
+                if drift_pct > max_price_drift_pct:
                     log.warning(f"  {symbol}: screener price ${price:.2f} drifted {drift_pct:.1f}% "
                                 f"from live ${live_px:.2f} — skipping signal")
                     return {"status": "skipped",
@@ -455,7 +462,8 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     return {"status": "inserted", "signal_id": signal_id, "symbol": symbol, "strategy_id": strategy_id}
 
 
-def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None, dry_run=False) -> dict:
+def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None,
+                          lookback_days=None, dry_run=False) -> dict:
     """Main sync function. Returns audit dict."""
     cur = conn.cursor()
     sync_run_id = f"sync_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -471,7 +479,10 @@ def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None, 
     signals_before = cur.fetchone()[0] or 0
 
     # Get GO/A+ scans
-    scans = get_today_go_scans(conn, run_label=run_label, symbols=symbols, target_date=target_date)
+    scans = get_today_go_scans(
+        conn, run_label=run_label, symbols=symbols, target_date=target_date,
+        lookback_days=lookback_days,
+    )
     go_count = sum(1 for s in scans if s.get('decision') == 'GO')
     aplus_count = sum(1 for s in scans if s.get('decision') == 'A+')
 

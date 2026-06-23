@@ -15,8 +15,10 @@ def classify_proposal_alert_state(proposal: dict) -> str:
     rr = float(proposal.get("proposed_rr") or proposal.get("rr") or 0)
     er = proposal.get("execution_readiness") or {}
     readiness = er.get("readiness_state", "")
+    approval_allowed = bool(proposal.get("approval_allowed"))
 
-    if verdict == "READY" or (status == "PENDING" and not blockers and rr >= 2.0):
+    # ACTIONABLE_READY only when approval is actually allowed (not just empty blockers at promote time)
+    if approval_allowed and (verdict == "READY" or (status == "PENDING" and not blockers and rr >= 2.0)):
         return "ACTIONABLE_READY"
     if "BLOCKED" in (readiness or "").upper() or "BLOCKED" in (verdict or "").upper():
         if any("price_moved" in str(b) or "rr_below" in str(b) for b in blockers):
@@ -29,9 +31,31 @@ def classify_proposal_alert_state(proposal: dict) -> str:
     return "NEEDS_OPERATOR_DECISION"
 
 
+def _strategy_meta(proposal: dict) -> dict:
+    sid = proposal.get("strategy_id") or ""
+    try:
+        from proposal_lifecycle import get_strategy_metadata
+        meta = get_strategy_metadata(sid)
+        return {
+            "display_name": proposal.get("strategy_display_name") or meta.get("display_name") or sid,
+            "strategy_type": proposal.get("strategy_type") or meta.get("strategy_type"),
+            "strategy_type_label": proposal.get("strategy_type_label") or meta.get("strategy_type_label"),
+            "timeframe": proposal.get("strategy_timeframe_display") or meta.get("timeframe"),
+        }
+    except Exception:
+        tc = (proposal.get("proposal_timeframe_class") or "").upper().replace("SHORT_SWING", "SHORT_SWING")
+        return {
+            "display_name": proposal.get("strategy_display_name") or sid,
+            "strategy_type": tc or None,
+            "strategy_type_label": tc.replace("_", " ").title() if tc else None,
+            "timeframe": None,
+        }
+
+
 def build_proposal_alert_packet(proposal: dict) -> dict:
     """Build the decision packet for a Telegram alert."""
     alert_state = classify_proposal_alert_state(proposal)
+    _meta = _strategy_meta(proposal)
     blockers = proposal.get("approval_blockers") or []
     er = proposal.get("execution_readiness") or {}
     rr = float(proposal.get("proposed_rr") or 0)
@@ -58,7 +82,10 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
         "proposal_id": proposal.get("id"),
         "symbol": proposal.get("symbol"),
         "strategy_id": proposal.get("strategy_id"),
-        "strategy_display": proposal.get("strategy_display_name") or proposal.get("strategy_id"),
+        "strategy_display": _meta.get("display_name") or proposal.get("strategy_id"),
+        "strategy_type": _meta.get("strategy_type"),
+        "strategy_type_label": _meta.get("strategy_type_label"),
+        "strategy_timeframe": _meta.get("timeframe"),
         "sector": proposal.get("sector"),
         "industry": proposal.get("industry"),
         "catalyst": proposal.get("catalyst"),
@@ -106,9 +133,13 @@ def format_telegram_message(packet: dict) -> str:
              "BLOCKED_EXECUTION_FAILED": "\u274c", "NEEDS_OPERATOR_DECISION": "\u2753",
              "EXPIRED_OR_STALE": "\u23f0"}.get(packet["alert_type"], "\u2753")
 
+    _type_line = _esc_md(packet.get("strategy_type_label") or packet.get("strategy_type") or "Unknown")
+    if packet.get("strategy_timeframe"):
+        _type_line += f" · {_esc_md(packet['strategy_timeframe'])}"
     lines = [
         f"{emoji} *Paper Proposal: {packet['symbol']}*",
-        f"Strategy: {_esc_md(packet['strategy_display'])} | {packet['alert_type'].replace('_', ' ')}",
+        f"Strategy: {_esc_md(packet['strategy_display'])}",
+        f"Type: {_type_line} | {packet['alert_type'].replace('_', ' ')}",
         "",
     ]
 

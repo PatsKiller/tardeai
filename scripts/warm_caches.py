@@ -25,6 +25,20 @@ def main():
     except Exception as e:
         print(f"[warm_caches] rotation_summary FAILED: {str(e)[:200]}")
         return 1
+
+    # Autonomous trend-switch screening (IWM vs SPY) — lightweight tick every ~8 min
+    t1 = time.time()
+    try:
+        from rotation_autopilot import run_autopilot_tick
+        ap = run_autopilot_tick(trigger="warm_caches")
+        if ap.get("bridge_ran"):
+            print(f"[warm_caches] rotation_autopilot bridge ran ({ap.get('bridge_reason')}) "
+                  f"in {time.time() - t1:.1f}s")
+        elif ap.get("rotation", {}).get("signal") == "small_cap_outperform":
+            print(f"[warm_caches] rotation active, bridge throttled ({ap.get('bridge_reason')})")
+    except Exception as e:
+        print(f"[warm_caches] rotation_autopilot FAILED: {str(e)[:200]}")
+
     return 0
 
 

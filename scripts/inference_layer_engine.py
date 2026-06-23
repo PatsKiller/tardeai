@@ -380,6 +380,19 @@ class InferenceEngine:
             log.info("layer %-13s ok=%s %4dms inferences=%d :: %s",
                      name, result.ok, result.elapsed_ms, len(result.inferences), result.summary[:120])
 
+            # Autonomous rotation response when FeatureLayer detects small-cap outperform
+            if name == "features" and not dry_run:
+                rot = (result.data or {}).get("small_cap_rotation") or {}
+                if rot.get("signal") == "small_cap_outperform":
+                    try:
+                        from rotation_autopilot import run_autopilot_tick
+                        ap = run_autopilot_tick(trigger=f"inference:{trigger}")
+                        if ap.get("bridge_ran"):
+                            log.info("rotation_autopilot bridge ran (%s) from inference cycle",
+                                     ap.get("bridge_reason"))
+                    except Exception as e:
+                        log.warning("rotation_autopilot from inference skipped: %s", str(e)[:120])
+
         # Auto-enqueue ensemble validation for the cycle's highest-severity inferences
         # (the worker runs them off-cycle; bounded by ensemble.auto_enqueue_max).
         enqueued = 0

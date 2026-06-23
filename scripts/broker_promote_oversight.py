@@ -18,6 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 REQUIRED_AGENTS = ("maria", "risk_agent", "steph")
 BLOCK_VOTES = frozenset({"BLOCK"})
 WARN_VOTES = frozenset({"REJECT", "CAUTIOUS_TEST", "WAIT_FOR_DATA"})
+WATCHLIST_REC_TO_VOTE = {
+    "BUY": "APPROVE_TEST",
+    "HOLD": "CAUTIOUS_TEST",
+    "AVOID": "REJECT",
+    "SELL": "REJECT",
+    "WAIT": "WAIT_FOR_DATA",
+    "BLOCK": "BLOCK",
+}
 CLOUD_CACHE_HOURS = int(os.getenv("BROKER_CLOUD_OVERSIGHT_CACHE_HOURS", "24"))
 REQUIRE_CLOUD = os.getenv("BROKER_REQUIRE_CLOUD_OVERSIGHT", "0") == "1"
 INTEL_READINESS_BLOCK = float(os.getenv("BROKER_INTEL_READINESS_BLOCK", "50"))
@@ -250,7 +258,7 @@ def evaluate_intel_diligence(proposal_id: int) -> dict:
     warnings: list[str] = []
     try:
         import broker_proposal_intel as bpi
-        intel = bpi.get_intel_packet(proposal_id)
+        intel = bpi.get_intel_packet(proposal_id, include_oversight=False)
     except Exception as e:
         return {
             "ok": False,
@@ -668,9 +676,94 @@ def get_broker_diligence_summary(proposal_id: int) -> dict:
     }
 
 
+def sync_proposal_reviews_from_watchlist(proposal_id: int) -> dict:
+    """Backfill proposal_agent_reviews from completed watchlist jobs (proposal_review payload)."""
+    row = _q("SELECT symbol, strategy_id FROM paper_trade_proposals WHERE id=%s", (proposal_id,), one=True) or {}
+    sym = str(row.get("symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "proposal not found", "synced": []}
+
+    jobs = _q(
+        """SELECT j.requested_agent, r.recommendation, r.confidence, r.summary, r.model_used, j.completed_at
+           FROM watchlist_agent_jobs j
+           JOIN watchlist_agent_results r ON r.id = j.result_id
+           WHERE j.symbol = %s AND j.status = 'completed'
+             AND COALESCE(j.payload->>'proposal_id', '') = %s
+           ORDER BY j.completed_at DESC NULLS LAST""",
+        (sym, str(proposal_id)),
+    ) or []
+
+    seen: set[str] = set()
+    synced: list[str] = []
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        for j in jobs:
+            agent = str(j.get("requested_agent") or "").lower()
+            if agent not in REQUIRED_AGENTS or agent in seen:
+                continue
+            seen.add(agent)
+            rec = str(j.get("recommendation") or "").upper().strip()
+            vote = WATCHLIST_REC_TO_VOTE.get(rec, "CAUTIOUS_TEST")
+            conf_raw = j.get("confidence")
+            try:
+                conf_pct = int(round(float(conf_raw) * 100)) if conf_raw is not None else 50
+            except (TypeError, ValueError):
+                conf_pct = 50
+            summary = str(j.get("summary") or "")[:500]
+            model = j.get("model_used") or "watchlist_agent"
+            cur.execute(
+                """UPDATE proposal_agent_reviews SET
+                       status = 'reviewed', vote = %s, confidence = %s, summary = %s,
+                       reviewed_by_model = %s, reviewed_at = NOW()
+                 WHERE proposal_id = %s AND agent_name = %s""",
+                (vote, conf_pct, summary, model, proposal_id, agent),
+            )
+            if cur.rowcount == 0:
+                cur.execute(
+                    """INSERT INTO proposal_agent_reviews
+                           (proposal_id, symbol, strategy_id, agent_name, role, status, vote,
+                            confidence, summary, reviewed_by_model, reviewed_at)
+                       VALUES (%s, %s, %s, %s, %s, 'reviewed', %s, %s, %s, %s, NOW())""",
+                    (
+                        proposal_id, sym, row.get("strategy_id"), agent, agent,
+                        vote, conf_pct, summary, model,
+                    ),
+                )
+            synced.append(agent)
+        if synced:
+            votes = _q(
+                """SELECT vote FROM proposal_agent_reviews
+                   WHERE proposal_id=%s AND agent_name = ANY(%s)""",
+                (proposal_id, list(REQUIRED_AGENTS)),
+            ) or []
+            vote_vals = [str(v.get("vote") or "").upper() for v in votes]
+            if any(v == "BLOCK" for v in vote_vals):
+                agent_status = "BLOCKED"
+            elif any(v in ("REJECT", "BLOCK") for v in vote_vals):
+                agent_status = "REJECTED"
+            elif all(v in ("APPROVE_TEST", "CAUTIOUS_TEST", "NOT_APPLICABLE") for v in vote_vals if v):
+                agent_status = "REVIEWED"
+            else:
+                agent_status = "REVIEWED"
+            cur.execute(
+                "UPDATE paper_trade_proposals SET agent_review_status=%s WHERE id=%s",
+                (agent_status, proposal_id),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": str(e)[:160], "synced": synced}
+    return {"ok": True, "synced": synced, "symbol": sym}
+
+
 def advance_broker_diligence(proposal_id: int) -> dict:
     """Auto-run the next diligence steps (enrich queue, agents, LLM)."""
     actions: list[str] = []
+    sync = sync_proposal_reviews_from_watchlist(proposal_id)
+    if sync.get("synced"):
+        actions.append("synced_watchlist_agents:" + ",".join(sync["synced"]))
+
     row = _proposal_intel_row(proposal_id)
     ir = row.get("intel_readiness")
     ir_f = float(ir) if ir is not None else 0.0

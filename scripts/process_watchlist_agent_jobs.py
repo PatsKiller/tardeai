@@ -2038,6 +2038,18 @@ def process_jobs(limit: int = 10):
 
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
 
+        # Proposal review jobs: sync watchlist verdict back to proposal_agent_reviews
+        try:
+            payload = job.get("payload") or {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            pid = int(payload.get("proposal_id") or 0)
+            if pid and request_type == "proposal_review":
+                import broker_promote_oversight as _bpo
+                _bpo.sync_proposal_reviews_from_watchlist(pid)
+        except Exception as e:
+            print(f"  [proposal-sync] {symbol}: {e}")
+
         # Update watchlist item status
         cur.execute("UPDATE watchlist_items SET status='researched', updated_at=now() WHERE symbol=%s AND status IN ('queued','active')", (symbol,))
 

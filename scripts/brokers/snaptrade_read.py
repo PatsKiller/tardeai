@@ -28,13 +28,9 @@ MONEY_MARKET_SYMBOLS = {
     "CASH", "USD",                                                               # generic cash sweeps
 }
 
-# Operator-pinned cash overrides (2026-06-19): where the aggregator feed is untrustworthy, pin the sweep
-# to the manually-verified amount until the broker feed is reliable. (account_key, symbol) -> dollars.
-# fidelity_rollover_ira: SnapTrade can't be trusted for SPAXX (bad price/stale units); pin to the
-# verified post-deployment cash. REMOVE this entry once SnapTrade reports Fidelity cash correctly.
-PINNED_CASH = {
-    ("fidelity_rollover_ira", "SPAXX"): 452622.73,
-}
+# Optional manual overrides — empty by default. SnapTrade SPAXX *position units* often lag after trades;
+# reconcile_cash_positions() uses balances.buying_power (matches Fidelity core cash) instead.
+PINNED_CASH: dict[tuple[str, str], float] = {}
 
 
 @dataclass(frozen=True)
@@ -159,14 +155,14 @@ def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dic
         # A money market is $1.00 NAV cash — present it as clean cash (no P/L, is_cash=True) using the
         # implied value (units*price), so it can never be mistreated as a position again.
         if sym in MONEY_MARKET_SYMBOLS or "MONEY MARKET" in str((symobj or {}).get("description", "")).upper():
-            # operator-pinned amount wins over the (untrustworthy) aggregator value when set
-            mv = PINNED_CASH.get((account_key, sym), round(units * price, 2))
+            mv = PINNED_CASH.get((account_key, sym), round(units * max(price, 1.0), 2))
             out.append({
                 "symbol": sym, "account": account_key, "shares": mv,
                 "cost_basis": mv, "avg_cost": 1.0, "market_value": mv,
                 "current_price": 1.0, "price": 1.0, "is_cash": True,
                 "gain_loss": 0, "gain_loss_pct": 0, "sector_type": "Cash",
                 "cost_basis_source": "snaptrade", "position_source": "snaptrade",
+                "cash_source": "snaptrade_position_units",
             })
             continue
 
@@ -181,5 +177,101 @@ def normalize_positions(raw_positions: list[dict], account_key: str) -> list[dic
             "is_cash": False,
             "cost_basis_source": "snaptrade",
             "position_source": "snaptrade",
+        })
+    return out
+
+
+def _parse_balance_totals(balance_rows: list[dict]) -> tuple[float | None, float | None]:
+    """Return (cash, buying_power) from SnapTrade balance rows (USD)."""
+    cash = bp = None
+    for b in balance_rows or []:
+        cur = b.get("currency")
+        if isinstance(cur, dict) and cur.get("code") not in (None, "USD"):
+            continue
+        try:
+            if b.get("cash") is not None:
+                cash = float(b["cash"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if b.get("buying_power") is not None:
+                bp = float(b["buying_power"])
+        except (TypeError, ValueError):
+            pass
+    return cash, bp
+
+
+def reconcile_cash_positions(positions: list[dict], balance_rows: list[dict],
+                            account_key: str) -> list[dict]:
+    """Fix stale SPAXX units: SnapTrade positions keep pre-trade cash while balances.buying_power
+    matches Fidelity 'core position' / available cash after stock purchases."""
+    cash_bal, buying_power = _parse_balance_totals(balance_rows)
+    pos_cash_mv = round(sum(
+        float(p.get("market_value") or 0) for p in positions
+        if p.get("is_cash") or str(p.get("symbol") or "").upper() in MONEY_MARKET_SYMBOLS
+    ), 2)
+
+    authoritative: float | None = None
+    source = ""
+    pin = PINNED_CASH.get((account_key, "SPAXX")) or PINNED_CASH.get((account_key, "FDRXX"))
+    if pin is not None:
+        authoritative, source = float(pin), "operator_pinned"
+    elif buying_power is not None and buying_power >= 0:
+        # buying_power tracks Fidelity core MM after deploys; position units often stay stale.
+        if pos_cash_mv <= 0 or buying_power < pos_cash_mv - 500 or abs(buying_power - pos_cash_mv) > 500:
+            authoritative, source = round(buying_power, 2), "snaptrade_buying_power"
+    elif cash_bal is not None and cash_bal >= 0:
+        if pos_cash_mv <= 0 or abs(cash_bal - pos_cash_mv) > 500:
+            authoritative, source = round(cash_bal, 2), "snaptrade_cash_balance"
+
+    if authoritative is None:
+        return positions
+
+    out: list[dict] = []
+    cash_applied = False
+    cash_sym = "SPAXX"
+    for p in positions:
+        sym = str(p.get("symbol") or "").upper()
+        if p.get("is_cash") or sym in MONEY_MARKET_SYMBOLS:
+            cash_sym = sym or "SPAXX"
+            cash_applied = True
+            out.append({
+                **p,
+                "symbol": cash_sym,
+                "account": account_key,
+                "shares": authoritative,
+                "cost_basis": authoritative,
+                "avg_cost": 1.0,
+                "market_value": authoritative,
+                "current_price": 1.0,
+                "price": 1.0,
+                "is_cash": True,
+                "gain_loss": 0,
+                "gain_loss_pct": 0,
+                "sector_type": "Cash",
+                "cost_basis_source": "snaptrade",
+                "position_source": "snaptrade",
+                "cash_source": source,
+            })
+        else:
+            out.append(p)
+
+    if not cash_applied and authoritative > 0:
+        out.append({
+            "symbol": cash_sym,
+            "account": account_key,
+            "shares": authoritative,
+            "cost_basis": authoritative,
+            "avg_cost": 1.0,
+            "market_value": authoritative,
+            "current_price": 1.0,
+            "price": 1.0,
+            "is_cash": True,
+            "gain_loss": 0,
+            "gain_loss_pct": 0,
+            "sector_type": "Cash",
+            "cost_basis_source": "snaptrade",
+            "position_source": "snaptrade",
+            "cash_source": source,
         })
     return out

@@ -17,6 +17,7 @@ const STRAT_LABEL: Record<string, string> = {
   cash_secured_put: 'Cash-Secured Put',
   long_call: 'Long Call',
   credit_spread: 'Credit Spread',
+  protective_put: 'Protective Put',
 }
 
 const SEV = (s?: string) => {
@@ -113,6 +114,10 @@ export type OptionProposal = {
   underlying_price?: number
   contracts?: number
   account?: string
+  broker?: string
+  execution_mode?: string
+  execution_label?: string
+  auto_eligible?: boolean
   data_source?: string
   execution_note?: string
   delta?: number
@@ -120,7 +125,7 @@ export type OptionProposal = {
   side?: string
 }
 
-const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_call', 'sell_credit_spread'])
+const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
 
 export default function OptionProposalCard({
   proposal: p,
@@ -128,6 +133,7 @@ export default function OptionProposalCard({
   novice,
   onAction,
   onDrill,
+  onManualLog,
   reviewBar,
 }: {
   proposal: OptionProposal
@@ -135,6 +141,7 @@ export default function OptionProposalCard({
   novice?: boolean
   onAction: (action: string, id: string) => void
   onDrill?: () => void
+  onManualLog?: () => void
   reviewBar?: React.ReactNode
 }) {
   const sv = SEV(p.severity || (p.edge_score && p.edge_score >= 75 ? 'positive' : 'info'))
@@ -155,7 +162,8 @@ export default function OptionProposalCard({
     if (action === 'hold') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }
     if (action === 'review_chain') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'transparent', color: BLUE, cursor: 'pointer' }
     if (EXEC_ACTIONS.has(action)) {
-      const locked = !armed
+      const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
+      const locked = !armed && !manualOnly
       return { fontSize: 10, fontWeight: 800, padding: '6px 14px', borderRadius: 6, border: 'none', background: locked ? 'var(--bg2)' : isCredit ? GREEN : BLUE, color: locked ? MUTED : '#0f172a', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.75 : 1 }
     }
     return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: TEXT1, cursor: 'pointer' }
@@ -182,6 +190,11 @@ export default function OptionProposalCard({
             {ds && <span title={ds.label === 'BS estimate' ? 'Premium estimated via Black-Scholes — confirm on chain before sizing.' : 'Live bid/ask mid from Schwab option chain.'} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: ds.c, background: `${ds.c}18`, border: `1px solid ${ds.c}44` }}>{ds.label}</span>}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: PURPLE, background: 'rgba(168,85,247,.15)', border: '1px solid rgba(168,85,247,.35)' }}>income sleeve</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
+            {p.execution_label && (
+              <span title="Execution path for this proposal" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.execution_mode === 'manual' ? PURPLE : AMBER, background: p.execution_mode === 'manual' ? 'rgba(168,85,247,.15)' : 'rgba(245,158,11,.15)', border: `1px solid ${p.execution_mode === 'manual' ? 'rgba(168,85,247,.35)' : 'rgba(245,158,11,.35)'}` }}>
+                {p.execution_label}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>
             {p.symbol} ${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} · {p.dte ?? '—'} DTE
@@ -252,18 +265,27 @@ export default function OptionProposalCard({
       )}
 
       <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
-        {(p.action_buttons || []).map((b, i) => (
-          <button
-            key={`${b.action}-${i}`}
-            type="button"
-            title={EXEC_ACTIONS.has(b.action) && !armed ? 'Execution locked — run options_pilot_arm.py --approve on server' : undefined}
-            disabled={EXEC_ACTIONS.has(b.action) && !armed}
-            onClick={() => onAction(b.action, p.id)}
-            style={btnStyle(b.action)}
-          >
-            {b.label}{b.action !== 'hold' ? ' →' : ''}
+        {(p.action_buttons || []).map((b, i) => {
+          const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
+          const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
+          return (
+            <button
+              key={`${b.action}-${i}`}
+              type="button"
+              title={execLocked ? 'Execution locked — run options_pilot_arm.py --approve on server' : manualOnly && EXEC_ACTIONS.has(b.action) ? 'Manual execution at broker — use Executed manually to log' : undefined}
+              disabled={execLocked}
+              onClick={() => onAction(b.action, p.id)}
+              style={btnStyle(b.action)}
+            >
+              {b.label}{b.action !== 'hold' ? ' →' : ''}
+            </button>
+          )
+        })}
+        {onManualLog && (
+          <button type="button" onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'rgba(96,165,250,.12)', color: BLUE, cursor: 'pointer' }}>
+            Executed manually
           </button>
-        ))}
+        )}
       </div>
     </div>
   )

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
+import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
@@ -151,6 +152,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const viewDay = holdingsList.reduce((s: number, h: any) =>
     s + (h.day_change ?? (h.market_value ?? 0) * (h.day_change_pct ?? 0) / 100), 0)
   const viewDayPct = (viewTotal - viewDay) ? viewDay / (viewTotal - viewDay) * 100 : 0
+  const priceStamp = pricingStampLine(holdings?.pricing ?? holdings, { includeTechnicals: true })
 
   return (
     <div>
@@ -160,6 +162,14 @@ export default function PortfolioHub({ onDrill }: Props) {
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{holdingsList.length} holdings · {fmt$(viewTotal, 0)}
             {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
             {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}</div>
+          {priceStamp && (
+            <div
+              title={holdings?.pricing?.note ?? 'Live price overlay per account: Schwab broker sync; Fidelity Finviz/market_quotes'}
+              onClick={() => onDrill({ title: 'Pricing sources', subtitle: priceStamp, endpoint: '/api/v2/portfolio/holdings',
+                rows: holdings?.pricing ? [holdings.pricing] : [{ last_repriced: holdings?.last_repriced, reprice_source: holdings?.reprice_source }] })}
+              style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, cursor: 'pointer' }}
+            >{priceStamp}</div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
@@ -265,7 +275,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                   )
                 })}
               </div>
-              {holdings?.enrichment_as_of && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={new Date(holdings.enrichment_as_of).toLocaleString()}>technicals as of {new Date(holdings.enrichment_as_of).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
+              {priceStamp && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={holdings?.pricing?.note}>{priceStamp}</div>}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
@@ -350,8 +360,11 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
                     </div>
                     {(() => {
-                      const pr = protection[(h.symbol || '').toUpperCase()]
-                      if (!pr?.stop_price) return null
+                      const pr = protection[(h.symbol || '').toUpperCase()] ?? {}
+                      const sh = Number(h.shares) || 0
+                      const acct = String(h.account ?? '')
+                      const schwabSmall = acct.startsWith('schwab') && sh > 0 && sh < 40
+                      if (!pr?.stop_price && !schwabSmall) return null
                       const key = `${(h.symbol || '').toUpperCase()}:${h.account}`
                       const mon = monitoredByKey[key]
                       const conf = confirmedByKey[key]

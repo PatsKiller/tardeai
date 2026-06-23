@@ -120,6 +120,22 @@ def _live_price(symbol, account):
     try:
         import json
         from pathlib import Path
+        root = Path(HERE).parent
+        holdings_path = root / "data" / "portfolios" / "state" / "holdings.json"
+        if holdings_path.exists():
+            h = json.loads(holdings_path.read_text()) or {}
+            acct = (account or "").strip()
+            for row in (h.get("holdings") or []):
+                if str(row.get("symbol", "")).upper() == sym and str(row.get("account", "")) == acct:
+                    for k in ("current_price", "price"):
+                        v = row.get(k)
+                        if v is not None:
+                            return float(v)
+    except Exception:
+        pass
+    try:
+        import json
+        from pathlib import Path
         ec = json.loads((Path(HERE).parent / "data" / "state" / "ticker_enrichment_cache.json").read_text())
         rec = (ec.get("tickers") or ec or {}).get(sym) or {}
         if isinstance(rec, dict) and rec.get("price"):

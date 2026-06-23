@@ -32,6 +32,19 @@ def _money(v) -> str:
     return str(Decimal(str(v)).quantize(Decimal("0.01")))
 
 
+def _is_fractional_qty(qty) -> bool:
+    try:
+        qf = float(qty)
+        return abs(qf - int(qf)) > 1e-9
+    except Exception:
+        return False
+
+
+def market_tif(qty) -> str:
+    """Schwab fractional market orders require DAY; whole-share market sell-all may use GTC."""
+    return "DAY" if _is_fractional_qty(qty) else "GOOD_TILL_CANCEL"
+
+
 def normalize_kind(order_kind: str) -> str:
     return _KIND_ALIASES.get((order_kind or "").strip().upper(), "")
 
@@ -62,9 +75,9 @@ def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
         spec["stopPriceLinkType"] = "PERCENT"
         spec["stopPriceOffset"] = float(trail_pct)
     elif ot == "MARKET":
-        # Synthetic-stop EXIT: sell the FULL (fractional) qty at market. Schwab requires DAY for fractional
-        # market orders (no GTC, no stopPrice/price). This is the order the synthetic monitor fires on breach.
-        spec["duration"] = "DAY"
+        # Sell-all EXIT: full (possibly fractional) qty at market. Schwab requires DAY for fractional
+        # market orders; whole-share positions may use GTC (operator liquidation path on small holdings).
+        spec["duration"] = market_tif(qty)
     return spec
 
 
@@ -97,10 +110,11 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
                                        "held_qty": float(held_qty) if held_qty is not None else None,
                                        "trail_pct": float(trail_pct) if trail_pct is not None else None,
                                        "replace_order_id": (str(replace_order_id) if replace_order_id else None)})
+    _tif = TIF.DAY if ot == "MARKET" and _is_fractional_qty(qty) else TIF.GTC
     return OrderIntent(
         instrument=Instrument(symbol.upper()), direction=Direction.LONG, entry=entry,
         quantity=Quantity(qty=float(qty)), broker="schwab", account_key=account_key,
-        tif=TIF.GTC, session=SessionPolicy.NORMAL, meta=meta,
+        tif=_tif, session=SessionPolicy.NORMAL, meta=meta,
         intent_id=str(uuid.uuid4()), correlation_id=str(uuid.uuid4()),
     )
 
@@ -149,14 +163,21 @@ def spec_from_intent(intent) -> dict:
 
 
 def order_summary(symbol: str, qty, order_kind: str, *, stop_price=None, limit_price=None,
-                  trail_pct=None) -> dict:
+                  trail_pct=None, account_key=None) -> dict:
     """Human-facing summary the modal echoes back (qty / type / price / TIF)."""
     ot = normalize_kind(order_kind)
-    if ot == "TRAILING_STOP":
+    if ot == "MARKET":
+        tif = "DAY" if _is_fractional_qty(qty) else "GTC"
+        line = f"SELL {qty} {symbol.upper()} MARKET {tif}"
+    elif ot == "TRAILING_STOP":
+        tif = "GTC"
         line = f"SELL {qty} {symbol.upper()} TRAILING STOP {trail_pct}% GTC"
     elif ot == "STOP_LIMIT":
+        tif = "GTC"
         line = f"SELL {qty} {symbol.upper()} STOP-LIMIT (stop ${stop_price} / limit ${limit_price or stop_price}) GTC"
     else:
+        tif = "GTC"
         line = f"SELL {qty} {symbol.upper()} STOP ${stop_price} GTC"
     return {"symbol": symbol.upper(), "qty": qty, "order_type": ot, "stop_price": stop_price,
-            "limit_price": limit_price, "trail_pct": trail_pct, "tif": "GTC", "ticket": line}
+            "limit_price": limit_price, "trail_pct": trail_pct, "tif": tif, "ticket": line,
+            "account_key": account_key}

@@ -637,9 +637,14 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         # Compute R:R (BUGFIX-RR-1: was undefined, caused NameError in pre-promotion + Telegram alert)
         rr = round((target - entry) / (entry - stop), 2) if entry > stop and target > entry else 0
 
-        # Timeframe
+        # Timeframe + strategy type stamp
         strategy_key = strategy_id if isinstance(strategy_id, str) else str(strategy_id)
         timeframe_class, expires_hours = TIMEFRAME_MAP.get(strategy_key, DEFAULT_TIMEFRAME)
+        try:
+            from proposal_lifecycle import get_strategy_metadata
+            _strat_type = get_strategy_metadata(strategy_key).get("strategy_type")
+        except Exception:
+            _strat_type = (timeframe_class or "").upper()
         expires_at = datetime.now(tz=__import__('datetime').timezone.utc) + timedelta(hours=expires_hours)
 
         # Screener name: use actual screener_label from scans, with incubator context
@@ -749,7 +754,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                  proposed_shares, proposed_rr, proposed_dollar_risk,
                  target_account,
                  status, expires_at, lifecycle_status,
-                 entry_zone_status, proposal_timeframe_class,
+                 entry_zone_status, proposal_timeframe_class, strategy_type,
                  screener_name, source_table, discovery_source, source_run_label,
                  signal_score, signal_grade, catalyst, catalyst_verified,
                  setup_type, proposed_by, overnight_monitoring_enabled,
@@ -761,7 +766,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                     %s, %s, %s,
                     %s,
                     'PENDING', %s, 'ACTIVE',
-                    'NEEDS_PRICE_CHECK', %s,
+                    'NEEDS_PRICE_CHECK', %s, %s,
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
                     %s, 'incubator_promoter', %s,
@@ -773,8 +778,8 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             symbol, strategy_id, strategy_id,
             entry, stop, target,
             shares, rr, round(abs(entry - stop) * shares, 2),
-            _get_default_account(),
-            expires_at, timeframe_class,
+            None,  # target_account unset — operator picks paper or broker at promote/approve
+            expires_at, timeframe_class, _strat_type,
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
@@ -822,7 +827,12 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                 "proposed_shares": shares, "proposed_rr": rr, "status": "PENDING",
                 "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
                 "sector": c.get("sector"), "industry": c.get("industry"),
-                "approval_blockers": [],
+                "operator_verdict": "NEEDS_REVIEW",
+                "approval_allowed": False,
+                "approval_blockers": [
+                    {"reason": "New proposal — run Check Execution for live quote"},
+                    {"reason": "Enrichment pending — review in Command Center → Trading → Proposals"},
+                ],
             }
             _pkt = build_proposal_alert_packet(_alert_pr)
             _msg = format_telegram_message(_pkt)

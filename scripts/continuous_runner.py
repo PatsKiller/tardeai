@@ -49,6 +49,7 @@ SCHEDULE = [
     ("11:30", "12:15", 15, True),   # midday: post-morning momentum continuation
     ("13:30", "14:15", 15, True),   # afternoon: pre-close setups forming
     ("15:15", "16:00", 15, True),   # final window: last 45min entry window
+    ("16:15", "20:00", 30, False),  # after-hours: swing prep (Schwab-validated quotes)
 ]
 
 # Digest trigger times (HH:MM)

@@ -126,6 +126,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   const { data: openTrades } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
   const { data: research } = useApi<any>('/api/v2/research-topics', 120_000)
   const { data: hermes } = useApi<any>('/api/v2/hermes/health', 120_000)
+  const { data: inference } = useApi<any>('/api/v2/inference/latest', 120_000)
+  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
   const [source, setSource] = useState('all')
   const [sev, setSev] = useState('all')
   const [special, setSpecial] = useState<Special>('all')
@@ -168,8 +170,43 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
     ;(watchlist?.items ?? []).slice(0, 35).forEach((w: any) => add({ source: '/api/v2/watchlist/items', type: 'watchlist', symbol: w.symbol, title: `${w.symbol} watchlist ${w.latest_recommendation ?? w.entry_urgency ?? ''}`, summary: first(w.catalyst, w.reason, w.description, w.entry_setup, 'curated watchlist item'), raw: w, confidence: confidenceFrom(w, .68), action: w.entry_urgency === 'ready' ? 'entry review' : 'monitor' }))
     ;(openTrades?.positions ?? []).filter((p: any) => ['critical','high'].includes(String(p.operator_priority ?? '').toLowerCase()) || (p.risk_flags ?? []).length > 0).slice(0, 30).forEach((p: any) => { const rf = (p.risk_flags ?? []).length; const pr = String(p.operator_priority ?? '').toLowerCase(); const conf = Math.min(.95, .58 + 0.08 * Math.min(rf, 3) + (pr === 'critical' ? .14 : pr === 'high' ? .07 : 0) + ((p.decision_reason || p.strategy_rationale) ? .06 : 0)); add({ source: '/api/v2/open-trades/intelligence', type: 'open-trade', symbol: p.symbol, title: `${p.symbol} ${p.operator_decision ?? 'position review'}`, summary: p.decision_reason ?? p.strategy_rationale, severity: severityFrom(p), confidence: conf, raw: p, action: p.primary_next_review ?? 'review position' }) })
     ;(research?.research_gaps ?? []).slice(0, 20).forEach((g: any) => add({ source: '/api/v2/research-topics', type: 'research-gap', symbol: g.symbol, title: g.display_name ?? g.topic_id ?? g.topic ?? 'Research gap', summary: [g.reason, g.detail].filter(Boolean).join(' — '), severity: 'warning', raw: g, action: 'assign research' }))
+    // Layer 4 / regime synthesis — sector rotation, opportunity, regional (deduped titles)
+    const infSeen = new Set<string>()
+    ;(inference?.results ?? []).slice(0, 24).forEach((r: any) => {
+      const key = `${r.inference_type}:${(r.title || '').slice(0, 60)}`
+      if (infSeen.has(key)) return
+      infSeen.add(key)
+      const t = String(r.inference_type || '')
+      const sev: IntelItem['severity'] = r.severity === 'critical' ? 'critical' : r.severity === 'high' ? 'warning' : t === 'opportunity' || t === 'sector_rotation' ? 'positive' : 'info'
+      add({
+        source: '/api/v2/inference/latest', type: t || 'inference', symbol: /^[A-Z]{1,5}$/.test(r.subject || '') ? r.subject : undefined,
+        title: r.title, summary: (r.body || '').slice(0, 400), severity: sev, confidence: Number(r.confidence) || 0.65,
+        model: r.source_lane, raw: r,
+        action: t === 'sector_rotation' ? 'review small-cap swing / rotation' : t === 'opportunity' ? 'watchlist review' : t === 'risk' ? 'verify protection' : 'review inference',
+      })
+    })
+    // Index tape: IWM vs SPY relative strength banner when small caps lead
+    const spy = overview?.index_tape?.spy
+    const iwm = overview?.index_tape?.iwm
+    const spyCh = Number(spy?.change_percent ?? spy?.change_pct ?? spy?.pct)
+    const iwmCh = Number(iwm?.change_percent ?? iwm?.change_pct ?? iwm?.pct)
+    if (Number.isFinite(spyCh) && Number.isFinite(iwmCh) && iwmCh - spyCh >= 0.35) {
+      add({
+        source: '/api/v2/overview', type: 'market-signal', symbol: 'IWM',
+        title: `Small-cap tape: IWM ${iwmCh >= 0 ? '+' : ''}${iwmCh.toFixed(2)}% vs SPY ${spyCh >= 0 ? '+' : ''}${spyCh.toFixed(2)}%`,
+        summary: `Russell 2000 outperforming large caps by ${(iwmCh - spyCh).toFixed(2)}% today — check Rotation + swing proposals.`,
+        severity: 'positive', confidence: Math.min(0.9, 0.6 + (iwmCh - spyCh) / 3), raw: { spy, iwm }, action: 'review rotation / watchlist',
+      })
+    }
+    const rotIdeas = (rotation?.top_rotation_ideas ?? rotation?.research_rotation_ideas ?? []).slice(0, 6)
+    rotIdeas.forEach((p: any, i: number) => add({
+      source: '/api/v2/rotation/summary', type: 'setup', symbol: p.into || p.to || p.symbol,
+      title: p.label || p.idea || `Rotation idea ${i + 1}`,
+      summary: [p.rationale, p.thesis, p.why].filter(Boolean).join(' · '),
+      severity: 'info', confidence: 0.62, raw: p, action: 'rotation review',
+    }))
     return out.sort((a, b) => (b.severity === 'critical' ? 1 : 0) - (a.severity === 'critical' ? 1 : 0) || estError(b) - estError(a))
-  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research])
+  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation])
 
   const applyKpi = (next: { source?: string; sev?: string; special?: Special; search?: string }) => { setSource(next.source ?? 'all'); setSev(next.sev ?? 'all'); setSpecial(next.special ?? 'all'); setSearch(next.search ?? '') }
   const filtered = items.filter(it => (source === 'all' || it.type === source || it.source.includes(source)) && (sev === 'all' || it.severity === sev) && (special === 'all' || (special === 'actionable' && !!it.action) || (special === 'highError' && estError(it) > .35) || (special === 'stale' && (it.freshnessH ?? 999) > 24)) && (!search || `${it.symbol ?? ''} ${it.title} ${it.summary ?? ''} ${it.action ?? ''}`.toLowerCase().includes(search.toLowerCase())))

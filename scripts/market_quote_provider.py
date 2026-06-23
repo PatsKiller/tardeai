@@ -3,11 +3,15 @@
 
 Provider hierarchy:
     1. Alpaca paper market data (real-time bid/ask if configured)
-    2. Polygon latest quote/trade (real-time with paid plan)
-    3. Finnhub quote
-    4. FMP quote
-    5. yfinance delayed quote (display only, not execution eligible)
-    6. Finviz cache (display only, never execution eligible)
+    2. Schwab Trader API batch quotes (real-time; extended-hours when linked)
+    3. Polygon latest quote/trade (real-time with paid plan)
+    4. Finnhub quote
+    5. FMP quote
+    6. yfinance delayed quote (display only, not execution eligible)
+    7. Finviz cache (display only, never execution eligible)
+
+After-hours / swing: check_fresh_quote() relaxes to 24h outside regular session
+but requires a real-time broker quote (schwab/alpaca/polygon) — not delayed caches.
 
 Usage:
     .venv/bin/python scripts/market_quote_provider.py --symbol EVC --dry-run
@@ -35,6 +39,56 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 FINVIZ_CACHE_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
 
+# Real-time providers acceptable for after-hours proposal validation
+REALTIME_PROVIDERS = frozenset({"schwab", "alpaca", "polygon"})
+INTRADAY_MAX_AGE_MINUTES = 15.0
+SWING_EXTENDED_MAX_AGE_MINUTES = 1440.0  # 24h — matches proposal_execution_readiness
+
+
+def _parse_schwab_timestamp(ts) -> datetime | None:
+    """Parse Schwab quoteTime/tradeTime (ms epoch, s epoch, or ISO)."""
+    if ts is None:
+        return None
+    try:
+        if isinstance(ts, (int, float)):
+            val = float(ts)
+            if val > 1e12:
+                val /= 1000.0
+            return datetime.fromtimestamp(val, tz=timezone.utc)
+        if isinstance(ts, str):
+            if ts.isdigit():
+                val = float(ts)
+                if val > 1e12:
+                    val /= 1000.0
+                return datetime.fromtimestamp(val, tz=timezone.utc)
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if hasattr(ts, "timestamp"):
+            dt = ts if getattr(ts, "tzinfo", None) else ts.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+    return None
+
+
+def resolve_quote_max_age_minutes(strategy_id=None, *, session=None) -> float:
+    """Session-aware quote freshness ceiling for proposal generation."""
+    from market_session import current_market_session
+
+    sess = session or current_market_session()
+    is_intraday = False
+    if strategy_id:
+        try:
+            from proposal_lifecycle import get_timeframe_class
+            is_intraday = get_timeframe_class(strategy_id) == "intraday"
+        except Exception:
+            is_intraday = strategy_id in ("momentum_scalp", "gap_and_go", "intraday_scalp")
+
+    if is_intraday:
+        return INTRADAY_MAX_AGE_MINUTES
+    if sess in ("premarket", "afterhours", "closed", "weekend", "holiday"):
+        return SWING_EXTENDED_MAX_AGE_MINUTES
+    return INTRADAY_MAX_AGE_MINUTES
+
 
 def _make_result(provider, priority, last_price, bid=None, ask=None,
                  bid_size=None, ask_size=None, day_volume=None, vwap=None,
@@ -46,7 +100,7 @@ def _make_result(provider, priority, last_price, bid=None, ask=None,
         spread_pct = round(spread / bid * 100, 4) if bid > 0 else None
 
     is_exec = (bid is not None and ask is not None and
-               provider in ("alpaca", "polygon") and not is_delayed)
+               provider in REALTIME_PROVIDERS and not is_delayed)
 
     return {
         "provider": provider,
@@ -186,7 +240,50 @@ def fetch_alpaca_snapshot(symbol: str) -> dict:
         return None
 
 
-# ── Provider 2: Polygon ────────────────────────────────────────────────────
+# ── Provider 2: Schwab Trader API ──────────────────────────────────────────
+
+def fetch_schwab_quote(symbol: str) -> dict:
+    """READ-ONLY Schwab batch quote — extended-hours when account is linked."""
+    sym = (symbol or "").upper()
+    if not sym:
+        return None
+    try:
+        import schwab_transport
+        result = schwab_transport.get_quotes([sym])
+        if not result or result.get("status") != "ok":
+            return None
+        quotes = result.get("quotes") or {}
+        q = quotes.get(sym) or quotes.get(symbol)
+        if not q:
+            return None
+
+        last = q.get("last")
+        bid = q.get("bid")
+        ask = q.get("ask")
+        if last is None and bid is not None and ask is not None:
+            last = round((float(bid) + float(ask)) / 2, 4)
+        elif last is None and bid is not None:
+            last = float(bid)
+        if last is None or float(last) <= 0:
+            return None
+
+        qt = _parse_schwab_timestamp(q.get("updated"))
+        return _make_result(
+            provider="schwab", priority=2,
+            last_price=float(last),
+            bid=float(bid) if bid is not None else None,
+            ask=float(ask) if ask is not None else None,
+            day_volume=int(q["volume"]) if q.get("volume") else None,
+            quote_timestamp=qt.isoformat() if qt else None,
+            is_delayed=False,
+            raw_payload=q,
+        )
+    except Exception as e:
+        log.debug(f"Schwab quote {symbol} failed: {e}")
+        return None
+
+
+# ── Provider 3: Polygon ────────────────────────────────────────────────────
 
 def fetch_polygon_quote(symbol: str) -> dict:
     api_key = os.getenv("POLYGON_API_KEY", "")
@@ -232,7 +329,7 @@ def fetch_polygon_quote(symbol: str) -> dict:
         return None
 
 
-# ── Provider 3: Finnhub ────────────────────────────────────────────────────
+# ── Provider 4: Finnhub ────────────────────────────────────────────────────
 
 def fetch_finnhub_quote(symbol: str) -> dict:
     api_key = os.getenv("FINNHUB_API_KEY", "")
@@ -263,7 +360,7 @@ def fetch_finnhub_quote(symbol: str) -> dict:
         return None
 
 
-# ── Provider 4: FMP ────────────────────────────────────────────────────────
+# ── Provider 5: FMP ────────────────────────────────────────────────────────
 
 def fetch_fmp_quote(symbol: str) -> dict:
     api_key = os.getenv("FMP_API_KEY", "")
@@ -292,7 +389,7 @@ def fetch_fmp_quote(symbol: str) -> dict:
         return None
 
 
-# ── Provider 5: yfinance ───────────────────────────────────────────────────
+# ── Provider 6: yfinance ───────────────────────────────────────────────────
 
 def fetch_yfinance_quote(symbol: str) -> dict:
     try:
@@ -316,7 +413,7 @@ def fetch_yfinance_quote(symbol: str) -> dict:
         return None
 
 
-# ── Provider 6: Finviz cache (display-only) ────────────────────────────────
+# ── Provider 7: Finviz cache (display-only) ────────────────────────────────
 
 def fetch_finviz_cache(symbol: str) -> dict:
     if not FINVIZ_CACHE_PATH.exists():
@@ -342,6 +439,7 @@ def fetch_finviz_cache(symbol: str) -> dict:
 
 PROVIDER_CHAIN = [
     ("alpaca", fetch_alpaca_snapshot),
+    ("schwab", fetch_schwab_quote),
     ("polygon", fetch_polygon_quote),
     ("finnhub", fetch_finnhub_quote),
     ("fmp", fetch_fmp_quote),
@@ -350,28 +448,139 @@ PROVIDER_CHAIN = [
 ]
 
 
+def quote_age_minutes(quote: dict) -> float | None:
+    """Age of quote in minutes from quote_timestamp. None if unknown."""
+    ts = (quote or {}).get("quote_timestamp")
+    if ts is None:
+        return None
+    try:
+        if isinstance(ts, (int, float)):
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        elif hasattr(ts, "timestamp"):
+            dt = ts if getattr(ts, "tzinfo", None) else ts.replace(tzinfo=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 60.0)
+    except Exception:
+        return None
+
+
+def check_fresh_quote(symbol: str, *, max_age_minutes: float | None = None,
+                      strategy_id: str | None = None) -> dict:
+    """Verify a live quote exists and is current (after-hours OK if fresh).
+
+    When strategy_id is set, max_age relaxes to 24h for swing/position outside
+    regular session — but only if the quote came from a real-time broker feed
+    (Schwab/Alpaca/Polygon). Intraday strategies always require ≤15 min.
+
+    Returns {ok, reason, quote, age_minutes, last_price, max_age_minutes, provider}.
+    """
+    sym = (symbol or "").upper()
+    from market_session import current_market_session
+    session = current_market_session()
+    if max_age_minutes is None:
+        max_age_minutes = resolve_quote_max_age_minutes(strategy_id, session=session)
+
+    try:
+        q = get_best_quote(sym) or {}
+    except Exception as exc:
+        return {"ok": False, "reason": f"quote_error: {exc}", "quote": {}, "age_minutes": None,
+                "last_price": None, "max_age_minutes": max_age_minutes, "provider": None,
+                "market_session": session}
+
+    provider = q.get("provider") or ""
+    last = q.get("last_price")
+    if last is None or float(last) <= 0:
+        return {"ok": False, "reason": "no_valid_price", "quote": q, "age_minutes": None,
+                "last_price": None, "max_age_minutes": max_age_minutes, "provider": provider,
+                "market_session": session}
+
+    # Outside RTH with relaxed ceiling: delayed caches must not pass
+    if max_age_minutes > INTRADAY_MAX_AGE_MINUTES and session != "regular":
+        if provider not in REALTIME_PROVIDERS:
+            return {
+                "ok": False,
+                "reason": f"afterhours_requires_realtime_provider (got {provider})",
+                "quote": q, "age_minutes": quote_age_minutes(q), "last_price": last,
+                "max_age_minutes": max_age_minutes, "provider": provider,
+                "market_session": session,
+            }
+
+    age = quote_age_minutes(q)
+    if age is None:
+        # Provider returned price but no timestamp — accept if from real-time providers only
+        if provider in REALTIME_PROVIDERS:
+            return {"ok": True, "reason": "ok_no_timestamp", "quote": q, "age_minutes": None,
+                    "last_price": last, "max_age_minutes": max_age_minutes, "provider": provider,
+                    "market_session": session}
+        return {"ok": False, "reason": "quote_timestamp_missing", "quote": q, "age_minutes": None,
+                "last_price": last, "max_age_minutes": max_age_minutes, "provider": provider,
+                "market_session": session}
+
+    if age > max_age_minutes:
+        return {
+            "ok": False,
+            "reason": f"quote_stale_{age:.0f}min",
+            "quote": q,
+            "age_minutes": age,
+            "last_price": last,
+            "max_age_minutes": max_age_minutes,
+            "provider": provider,
+            "market_session": session,
+        }
+
+    return {"ok": True, "reason": "ok", "quote": q, "age_minutes": age, "last_price": last,
+            "max_age_minutes": max_age_minutes, "provider": provider, "market_session": session}
+
+
+def _normalize_provider_result(result: dict, name: str) -> dict | None:
+    """Ensure result has last_price; return None if unusable."""
+    if not result:
+        return None
+    if result.get("last_price") is None and result.get("bid") is not None:
+        if result.get("ask"):
+            result["last_price"] = round((result["bid"] + result["ask"]) / 2, 4)
+        else:
+            result["last_price"] = result["bid"]
+    if result.get("last_price") is None:
+        return None
+    result.setdefault("provider", name)
+    return result
+
+
+def _quote_sort_key(quote: dict) -> tuple:
+    """Prefer real-time providers, then freshest timestamp, then priority."""
+    provider = quote.get("provider") or ""
+    is_rt = provider in REALTIME_PROVIDERS
+    age = quote_age_minutes(quote)
+    age_key = age if age is not None else 999999.0
+    priority = quote.get("provider_priority") or 99
+    return (0 if is_rt else 1, age_key, priority)
+
+
 def get_best_quote(symbol: str) -> dict:
-    """Try each provider in priority order, return best available quote."""
+    """Try each provider; return freshest real-time quote (Schwab beats stale Alpaca after hours)."""
     tried = []
+    candidates = []
     for name, fetcher in PROVIDER_CHAIN:
         try:
-            result = fetcher(symbol)
-            if result and result.get("last_price") is not None:
-                result["providers_tried"] = tried + [name]
-                return result
-            # Alpaca may return bid/ask but no last_price from quote endpoint
-            if result and result.get("bid") is not None:
-                result["providers_tried"] = tried + [name]
-                # Use midpoint as last_price
-                if result.get("ask"):
-                    result["last_price"] = round((result["bid"] + result["ask"]) / 2, 4)
-                else:
-                    result["last_price"] = result["bid"]
-                return result
-            tried.append(name)
+            result = _normalize_provider_result(fetcher(symbol), name)
+            if result:
+                candidates.append(result)
+            else:
+                tried.append(name)
         except Exception as e:
             tried.append(f"{name}:error")
             log.debug(f"Provider {name} failed for {symbol}: {e}")
+
+    if candidates:
+        best = min(candidates, key=_quote_sort_key)
+        best["providers_tried"] = tried + [best.get("provider", "?")]
+        if len(candidates) > 1:
+            best["providers_considered"] = [c.get("provider") for c in candidates]
+        return best
 
     return {
         "provider": "none",

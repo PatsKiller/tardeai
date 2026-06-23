@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-06-22
+**Updated:** 2026-06-23
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -51,6 +51,12 @@
 | `docs/brokers/stop-management-architecture.md` | Canonical as-built stop/trailing architecture (Schwab live, Alpaca auto, Fidelity monitor) | Active (2026-06-22) |
 | `docs/brokers/snaptrade-read-only-aggregation-spec.md` | SnapTrade holdings read path (Fidelity rollover IRA) | Active |
 | `docs/brokers/snaptrade-fidelity-protective-stops-spec.md` | Fidelity monitor-only stops + one-share SnapTrade test (no sandbox) | Active (2026-06-22) |
+
+### Proposal & Execution Paths
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/PROPOSAL_EXECUTION_PATHS.md` | **Canonical two-path model** — Path A paper auto (Alpaca test) vs Path B live (Schwab 2FA / Fidelity FA manual) | Active (2026-06-23) |
+| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-23) |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
