@@ -76,6 +76,23 @@ Env: `BROKER_PRICE_MAX_AGE_MIN` (default 20), `BROKER_AUTOCAL_INTERVAL_SEC` (def
 
 **UI note:** List rows use live quotes; light detail prefetch must not overwrite them (fixed in `mergeProposal`).
 
+## 30-minute curation pass (trading hours)
+
+Full broker-queue curation runs every **30 minutes** 9:00–16:00 ET weekdays (`run_broker_proposal_curator.sh`).
+
+| Step | What |
+|------|------|
+| **Prices** | Batch Schwab refresh → DB persist (all rows, not just stale) |
+| **Support lines** | `support_1` / `resistance_1` from 20d lows/highs (+ watchlist cards fallback) |
+| **Strategy fit** | Re-run classifier — flags `strategy_changed` if proposal strategy no longer qualifies |
+| **Criteria** | Thesis zone, live R:R floor (`BROKER_CURATOR_MIN_RR`, default 2), price freshness |
+| **Hygiene** | Auto-expire/reject stale broker rows (entry missed, stop breached, superseded) |
+| **Stamp** | `last_curated_at`, `curation_status`, `curation_snapshot` JSON on each row |
+
+Cards show **Support / Resistance**, **Curated timestamp**, and status (`fresh` · `warn` · `stale` · `strategy_changed`).
+
+Manual: `python3 scripts/broker_proposal_curator.py --apply` (add `--symbol RTX` for one name).
+
 ## Refresh prices + recalibrate (manual)
 
 **Per card:** `↻ Refresh prices`  

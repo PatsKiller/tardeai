@@ -12759,6 +12759,40 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_
         attach_thesis_validity(row)
     except Exception:
         pass
+    # Curation snapshot: support/resistance + last curated stamp
+    snap = row.get("curation_snapshot")
+    if isinstance(snap, str):
+        try:
+            snap = json.loads(snap)
+        except Exception:
+            snap = {}
+    if isinstance(snap, dict):
+        levels = snap.get("levels") or {}
+        if levels.get("support_1") is not None:
+            row["support_1"] = levels.get("support_1")
+        if levels.get("resistance_1") is not None:
+            row["resistance_1"] = levels.get("resistance_1")
+        if levels.get("support_2") is not None:
+            row["support_2"] = levels.get("support_2")
+        if levels.get("resistance_2") is not None:
+            row["resistance_2"] = levels.get("resistance_2")
+        row["levels_source"] = levels.get("source")
+        row["curation_detail"] = {
+            "criteria": snap.get("criteria"),
+            "strategy": snap.get("strategy"),
+            "curated_at": snap.get("curated_at"),
+        }
+    if row.get("support_1") is None:
+        tc = row.get("technical_context")
+        if isinstance(tc, str):
+            try:
+                tc = json.loads(tc)
+            except Exception:
+                tc = {}
+        if isinstance(tc, dict):
+            row["support_1"] = tc.get("support_1")
+            row["resistance_1"] = tc.get("resistance_1")
+            row["levels_source"] = tc.get("levels_source")
     return _attach_source_attribution(row, watchlist_buy_syms)
 
 
@@ -13105,7 +13139,8 @@ def _broker_proposals(query=None):
                        COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
                        proposed_entry, proposed_stop, proposed_target1, current_price,
                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                       created_at, expires_at, updated_at
+                       created_at, expires_at, updated_at,
+                       last_curated_at, curation_status, curation_snapshot, technical_context
                   FROM paper_trade_proposals
                  WHERE {where_sql}
                  ORDER BY {order_sql}
@@ -13210,10 +13245,18 @@ def _broker_proposals(query=None):
             row["activity"] = None
             row["activity_pending"] = True
             acct_rows.append(row)
+        curator_meta = None
+        try:
+            _cp = PROJECT_ROOT / "data" / "runtime" / "broker_curator_last.json"
+            if _cp.exists():
+                curator_meta = json.loads(_cp.read_text(encoding="utf-8"))
+        except Exception:
+            pass
         result = {
             "proposals": prop_rows,
             "quotes_live": bool(BROKER_LIST_LIVE_QUOTES),
             "autocal": autocal_meta or None,
+            "curator": curator_meta,
             "accounts": acct_rows,
             "strategies": strategies,
             "list_mode": "fast",
@@ -13412,7 +13455,8 @@ def _broker_proposal_detail(body: dict):
                   COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
                   proposed_entry, proposed_stop, proposed_target1, current_price,
                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                  created_at, expires_at, updated_at
+                  created_at, expires_at, updated_at,
+                  last_curated_at, curation_status, curation_snapshot, technical_context
            FROM paper_trade_proposals WHERE id=%s""",
         (pid,), fetch="one",
     )

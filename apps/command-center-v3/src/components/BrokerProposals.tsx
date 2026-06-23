@@ -649,6 +649,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               prices auto-sync · next ~{data.autocal.sec_until_next ?? '?'}s
             </span>
           )}
+          {data?.curator?.curated != null && (
+            <span style={{ fontSize: 9, color: BLUE }} title="30m trading-hours curator: prices, criteria, strategy, support lines">
+              curated {data.curator.curated} row(s)
+              {data.curator.expired ? ` · ${data.curator.expired} expired` : ''}
+            </span>
+          )}
         </div>
 
         <div style={{ ...card, marginBottom: 12, padding: '10px 12px' }}>
