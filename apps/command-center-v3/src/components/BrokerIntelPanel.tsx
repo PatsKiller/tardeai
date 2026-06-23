@@ -269,10 +269,29 @@ export default function BrokerIntelPanel({
             </div>
           )})}
 
+          {cloud.lanes && Object.keys(cloud.lanes).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+              {Object.entries(cloud.lanes).map(([lane, lr]: [string, any]) => (
+                <div key={lane} style={{ fontSize: 9.5, padding: '4px 8px', borderRadius: 5, background: 'rgba(15,23,42,.5)', borderLeft: `3px solid ${cloudColor(lr?.verdict)}` }}>
+                  <b style={{ color: lane === 'grok' ? '#1d9bf0' : lane === 'chatgpt' ? '#10a37f' : TEXT0 }}>
+                    {lane === 'grok' ? 'Grok' : lane === 'chatgpt' ? 'ChatGPT' : lane}
+                  </b>
+                  <span style={{ color: cloudColor(lr?.verdict), marginLeft: 6, fontWeight: 800 }}>
+                    {lr?.ok ? (lr?.verdict || '—') : 'unavailable'}
+                  </span>
+                  {lr?.assessment && <div style={{ color: TEXT1, marginTop: 2 }}>{String(lr.assessment).slice(0, compact ? 120 : 220)}</div>}
+                  {(lr?.concerns?.length > 0) && (
+                    <div style={{ color: AMBER, marginTop: 2 }}>⚠ {lr.concerns.slice(0, 2).join(' · ')}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {cloud.consensus && (
-            <div style={{ fontSize: 9, color: cloudColor(cloud.status), marginTop: 4 }}>
-              Cloud consensus: {cloud.consensus.verdict}
-              {cloud.consensus.lanes_ok != null ? ` (${cloud.consensus.lanes_ok} lanes)` : ''}
+            <div style={{ fontSize: 9, color: cloudColor(cloud.status), marginTop: 6, fontWeight: 700 }}>
+              Consensus: {cloud.consensus.verdict}
+              {cloud.consensus.lanes_ok != null ? ` · ${cloud.consensus.lanes_ok} lane(s) OK` : ''}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-06-23
+**Last updated:** 2026-06-24
 **Live counts:** `docs/LIVE_SYSTEM_FACTS.md` — `.venv/bin/python3 scripts/generate_system_facts.py`
 
 ---
@@ -479,6 +479,41 @@ curl -s -X POST http://localhost:7777/api/v2/paper-proposals/enrich-all | python
 
 # Promote from incubator
 curl -s -X POST http://localhost:7777/api/v2/paper-proposals/promote-from-incubator | python3 -m json.tool
+```
+
+---
+
+## Broker Proposals (Path B — live desk)
+
+UI guide: `docs/BROKER_PROPOSALS_UI.md`
+
+| Step | Action |
+|------|--------|
+| Account | Pick Schwab (auto+2FA or manual) or Fidelity (FA manual) |
+| Thesis | Check **thesis validity bar** (drift gap / R:R band) |
+| Prices | **↻ Refresh prices** on card or **Refresh all** |
+| Oversight | **Run Grok+ChatGPT** + local agent reviews |
+| Execute | Auto route (Schwab) or **Executed manually** after FA fill |
+
+```bash
+# Live broker queue
+curl -s http://localhost:7777/api/v2/broker-proposals | python3 -m json.tool | head -40
+
+# Refresh quote + thesis band + sizing for proposal #ID
+curl -s -X POST http://localhost:7777/api/v2/broker-proposals/refresh-prices \
+  -H 'Content-Type: application/json' \
+  -d '{"proposal_id": 123}' | python3 -m json.tool
+
+# Grok+ChatGPT cloud oversight
+curl -s -X POST http://localhost:7777/api/v2/broker-proposals/run-cloud-oversight \
+  -H 'Content-Type: application/json' \
+  -d '{"proposal_id": 123, "timeout": 120}' | python3 -m json.tool
+
+# Log manual fill (closed-loop journal)
+curl -s -X POST http://localhost:7777/api/v2/executions/log-manual \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"AAPL","account":"fidelity_rollover_ira","proposal_id":123,"shares":10,"entry_price":150}' \
+  | python3 -m json.tool
 ```
 
 ---

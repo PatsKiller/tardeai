@@ -12649,6 +12649,13 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None) -> dict:
         row["quote_last"] = float(q.get("last") or en)
         row["quote_spread"] = round(float(ask) - float(bid), 4)
         row["quote_spread_pct"] = round(row["quote_spread"] / float(bid) * 100, 3)
+    elif q.get("last") is not None:
+        row["quote_last"] = float(q.get("last"))
+    try:
+        from broker_thesis_validity import attach_thesis_validity
+        attach_thesis_validity(row)
+    except Exception:
+        pass
     return row
 
 
@@ -12770,14 +12777,96 @@ def _broker_proposals():
         for a in accounts:
             row = {k: _json_clean(v) for k, v in a.items()}
             ak = row.get("account_key") or ""
-            if ak not in acct_meta_cache:
-                acct_meta_cache[ak] = _broker_account_label_meta(ak)
-            row.update(acct_meta_cache.get(ak) or {})
-            row["activity_pending"] = True
+            row.update(_broker_account_execution_meta(ak))
+            row["activity_pending"] = False
             acct_rows.append(row)
         return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies, "list_mode": "fast"}
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
+
+
+def _broker_refresh_prices(body: dict):
+    """POST /api/v2/broker-proposals/refresh-prices — live quote + thesis band + sizing recalc."""
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    row = _db_query(
+        """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                  intended_broker, status, proposed_entry, proposed_stop, proposed_target1,
+                  proposed_shares, proposed_rr, current_price
+           FROM paper_trade_proposals WHERE id=%s""",
+        (pid,), fetch="one",
+    )
+    if not row:
+        return {"ok": False, "error": f"proposal #{pid} not found"}
+    sym = str(row.get("symbol") or "").upper()
+    acct_override = str(b.get("account") or "").strip()
+    quote = _broker_promote_quote(sym)
+    last = quote.get("last")
+    drift_pct = None
+    if last is not None and row.get("proposed_entry"):
+        try:
+            drift_pct = round((float(last) - float(row["proposed_entry"])) / float(row["proposed_entry"]) * 100, 2)
+        except Exception:
+            pass
+    try:
+        _db_query(
+            """UPDATE paper_trade_proposals
+               SET current_price=%s, price_drift_pct=%s, updated_at=NOW()
+               WHERE id=%s""",
+            [last, drift_pct, pid],
+        )
+    except Exception:
+        pass
+    quote_map = {}
+    if sym and last is not None:
+        quote_map[sym] = {
+            "bid": quote.get("bid"), "ask": quote.get("ask"), "last": last,
+        }
+    base = _broker_proposal_row_base(row, quote_map)
+    if acct_override:
+        base["account"] = acct_override
+    base.update(_broker_account_execution_meta(base.get("account") or ""))
+    enriched = _enrich_broker_proposal_row(base)
+    recal = {}
+    try:
+        import broker_promote_sizing as bps
+        acct = enriched.get("account") or ""
+        strat = str(enriched.get("strategy_id") or "momentum_scalp")
+        en = float(enriched.get("proposed_entry") or 0)
+        st = float(enriched.get("proposed_stop") or 0)
+        tg = float(enriched.get("proposed_target1") or 0)
+        sizing = bps.compute_broker_sizing(acct, strat, en, st) if acct and en and st else {}
+        rec_sh = int(sizing.get("shares") or enriched.get("proposed_shares") or 0)
+        ev = bps.evaluate_broker_promote(acct, strat, en, st, tg, rec_sh, quote=quote) if acct else {}
+        ev = _merge_broker_oversight(ev, pid) if ev else {}
+        recal = {
+            "recommended_shares": ev.get("recommended_shares") or rec_sh,
+            "max_shares": ev.get("max_shares"),
+            "evaluation": ev,
+            "sizing": sizing,
+            "quote": quote,
+        }
+        if ev:
+            enriched["evaluation"] = ev
+            enriched["gate_status"] = ev.get("status")
+            enriched["oversight"] = ev.get("oversight") or enriched.get("oversight") or {}
+            max_sh = int(ev.get("max_shares") or 0)
+            sh = float(enriched.get("proposed_shares") or 0)
+            enriched["broker_sizing"] = {
+                "max_shares": max_sh,
+                "recommended_shares": ev.get("recommended_shares"),
+                "oversized": bool(sh and max_sh and int(sh) > max_sh),
+                "binding": (ev.get("sizing") or {}).get("binding"),
+                "violations": ev.get("violations") or [],
+                "warnings": ev.get("warnings") or [],
+            }
+    except Exception:
+        recal = {"quote": quote}
+    enriched["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
+    enriched["quote_provider"] = quote.get("provider")
+    return {"ok": True, "data": enriched, "recalibration": recal}
 
 
 def _broker_proposal_detail(body: dict):
@@ -21427,6 +21516,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/broker-proposals/detail":
             try:
                 res = _broker_proposal_detail(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/refresh-prices":
+            try:
+                res = _broker_refresh_prices(body)
                 return (200 if res.get("ok") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}

@@ -49,14 +49,18 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 
 1. Start from **Proposals** (route badge `Unassigned`).
 2. **Promote to Broker** — pick account (`schwab_taxable`, `fidelity_rollover_ira`, etc.), adjust size/risk.
-3. Open **Broker Proposals** — run diligence, pick destination, route or log manual fill.
-4. **Schwab auto:** Route (when pilot armed) → approve 2FA in Telegram/web → order submits.
-5. **Fidelity / manual Schwab:** Place order in **FA** or Schwab UI → **Executed manually** → log execution for journal/rec-intel.
+3. Open **Broker Proposals** — see `docs/BROKER_PROPOSALS_UI.md` for the live desk UI.
+4. **Refresh prices** — thesis validity band + sizing recalc for chosen account.
+5. **Run oversight** — local agents + optional Grok+ChatGPT cloud review.
+6. **Schwab auto:** **Auto route (2FA)** when pilot armed → approve 2FA → order submits.
+7. **Fidelity / manual Schwab:** Place in **FA** or Schwab UI → **Executed manually** → journal/rec-intel.
 
 ### Code touchpoints
 
 - `scripts/paper_trade_logger.py` — `promote_proposal_to_broker()`
 - `scripts/queue_router.py` — Schwab / Fidelity branches
+- `scripts/broker_thesis_validity.py` — drift gap / thesis validity range
+- `scripts/broker_promote_oversight.py` — local + cloud AI gates
 - `scripts/manual_execution_tracker.py` — manual fill tagging
 - `scripts/fidelity_monitored_stop.py` — breach → FA ticket (no auto-submit)
 
@@ -93,5 +97,6 @@ Scan / Incubator GO → paper_trade_proposals (PENDING, routing unassigned)
 
 ## Related docs
 
+- `docs/BROKER_PROPOSALS_UI.md` — Broker Proposals tab (thesis band, refresh, cloud oversight)
 - `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` — options desk (same auto vs manual split)
 - `docs/DAILY_OPS_LOG.md` — Schwab canary / Fidelity monitored stops

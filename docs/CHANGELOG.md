@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-24 - Broker Proposals UI redesign (thesis band, refresh, cloud oversight)
+
+Redesigned Command Center **Broker Proposals** tab: `BrokerProposalCard`, `ThesisValidityBar`,
+`BrokerAccountPicker`; visual drift-gap / thesis validity range (`broker_thesis_validity.py`);
+`POST /api/v2/broker-proposals/refresh-prices` (live quote + sizing recalc); Grok+ChatGPT per-lane
+verdict display in `BrokerIntelPanel`; prominent account selection (Schwab auto/manual vs Fidelity FA);
+per-card **Executed manually**. Doc: `docs/BROKER_PROPOSALS_UI.md`. Tests: `test_broker_thesis_validity.py`.
+
 ## 2026-06-22 - Broker promote: cash sizing + AI oversight (Grok/ChatGPT)
 
 Paper→Schwab promote now re-sizes on destination **cash** (not Alpaca equity), enforces strategy
