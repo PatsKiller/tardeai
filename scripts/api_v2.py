@@ -12840,29 +12840,97 @@ def _broker_proposals_audit():
         return {"ok": False, "error": str(e)[:200]}
 
 
-def _broker_proposals():
-    """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail."""
+def _broker_qp(query, key, default=None):
+    q = query or {}
+    v = q.get(key)
+    if isinstance(v, list):
+        v = v[0] if v else None
+    return default if v in (None, "") else v
+
+
+def _broker_proposals(query=None):
+    """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail.
+
+    Query: page, page_size, sort, source (watchlist|proposal|both), zone, symbol|q, account, strategy_id
+    """
     try:
-        proposals = _db_query("""
-            SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
-                   intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
-                   COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
-                   proposed_entry, proposed_stop, proposed_target1,
-                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                   created_at, expires_at
-              FROM paper_trade_proposals
-             WHERE (lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'
-                    OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')
-               AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
-             ORDER BY CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END,
-                      COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST,
-                      created_at DESC LIMIT 100""") or []
+        page = max(1, int(_broker_qp(query, "page", 1) or 1))
+        page_size = min(50, max(5, int(_broker_qp(query, "page_size", 15) or 15)))
+        sort = str(_broker_qp(query, "sort", "priority") or "priority").lower()
+        source_f = str(_broker_qp(query, "source", "") or "").lower()
+        zone_f = str(_broker_qp(query, "zone", "") or "").lower()
+        symbol_f = str(_broker_qp(query, "symbol", _broker_qp(query, "q", "")) or "").upper().strip()
+        account_f = str(_broker_qp(query, "account", "") or "").strip()
+        strategy_f = str(_broker_qp(query, "strategy_id", _broker_qp(query, "strategy", "")) or "").strip()
+
+        where = [
+            "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%'"
+            " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%')",
+            "status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')",
+        ]
+        params: list = []
+        if account_f:
+            where.append("COALESCE(target_account, proposed_account) = %s")
+            params.append(account_f)
+        if symbol_f:
+            where.append("UPPER(symbol) LIKE %s")
+            params.append(f"%{symbol_f}%")
+        if strategy_f:
+            where.append("strategy_id = %s")
+            params.append(strategy_f)
+        if source_f == "watchlist":
+            where.append("(COALESCE(origin,'') = 'watchlist' OR COALESCE(discovery_source,'') = 'watchlist')")
+        elif source_f == "proposal":
+            where.append(
+                "(COALESCE(origin,'') <> 'watchlist' AND COALESCE(discovery_source,'') <> 'watchlist')"
+            )
+
+        where_sql = " AND ".join(where)
+        total_row = _db_query(
+            f"SELECT COUNT(*) AS n FROM paper_trade_proposals WHERE {where_sql}",
+            params, fetch="one",
+        ) or {}
+        db_total = int(total_row.get("n") or 0)
+
+        order_sql = {
+            "symbol": "symbol ASC, id ASC",
+            "created": "created_at DESC, id DESC",
+            "created_asc": "created_at ASC, id ASC",
+            "rr": "COALESCE(proposed_rr, 0) DESC NULLS LAST, created_at DESC",
+            "hermes": "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, symbol ASC",
+            "priority": (
+                "CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END, "
+                "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
+            ),
+        }.get(sort, (
+            "CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END, "
+            "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
+        ))
+
+        # Zone, live-rr sort, and source=both need post-row filtering before pagination.
+        needs_post = bool(zone_f) or sort in ("zone", "rr_live") or source_f == "both"
+        fetch_limit = min(1000, db_total) if needs_post else page_size
+        fetch_offset = 0 if needs_post else (page - 1) * page_size
+
+        proposals = _db_query(
+            f"""SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                       intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
+                       COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
+                       proposed_entry, proposed_stop, proposed_target1,
+                       proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                       created_at, expires_at
+                  FROM paper_trade_proposals
+                 WHERE {where_sql}
+                 ORDER BY {order_sql}
+                 LIMIT %s OFFSET %s""",
+            params + [fetch_limit, fetch_offset],
+        ) or []
+
         accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
             WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
         sd = PROJECT_ROOT / "config" / "strategies"
         strategies = sorted([f.stem for f in sd.glob("*.yaml")
                              if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
-        # Live quotes deferred to POST refresh-prices / detail — batch quote for 100 symbols blocked UI load.
         quote_map: dict = {}
 
         wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
@@ -12870,6 +12938,10 @@ def _broker_proposals():
         prop_rows = []
         for r in proposals:
             row = _broker_proposal_row_base(r, quote_map, wl_buy_syms)
+            if source_f == "both":
+                sa = row.get("source_attribution") or {}
+                if sa.get("label") != "both":
+                    continue
             acct = row.get("account") or ""
             if acct not in acct_meta_cache:
                 acct_meta_cache[acct] = _broker_account_label_meta(acct)
@@ -12881,6 +12953,44 @@ def _broker_proposals():
             row["broker_diligence"] = None
             row["oversight"] = {"status": None, "lazy": True}
             prop_rows.append(row)
+
+        if zone_f:
+            prop_rows = [
+                p for p in prop_rows
+                if str((p.get("thesis_validity") or {}).get("zone_status") or "").lower() == zone_f
+            ]
+
+        zone_rank = {"comfortable": 0, "approaching": 1, "at_risk": 2, "invalid": 3, "unknown": 4}
+        if sort == "zone":
+            prop_rows.sort(
+                key=lambda p: zone_rank.get(
+                    str((p.get("thesis_validity") or {}).get("zone_status") or "unknown").lower(), 4
+                )
+            )
+        elif sort == "rr_live":
+            prop_rows.sort(
+                key=lambda p: float((p.get("thesis_validity") or {}).get("current_rr") or 0),
+                reverse=True,
+            )
+
+        if needs_post:
+            total = len(prop_rows)
+            start = (page - 1) * page_size
+            prop_rows = prop_rows[start:start + page_size]
+        else:
+            total = db_total
+
+        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+
+        # Kick cloud oversight for first page rows (non-blocking subprocess).
+        try:
+            import broker_promote_oversight as _bpo
+            for row in prop_rows[:min(8, page_size)]:
+                pid = int(row.get("id") or 0)
+                if pid:
+                    _bpo.maybe_queue_cloud_oversight(pid)
+        except Exception:
+            pass
 
         acct_rows = []
         for a in accounts:
@@ -12895,9 +13005,29 @@ def _broker_proposals():
             "accounts": acct_rows,
             "strategies": strategies,
             "list_mode": "fast",
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages,
+            },
+            "filters": {
+                "sort": sort,
+                "source": source_f or None,
+                "zone": zone_f or None,
+                "symbol": symbol_f or None,
+                "account": account_f or None,
+                "strategy_id": strategy_f or None,
+            },
         }
     except Exception as e:
-        return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
+        return {
+            "error": str(e)[:160],
+            "proposals": [],
+            "accounts": [],
+            "strategies": [],
+            "pagination": {"page": 1, "page_size": 15, "total": 0, "total_pages": 1},
+        }
 
 
 def _broker_refresh_prices(body: dict):
@@ -21158,7 +21288,7 @@ ROUTES = {
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
-    "/api/v2/broker-proposals": lambda: _broker_proposals(),
+    "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
     "/api/v2/broker-proposals/audit": lambda: _broker_proposals_audit(),
     "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
     "/api/v2/executions/manual-log": lambda: _manual_execution_log(_current_query),

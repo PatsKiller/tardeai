@@ -132,7 +132,7 @@ def _fetch_local_llm(proposal_id: int) -> dict:
     prop = _q(
         """SELECT local_llm_review_status, llm_review_status, agent_review_status,
                   symbol, strategy_id, proposed_entry, proposed_stop, proposed_target1, proposed_rr,
-                  catalyst, catalyst_verified
+                  catalyst, catalyst_verified, cio_view, origin, discovery_source, sizing_basis
            FROM paper_trade_proposals WHERE id=%s""",
         (proposal_id,), one=True,
     ) or {}
@@ -171,6 +171,24 @@ def _fetch_local_llm(proposal_id: int) -> dict:
 
 def _build_thesis_fallback(prop: dict) -> str:
     parts = []
+    origin = str(prop.get("origin") or "").lower()
+    discovery = str(prop.get("discovery_source") or "").lower()
+    if origin == "watchlist" or discovery == "watchlist":
+        rating = prop.get("cio_view")
+        basis = prop.get("sizing_basis")
+        if isinstance(basis, str):
+            try:
+                basis = json.loads(basis)
+            except Exception:
+                basis = {}
+        if isinstance(basis, dict):
+            rating = rating or basis.get("watchlist_rating")
+            src = basis.get("watchlist_rating_source")
+            if rating:
+                label = f"Watchlist {rating}"
+                if src:
+                    label += f" ({src})"
+                parts.append(label)
     if prop.get("catalyst"):
         tag = "Verified" if prop.get("catalyst_verified") else "Unverified"
         parts.append(f"{tag} catalyst: {prop['catalyst']}")
@@ -298,9 +316,13 @@ def needs_cloud_oversight(proposal_id: int) -> bool:
     if not any(lanes.values()):
         return False
     local = _fetch_local_llm(proposal_id)
-    if local.get("status") in ("missing", "queued", "error"):
+    thesis = (local.get("thesis") or "").strip()
+    if not thesis:
         return False
-    if not (local.get("thesis") or "").strip():
+    # Watchlist bridge rows often lack paper_proposal_analysis — allow cloud when price-plan thesis exists.
+    if local.get("status") == "queued":
+        return False
+    if local.get("status") == "error":
         return False
     return True
 

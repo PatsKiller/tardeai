@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
@@ -17,9 +17,43 @@ const BLUE = '#60a5fa'
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
 const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, padding: '6px 13px', borderRadius: 7, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
+const sel = { ...inp, width: 'auto', minWidth: 110, cursor: 'pointer' } as const
+
+type ListFilters = {
+  page: number
+  pageSize: number
+  sort: string
+  source: string
+  zone: string
+  account: string
+  symbol: string
+}
+
+const DEFAULT_FILTERS: ListFilters = {
+  page: 1,
+  pageSize: 15,
+  sort: 'priority',
+  source: '',
+  zone: '',
+  account: '',
+  symbol: '',
+}
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
-  const { data, loading, error, stale, refetch } = useApi<any>('/api/v2/broker-proposals', 30_000)
+  const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
+  const listPath = useMemo(() => {
+    const p = new URLSearchParams()
+    p.set('page', String(listFilters.page))
+    p.set('page_size', String(listFilters.pageSize))
+    if (listFilters.sort) p.set('sort', listFilters.sort)
+    if (listFilters.source) p.set('source', listFilters.source)
+    if (listFilters.zone) p.set('zone', listFilters.zone)
+    if (listFilters.account) p.set('account', listFilters.account)
+    if (listFilters.symbol) p.set('symbol', listFilters.symbol)
+    return `/api/v2/broker-proposals?${p.toString()}`
+  }, [listFilters])
+
+  const { data, loading, error, stale, refetch } = useApi<any>(listPath, 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
 
@@ -53,6 +87,19 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
+  const pagination = data?.pagination ?? { page: 1, page_size: 15, total: 0, total_pages: 1 }
+
+  const patchFilters = (patch: Partial<ListFilters>) => {
+    setListFilters(prev => {
+      const next = { ...prev, ...patch }
+      if (patch.page === undefined && Object.keys(patch).some(k => k !== 'page')) {
+        next.page = 1
+      }
+      return next
+    })
+    detailLoadedRef.current.clear()
+    setDetailMap({})
+  }
 
   const fetchProposalDetail = useCallback(async (pid: number, opts?: { force?: boolean }) => {
     if (!opts?.force && (detailLoadedRef.current.has(pid) || detailInflightRef.current.has(pid))) return
@@ -96,8 +143,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     for (const t of Object.values(cloudPollRef.current)) clearInterval(t)
   }, [])
 
-  // Prefetch detail for a few visible cards only — loading all 100 blocked the single-threaded API.
-  const DETAIL_PREFETCH_MAX = 6
+  // Prefetch detail for visible page only — matches page_size default.
+  const DETAIL_PREFETCH_MAX = listFilters.pageSize
   useEffect(() => {
     if (!proposals.length) return
     let cancelled = false
@@ -461,15 +508,78 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       </details>
 
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>
-            Proposals ({shown.length}{heldOnly ? ` of ${proposals.length}` : ''})
+            Proposals ({shown.length}{heldOnly ? ` on page` : ''}
+            {pagination.total ? ` · ${pagination.total} total` : ''})
           </div>
           <button onClick={() => setHeldOnly(h => !h)} style={{
             fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
             border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,
           }}>● Held only{heldN ? ` (${heldN})` : ''}</button>
           {stale && <span style={{ fontSize: 9, color: AMBER }}>cached data</span>}
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Sort
+            <select style={sel} value={listFilters.sort} onChange={e => patchFilters({ sort: e.target.value })}>
+              <option value="priority">Priority (watchlist · Hermes)</option>
+              <option value="zone">Thesis zone</option>
+              <option value="rr_live">Live R:R</option>
+              <option value="rr">Planned R:R</option>
+              <option value="hermes">Hermes score</option>
+              <option value="symbol">Symbol A–Z</option>
+              <option value="created">Newest</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Source
+            <select style={sel} value={listFilters.source} onChange={e => patchFilters({ source: e.target.value })}>
+              <option value="">All</option>
+              <option value="watchlist">Watchlist</option>
+              <option value="proposal">Proposal</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Zone
+            <select style={sel} value={listFilters.zone} onChange={e => patchFilters({ zone: e.target.value })}>
+              <option value="">All</option>
+              <option value="comfortable">Comfortable</option>
+              <option value="approaching">Approaching</option>
+              <option value="at_risk">At risk</option>
+              <option value="invalid">Invalid</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Account
+            <select style={sel} value={listFilters.account} onChange={e => patchFilters({ account: e.target.value })}>
+              <option value="">All</option>
+              {accounts.map(a => (
+                <option key={a.account_key} value={a.account_key}>
+                  {brokerOf(a.account_key)} · {a.display_name || a.account_key}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Symbol
+            <input
+              style={{ ...inp, width: 72 }}
+              value={listFilters.symbol}
+              placeholder="e.g. DLR"
+              onChange={e => patchFilters({ symbol: e.target.value.toUpperCase() })}
+            />
+          </label>
+          {(listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.sort !== 'priority') && (
+            <button
+              onClick={() => patchFilters({ ...DEFAULT_FILTERS })}
+              style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {loading && proposals.length === 0 && !error && (
@@ -485,6 +595,39 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         )}
         {proposals.length > 0 && shown.length === 0 && (
           <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>
+        )}
+
+        {pagination.total_pages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button
+              disabled={pagination.page <= 1 || loading}
+              onClick={() => patchFilters({ page: Math.max(1, pagination.page - 1) })}
+              style={btn(BLUE, loading || pagination.page <= 1)}
+            >
+              ← Prev
+            </button>
+            <span style={{ fontSize: 11, color: MUTED }}>
+              Page {pagination.page} / {pagination.total_pages}
+              {pagination.total ? ` (${pagination.total} proposals)` : ''}
+            </span>
+            <button
+              disabled={pagination.page >= pagination.total_pages || loading}
+              onClick={() => patchFilters({ page: Math.min(pagination.total_pages, pagination.page + 1) })}
+              style={btn(BLUE, loading || pagination.page >= pagination.total_pages)}
+            >
+              Next →
+            </button>
+            <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+              Per page
+              <select
+                style={sel}
+                value={listFilters.pageSize}
+                onChange={e => patchFilters({ pageSize: Number(e.target.value), page: 1 })}
+              >
+                {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+          </div>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -526,6 +669,26 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             )
           })}
         </div>
+
+        {pagination.total_pages > 1 && shown.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+            <button
+              disabled={pagination.page <= 1 || loading}
+              onClick={() => patchFilters({ page: Math.max(1, pagination.page - 1) })}
+              style={btn(BLUE, loading || pagination.page <= 1)}
+            >
+              ← Prev
+            </button>
+            <span style={{ fontSize: 11, color: MUTED }}>Page {pagination.page} / {pagination.total_pages}</span>
+            <button
+              disabled={pagination.page >= pagination.total_pages || loading}
+              onClick={() => patchFilters({ page: Math.min(pagination.total_pages, pagination.page + 1) })}
+              style={btn(BLUE, loading || pagination.page >= pagination.total_pages)}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
