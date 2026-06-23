@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { StateCard } from '../components/StateCard'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
+import RiskHealthStrip from '../components/risk/RiskHealthStrip'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill?: (ctx: DrillContext) => void }
@@ -59,6 +60,7 @@ export default function HealthHub({ onDrill }: Props) {
   const { data: hist } = useApi<any>('/api/v2/health/history', 300_000)
   const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000)
   const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
+  const { data: riskData } = useApi<any>('/api/v2/risk', 120_000)
   const [acting, setActing] = useState<Record<string, string>>({})
   const [histExpanded, setHistExpanded] = useState<number | null>(null)
 
@@ -124,6 +126,13 @@ export default function HealthHub({ onDrill }: Props) {
 
       {tab === 'overview' && (
         <>
+          <RiskHealthStrip
+            heatPct={riskData?.portfolio_heat_pct ?? 0}
+            healthScore={overall}
+            unprotected={(riskData?.positions || []).filter((p: any) => !p.has_stop).length}
+            brokerStale={propHealth?.broker?.stale_count ?? 0}
+            optionsAlerts={propHealth?.options?.needs_action ?? 0}
+          />
           {/* Score hero */}
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
             padding: '16px 20px', background: 'var(--bg1)', border: '1px solid var(--border)',

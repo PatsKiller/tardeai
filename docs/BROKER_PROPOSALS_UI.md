@@ -24,6 +24,16 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 
 Hover for full `source_attribution` (API-computed on each row). Component: `ProposalSourceBadges.tsx`.
 
+## Risk visualizations (v1)
+
+See `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` for the full hub map.
+
+| Visual | Component | Purpose |
+|--------|-----------|---------|
+| **Thesis score ring** | `ThesisValidityGauge` | 0–100 score from zone + R:R + drift |
+| **Drift gap bar** | `ThesisValidityBar` | Stop · entry · valid band · target · live price dot |
+| **Sizing risk bar** | `PositionSizingRiskBar` | Queued shares vs account cap (red when oversized) |
+
 ## UI sections (per proposal card)
 
 | Section | Purpose |

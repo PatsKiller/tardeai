@@ -1,4 +1,5 @@
 import { zoneColor, type ThesisValidity } from '../lib/brokerThesis'
+import ThesisValidityGauge from './risk/ThesisValidityGauge'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -39,9 +40,12 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props
       background: `${color}0d`,
       border: `1px solid ${color}44`,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-          Thesis validity · {String(tv.zone_status || 'unknown').replace(/_/g, ' ')}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <ThesisValidityGauge tv={tv} size={compact ? 'sm' : 'md'} />
+          <div style={{ fontSize: 10, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Drift gap · {String(tv.zone_status || 'unknown').replace(/_/g, ' ')}
+          </div>
         </div>
         {live != null && (
           <div style={{ fontSize: 10, fontFamily: 'monospace', color: TEXT0 }}>

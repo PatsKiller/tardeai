@@ -4,6 +4,9 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AskAgents from '../components/AskAgents'
+import RiskContributionBars from '../components/risk/RiskContributionBars'
+import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
+import { riskContributionRows } from '../lib/riskMath'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -217,6 +220,24 @@ export default function RiskHub({ onDrill }: Props) {
                 </div>
               )}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk → positions[], pct_protected, total_risk_dollars</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <RiskContributionBars positions={positions} title="Risk contribution (max loss)" mode="risk" />
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <RiskHeatmapGrid
+                title="Position risk heatmap"
+                valueLabel="max loss"
+                cells={riskContributionRows(positions, { max: 12 }).map(r => ({
+                  key: r.symbol,
+                  label: r.symbol,
+                  value: r.value,
+                  sub: `${r.pct}% of book`,
+                }))}
+              />
             </div>
           </div>
         </>

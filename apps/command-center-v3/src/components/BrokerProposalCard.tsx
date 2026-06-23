@@ -1,6 +1,7 @@
 import BrokerIntelPanel from './BrokerIntelPanel'
 import BrokerAccountPicker, { type BrokerAccount } from './BrokerAccountPicker'
 import ThesisValidityBar from './ThesisValidityBar'
+import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 import ActionButton from './ActionButton'
 import ProposalSourceBadges from './ProposalSourceBadges'
 import { brokerOf, fmtMoney, tradeEconomics } from '../lib/brokerThesis'
@@ -174,6 +175,11 @@ export default function BrokerProposalCard({
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
         <section style={{ padding: '12px 14px', borderRight: '1px solid rgba(148,163,184,.1)' }}>
           <ThesisValidityBar tv={p.thesis_validity} showSourceNote />
+          <PositionSizingRiskBar
+            queuedShares={savedShares}
+            capShares={capShares}
+            accountLabel={accountLabel}
+          />
           {p.refreshed_at && (
             <div style={{ fontSize: 8.5, color: MUTED, marginTop: 6 }}>
               Refreshed {p.refreshed_at}{p.quote_provider ? ` · ${p.quote_provider}` : ''}
