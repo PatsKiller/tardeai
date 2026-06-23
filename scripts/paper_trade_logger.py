@@ -1097,6 +1097,15 @@ def promote_proposal_to_broker(
         if status not in ("PENDING", "APPROVED_FOR_PAPER_TEST"):
             return {"ok": False, "error": f"proposal #{proposal_id} status={status} — cannot promote"}
 
+        try:
+            import broker_queue_hygiene as _bqh
+            other = _bqh.find_active_symbol_proposal(symbol, exclude_id=proposal_id, broker_only=True)
+            if other:
+                _bqh.supersede_older_broker_rows(symbol, proposal_id, dry_run=False)
+            _bqh.sweep_broker_queue(dry_run=False, refresh_quotes=False)
+        except Exception:
+            pass
+
         shares = int(shares)
         entry, stop, target = float(entry), float(stop), float(target)
         if shares <= 0 or entry <= 0 or stop <= 0 or target <= 0:

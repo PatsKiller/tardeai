@@ -56,8 +56,19 @@ def main():
     stale = cur.fetchall()
 
     if not stale:
-        log("No stale proposals to clean up.")
+        log("No stale paper proposals to clean up.")
         conn.close()
+        try:
+            sys.path.insert(0, str(PROJ / "scripts"))
+            import broker_queue_hygiene as bqh
+            sweep = bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
+            log(
+                f"Broker queue hygiene: checked={sweep.get('checked')} "
+                f"expired={sweep.get('expired', sweep.get('would_expire', 0))} "
+                f"rejected={sweep.get('rejected', sweep.get('would_reject', 0))}"
+            )
+        except Exception as e:
+            log(f"Broker queue hygiene skipped: {e}")
         return
 
     log(f"Found {len(stale)} stale proposals:")
@@ -96,6 +107,18 @@ def main():
     log(f"Rejected {len(rejected)} stale proposals.")
     for pid, sym in rejected:
         log(f"  #{pid} {sym}")
+
+    try:
+        sys.path.insert(0, str(PROJ / "scripts"))
+        import broker_queue_hygiene as bqh
+        sweep = bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
+        log(
+            f"Broker queue hygiene: checked={sweep.get('checked')} "
+            f"expired={sweep.get('expired', sweep.get('would_expire', 0))} "
+            f"rejected={sweep.get('rejected', sweep.get('would_reject', 0))}"
+        )
+    except Exception as e:
+        log(f"Broker queue hygiene skipped: {e}")
 
 if __name__ == "__main__":
     main()

@@ -12723,9 +12723,32 @@ def _enrich_broker_proposal_row(row: dict) -> dict:
     return row
 
 
+def _broker_proposals_audit():
+    """GET /api/v2/broker-proposals/audit — pipeline + broker queue dysfunction report."""
+    try:
+        import broker_queue_hygiene as bqh
+        audit = bqh.audit_proposal_pipeline(days=7)
+        sweep = bqh.sweep_broker_queue(dry_run=True, refresh_quotes=False)
+        audit["broker_sweep_preview"] = {
+            "checked": sweep.get("checked"),
+            "would_expire": sweep.get("would_expire"),
+            "would_reject": sweep.get("would_reject"),
+            "details": sweep.get("details"),
+        }
+        return {"ok": True, "data": audit}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _broker_proposals():
     """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail."""
     try:
+        hygiene_meta = {}
+        try:
+            import broker_queue_hygiene as _bqh
+            hygiene_meta = _bqh.sweep_broker_queue(dry_run=False, refresh_quotes=True)
+        except Exception:
+            pass
         proposals = _db_query("""
             SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
                    intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
@@ -12780,7 +12803,13 @@ def _broker_proposals():
             row.update(_broker_account_execution_meta(ak))
             row["activity_pending"] = False
             acct_rows.append(row)
-        return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies, "list_mode": "fast"}
+        return {
+            "proposals": prop_rows,
+            "accounts": acct_rows,
+            "strategies": strategies,
+            "list_mode": "fast",
+            "hygiene": hygiene_meta if hygiene_meta else None,
+        }
     except Exception as e:
         return {"error": str(e)[:160], "proposals": [], "accounts": [], "strategies": []}
 
@@ -21042,6 +21071,7 @@ ROUTES = {
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(),
+    "/api/v2/broker-proposals/audit": lambda: _broker_proposals_audit(),
     "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
     "/api/v2/executions/manual-log": lambda: _manual_execution_log(_current_query),
     "/api/v2/strategy-leaderboard": lambda: _strategy_leaderboard(),
