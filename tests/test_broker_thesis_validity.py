@@ -5,7 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from broker_thesis_validity import compute_thesis_validity
+from datetime import datetime, timedelta, timezone
+
+from broker_thesis_validity import attach_thesis_validity, compute_thesis_validity
 
 
 def test_comfortable_inside_band():
@@ -26,8 +28,44 @@ def test_invalid_below_stop():
     assert tv["zone_color"] == "red"
 
 
+def test_stale_db_price_skips_live_rr():
+    old = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+    row = {
+        "proposed_entry": 100,
+        "proposed_stop": 95,
+        "proposed_target1": 115,
+        "current_price": 101,
+        "updated_at": old,
+        "strategy_id": "momentum_scalp",
+    }
+    attach_thesis_validity(row)
+    tv = row["thesis_validity"]
+    assert row["price_stale"] is True
+    assert tv["zone_status"] == "stale_price"
+    assert tv["current_rr"] is None
+    assert tv["current_price"] == 101
+
+
+def test_fresh_refresh_bypasses_stale():
+    row = {
+        "proposed_entry": 100,
+        "proposed_stop": 95,
+        "proposed_target1": 115,
+        "current_price": 101,
+        "updated_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+        "refreshed_at": datetime.now(timezone.utc).isoformat()[:19],
+        "quote_provider": "schwab",
+        "strategy_id": "momentum_scalp",
+    }
+    attach_thesis_validity(row)
+    assert row["price_stale"] is False
+    assert row["thesis_validity"]["current_rr"] is not None
+
+
 if __name__ == "__main__":
     test_comfortable_inside_band()
     test_at_risk_above_band()
     test_invalid_below_stop()
+    test_stale_db_price_skips_live_rr()
+    test_fresh_refresh_bypasses_stale()
     print("OK")

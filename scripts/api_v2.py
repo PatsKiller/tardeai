@@ -12912,7 +12912,7 @@ def _broker_list_cache_key(query: dict | None) -> str:
         if isinstance(v, list):
             v = v[0] if len(v) == 1 else v
         parts.append(f"{k}={v}")
-    return "|".join(parts) or "default"
+    return "v2|" + ("|".join(parts) if parts else "default")
 
 
 def _broker_list_cache_get(key: str) -> dict | None:
@@ -13079,7 +13079,7 @@ def _broker_proposals(query=None):
                        COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
                        proposed_entry, proposed_stop, proposed_target1, current_price,
                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                       created_at, expires_at
+                       created_at, expires_at, updated_at
                   FROM paper_trade_proposals
                  WHERE {where_sql}
                  ORDER BY {order_sql}
@@ -13133,7 +13133,8 @@ def _broker_proposals(query=None):
             floor = float(rr_f["min_live_rr"])
             prop_rows = [
                 p for p in prop_rows
-                if float((p.get("thesis_validity") or {}).get("current_rr") or p.get("live_rr") or 0) >= floor
+                if not p.get("price_stale")
+                and float((p.get("thesis_validity") or {}).get("current_rr") or p.get("live_rr") or 0) >= floor
             ]
         if rr_f.get("min_planned_rr") is not None:
             floor = float(rr_f["min_planned_rr"])
@@ -13258,6 +13259,9 @@ def _broker_refresh_prices(body: dict):
         quote_map[sym] = {
             "bid": quote.get("bid"), "ask": quote.get("ask"), "last": last,
         }
+        row["quote_provider"] = quote.get("provider") or row.get("intended_broker") or "schwab"  # hardcode-ok fallback label
+        row["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
+        row["updated_at"] = row["refreshed_at"]
     base = _broker_proposal_row_base(row, quote_map)
     if acct_override:
         base["account"] = acct_override
@@ -13321,7 +13325,7 @@ def _broker_proposal_detail(body: dict):
                   COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
                   proposed_entry, proposed_stop, proposed_target1, current_price,
                   proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                  created_at, expires_at
+                  created_at, expires_at, updated_at
            FROM paper_trade_proposals WHERE id=%s""",
         (pid,), fetch="one",
     )
@@ -13329,19 +13333,15 @@ def _broker_proposal_detail(body: dict):
         return {"ok": False, "error": f"proposal #{pid} not found"}
     quote_map = {}
     sym = str(row.get("symbol") or "").upper()
-    if light and not full:
-        px = row.get("current_price")
-        if sym and px is not None:
-            try:
-                quote_map[sym] = {"last": float(px)}
-            except Exception:
-                pass
-    else:
+    if not light or full:
         try:
             import schwab_transport as _st
             sq = _st.get_quotes([sym])
             if sq.get("status") == "ok":
                 quote_map = sq.get("quotes") or {}
+                if quote_map.get(sym):
+                    row["quote_provider"] = "schwab"
+                    row["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
         except Exception:
             pass
     wl_buy = _fetch_watchlist_buy_symbols([sym])

@@ -18,6 +18,11 @@ export type ThesisValidity = {
   zone_color?: string
   reasons?: string[]
   actionable?: boolean
+  price_stale?: boolean
+  price_age_min?: number | null
+  price_as_of?: string | null
+  price_source?: string
+  stale_display_price?: number
 }
 
 const ZONE_COLORS: Record<string, string> = {
@@ -33,6 +38,7 @@ export function zoneColor(status?: string, fallback?: string): string {
   if (s === 'comfortable') return ZONE_COLORS.green
   if (s === 'approaching') return ZONE_COLORS.yellow
   if (s === 'at_risk' || s === 'invalid') return ZONE_COLORS.red
+  if (s === 'stale_price') return ZONE_COLORS.gray
   return ZONE_COLORS.gray
 }
 
