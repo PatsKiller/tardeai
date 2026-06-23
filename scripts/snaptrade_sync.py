@@ -37,6 +37,71 @@ VANISH_CONFIRM_SYNCS = 2
 # pull from the brokerage is pending). Never overwrite a currently-FUNDED account (in holdings.json)
 # with that empty response — skip it until real data arrives. Below this $ value an "empty" sync is fine.
 EMPTY_SYNC_SKIP_THRESHOLD = 100.0
+FINVIZ_CACHE_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
+
+
+def _overlay_live_prices(positions: list[dict]) -> list[dict]:
+    """SnapTrade position prices lag hours — overlay Finviz Elite / market_quotes for MV and P/L."""
+    if not positions:
+        return positions
+    fv: dict = {}
+    try:
+        if FINVIZ_CACHE_PATH.exists():
+            fv = json.loads(FINVIZ_CACHE_PATH.read_text())
+    except Exception:
+        pass
+    mq: dict[str, float] = {}
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn(); cur = conn.cursor()
+        syms = [(p.get("symbol") or "").upper() for p in positions if not p.get("is_cash")]
+        if syms:
+            cur.execute("""SELECT DISTINCT ON (symbol) symbol, price
+                           FROM market_quotes WHERE symbol = ANY(%s)
+                           ORDER BY symbol, fetched_at DESC""", (syms,))
+            for sym, px in cur.fetchall():
+                try:
+                    mq[str(sym).upper()] = float(px)
+                except (TypeError, ValueError):
+                    pass
+        conn.close()
+    except Exception:
+        pass
+    for p in positions:
+        if p.get("is_cash"):
+            continue
+        sym = (p.get("symbol") or "").upper()
+        fvrow = fv.get(sym) if isinstance(fv.get(sym), dict) else {}
+        px = mq.get(sym) or fvrow.get("price")
+        try:
+            px = float(px) if px is not None else None
+        except (TypeError, ValueError):
+            px = None
+        if not px or px <= 0:
+            continue
+        shares = float(p.get("shares") or 0)
+        if shares <= 0:
+            continue
+        p["current_price"] = round(px, 4)
+        p["price"] = round(px, 4)
+        p["market_value"] = round(px * shares, 2)
+        p["price_source"] = "market_quotes" if sym in mq else "finviz"
+        cb = p.get("cost_basis")
+        if cb is None and p.get("avg_cost"):
+            cb = float(p["avg_cost"]) * shares
+            p["cost_basis"] = round(cb, 2)
+        if cb:
+            p["gain_loss"] = round(p["market_value"] - float(cb), 2)
+            p["gain_loss_pct"] = round(p["gain_loss"] / float(cb) * 100, 4) if float(cb) else None
+        chg = fvrow.get("change_pct")
+        if chg is not None:
+            try:
+                p["day_change_pct"] = float(chg)
+                prev = px / (1 + float(chg) / 100) if float(chg) != -100 else px
+                p["day_change"] = round((px - prev) * shares, 2)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+    return positions
 
 
 def _current_account_value(account_key: str) -> float:
@@ -119,7 +184,7 @@ def run(apply: bool = False) -> dict:
             continue  # account not opted into the sync
         try:
             raw = sr.holdings(user, aid)
-            positions = sr.normalize_positions(raw, key)
+            positions = _overlay_live_prices(sr.normalize_positions(raw, key))
         except Exception as e:
             report.append(f"  {key} ({aid}): read error — {e}")
             continue

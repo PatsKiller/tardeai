@@ -582,6 +582,36 @@ def portfolio_holdings():
     for lr in llm_rows:
         llm_health_map[lr['symbol']] = lr
 
+    _total_mv = float((h.get("portfolio_totals") or {}).get("total_value") or 0)
+    # Live quote overlay — source hierarchy by account:
+    #   schwab_*     → Schwab API sync + portfolio_repricer (Finviz) in holdings.json FIRST;
+    #                  market_quotes (Alpaca) only when broker price missing.
+    #   fidelity_*   → SnapTrade is positions/basis only (prices lag hours); use market_quotes
+    #                  (Alpaca ingest) → finviz_quote_cache → technical snapshot — NOT SnapTrade.
+    _live_mq: dict[str, float] = {}
+    _live_fv: dict[str, float] = {}
+    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price
+                            FROM market_quotes ORDER BY symbol, fetched_at DESC""") or []):
+        try:
+            _live_mq[( _qr.get("symbol") or "").upper()] = float(_qr["price"])
+        except (TypeError, ValueError, KeyError):
+            pass
+    _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
+    _fv_day: dict[str, float] = {}
+    for _fsym, _fvrow in _fv.items():
+        if not isinstance(_fvrow, dict):
+            continue
+        _su = str(_fsym).upper()
+        try:
+            if _fvrow.get("price"):
+                _live_fv[_su] = float(_fvrow["price"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if _fvrow.get("change_pct") is not None:
+                _fv_day[_su] = float(_fvrow["change_pct"])
+        except (TypeError, ValueError):
+            pass
     rows = []
     for p in holdings:
         if (p.get("market_value") or 0) < 50 and not p.get("is_cash"):
@@ -609,16 +639,64 @@ def portfolio_holdings():
             pi_input["week52_high_pct"] = t_snap["pct_from_high"]
         if "pct_from_low" in t_snap and "week52_low_pct" not in pi_input:
             pi_input["week52_low_pct"] = t_snap["pct_from_low"]
+        _shares = float(p.get("shares") or 0)
+        _acct = str(p.get("account") or "")
+        _stale_px = float(p.get("current_price") or p.get("price") or 0)
+        _su = sym.upper()
+        _mq = _live_mq.get(_su)
+        _fvpx = _live_fv.get(_su)
+        _is_fidelity_acct = _acct.startswith("fidelity") and _acct != "fidelity_401k"
+        _is_schwab_acct = _acct.startswith("schwab")
+        if _is_schwab_acct and _stale_px > 0:
+            _px, _px_source = _stale_px, "schwab"
+        elif _is_fidelity_acct and _fvpx and _fvpx > 0:
+            _px, _px_source = float(_fvpx), "finviz"
+        elif _is_fidelity_acct and _mq and _mq > 0:
+            _px, _px_source = float(_mq), "market_quotes"
+        elif _mq and _mq > 0:
+            _px, _px_source = float(_mq), "market_quotes"
+        elif _fvpx and _fvpx > 0:
+            _px, _px_source = float(_fvpx), "finviz"
+        elif _stale_px > 0:
+            _px, _px_source = _stale_px, "snaptrade" if _is_fidelity_acct else "holdings"
+        else:
+            _tp = _pick(t_snap, e_cache, key="price")
+            try:
+                _px = float(_tp) if _tp is not None else 0.0
+            except (TypeError, ValueError):
+                _px = 0.0
+            _px_source = "technical_snapshot"
+        _px_live = _px_source in ("market_quotes", "finviz") and _px > 0
+        _mv = round(_shares * _px, 2) if (_px > 0 and _shares > 0 and not p.get("is_cash")) else float(p.get("market_value") or 0)
+        _cb = basis_map.get((sym, p.get("account", "")), p.get("cost_basis"))
+        if _cb is None and p.get("avg_cost") and _shares:
+            _cb = float(p.get("avg_cost")) * _shares
+        try:
+            _cb_f = float(_cb) if _cb is not None else None
+        except (TypeError, ValueError):
+            _cb_f = None
+        _gl = round(_mv - _cb_f, 2) if _cb_f is not None else None
+        _glp = round(_gl / _cb_f * 100, 2) if (_gl is not None and _cb_f and _cb_f > 0) else None
+        _ppct = p.get("portfolio_pct")
+        if (not _ppct) and _total_mv > 0 and _mv > 0:
+            _ppct = round(_mv / _total_mv * 100, 4)
+        _day_pct = p.get("day_change_pct")
+        if (_day_pct is None or float(_day_pct or 0) == 0) and sym.upper() in _fv_day:
+            _day_pct = _fv_day[sym.upper()]
+        _day_chg = round(_mv * float(_day_pct or 0) / 100, 2) if (_day_pct and _mv) else p.get("day_change", 0)
         rows.append({
             "symbol": sym,
             "name": (p.get("name") or "")[:40],
             "account": p.get("account", ""),
-            "shares": p.get("shares", 0),
-            "price": p.get("price", 0),
-            "market_value": p.get("market_value", 0),
-            "portfolio_pct": p.get("portfolio_pct", 0),
-            "day_change": p.get("day_change", 0),
-            "day_change_pct": p.get("day_change_pct", 0),
+            "shares": _shares or p.get("shares", 0),
+            "price": _px,
+            "current_price": _px,
+            "price_source": _px_source,
+            "price_live": _px_live,
+            "market_value": _mv,
+            "portfolio_pct": _ppct or 0,
+            "day_change": _day_chg,
+            "day_change_pct": _day_pct if _day_pct is not None else 0,
             "sector": e_cache.get("sector") or t_snap.get("sector") or p.get("sector_type", ""),
             "signal": sig_map.get(sym, "") or t_snap.get("tech_grade", ""),
             "yield_pct": div_map.get(sym),
@@ -636,8 +714,9 @@ def portfolio_holdings():
             "market_cap_b": e_cache.get("market_cap_b"),
             "company": e_cache.get("company") or t_snap.get("company", ""),
             "industry": e_cache.get("industry", ""),
-            "cost_basis": basis_map.get((sym, p.get("account", "")), p.get("cost_basis")),
-            "gain_loss": round(p.get("market_value", 0) - basis_map.get((sym, p.get("account", "")), p.get("cost_basis") or p.get("market_value", 0)), 2),
+            "cost_basis": _cb_f,
+            "gain_loss": _gl,
+            "gain_loss_pct": _glp,
             "pi_score": _pi_score(pi_input) if (e_cache or t_snap) else None,
             "analyst_rating": e_cache.get("analyst_rating"),
             "recom_score": e_cache.get("recom_score"),
@@ -12473,15 +12552,19 @@ def _strategy_leaderboard():
         return {"error": str(e)[:160], "leaderboard": []}
 
 
-def _broker_account_execution_meta(account_key: str) -> dict:
-    """Label auto vs manual execution path + cash/day-activity snapshot per broker account."""
+def _broker_account_label_meta(account_key: str) -> dict:
+    """Broker execution labels only — no live Schwab/Fidelity API calls."""
     key = (account_key or "").lower()
     if "fidelity" in key:
-        meta = {"execution_mode": "manual", "execution_label": "Manual · Fidelity", "auto_eligible": False}
-    elif "schwab" in key:
-        meta = {"execution_mode": "auto_or_manual", "execution_label": "Schwab · auto or manual", "auto_eligible": True}
-    else:
-        meta = {"execution_mode": "manual", "execution_label": "Manual", "auto_eligible": False}
+        return {"execution_mode": "manual", "execution_label": "Manual · Fidelity", "auto_eligible": False}
+    if "schwab" in key:
+        return {"execution_mode": "auto_or_manual", "execution_label": "Schwab · auto or manual", "auto_eligible": True}
+    return {"execution_mode": "manual", "execution_label": "Manual", "auto_eligible": False}
+
+
+def _broker_account_execution_meta(account_key: str) -> dict:
+    """Label auto vs manual execution path + cash/day-activity snapshot per broker account."""
+    meta = _broker_account_label_meta(account_key)
     try:
         import broker_promote_sizing as bps
         meta["activity"] = bps.account_activity_snapshot(account_key)
@@ -12525,7 +12608,7 @@ def _enrich_broker_proposal_row(row: dict) -> dict:
     pid = row.get("id")
     try:
         import broker_proposal_intel as _bpi
-        row["intel"] = _bpi.get_intel_packet(pid)
+        row["intel"] = _bpi.get_intel_packet(pid, include_oversight=False)
     except Exception:
         row["intel"] = {"ok": False}
     try:
@@ -12614,9 +12697,10 @@ def _broker_proposals():
             row = _broker_proposal_row_base(r, quote_map)
             acct = row.get("account") or ""
             if acct not in acct_meta_cache:
-                acct_meta_cache[acct] = _broker_account_execution_meta(acct)
+                acct_meta_cache[acct] = _broker_account_label_meta(acct)
             row.update(acct_meta_cache.get(acct) or {})
-            row["activity"] = (acct_meta_cache.get(acct) or {}).get("activity")
+            row["activity"] = None
+            row["activity_pending"] = True
             row["intel"] = {"ok": False, "lazy": True}
             row["detail_pending"] = True
             try:
@@ -12632,8 +12716,9 @@ def _broker_proposals():
             row = {k: _json_clean(v) for k, v in a.items()}
             ak = row.get("account_key") or ""
             if ak not in acct_meta_cache:
-                acct_meta_cache[ak] = _broker_account_execution_meta(ak)
+                acct_meta_cache[ak] = _broker_account_label_meta(ak)
             row.update(acct_meta_cache.get(ak) or {})
+            row["activity_pending"] = True
             acct_rows.append(row)
         return {"proposals": prop_rows, "accounts": acct_rows, "strategies": strategies, "list_mode": "fast"}
     except Exception as e:
@@ -18812,10 +18897,20 @@ def _portfolio_llm_coverage(query=None):
         stop = rec.get("stop_price")
         dist = (round((float(px) - float(stop)) / float(px) * 100, 2)
                 if px and stop and float(px) > 0 else None)
+        trail_rec = bool(rec.get("trail_recommended"))
+        trail_off = rec.get("trail_offset")
+        suggested_trail = None
+        trail_matches_stop = False
+        if trail_rec and trail_off is not None:
+            suggested_trail = float(trail_off) if rec.get("trail_type") == "PERCENT" else None
+        elif dist is not None and float(dist) >= 3:
+            suggested_trail = round(float(dist), 1)
+            trail_matches_stop = not trail_rec
         protection[sym] = {"rec": p["thesis"], "rationale": p["summary"], "model": p["model_used"],
                            "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
-                           "stop_price": stop, "trail_recommended": rec.get("trail_recommended"),
-                           "trail_type": rec.get("trail_type"), "trail_offset": rec.get("trail_offset"),
+                           "stop_price": stop, "trail_recommended": trail_rec,
+                           "trail_type": rec.get("trail_type"), "trail_offset": trail_off,
+                           "suggested_trail_pct": suggested_trail, "trail_matches_stop": trail_matches_stop,
                            "price": _json_clean(px), "stop_distance_pct": dist,
                            "sanity": ev.get("sanity"),   # advisory self-consistency verdict + issues
                            "family": ev.get("family"), "family_source": ev.get("family_source")}
@@ -18829,11 +18924,25 @@ def _portfolio_llm_coverage(query=None):
         **{k: (r["evidence_json"] or {}).get(k) for k in
            ("verdict_stop", "verdict_trail_type", "verdict_trail_offset", "agrees_with", "note")
            if isinstance(r.get("evidence_json"), dict)}} for r in cv}
+    # Operator-confirmed live stops (Fidelity manual orders, etc.) — SnapTrade read-only cannot see orders.
+    conf_rows = _db_query("""SELECT symbol, account, stop_confirmed, stop_price_confirmed,
+                                    stop_confirmed_at, stop_exception_reason
+                             FROM stop_confirmations WHERE stop_confirmed = true""") or []
+    confirmed_stops = {}
+    for cr in conf_rows:
+        sym = (cr.get("symbol") or "").upper()
+        acct = str(cr.get("account") or "")
+        sp = float(cr["stop_price_confirmed"]) if cr.get("stop_price_confirmed") else None
+        confirmed_stops[f"{sym}:{acct}"] = {
+            "symbol": sym, "account": acct, "stop_price": sp, "source": "confirmed",
+            "confirmed_at": _json_clean(cr.get("stop_confirmed_at")),
+            "note": (cr.get("stop_exception_reason") or "")[:200] or None,
+        }
     return _json_clean({"coverage": cov, "protection": protection, "claude_verdicts": claude_verdicts,
-                        "window_days": 30,
+                        "confirmed_stops": confirmed_stops, "window_days": 30,
                         "note": "advisory research provenance — structured stop/trail fields + live "
-                                "distance-to-stop; APPROVAL/EXECUTION WIRING IS FUTURE (L4): nothing "
-                                "here places or modifies orders"})
+                                "distance-to-stop; confirmed_stops = operator-verified broker stops "
+                                "(Fidelity manual / no API order feed)"})
 
 
 def _broker_orders_shadow_recon(query=None):
@@ -19454,6 +19563,27 @@ def _fee_efficiency(query=None):
         return _json_clean(_fa.analyze())
     except Exception as e:
         return {"positions": [], "findings": [], "total_annual_fee_usd": None, "error": str(e)[:160]}
+
+
+def _fidelity_monitored_stops_list(query=None):
+    """GET /api/v2/holdings/monitored-stops — armed Fidelity software-monitored stops (read-only)."""
+    q = query or {}
+    status = (q.get("status") or ["armed"])[0] if isinstance(q.get("status"), list) else (q.get("status") or "armed")
+    try:
+        import fidelity_monitored_stop as _fms
+        rows = _fms.list_stops(status=status)
+        by_key = {}
+        for r in rows:
+            sym = str(r.get("symbol") or "").upper()
+            acct = str(r.get("account") or "")
+            by_key[f"{sym}:{acct}"] = {k: _json_clean(v) for k, v in r.items()}
+        return {
+            "stops": [_json_clean(s) for s in rows],
+            "by_key": by_key,
+            "note": "Fidelity monitored stops — software watch + alert on breach; place sell at Fidelity Active Trader.",
+        }
+    except Exception as e:
+        return {"stops": [], "by_key": {}, "error": str(e)[:160]}
 
 
 def _synthetic_stops_list(query=None):
@@ -20910,6 +21040,7 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
+    "/api/v2/holdings/monitored-stops": lambda: _fidelity_monitored_stops_list(_current_query),
     "/api/v2/fee-efficiency": _fee_efficiency,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
     "/api/v2/broker-orders/approval-status": _broker_orders_approval_status,

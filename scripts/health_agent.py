@@ -85,6 +85,32 @@ def _file_age_h(path: Path):
     return round((datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600, 1)
 
 
+def _is_portfolio_market_hours() -> bool:
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    mins = now.hour * 60 + now.minute
+    return 570 <= mins <= 960
+
+
+def _parse_et_ts_minutes(ts_str: str) -> float | None:
+    """Age in minutes for 'YYYY-MM-DD HH:MM:SS ET' timestamps."""
+    if not ts_str:
+        return None
+    s = str(ts_str).strip().replace(" ET", "").replace("ET", "").strip()[:19]
+    try:
+        from zoneinfo import ZoneInfo
+        naive = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        et = naive.replace(tzinfo=ZoneInfo("America/New_York"))
+        return round((datetime.now(ZoneInfo("America/New_York")) - et).total_seconds() / 60.0, 1)
+    except Exception:
+        return None
+
+
 def _db_age_h(sql):
     r = _db(sql, fetch="one")
     if not r:
@@ -136,6 +162,56 @@ def collect_data_quality() -> list[dict]:
             n = gaps["c"]
             out.append(_f("data_quality", "data_gaps_open", "warning" if n < 10 else "critical",
                           f"{n} open data gaps", count=n))
+
+        # Portfolio live prices — Finviz repricer is authoritative (SnapTrade touches holdings mtime)
+        pcfg = (load_policy().get("portfolio_price_freshness") or {})
+        if pcfg.get("enabled", True) and _is_portfolio_market_hours():
+            max_m = float(pcfg.get("max_age_minutes", 25))
+            fv_path = STATE_DIR / "finviz_quote_cache.json"
+            if fv_path.exists():
+                try:
+                    meta = (json.loads(fv_path.read_text(encoding="utf-8")).get("_meta") or {})
+                    age_m = _parse_et_ts_minutes(meta.get("last_fetched") or meta.get("last_updated") or "")
+                    if age_m is None:
+                        out.append(_f("data_quality", "finviz_quote_cache_unknown", "warning",
+                                      "finviz_quote_cache missing last_fetched"))
+                    elif age_m > max_m:
+                        sev = "critical" if age_m > max_m * 2 else "warning"
+                        out.append(_f("data_quality", "finviz_quote_cache_stale", sev,
+                                      f"Finviz quote cache stale {age_m:.0f}m (max {max_m:.0f}m)",
+                                      age_minutes=age_m))
+                except Exception as ex:
+                    out.append(_f("data_quality", "finviz_quote_cache_error", "warning",
+                                  f"finviz_quote_cache read error: {ex}"))
+            else:
+                out.append(_f("data_quality", "finviz_quote_cache_missing", "critical",
+                              "finviz_quote_cache.json missing"))
+
+            hp = STATE_DIR / "holdings.json"
+            if hp.exists():
+                try:
+                    age_m = _parse_et_ts_minutes(json.loads(hp.read_text(encoding="utf-8")).get("last_repriced") or "")
+                    if age_m is None:
+                        out.append(_f("data_quality", "portfolio_repriced_unknown", "warning",
+                                      "holdings.json missing last_repriced"))
+                    elif age_m > max_m:
+                        sev = "critical" if age_m > max_m * 2 else "warning"
+                        out.append(_f("data_quality", "portfolio_repricer_stale", sev,
+                                      f"Portfolio last_repriced stale {age_m:.0f}m (max {max_m:.0f}m)",
+                                      age_minutes=age_m))
+                except Exception as ex:
+                    out.append(_f("data_quality", "portfolio_repriced_error", "warning",
+                                  f"holdings last_repriced check error: {ex}"))
+
+            mq = _db("""SELECT EXTRACT(EPOCH FROM (NOW() - MAX(fetched_at)))/60.0 AS age_m
+                        FROM market_quotes""", fetch="one")
+            if mq and mq.get("age_m") is not None:
+                mq_age = float(mq["age_m"])
+                mq_max = float(pcfg.get("market_quotes_max_age_minutes", max_m))
+                if mq_age > mq_max:
+                    out.append(_f("data_quality", "market_quotes_stale", "warning",
+                                  f"market_quotes DB stale {mq_age:.0f}m (max {mq_max:.0f}m)",
+                                  age_minutes=mq_age))
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info", f"data_quality check error: {e}"))
     return out
@@ -527,6 +603,9 @@ WHY = {
     "golden_window_missing": "Retirement Golden Window drives Roth-conversion guidance; missing = a planning gap.",
     "dividend_income_zero": "Zero dividend income is almost certainly a data inconsistency, not reality.",
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
+    "finviz_quote_cache_stale": "Finviz quote cache is the authoritative portfolio price layer — stale cache = wrong Command Center P/L.",
+    "portfolio_repricer_stale": "portfolio_repricer.py has not run — holdings prices lag Finviz/broker reality.",
+    "market_quotes_stale": "Alpaca market_quotes backup feed is stale — Fidelity fallback prices may be wrong.",
 }
 
 

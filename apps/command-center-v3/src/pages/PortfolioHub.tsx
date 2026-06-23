@@ -6,6 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
 import AskAgents from '../components/AskAgents'
+import HoldingProtectionActions from '../components/HoldingProtectionActions'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
@@ -22,9 +23,18 @@ const signalColor = (s?: string) => {
   if (['MONITOR', 'WATCH', 'CAUTION'].includes(t)) return '#f59e0b'
   return 'var(--text3)'   // HOLD / NEUTRAL
 }
-// P/L % only where real cost basis exists (401k funds have none → null → "—")
-const plPct = (h: any): number | null =>
-  (h.cost_basis != null && h.cost_basis > 0 && h.gain_loss != null) ? (h.gain_loss / h.cost_basis) * 100 : null
+// Unrealized P/L ($ and %) where real cost basis exists (401k funds have none → null → "—")
+const plMetrics = (h: any): { dollars: number | null; pct: number | null } => {
+  const cb = h.cost_basis
+  if (cb == null || cb <= 0) return { dollars: null, pct: null }
+  const dollars = h.gain_loss != null
+    ? Number(h.gain_loss)
+    : (h.market_value != null ? Number(h.market_value) - Number(cb) : null)
+  const pct = h.gain_loss_pct != null
+    ? Number(h.gain_loss_pct)
+    : (dollars != null ? (dollars / Number(cb)) * 100 : null)
+  return { dollars, pct }
+}
 
 // ── signal sub-tab buckets (operator request 2026-06-12) ──
 const SIGNAL_TABS: [string, string[]][] = [
@@ -91,6 +101,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
+  const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
@@ -132,6 +143,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const pageRows = holdingsList.slice(pageClamped * PAGE_SIZE, (pageClamped + 1) * PAGE_SIZE)
   const coverage: Record<string, any[]> = (llmCov as any)?.coverage ?? {}
   const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
+  const monitoredByKey: Record<string, any> = monitoredStops?.by_key ?? {}
+  const confirmedByKey: Record<string, any> = (llmCov as any)?.confirmed_stops ?? {}
   // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
   // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
@@ -257,7 +270,7 @@ export default function PortfolioHub({ onDrill }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
               {pageRows.map((h: any) => {
-                const pl = plPct(h)
+                const { dollars: pl$, pct: pl } = plMetrics(h)
                 const zc = rsiZoneColor(h.rsi_status)
                 const sc = signalColor(h.signal)
                 const ac = acctColor(h.account ?? 'unknown')
@@ -296,10 +309,17 @@ export default function PortfolioHub({ onDrill }: Props) {
                         {c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('M ', fv.perf_month, pc(fv.perf_month), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</div>
                     })()}
                     {/* value + P/L row */}
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: pl == null ? 'var(--text3)' : pl >= 0 ? '#22c55e' : '#ef4444' }}>
-                        {pl == null ? '— P/L' : `${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%`}</span>
+                      {pl$ != null ? (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: pl$ >= 0 ? '#22c55e' : '#ef4444' }}
+                          title={pl != null ? `Unrealized ${pl >= 0 ? '+' : ''}${pl.toFixed(2)}% on cost basis ${fmt$(h.cost_basis, 0)}` : undefined}>
+                          {pl$ >= 0 ? '+' : ''}{fmt$(pl$, 0)}
+                          {pl != null && <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.9 }}> ({pl >= 0 ? '+' : ''}{pl.toFixed(1)}%)</span>}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text3)' }}>— P/L</span>
+                      )}
                       {dayPct != null && <span style={{ fontSize: 9.5, color: dayPct >= 0 ? '#22c55e' : '#ef4444' }}>today {dayPct >= 0 ? '+' : ''}{Number(dayPct).toFixed(1)}%</span>}
                     </div>
                     {/* % of portfolio bar */}
@@ -329,6 +349,22 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <span style={{ flex: 1 }} />
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
                     </div>
+                    {(() => {
+                      const pr = protection[(h.symbol || '').toUpperCase()]
+                      if (!pr?.stop_price) return null
+                      const key = `${(h.symbol || '').toUpperCase()}:${h.account}`
+                      const mon = monitoredByKey[key]
+                      const conf = confirmedByKey[key]
+                      return (
+                        <HoldingProtectionActions
+                          h={h}
+                          pr={pr}
+                          monitored={mon}
+                          confirmedStop={conf}
+                          onRefresh={() => refetchMonitored?.()}
+                        />
+                      )
+                    })()}
                     {/* unified info block (operator 2026-06-12): what it does · sector vs sector · analyst · news */}
                     {(() => {
                       const sc = cardMap[(h.symbol || '').toUpperCase()]
@@ -394,7 +430,7 @@ export default function PortfolioHub({ onDrill }: Props) {
               </div>
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
-              P/L% shown where cost basis exists (single source of truth: csv tax lot &gt; broker API); 401(k) funds carry no per-lot basis → "—". RSI * = public-ETF proxy.
+              P/L ($ and %) shown where cost basis exists (csv tax lot &gt; broker API); 401(k) funds carry no per-lot basis → "—". RSI * = public-ETF proxy.
               🤖 badges = which LLM lane reviewed the symbol in the last 30d (advisory research, never an execution signal) · source: /api/v2/portfolio/llm-coverage. Card click = full drawer.
             </div>
           </div>

@@ -30,7 +30,7 @@ FAMILY_PROTECTION = {
                  "trail_norm": True, "label": "Swing", "hold": "multi-day to weeks"},
     "income":   {"stop_min_pct": 4.0, "stop_max_pct": 10.0, "trail_min_pct": 5.0, "trail_max_pct": 10.0,
                  "trail_norm": False, "label": "Income", "hold": "long / held through noise"},
-    "position": {"stop_min_pct": 5.0, "stop_max_pct": 12.0, "trail_min_pct": 6.0, "trail_max_pct": 10.0,
+    "position": {"stop_min_pct": 5.0, "stop_max_pct": 12.0, "trail_min_pct": 6.0, "trail_max_pct": 12.0,
                  "trail_norm": True, "label": "Position / Core", "hold": "very long / compounder"},
 }
 DEFAULT_FAMILY = "position"   # conservative default: widest stop, no premature tightening

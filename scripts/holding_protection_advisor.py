@@ -295,6 +295,18 @@ def run(lane="grok", symbols=None, limit=12):
         rec = _parse(out)
         if not rec:
             print(f"  {sym}: unparseable response"); failed += 1; continue
+        # Extended core at the family stop cap: offer a matching % trail (same width as fixed stop).
+        try:
+            spb = float(rec.get("stop_pct_below") or 0)
+            if not rec.get("trail_recommended") and spb >= float(fb.get("trail_min_pct", 6)):
+                if spb >= float(fb.get("stop_max_pct", 12)) - 1.0 or pnl_pct >= 20:
+                    rec["trail_recommended"] = True
+                    rec["trail_type"] = "PERCENT"
+                    rec["trail_offset"] = round(min(spb, float(fb.get("trail_max_pct", 12))), 1)
+                    rec["rationale"] = (str(rec.get("rationale") or "")[:120]
+                                          + " · trail matches advised stop width for extended runner").strip()
+        except Exception:
+            pass
         sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
         model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
         cur.execute("""INSERT INTO hermes_research_intelligence
