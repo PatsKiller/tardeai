@@ -154,6 +154,16 @@ class TestBrokerPromoteOversight(unittest.TestCase):
              patch.object(bpo, "_fetch_local_llm", return_value={"status": "queued", "thesis": "thesis text"}):
             self.assertFalse(bpo.needs_cloud_oversight(99))
 
+    def test_queue_cloud_batch_respects_cap(self):
+        with patch.object(bpo, "queue_cloud_oversight") as mock_q:
+            mock_q.side_effect = [
+                {"ok": True, "queued": True, "proposal_id": 1},
+                {"ok": True, "skipped": True, "reason": "not_needed"},
+            ]
+            out = bpo.queue_cloud_oversight_batch([1, 2, 1], max_batch=2)
+        self.assertEqual(out["queued_count"], 1)
+        self.assertEqual(mock_q.call_count, 2)
+
     def test_intel_diligence_avoids_oversight_recursion(self):
         """evaluate_intel_diligence must not re-enter evaluate_oversight via get_intel_packet."""
         import broker_proposal_intel as bpi
