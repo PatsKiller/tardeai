@@ -37,7 +37,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
-  const preferTrail = Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
+  const confNote = String(confirmedStop?.note ?? '')
+  const confirmedIsTrailing = /trailing|trail\s+\d/i.test(confNote)
+    || monitored?.order_type === 'TRAILING_STOP'
+  const confirmedIsFixed = Boolean(confirmedStop?.stop_price != null && !confirmedIsTrailing)
+  const preferTrail = !confirmedIsFixed && Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
   const trailLabel = trailPct != null
     ? (Math.abs(trailPct - Math.round(trailPct)) < 0.15 ? String(Math.round(trailPct)) : trailPct.toFixed(1))
     : ''
@@ -102,7 +106,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div style={{ fontSize: 9, color: GREEN, fontWeight: 800, marginBottom: 5 }}
           title={confirmedStop?.note ?? (monitored ? 'Software-monitored stop (not a broker order)' : '')}>
           ✓ {confirmedStop ? 'Stop active' : 'Tracked'} @ ${Number(liveStop).toFixed(2)}
-          {confirmedStop ? ' · live @ Fidelity' : monitored?.order_type === 'TRAILING_STOP' && monitored.trail_pct != null ? ` · trail ${monitored.trail_pct}%` : ' · fixed'}
+          {confirmedStop
+            ? (confirmedIsTrailing ? ' · trailing @ Fidelity' : ' · fixed stop @ Fidelity')
+            : monitored?.order_type === 'TRAILING_STOP' && monitored.trail_pct != null ? ` · trail ${monitored.trail_pct}%` : ' · fixed'}
           {liveDistPct != null && (
             <span style={{ color: liveDistPct < 3 ? RED : liveDistPct < 8 ? AMBER : GREEN }}>
               {` · ${liveDistPct >= 0 ? '+' : ''}${liveDistPct.toFixed(1)}% from stop`}
@@ -126,7 +132,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           style={{ fontSize: 9, color: BLUE, fontWeight: 700, textDecoration: 'none' }}>Full controls →</a>
       </div>
       {trail && (
-        <div style={{ fontSize: 8.5, color: MUTED, marginTop: 5, lineHeight: 1.45 }}>{protectionExplain(pr, trail)}</div>
+        <div style={{ fontSize: 8.5, color: MUTED, marginTop: 5, lineHeight: 1.45 }}>{protectionExplain(pr, trail, { brokerFixedActive: confirmedIsFixed })}</div>
       )}
       {msg && <div style={{ fontSize: 9, marginTop: 5, color: msg.startsWith('✅') ? GREEN : msg.startsWith('⛔') ? RED : AMBER }}>{msg}</div>}
       {ticket && (
