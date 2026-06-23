@@ -464,7 +464,7 @@ def check_duplicate(conn, signal_id: int, symbol: str, strategy_id: str) -> dict
                 AND created_at > NOW() - INTERVAL '48 hours'
             )
         )
-        AND status IN ('PENDING','APPROVED','MODIFIED','BROKER_SUBMITTED')
+        AND status IN ('PENDING','APPROVED','MODIFIED','BROKER_SUBMITTED','APPROVED_FOR_PAPER_TEST')
         LIMIT 1
     """, [signal_id, symbol])
     row = cur.fetchone()

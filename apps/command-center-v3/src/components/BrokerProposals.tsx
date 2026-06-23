@@ -328,6 +328,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
       <ExecutionPathsStrip variant="live" />
 
+      {!!data?.hygiene?.changed && (
+        <div style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', color: AMBER }}>
+          Auto-cleared {data.hygiene.changed} stale broker row(s)
+          {(data.hygiene.expired || data.hygiene.rejected) ? ` (${data.hygiene.expired || 0} expired · ${data.hygiene.rejected || 0} superseded)` : ''}.
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Live Broker Queue</div>

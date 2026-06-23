@@ -515,6 +515,19 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         except Exception:
             pass
 
+        # Symbol-wide active guard (includes APPROVED_FOR_PAPER_TEST / broker queue rows)
+        try:
+            from broker_queue_hygiene import find_active_symbol_proposal
+            _active = find_active_symbol_proposal(symbol)
+            if _active:
+                results.append(
+                    f"SKIPPED: {symbol} (active proposal #{_active.get('id')} {_active.get('status')})"
+                )
+                skipped += 1
+                continue
+        except Exception:
+            pass
+
         # Strategy-group dedup: max 1 proposal per symbol per strategy group
         group = STRATEGY_GROUPS.get(strategy_id, 'OTHER')
         sym_groups = existing_groups.get(symbol, set()) | symbol_counts.get(symbol, set())
