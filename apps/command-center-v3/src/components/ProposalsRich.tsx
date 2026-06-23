@@ -8,6 +8,7 @@ import BrokerPromoteModal from './BrokerPromoteModal'
 import BrokerDiligenceStrip from './BrokerDiligenceStrip'
 import { isBrokerRouted, routingColor, routingLabel } from '../lib/proposalRouting'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
+import ProposalSourceBadges from './ProposalSourceBadges'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
 
 // Full v2-parity proposal review surface, ported into v3 (canonical).
@@ -381,6 +382,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
               background: `${routingColor(p)}22`, color: routingColor(p), border: `1px solid ${routingColor(p)}44` }}>
             {routingLabel(p)}
           </span>
+          <ProposalSourceBadges proposal={p} size="sm" />
           {p.signal_evidence?.screener && (
             <span title={`Why this signal won (arbitration evidence)\nlist: ${p.signal_evidence.screener}${p.signal_evidence.source_weight ? ` · source weight ${p.signal_evidence.source_weight}` : ''}${p.signal_evidence.source_hit_rate ? ` · hit ${(p.signal_evidence.source_hit_rate * 100).toFixed(0)}%` : ''}\ntop pillars: ${(p.signal_evidence.top_pillars || []).map((t: any) => `${t.pillar} ${t.pts}`).join(', ') || '—'}${p.signal_evidence.outcome_scar && p.signal_evidence.outcome_scar !== 1 ? `\noutcome scar ${p.signal_evidence.outcome_scar}` : ''}`}
               style={{ fontSize: 8, fontWeight: 600, padding: '1px 5px', borderRadius: 3, cursor: 'help', background: 'var(--bg2)', color: 'var(--text2)' }}>

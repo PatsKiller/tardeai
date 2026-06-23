@@ -70,6 +70,10 @@ def _pilot_preconditions(account_key, kind="canary"):
         from brokers.options_execution_policy import OPTIONS_ACCOUNT_ALLOWLIST
         allow = OPTIONS_ACCOUNT_ALLOWLIST
         desc = "options execution allowlist"
+    elif kind == "queue_entry":
+        from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
+        allow = PILOT_ACCOUNT_ALLOWLIST
+        desc = "queue-entry bracket allowlist"
     else:
         from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
         allow = PILOT_ACCOUNT_ALLOWLIST

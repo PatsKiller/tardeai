@@ -120,6 +120,8 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Options IV history snapshot (daily after close, for true IV rank)
 20 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py >> logs/options_iv_snapshot.log 2>&1
 */2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
+*/5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/schwab_broker_monitor.lock $PY scripts/schwab_broker_trade_monitor.py >> logs/schwab_broker_monitor.log 2>&1
+*/15 7-17 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/watchlist_proposal_bridge.lock $PY scripts/watchlist_proposal_bridge.py --apply >> logs/watchlist_proposal_bridge.log 2>&1
 */5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
 0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1
 0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1

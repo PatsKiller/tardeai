@@ -33,6 +33,10 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<Record<number, string>>({})
+  const [routeIntent, setRouteIntent] = useState<Record<number, { intent_id: string; symbol: string; summary?: string }>>({})
+  const [routeApproveTk, setRouteApproveTk] = useState<Record<number, string>>({})
+  const [routeApproveCode, setRouteApproveCode] = useState<Record<number, string>>({})
+  const [routeBusy, setRouteBusy] = useState<Record<number, boolean>>({})
   const [heldOnly, setHeldOnly] = useState(false)
   const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
   const [modalSeed, setModalSeed] = useState<ManualExecSeed | null>(null)
@@ -159,20 +163,83 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }
 
   const route = async (pid: number) => {
+    setRouteBusy(b => ({ ...b, [pid]: true }))
     setRouteMsg(m => ({ ...m, [pid]: '…' }))
+    setRouteIntent(prev => { const n = { ...prev }; delete n[pid]; return n })
+    setRouteApproveTk(prev => { const n = { ...prev }; delete n[pid]; return n })
+    setRouteApproveCode(prev => { const n = { ...prev }; delete n[pid]; return n })
     try {
       const r = await fetch('/api/v2/broker-proposals/route', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proposal_id: pid }),
       }).then(x => x.json())
       const d = r.data ?? r
+      if (d.mode === 'awaiting_approval' && d.intent_id) {
+        const summ = d.summary?.summary || d.summary || ''
+        setRouteIntent(prev => ({
+          ...prev,
+          [pid]: { intent_id: d.intent_id, symbol: String(d.symbol || '').toUpperCase(), summary: summ },
+        }))
+        const short = String(d.intent_id).slice(0, 8)
+        setRouteMsg(prev => ({
+          ...prev,
+          [pid]: `🔐 2FA required — intent ${short}${d.ttl_min ? ` · ${d.ttl_min}min` : ''}${summ ? ` · ${summ}` : ''}`,
+        }))
+        return
+      }
       const leg = d.order_spec?.orderLegCollection?.[0]
-      const wouldSubmit = leg ? ` · would POST: ${leg.instruction} ${leg.quantity} ${leg.instrument?.symbol} ${d.order_spec.orderType} $${d.order_spec.price}` : ''
-      const m = d.ok && d.record_only ? `📝 ${d.detail}` : d.gated ? `🔒 ${d.detail}${wouldSubmit}` : d.ok ? `✅ routed` : `⛔ ${d.error || d.detail || 'failed'}`
+      const bracket = d.bracket ? ' OTOCO bracket' : ''
+      const wouldSubmit = leg
+        ? ` · would POST${bracket}: ${leg.instruction} ${leg.quantity} ${leg.instrument?.symbol} ${d.order_spec.orderType} $${d.order_spec.price}`
+        : ''
+      const m = d.ok && d.record_only
+        ? `📝 ${d.detail}`
+        : d.gated
+          ? `🔒 ${d.detail}${wouldSubmit}`
+          : d.ok
+            ? `✅ routed`
+            : `⛔ ${d.error || d.detail || 'failed'}`
       setRouteMsg(prev => ({ ...prev, [pid]: m }))
       refetch?.()
     } catch (e: any) {
       setRouteMsg(prev => ({ ...prev, [pid]: '⛔ ' + String(e).slice(0, 60) }))
+    } finally {
+      setRouteBusy(b => ({ ...b, [pid]: false }))
+    }
+  }
+
+  const confirmRoute = async (pid: number, channel: 'web' | 'telegram') => {
+    const intent = routeIntent[pid]
+    if (!intent?.intent_id) {
+      setRouteMsg(prev => ({ ...prev, [pid]: '⛔ no active intent — click Auto route first' }))
+      return
+    }
+    setRouteBusy(b => ({ ...b, [pid]: true }))
+    try {
+      const code = channel === 'web'
+        ? (routeApproveTk[pid] || '').trim().toUpperCase()
+        : (routeApproveCode[pid] || '').trim()
+      const r = await fetch('/api/v2/broker-proposals/route/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent_id: intent.intent_id, channel, code }),
+      }).then(x => x.json())
+      const d = r.data ?? r
+      const oid = d.broker_order_id ?? d.result?.broker_order_id
+      const st = d.status ?? d.result?.status
+      const submitted = st === 'submitted' || st === 'filled' || d.ok === true
+      if (d.stage === 'confirm' && d.ok && d.fully_approved === false) {
+        setRouteMsg(prev => ({ ...prev, [pid]: 'channel confirmed — waiting on other factor' }))
+      } else if (submitted && d.ok !== false) {
+        setRouteIntent(prev => { const n = { ...prev }; delete n[pid]; return n })
+        setRouteMsg(prev => ({ ...prev, [pid]: `✅ LIVE bracket placed · order #${oid ?? '—'} (${st ?? 'submitted'})` }))
+        refetch?.()
+      } else {
+        setRouteMsg(prev => ({ ...prev, [pid]: `⛔ ${d.error || d.result?.error || 'confirm failed'}` }))
+      }
+    } catch (e: any) {
+      setRouteMsg(prev => ({ ...prev, [pid]: '⛔ ' + String(e).slice(0, 80) }))
+    } finally {
+      setRouteBusy(b => ({ ...b, [pid]: false }))
     }
   }
 
@@ -428,6 +495,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 cloudBusy={!!cloudBusy[p.id]}
                 oversightMsg={oversightMsg[p.id]}
                 routeMsg={routeMsg[p.id]}
+                routeIntent={routeIntent[p.id]}
+                routeBusy={!!routeBusy[p.id]}
+                routeApproveTk={routeApproveTk[p.id] || ''}
+                routeApproveCode={routeApproveCode[p.id] || ''}
+                onRouteApproveTkChange={v => setRouteApproveTk(prev => ({ ...prev, [p.id]: v }))}
+                onRouteApproveCodeChange={v => setRouteApproveCode(prev => ({ ...prev, [p.id]: v }))}
+                onConfirmRoute={ch => confirmRoute(p.id, ch)}
                 acctPreviewBusy={!!acctPreviewBusy[p.id]}
                 onRefresh={() => refreshPrices(p)}
                 onEdit={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })}

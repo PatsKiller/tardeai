@@ -561,6 +561,14 @@ curl -s -X POST http://localhost:7777/api/v2/executions/log-manual \
 # Source attribution audit
 .venv/bin/python scripts/report_proposal_source_attribution.py --verbose --since-days 30
 
+# Watchlist BUY+ → broker proposals bridge
+.venv/bin/python scripts/watchlist_proposal_bridge.py --dry-run
+.venv/bin/python scripts/watchlist_proposal_bridge.py --apply --max-new 40
+
+# Broker queue hygiene (stale Schwab/Fidelity rows)
+.venv/bin/python scripts/broker_queue_hygiene.py --audit --days 7
+.venv/bin/python scripts/broker_queue_hygiene.py --sweep --apply
+
 # Bucket 2 watchpool status
 .venv/bin/python scripts/report_bucket2_watchpool_status.py --verbose
 

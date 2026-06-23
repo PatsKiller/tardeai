@@ -2,6 +2,7 @@ import BrokerIntelPanel from './BrokerIntelPanel'
 import BrokerAccountPicker, { type BrokerAccount } from './BrokerAccountPicker'
 import ThesisValidityBar from './ThesisValidityBar'
 import ActionButton from './ActionButton'
+import ProposalSourceBadges from './ProposalSourceBadges'
 import { brokerOf, fmtMoney, tradeEconomics } from '../lib/brokerThesis'
 
 const MUTED = '#94a3b8'
@@ -27,6 +28,13 @@ type Props = {
   cloudBusy?: boolean
   oversightMsg?: string
   routeMsg?: string
+  routeIntent?: { intent_id: string; symbol: string; summary?: string }
+  routeBusy?: boolean
+  routeApproveTk?: string
+  routeApproveCode?: string
+  onRouteApproveTkChange?: (v: string) => void
+  onRouteApproveCodeChange?: (v: string) => void
+  onConfirmRoute?: (channel: 'web' | 'telegram') => void
   acctPreviewBusy?: boolean
   onRefresh: () => void
   onEdit: () => void
@@ -48,6 +56,13 @@ export default function BrokerProposalCard({
   cloudBusy,
   oversightMsg,
   routeMsg,
+  routeIntent,
+  routeBusy,
+  routeApproveTk,
+  routeApproveCode,
+  onRouteApproveTkChange,
+  onRouteApproveCodeChange,
+  onConfirmRoute,
   acctPreviewBusy,
   onRefresh,
   onEdit,
@@ -111,6 +126,7 @@ export default function BrokerProposalCard({
         <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}>
           {p.strategy_id}
         </span>
+        <ProposalSourceBadges proposal={p} size="md" />
         <span style={{
           fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
           background: fid ? 'rgba(168,85,247,.18)' : 'rgba(96,165,250,.15)',
@@ -271,9 +287,36 @@ export default function BrokerProposalCard({
         padding: '10px 14px', background: 'rgba(0,0,0,.25)', borderTop: '1px solid rgba(148,163,184,.1)',
       }}>
         {routeMsg && (
-          <span style={{ fontSize: 10, color: routeMsg.startsWith('✅') || routeMsg.startsWith('📝') ? GREEN : routeMsg.startsWith('🔒') ? PURPLE : AMBER, flex: '1 1 100%' }}>
+          <span style={{ fontSize: 10, color: routeMsg.startsWith('✅') || routeMsg.startsWith('📝') ? GREEN : routeMsg.startsWith('🔒') || routeMsg.startsWith('🔐') ? PURPLE : AMBER, flex: '1 1 100%' }}>
             {routeMsg}
           </span>
+        )}
+        {routeIntent && onConfirmRoute && (
+          <div style={{ flex: '1 1 100%', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '6px 8px', borderRadius: 6, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.22)' }}>
+            <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>Approve bracket:</span>
+            <input
+              value={routeApproveTk || ''}
+              onChange={e => onRouteApproveTkChange?.(e.target.value)}
+              placeholder={`ticker ${routeIntent.symbol}`}
+              style={{ fontSize: 10, padding: '4px 7px', borderRadius: 5, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: 72 }}
+            />
+            <button
+              onClick={() => onConfirmRoute('web')}
+              disabled={routeBusy || (routeApproveTk || '').trim().toUpperCase() !== routeIntent.symbol}
+              style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: 'rgba(34,197,94,.12)', color: GREEN }}
+            >Web ✓</button>
+            <input
+              value={routeApproveCode || ''}
+              onChange={e => onRouteApproveCodeChange?.(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6-digit"
+              style={{ fontSize: 10, padding: '4px 7px', borderRadius: 5, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: 64 }}
+            />
+            <button
+              onClick={() => onConfirmRoute('telegram')}
+              disabled={routeBusy || (routeApproveCode || '').length !== 6}
+              style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.12)', color: BLUE }}
+            >Code ✓</button>
+          </div>
         )}
         <ActionButton variant="secondary" size="md" onClick={onManual}
           style={{ border: `1px solid ${BLUE}`, color: BLUE, fontWeight: 800 }}
@@ -284,12 +327,12 @@ export default function BrokerProposalCard({
         <ActionButton
           variant={gateBlocked && !fid ? 'disabled' : 'primary'}
           size="md"
-          disabled={gateBlocked && !fid}
+          disabled={(gateBlocked && !fid) || routeBusy}
           onClick={onRoute}
-          title={gateBlocked ? 'Blocked — edit trade or resolve gates first' : (fid ? 'Record-only at Fidelity' : 'Schwab auto submit (2FA)')}
+          title={gateBlocked ? 'Blocked — edit trade or resolve gates first' : (fid ? 'Record-only at Fidelity' : 'Schwab LIMIT+STOP bracket (2FA)')}
           style={fid ? { background: `${PURPLE}33`, color: PURPLE, border: `1px solid ${PURPLE}` } : { background: `${AMBER}22`, color: AMBER, border: `1px solid ${AMBER}` }}
         >
-          {fid ? 'Record proposal' : 'Auto route (2FA)'}
+          {routeBusy ? '…' : fid ? 'Record proposal' : routeIntent ? 'Re-request 2FA' : 'Auto route (2FA)'}
         </ActionButton>
       </footer>
     </article>
