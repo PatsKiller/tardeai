@@ -71,7 +71,7 @@ Log: `logs/watchlist_proposal_bridge.log`
 
 | Env | Default | Meaning |
 |-----|---------|---------|
-| `WATCHLIST_PROPOSAL_SYNC_ON_LOAD` | `true` | Enable light sync on API load |
+| `WATCHLIST_PROPOSAL_SYNC_ON_LOAD` | `false` | Enable light sync on API load (off by default — blocks single-threaded server) |
 | `WATCHLIST_PROPOSAL_SYNC_CAP` | `25` | Max new rows per API load |
 | `WATCHLIST_PROPOSAL_MAX_NEW` | `40` | Max new rows per CLI `--apply` |
 | `WATCHLIST_BROKER_ACCOUNT` | `schwab_taxable` | Destination account |
