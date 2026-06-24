@@ -38,7 +38,9 @@ SECTION_IDS = (
     "technical_analysis",
     "fundamental_valuation",
     "analyst_predictions",
+    "analyst_commentary",
     "intelligence_view",
+    "options_income",
     "risk_assessment",
     "action_plan",
     "peer_comparison",
@@ -382,6 +384,144 @@ def _agent_notes(symbol: str, *, live_mv: float | None = None, live_shares: floa
         "raw_count": len(rows),
     }
     return kept, meta
+
+
+INCOME_TARGET = float(os.getenv("REPORT_INCOME_TARGET", "55000"))
+
+
+def _options_income_section(symbol: str, enrich: dict, holding: dict | None, personal: dict) -> dict | None:
+    """Options & Income — covered-call guidance + concentration-hedge note. Honest about missing chain data."""
+    sym = symbol.upper()
+    is_etf = str(enrich.get("instrument_type") or "").lower() in ("etf", "fund", "etn")
+    if is_etf:
+        return {
+            "id": "options_income", "title": "Options & Income",
+            "content": ("Single-name option overlays do not apply to this fund vehicle. "
+                        "Income is captured through the fund's own distribution (see Fundamentals), not written calls."),
+            "metrics": {}, "bullets": [],
+        }
+    cc = _db_query(
+        """SELECT verdict, reasoning, strike_guidance, time_horizon, risk_note, shares_available,
+                  current_price, confidence, income_goal_fit, thesis_quality, upside_cap_risk, observed_at
+           FROM aegis_covered_call_candidates WHERE symbol = %s
+           ORDER BY observed_at DESC LIMIT 1""",
+        (sym,), fetch="one",
+    )
+    iv = _db_query("SELECT iv_pct, atm_strike, captured_at FROM options_iv_history WHERE symbol=%s ORDER BY captured_at DESC LIMIT 1",
+                   (sym,), fetch="one")
+    shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else 0)
+    contracts = int(shares // 100)
+    if not cc and contracts < 1:
+        return {
+            "id": "options_income", "title": "Options & Income",
+            "content": (f"No covered-call candidate on file for {sym} and the position holds "
+                        f"{shares:.0f} shares (<100), so a single-name call overlay is not actionable. "
+                        "Live option Greeks/premium are not available (no fresh chain ingested)."),
+            "metrics": {"writable_contracts": contracts}, "bullets": [],
+        }
+    cc = dict(cc) if cc else {}
+    iv_txt = (f"{_f(dict(iv).get('iv_pct')):.0f}% IV" if iv and dict(iv).get("iv_pct") else
+              "IV/Greeks not available (no fresh option chain ingested)")
+    verdict = str(cc.get("verdict") or "—")
+    fit = str(cc.get("income_goal_fit") or "")
+    content = (
+        f"With {shares:.0f} shares, up to {contracts} covered call(s) are writable. "
+        f"The income scanner's latest read is **{verdict}** "
+        + (f"— {str(cc.get('reasoning'))[:200]} " if cc.get("reasoning") else "")
+        + f"Premium/Greeks: {iv_txt}. Income mandate target ${INCOME_TARGET:,.0f}/yr."
+    )
+    bullets = []
+    if cc.get("strike_guidance"):
+        bullets.append(f"Strike guidance: {str(cc['strike_guidance'])[:160]}")
+    if cc.get("time_horizon"):
+        bullets.append(f"Horizon: {cc['time_horizon']}")
+    if cc.get("risk_note"):
+        bullets.append(f"Risk: {str(cc['risk_note'])[:160]}")
+    if fit:
+        bullets.append(f"Income-goal fit: {fit}")
+    pct = _f(personal.get("portfolio_pct"))
+    if pct >= 8:
+        bullets.append(f"Concentration {pct:.1f}% — a protective put / collar is a reasonable downside hedge "
+                       "(cost depends on the live chain, not available here).")
+    return {
+        "id": "options_income", "title": "Options & Income",
+        "content": content,
+        "metrics": {k: v for k, v in {
+            "writable_contracts": contracts or None,
+            "scanner_verdict": verdict if verdict != "—" else None,
+            "confidence": cc.get("confidence"),
+            "iv_pct": (dict(iv).get("iv_pct") if iv else None),
+        }.items() if v is not None},
+        "bullets": bullets[:5],
+    }
+
+
+def _analyst_commentary_section(symbol: str, pro: dict | None, enrich: dict, *, news: list[dict] | None = None,
+                                hermes: list[dict] | None = None) -> dict | None:
+    """What Wall Street is saying — recent rating/target CHANGES + bull/bear synthesis."""
+    sym = symbol.upper()
+    # target history → detect mean-target change over the window
+    tgt = _db_query(
+        """SELECT snapshot_date, target_mean_price, recommendation_key, recommendation_mean,
+                  number_of_analyst_opinions
+           FROM yahoo_analyst_targets_history WHERE symbol = %s AND target_mean_price IS NOT NULL
+           ORDER BY snapshot_date DESC LIMIT 60""",
+        (sym,),
+    ) or []
+    rating = _db_query(
+        """SELECT snapshot_date, analyst_rating, recom_score, target_price
+           FROM analyst_consensus_history WHERE symbol = %s
+           ORDER BY snapshot_date DESC LIMIT 60""",
+        (sym,),
+    ) or []
+    tgt = [dict(r) for r in tgt]
+    rating = [dict(r) for r in rating]
+    changes: list[str] = []
+    # target-mean change (latest vs ~30 sessions back)
+    if len(tgt) >= 2:
+        cur = tgt[0]
+        # only a materially different prior target counts as a "change" (>= $1)
+        prev = next((r for r in tgt[1:] if _f(r.get("target_mean_price")) and
+                     abs(_f(r.get("target_mean_price")) - _f(cur.get("target_mean_price"))) >= 1.0), None)
+        if prev:
+            d = _f(cur["target_mean_price"]) - _f(prev["target_mean_price"])
+            changes.append(
+                f"Mean target {('raised' if d > 0 else 'cut')} ${_f(prev['target_mean_price']):,.2f} → "
+                f"${_f(cur['target_mean_price']):,.2f} since {str(prev['snapshot_date'])[:10]}")
+    # rating change
+    if len(rating) >= 2:
+        cur_r = str(rating[0].get("analyst_rating") or "")
+        prev_r = next((r for r in rating[1:] if str(r.get("analyst_rating") or "") and
+                       str(r.get("analyst_rating")) != cur_r), None)
+        if prev_r and cur_r:
+            changes.append(f"Consensus rating moved {prev_r} → {cur_r} (since {str(prev_r['snapshot_date'])[:10]})")
+    n = int(_f((pro or {}).get("number_of_analyst_opinions")))
+    rk = str((pro or {}).get("recommendation_key") or "").replace("_", " ").title()
+    if not changes:
+        changes.append("No rating or price-target changes in the trailing window.")
+    # bull / bear synthesis from catalysts + hermes
+    pos = [n_["title"] for n_ in (news or []) if "Positive" in str(n_.get("title", "")) or
+           any(w in str(n_.get("title", "")).lower() for w in ("beat", "raise", "upgrade", "growth", "record"))][:2]
+    neg = [n_["title"] for n_ in (news or []) if any(w in str(n_.get("title", "")).lower()
+           for w in ("cut", "miss", "downgrade", "lawsuit", "weak", "decline"))][:2]
+    bull = (pos[0][:120] if pos else f"{n}-analyst consensus {rk or 'coverage'} with upside to mean target")
+    bear = (neg[0][:120] if neg else "valuation / macro sensitivity and any dual-lane model disagreement")
+    content = (
+        f"Street coverage: {n} analysts, consensus {rk or '—'}. "
+        + " ".join(changes[:2])
+        + f" Bull case: {bull}. Bear case: {bear}."
+    )
+    return {
+        "id": "analyst_commentary", "title": "Analyst Commentary — What Wall Street Is Saying",
+        "content": content,
+        "bullets": [f"• {c}" for c in changes[:4]],
+        "metrics": {k: v for k, v in {
+            "analysts": n or None,
+            "consensus": rk or None,
+            "target_mean": (pro or {}).get("target_mean_price"),
+            "upside_to_mean_pct": (pro or {}).get("upside_to_mean_target_pct"),
+        }.items() if v is not None},
+    }
 
 
 def _hermes_research(symbol: str, *, limit: int = 3) -> list[dict]:
@@ -986,7 +1126,7 @@ def build_symbol_report(
         "sector": enrich.get("sector") or (wl or {}).get("sector"),
         "context": "holding" if holding else "watchlist",
         "sections_included": sections,
-        "version": "3.0",
+        "version": "4.0",
         "document_class": "summary_prospectus",
         "generation": gen_num,
         "prior_report_at": ((prior_report or {}).get("meta") or {}).get("generated_at"),
@@ -1061,13 +1201,80 @@ def build_symbol_report(
         }
         report_sections.append(_hermes_section)
 
+    # v4 depth: Options & Income + Analyst Commentary (inserted in canonical order below)
+    extra_sections = []
+    try:
+        opt = _options_income_section(sym, enrich, holding, personal)
+        if opt:
+            extra_sections.append(opt)
+    except Exception:
+        pass
+    try:
+        ac = _analyst_commentary_section(sym, pro, enrich, news=news, hermes=hermes)
+        if ac:
+            extra_sections.append(ac)
+    except Exception:
+        pass
+    report_sections.extend(extra_sections)
+    # Re-sort into canonical order (new ids included)
+    _ORDER = {sid: i for i, sid in enumerate([
+        "header_context", "executive_summary", "personal_performance", "report_continuity",
+        "news_catalysts", "technical_analysis", "fundamental_valuation", "analyst_predictions",
+        "analyst_commentary", "intelligence_view", "options_income", "risk_assessment",
+        "action_plan", "peer_comparison", "hermes_research",
+    ])}
+    report_sections.sort(key=lambda s: _ORDER.get(s.get("id"), 99))
+
+    # v4: real inline charts, one source of truth, no trailing "Visual Summary" dump.
     visuals: list[dict] = []
+    price_now = _resolve_price(sym, enrich, holding)
+    if "technical_analysis" in sections:
+        try:
+            from report_visuals import chart_technical
+            tech = chart_technical(sym, {
+                "support": _f(levels.get("valid_low")) or None,
+                "stop": _f(levels.get("stop")) or _f((proposal or {}).get("proposed_stop")) or None,
+                "entry": _f(levels.get("entry")) or price_now,
+                "target": _f(levels.get("target")) or _f((pro or {}).get("target_mean_price")) or None,
+                "resistance": (price_now / (1 + _f(enrich.get("week52_high_pct")) / 100)
+                               if enrich.get("week52_high_pct") else None),
+            })
+            if tech.get("chart_path"):
+                visuals.append(tech)
+        except Exception:
+            pass
+    if "risk_assessment" in sections:
+        tv_src = (proposal or {}).get("thesis_validity") or levels.get("thesis_validity") or {}
+        if tv_src.get("ok") or (levels.get("entry") and levels.get("stop") and levels.get("target")):
+            try:
+                from report_visuals import chart_thesis_validity_range
+                chart = chart_thesis_validity_range(
+                    symbol=sym, entry=_f(levels.get("entry")), stop=_f(levels.get("stop")),
+                    target=_f(levels.get("target")), price=price_now,
+                    valid_low=_f(tv_src.get("valid_low")) or None, valid_high=_f(tv_src.get("valid_high")) or None,
+                    zone_status=str(tv_src.get("zone_status") or ""), drift_pct=tv_src.get("drift_pct"),
+                )
+                if chart.get("chart_path"):
+                    visuals.append(chart)
+            except Exception:
+                pass
+    if ("analyst_predictions" in sections or "analyst_commentary" in sections) and pro:
+        try:
+            from report_visuals import chart_analyst_targets, chart_rating_distribution
+            from report_narrative import rating_distribution
+            ar = chart_analyst_targets(sym, pro, price_now)
+            if ar.get("chart_path"):
+                visuals.append(ar)
+            rd = chart_rating_distribution(sym, rating_distribution(pro))
+            if rd.get("chart_path"):
+                visuals.append(rd)
+        except Exception:
+            pass
     if peer_rows:
         try:
             from report_visuals import chart_peer_movers
-            pm = chart_peer_movers(
-                peer_rows, stem=sym, title=f"{sector_name or 'Sector'} — Peer Day Movers (%)",
-            )
+            pm = chart_peer_movers(peer_rows, stem=sym,
+                                   title=f"{(peer_rows[0].get('peer_basis') or sector_name or 'Peer')} — Day Movers (%)")
             if pm.get("chart_path"):
                 visuals.append(pm)
         except Exception:
@@ -1077,46 +1284,32 @@ def build_symbol_report(
         from report_visuals import chart_report_lineage
         pts = chart_continuity_points(sym)
         if len(pts) >= 2:
-            lc = chart_report_lineage(sym, pts, _resolve_price(sym, enrich, holding))
+            lc = chart_report_lineage(sym, pts, price_now)
             if lc.get("chart_path"):
                 visuals.append(lc)
     except Exception:
         pass
-    if "technical_analysis" in sections:
-        visuals.append(_price_levels_visual(enrich))
-        _attach_symbol_charts(sym, enrich, visuals, proposal)
-    if "risk_assessment" in sections:
-        if proposal:
-            visuals.append(_thesis_visual(proposal, enrich, sym))
-        elif levels.get("thesis_validity", {}).get("ok"):
-            # P1-1: holding thesis band rendered from synthesized entry/support/target
-            try:
-                from report_visuals import chart_thesis_validity_range
-                tv = levels["thesis_validity"]
-                chart = chart_thesis_validity_range(
-                    symbol=sym, entry=_f(levels.get("entry")), stop=_f(levels.get("stop")),
-                    target=_f(levels.get("target")), price=_f(enrich.get("price") or enrich.get("latest_price")),
-                    valid_low=_f(tv.get("valid_low")) or None, valid_high=_f(tv.get("valid_high")) or None,
-                    zone_status=str(tv.get("zone_status") or ""), drift_pct=tv.get("drift_pct"),
-                )
-                if chart.get("chart_path"):
-                    visuals.append(chart)
-            except Exception:
-                pass
-        visuals.append(_risk_visual(holding, enrich, proposal))
 
-    if "analyst_predictions" in sections and pro:
-        try:
-            from report_visuals import chart_analyst_targets, chart_rating_distribution
-            from report_narrative import rating_distribution
-            ar = chart_analyst_targets(sym, pro, _f(enrich.get("price") or enrich.get("latest_price")))
-            if ar.get("chart_path"):
-                visuals.append(ar)
-            rd = chart_rating_distribution(sym, rating_distribution(pro))
-            if rd.get("chart_path"):
-                visuals.append(rd)
-        except Exception:
-            pass
+    # Distribute charts INLINE into their owning sections (template renders section.figures).
+    _FIG_MAP = {
+        "technical": "technical_analysis",
+        "thesis_validity_bar": "risk_assessment",
+        "analyst_targets": "analyst_commentary",
+        "rating_distribution": "analyst_commentary",
+        "peer_movers": "peer_comparison",
+        "report_continuity": "report_continuity",
+    }
+    _by_id = {s.get("id"): s for s in report_sections}
+    # fall back analyst charts to analyst_predictions when commentary section absent
+    if "analyst_commentary" not in _by_id and "analyst_predictions" in _by_id:
+        _FIG_MAP["analyst_targets"] = "analyst_predictions"
+        _FIG_MAP["rating_distribution"] = "analyst_predictions"
+    for v in visuals:
+        sid = _FIG_MAP.get(v.get("type"))
+        sec = _by_id.get(sid)
+        if sec is not None and v.get("chart_path"):
+            sec.setdefault("figures", []).append(
+                {"chart_path": v["chart_path"], "caption": v.get("caption") or ""})
 
     sources = [
         {"id": "ticker_enrichment_cache", "label": "Market enrichment"},

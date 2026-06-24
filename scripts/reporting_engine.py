@@ -569,6 +569,7 @@ def generate_report(
     generation_mode: str = "adhoc",
     claude_oversight: bool | None = None,
     oversight_cadence: str | None = None,
+    engine: str = "playwright",
 ) -> dict:
     """Build one report, optionally Grok-edit, run cloud oversight, export DOCX/PDF, register."""
     import sys
@@ -664,17 +665,38 @@ def generate_report(
     exports: dict[str, Any] = {}
     docx_path: Path | None = None
     pdf_path: Path | None = None
-    for fmt in formats or ["docx", "pdf"]:
-        result = export_report(report, fmt, output_stem=stem, in_place=in_place)
-        if result.get("ok"):
-            p = Path(str(result.get("path") or ""))
-            if fmt == "docx":
-                docx_path = p if p.exists() else None
-            if fmt == "pdf":
-                pdf_path = p if p.exists() else None
-            exports[fmt] = result.get("url") or result.get("path")
-        else:
-            exports[fmt] = {"error": result.get("error")}
+    want = formats or ["docx", "pdf"]
+    use_v4 = engine in ("playwright", "weasyprint") and report_type.startswith("symbol_")
+    if use_v4:
+        # v4 single-source HTML/CSS renderer (Playwright PDF + styled python-docx)
+        from report_render import render_pdf, render_docx, _rel_url_safe
+        base = REPORT_OUT
+        if "pdf" in want:
+            pdf_out = base / f"{stem}.pdf"
+            r = render_pdf(report, pdf_out)
+            if r.get("ok"):
+                pdf_path = pdf_out; exports["pdf"] = _rel_url_safe(pdf_out)
+            else:
+                exports["pdf"] = {"error": r.get("error")}
+        if "docx" in want:
+            docx_out = base / f"{stem}.docx"
+            r = render_docx(report, docx_out)
+            if r.get("ok"):
+                docx_path = docx_out; exports["docx"] = _rel_url_safe(docx_out)
+            else:
+                exports["docx"] = {"error": r.get("error")}
+    else:
+        for fmt in want:
+            result = export_report(report, fmt, output_stem=stem, in_place=in_place)
+            if result.get("ok"):
+                p = Path(str(result.get("path") or ""))
+                if fmt == "docx":
+                    docx_path = p if p.exists() else None
+                if fmt == "pdf":
+                    pdf_path = p if p.exists() else None
+                exports[fmt] = result.get("url") or result.get("path")
+            else:
+                exports[fmt] = {"error": result.get("error")}
 
     if in_place:
         from report_lineage import _export_url
@@ -972,6 +994,8 @@ def main() -> int:
     p_gen.add_argument("--grok", action="store_true")
     p_gen.add_argument("--claude-oversight", action="store_true",
                        help="run the metered Claude oversight arbiter (free dual-lane always runs)")
+    p_gen.add_argument("--engine", default="playwright", choices=("playwright", "weasyprint", "legacy"),
+                       help="v4 HTML/CSS renderer (playwright) vs legacy python-docx export")
     p_gen.add_argument("--format", default="all", choices=("docx", "pdf", "all", "json"))
 
     p_batch = sub.add_parser("batch-holdings", help="Batch prospectus for all portfolio holdings")
@@ -1022,6 +1046,7 @@ def main() -> int:
             grok_edit=args.grok,
             formats=fmts,
             claude_oversight=True if getattr(args, "claude_oversight", False) else None,
+            engine=getattr(args, "engine", "playwright"),
         )
         print(json.dumps({"meta": out["report"].get("meta"), "exports": out["exports"]}, indent=2, default=str))
         return 0

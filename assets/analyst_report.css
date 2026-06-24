@@ -1,0 +1,97 @@
+/* analyst_report.css — sell-side equity research house style (light page, dark chart cards) */
+@page { size: Letter; }
+
+:root {
+  --ink: #14202e;
+  --muted: #5b6b7d;
+  --faint: #8a98a8;
+  --rule: #d8dee6;
+  --accent: #15598a;
+  --accent-soft: #eaf1f7;
+  --pos: #0f7a44;
+  --neg: #c0392b;
+  --card-bg: #0d0d1a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: "Inter", "Liberation Sans", Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+  padding: 0 14mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+h1, h2, h3 { font-weight: 700; color: var(--ink); margin: 0; }
+
+/* ---------- Cover ---------- */
+.cover { padding-top: 4mm; }
+.cover .eyebrow { font-size: 8pt; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.cover h1 { font-size: 22pt; line-height: 1.1; margin: 2mm 0 1mm; }
+.cover .meta { color: var(--muted); font-size: 9pt; margin-bottom: 5mm; }
+.cover .meta b { color: var(--ink); }
+
+.kpi-band { display: flex; flex-wrap: wrap; gap: 2.5mm; margin: 4mm 0 6mm; }
+.kpi-tile {
+  flex: 1 1 0; min-width: 24mm; padding: 2.4mm 3mm;
+  border: 1px solid var(--rule); border-top: 2.5px solid var(--accent);
+  border-radius: 2px; background: #fff;
+}
+.kpi-tile .lab { font-size: 6.6pt; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
+.kpi-tile .val { font-size: 12.5pt; font-weight: 700; margin-top: .6mm; white-space: nowrap; }
+.kpi-tile .val.pos { color: var(--pos); }
+.kpi-tile .val.neg { color: var(--neg); }
+
+.toc { border-top: 1px solid var(--rule); padding-top: 3mm; }
+.toc h2 { font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 2mm; }
+.toc ol { columns: 2; column-gap: 10mm; margin: 0; padding-left: 5mm; font-size: 9pt; color: var(--muted); }
+.toc li { margin-bottom: .8mm; break-inside: avoid; }
+
+.oversight-stamp {
+  margin-top: 4mm; font-size: 7.5pt; color: var(--muted);
+  background: var(--accent-soft); border-radius: 3px; padding: 2mm 3mm; border-left: 3px solid var(--accent);
+}
+
+/* ---------- Sections ---------- */
+section { break-inside: auto; padding-top: 4mm; }
+section.first { page-break-before: always; }
+section h2 {
+  font-size: 12.5pt; color: var(--accent);
+  border-bottom: 1.5px solid var(--rule); padding-bottom: 1.5mm; margin-bottom: 2.5mm;
+}
+section p.body { margin: 0 0 2.5mm; text-align: justify; }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: 2mm 3mm; margin: 0 0 3mm; font-size: 9.5pt; break-inside: avoid;
+}
+.callout .lab { font-weight: 700; color: var(--accent); }
+.callout.warn { border-left-color: var(--neg); background: #fbeceb; }
+.callout.warn .lab { color: var(--neg); }
+
+ul.bullets { margin: 1mm 0 2mm; padding-left: 5mm; }
+ul.bullets li { margin-bottom: 1mm; break-inside: avoid; }
+
+/* KPI table — fixed layout, wrapping, right-aligned numerics */
+table.kpi { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 1mm 0 3mm; font-size: 9pt; break-inside: avoid; }
+table.kpi th, table.kpi td { border: 1px solid var(--rule); padding: 1.4mm 2.4mm; word-break: break-word; vertical-align: top; }
+table.kpi th { background: var(--accent-soft); text-align: left; font-size: 7.6pt; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+table.kpi td.lab { width: 42%; color: var(--muted); }
+table.kpi td.val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+table.agents { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 1mm 0 3mm; font-size: 8.5pt; break-inside: avoid; }
+table.agents th, table.agents td { border: 1px solid var(--rule); padding: 1.2mm 2mm; word-break: break-word; }
+table.agents th { background: var(--accent-soft); text-align: left; color: var(--muted); font-size: 7.4pt; text-transform: uppercase; }
+table.agents td.w { width: 46%; }
+
+/* Figures — inline, never split across a page */
+figure { margin: 2mm 0 3mm; break-inside: avoid; page-break-inside: avoid; }
+figure img { width: 100%; height: auto; display: block; border: 1px solid #1a1a35; border-radius: 4px; background: var(--card-bg); }
+figcaption { font-size: 7.6pt; color: var(--faint); margin-top: 1mm; font-style: italic; }
+
+.sources { font-size: 7.6pt; color: var(--faint); border-top: 1px solid var(--rule); padding-top: 2mm; margin-top: 5mm; }
+.sources span { margin-right: 4mm; white-space: nowrap; }

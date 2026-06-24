@@ -603,3 +603,134 @@ def _f(v: Any, default: float = 0.0) -> float:
         return float(v)
     except (TypeError, ValueError):
         return default
+
+
+def _fetch_ohlcv(symbol: str, days: int = 200) -> dict | None:
+    """Full OHLCV from Yahoo for candlestick TA (the shared helper keeps only close+vol)."""
+    try:
+        import requests
+        from datetime import timedelta
+        end = int(datetime.now().timestamp())
+        start = int((datetime.now() - timedelta(days=days)).timestamp())
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},
+                            params={"interval": "1d", "period1": start, "period2": end}, timeout=12)
+        if not resp.ok:
+            return None
+        result = (resp.json().get("chart") or {}).get("result")
+        if not result:
+            return None
+        ts = result[0].get("timestamp") or []
+        q = (result[0].get("indicators", {}).get("quote") or [{}])[0]
+        rows = {"date": [], "Open": [], "High": [], "Low": [], "Close": [], "Volume": []}
+        for i, t in enumerate(ts):
+            o, h, l, c = (q.get(k, [None] * len(ts))[i] for k in ("open", "high", "low", "close"))
+            v = (q.get("volume") or [None] * len(ts))[i]
+            if None in (o, h, l, c):
+                continue
+            rows["date"].append(datetime.fromtimestamp(t))
+            rows["Open"].append(float(o)); rows["High"].append(float(h))
+            rows["Low"].append(float(l)); rows["Close"].append(float(c))
+            rows["Volume"].append(float(v) if v is not None else 0.0)
+        return rows if len(rows["Close"]) >= 30 else None
+    except Exception:
+        return None
+
+
+def chart_technical(symbol: str, ctx: dict | None = None) -> dict:
+    """Sell-side TA chart: candles + volume + RSI + MACD + Bollinger + SMA20/50/200,
+    with drawn support/resistance/entry/stop/target lines that match the report's levels."""
+    ctx = ctx or {}
+    raw = _fetch_ohlcv(symbol, days=200)
+    if not raw:
+        return {}
+    try:
+        import pandas as pd
+        import mplfinance as mpf
+        import numpy as np
+    except Exception:
+        return {}
+    df = pd.DataFrame({k: raw[k] for k in ("Open", "High", "Low", "Close", "Volume")},
+                      index=pd.DatetimeIndex(raw["date"]))
+    if len(df) < 35:
+        return {}
+    close = df["Close"]
+    # RSI(14)
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = (100 - 100 / (1 + rs)).fillna(50)
+    # MACD(12,26,9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist = macd - signal
+    # Bollinger(20,2)
+    mid = close.rolling(20).mean()
+    sd = close.rolling(20).std()
+    bb_up, bb_lo = mid + 2 * sd, mid - 2 * sd
+
+    mc = mpf.make_marketcolors(up=GREEN, down=RED, edge="inherit", wick="inherit",
+                               volume={"up": GREEN, "down": RED})
+    style = mpf.make_mpf_style(base_mpf_style="nightclouds", marketcolors=mc,
+                               facecolor=CARD_BG, figcolor=DARK_BG, gridcolor=GRID_COL,
+                               edgecolor=GRID_COL, rc={"axes.labelcolor": MUTED_COL,
+                               "xtick.color": MUTED_COL, "ytick.color": MUTED_COL,
+                               "axes.titlecolor": TEXT_COL, "font.size": 9})
+
+    aps = [
+        mpf.make_addplot(bb_up, color=MUTED_COL, width=0.7, alpha=0.6),
+        mpf.make_addplot(bb_lo, color=MUTED_COL, width=0.7, alpha=0.6),
+        mpf.make_addplot(rsi, panel=2, color=BLUE, width=1.1, ylabel="RSI"),
+        mpf.make_addplot([70] * len(df), panel=2, color=RED, width=0.6, linestyle="--", alpha=0.5),
+        mpf.make_addplot([30] * len(df), panel=2, color=GREEN, width=0.6, linestyle="--", alpha=0.5),
+        mpf.make_addplot(macd, panel=3, color=BLUE, width=1.0, ylabel="MACD"),
+        mpf.make_addplot(signal, panel=3, color=YELLOW, width=1.0),
+        mpf.make_addplot(hist, panel=3, type="bar", color=GRID_COL, alpha=0.6),
+    ]
+
+    # drawn levels (match Action Plan / Thesis Validity)
+    lv = {
+        "support": _f(ctx.get("support") or ctx.get("valid_low")),
+        "stop": _f(ctx.get("stop")),
+        "entry": _f(ctx.get("entry")),
+        "target": _f(ctx.get("target")),
+        "resistance": _f(ctx.get("resistance")),
+    }
+    hlines, hcolors = [], []
+    for key, col in (("stop", RED), ("entry", YELLOW), ("target", GREEN),
+                     ("support", BLUE), ("resistance", MUTED_COL)):
+        if lv[key] and lv[key] > 0:
+            hlines.append(lv[key]); hcolors.append(col)
+
+    ts = datetime.now().strftime("%Y%m%d")
+    path = REPORT_CHARTS / f"{symbol}_technical_{ts}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kw = dict(type="candle", style=style, volume=True, mav=(20, 50, 200),
+              addplot=aps, panel_ratios=(6, 1.6, 2, 2), figratio=(16, 11), figscale=1.25,
+              tight_layout=True, returnfig=True,
+              title=f"\n{symbol} — Daily Candles · SMA20/50/200 · RSI · MACD · Bollinger")
+    if hlines:
+        kw["hlines"] = dict(hlines=hlines, colors=hcolors, linestyle="-", linewidths=1.0, alpha=0.85)
+    try:
+        fig, axes = mpf.plot(df, **kw)
+        # label the drawn level lines on the price axis
+        ax0 = axes[0]
+        xr = ax0.get_xlim()[1]
+        for key, col in (("stop", RED), ("entry", YELLOW), ("target", GREEN), ("support", BLUE)):
+            if lv[key] and lv[key] > 0:
+                ax0.text(xr * 1.001, lv[key], f" {key.title()} ${lv[key]:,.2f}", color=col,
+                         fontsize=7.5, fontweight="bold", va="center")
+        fig.savefig(str(path), dpi=170, facecolor=DARK_BG, bbox_inches="tight", pad_inches=0.2)
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    except Exception:
+        return {}
+    rsi_now = float(rsi.iloc[-1])
+    macd_state = "bullish" if macd.iloc[-1] > signal.iloc[-1] else "bearish"
+    cap = (f"{symbol} — daily candles w/ SMA20/50/200, RSI {rsi_now:.0f}, MACD {macd_state}, BBands"
+           + (f"; entry ${lv['entry']:,.2f} · stop ${lv['stop']:,.2f} · target ${lv['target']:,.2f}"
+              if lv["entry"] and lv["stop"] and lv["target"] else ""))
+    return {"type": "technical", "chart_path": chart_url(path), "caption": cap, "symbol": symbol}

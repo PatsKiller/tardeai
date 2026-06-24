@@ -89,3 +89,8 @@ youtube-transcript-api==1.2.4
 yt-dlp==2026.3.17
 schwab-py==1.5.1  # read-only Schwab transport (adapter boundary only; writes fenced)
 snaptrade-python-sdk>=11
+
+# Analyst report v4 rendering (Playwright PDF + mplfinance TA charts + Jinja2 templates)
+mplfinance==0.12.10b0
+Jinja2==3.1.6
+playwright==1.60.0

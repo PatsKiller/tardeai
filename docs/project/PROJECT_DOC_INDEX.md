@@ -1,3 +1,10 @@
+## Analyst Prospectus v4 — Sell-Side Design Re-platform + Depth (2026-06-24)
+| Document | Purpose |
+|----------|---------|
+| `docs/reporting/REPORTING_ENGINE.md` | **Reporting module** (updated): v4 rendering stack (Playwright PDF + python-docx + mplfinance), `--engine` flag, oversight enforcement, install/flag-back |
+| `scripts/report_render.py` | HTML/CSS single-source renderer (Jinja2 → Playwright PDF + styled DOCX); `templates/analyst_report.html.j2`, `assets/analyst_report.css`; new Options & Income + Analyst Commentary sections; `tests/test_report_render.py` |
+| `scripts/report_visuals.py` | `chart_technical` — mplfinance candlestick + vol + RSI + MACD + Bollinger + SMA w/ drawn entry/stop/target/support |
+
 ## Analyst Prospectus v3.1 — Synthesis Quality + Claude Oversight (2026-06-24)
 | Document | Purpose |
 |----------|---------|
