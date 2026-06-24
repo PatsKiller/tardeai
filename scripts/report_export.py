@@ -36,6 +36,16 @@ def _resolve_chart_path(chart_path: str | Path | None) -> Path | None:
     return None
 
 
+def _rl(text: Any, *, br: bool = False) -> str:
+    """Escape free text for reportlab Paragraph mini-markup (fixes the 'P&L;' bug where a
+    bare ampersand was parsed as a malformed XML entity). Preserves intended <br/> breaks."""
+    from xml.sax.saxutils import escape
+    s = escape(str(text if text is not None else ""))
+    if br:
+        s = s.replace("\n", "<br/>")
+    return s
+
+
 def _rel_url(path: Path) -> str:
     try:
         rel = path.relative_to(PROJECT_ROOT)
@@ -49,18 +59,38 @@ _COVER_KPI_KEYS = (
     "thesis_status", "unrealized_pnl_pct", "portfolio_pct",
 )
 
+# Sections that render a curated KPI table beneath their prose (P2-1).
+_KPI_TABLE_SECTIONS = (
+    "header_context", "executive_summary", "fundamental_valuation",
+    "analyst_predictions", "risk_assessment", "peer_comparison", "action_plan",
+)
+
+
+_CURRENCY_KPIS = (
+    "price", "entry_price", "target_low", "target_mean", "target_high",
+    "valid_low", "valid_high", "market_value", "unrealized_pnl",
+)
+_RATIO_KPIS = ("reward_risk", "pe", "forward_pe")
+
 
 def _fmt_kpi(key: str, val: Any) -> str:
     if val is None:
         return "—"
     if key == "confidence" and isinstance(val, (int, float)) and val <= 1:
         return f"{float(val) * 100:.0f}%"
+    if key == "analysts" and isinstance(val, (int, float)):
+        return f"{int(val)}"
     if key.endswith("_pct") and isinstance(val, (int, float)):
         return f"{float(val):+.2f}%"
-    if key in ("price", "entry_price") and isinstance(val, (int, float)):
+    if key in _CURRENCY_KPIS and isinstance(val, (int, float)):
         return f"${float(val):,.2f}"
     if key == "portfolio_value" and isinstance(val, (int, float)):
         return f"${float(val):,.0f}"
+    if key in _RATIO_KPIS and isinstance(val, (int, float)):
+        return f"{float(val):.1f}×" if key in ("pe", "forward_pe") else f"{float(val):.1f}:1"
+    if isinstance(val, float):
+        # never leak a raw float like 171.4635761769087
+        return f"{val:,.2f}".rstrip("0").rstrip(".") if abs(val) < 1000 else f"{val:,.0f}"
     return str(val)
 
 
@@ -161,7 +191,7 @@ def export_docx(report: dict, output_path: Path | None = None) -> dict:
             cr.font.color.rgb = RGBColor(0x0f, 0x6d, 0x3a)
 
         metrics = sec.get("metrics") or {}
-        show_metrics = sid in ("header_context", "executive_summary", "risk_assessment", "action_plan")
+        show_metrics = sid in _KPI_TABLE_SECTIONS
         if metrics and show_metrics:
             rows = [[str(k).replace("_", " ").title(), _fmt_kpi(k, v)]
                     for k, v in metrics.items() if v is not None and k != "text"]
@@ -301,28 +331,28 @@ def export_pdf_reportlab(report: dict, output_path: Path) -> dict:
 
     for co in exec_sec.get("callouts") or []:
         story.append(Paragraph(
-            f"<b>{co.get('label', 'Note')}:</b> {str(co.get('text') or '').replace(chr(10), '<br/>')}",
+            f"<b>{_rl(co.get('label', 'Note'))}:</b> {_rl(co.get('text') or '', br=True)}",
             callout,
         ))
 
     story.append(Paragraph("Contents", h1))
     for i, sec in enumerate(sections, 1):
-        story.append(Paragraph(f"{i}. {sec.get('title', sec.get('id', 'Section'))}", body))
+        story.append(Paragraph(f"{i}. {_rl(sec.get('title', sec.get('id', 'Section')))}", body))
 
     skip_ids = {"agent_synthesis", "agent_performance_note", "ensemble_validation"}
     for sec in sections:
         sid = sec.get("id")
         if sid in skip_ids and any(s.get("id") == "intelligence_view" for s in sections):
             continue
-        story.append(Paragraph(sec.get("title") or sid or "Section", h1))
+        story.append(Paragraph(_rl(sec.get("title") or sid or "Section"), h1))
         if sec.get("content"):
-            story.append(Paragraph(str(sec["content"]).replace("\n", "<br/>"), body))
+            story.append(Paragraph(_rl(sec["content"], br=True), body))
         for co in sec.get("callouts") or []:
             story.append(Paragraph(
-                f"<b>{co.get('label', 'Action')}:</b> {str(co.get('text') or '')}",
+                f"<b>{_rl(co.get('label', 'Action'))}:</b> {_rl(co.get('text') or '')}",
                 callout,
             ))
-        show_metrics = sid in ("header_context", "executive_summary", "risk_assessment", "action_plan")
+        show_metrics = sid in _KPI_TABLE_SECTIONS
         metrics = sec.get("metrics") or {}
         if metrics and show_metrics:
             rows = [["Metric", "Value"]] + [
@@ -344,7 +374,7 @@ def export_pdf_reportlab(report: dict, output_path: Path) -> dict:
         if sid == "intelligence_view" and bullets:
             bullets = bullets[:1]
         for b in bullets:
-            story.append(Paragraph(f"• {str(b)}", bullet))
+            story.append(Paragraph(f"• {_rl(b)}", bullet))
         agents = sec.get("agents") or []
         if agents:
             rows = [["Agent", "Rec", "Weight"]] + [

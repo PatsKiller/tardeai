@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-24 - Analyst prospectus v3.1: synthesis quality lift + Claude cloud oversight
+
+Stale-finding fixes across the five report modules (no engine rewrite): continuity no longer
+self-compares same-day builds (+0.00%); volatility uses 20-day realized/ATR (never the Finviz
+weekly-range field); agent panel is freshness-filtered, de-duplicated, calibration-weighted with
+stale-position suppression and ADD≈BUY stance bucketing; Layer-4 + dual-lane (Grok/ChatGPT) consensus
+surfaced with the disagreement ×0.8 rule; thesis-validity band computed from support/stop/target for
+holdings (no more "n/a"); peer universe rebuilt by industry/curated comps with reconstructed day-change
+and a valuation read; new **Analyst Predictions & Ratings** section (targets, upside, Buy/Hold/Sell
+split, target + rating-split charts); Hermes web-grounded research infused as a section; Finviz recom no
+longer shown as a street rating (ETF-honest); reportlab `P&L;` encoding bug fixed; prose-first + curated
+KPI tables; sharper high-DPI graphics. New `report_oversight.py` — advisory free dual-lane critique
+(always) + cost-gated Claude arbiter (`--claude-oversight` / `REPORT_CLAUDE_OVERSIGHT`), stamped at
+`meta.claude_oversight`; new `oversight-only` CLI + `claude_oversight` API param. Tests:
+`test_report_oversight.py`. Doc: `docs/reporting/REPORTING_ENGINE.md`.
+
 ## 2026-06-24 - Analyst prospectus v3: full holdings + watchlist link coverage, autonomous refresh
 
 Reporting engine v3 with narrative synthesis, `intelligence_view`, executive callouts, premium DOCX/PDF export.
