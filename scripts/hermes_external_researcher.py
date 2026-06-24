@@ -82,6 +82,15 @@ def safe_context(symbol):
         c.close()
     except Exception as e:
         ctx["context_error"] = str(e)[:80]
+    # Canonical Hermes intelligence (composite score/rank + research thesis + prior lane opinions).
+    # Contains NO dollar amounts / account ids / positions / secrets; still redacted as defense-in-depth.
+    try:
+        from hermes_data_access import hermes_prompt_block
+        blk = hermes_prompt_block(symbol)
+        if blk:
+            ctx["hermes_intelligence"] = redact(blk)
+    except Exception:
+        pass
     return ctx
 
 

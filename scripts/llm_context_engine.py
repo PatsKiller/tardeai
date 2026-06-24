@@ -355,9 +355,21 @@ def get_hermes_knowledge(symbol=None, context_type='general', limit=5, conn=None
             cur.execute("""SELECT left(summary,160) FROM trade_llm_reviews
                            WHERE summary IS NOT NULL ORDER BY created_at DESC LIMIT %s""", (limit,))
         lessons = cur.fetchall()
-        if not research and not lessons:
+        # Canonical Hermes context (composite score+rank + external-lane opinions) — the single source
+        # every agent/local-LLM/OAuth-lane reads through, so "what Hermes knows about SYM" is consistent.
+        canon = ""
+        if symbol:
+            try:
+                from hermes_data_access import hermes_prompt_block
+                canon = hermes_prompt_block(symbol)
+            except Exception:
+                canon = ""
+        if not research and not lessons and not canon:
             return ""
-        lines = ["HERMES RESEARCH & LESSONS (advisory; Hermes self-learning — context, not directives):"]
+        lines = []
+        if canon:
+            lines.append(canon)
+        lines.append("HERMES RESEARCH & LESSONS (advisory; Hermes self-learning — context, not directives):")
         for t, s in research:
             lines.append(f"  • [{(t or 'research')[:50]}] {s}")
         for row in lessons:
