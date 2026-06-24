@@ -241,7 +241,7 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     """
     pid = int(proposal_id)
     row = _q(
-        """SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.catalyst, ptp.catalyst_verified,
+        """SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.sizing_basis, ptp.catalyst, ptp.catalyst_verified,
                   ptp.proposed_entry, ptp.proposed_stop, ptp.proposed_target1, ptp.proposed_rr,
                   ptp.current_price, ptp.rvol, ptp.float_m, ptp.gap_pct, ptp.intel_readiness,
                   scan.catalyst as scan_catalyst, scan.catalyst_verified as scan_catalyst_verified,
@@ -349,15 +349,17 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     if tech_parts and not why_parts:
         why_parts.append(f"Technical setup: {' · '.join(tech_parts)}. Strategy {row.get('strategy_id')}.")
 
+    import broker_strategy_resolver as bsr
+    resolved = bsr.resolve_executable_strategy(sym, str(row.get("strategy_id") or ""))
     strategy_meta: dict = {}
     strategy_purpose = None
     try:
         from proposal_lifecycle import get_strategy_metadata
-        strategy_meta = dict(get_strategy_metadata(str(row.get("strategy_id") or "")) or {})
+        strategy_meta = dict(get_strategy_metadata(resolved.get("strategy_id") or "") or {})
         strategy_purpose = strategy_meta.get("purpose")
         if not strategy_purpose:
             from strategy_config_loader import load_strategy_config
-            cfg = load_strategy_config(str(row.get("strategy_id") or "")) or {}
+            cfg = load_strategy_config(resolved.get("strategy_id") or "") or {}
             strategy_purpose = cfg.get("purpose")
             if cfg.get("display_name"):
                 strategy_meta["display_name"] = cfg["display_name"]
@@ -365,6 +367,22 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
                 strategy_meta["purpose"] = strategy_purpose
     except Exception:
         strategy_meta = {}
+    basis = row.get("sizing_basis")
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    if not isinstance(basis, dict):
+        basis = {}
+    exit_rationale = basis.get("exit_rationale") or {}
+    if not exit_rationale and resolved.get("strategy_id"):
+        _, _, _, exit_rationale = bsr.apply_strategy_exit_plan(
+            float(row.get("proposed_entry") or 0),
+            float(row.get("proposed_stop") or 0) if row.get("proposed_stop") else None,
+            float(row.get("proposed_target1") or 0) if row.get("proposed_target1") else None,
+            resolved["strategy_id"],
+        )
 
     oversight = {}
     if include_oversight:
@@ -381,13 +399,29 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
         "oversight": oversight,
         "strategy_id": row.get("strategy_id"),
         "strategy": {
-            "strategy_id": row.get("strategy_id"),
+            "strategy_id": resolved.get("strategy_id") or row.get("strategy_id"),
+            "proposal_strategy_id": row.get("strategy_id"),
+            "watchlist_sleeve": basis.get("watchlist_sleeve") or resolved.get("watchlist_sleeve"),
+            "resolve_source": basis.get("strategy_resolve_source") or resolved.get("resolve_source"),
             "display_name": strategy_meta.get("display_name")
-            or str(row.get("strategy_id") or "").replace("_", " ").title(),
+            or str(resolved.get("strategy_id") or row.get("strategy_id") or "").replace("_", " ").title(),
             "strategy_type": strategy_meta.get("strategy_type"),
             "strategy_type_label": strategy_meta.get("strategy_type_label"),
             "purpose": strategy_purpose,
             "timeframe": strategy_meta.get("timeframe") or strategy_meta.get("timeframe_class"),
+        },
+        "exit_plan": {
+            "summary": basis.get("exit_summary") or bsr.build_exit_summary(
+                exit_rationale,
+                float(row.get("proposed_entry") or 0),
+                float(row.get("proposed_stop") or 0),
+                float(row.get("proposed_target1") or 0),
+            ),
+            "rationale": exit_rationale,
+            "entry": float(row.get("proposed_entry") or 0) or None,
+            "stop": float(row.get("proposed_stop") or 0) or None,
+            "target": float(row.get("proposed_target1") or 0) or None,
+            "planned_rr": float(row.get("proposed_rr") or 0) or None,
         },
         "company": {
             "description": card.get("description"),

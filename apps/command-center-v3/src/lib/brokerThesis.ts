@@ -178,6 +178,11 @@ export type TickerContext = {
   instrumentType?: string | null
   signalGrade?: string | null
   companyLine?: string | null
+  watchlistSleeve?: string | null
+  resolvedStrategyId?: string | null
+  exitSummary?: string | null
+  exitRationale?: Record<string, unknown> | null
+  strategyMisaligned?: boolean
 }
 
 export function resolveTickerContext(proposal: Record<string, any> | null | undefined, intel?: any): TickerContext {
@@ -192,8 +197,16 @@ export function resolveTickerContext(proposal: Record<string, any> | null | unde
     const dot = s.search(/[.!?]/)
     companyLine = (dot > 20 ? s.slice(0, dot + 1) : s.slice(0, 140)).trim()
   }
+  const resolvedId = proposal?.resolved_strategy_id || st.strategy_id || proposal?.strategy_id
+  const sleeve = proposal?.watchlist_sleeve || intel?.strategy?.watchlist_sleeve || null
+  const basis = typeof proposal?.sizing_basis === 'object' ? proposal.sizing_basis : null
+  const exitSummary = proposal?.exit_summary || basis?.exit_summary || null
+  const exitRationale = (proposal?.exit_rationale || basis?.exit_rationale || null) as Record<string, unknown> | null
+  const strategyMisaligned = Boolean(
+    sleeve && resolvedId && String(sleeve).toLowerCase() !== String(resolvedId).toLowerCase(),
+  )
   return {
-    strategyDisplay: proposal?.strategy_display_name || st.display_name || proposal?.strategy_id || '—',
+    strategyDisplay: proposal?.strategy_display_name || st.display_name || resolvedId || '—',
     strategyTypeLabel: proposal?.strategy_type_label || st.strategy_type_label || proposal?.strategy_type || null,
     strategyPurpose: proposal?.strategy_description || st.purpose || why.strategy_purpose || null,
     sector: proposal?.sector || co.sector || null,
@@ -201,6 +214,11 @@ export function resolveTickerContext(proposal: Record<string, any> | null | unde
     instrumentType: proposal?.instrument_type || co.instrument_type || null,
     signalGrade: tech.grade || why.signal_grade || null,
     companyLine,
+    watchlistSleeve: sleeve,
+    resolvedStrategyId: resolvedId || null,
+    exitSummary,
+    exitRationale,
+    strategyMisaligned,
   }
 }
 

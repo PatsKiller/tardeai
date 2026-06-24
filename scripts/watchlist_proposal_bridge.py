@@ -95,7 +95,8 @@ def _fetch_buy_candidates(cur) -> list[dict]:
                   ep.limit_price, ep.entry_zone_low, ep.entry_zone_high,
                   ep.proposal_tag AS entry_tag, ep.urgency AS entry_urgency,
                   wsc.strategy_type AS wl_strategy,
-                  wsc.ideal_entry AS card_entry, wsc.stop_loss AS card_stop, wsc.target_price AS card_target
+                  wsc.ideal_entry AS card_entry, wsc.stop_loss AS card_stop, wsc.target_price AS card_target,
+                  wsc.support AS card_support, wsc.resistance AS card_resistance, wsc.risk_reward AS card_rr
            FROM watchlist_items wi
            LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
            LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol) = UPPER(wi.symbol)
@@ -149,23 +150,45 @@ def _active_proposal(cur, symbol: str) -> dict | None:
     return dict(zip(cols, row))
 
 
-def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, float, float] | None:
-    """Entry / stop / target from entry plan or strategy card (no per-symbol quote I/O in bulk sync)."""
+def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, float, float, dict] | None:
+    """Entry / stop / target from entry plan, strategy card, then strategy YAML exit policy."""
+    import broker_strategy_resolver as bsr
+
+    sym = str(c.get("symbol") or "").upper()
+    sleeve = str(c.get("wl_strategy") or "")
+    resolved = bsr.resolve_executable_strategy(sym, sleeve)
+    strategy_id = resolved["strategy_id"]
+
     entry = _f(c.get("limit_price")) or _f(c.get("card_entry"))
     if not entry and c.get("entry_zone_high"):
         entry = _f(c.get("entry_zone_high"))
     if not entry and quote_cache is not None:
-        entry = _f(quote_cache.get(str(c.get("symbol") or "").upper()))
+        entry = _f(quote_cache.get(sym))
     if not entry or entry <= 0:
         return None
-    stop = _f(c.get("card_stop")) or round(entry * 0.95, 2)
+
+    stop = _f(c.get("card_stop"))
     if c.get("entry_zone_low"):
         zl = _f(c["entry_zone_low"])
-        if zl and zl < entry:
-            stop = round(min(stop, zl * 0.98), 2)
-    risk = entry - stop
-    target = _f(c.get("card_target")) or (round(entry + risk * 2, 2) if risk > 0 else round(entry * 1.06, 2))
-    return round(entry, 2), stop, target
+        if zl and zl < entry and (not stop or stop > zl * 0.98):
+            stop = round(zl * 0.98, 2)
+    target = _f(c.get("card_target"))
+    support = _f(c.get("card_support"))
+    resistance = _f(c.get("card_resistance"))
+
+    entry, stop, target, exit_rationale = bsr.apply_strategy_exit_plan(
+        entry, stop, target, strategy_id,
+        support=support, resistance=resistance,
+    )
+    exit_rationale["resolve"] = resolved
+    if _f(c.get("card_stop")):
+        exit_rationale.setdefault("sources", []).insert(0, "stop from watchlist strategy card")
+    if _f(c.get("card_target")):
+        exit_rationale.setdefault("sources", []).insert(0, "target from watchlist strategy card")
+    if _f(c.get("limit_price")) or _f(c.get("card_entry")):
+        exit_rationale.setdefault("sources", []).insert(0, "entry from watchlist entry plan / card")
+
+    return entry, stop, target, exit_rationale
 
 
 def _size_shares(entry: float, stop: float) -> int:
@@ -174,6 +197,57 @@ def _size_shares(entry: float, stop: float) -> int:
     max_risk = float(os.getenv("WATCHLIST_DEFAULT_RISK_USD", "150"))
     cap_shares = int(os.getenv("WATCHLIST_DEFAULT_MAX_SHARES", "500"))
     return max(1, min(cap_shares, int(max_risk / risk_ps)))
+
+
+def _reconcile_sleeve_strategy_ids(cur, *, dry_run: bool) -> int:
+    """Fix watchlist proposals still tagged with sleeve labels (income, core_holding)."""
+    import broker_strategy_resolver as bsr
+
+    cur.execute(
+        """SELECT id, symbol, strategy_id, sizing_basis
+           FROM paper_trade_proposals
+           WHERE origin = 'watchlist'
+             AND status = ANY(%s)
+             AND lower(strategy_id) = ANY(%s)""",
+        (list(ACTIVE_STATUSES), list(bsr.WATCHLIST_SLEEVES)),
+    )
+    cols = [d[0] for d in cur.description]
+    n = 0
+    for row in cur.fetchall():
+        d = dict(zip(cols, row))
+        sym = str(d.get("symbol") or "").upper()
+        sleeve = str(d.get("strategy_id") or "")
+        resolved = bsr.resolve_executable_strategy(sym, sleeve)
+        new_sid = resolved["strategy_id"]
+        if not new_sid or new_sid == sleeve:
+            continue
+        n += 1
+        if dry_run:
+            continue
+        basis = d.get("sizing_basis")
+        if isinstance(basis, str):
+            try:
+                basis = json.loads(basis)
+            except Exception:
+                basis = {}
+        if not isinstance(basis, dict):
+            basis = {}
+        basis.update({
+            "watchlist_sleeve": sleeve,
+            "strategy_resolve_source": resolved.get("resolve_source"),
+            "classified_strategy": resolved.get("classified_strategy"),
+            "strategy_reconciled_at": datetime.now(timezone.utc).isoformat(),
+        })
+        cur.execute(
+            """UPDATE paper_trade_proposals
+               SET strategy_id=%s,
+                   sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
+                   updated_at=NOW()
+               WHERE id=%s""",
+            (new_sid, json.dumps(basis), int(d["id"])),
+        )
+        log.info(f"reconciled #{d['id']} {sym} {sleeve} → {new_sid}")
+    return n
 
 
 def _dedupe_watchlist_proposals(cur, *, dry_run: bool) -> int:
@@ -231,6 +305,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
     cur = conn.cursor()
     candidates = _fetch_buy_candidates(cur)
     valid_syms = {c["symbol"].upper() for c in candidates}
+    reconciled = _reconcile_sleeve_strategy_ids(cur, dry_run=dry_run)
     deduped = _dedupe_watchlist_proposals(cur, dry_run=dry_run)
     expired = _expire_stale_watchlist(cur, valid_syms, dry_run=dry_run)
 
@@ -266,8 +341,12 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         if not levels:
             skipped += 1
             continue
-        entry, stop, target = levels
-        strat = str(c.get("wl_strategy") or DEFAULT_STRATEGY)
+        entry, stop, target, exit_rationale = levels
+        import broker_strategy_resolver as bsr
+        resolved = bsr.resolve_executable_strategy(
+            sym, str(c.get("wl_strategy") or DEFAULT_STRATEGY),
+        )
+        strat = resolved["strategy_id"]
         shares = _size_shares(entry, stop)
         if shares <= 0:
             skipped += 1
@@ -282,6 +361,11 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             "watchlist_rating": c["watchlist_rating"],
             "rating_source": c["rating_source"],
             "wl_status": c.get("wl_status"),
+            "watchlist_sleeve": resolved.get("watchlist_sleeve") or c.get("wl_strategy"),
+            "strategy_resolve_source": resolved.get("resolve_source"),
+            "classified_strategy": resolved.get("classified_strategy"),
+            "exit_rationale": exit_rationale,
+            "exit_summary": bsr.build_exit_summary(exit_rationale, entry, stop, target),
             "hermes_score": _f(c.get("hermes_composite_score")),
             "hermes_rank": c.get("hermes_rank"),
             "entry_urgency": c.get("entry_urgency"),
@@ -295,6 +379,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
                 continue
             cur.execute(
                 """UPDATE paper_trade_proposals SET
+                       strategy_id=%s,
                        proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
                        proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
                        proposed_rr=%s, cio_view=%s, discovery_source='watchlist',
@@ -302,7 +387,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
                        sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
                        updated_at=NOW()
                    WHERE id=%s""",
-                (entry, stop, target, shares, dollar_size, dollar_risk, rr,
+                (strat, entry, stop, target, shares, dollar_size, dollar_risk, rr,
                  c["watchlist_rating"].upper(), expires, expires, json.dumps(basis), existing["id"]),
             )
             continue
@@ -347,6 +432,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         "created": created,
         "refreshed": refreshed,
         "skipped": skipped,
+        "reconciled": reconciled,
         "deduped": deduped,
         "expired_not_buy": expired,
         "dry_run": dry_run,

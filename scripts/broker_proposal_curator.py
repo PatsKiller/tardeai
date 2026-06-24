@@ -103,7 +103,16 @@ def _compute_support_resistance(conn, symbol: str, live_price: float | None) -> 
 def _strategy_still_valid(symbol: str, strategy_id: str, conn) -> dict:
     """Re-run classifier; proposal strategy must still qualify."""
     sym = str(symbol or "").upper()
-    sid = str(strategy_id or "").strip()
+    raw_sid = str(strategy_id or "").strip()
+    try:
+        import broker_strategy_resolver as bsr
+        resolved = bsr.resolve_executable_strategy(sym, raw_sid)
+        sid = resolved.get("strategy_id") or raw_sid
+        sleeve = resolved.get("watchlist_sleeve")
+    except Exception:
+        sid = raw_sid
+        sleeve = None
+        resolved = {}
     try:
         import directive_promotion as dp
         from finviz_enrichment import get_enriched
@@ -111,15 +120,25 @@ def _strategy_still_valid(symbol: str, strategy_id: str, conn) -> dict:
         if not tech and os.getenv("BROKER_CURATOR_ENRICH", "").lower() in ("1", "true", "yes"):
             tech = dp.enrich_symbol_on_demand(sym, conn)
         if not tech:
-            return {"ok": True, "reason": "no_tech_cache", "qualified": [], "strategy_match": True}
+            return {
+                "ok": True, "reason": "no_tech_cache", "qualified": [], "strategy_match": True,
+                "resolved_strategy_id": sid, "watchlist_sleeve": sleeve,
+            }
         qualified = [q[0] for q in dp.classify_tradeable(sym, tech)]
         match = sid in qualified if sid else bool(qualified)
+        if not match and resolved.get("classified_strategy") in qualified:
+            match = True
+            sid = resolved["classified_strategy"]
         return {
             "ok": match,
             "reason": None if match else "strategy_no_longer_qualifies",
             "qualified": qualified[:8],
             "strategy_match": match,
             "primary_strategy": sid,
+            "proposal_strategy_id": raw_sid,
+            "resolved_strategy_id": sid,
+            "watchlist_sleeve": sleeve,
+            "resolve_source": resolved.get("resolve_source"),
         }
     except Exception as e:
         return {"ok": True, "reason": f"classifier_deferred:{str(e)[:80]}", "qualified": [], "strategy_match": True}
