@@ -524,6 +524,211 @@ def _analyst_commentary_section(symbol: str, pro: dict | None, enrich: dict, *, 
     }
 
 
+LT_CAP_GAINS_RATE = float(os.getenv("REPORT_LT_CAPGAINS_RATE", "0.20"))
+ST_CAP_GAINS_RATE = float(os.getenv("REPORT_ST_CAPGAINS_RATE", "0.37"))
+
+
+def _earnings_estimates_section(symbol: str, enrich: dict) -> dict | None:
+    """E1 — forward EPS estimates + growth + estimate-revision trend. Honest on missing earnings date."""
+    eps_ttm = _f(enrich.get("eps_ttm")); eps_ny = _f(enrich.get("eps_next_y"))
+    g5 = _f(enrich.get("eps_next_5y")); gq = _f(enrich.get("eps_qoq"))
+    if eps_ttm == 0 and eps_ny == 0:
+        return None
+    fwd_growth = ((eps_ny - eps_ttm) / abs(eps_ttm) * 100) if eps_ttm else None
+    # estimate-revision trend from consensus history (recom_score: lower = more bullish)
+    hist = _db_query(
+        "SELECT recom_score, snapshot_date FROM analyst_consensus_history WHERE symbol=%s AND recom_score IS NOT NULL ORDER BY snapshot_date DESC LIMIT 30",
+        (symbol.upper(),)) or []
+    trend = ""
+    if len(hist) >= 2:
+        cur, old = _f(dict(hist[0]).get("recom_score")), _f(dict(hist[-1]).get("recom_score"))
+        # only trust a sane 1–5 analyst score scale (some rows carry out-of-range values)
+        if 1.0 <= cur <= 5.0 and 1.0 <= old <= 5.0 and abs(cur - old) >= 0.05:
+            trend = f" Consensus score has {'improved' if cur < old else 'softened'} ({old:.2f}→{cur:.2f}, lower=more bullish) over {len(hist)} snapshots."
+    content = (
+        f"Trailing EPS ${eps_ttm:,.2f}; next-year consensus ${eps_ny:,.2f}"
+        + (f" ({fwd_growth:+.0f}% y/y)" if fwd_growth is not None else "")
+        + f". Street models a {g5:.1f}% 5-yr EPS CAGR." + trend
+        + " (Exact next-earnings date not in the enrichment feed — confirm on the calendar before event-risk sizing.)"
+    )
+    return {"id": "earnings_estimates", "title": "Earnings & Estimates", "content": content,
+            "metrics": {k: v for k, v in {
+                "eps_ttm": eps_ttm or None, "eps_next_year": eps_ny or None,
+                "fwd_eps_growth_pct": round(fwd_growth, 1) if fwd_growth is not None else None,
+                "eps_5y_cagr_pct": g5 or None, "eps_qoq_pct": gq or None,
+            }.items() if v is not None}, "bullets": []}
+
+
+def _fundamentals_deep_section(symbol: str, enrich: dict) -> dict | None:
+    """E2 — quality/margins/returns deep-dive."""
+    om = _f(enrich.get("oper_margin_pct")); pm = _f(enrich.get("profit_margin_pct"))
+    roic = _f(enrich.get("roic_pct")); roe = _f(enrich.get("roe_pct"))
+    if om == 0 and roic == 0:
+        return None
+    de = _f(enrich.get("total_debt_equity"))
+    quality = ("exceptional" if (om >= 40 and roic >= 25) else
+               "high" if (om >= 20 and roic >= 12) else "moderate")
+    content = (
+        f"Business quality screens {quality}: operating margin {om:.1f}%, net margin {pm:.1f}%, "
+        f"ROIC {roic:.1f}%, ROE {roe:.1f}%. Balance sheet leverage (D/E {de:.2f}) is "
+        + ("conservative" if de < 1 else "elevated") + ". "
+        "Margin/return durability is the core of the long thesis — watch for compression, not just growth."
+    )
+    return {"id": "fundamentals_deep", "title": "Business Quality & Fundamentals", "content": content,
+            "metrics": {k: v for k, v in {
+                "operating_margin_pct": om or None, "net_margin_pct": pm or None,
+                "gross_margin_pct": _f(enrich.get("gross_margin_pct")) or None,
+                "roic_pct": roic or None, "roe_pct": roe or None, "debt_equity": de or None,
+            }.items() if v is not None}, "bullets": []}
+
+
+def _valuation_context_section(symbol: str, enrich: dict, pro: dict | None, price: float) -> dict | None:
+    """E3 — multiples + PEG + reverse-DCF implied growth + valuation read."""
+    pe = _f(enrich.get("pe")); fwd = _f(enrich.get("forward_pe")); peg = _f(enrich.get("peg"))
+    if pe == 0 and fwd == 0:
+        return None
+    g5 = _f(enrich.get("eps_next_5y"))
+    # reverse-DCF lite: growth the current multiple implies (PE/PEG), vs street's 5yr estimate
+    implied_g = (pe / peg) if peg > 0 else None
+    read = ""
+    if implied_g and g5:
+        if implied_g > g5 * 1.1:
+            read = (f" At {pe:.1f}× the price embeds ~{implied_g:.0f}% EPS growth — a premium to the "
+                    f"street's {g5:.1f}% estimate, so the multiple is demanding (execution must beat consensus).")
+        elif implied_g < g5 * 0.9:
+            read = (f" At {pe:.1f}× the price embeds only ~{implied_g:.0f}% growth vs the street's "
+                    f"{g5:.1f}% estimate — undemanding if the estimate holds.")
+        else:
+            read = (f" At {pe:.1f}× the embedded ~{implied_g:.0f}% growth roughly matches the street's "
+                    f"{g5:.1f}% estimate — fairly priced to expectations.")
+    content = (f"Valuation: {pe:.1f}× trailing / {fwd:.1f}× forward earnings, PEG {peg:.2f}, "
+               f"P/FCF {_f(enrich.get('pfcf')):.1f}, P/S {_f(enrich.get('ps')):.1f}, P/B {_f(enrich.get('pb')):.1f}." + read)
+    return {"id": "valuation_context", "title": "Valuation in Context", "content": content,
+            "metrics": {k: v for k, v in {
+                "pe": pe or None, "forward_pe": fwd or None, "peg": peg or None,
+                "p_fcf": _f(enrich.get("pfcf")) or None, "implied_growth_pct": round(implied_g, 1) if implied_g else None,
+                "street_5y_growth_pct": g5 or None,
+            }.items() if v is not None}, "bullets": []}
+
+
+def _scenario_targets_section(symbol: str, enrich: dict, pro: dict | None, levels: dict, price: float) -> dict | None:
+    """E4 — bull/base/bear scenarios + probability-weighted expected return.
+
+    Requires a REAL analyst price-target basis — skipped for ETFs / no-coverage names where synthetic
+    appreciation targets would be misleading (an income fund has no single-name price thesis).
+    """
+    is_etf = str(enrich.get("instrument_type") or "").lower() in ("etf", "fund", "etn")
+    t_mean = _f((pro or {}).get("target_mean_price")); t_high = _f((pro or {}).get("target_high_price"))
+    t_low = _f((pro or {}).get("target_low_price"))
+    if price <= 0 or is_etf or t_mean <= 0:
+        return None
+    bear = _f(levels.get("stop")) or round(price * 0.88, 2)
+    base = t_mean if t_mean > price else round(price * 1.10, 2)
+    bull = t_high if t_high > base else round(base * 1.12, 2)
+    if t_low and t_low < price:
+        bear = max(bear, t_low)
+    # probabilities (base-weighted; nudged by analyst tilt)
+    p_bull, p_base, p_bear = 0.25, 0.50, 0.25
+    exp_price = p_bull * bull + p_base * base + p_bear * bear
+    exp_ret = (exp_price - price) / price * 100
+    def r(x): return (x - price) / price * 100
+    content = (
+        f"Scenario frame vs ${price:,.2f}: bear ${bear:,.2f} ({r(bear):+.0f}%), base ${base:,.2f} "
+        f"({r(base):+.0f}%), bull ${bull:,.2f} ({r(bull):+.0f}%). Probability-weighted "
+        f"(25/50/25) expected price ${exp_price:,.2f} → expected return {exp_ret:+.1f}%."
+    )
+    return {"id": "scenario_targets", "title": "Scenario Price Targets", "content": content,
+            "metrics": {"bear": round(bear, 2), "base": round(base, 2), "bull": round(bull, 2),
+                        "expected_price": round(exp_price, 2), "expected_return_pct": round(exp_ret, 1)},
+            "bullets": [f"Bear ${bear:,.2f} ({r(bear):+.0f}%) · downside to technical support / low target",
+                        f"Base ${base:,.2f} ({r(base):+.0f}%) · street mean",
+                        f"Bull ${bull:,.2f} ({r(bull):+.0f}%) · street high / multiple expansion"]}
+
+
+def _catalyst_risk_section(symbol: str, enrich: dict, synthesis: dict | None) -> dict | None:
+    """E6 — catalyst calendar + sector/structural risk (honest; no fabricated litigation specifics)."""
+    nxt = (synthesis or {}).get("next_review_date")
+    sector = enrich.get("sector") or "—"; industry = enrich.get("industry") or ""
+    bullets = []
+    if nxt:
+        bullets.append(f"Next scheduled thesis review: {str(nxt)[:10]}")
+    bullets.append("Earnings/investor-day dates: not in the current feed — confirm on the calendar before event sizing.")
+    risk_note = ("Payments networks carry structural interchange-regulation and antitrust scrutiny as a sector risk class"
+                 if "credit" in industry.lower() or "payment" in industry.lower() else
+                 f"Monitor {sector}-level regulatory and rate-cycle sensitivity")
+    content = (f"Catalyst calendar is thin in the current data feed. {risk_note}. "
+               "Treat regulatory/legal headlines as the primary non-fundamental risk to the multiple.")
+    bullets.append(f"Structural risk class: {risk_note.lower()}.")
+    return {"id": "catalyst_risk", "title": "Catalysts & Structural Risk", "content": content,
+            "metrics": {k: v for k, v in {"next_review": str(nxt)[:10] if nxt else None, "sector": sector}.items() if v},
+            "bullets": bullets[:4]}
+
+
+def _tax_position_section(symbol: str, enrich: dict, holding: dict | None, personal: dict) -> dict | None:
+    """E7 — tax-aware view: LT/ST unrealized + tax cost of trimming (holder-specific)."""
+    if not holding and not personal:
+        return None
+    gl = _f(personal.get("unrealized_pnl"))
+    if gl == 0 and holding:
+        gl = _f(holding.get("gain_loss"))
+    if gl == 0:
+        return None
+    lots = _db_query(
+        "SELECT quantity, opened_date, cost_per_share, term FROM schwab_cost_basis_lots WHERE symbol=%s",
+        (symbol.upper(),)) or []
+    lt_term = True  # default assume long-term for a compounder unless a lot says short
+    if lots:
+        terms = [str(dict(l).get("term") or "").lower() for l in lots]
+        lt_term = not any("short" in t for t in terms)
+    rate = LT_CAP_GAINS_RATE if lt_term else ST_CAP_GAINS_RATE
+    term_lbl = "long-term" if lt_term else "short-term"
+    tax_full = abs(gl) * rate
+    if gl >= 0:
+        content = (
+            f"Unrealized gain ${gl:,.0f} is {term_lbl}. Fully realizing it would trigger an estimated "
+            f"${tax_full:,.0f} tax at a {rate*100:.0f}% {term_lbl} rate — a real friction against trimming. "
+            "Prefer partial trims, tax-lot selection, or harvesting offsets; size any reduction after-tax, not gross."
+        )
+        metrics = {"unrealized_gain": round(gl), "term": term_lbl,
+                   "assumed_rate_pct": round(rate * 100), "est_tax_if_sold_all": round(tax_full),
+                   "lots_on_file": len(lots)}
+    else:
+        content = (
+            f"Position carries an unrealized {term_lbl} LOSS of ${abs(gl):,.0f} — there is no tax on a sale; "
+            f"realizing it would HARVEST an estimated ${tax_full:,.0f} tax benefit (offsetting gains at a "
+            f"{rate*100:.0f}% rate), subject to the 30-day wash-sale rule. A candidate for tax-loss harvesting, "
+            "not a tax friction."
+        )
+        metrics = {"unrealized_loss": round(abs(gl)), "term": term_lbl,
+                   "assumed_rate_pct": round(rate * 100), "est_harvest_benefit": round(tax_full),
+                   "lots_on_file": len(lots)}
+    return {"id": "tax_position", "title": "Tax-Aware Position View", "content": content,
+            "metrics": metrics,
+            "bullets": ["Tax estimate uses a flat assumed rate — not advice; confirm bracket/state with your CPA."]}
+
+
+def _portfolio_fit_section(symbol: str, enrich: dict, personal: dict, holding: dict | None) -> dict | None:
+    """E8 — beta contribution + concentration framing."""
+    pct = _f(personal.get("portfolio_pct")) or _f((holding or {}).get("portfolio_pct"))
+    beta = _f(enrich.get("beta"))
+    if pct == 0:
+        return None
+    beta_contrib = pct / 100 * beta if beta else None
+    conc = ("a top-weight concentration" if pct >= 8 else "a meaningful position" if pct >= 4 else "a modest position")
+    content = (
+        f"At {pct:.1f}% of the book this is {conc}. Beta {beta:.2f} implies a market-beta contribution of "
+        + (f"~{beta_contrib*100:.1f}% " if beta_contrib is not None else "—")
+        + "of portfolio variance from market moves alone. "
+        + ("Above an 8% sleeve cap, additional sizing should be funded by trims elsewhere, not new gross exposure."
+           if pct >= 8 else "Room remains within typical single-name limits.")
+    )
+    return {"id": "portfolio_fit", "title": "Portfolio Fit & Concentration", "content": content,
+            "metrics": {k: v for k, v in {
+                "weight_pct": round(pct, 2), "beta": beta or None,
+                "beta_weighted_contrib_pct": round(beta_contrib * 100, 2) if beta_contrib is not None else None,
+            }.items() if v is not None}, "bullets": []}
+
+
 def _hermes_research(symbol: str, *, limit: int = 3) -> list[dict]:
     """Hermes normalized/grounded research lane for this ticker (web-grounded, graded)."""
     rows = _db_query(
@@ -911,6 +1116,9 @@ def _industry_peer_rows(symbol: str, enrich: dict, *, limit: int = 8) -> list[di
             "price": ec.get("price") or ec.get("latest_price"),
             "perf_month_pct": ec.get("perf_month_pct"),
             "market_cap_b": ec.get("market_cap_b"),
+            "profit_margin_pct": ec.get("profit_margin_pct"),
+            "eps_next_5y": ec.get("eps_next_5y"),
+            "div_yield_pct": ec.get("div_yield_pct"),
             "ytd_return_pct": prof.get("ytd_return_pct"),
             "dividend_yield_pct": prof.get("dividend_yield_pct"),
             "peer_basis": basis,
@@ -1201,27 +1409,36 @@ def build_symbol_report(
         }
         report_sections.append(_hermes_section)
 
-    # v4 depth: Options & Income + Analyst Commentary (inserted in canonical order below)
+    # v4 depth + v4.1 tiers: build each section defensively (honest skip on any failure/missing data)
+    price_now0 = _resolve_price(sym, enrich, holding)
     extra_sections = []
-    try:
-        opt = _options_income_section(sym, enrich, holding, personal)
-        if opt:
-            extra_sections.append(opt)
-    except Exception:
-        pass
-    try:
-        ac = _analyst_commentary_section(sym, pro, enrich, news=news, hermes=hermes)
-        if ac:
-            extra_sections.append(ac)
-    except Exception:
-        pass
+    _builders = [
+        ("opt", lambda: _options_income_section(sym, enrich, holding, personal)),
+        ("ac", lambda: _analyst_commentary_section(sym, pro, enrich, news=news, hermes=hermes)),
+        ("e1", lambda: _earnings_estimates_section(sym, enrich)),
+        ("e2", lambda: _fundamentals_deep_section(sym, enrich)),
+        ("e3", lambda: _valuation_context_section(sym, enrich, pro, price_now0)),
+        ("e4", lambda: _scenario_targets_section(sym, enrich, pro, levels, price_now0)),
+        ("e6", lambda: _catalyst_risk_section(sym, enrich, synthesis)),
+        ("e7", lambda: _tax_position_section(sym, enrich, holding, personal)),
+        ("e8", lambda: _portfolio_fit_section(sym, enrich, personal, holding)),
+    ]
+    for _name, _fn in _builders:
+        try:
+            sec = _fn()
+            if sec:
+                extra_sections.append(sec)
+        except Exception:
+            pass
     report_sections.extend(extra_sections)
-    # Re-sort into canonical order (new ids included)
+    # Re-sort into canonical sell-side order (new ids included)
     _ORDER = {sid: i for i, sid in enumerate([
         "header_context", "executive_summary", "personal_performance", "report_continuity",
-        "news_catalysts", "technical_analysis", "fundamental_valuation", "analyst_predictions",
-        "analyst_commentary", "intelligence_view", "options_income", "risk_assessment",
-        "action_plan", "peer_comparison", "hermes_research",
+        "news_catalysts", "technical_analysis", "fundamentals_deep", "fundamental_valuation",
+        "earnings_estimates", "valuation_context", "analyst_predictions", "analyst_commentary",
+        "scenario_targets", "intelligence_view", "options_income", "risk_assessment",
+        "catalyst_risk", "action_plan", "peer_comparison", "tax_position", "portfolio_fit",
+        "hermes_research",
     ])}
     report_sections.sort(key=lambda s: _ORDER.get(s.get("id"), 99))
 

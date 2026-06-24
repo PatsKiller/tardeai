@@ -93,5 +93,12 @@ figure { margin: 2mm 0 3mm; break-inside: avoid; page-break-inside: avoid; }
 figure img { width: 100%; height: auto; display: block; border: 1px solid #1a1a35; border-radius: 4px; background: var(--card-bg); }
 figcaption { font-size: 7.6pt; color: var(--faint); margin-top: 1mm; font-style: italic; }
 
+/* Peer comparison grid */
+table.comp { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 1mm 0 3mm; font-size: 8.6pt; break-inside: avoid; }
+table.comp th, table.comp td { border: 1px solid var(--rule); padding: 1.2mm 2mm; text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
+table.comp th { background: var(--accent-soft); color: var(--muted); font-size: 7.4pt; text-transform: uppercase; text-align: right; }
+table.comp th:first-child, table.comp td:first-child { text-align: left; }
+table.comp tr.self td { background: var(--accent-soft); font-weight: 700; }
+
 .sources { font-size: 7.6pt; color: var(--faint); border-top: 1px solid var(--rule); padding-top: 2mm; margin-top: 5mm; }
 .sources span { margin-right: 4mm; white-space: nowrap; }

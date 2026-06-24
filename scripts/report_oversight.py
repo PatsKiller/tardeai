@@ -86,6 +86,9 @@ def build_data_packet(report: dict) -> dict:
         # reviewer verifies rather than flags computed specifics as fabricated.
         "risk_metrics": risk.get("metrics"),
         "analyst_metrics": ap.get("metrics"),
+        "fundamental_metrics": (secs.get("fundamental_valuation") or {}).get("metrics"),
+        "valuation_metrics": (secs.get("valuation_context") or {}).get("metrics"),
+        "fundamentals_quality": (secs.get("fundamentals_deep") or {}).get("metrics"),
         "price_levels": price_levels,
         "technical_metrics": tech.get("metrics"),
         "peer_metrics": peer.get("metrics"),

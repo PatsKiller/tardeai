@@ -345,8 +345,9 @@ def narrative_fundamental(enrich: dict, pro: dict | None, price: float) -> str:
         if n:
             base += f" ({n} analysts)"
     elif is_etf:
-        ytd = enrich.get("ytd_return_pct")
-        yld = enrich.get("dividend_yield_pct")
+        # use the same YTD source as the technical/packet (Finviz perf_ytd) to avoid a two-source contradiction
+        ytd = enrich.get("perf_ytd_pct") if enrich.get("perf_ytd_pct") is not None else enrich.get("ytd_return_pct")
+        yld = enrich.get("dividend_yield_pct") or enrich.get("div_yield_pct")
         base = (
             f"Fund vehicle — no single-name analyst rating applies. "
             f"YTD {_pct(ytd)}" + (f", distribution yield {_f(yld):.2f}%" if yld else "")

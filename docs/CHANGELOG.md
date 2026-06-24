@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-24 - Analyst prospectus v4.1: depth tiers + /eligible reliability fix
+
+**R0 reliability:** `/api/v2/reports/analyst/eligible` hung >120s (froze the single-threaded dashboard
+→ "Reconnecting to backend"). Root cause: `symbol_fingerprint` did a per-symbol Yahoo network fetch
+(~160 symbols) and hashed live price (broke change-detection every tick). Fixed: fast-mode fingerprint
+(no network) + coarse price bucket, plus `eligible_report_payload()` disk TTL cache pre-warmed by cron
+(`*/15` market hours). >120s → 0.004s cached.
+
+**Depth tiers (all read-only, honest 'not available' on missing data):** Earnings & Estimates (EPS/
+growth/consensus-trend), Business Quality & Fundamentals (margins/ROIC/ROE/leverage), Valuation in
+Context (multiples + PEG + reverse-DCF implied-growth read), Scenario Price Targets (bull/base/bear +
+probability-weighted ER; skipped for ETFs/no-coverage), Catalysts & Structural Risk, Tax-Aware Position
+View (LT/ST gain → tax cost, or LOSS → harvest benefit, from `schwab_cost_basis_lots`), Portfolio Fit &
+Concentration (beta contribution), and a real Peer Comp grid (P/E·margin·5y-growth·yield·1M, subject-
+highlighted). Footer credit "Produced by TradeAI v3.0". Oversight caught + fixed two real bugs (tax-loss
+mis-framed as a cost; ETF synthetic price targets) and a YTD two-source contradiction. V = 22 sections /
+10pp, DIVI = 18 / 7pp, both PUBLISH_WITH_FIXES.
+
 ## 2026-06-24 - Analyst prospectus v4: sell-side design re-platform + depth
 
 Presentation re-platform on top of the v3.1 intelligence engine. Single HTML/CSS source of truth
