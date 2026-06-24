@@ -13130,6 +13130,11 @@ def _broker_proposal_row_base(
             basis = {}
     if isinstance(basis, dict) and basis.get("watchlist_rating"):
         row["watchlist_rating"] = basis["watchlist_rating"]
+    # Unified queue: a row is a real broker-routed entry, or a paper-source PROPOSAL surfaced
+    # in the broker view (badged by origin). The backend paper automation is unchanged.
+    _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()
+    row["source_kind"] = "broker" if (_broker_route.startswith("schwab") or _broker_route.startswith("fidelity")) else "proposal"
+    row["proposal_origin"] = str(row.get("origin") or row.get("discovery_source") or "auto")
     sym = str(row.get("symbol") or "").upper()
     sh = float(row.get("proposed_shares") or 0)
     en = float(row.get("proposed_entry") or 0)
@@ -13494,11 +13499,19 @@ def _broker_proposals(query=None):
         if sort == "priority" and rr_f.get("sort_hint"):
             sort = rr_f["sort_hint"]
 
-        where = [
+        # Unified queue (kind=all): broker-routed entries + paper-source PROPOSALS (badged).
+        # kind=broker → only schwab/fidelity routed; kind=proposal → only paper-source.
+        kind_f = str(_broker_qp(query, "kind", "all") or "all").lower()
+        broker_routed = (
             "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'"
-            " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')",
-            "status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')",
-        ]
+            " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')"
+        )
+        where = ["status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')"]
+        if kind_f == "broker":
+            where.append(broker_routed)
+        elif kind_f == "proposal":
+            where.append("NOT " + broker_routed)
+        # kind=all → no routing restriction (paper proposals included, source-tagged in the row)
         params: list = []
         if account_f:
             where.append("COALESCE(target_account, proposed_account) = %s")
