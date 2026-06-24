@@ -13062,7 +13062,17 @@ def _broker_symbol_profiles_batch(symbols: list) -> dict[str, dict]:
 def _attach_broker_ticker_context(row: dict, profile: dict | None = None) -> dict:
     """Strategy display + sector/industry for broker card headers (list + detail)."""
     prof = profile or {}
-    sm = _broker_strategy_meta(str(row.get("strategy_id") or ""))
+    exec_sid = str(row.get("resolved_strategy_id") or row.get("strategy_id") or "")
+    try:
+        import broker_strategy_resolver as _bsr
+        if _bsr.is_watchlist_sleeve(exec_sid) or not row.get("resolved_strategy_id"):
+            resolved = _bsr.resolve_executable_strategy(str(row.get("symbol") or ""), row.get("strategy_id"))
+            exec_sid = resolved.get("strategy_id") or exec_sid
+            row["resolved_strategy_id"] = exec_sid
+            row["watchlist_sleeve"] = row.get("watchlist_sleeve") or resolved.get("watchlist_sleeve")
+    except Exception:
+        pass
+    sm = _broker_strategy_meta(exec_sid)
     row["strategy_display_name"] = sm.get("display_name")
     row["strategy_type"] = sm.get("strategy_type")
     row["strategy_type_label"] = sm.get("strategy_type_label")
@@ -13074,6 +13084,33 @@ def _attach_broker_ticker_context(row: dict, profile: dict | None = None) -> dic
     desc = prof.get("description_1s")
     if desc:
         row["company_description"] = str(desc)[:400]
+    basis = row.get("sizing_basis")
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    if isinstance(basis, dict):
+        if basis.get("watchlist_sleeve"):
+            row["watchlist_sleeve"] = basis["watchlist_sleeve"]
+        if basis.get("exit_summary"):
+            row["exit_summary"] = basis["exit_summary"]
+        if basis.get("exit_rationale"):
+            row["exit_rationale"] = basis["exit_rationale"]
+        if basis.get("strategy_resolve_source"):
+            row["strategy_resolve_source"] = basis["strategy_resolve_source"]
+    try:
+        import broker_strategy_resolver as _bsr
+        if _bsr.is_watchlist_sleeve(str(row.get("strategy_id") or "")):
+            resolved = _bsr.resolve_executable_strategy(str(row.get("symbol") or ""), row.get("strategy_id"))
+            row["resolved_strategy_id"] = resolved.get("strategy_id")
+            row["watchlist_sleeve"] = row.get("watchlist_sleeve") or resolved.get("watchlist_sleeve")
+            row["strategy_resolve_source"] = resolved.get("resolve_source")
+        elif not row.get("resolved_strategy_id"):
+            row["resolved_strategy_id"] = row.get("strategy_id")
+    except Exception:
+        if not row.get("resolved_strategy_id"):
+            row["resolved_strategy_id"] = row.get("strategy_id")
     return row
 
 

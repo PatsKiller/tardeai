@@ -258,11 +258,36 @@ export default function BrokerProposalCard({
         <div>
           <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Strategy</div>
           <div style={{ fontWeight: 800, color: '#fb923c' }}>{tickerCtx.strategyDisplay}</div>
+          {tickerCtx.resolvedStrategyId && (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
+              id {tickerCtx.resolvedStrategyId}
+              {tickerCtx.watchlistSleeve ? ` · sleeve ${tickerCtx.watchlistSleeve}` : ''}
+            </div>
+          )}
           {tickerCtx.strategyPurpose && (
             <div style={{ fontSize: 9, color: TEXT1, marginTop: 3, lineHeight: 1.4 }}>{tickerCtx.strategyPurpose}</div>
           )}
-          {!tickerCtx.strategyPurpose && p.strategy_id && p.strategy_id !== tickerCtx.strategyDisplay && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>{p.strategy_id}</div>
+          {tickerCtx.strategyMisaligned && (
+            <div style={{ fontSize: 9, color: AMBER, marginTop: 4, fontWeight: 700 }}>
+              Sleeve label ≠ executable strategy — exits use resolved YAML policy
+            </div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Exit plan</div>
+          {tickerCtx.exitSummary ? (
+            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.exitSummary}</div>
+          ) : intel?.exit_plan?.summary ? (
+            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{intel.exit_plan.summary}</div>
+          ) : (
+            <div style={{ fontSize: 9, color: RED, fontWeight: 700 }}>Generic 5% stop / 2R — refresh watchlist bridge</div>
+          )}
+          {(tickerCtx.exitRationale?.stop_method || intel?.exit_plan?.rationale?.stop_method) && (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 3, fontFamily: 'monospace' }}>
+              stop {String(tickerCtx.exitRationale?.stop_method || intel?.exit_plan?.rationale?.stop_method)}
+              {' · '}target {String(tickerCtx.exitRationale?.target_method || intel?.exit_plan?.rationale?.target_method)}
+              {' · '}policy R:R {String(tickerCtx.exitRationale?.target_rr_policy ?? intel?.exit_plan?.rationale?.target_rr_policy ?? '—')}
+            </div>
           )}
         </div>
         <div>
