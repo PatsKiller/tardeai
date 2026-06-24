@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-24 - Proposals unified surface + safety + dashboard perf + meme-risk banner
+
+**Unified proposals (A-E).** Paper proposals now appear in the single "Proposals" tab on the broker-card
+design, source-badged `PROPOSAL · origin` (kind=all|broker|proposal filter); old Proposals tab retired;
+EnsembleValidationCard standardized. Backend paper-automation maturation loop untouched.
+**Backend safety:** append-only `proposal_promotions` snapshot on promote; centralized R:R floor +
+price-freshness (`proposal_thresholds.py`, fixed stale-stamp bug); cloud-oversight fail-closed (visible
+WARN on 0 lanes); de-hardcoded required-agents/votes; cleanup-sweep no longer rejects already-traded rows;
+requeue/un-reject endpoint; live-submit-path tagging (`routing_path`). Execution/2FA/canary untouched;
+`validate_schwab_no_writes` green throughout.
+**UI:** Queue-Health audit panel + requeue button; bulk multi-select; a11y (aria/keyboard) + responsive
+(<720px single-column); de-duplicated repeated card text; condensed header; legible text sizes.
+**Dashboard perf:** `/api/v2/finviz-strip-map` disk TTL cache + pre-warm cron (~7s→50ms) — clears the
+"Reconnecting to backend" flicker (same pattern as the earlier `/eligible` fix).
+**Meme/high-risk banner:** a bold "⚠ MEME / HIGH-RISK SPECULATION" banner + agent consensus now surfaces
+at the top of a proposal card when signals are present (meme/short-squeeze keywords in catalyst or agent
+reviews + extreme RVOL + unverified catalyst) — the AI's verdict is no longer buried.
+Audit doc: `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md`.
+
 ## 2026-06-24 - Broker trade plan gate: no gambling 2×R, strategy alignment, policy R:R floor
 
 **Gate:** `broker_trade_plan_gate.py` blocks Path B live routes without authoritative plans
