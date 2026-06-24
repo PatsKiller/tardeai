@@ -213,55 +213,71 @@ def _reports_analyst_preview(query=None):
 
 
 def _reports_analyst_export(query=None, body=None):
-    """POST/GET export — format=docx|pdf|json, same params as preview."""
-    import importlib
+    """POST/GET export — uses full creation pipeline (catalyst gate + oversight + publish)."""
     import sys as _s
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
-    import analyst_report_builder as _arb
-    import report_export as _re
-    _arb = importlib.reload(_arb)
-    _re = importlib.reload(_re)
+    import reporting_engine as _reng
     q = dict(query or {})
     if body and isinstance(body, dict):
         q.update(body)
     rtype = q.get("type") or "symbol_watchlist"
     fmt = (q.get("format") or "docx").lower()
+    if fmt == "json":
+        import analyst_report_builder as _arb
+        sections = None
+        if q.get("sections"):
+            raw = q["sections"]
+            sections = raw if isinstance(raw, list) else [s.strip() for s in str(raw).split(",") if s.strip()]
+        try:
+            return {"ok": True, "report": _arb.build_report(
+                report_type=rtype,
+                symbol=(q.get("symbol") or "").strip().upper() or None,
+                sector=(q.get("sector") or q.get("symbol") or "").strip() or None,
+                topic=(q.get("topic") or q.get("sector") or "").strip() or None,
+                sections=sections,
+            )}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}
     sections = None
     if q.get("sections"):
         raw = q["sections"]
-        if isinstance(raw, list):
-            sections = raw
-        else:
-            sections = [s.strip() for s in str(raw).split(",") if s.strip()]
-    kwargs = {
-        "report_type": rtype,
-        "symbol": (q.get("symbol") or "").strip().upper() or None,
-        "sector": (q.get("sector") or q.get("symbol") or "").strip() or None,
-        "topic": (q.get("topic") or q.get("sector") or "").strip() or None,
-        "sections": sections,
-        "days": int(q.get("days", 1) or 1),
-    }
-    if rtype == "event_driven":
-        kwargs["hours"] = int(q.get("hours", 24) or 24)
-        kwargs["event_filter"] = str(q.get("event_filter") or q.get("filter") or "all")
+        sections = raw if isinstance(raw, list) else [s.strip() for s in str(raw).split(",") if s.strip()]
     try:
-        report = _arb.build_report(**kwargs)
-    except TypeError:
-        kwargs.pop("hours", None)
-        kwargs.pop("event_filter", None)
-        try:
-            report = _arb.build_report(**kwargs)
-        except Exception as e:
-            return {"ok": False, "error": str(e)[:300]}
-    except ValueError as e:
-        return {"ok": False, "error": str(e)}
+        out = _reng.generate_report(
+            report_type=rtype,
+            symbol=(q.get("symbol") or "").strip().upper() or None,
+            sector=(q.get("sector") or "").strip() or None,
+            topic=(q.get("topic") or "").strip() or None,
+            sections=sections,
+            formats=[fmt],
+            grok_edit=bool(q.get("grok_edit", True)),
+            oversight=bool(q.get("oversight", True)),
+            generation_mode=str(q.get("generation_mode") or "api_export"),
+            engine=str(q.get("engine") or "playwright"),
+        )
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
-    meta = report.get("meta") or {}
-    stem = q.get("stem") or meta.get("symbol") or meta.get("sector") or meta.get("topic") or rtype
-    result = _re.export_report(report, fmt, output_stem=str(stem))
-    result["report_meta"] = meta
-    return result
+    if out.get("blocked"):
+        return {
+            "ok": False,
+            "blocked": True,
+            "block_reason": out.get("block_reason"),
+            "error": "; ".join(out.get("exports", {}).get("blocked_detail") or [])
+                     or "Publication blocked by catalyst gate",
+            "report_meta": (out.get("report") or {}).get("meta"),
+            "exports": out.get("exports"),
+        }
+    exp = out.get("exports") or {}
+    url = exp.get(fmt) if isinstance(exp.get(fmt), str) else None
+    return {
+        "ok": True,
+        "format": fmt,
+        "url": url,
+        "path": url,
+        "exports": exp,
+        "report_meta": (out.get("report") or {}).get("meta"),
+        "registry_entry": out.get("registry_entry"),
+    }
 
 
 def _reports_analyst_generate(query=None, body=None):
@@ -283,6 +299,7 @@ def _reports_analyst_generate(query=None, body=None):
                 limit=int(q.get("limit", 40) or 40),
                 stale_days=stale_days,
                 generation_mode=str(q.get("generation_mode") or "batch"),
+                oversight=bool(q.get("oversight", True)),
             )
         if mode == "batch_watchlist":
             return _re.generate_watchlist_prospectus_batch(
@@ -290,15 +307,29 @@ def _reports_analyst_generate(query=None, body=None):
                 grok_edit=bool(q.get("grok_edit", True)),
                 limit=int(q.get("limit", 200) or 200),
                 generation_mode=str(q.get("generation_mode") or "batch_watchlist"),
+                oversight=bool(q.get("oversight", True)),
             )
-        return _re.generate_report(
+        out = _re.generate_report(
             report_type=q.get("type") or q.get("report_type") or "symbol_holding",
             symbol=(q.get("symbol") or "").strip().upper() or None,
             sector=(q.get("sector") or "").strip() or None,
             topic=(q.get("topic") or "").strip() or None,
-            grok_edit=bool(q.get("grok_edit")),
+            grok_edit=bool(q.get("grok_edit", True)),
+            oversight=bool(q.get("oversight", True)),
             formats=["docx", "pdf"] if str(q.get("format", "all")).lower() == "all" else [str(q.get("format", "docx")).lower()],
+            generation_mode=str(q.get("generation_mode") or "api_generate"),
         )
+        if out.get("blocked"):
+            return {
+                "ok": False,
+                "blocked": True,
+                "block_reason": out.get("block_reason"),
+                "error": "; ".join(out.get("exports", {}).get("blocked_detail") or [])
+                         or "Publication blocked by catalyst gate",
+                "report": out.get("report"),
+                "exports": out.get("exports"),
+            }
+        return out
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
