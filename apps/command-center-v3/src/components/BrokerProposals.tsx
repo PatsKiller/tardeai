@@ -6,8 +6,26 @@ import BrokerRouteConfirmModal from './BrokerRouteConfirmModal'
 import ManualExecutionLog from './ManualExecutionLog'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import BrokerProposalCard from './BrokerProposalCard'
+import QueueHealthPanel from './QueueHealthPanel'
 import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
 import type { BrokerAccount } from './BrokerAccountPicker'
+
+// #30 — narrow-screen detection so fixed card grids fall back to single column without restructuring layout.
+function useIsNarrow(maxWidth = 720) {
+  const query = `(max-width: ${maxWidth}px)`
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia(query)
+    const onChange = () => setNarrow(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return narrow
+}
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -75,6 +93,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const { data, loading, error, stale, refetch } = useApi<any>(listPath, 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const isNarrow = useIsNarrow(720)
+
+  // #31 — stamp last-updated time whenever the list payload changes; derive next auto-refresh (30s poll).
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  useEffect(() => { if (data) setLastUpdated(Date.now()) }, [data])
 
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
   const outMap: Record<string, any> = outcomesData?.outcomes ?? {}
@@ -113,6 +136,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [detailBusy, setDetailBusy] = useState<Record<number, boolean>>({})
   const [batchCloudBusy, setBatchCloudBusy] = useState(false)
   const [batchCloudMsg, setBatchCloudMsg] = useState('')
+  // #31 — bulk select across cards (reuses existing cloud-batch / refresh-batch flows; no new routing/2FA).
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [validateBusy, setValidateBusy] = useState<Record<number, boolean>>({})
   const [litmusMap, setLitmusMap] = useState<Record<number, any>>({})
   const detailLoadedRef = useRef<Set<number>>(new Set())
@@ -609,15 +635,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
   const [refreshAllBusy, setRefreshAllBusy] = useState(false)
 
-  const refreshAllPrices = async () => {
-    const ids = shown.map((p: any) => p.id).filter(Boolean)
-    if (!ids.length) return
+  const refreshPricesBatch = async (ids: number[]) => {
+    const valid = ids.filter(Boolean)
+    if (!valid.length) return
     setRefreshAllBusy(true)
     try {
       const r = await fetch('/api/v2/broker-proposals/refresh-prices-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_ids: ids }),
+        body: JSON.stringify({ proposal_ids: valid }),
       }).then(x => x.json())
       if (r.ok) {
         setBypassCache(true)
@@ -632,13 +658,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
-  const queueCloudBatch = async (scope: 'page' | 'filtered') => {
+  const refreshAllPrices = () => refreshPricesBatch(shown.map((p: any) => p.id))
+
+  const queueCloudBatch = async (scope: 'page' | 'filtered' | 'selected', selectedList?: number[]) => {
     setBatchCloudBusy(true)
     setBatchCloudMsg('Queuing Grok+ChatGPT…')
     try {
       const max = 30
-      const body = scope === 'page'
-        ? { scope: 'ids', proposal_ids: shown.map((p: any) => p.id), max }
+      const body = (scope === 'page' || scope === 'selected')
+        ? { scope: 'ids', proposal_ids: scope === 'selected' ? (selectedList || []) : shown.map((p: any) => p.id), max }
         : {
             scope: 'filtered',
             max,
@@ -684,6 +712,29 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
+  // #31 — bulk select helpers
+  const shownIds = shown.map((p: any) => p.id).filter(Boolean) as number[]
+  const selectedShownIds = shownIds.filter(id => selectedIds.has(id))
+  const allShownSelected = shownIds.length > 0 && selectedShownIds.length === shownIds.length
+  const toggleSelected = (pid: number) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(pid)) next.delete(pid); else next.add(pid)
+    return next
+  })
+  const selectAllShown = () => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (allShownSelected) { for (const id of shownIds) next.delete(id) }
+    else { for (const id of shownIds) next.add(id) }
+    return next
+  })
+  const clearSelection = () => setSelectedIds(new Set())
+  const enterSelectMode = () => { setSelectMode(true) }
+  const exitSelectMode = () => { setSelectMode(false); clearSelection() }
+  const bulkRefreshSelected = () => refreshPricesBatch(selectedShownIds)
+  const bulkCloudSelected = () => queueCloudBatch('selected', selectedShownIds)
+
+  const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {modalSeed && (
@@ -711,6 +762,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
       <ExecutionPathsStrip variant="live" />
 
+      <QueueHealthPanel onRequeued={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }} />
+
       {!!data?.hygiene?.changed && (
         <div style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', color: AMBER }}>
           Auto-cleared {data.hygiene.changed} stale broker row(s)
@@ -729,12 +782,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           <button
             onClick={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }}
             disabled={loading}
+            aria-label="Reload proposal queue"
             style={btn(BLUE, loading)}
           >
             {loading ? '…' : '↻ Reload queue'}
           </button>
           {shown.length > 0 && (
-            <button onClick={refreshAllPrices} disabled={refreshAllBusy} style={btn(GREEN, refreshAllBusy)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
+            <button onClick={refreshAllPrices} disabled={refreshAllBusy} aria-label="Refresh all prices and recalibrate" style={btn(GREEN, refreshAllBusy)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
               {refreshAllBusy ? '…' : '↻ Refresh all + recalibrate'}
             </button>
           )}
@@ -745,7 +799,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
       <details style={card}>
         <summary style={{ fontSize: 13, fontWeight: 800, color: TEXT0, cursor: 'pointer' }}>Manual submit (ad-hoc)</summary>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, fontSize: 11, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10, fontSize: 11, marginTop: 12 }}>
           <label>Account
             <select style={inp} value={f.account} onChange={e => set('account', e.target.value)}>
               <option value="">— select —</option>
@@ -776,10 +830,27 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             {queueTotal ? ` · ${queueTotal} total` : ''}
             {hasQueuePages ? ` · page ${queuePage}/${queueTotalPages}` : ''})
           </div>
-          <button onClick={() => setHeldOnly(h => !h)} style={{
+          <button onClick={() => setHeldOnly(h => !h)} aria-pressed={heldOnly} aria-label="Show held-symbol proposals only" style={{
             fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
             border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,
           }}>● Held only{heldN ? ` (${heldN})` : ''}</button>
+          {shown.length > 0 && (
+            <button
+              onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
+              aria-pressed={selectMode}
+              aria-label={selectMode ? 'Exit bulk select mode' : 'Enter bulk select mode'}
+              style={{
+                fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+                border: `1px solid ${selectMode ? AMBER : 'var(--border)'}`, background: selectMode ? 'rgba(245,158,11,.14)' : 'transparent', color: selectMode ? AMBER : MUTED,
+              }}
+            >☑ Select{selectedShownIds.length ? ` (${selectedShownIds.length})` : ''}</button>
+          )}
+          <span style={{ flex: 1 }} />
+          {lastUpdated && (
+            <span style={{ fontSize: 9, color: MUTED }} title="List auto-refreshes every 30s">
+              updated {fmtClock(lastUpdated)}{loading ? ' · refreshing…' : ' · next ~30s'}
+            </span>
+          )}
           {(stale || data?.cached) && (
             <span style={{ fontSize: 9, color: AMBER }}>
               {data?.cached ? `cached ${data.cache_age_sec ?? ''}s` : 'cached data'}
@@ -876,6 +947,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               style={{ ...inp, width: 72 }}
               value={listFilters.symbol}
               placeholder="e.g. DLR"
+              aria-label="Filter proposals by symbol"
               onChange={e => patchFilters({ symbol: e.target.value.toUpperCase() })}
             />
           </label>
@@ -953,16 +1025,49 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           </div>
         )}
         {error && proposals.length === 0 && (
-          <div style={{ fontSize: 11, color: AMBER }}>Unavailable ({error}) — <span onClick={() => refetch?.()} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>retry</span></div>
+          <div style={{ fontSize: 11, color: AMBER }}>Unavailable ({error}) — <span role="button" tabIndex={0} aria-label="Retry loading proposals" onClick={() => refetch?.()} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') refetch?.() }} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>retry</span></div>
         )}
         {!loading && !error && proposals.length === 0 && (
           <div style={{ fontSize: 11, color: MUTED }}>No proposals match the current Type filter{listFilters.kind !== 'all' ? ` (${listFilters.kind})` : ''}.</div>
         )}
         {proposals.length > 0 && shown.length === 0 && (
-          <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>
+          <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span role="button" tabIndex={0} onClick={() => setHeldOnly(false)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setHeldOnly(false) }} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>
         )}
 
-
+        {selectMode && shown.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12,
+            padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)',
+          }}>
+            <button
+              onClick={selectAllShown}
+              aria-label={allShownSelected ? 'Deselect all on page' : 'Select all on page'}
+              style={{ fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: 'transparent', color: BLUE }}
+            >{allShownSelected ? '☐ Deselect page' : '☑ Select page'}</button>
+            <span style={{ fontSize: 11, color: AMBER, fontWeight: 700 }}>{selectedShownIds.length} selected</span>
+            <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 2px' }} />
+            <button
+              onClick={bulkRefreshSelected}
+              disabled={refreshAllBusy || selectedShownIds.length === 0}
+              aria-label="Refresh prices for selected proposals"
+              title="Batch Schwab quotes for the selected cards"
+              style={btn(GREEN, refreshAllBusy || selectedShownIds.length === 0)}
+            >{refreshAllBusy ? '…' : `↻ Refresh selected (${selectedShownIds.length})`}</button>
+            <button
+              onClick={bulkCloudSelected}
+              disabled={batchCloudBusy || selectedShownIds.length === 0}
+              aria-label="Run cloud oversight for selected proposals"
+              title="Queue Grok+ChatGPT for the selected cards"
+              style={btn(AMBER, batchCloudBusy || selectedShownIds.length === 0)}
+            >{batchCloudBusy ? '…' : `☁ Run cloud selected (${selectedShownIds.length})`}</button>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={exitSelectMode}
+              aria-label="Exit bulk select mode"
+              style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}
+            >Done</button>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {shown.map(rawP => {
@@ -1002,6 +1107,10 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 litmus={litmusMap[p.id]}
                 validateBusy={!!validateBusy[p.id]}
                 onValidate={() => validateTrade(p)}
+                narrow={isNarrow}
+                selectMode={selectMode}
+                selected={selectedIds.has(p.id)}
+                onToggleSelected={() => toggleSelected(p.id)}
               />
             )
           })}
