@@ -8,8 +8,13 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-MIN_RR_DEFAULT = 2.0
-BROKER_PRICE_MAX_AGE_MIN = int(os.getenv("BROKER_PRICE_MAX_AGE_MIN", "20"))
+try:
+    from proposal_thresholds import min_rr_floor as _min_rr_floor, price_max_age_min as _price_max_age
+    MIN_RR_DEFAULT = _min_rr_floor()
+    BROKER_PRICE_MAX_AGE_MIN = _price_max_age()
+except Exception:  # standalone import safety
+    MIN_RR_DEFAULT = float(os.getenv("PROPOSAL_MIN_RR_FLOOR", "2.0"))
+    BROKER_PRICE_MAX_AGE_MIN = int(os.getenv("BROKER_PRICE_MAX_AGE_MIN", "20"))
 
 
 def _parse_ts(val) -> datetime | None:
@@ -30,15 +35,30 @@ def _parse_ts(val) -> datetime | None:
 
 
 def assess_price_freshness(row: dict, *, live_quote: bool = False) -> dict:
-    """True when stored DB current_price is fresh enough for live R:R / zone math."""
+    """True when stored DB current_price is fresh enough for live R:R / zone math.
+
+    A `refreshed_at`/`quote_provider` marker is honored, but its ACTUAL age is checked against
+    max_age — a stale refresh stamp no longer reads as age 0 (fixed 2026-06-24)."""
     max_age = BROKER_PRICE_MAX_AGE_MIN
-    if live_quote or row.get("refreshed_at") or row.get("quote_provider"):
+    if live_quote:
+        # caller asserts an in-hand live quote this request
         as_of = row.get("refreshed_at") or row.get("updated_at")
         return {
-            "price_stale": False,
-            "price_age_min": 0.0,
+            "price_stale": False, "price_age_min": 0.0,
             "price_as_of": str(as_of or "")[:19] or None,
             "price_source": str(row.get("quote_provider") or "live_quote"),
+            "max_age_min": max_age,
+        }
+    marker = row.get("refreshed_at") or row.get("quote_provider")
+    if marker:
+        ts = _parse_ts(row.get("refreshed_at") or row.get("updated_at"))
+        age_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60.0 if ts else None
+        stale = age_min is None or age_min > max_age
+        return {
+            "price_stale": stale,
+            "price_age_min": round(age_min, 1) if age_min is not None else None,
+            "price_as_of": ts.isoformat()[:19] if ts else None,
+            "price_source": str(row.get("quote_provider") or "marked"),
             "max_age_min": max_age,
         }
     px = row.get("current_price")

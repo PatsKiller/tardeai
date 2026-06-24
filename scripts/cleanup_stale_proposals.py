@@ -41,11 +41,13 @@ def main():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Find stale proposals
+    # Find stale proposals. Never sweep an APPROVED row that already produced a paper trade
+    # (it would flip an executed proposal to REJECTED while its paper_trades row stays open).
     cur.execute("""
         SELECT id, symbol, status, action_state, created_at, NOW() - created_at AS age
         FROM paper_trade_proposals
         WHERE status IN ('PENDING', 'APPROVED', 'APPROVED_FOR_PAPER_TEST')
+          AND paper_trade_id IS NULL
           AND (
             created_at < NOW() - INTERVAL '24 hours'
             OR (action_state = 'BLOCKED' AND created_at < NOW() - INTERVAL '4 hours')

@@ -24,7 +24,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-MIN_LIVE_RR = float(os.getenv("BROKER_CURATOR_MIN_RR", "2"))
+try:
+    from proposal_thresholds import min_rr_floor as _min_rr_floor
+    MIN_LIVE_RR = float(os.getenv("BROKER_CURATOR_MIN_RR") or _min_rr_floor())
+except Exception:
+    MIN_LIVE_RR = float(os.getenv("BROKER_CURATOR_MIN_RR", "2"))
 CURATOR_STATE_PATH = PROJECT_ROOT / "data" / "runtime" / "broker_curator_last.json"
 
 
