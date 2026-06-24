@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
+import { EnsembleValidationCard, normalizeEnsembleResult } from './EnsembleValidationCard'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', RED = '#ef4444', PURPLE = '#a78bfa'
 const sec = { fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }
@@ -212,6 +213,11 @@ export default function BrokerIntelPanel({
   const ovAgents = oversight.agents || {}
   const localLlm = oversight.local_llm || {}
   const cloud = oversight.cloud_review || {}
+  // App-standard scored ensemble (Grok + ChatGPT + Gemma). Present on proposals that carry a
+  // structured ensemble verdict; when absent we fall back to the per-lane cloud rendering below.
+  const ensembleResult = normalizeEnsembleResult(
+    intel.ensemble || oversight.ensemble || cloud.ensemble,
+  )
   const lanes = oversight.lanes_available || {}
   const ovViolations: string[] = oversight.violations || []
   const ovWarnings: string[] = oversight.warnings || []
@@ -285,7 +291,9 @@ export default function BrokerIntelPanel({
             </div>
           )})}
 
-          {cloud.lanes && Object.keys(cloud.lanes).length > 0 && (
+          {ensembleResult ? (
+            <EnsembleValidationCard result={ensembleResult} onRevalidate={onRunCloudOversight} />
+          ) : cloud.lanes && Object.keys(cloud.lanes).length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
               {Object.entries(cloud.lanes).map(([lane, lr]: [string, any]) => (
                 <div key={lane} style={{ fontSize: 9.5, padding: '4px 8px', borderRadius: 5, background: 'rgba(15,23,42,.5)', borderLeft: `3px solid ${cloudColor(lr?.verdict)}` }}>
@@ -304,7 +312,7 @@ export default function BrokerIntelPanel({
             </div>
           )}
 
-          {cloud.consensus && (
+          {!ensembleResult && cloud.consensus && (
             <div style={{ fontSize: 9, color: cloudColor(cloud.status), marginTop: 6, fontWeight: 700 }}>
               Consensus: {cloud.consensus.verdict}
               {cloud.consensus.lanes_ok != null ? ` · ${cloud.consensus.lanes_ok} lane(s) OK` : ''}

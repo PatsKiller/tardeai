@@ -14,6 +14,7 @@ const AMBER = '#f59e0b'
 const BLUE = '#60a5fa'
 const PURPLE = '#a78bfa'
 const RED = '#ef4444'
+const TEAL = '#2dd4bf'
 
 const gateColor = (s: string) => s === 'PASS' ? GREEN : s === 'WARN' ? AMBER : s === 'BLOCK' ? RED : MUTED
 
@@ -156,6 +157,17 @@ export default function BrokerProposalCard({
         <span style={{
           fontSize: 18, fontWeight: 900, color: TEXT0, fontFamily: 'ui-monospace, monospace', letterSpacing: '-.02em',
         }}>{p.symbol}</span>
+        {p.source_kind === 'proposal' && (
+          <span
+            title={`Paper-source proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — not yet broker-routed`}
+            style={{
+              fontSize: 9, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
+              background: 'rgba(45,212,191,.14)', color: TEAL, border: `1px solid ${TEAL}55`, textTransform: 'uppercase',
+            }}
+          >
+            PROPOSAL{p.proposal_origin ? ` · ${p.proposal_origin}` : ''}
+          </span>
+        )}
         {liveQ.price != null ? (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }} title={`${liveQ.label} price${liveQ.provider ? ` · ${liveQ.provider}` : ''}`}>
             <span style={{
