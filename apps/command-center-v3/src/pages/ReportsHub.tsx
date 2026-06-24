@@ -9,6 +9,7 @@ import ActionDeck, { buildDeckActions } from '../components/reports/ActionDeck'
 import ReportCoverageStrip from '../components/reports/ReportCoverageStrip'
 import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
+import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 
 // v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
@@ -121,7 +122,7 @@ function SeverityBadge({ sev }: { sev?: string }) {
 const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
 const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
 type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
-type HubMode = 'brief' | 'archive'
+type HubMode = 'brief' | 'archive' | 'analyst'
 const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
 function qvMatchesItem(qv: QV, it: any): boolean {
   const cls: string[] = it.action_classes || []
@@ -169,7 +170,7 @@ export default function ReportsHub({ onDrill }: Props) {
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
-  const briefListPath = '/api/v2/reports/list?category=morning_briefs&page=1&per_page=5&days=1'
+  const briefListPath = '/api/v2/reports/list?category=morning_briefs&page=1&per_page=10&days=1'
   const { data: briefList } = useApi<any>(briefListPath, 0)
 
   useEffect(() => { const t = setTimeout(() => { setQ(qInput); setPage(1) }, 350); return () => clearTimeout(t) }, [qInput])
@@ -217,15 +218,25 @@ export default function ReportsHub({ onDrill }: Props) {
     return categories.filter((c: any) => grp.categories.includes(c.key))
   }, [categories, superTab])
 
-  const todayBrief: any = (briefList?.items || [])[0] || null
-  const briefBody = todayBrief?.summary || ''
+  const todayBriefs: any[] = briefList?.items || []
+  const aegisBrief = useMemo(() => todayBriefs.find((b: any) => (b.type || '').includes('aegis')) || todayBriefs[0] || null, [todayBriefs])
+  const tradeAiBrief = useMemo(() => todayBriefs.find((b: any) => (b.type || '').includes('trade_ai')), [todayBriefs])
+  const todayBrief: any = aegisBrief
+  const unifiedBriefBody = useMemo(() => {
+    const parts: string[] = []
+    if (aegisBrief?.summary) parts.push(`*Aegis Morning Brief*\n${aegisBrief.summary}`)
+    if (tradeAiBrief?.summary) parts.push(`*Trade AI Morning Brief*\n${tradeAiBrief.summary}`)
+    return parts.join('\n\n---\n\n')
+  }, [aegisBrief, tradeAiBrief])
+  const briefBody = unifiedBriefBody || todayBrief?.summary || ''
   const briefSections = useMemo(() => parseBriefSections(briefBody), [briefBody])
   const briefExec = useMemo(() => executiveSummaryText(briefBody), [briefBody])
   const todayBriefActions = useMemo(() => {
-    if (!todayBrief) return []
-    const rid = `${todayBrief.source}-${todayBrief.id}`
+    const briefs = [aegisBrief, tradeAiBrief].filter(Boolean)
+    if (!briefs.length) return []
+    const ridSet = new Set(briefs.map((b: any) => `${b.source}-${b.id}`))
     const seen = new Map<string, any>()
-    for (const a of allActions.filter((x: any) => x.report_id === rid)) {
+    for (const a of allActions.filter((x: any) => ridSet.has(x.report_id))) {
       const norm = (a.text || '').toLowerCase().replace(/[$%,]/g, '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim().slice(0, 80)
       const key = `${(a.symbol || '').toUpperCase()}|${a.action_class}|${norm}`
       const ex = seen.get(key)
@@ -233,7 +244,7 @@ export default function ReportsHub({ onDrill }: Props) {
       else if (a.action_class && !ex._classes.includes(a.action_class)) ex._classes.push(a.action_class)
     }
     return [...seen.values()]
-  }, [todayBrief, allActions])
+  }, [aegisBrief, tradeAiBrief, allActions])
   const positions = risk?.positions || []
   const deckActions = useMemo(() => buildDeckActions({
     briefActions: todayBriefActions,
@@ -274,16 +285,19 @@ export default function ReportsHub({ onDrill }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>
-          {mode === 'brief' ? 'Morning Brief' : 'Report Archive'}
+          {mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : 'Report Archive'}
         </h1>
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>
           {mode === 'brief'
             ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
-            : 'searchable operator reports, alerts, and advisories'}
+            : mode === 'analyst'
+              ? 'analyst-grade reports · Word/PDF export · intelligence deep dives'
+              : 'searchable operator reports, alerts, and advisories'}
         </span>
         <span style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 6 }}>
           {modeBtn('brief', "Today's Brief")}
+          {modeBtn('analyst', 'Analyst Reports')}
           {modeBtn('archive', 'Archive')}
         </div>
       </div>
@@ -308,24 +322,39 @@ export default function ReportsHub({ onDrill }: Props) {
         />
       )}
 
+      {mode === 'analyst' && !searchQ && (
+        <AnalystReportsPanel />
+      )}
+
       {mode === 'brief' && !searchQ && (
         <>
       <ReportCoverageStrip categories={categories} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <MorningCommandStrip cells={stripCells} />
-          {!todayBrief ? (
+          {!aegisBrief && !tradeAiBrief ? (
             <div style={{ ...card, padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
               No morning brief for today yet. Check Archive → Morning Briefs, or Home → Morning Command.
             </div>
           ) : (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text0)' }}>{todayBrief.title}</div>
-                <SeverityBadge sev={todayBrief.severity} />
-                {todayBrief.has_actions && <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>{todayBrief.action_count} actions</span>}
+                <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text0)' }}>Unified Morning Intelligence</div>
+                {aegisBrief && <SeverityBadge sev={aegisBrief.severity} />}
+                {tradeAiBrief && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: '#60a5fa18', color: '#60a5fa' }}>Aegis + Trade AI</span>}
+                {(aegisBrief?.has_actions || tradeAiBrief?.has_actions) && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>
+                    {(aegisBrief?.action_count || 0) + (tradeAiBrief?.action_count || 0)} actions
+                  </span>
+                )}
               </div>
+              {(aegisBrief || tradeAiBrief) && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9, color: 'var(--text3)' }}>
+                  {aegisBrief && <span>🛡 Aegis · {fmtDate(aegisBrief.created_at)}</span>}
+                  {tradeAiBrief && <span>📊 Trade AI · {fmtDate(tradeAiBrief.created_at)}</span>}
+                </div>
+              )}
               <BriefSectionPanels sections={briefSections} executiveFallback={briefExec} />
-              <DocxDownloads itemDocx={todayBrief?.docx_file} />
+              <DocxDownloads itemDocx={aegisBrief?.docx_file || tradeAiBrief?.docx_file} />
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)' }}>Your action list</div>

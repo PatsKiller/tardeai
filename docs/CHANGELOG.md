@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-24 - Analyst prospectus v3: full holdings + watchlist link coverage, autonomous refresh
+
+Reporting engine v3 with narrative synthesis, `intelligence_view`, executive callouts, premium DOCX/PDF export.
+
+**Eligibility:** all non-cash holdings; watchlist manual (`personal_watchlist`, `operator`, `origin_system=operator`) OR buy-side CIO (BUY / STRONG BUY / ADD / WAIT FOR PULLBACK). Verified disk-only links — no phantom URLs.
+
+**APIs:** `/api/v2/reports/analyst/links`, `/validate`, `/eligible`; `batch_watchlist` generate mode.
+
+**CLI:** `batch-holdings`, `batch-watchlist`, `autonomous` (holdings + watchlist, limit 200).
+
+**Cron:** Mon–Fri 7:35 + Sun 21:15 `generate_analyst_reports_autonomous.py` — auto-creates new symbols (`never_generated`) and refreshes on fingerprint delta.
+
+**UI:** `HoldingReportLinks` on Portfolio + Watchlist hubs; `useAnalystReportMap`. Doc: `docs/reporting/REPORTING_ENGINE.md`. Tests: `test_report_links.py`, `test_reporting_engine.py`.
+
 ## 2026-06-24 - Broker Proposals UI redesign (thesis band, refresh, cloud oversight)
 
 Redesigned Command Center **Broker Proposals** tab: `BrokerProposalCard`, `ThesisValidityBar`,

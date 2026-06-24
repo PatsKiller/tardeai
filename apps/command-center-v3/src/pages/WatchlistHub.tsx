@@ -7,6 +7,9 @@ import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 import FibConfluencePanel from '../components/FibConfluencePanel'
 import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
+import HoldingReportLinks from '../components/HoldingReportLinks'
+import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
+import { watchlistReportEligible } from '../lib/reportLinks'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -78,6 +81,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const { data: ext, refetch: refetchExt } = useApi<any>('/api/v2/hermes/external-intel-map', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)   // purchased→sold outcomes (real closed trades)
+  const reportMap = useAnalystReportMap()
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const paMap = useProAnalystMap()
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
@@ -411,6 +415,14 @@ export default function WatchlistHub({ onDrill }: Props) {
 
                   {/* One-click action row — real routes + the cross-page multi-LLM ensemble thread (on-demand) */}
                   <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 9 }}>
+                    {watchlistReportEligible(it) && (
+                      <HoldingReportLinks
+                        symbol={it.symbol}
+                        entry={reportMap[String(it.symbol).toUpperCase()]}
+                        reportType={reportMap[String(it.symbol).toUpperCase()]?.report_type || 'symbol_watchlist'}
+                        compact
+                      />
+                    )}
                     <button onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
                       style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${BLUE}66`, background: BLUE + '14', color: '#bfdbfe', cursor: 'pointer' }}>Open card →</button>
                     <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
