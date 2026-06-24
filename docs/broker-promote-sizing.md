@@ -1,6 +1,6 @@
 # Broker Promote: Sizing + AI Oversight (paper → Schwab/Fidelity)
 
-**Status:** LIVE as of 2026-06-22.
+**Status:** LIVE as of 2026-06-22; operator route mode added 2026-06-24.
 
 ## Problem
 
@@ -16,7 +16,23 @@ Paper proposals are sized against `alpaca_paper` policy (e.g. 5% risk / 20% posi
 4. **Cash cap** — notional cannot exceed available `cash` or `buying_power`
 5. **Daily activity** — open trades + new today vs `max_new_positions_per_day` / `max_concurrent_positions`
 6. **Market validation** — `validate_paper_proposal_live_market()` → PASS / WARN / BLOCK
-7. **Hard block** on save if any gate fails
+7. **Hard block** on save if any gate fails (promote modal / paper path)
+
+### 1b. Operator route mode (`operator_route=True`)
+
+Used on the **Broker Proposals** desk and live Schwab route (`route-preview`, `route`, list/detail enrich).
+
+| Gate | Promote modal (`operator_route=False`) | Live route (`operator_route=True`) |
+|------|----------------------------------------|-------------------------------------|
+| Policy / P0 / paper-queue cap | **BLOCK** if over cap or cap=0 | **WARN** — operator size is authoritative |
+| Daily / concurrent limits | **BLOCK** | **WARN** |
+| Over available cash | **BLOCK** | **BLOCK** |
+| Invalid entry/stop, 0 shares | **BLOCK** | **BLOCK** |
+| Live market gates | **BLOCK** / WARN | **BLOCK** / WARN |
+
+`max_shares` in evaluation returns the operator-entered shares (not policy clamp). `recommended_shares` still reports policy cap for reference.
+
+API: `POST /api/v2/broker-proposals/route-preview` and `route` pass the operator trade packet; `paper_trade_logger.promote_proposal_to_broker(..., operator_route=True)` on confirm path.
 
 ### 2. AI oversight (`broker_promote_oversight.py`)
 
@@ -38,6 +54,8 @@ Before broker save, merged into the same PASS / WARN / BLOCK status:
 - **Cloud second opinion:** Grok (`:8645`) + ChatGPT (`:8646`) OAuth proxies via `llm_lane` / `cloud_review.py` — advisory lanes that **can block** when consensus is DISAGREE
 
 Cloud review is cached 24h in `llm_feedback_observations` (`workflow=broker_cloud_oversight`).
+
+**Auto-queue (2026-06-24):** Broker card detail load calls `maybe_queue_cloud_oversight()` before `evaluate_oversight()` so cloud status advances from `not_run` without a manual trigger.
 
 **Env toggles:**
 

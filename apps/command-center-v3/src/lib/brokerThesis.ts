@@ -55,6 +55,96 @@ export function fmtMoney(n: number | null | undefined): string {
   return `$${Math.round(n)}`
 }
 
+export type OversightPacket = {
+  status?: string
+  violations?: string[]
+  warnings?: string[]
+  agents?: { pending?: string[]; reviews?: any[] }
+  local_llm?: { status?: string; model?: string }
+  cloud_review?: {
+    status?: string
+    ran_at?: string
+    consensus?: { verdict?: string; lanes_ok?: number }
+    lanes?: Record<string, any>
+    cached?: boolean
+    fresh_run?: boolean
+  }
+  lanes_available?: { grok?: boolean; chatgpt?: boolean }
+}
+
+function oversightCloudTs(ov?: OversightPacket | null): number {
+  const ran = ov?.cloud_review?.ran_at
+  if (!ran) {
+    const st = String(ov?.cloud_review?.status || '').toLowerCase()
+    return st && st !== 'not_run' && st !== 'unknown' ? 1 : 0
+  }
+  const s = String(ran).trim()
+  const iso = s.includes('T') ? s : s.replace(' ', 'T')
+  const hasTz = /[zZ]$/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso)
+  const t = Date.parse(hasTz ? iso : `${iso}Z`)
+  return Number.isNaN(t) ? 0 : t
+}
+
+/** Prefer newest cloud_review.ran_at across list row, detail prefetch, and post-run updates. */
+export function pickFreshOversight(...sources: Array<OversightPacket | null | undefined>): OversightPacket {
+  let best: OversightPacket = {}
+  let bestTs = -1
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue
+    const ts = oversightCloudTs(src)
+    const weight = ts > 0 ? ts : (src.status ? 1 : 0)
+    if (weight > bestTs) {
+      best = src
+      bestTs = weight
+    }
+  }
+  if (bestTs < 0) {
+    for (const src of sources) {
+      if (src && Object.keys(src).length) return src
+    }
+  }
+  return best
+}
+
+export function formatCloudRanAt(ranAt?: string | null): { label: string; ageMin: number | null; stale: boolean } {
+  if (!ranAt) return { label: 'no timestamp', ageMin: null, stale: true }
+  const raw = String(ranAt).trim()
+  const iso = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  const hasTz = /[zZ]$/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso)
+  let ms = Date.parse(hasTz ? iso : `${iso}Z`)
+  if (Number.isNaN(ms)) return { label: raw, ageMin: null, stale: true }
+  const ageMin = Math.max(0, Math.round((Date.now() - ms) / 60_000))
+  const stale = ageMin > 24 * 60
+  let age = ''
+  if (ageMin < 2) age = 'just now'
+  else if (ageMin < 60) age = `${ageMin}m ago`
+  else if (ageMin < 24 * 60) age = `${Math.floor(ageMin / 60)}h ago`
+  else age = `${Math.floor(ageMin / (24 * 60))}d ago`
+  const et = new Date(ms).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return {
+    label: `${et} ET · ${age}${stale ? ' · stale' : ''}`,
+    ageMin,
+    stale,
+  }
+}
+
+export function localLlmLabel(status?: string | null): string {
+  const s = String(status || '').toLowerCase()
+  if (s === 'watchlist_plan') return 'watchlist plan'
+  if (s === 'complete') return 'complete'
+  if (s === 'queued') return 'queued'
+  if (s === 'missing') return 'missing'
+  if (s === 'error') return 'error'
+  return status || 'unknown'
+}
+
 export function tradeEconomics(shares: number, entry: number, stop: number, target: number) {
   const sh = Number(shares) || 0
   const en = Number(entry) || 0

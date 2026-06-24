@@ -155,8 +155,81 @@ def order_summary(intent) -> dict:
     }
 
 
-def request_route(proposal_id: int) -> dict:
-    """Step 1: build bracket from proposal + request per-order 2FA."""
+def route_preview(proposal_id: int, *, trade: dict | None = None) -> dict:
+    """Operator review packet before 2FA — trade details, risk, policy warnings (no 2FA yet)."""
+    import broker_promote_sizing as bps
+    prop = _get_proposal(proposal_id)
+    if not prop:
+        return {"ok": False, "error": f"proposal #{proposal_id} not found"}
+    t = trade or {}
+    acct = str(t.get("account") or prop.get("account") or "").strip()
+    sym = str(prop.get("symbol") or "").upper()
+    shares = int(t.get("shares") if t.get("shares") is not None else prop.get("proposed_shares") or 0)
+    entry = float(t.get("entry") if t.get("entry") is not None else prop.get("proposed_entry") or 0)
+    stop = float(t.get("stop") if t.get("stop") is not None else prop.get("proposed_stop") or 0)
+    target_raw = t.get("target") if t.get("target") is not None else prop.get("proposed_target1")
+    target = float(target_raw) if target_raw else 0.0
+    strategy_id = str(prop.get("strategy_id") or "momentum_scalp")
+    quote = {}
+    try:
+        from broker_trade_litmus import _fetch_live_quote
+        quote = _fetch_live_quote(sym) or {}
+    except Exception:
+        pass
+    evaluation = bps.evaluate_broker_promote(
+        acct, strategy_id, entry, stop, target, shares,
+        quote=quote, operator_route=True,
+    )
+    packet = bps.build_trade_packet(
+        acct, sym, strategy_id, entry, stop, target, shares,
+        quote=quote, proposal_id=proposal_id,
+    )
+    packet["evaluation"] = evaluation
+    packet["policy_warnings"] = list(evaluation.get("warnings") or [])
+    packet["hard_blocks"] = list(evaluation.get("violations") or [])
+    packet["route_allowed"] = bool(evaluation.get("allowed"))
+    return {"ok": True, "trade": packet, "evaluation": evaluation}
+
+
+def apply_route_trade(proposal_id: int, trade: dict) -> dict:
+    """Persist operator-confirmed size/prices before 2FA (no paper/P0 cap gate)."""
+    import paper_trade_logger as ptl
+    prop = _get_proposal(proposal_id)
+    if not prop:
+        return {"ok": False, "error": f"proposal #{proposal_id} not found"}
+    acct = str(trade.get("account") or prop.get("account") or "").strip()
+    shares = int(trade.get("shares") if trade.get("shares") is not None else prop.get("proposed_shares") or 0)
+    entry = float(trade.get("entry") if trade.get("entry") is not None else prop.get("proposed_entry") or 0)
+    stop = float(trade.get("stop") if trade.get("stop") is not None else prop.get("proposed_stop") or 0)
+    target = float(trade.get("target") if trade.get("target") is not None else prop.get("proposed_target1") or 0)
+    rr = trade.get("risk_reward")
+    if rr is None and entry > stop and target > entry:
+        rr = round((target - entry) / (entry - stop), 2)
+    return ptl.promote_proposal_to_broker(
+        proposal_id, acct, shares, entry, stop, target,
+        risk_reward=float(rr) if rr is not None else None,
+        operator=str(trade.get("operator") or "operator")[:60],
+        operator_route=True,
+    )
+
+
+def request_route(proposal_id: int, *, trade: dict | None = None) -> dict:
+    """Step 1: apply operator trade (optional), build bracket, request per-order 2FA."""
+    if trade:
+        applied = apply_route_trade(proposal_id, trade)
+        if not applied.get("ok"):
+            return {"ok": False, "error": applied.get("error", "failed to apply trade"), "data": applied}
+    preview = route_preview(proposal_id)
+    if not preview.get("ok"):
+        return preview
+    trade_pkt = preview.get("trade") or {}
+    if not trade_pkt.get("route_allowed"):
+        return {
+            "ok": False,
+            "error": "; ".join(trade_pkt.get("hard_blocks") or []) or "route blocked",
+            "trade": trade_pkt,
+            "evaluation": preview.get("evaluation"),
+        }
     prop = _get_proposal(proposal_id)
     if not prop:
         return {"ok": False, "error": f"proposal #{proposal_id} not found"}
@@ -183,6 +256,7 @@ def request_route(proposal_id: int) -> dict:
     except Exception as e:
         return {"ok": False, "error": f"2FA request failed: {str(e)[:160]}"}
 
+    summ = order_summary(intent)
     return {
         "ok": True,
         "mode": "awaiting_approval",
@@ -192,7 +266,10 @@ def request_route(proposal_id: int) -> dict:
         "account": acct,
         "order_spec": spec,
         "bracket": True,
-        "summary": order_summary(intent),
+        "summary": summ,
+        "trade": trade_pkt,
+        "trade_packet": trade_pkt,
+        "policy_warnings": trade_pkt.get("policy_warnings") or [],
         "ttl_min": req.get("ttl_min"),
         "note": "Approve via web ticker or Telegram/email code, then POST route/confirm",
     }

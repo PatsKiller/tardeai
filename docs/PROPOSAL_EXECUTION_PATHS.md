@@ -51,20 +51,29 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 2. **Promote to Broker** — pick account (`schwab_taxable`, `fidelity_rollover_ira`, etc.), adjust size/risk.
 3. Open **Broker Proposals** — see `docs/BROKER_PROPOSALS_UI.md` for the live desk UI.
 4. **Refresh prices** — thesis validity band + sizing recalc for chosen account.
-5. **Run oversight** — local agents + optional Grok+ChatGPT cloud review.
-6. **Schwab auto:** **Auto route (2FA)** when pilot armed → OTOCO (LIMIT+STOP) → approve 2FA → `route/confirm` submits.
+5. **Oversight** — local agents + Grok+ChatGPT cloud review. Cloud auto-queues on card detail load when prerequisites are met (`maybe_queue_cloud_oversight` before `evaluate_oversight`).
+6. **Schwab auto (operator route):**
+   - **Auto route (2FA)** opens **Route confirm** modal — review/edit account, shares, entry, stop, target.
+   - Live preview: `POST /api/v2/broker-proposals/route-preview` (debounced) — gates, risk, investment, R:R.
+   - P0 / policy / paper-queue caps → **warnings** (not GATE BLOCK); hard blocks: invalid plan, 0 shares, over cash, market gates.
+   - **Request 2FA** → `POST /api/v2/broker-proposals/route` with operator trade packet → OTOCO bracket intent.
+   - Card shows same trade packet on 2FA step; Telegram summary includes risk, investment, R:R.
+   - Approve 2FA → `POST /api/v2/broker-proposals/route/confirm` submits Schwab OTOCO.
 7. **Fidelity / manual Schwab:** Place in **FA** or Schwab UI → **Executed manually** → journal/rec-intel.
 
 ### Code touchpoints
 
-- `scripts/paper_trade_logger.py` — `promote_proposal_to_broker()`
-- `scripts/queue_router.py` — Schwab OTOCO + Fidelity branches
-- `scripts/brokers/broker_entry_pilot.py` — Schwab bracket build + 2FA + submit
+- `scripts/paper_trade_logger.py` — `promote_proposal_to_broker(..., operator_route=True)` on live route
+- `scripts/broker_promote_sizing.py` — `evaluate_broker_promote(..., operator_route=True)` — operator size authoritative
+- `scripts/queue_router.py` — passes operator `trade` dict to Schwab route
+- `scripts/brokers/broker_entry_pilot.py` — `route_preview()`, `apply_route_trade()`, `request_route(trade=...)`
+- `scripts/brokers/approval_service.py` — 2FA/Telegram summary with risk, investment, R:R
 - `scripts/watchlist_proposal_bridge.py` — watchlist BUY+ → broker queue
 - `scripts/broker_thesis_validity.py` — drift gap / thesis validity range
-- `scripts/broker_promote_oversight.py` — local + cloud AI gates
+- `scripts/broker_promote_oversight.py` — local + cloud AI gates; `maybe_queue_cloud_oversight()` on detail load
 - `scripts/manual_execution_tracker.py` — manual fill tagging
 - `scripts/fidelity_monitored_stop.py` — breach → FA ticket (no auto-submit)
+- UI: `BrokerRouteConfirmModal.tsx` — pre-2FA review/edit; `BrokerProposalCard.tsx` — 2FA trade packet
 
 ---
 

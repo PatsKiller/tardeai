@@ -11,8 +11,8 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 2. **Read source badges** — green **◆ Watchlist**, blue **◆ Screener/Proposal**, or both when dual-attributed.
 3. **Pick destination account** — Schwab (auto+2FA or manual) or Fidelity (FA manual only).
 4. **Refresh prices** — live quote + thesis validity band + sizing recalc.
-5. **Run oversight** — local agents (Maria/Risk/Steph) + optional **Grok+ChatGPT** cloud review.
-6. **Execute** — Schwab **Auto route (2FA)** OTOCO bracket when armed, or place at broker and **Executed manually**.
+5. **Oversight** — local agents (Maria/Risk/Steph) + **Grok+ChatGPT** cloud review. Cloud auto-queues on detail load when thesis + lanes are ready (`api_v2._broker_oversight_for_proposal` → `maybe_queue_cloud_oversight`).
+6. **Execute** — Schwab **Auto route (2FA)** opens **Route confirm** modal (review/edit trade → preview gates → request 2FA), or place at broker and **Executed manually**.
 
 ## Source badges
 
@@ -30,7 +30,7 @@ See `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` for the full hub map.
 
 | Visual | Component | Purpose |
 |--------|-----------|---------|
-| **Thesis score ring** | `ThesisValidityGauge` | 0–100 score from zone + R:R + drift |
+| **Thesis score ring** | `ThesisValidityGauge` | 0–100 from zone base + R:R/drift adjustments (e.g. `comfortable` 92 + live R:R ≥ 2 → **97**; `at_risk` → **38**) — not Hermes, litmus, or cloud verdict |
 | **Drift gap bar** | `ThesisValidityBar` | Stop · entry · valid band · target · live price dot |
 | **Sizing risk bar** | `PositionSizingRiskBar` | Queued shares vs account cap (red when oversized) |
 
@@ -42,7 +42,7 @@ See `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` for the full hub map.
 | **Account picker** | Grouped Schwab vs Fidelity; shows cash, open trades, daily slot usage |
 | **Risk metrics** | Position, max risk, profit @ target, live R:R |
 | **AI oversight** | Local review status, Grok/ChatGPT lane verdicts, consensus |
-| **Actions** | Refresh prices · Edit trade · Executed manually · Auto route / Record |
+| **Actions** | Refresh prices · Edit trade · Executed manually · Auto route (→ Route confirm modal) / Record |
 
 ## Account selection
 
@@ -52,6 +52,8 @@ See `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` for the full hub map.
 | **Fidelity** | Manual only — **Active Trader Pro (FA)** | `Fidelity — FA manual only` |
 
 Changing account re-runs `evaluate-promote` sizing caps for that destination (cash, daily limits).
+
+**Operator route mode (`operator_route=True`):** Broker Proposals list/detail and live route use operator-confirmed size as authoritative. P0 readiness, policy caps, paper-queue sizing, and daily/concurrent limits surface as **warnings** — not GATE BLOCK. Hard blocks remain: invalid entry/stop, zero shares, over available cash, and live market gates.
 
 **Share sizing display:** The card always shows two numbers when they differ:
 
@@ -126,9 +128,11 @@ On refresh:
 |--------|-----|
 | Queue local reviews | `POST /api/v2/broker-proposals/queue-oversight` |
 | Run Grok+ChatGPT | `POST /api/v2/broker-proposals/run-cloud-oversight` |
+| Batch queue cloud | `POST /api/v2/broker-proposals/queue-cloud-batch` |
 
 Backend: `scripts/broker_promote_oversight.py` → `cloud_review.review()`.
 
+- **Auto-queue:** `_broker_oversight_for_proposal()` calls `maybe_queue_cloud_oversight()` before `evaluate_oversight()` so cards move from `not_run` → `running` without a manual **Run cloud** click.
 - **DISAGREE** → oversight BLOCK (live route disabled until resolved).
 - **CAUTION** → WARN (operator may proceed with eyes open).
 - **AGREE** → PASS contribution toward promote-ready.
@@ -136,17 +140,22 @@ Backend: `scripts/broker_promote_oversight.py` → `cloud_review.review()`.
 
 Requires local thesis text — run **AI Review** on the paper proposal first if cloud returns "No local thesis".
 
-## Schwab auto route — OTOCO bracket + 2FA
+## Schwab auto route — review modal, OTOCO bracket + 2FA
 
-When Schwab pilot is **armed**, **Auto route (2FA)** submits a single **OTOCO** order (LIMIT buy + protective STOP child) — not a naked limit.
+When Schwab pilot is **armed**, **Auto route (2FA)** opens `BrokerRouteConfirmModal` before any 2FA is requested.
 
-| Step | Endpoint | Action |
-|------|----------|--------|
-| 1 | `POST /api/v2/broker-proposals/route` | Build bracket intent, request per-order 2FA |
-| 2 | Operator approves | Web ticker, Telegram, or email code |
-| 3 | `POST /api/v2/broker-proposals/route/confirm` | Submit after 2FA approval |
+| Step | Endpoint / UI | Action |
+|------|---------------|--------|
+| 0 | **Route confirm** modal | Edit account, shares, entry, stop, target; live gate preview |
+| 0b | `POST /api/v2/broker-proposals/route-preview` | Operator-route evaluation (warnings vs blocks) + economics |
+| 1 | `POST /api/v2/broker-proposals/route` | Persist operator trade, build OTOCO intent, request per-order 2FA |
+| 2 | Card 2FA panel + Telegram | Same trade packet (shares, entry/stop/target, risk, investment, R:R) |
+| 3 | Operator approves | Web ticker, Telegram, or email code |
+| 4 | `POST /api/v2/broker-proposals/route/confirm` | Submit Schwab OTOCO bracket after 2FA |
 
-Backend: `scripts/brokers/broker_entry_pilot.py` → `queue_router.py` (armed Schwab branch).
+`route` body accepts optional `account`, `shares`, `entry`, `stop`, `target` — operator values override DB proposal fields for that route attempt.
+
+Backend: `broker_entry_pilot.route_preview()` / `request_route(trade=...)` → `queue_router.route_proposal(..., trade=...)`.
 
 Post-fill monitoring: `scripts/schwab_broker_trade_monitor.py` (cron `*/5` market hours) — R-trails stops, requests protective-stop MODIFY 2FA when needed.
 
@@ -165,10 +174,11 @@ Tagging + journal linkage: `scripts/manual_execution_tracker.py` (see `docs/OPTI
 | `/api/v2/broker-proposals` | GET | Fast queue list + accounts (detail lazy-loaded) |
 | `/api/v2/broker-proposals/detail` | POST | Intel + sizing gates for one card |
 | `/api/v2/broker-proposals/refresh-prices` | POST | Live quote + thesis band + recalibrated sizing |
-| `/api/v2/broker-proposals/evaluate-promote` | POST | Account-preview sizing when destination changes |
+| `/api/v2/broker-proposals/evaluate-promote` | POST | Account-preview sizing when destination changes (`operator_route` optional) |
 | `/api/v2/broker-proposals/run-cloud-oversight` | POST | Grok+ChatGPT second opinion |
 | `/api/v2/broker-proposals/queue-oversight` | POST | Queue Maria/Risk/Steph + local LLM |
-| `/api/v2/broker-proposals/route` | POST | Schwab OTOCO bracket + 2FA request (gated) |
+| `/api/v2/broker-proposals/route-preview` | POST | Pre-2FA gate preview for operator-edited trade packet |
+| `/api/v2/broker-proposals/route` | POST | Schwab OTOCO bracket + 2FA request (accepts operator trade fields) |
 | `/api/v2/broker-proposals/route/confirm` | POST | Confirm 2FA and submit Schwab bracket |
 | `/api/v2/executions/log-manual` | POST | Log manual fill + lineage |
 
@@ -178,7 +188,7 @@ Each list row includes `source_attribution` for badge rendering.
 
 | Layer | Files |
 |-------|-------|
-| UI | `BrokerProposals.tsx`, `BrokerProposalCard.tsx`, `ProposalSourceBadges.tsx`, `ThesisValidityBar.tsx`, `BrokerAccountPicker.tsx`, `BrokerIntelPanel.tsx` |
+| UI | `BrokerProposals.tsx`, `BrokerProposalCard.tsx`, `BrokerRouteConfirmModal.tsx`, `ProposalSourceBadges.tsx`, `ThesisValidityBar.tsx`, `BrokerAccountPicker.tsx`, `BrokerIntelPanel.tsx` |
 | Watchlist bridge | `scripts/watchlist_proposal_bridge.py` |
 | Schwab entry | `scripts/brokers/broker_entry_pilot.py`, `scripts/queue_router.py`, `scripts/schwab_broker_trade_monitor.py` |
 | Queue hygiene | `scripts/broker_queue_hygiene.py` (watchlist-exempt expiry) |

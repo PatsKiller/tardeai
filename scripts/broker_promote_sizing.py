@@ -215,6 +215,48 @@ def _quote_dict_from_payload(quote: dict | None) -> dict:
     }
 
 
+def build_trade_packet(
+    account_key: str,
+    symbol: str,
+    strategy_id: str,
+    entry: float,
+    stop: float,
+    target: float,
+    shares: int,
+    *,
+    quote: dict | None = None,
+    proposal_id: int | None = None,
+) -> dict:
+    """Operator-facing trade summary for pre-2FA review and approval screens."""
+    entry, stop, target = float(entry), float(stop), float(target)
+    shares = int(shares)
+    risk_ps = max(entry - stop, 0)
+    reward_ps = max(target - entry, 0)
+    dollar_risk = round(risk_ps * shares, 2) if shares and risk_ps else 0
+    dollar_size = round(entry * shares, 2) if shares and entry else 0
+    profit = round(reward_ps * shares, 2) if shares and reward_ps > 0 else 0
+    rr = round(reward_ps / risk_ps, 2) if risk_ps > 0 and reward_ps > 0 else None
+    cash, cash_src = ap.cash_for_account(account_key)
+    return {
+        "proposal_id": proposal_id,
+        "symbol": str(symbol or "").upper(),
+        "account": account_key,
+        "strategy_id": strategy_id,
+        "shares": shares,
+        "entry": round(entry, 4),
+        "stop": round(stop, 4),
+        "target": round(target, 4),
+        "dollar_risk": dollar_risk,
+        "dollar_size": dollar_size,
+        "profit_at_target": profit,
+        "risk_reward": rr,
+        "risk_per_share": round(risk_ps, 4),
+        "cash_available": round(cash, 2) if cash else None,
+        "cash_source": cash_src,
+        "quote": quote or {},
+    }
+
+
 def evaluate_broker_promote(
     account_key: str,
     strategy_id: str,
@@ -225,8 +267,13 @@ def evaluate_broker_promote(
     *,
     quote: dict | None = None,
     shared_rules: dict | None = None,
+    operator_route: bool = False,
 ) -> dict:
-    """Full pre-save evaluation: sizing caps + live market validation → PASS | WARN | BLOCK."""
+    """Full pre-save evaluation: sizing caps + live market validation → PASS | WARN | BLOCK.
+
+    operator_route=True (Path B desk): operator-edited size is authoritative — P0/policy/paper-queue
+    caps surface as warnings only; hard blocks are invalid plan, zero shares, cash, and market gates.
+    """
     from paper_trade_logger import validate_paper_proposal_live_market
 
     entry, stop, target = float(entry), float(stop), float(target)
@@ -235,31 +282,49 @@ def evaluate_broker_promote(
         account_key, strategy_id, entry, stop,
         desired_shares=shares, shared_rules=shared_rules,
     )
-    max_shares = int(sizing.get("shares") or 0)
-    violations = []
-
-    if not sizing.get("valid") or max_shares < 1:
-        violations.append(f"Sizing invalid: {sizing.get('reason', 'SIZE_TOO_SMALL')}")
-
-    if shares > max_shares:
-        violations.append(
-            f"Shares {shares:,} exceed max {max_shares:,} "
-            f"(binding={sizing.get('binding')}, engine={sizing.get('engine')})"
-        )
+    policy_max_shares = int(sizing.get("shares") or 0)
+    max_shares = shares if operator_route else policy_max_shares
+    violations: list[str] = []
+    warnings: list[str] = []
 
     dollar_risk = round(abs(entry - stop) * shares, 2)
     dollar_size = round(shares * entry, 2)
     snap = sizing.get("policy_snapshot") or {}
     eff_risk_cap = snap.get("max_risk_dollars_per_trade") or sizing.get("max_dollar_risk")
     eff_size_cap = snap.get("max_notional_per_trade") or sizing.get("max_dollar_size")
-    if eff_risk_cap and dollar_risk > float(eff_risk_cap) + 0.01:
-        violations.append(
-            f"Dollar risk ${dollar_risk:,.2f} exceeds cap ${float(eff_risk_cap):,.0f}"
-        )
-    if eff_size_cap and dollar_size > float(eff_size_cap) + 0.01:
-        violations.append(
-            f"Investment ${dollar_size:,.2f} exceeds cap ${float(eff_size_cap):,.0f}"
-        )
+
+    if operator_route:
+        if shares < 1:
+            violations.append("Shares must be at least 1 for live route")
+        if entry <= stop:
+            violations.append("Entry must be above stop for a long trade")
+        if policy_max_shares < 1:
+            warnings.append(f"Policy sizing cap is 0 ({sizing.get('reason', 'SIZE_TOO_SMALL')}) — operator override")
+        elif shares > policy_max_shares:
+            warnings.append(
+                f"Operator {shares:,} sh vs policy cap {policy_max_shares:,} "
+                f"(binding={sizing.get('binding')}, engine={sizing.get('engine')})"
+            )
+        if eff_risk_cap and dollar_risk > float(eff_risk_cap) + 0.01:
+            warnings.append(f"Dollar risk ${dollar_risk:,.2f} exceeds policy cap ${float(eff_risk_cap):,.0f}")
+        if eff_size_cap and dollar_size > float(eff_size_cap) + 0.01:
+            warnings.append(f"Investment ${dollar_size:,.2f} exceeds policy cap ${float(eff_size_cap):,.0f}")
+    else:
+        if not sizing.get("valid") or policy_max_shares < 1:
+            violations.append(f"Sizing invalid: {sizing.get('reason', 'SIZE_TOO_SMALL')}")
+        if shares > policy_max_shares:
+            violations.append(
+                f"Shares {shares:,} exceed max {policy_max_shares:,} "
+                f"(binding={sizing.get('binding')}, engine={sizing.get('engine')})"
+            )
+        if eff_risk_cap and dollar_risk > float(eff_risk_cap) + 0.01:
+            violations.append(
+                f"Dollar risk ${dollar_risk:,.2f} exceeds cap ${float(eff_risk_cap):,.0f}"
+            )
+        if eff_size_cap and dollar_size > float(eff_size_cap) + 0.01:
+            violations.append(
+                f"Investment ${dollar_size:,.2f} exceeds cap ${float(eff_size_cap):,.0f}"
+            )
 
     cash = sizing.get("cash_available")
     if cash and dollar_size > cash + 0.01:
@@ -269,11 +334,19 @@ def evaluate_broker_promote(
     if activity.get("daily_limit_reached"):
         mx = activity.get("max_new_positions_per_day")
         used = activity.get("slots_used_today", 0)
-        violations.append(f"Daily new-trade limit reached ({used}/{mx} today)")
+        msg = f"Daily new-trade limit reached ({used}/{mx} today)"
+        if operator_route:
+            warnings.append(msg)
+        else:
+            violations.append(msg)
     if activity.get("concurrent_limit_reached"):
         mx = activity.get("max_concurrent_positions")
         open_n = activity.get("open_trades", 0)
-        violations.append(f"Max concurrent positions reached ({open_n}/{mx} open)")
+        msg = f"Max concurrent positions reached ({open_n}/{mx} open)"
+        if operator_route:
+            warnings.append(msg)
+        else:
+            violations.append(msg)
 
     market = {"ok": False, "blocked": True, "status": "BLOCK", "reason": "no quote"}
     q = _quote_dict_from_payload(quote)
@@ -297,7 +370,7 @@ def evaluate_broker_promote(
         overall = "BLOCK"
     elif market.get("status") == "BLOCK":
         overall = "BLOCK"
-    elif market.get("status") == "WARN":
+    elif market.get("status") == "WARN" or warnings:
         overall = "WARN"
     else:
         overall = "PASS"
@@ -305,13 +378,16 @@ def evaluate_broker_promote(
     return {
         "status": overall,
         "allowed": overall != "BLOCK",
+        "operator_route": operator_route,
         "sizing": sizing,
         "account_activity": activity,
         "max_shares": max_shares,
-        "recommended_shares": max_shares,
+        "policy_max_shares": policy_max_shares,
+        "recommended_shares": policy_max_shares if not operator_route else shares,
         "dollar_size": dollar_size,
         "dollar_risk": dollar_risk,
         "violations": violations,
+        "warnings": warnings,
         "market": {
             "ok": market.get("ok"),
             "blocked": market.get("blocked"),
