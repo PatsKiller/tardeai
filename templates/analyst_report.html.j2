@@ -69,6 +69,18 @@
   </table>
   {% endif %}
 
+  {% if s.peer_table %}
+  <table class="comp">
+    <tr><th>Name</th><th>P/E</th><th>Net margin</th><th>5y EPS gr.</th><th>Yield</th><th>1M</th></tr>
+    {% for r in s.peer_table %}
+    <tr class="{% if r.is_self %}self{% endif %}">
+      <td>{{ r.symbol }}{% if r.is_self %} ★{% endif %}</td><td>{{ r.pe }}</td><td>{{ r.margin }}</td>
+      <td>{{ r.growth }}</td><td>{{ r['yield'] }}</td><td>{{ r.mo1 }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
   {% for f in s.figures %}
   <figure>
     <img src="{{ f.uri }}" alt="{{ s.title }} chart"/>

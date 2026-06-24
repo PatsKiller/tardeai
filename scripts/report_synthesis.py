@@ -494,7 +494,10 @@ def compose_symbol_sections(
                 "street_rating": rating,
                 "target_mean": target,
                 "upside_to_target_pct": upside,
-            }, ("pe", "forward_pe", "street_rating", "target_mean", "upside_to_target_pct")),
+                "ytd_return_pct": enrich.get("perf_ytd_pct") if enrich.get("perf_ytd_pct") is not None else enrich.get("ytd_return_pct"),
+                "distribution_yield_pct": enrich.get("dividend_yield_pct") or enrich.get("div_yield_pct"),
+            }, ("pe", "forward_pe", "street_rating", "target_mean", "upside_to_target_pct",
+                "ytd_return_pct", "distribution_yield_pct")),
         })
 
     if "analyst_predictions" in sections:
@@ -576,6 +579,22 @@ def compose_symbol_sections(
                 med = peer_pes[len(peer_pes) // 2]
                 rel = "a premium to" if sym_pe > med * 1.05 else ("a discount to" if sym_pe < med * 0.95 else "in line with")
                 val_read = f" At {sym_pe:.1f}× earnings it trades at {rel} the {len(peer_pes)}-peer median of {med:.1f}×."
+        # E5: real comp grid (subject first, then peers) — PE / margin / 5y growth / yield / 1M
+        def _peer_cells(label, r, is_self=False):
+            return {
+                "symbol": label,
+                "is_self": is_self,
+                "pe": (f"{_f(r.get('pe')):.1f}×" if _f(r.get("pe")) > 0 else "—"),
+                "margin": (f"{_f(r.get('profit_margin_pct')):.0f}%" if r.get("profit_margin_pct") is not None else "—"),
+                "growth": (f"{_f(r.get('eps_next_5y')):.0f}%" if r.get("eps_next_5y") is not None else "—"),
+                "yield": (f"{_f(r.get('div_yield_pct')):.2f}%" if r.get("div_yield_pct") is not None else "—"),
+                "mo1": _pct(r.get("perf_month_pct")),
+            }
+        peer_table = [_peer_cells(sym, {
+            "pe": enrich.get("pe"), "profit_margin_pct": enrich.get("profit_margin_pct"),
+            "eps_next_5y": enrich.get("eps_next_5y"), "div_yield_pct": enrich.get("div_yield_pct"),
+            "perf_month_pct": enrich.get("perf_month_pct"),
+        }, is_self=True)] + [_peer_cells(p["symbol"], p) for p in peer_rows[:8]] if not is_etf else []
         out.append({
             "id": "peer_comparison",
             "title": "Peer Comparison",
@@ -583,7 +602,8 @@ def compose_symbol_sections(
                 f"{sym} vs {len(peer_rows)} {basis} peers — "
                 f"today rank {rank}/{len(peer_rows) + 1} by day change ({_pct(sym_day)}).{val_read}"
             ),
-            "bullets": bullets,
+            "bullets": bullets if is_etf else [],
+            "peer_table": peer_table,
             "metrics": {"peer_count": len(peer_rows), "peer_basis": basis, "day_rank": rank},
         })
 

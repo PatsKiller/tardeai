@@ -24,6 +24,8 @@ REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
 _KPI_TABLE_SECTIONS = {
     "header_context", "executive_summary", "fundamental_valuation", "analyst_predictions",
     "analyst_commentary", "options_income", "risk_assessment", "peer_comparison", "action_plan",
+    "earnings_estimates", "fundamentals_deep", "valuation_context", "scenario_targets",
+    "catalyst_risk", "tax_position", "portfolio_fit",
 }
 _COVER_KPIS = (
     ("recommendation", "REC"), ("price", "PRICE"), ("day_change_pct", "DAY"),
@@ -61,10 +63,13 @@ def _fmt(key: str, val: Any) -> str:
             return f"{int(val)}"
         if k.endswith("_pct"):
             return f"{val:+.2f}%"
-        if any(t in k for t in ("price", "target", "valid_", "value", "pnl", "mean", "low", "high")):
+        if any(t in k for t in ("price", "target", "valid_", "value", "pnl", "mean", "low", "high",
+                                "bear", "base", "bull", "gain", "tax", "cost", "loss", "benefit")) and k != "case":
             return f"${val:,.2f}" if abs(val) < 100000 else f"${val:,.0f}"
-        if k in ("pe", "forward_pe"):
+        if k in ("pe", "forward_pe", "p_fcf"):
             return f"{val:.1f}×"
+        if k in ("peg", "debt_equity", "beta"):
+            return f"{val:.2f}"
         if k in ("reward_risk",):
             return f"{val:.1f}:1"
         return f"{val:,.2f}".rstrip("0").rstrip(".") if abs(val) < 1000 else f"{val:,.0f}"
@@ -150,6 +155,7 @@ def _prepare(report: dict) -> dict:
             "kpi_rows": rows[:8],
             "bullets": [_md(b).lstrip("• ") for b in (s.get("bullets") or [])][:5],
             "agents": s.get("agents") or [],
+            "peer_table": s.get("peer_table") or [],
             "figures": figs,
         })
 
@@ -199,7 +205,7 @@ def render_pdf(report: dict, output_path: Path) -> dict:
     footer = (
         '<div style="font-size:7px;width:100%;padding:0 14mm;color:#7a8699;'
         'font-family:Inter,Helvetica,Arial,sans-serif;display:flex;justify-content:space-between;">'
-        f'<span>Generated {gen} · Advisory — not investment advice</span>'
+        f'<span>Produced by TradeAI v3.0 · Generated {gen} · Advisory — not investment advice</span>'
         '<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>'
     )
     try:
@@ -293,7 +299,7 @@ def render_docx(report: dict, output_path: Path) -> dict:
                 except Exception:
                     pass
 
-    foot = doc.add_paragraph("— End of Report · Advisory, not investment advice —")
+    foot = doc.add_paragraph("— End of Report · Produced by TradeAI v3.0 · Advisory, not investment advice —")
     foot.alignment = WD_ALIGN_PARAGRAPH.CENTER
     foot.runs[0].font.size = Pt(8)
     foot.runs[0].font.color.rgb = RGBColor(0x77, 0x77, 0x77)
