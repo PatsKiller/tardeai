@@ -78,3 +78,15 @@ def test_publication_allowed_with_headlines():
     gate = rcg.evaluate_catalyst_gate(report, attempt_refresh=False)
     assert gate["block"] is False
     assert rcg.publication_blocked(report) is False
+
+
+def test_integrate_catalyst_gate_into_creation_stamps_meta():
+    report = _report()
+    with patch.object(rcg, "evaluate_catalyst_gate", return_value={
+        "required": True, "reason": "policy_symbol_list", "adequate": False,
+        "block": True, "refreshed": False, "issues": ["empty"],
+    }):
+        gate = rcg.integrate_catalyst_gate_into_creation(report)
+    assert gate["block"] is True
+    assert report["meta"]["catalyst_gate"]["phase"] == "creation"
+    assert any("Catalyst Gate" in c.get("label", "") for s in report["sections"] if s["id"] == "executive_summary" for c in (s.get("callouts") or []))

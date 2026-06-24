@@ -1665,13 +1665,33 @@ def build_symbol_report(
         {"id": "paper_trade_proposals", "label": "Broker proposal", "present": bool(proposal)},
     ]
 
-    return {
+    out = {
         "meta": meta,
         "sections": report_sections,
         "visuals": visuals,
         "sources": sources,
         "export_options": {"available_sections": list(SECTION_IDS), "selected": sections},
     }
+    if report_type.startswith("symbol_"):
+        try:
+            from report_catalyst_gate import integrate_catalyst_gate_into_creation
+            gate = integrate_catalyst_gate_into_creation(out)
+            nc = _news_section_from_report(out)
+            if nc is not None:
+                src = next((s for s in sources if s.get("id") == "portfolio_news"), None)
+                if src is not None:
+                    src["count"] = len(nc.get("bullets") or [])
+                    src["adequate"] = not gate.get("block")
+        except Exception:
+            pass
+    return out
+
+
+def _news_section_from_report(report: dict) -> dict | None:
+    for sec in report.get("sections") or []:
+        if sec.get("id") == "news_catalysts":
+            return sec
+    return None
 
 
 def _portal_actions(days: int = 1, limit: int = 30, classes: str | None = None) -> list[dict]:

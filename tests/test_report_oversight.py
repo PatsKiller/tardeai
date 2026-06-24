@@ -134,8 +134,20 @@ def test_claude_model_resolves_from_env(monkeypatch):
 
 def test_oversee_report_blocks_empty_catalysts_on_policy_symbol():
     report = {
-        "meta": {"symbol": "RGTI", "generated_at": "2026-06-24T00:00:00+00:00",
-                 "kpis": {"price": 19.5, "recommendation": "IGNORE", "thesis_status": "Still valid"}},
+        "meta": {
+            "symbol": "RGTI",
+            "generated_at": "2026-06-24T00:00:00+00:00",
+            "kpis": {"price": 19.5, "recommendation": "IGNORE", "thesis_status": "Still valid"},
+            "catalyst_gate": {
+                "required": True,
+                "reason": "policy_symbol_list",
+                "adequate": False,
+                "block": True,
+                "refreshed": False,
+                "issues": ["news_catalysts empty"],
+                "phase": "creation",
+            },
+        },
         "sections": [
             {"id": "executive_summary", "title": "Executive Summary", "content": "IGNORE.", "callouts": []},
             {"id": "news_catalysts", "title": "News", "content": "No material scored catalysts in the current ingestion window.", "bullets": []},
@@ -144,14 +156,9 @@ def test_oversee_report_blocks_empty_catalysts_on_policy_symbol():
             {"id": "intelligence_view", "title": "Intel", "content": "Mixed.", "agents": []},
         ],
     }
-    gate = {"required": True, "reason": "policy_symbol_list", "adequate": False, "block": True,
-            "refreshed": False, "issues": ["news_catalysts empty"]}
     with patch.object(ro, "_lane_available", return_value=False), \
-         patch("report_catalyst_gate.evaluate_catalyst_gate", return_value=gate), \
-         patch("report_catalyst_gate.apply_catalyst_gate_block", return_value=2) as mock_block, \
          patch.object(ro, "_audit_log", return_value=None):
-        out = ro.oversee_report(report, claude_oversight=False)
+        out = ro.oversee_report(report, claude_oversight=False, skip_catalyst_gate=True)
     stamp = out["meta"]["claude_oversight"]
     assert stamp["verdict"] == "BLOCK"
     assert stamp["catalyst_gate"]["block"] is True
-    mock_block.assert_called_once()

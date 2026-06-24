@@ -626,6 +626,57 @@ Respond in JSON only:
     return report
 
 
+def finalize_symbol_report(
+    report: dict,
+    *,
+    report_type: str | None = None,
+    grok_edit: bool = False,
+    oversight: bool = True,
+    claude_oversight: bool | None = None,
+    oversight_cadence: str | None = None,
+) -> dict:
+    """Post-build pipeline: catalyst gate (idempotent), Grok editorial, cloud oversight."""
+    meta = report.setdefault("meta", {})
+    rtype = str(report_type or meta.get("report_type") or "")
+    if rtype:
+        meta["report_type"] = rtype
+    if not meta.get("symbol") or not rtype.startswith("symbol_"):
+        return report
+
+    try:
+        from report_catalyst_gate import integrate_catalyst_gate_into_creation
+        integrate_catalyst_gate_into_creation(report)
+    except Exception:
+        pass
+
+    if grok_edit:
+        report = apply_grok_editorial(report)
+
+    if oversight:
+        try:
+            from report_oversight import oversee_report
+            oversee_report(
+                report,
+                claude_oversight=claude_oversight,
+                cadence=oversight_cadence,
+                skip_catalyst_gate=True,
+            )
+        except Exception as _ov_exc:
+            report.setdefault("meta", {})["claude_oversight"] = {
+                "verdict": "PUBLISH",
+                "skipped": f"oversight_error:{str(_ov_exc)[:120]}",
+                "ts": _now_iso(),
+            }
+    else:
+        try:
+            from report_oversight import enforce_integrity, stamp_catalyst_oversight_verdict
+            enforce_integrity(report)
+            stamp_catalyst_oversight_verdict(report)
+        except Exception:
+            pass
+    return report
+
+
 def _batch_record_generate(results: dict, sym: str, out: dict, *, reason: str) -> None:
     """Classify generate_report outcome into generated vs blocked vs failed."""
     if out.get("blocked"):
@@ -731,25 +782,23 @@ def generate_report(
                 break
         meta["generation"] = continuity.get("generation", gen_num)
 
-    if grok_edit and report_type.startswith("symbol_"):
-        report = apply_grok_editorial(report)
-
-    # Cloud oversight pass (advisory): free dual-lane critique always; metered Claude is cost-gated.
-    # oversight=False skips it entirely (used for fast bulk watchlist render).
-    if oversight and report_type.startswith("symbol_"):
-        try:
-            from report_oversight import oversee_report
-            oversee_report(report, claude_oversight=claude_oversight, cadence=oversight_cadence)
-        except Exception as _ov_exc:
-            report.setdefault("meta", {})["claude_oversight"] = {
-                "verdict": "PUBLISH", "skipped": f"oversight_error:{str(_ov_exc)[:120]}", "ts": _now_iso(),
-            }
+    meta["report_type"] = report_type
+    if report_type.startswith("symbol_"):
+        report = finalize_symbol_report(
+            report,
+            report_type=report_type,
+            grok_edit=grok_edit,
+            oversight=oversight,
+            claude_oversight=claude_oversight,
+            oversight_cadence=oversight_cadence,
+        )
+        meta = report.setdefault("meta", {})
 
     sym = symbol or meta.get("report_type", "report")
     in_place = bool(sym_u and report_type.startswith("symbol_"))
     blocked = False
     block_reason = ""
-    if oversight and report_type.startswith("symbol_"):
+    if report_type.startswith("symbol_"):
         try:
             from report_catalyst_gate import publication_blocked
             blocked = publication_blocked(report)
@@ -1102,6 +1151,7 @@ def run_autonomous_cycle(
         "generated": (holding.get("generated") or []) + (watchlist.get("generated") or []),
         "skipped": (holding.get("skipped") or []) + (watchlist.get("skipped") or []),
         "failed": (holding.get("failed") or []) + (watchlist.get("failed") or []),
+        "blocked": (holding.get("blocked") or []) + (watchlist.get("blocked") or []),
         "completed_at": _now_iso(),
     }
 

@@ -155,6 +155,27 @@ def refresh_news_catalysts_section(report: dict) -> bool:
     return news_catalysts_adequate(report)
 
 
+def integrate_catalyst_gate_into_creation(report: dict) -> dict[str, Any]:
+    """Creation-time hook: refresh news then enforce block overlay when still empty.
+
+    Called from build_symbol_report and again before publish (idempotent).
+    """
+    gate = evaluate_catalyst_gate(report, attempt_refresh=True)
+    meta = report.setdefault("meta", {})
+    meta["catalyst_gate"] = {
+        "required": gate.get("required"),
+        "reason": gate.get("reason"),
+        "adequate": gate.get("adequate"),
+        "block": gate.get("block"),
+        "refreshed": gate.get("refreshed"),
+        "issues": gate.get("issues"),
+        "phase": "creation",
+    }
+    if gate.get("block"):
+        apply_catalyst_gate_block(report, gate)
+    return gate
+
+
 def evaluate_catalyst_gate(
     report: dict,
     *,
@@ -236,11 +257,14 @@ def apply_catalyst_gate_block(report: dict, gate: dict[str, Any]) -> int:
         })
         applied += 1
     meta = report.setdefault("meta", {})
-    meta["catalyst_gate"] = {
+    stamp = dict(meta.get("catalyst_gate") or {})
+    stamp.update({
         "required": True,
         "reason": gate.get("reason"),
         "adequate": False,
+        "block": True,
         "refreshed": gate.get("refreshed"),
         "issues": gate.get("issues"),
-    }
+    })
+    meta["catalyst_gate"] = stamp
     return applied

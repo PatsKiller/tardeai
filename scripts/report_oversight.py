@@ -398,25 +398,47 @@ def _unresolved_after_apply(report: dict) -> list[str]:
     return issues
 
 
+def stamp_catalyst_oversight_verdict(report: dict) -> dict:
+    """When LLM oversight is skipped, still stamp verdict from creation-time catalyst gate."""
+    meta = report.setdefault("meta", {})
+    cg = meta.get("catalyst_gate") or {}
+    verdict = "BLOCK" if cg.get("block") else "PUBLISH"
+    stamp = {
+        "verdict": verdict,
+        "model": "creation_gates_only",
+        "ts": _now_iso(),
+        "fixes_applied": 0,
+        "claude_ran": False,
+        "claude_gate_reason": "oversight_skipped",
+        "catalyst_gate": cg if cg.get("required") else None,
+        "free_lanes": [],
+        "confidence_check": "; ".join(cg.get("issues") or []) if cg.get("block") else "",
+    }
+    meta["claude_oversight"] = stamp
+    return stamp
+
+
 def oversee_report(
     report: dict,
     *,
     claude_oversight: bool | None = None,
     cadence: str | None = None,
     timeout: int = 150,
+    skip_catalyst_gate: bool = False,
 ) -> dict:
     """Run the oversight pipeline and stamp meta.claude_oversight. Mutates + returns report."""
     meta = report.setdefault("meta", {})
     symbol = meta.get("symbol")
     # deterministic integrity normalization BEFORE critique (so the overlay never re-flags structure)
     integrity_applied = enforce_integrity(report)
-    catalyst_gate: dict = {}
+    catalyst_gate: dict = dict(meta.get("catalyst_gate") or {})
     catalyst_gate_applied = 0
-    try:
-        from report_catalyst_gate import evaluate_catalyst_gate, apply_catalyst_gate_block
-        catalyst_gate = evaluate_catalyst_gate(report, attempt_refresh=True)
-    except Exception as exc:
-        catalyst_gate = {"required": False, "block": False, "error": str(exc)[:160]}
+    if not skip_catalyst_gate:
+        try:
+            from report_catalyst_gate import integrate_catalyst_gate_into_creation
+            catalyst_gate = integrate_catalyst_gate_into_creation(report)
+        except Exception as exc:
+            catalyst_gate = {"required": False, "block": False, "error": str(exc)[:160]}
     packet = build_data_packet(report)
 
     free: list[dict] = []
@@ -453,7 +475,9 @@ def oversee_report(
             + (" " if oversight.get("confidence_check") else "")
             + "; ".join(catalyst_gate.get("issues") or ["catalyst gate: empty news section"])
         ).strip()
-        catalyst_gate_applied = apply_catalyst_gate_block(report, catalyst_gate)
+        if not skip_catalyst_gate:
+            from report_catalyst_gate import apply_catalyst_gate_block
+            catalyst_gate_applied = apply_catalyst_gate_block(report, catalyst_gate)
 
     fixes_applied = apply_fixes(report, oversight) + len(integrity_applied) + catalyst_gate_applied
     # Re-validate: never ship a report that still contains an issue the overlay said to fix.
