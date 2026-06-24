@@ -1090,14 +1090,16 @@ def promote_proposal_to_broker(
         cur.execute(
             """SELECT id, symbol, strategy_id, status,
                       COALESCE(intended_broker, '') AS intended_broker,
-                      COALESCE(origin, 'auto') AS origin
+                      COALESCE(origin, 'auto') AS origin,
+                      proposed_entry, proposed_stop, proposed_target1, proposed_shares, proposed_rr
                FROM paper_trade_proposals WHERE id=%s""",
             (proposal_id,),
         )
         row = cur.fetchone()
         if not row:
             return {"ok": False, "error": f"proposal #{proposal_id} not found"}
-        _id, symbol, strategy_id, status, prev_broker, prev_origin = row
+        (_id, symbol, strategy_id, status, prev_broker, prev_origin,
+         _paper_entry, _paper_stop, _paper_target, _paper_shares, _paper_rr) = row
         if status not in ("PENDING", "APPROVED_FOR_PAPER_TEST"):
             return {"ok": False, "error": f"proposal #{proposal_id} status={status} — cannot promote"}
 
@@ -1191,6 +1193,26 @@ def promote_proposal_to_broker(
              stop_pct, rr, basis_patch, proposal_id),
         )
         conn.commit()
+
+        # P0-2: append-only immutable promotion snapshot (paper plan -> promoted plan).
+        # The row above is UPDATEd in place; this preserves the before/after for audit.
+        try:
+            cur.execute(
+                """INSERT INTO proposal_promotions
+                     (proposal_id, symbol, actor, to_account, prev_broker, prev_origin,
+                      paper_entry, paper_stop, paper_target, paper_shares, paper_rr,
+                      promoted_entry, promoted_stop, promoted_target, promoted_shares, promoted_rr, sizing_basis)
+                   VALUES (%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s::jsonb)""",
+                (proposal_id, symbol, operator, acct, prev_broker, prev_origin,
+                 _paper_entry, _paper_stop, _paper_target, _paper_shares, _paper_rr,
+                 entry, stop, target, shares, rr, basis_patch),
+            )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
         try:
             import trade_modify as _tm
