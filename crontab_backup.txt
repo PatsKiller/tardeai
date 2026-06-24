@@ -155,6 +155,12 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle evening >> logs/atp2_research_cycle_cron.log 2>&1
 0 20 * * 6 cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1
 0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1
+# ── 7:30 AM: Analyst Daily Intelligence Digest (DOCX) — after health + morning intel ──
+30 7 * * 1-5 cd $PROJ && flock -n /tmp/analyst_daily_digest.lock $PY scripts/generate_analyst_daily_digest.py --format docx >> logs/analyst_daily_digest.log 2>&1
+# ── Weekdays 7:35: Autonomous prospectus — fingerprint delta only (builds on prior report) ──
+35 7 * * 1-5 cd $PROJ && flock -n /tmp/analyst_reports_daily.lock $PY scripts/generate_analyst_reports_autonomous.py --mode daily >> logs/analyst_reports_autonomous.log 2>&1
+# ── Sun 21:15: Weekly autonomous prospectus — stale≥6d OR fingerprint + Grok editorial ──
+15 21 * * 0 cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1
 0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1
 # PHASE102-RETIRED 0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag >> logs/deep_overnight_llm_window.log 2>&1
 0 3 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/strategy_config_loader.py --sync-db >> logs/strategy_config_sync.log 2>&1

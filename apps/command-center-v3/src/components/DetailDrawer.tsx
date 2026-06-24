@@ -4,6 +4,8 @@ import AnalystReviews, { useAnalystMap } from './AnalystReviews'
 import InsiderActivity from './InsiderActivity'
 import FinvizEnrichmentPanel from './FinvizEnrichmentPanel'
 import OptionChainPanel from './OptionChainPanel'
+import HoldingReportLinks from './HoldingReportLinks'
+import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 
 // finviz-derived recom fields are NOT analyst ratings (known correction): finviz 'recom' is a momentum
 // number, and the holdings enrichment mislabels it as 'Strong Sell' (e.g. SCHD recom 1.34 → labeled
@@ -95,6 +97,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
     return /^[A-Z]{1,5}$/.test(cand) ? cand : ''
   }, [primary, ctx])
   const aMap = useAnalystMap()
+  const reportMap = useAnalystReportMap()
   const actionMetrics = useMemo(() => {
     if (!ctx) return []
     return [
@@ -118,6 +121,13 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
       <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(148,163,184,.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
         <div><div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div style={{ fontSize: 20, fontWeight: 950, color: TEXT0 }}>{ctx.title}</div>
           {/* rotation review lives here (not on the card) — rotatable holdings only: not cash, not a mutual fund */}
+          {drawerSymbol && !primary.is_cash && (
+            <HoldingReportLinks
+              symbol={drawerSymbol}
+              entry={reportMap[drawerSymbol]}
+              reportType={reportMap[drawerSymbol]?.report_type}
+            />
+          )}
           {drawerSymbol && !primary.is_cash && !/^[A-Z]{4,5}X$/.test(drawerSymbol) && <a href={`/v3/rotation?question=${encodeURIComponent(`Review whether ${drawerSymbol} exposure should be reduced`)}`} title="Review this exposure in the Rotation Advisor (advisory · no broker action)" style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6, textDecoration: 'none', background: 'rgba(96,165,250,.13)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.32)' }}>⤢ Rotation review →</a>}</div>{ctx.subtitle && <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{ctx.subtitle}</div>}<div style={{ fontSize: 10, color: DIM, fontFamily: 'monospace', marginTop: 8 }}>Source: {ctx.endpoint}</div></div>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, padding: '0 4px' }}>×</button>
       </div>

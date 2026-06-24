@@ -61,7 +61,7 @@ sandbox/
 data/
 
 # ── Generated reports (regenerable from code + state) ──────────────────────
-reports/
+/reports/
 
 # ── OS ──────────────────────────────────────────────────────────────────────
 .DS_Store

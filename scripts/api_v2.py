@@ -163,6 +163,236 @@ def _reports_action_items(query=None):
                             classes=(q.get("classes") or None), severity=(q.get("severity") or None))
 
 
+def _reports_analyst_types(query=None):
+    """GET /api/v2/reports/analyst/types — available analyst report templates."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from analyst_report_builder import SECTION_IDS, list_report_types
+    return {"types": list_report_types(), "sections": list(SECTION_IDS)}
+
+
+def _reports_analyst_preview(query=None):
+    """GET /api/v2/reports/analyst/preview?symbol=RKLB&type=symbol_watchlist&sections=a,b"""
+    import importlib
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    for _mod in ("report_visuals", "portfolio_technical_charts", "report_export"):
+        if _mod in _s.modules:
+            importlib.reload(_s.modules[_mod])
+    import analyst_report_builder as _arb
+    _arb = importlib.reload(_arb)
+    q = query or {}
+    rtype = q.get("type") or "symbol_watchlist"
+    sections = None
+    if q.get("sections"):
+        sections = [s.strip() for s in str(q["sections"]).split(",") if s.strip()]
+    kwargs = {
+        "report_type": rtype,
+        "symbol": (q.get("symbol") or "").strip().upper() or None,
+        "sector": (q.get("sector") or q.get("symbol") or "").strip() or None,
+        "topic": (q.get("topic") or q.get("sector") or "").strip() or None,
+        "sections": sections,
+        "days": int(q.get("days", 1) or 1),
+    }
+    if rtype == "event_driven":
+        kwargs["hours"] = int(q.get("hours", 24) or 24)
+        kwargs["event_filter"] = str(q.get("event_filter") or q.get("filter") or "all")
+    try:
+        return _arb.build_report(**kwargs)
+    except TypeError as e:
+        kwargs.pop("hours", None)
+        kwargs.pop("event_filter", None)
+        try:
+            return _arb.build_report(**kwargs)
+        except Exception as e2:
+            return {"ok": False, "error": str(e2)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def _reports_analyst_export(query=None, body=None):
+    """POST/GET export — format=docx|pdf|json, same params as preview."""
+    import importlib
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import analyst_report_builder as _arb
+    import report_export as _re
+    _arb = importlib.reload(_arb)
+    _re = importlib.reload(_re)
+    q = dict(query or {})
+    if body and isinstance(body, dict):
+        q.update(body)
+    rtype = q.get("type") or "symbol_watchlist"
+    fmt = (q.get("format") or "docx").lower()
+    sections = None
+    if q.get("sections"):
+        raw = q["sections"]
+        if isinstance(raw, list):
+            sections = raw
+        else:
+            sections = [s.strip() for s in str(raw).split(",") if s.strip()]
+    kwargs = {
+        "report_type": rtype,
+        "symbol": (q.get("symbol") or "").strip().upper() or None,
+        "sector": (q.get("sector") or q.get("symbol") or "").strip() or None,
+        "topic": (q.get("topic") or q.get("sector") or "").strip() or None,
+        "sections": sections,
+        "days": int(q.get("days", 1) or 1),
+    }
+    if rtype == "event_driven":
+        kwargs["hours"] = int(q.get("hours", 24) or 24)
+        kwargs["event_filter"] = str(q.get("event_filter") or q.get("filter") or "all")
+    try:
+        report = _arb.build_report(**kwargs)
+    except TypeError:
+        kwargs.pop("hours", None)
+        kwargs.pop("event_filter", None)
+        try:
+            report = _arb.build_report(**kwargs)
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+    meta = report.get("meta") or {}
+    stem = q.get("stem") or meta.get("symbol") or meta.get("sector") or meta.get("topic") or rtype
+    result = _re.export_report(report, fmt, output_stem=str(stem))
+    result["report_meta"] = meta
+    return result
+
+
+def _reports_analyst_generate(query=None, body=None):
+    """POST /api/v2/reports/analyst/generate — ad-hoc prospectus generation + registry."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reporting_engine as _re
+    q = dict(query or {})
+    if body and isinstance(body, dict):
+        q.update(body)
+    mode = (q.get("mode") or "single").lower()
+    try:
+        if mode == "batch_holdings":
+            stale_raw = q.get("stale_days")
+            stale_days = int(stale_raw) if stale_raw not in (None, "", 0, "0") else None
+            return _re.generate_holding_prospectus_batch(
+                force=bool(q.get("force")),
+                grok_edit=bool(q.get("grok_edit", True)),
+                limit=int(q.get("limit", 40) or 40),
+                stale_days=stale_days,
+                generation_mode=str(q.get("generation_mode") or "batch"),
+            )
+        if mode == "batch_watchlist":
+            return _re.generate_watchlist_prospectus_batch(
+                force=bool(q.get("force")),
+                grok_edit=bool(q.get("grok_edit", True)),
+                limit=int(q.get("limit", 200) or 200),
+                generation_mode=str(q.get("generation_mode") or "batch_watchlist"),
+            )
+        return _re.generate_report(
+            report_type=q.get("type") or q.get("report_type") or "symbol_holding",
+            symbol=(q.get("symbol") or "").strip().upper() or None,
+            sector=(q.get("sector") or "").strip() or None,
+            topic=(q.get("topic") or "").strip() or None,
+            grok_edit=bool(q.get("grok_edit")),
+            formats=["docx", "pdf"] if str(q.get("format", "all")).lower() == "all" else [str(q.get("format", "docx")).lower()],
+        )
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def _reports_analyst_registry(query=None):
+    """GET /api/v2/reports/analyst/registry — generated prospectus manifest."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reporting_engine as _re
+    q = query or {}
+    return _re.registry_list(
+        symbol=(q.get("symbol") or "").strip().upper() or None,
+        report_type=q.get("type") or None,
+        limit=int(q.get("limit", 50) or 50),
+    )
+
+
+def _reports_analyst_links(query=None):
+    """GET /api/v2/reports/analyst/links — verified DOCX/PDF URLs (files must exist on disk)."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reporting_engine as _re
+    q = query or {}
+    sym_raw = (q.get("symbol") or "").strip().upper()
+    symbols = [sym_raw] if sym_raw else None
+    return _re.report_links_map(
+        symbols=symbols,
+        limit=int(q.get("limit", 300) or 300),
+    )
+
+
+def _reports_analyst_validate(query=None):
+    """GET /api/v2/reports/analyst/validate — coverage check: eligible vs on-disk links."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reporting_engine as _re
+    return _re.validate_report_coverage()
+
+
+def _reports_analyst_eligible(query=None):
+    """GET /api/v2/reports/analyst/eligible — all holdings + eligible watchlist due for prospectus."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import reporting_engine as _re
+    rows = _re.eligible_holding_symbols()
+    wl_rows = _re.eligible_watchlist_symbols(limit=int((query or {}).get("watchlist_limit", 120) or 120))
+    reg = _re.load_registry()
+    from report_lineage import canonical_registry_map
+    by_holding = canonical_registry_map(reg.get("reports") or [], "symbol_holding")
+    by_watchlist = canonical_registry_map(reg.get("reports") or [], "symbol_watchlist")
+    stale_days = int((query or {}).get("stale_days") or 6)
+    for row in rows:
+        prev = by_holding.get(row["symbol"])
+        needs, reason = _re.prospectus_needs_refresh(
+            prev, row["fingerprint"], stale_days=stale_days,
+        )
+        row["needs_refresh"] = needs
+        row["refresh_reason"] = reason
+        row["last_generated"] = (prev or {}).get("generated_at")
+        row["report_type"] = "symbol_holding"
+    for row in wl_rows:
+        prev = by_watchlist.get(row["symbol"])
+        needs, reason = _re.prospectus_needs_refresh(
+            prev, row["fingerprint"], stale_days=stale_days,
+        )
+        row["needs_refresh"] = needs
+        row["refresh_reason"] = reason
+        row["last_generated"] = (prev or {}).get("generated_at")
+        row["report_type"] = "symbol_watchlist"
+    return {
+        "eligible": rows,
+        "watchlist_eligible": wl_rows,
+        "count": len(rows),
+        "watchlist_count": len(wl_rows),
+        "needs_refresh": sum(1 for r in rows if r.get("needs_refresh"))
+            + sum(1 for r in wl_rows if r.get("needs_refresh")),
+        "stale_days": stale_days,
+    }
+
+
+def _reports_analyst_symbols(query=None):
+    """GET /api/v2/reports/analyst/symbols — watchlist + holdings for report picker."""
+    holdings = (_load_json(STATE_DIR / "holdings.json") or {}).get("holdings") or []
+    h_syms = sorted({
+        str(h.get("symbol", "")).upper()
+        for h in holdings
+        if h.get("symbol") and not h.get("is_cash") and (h.get("market_value") or 0) > 100
+    })
+    wl = _db_query("SELECT DISTINCT symbol FROM watchlist_items ORDER BY symbol LIMIT 200") or []
+    w_syms = sorted({str(r.get("symbol", "")).upper() for r in wl if r.get("symbol")})
+    all_syms = sorted(set(h_syms) | set(w_syms))
+    return {"holdings": h_syms, "watchlist": w_syms, "symbols": all_syms}
+
+
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
     Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
@@ -845,32 +1075,115 @@ def portfolio_holdings():
     }
 
 
+def _compute_drawdown_series(values: list) -> list:
+    """Underwater % from chronological {date, value} points."""
+    peak = 0.0
+    out = []
+    for pt in values:
+        v = float(pt.get("value") or pt.get("total_value") or 0)
+        if v <= 0:
+            continue
+        if v > peak:
+            peak = v
+        dd = round((v - peak) / peak * 100, 2) if peak > 0 else 0.0
+        out.append({
+            "date": str(pt.get("date") or "")[:10],
+            "value": round(v, 0),
+            "drawdown": dd,
+        })
+    return out
+
+
 def portfolio_performance():
     perf = _load_json(STATE_DIR / "performance_history.json") or {}
+    holdings = _load_json(STATE_DIR / "holdings.json") or {}
     periods = perf.get("periods", {})
     accounts = perf.get("accounts", {})
     repriced_list = perf.get("reconstructed", [])
 
+    # Overlay 1D with canonical market day (matches header TODAY)
+    try:
+        from portfolio_snapshot_sanity import apply_market_day_1d
+        perf = apply_market_day_1d(perf, holdings)
+        periods = perf.get("periods", periods)
+        accounts = perf.get("accounts", accounts)
+    except Exception:
+        pass
+
     # Use canonical holdings.json total, not stale performance_history snapshot
-    _canonical = (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0)
+    _canonical = holdings.get("portfolio_totals", {}).get("total_value", 0)
     _perf_val = perf.get("current_value", 0)
     result = {"current_value": _canonical or _perf_val, "periods": {}, "accounts": {},
               "snapshot_source": "holdings.json (canonical)" if _canonical else "performance_history.json (snapshot)",
               "snapshot_count": perf.get("snapshot_count", 0),
               "warning": "Periods marked 'estimated' use repriced current holdings at historical prices. After position changes (buys/sells), these may be inaccurate." if repriced_list else None}
+    result["snapshot_outliers"] = perf.get("snapshot_outliers") or []
     for k, v in periods.items():
         if isinstance(v, dict):
             is_repriced = v.get("source") == "repriced"
-            result["periods"][k] = {"change_pct": v.get("change_pct"), "change": v.get("change"),
-                                     "start_value": v.get("start_value"), "start_date": v.get("start_date"),
-                                     "source": v.get("source", "unknown"),
-                                     "estimated": is_repriced}
+            result["periods"][k] = {
+                "change_pct": v.get("change_pct"), "change": v.get("change"),
+                "start_value": v.get("start_value"), "start_date": v.get("start_date"),
+                "source": v.get("source", "unknown"),
+                "estimated": is_repriced,
+                "snapshot_replaced": v.get("snapshot_replaced"),
+                "snapshot_1d_pct": v.get("snapshot_1d_pct"),
+            }
     for acct, data in accounts.items():
         ap = {}
         for k, v in (data.get("periods") or {}).items():
             if isinstance(v, dict):
-                ap[k] = {"change_pct": v.get("change_pct"), "change": v.get("change")}
+                ap[k] = {
+                    "change_pct": v.get("change_pct"), "change": v.get("change"),
+                    "source": v.get("source"),
+                    "snapshot_replaced": v.get("snapshot_replaced"),
+                }
         result["accounts"][acct] = {"current_value": data.get("current_value", 0), "periods": ap}
+
+    # Drawdown / underwater series — sanitize reconciliation outlier peaks
+    dd_series = []
+    _outlier_dates: list[str] = []
+    try:
+        from portfolio_snapshot_sanity import (
+            compute_drawdown_series,
+            holding_phantom_corrections,
+            load_snapshots_from_dir,
+        )
+        _raw_snaps = load_snapshots_from_dir(STATE_DIR / "snapshots")
+        if _raw_snaps:
+            _phantom = holding_phantom_corrections(_raw_snaps)
+            dd_series = compute_drawdown_series(_raw_snaps)
+            result["snapshot_outliers"] = sorted(_phantom.keys())
+            result["snapshot_phantom_trims"] = _phantom
+    except Exception:
+        pass
+    if not dd_series:
+        snap_pts = []
+        for s in perf.get("snapshots") or []:
+            if isinstance(s, dict):
+                val = s.get("value") or s.get("total_value") or s.get("portfolio_value")
+                if val:
+                    snap_pts.append({"date": s.get("date") or s.get("as_of"), "value": val})
+        if not snap_pts:
+            snap_idx = _load_json(STATE_DIR / "snapshot_index.json") or []
+            for s in snap_idx[-90:]:
+                if not isinstance(s, dict):
+                    continue
+                total = sum(v for k, v in s.items() if k != "date" and isinstance(v, (int, float)))
+                if total > 0:
+                    snap_pts.append({"date": s.get("date"), "value": total})
+        dd_series = _compute_drawdown_series(snap_pts)
+    if dd_series:
+        result["drawdown_series"] = dd_series
+        result["max_drawdown_pct"] = min(p["drawdown"] for p in dd_series)
+        try:
+            from datetime import date as _date, timedelta as _td
+            _cutoff = (_date.today() - _td(days=30)).isoformat()
+            _recent = [p for p in dd_series if str(p.get("date", ""))[:10] >= _cutoff]
+            if _recent:
+                result["max_drawdown_pct_30d"] = min(p["drawdown"] for p in _recent)
+        except Exception:
+            pass
     return result
 
 
@@ -3633,6 +3946,7 @@ def _wl_items(query: dict = None):
                    ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
                    ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
                    ep.model_used AS entry_model,
+                   fs.recommendation AS synthesis_recommendation,
                    fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                    fs.model_used AS cio_model_used,
                    sp.sector AS profile_sector, sp.industry AS profile_industry,
@@ -20166,7 +20480,59 @@ def _options_overview(query=None):
 def _health_proposals(query=None):
     """GET /api/v2/health/proposals — cross-module proposal maturity metrics."""
     import options_engine as oe
-    return _json_clean(oe.get_proposal_health_metrics())
+    base = oe.get_proposal_health_metrics()
+    # Broker queue thesis zones (drift gap narrowing)
+    try:
+        from broker_queue_hygiene import fetch_broker_queue_rows
+        from broker_thesis_validity import attach_thesis_validity
+        rows = fetch_broker_queue_rows()
+        zone_counts: dict = {}
+        at_risk_symbols = []
+        stale_count = 0
+        for row in rows[:60]:
+            attach_thesis_validity(row)
+            tv = row.get("thesis_validity") or {}
+            zone = str(tv.get("zone_status") or "unknown").lower()
+            zone_counts[zone] = zone_counts.get(zone, 0) + 1
+            if tv.get("price_stale"):
+                stale_count += 1
+            if zone in ("approaching", "at_risk", "invalid"):
+                at_risk_symbols.append({
+                    "symbol": row.get("symbol"),
+                    "zone": zone,
+                    "id": row.get("id"),
+                    "drift_pct": tv.get("drift_pct") or row.get("price_drift_pct"),
+                })
+        base["broker"] = {
+            "queue_count": len(rows),
+            "stale_count": stale_count,
+            "zone_counts": zone_counts,
+            "approaching_count": zone_counts.get("approaching", 0),
+            "at_risk_count": zone_counts.get("at_risk", 0) + zone_counts.get("invalid", 0),
+            "at_risk_symbols": at_risk_symbols[:10],
+        }
+    except Exception:
+        base.setdefault("broker", {"stale_count": 0})
+    # Portfolio concentration (top-3 max-loss share)
+    try:
+        rm = _load_json(STATE_DIR / "risk_management.json") or {}
+        positions = [p for p in (rm.get("positions") or []) if not p.get("risk_excluded")]
+        risks = sorted(
+            [(p.get("symbol"), float(p.get("max_loss") or 0)) for p in positions if float(p.get("max_loss") or 0) > 0],
+            key=lambda x: -x[1],
+        )
+        total = sum(r[1] for r in risks) or 1.0
+        top3 = sum(r[1] for r in risks[:3])
+        base["concentration"] = {
+            "top3_pct": round(top3 / total * 100, 1),
+            "top3_symbols": [r[0] for r in risks[:3]],
+            "top3_risk": round(top3, 0),
+            "total_risk": round(total, 0),
+            "elevated": top3 / total > 0.5,
+        }
+    except Exception:
+        base.setdefault("concentration", {"elevated": False})
+    return _json_clean(base)
 
 
 def _options_execution_status(query=None):
@@ -21831,6 +22197,15 @@ ROUTES = {
     "/api/v2/reports/item": _reports_item,
     "/api/v2/reports/portal-summary": _reports_portal_summary,
     "/api/v2/reports/action-items": _reports_action_items,
+    "/api/v2/reports/analyst/types": _reports_analyst_types,
+    "/api/v2/reports/analyst/preview": _reports_analyst_preview,
+    "/api/v2/reports/analyst/symbols": _reports_analyst_symbols,
+    "/api/v2/reports/analyst/export": _reports_analyst_export,
+    "/api/v2/reports/analyst/generate": _reports_analyst_generate,
+    "/api/v2/reports/analyst/registry": _reports_analyst_registry,
+    "/api/v2/reports/analyst/links": _reports_analyst_links,
+    "/api/v2/reports/analyst/eligible": _reports_analyst_eligible,
+    "/api/v2/reports/analyst/validate": _reports_analyst_validate,
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
@@ -22665,6 +23040,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 b = body or {}
                 res = _ssm.cancel(symbol=b.get("symbol"), account=b.get("account"), stop_id=b.get("id"))
                 return 200, res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/reports/analyst/export":
+            try:
+                q = query or {}
+                res = _reports_analyst_export(q, body)
+                return (200 if res.get("ok", True) and not res.get("error") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/reports/analyst/generate":
+            try:
+                q = query or {}
+                res = _reports_analyst_generate(q, body)
+                return (200 if res.get("ok", True) and not res.get("error") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
