@@ -293,6 +293,18 @@ def run(mode, apply, budget):
 
     print(f"[scheduler] mode={mode} due={len(ordered)} external_budget={budget} apply={apply}")
     cats = catalyst_signals()
+    # Resume guard: in backfill, skip an external lane for symbols already covered within the skip window
+    # (so a relaunch continues where the last run stopped instead of redoing the top of the priority list).
+    fresh_ext = {}
+    if mode == "backfill":
+        skip_h = int(os.getenv("RESEARCH_BACKFILL_SKIP_FRESH_HOURS", "6"))
+        for ln in ("chatgpt", "grok"):
+            rows = _q("""SELECT DISTINCT symbol FROM hermes_external_research
+                         WHERE lane=%s AND recommendation NOT LIKE '[%%'
+                         AND created_at > NOW() - (%s||' hours')::interval""", (ln, skip_h))
+            fresh_ext[ln] = {dict(r)["symbol"] for r in rows}
+        print(f"[scheduler] backfill resume: skipping externals covered in last {skip_h}h "
+              f"(chatgpt {len(fresh_ext.get('chatgpt', set()))}, grok {len(fresh_ext.get('grok', set()))})")
     spent = 0      # external calls only
     done = 0
     ext_rot = 0
@@ -316,8 +328,10 @@ def run(mode, apply, budget):
             if apply:
                 res = dispatch(sym, lane, tier, apply)
                 print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
-        # external lanes: budgeted
+        # external lanes: budgeted (skip ones freshly covered this backfill — resume guard)
         for lane in ext_lanes:
+            if sym in fresh_ext.get(lane, ()):
+                continue
             if spent >= budget:
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
