@@ -63,7 +63,7 @@ def check() -> list[str]:
 
     # 3. advisory-event queue jam
     try:
-        cur.execute("SELECT status, count(*) FROM hermes_advisory_events GROUP BY status")
+        cur.execute("SELECT event_status, count(*) FROM hermes_advisory_events GROUP BY event_status")
         st = {r[0]: r[1] for r in cur.fetchall()}
         pending = int(st.get("pending") or 0)
         completed = int(st.get("completed") or 0)
@@ -74,7 +74,7 @@ def check() -> list[str]:
 
     # 4. embedding failure rate
     try:
-        cur.execute("SELECT status, count(*) FROM hermes_embedding_queue GROUP BY status")
+        cur.execute("SELECT embedding_status, count(*) FROM hermes_embedding_queue GROUP BY embedding_status")
         st = {r[0]: r[1] for r in cur.fetchall()}
         failed = int(st.get("failed") or 0)
         done = int(st.get("completed") or 0) + int(st.get("done") or 0)
