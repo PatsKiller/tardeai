@@ -189,10 +189,17 @@ type Props = {
   onRunCloudOversight?: () => void
   oversightBusy?: boolean
   cloudBusy?: boolean
+  /** When the host already renders the blocker/violation list (e.g. the proposal card's route
+   *  blocker box), suppress the duplicate ⛔/⚠ list at the bottom of the oversight block. */
+  suppressViolationList?: boolean
+  /** When the host already shows the strategy purpose elsewhere (card "Strategy" cell),
+   *  suppress the duplicate "Strategy: …" line inside "Why purchase". */
+  suppressStrategyPurpose?: boolean
 }
 
 export default function BrokerIntelPanel({
   intel, compact = false, onQueueOversight, onRunCloudOversight, oversightBusy, cloudBusy,
+  suppressViolationList = false, suppressStrategyPurpose = false,
 }: Props) {
   if (!intel?.ok) {
     return (
@@ -319,8 +326,8 @@ export default function BrokerIntelPanel({
             </div>
           )}
 
-          {ovViolations.map((v, i) => <div key={`v${i}`} style={{ fontSize: 9, color: RED, marginTop: 3 }}>⛔ {v}</div>)}
-          {ovWarnings.map((w, i) => <div key={`w${i}`} style={{ fontSize: 9, color: AMBER, marginTop: 3 }}>⚠ {w}</div>)}
+          {!suppressViolationList && ovViolations.map((v, i) => <div key={`v${i}`} style={{ fontSize: 9, color: RED, marginTop: 3 }}>⛔ {v}</div>)}
+          {!suppressViolationList && ovWarnings.map((w, i) => <div key={`w${i}`} style={{ fontSize: 9, color: AMBER, marginTop: 3 }}>⚠ {w}</div>)}
         </div>
       )}
 
@@ -337,7 +344,7 @@ export default function BrokerIntelPanel({
       {(why.headline || why.approve_case || why.strategy_purpose) && (
         <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.2)' }}>
           <div style={{ ...sec, color: GREEN }}>Why purchase</div>
-          {why.strategy_purpose && <div style={{ fontSize: 9, color: MUTED, marginBottom: 4 }}>Strategy: {why.strategy_purpose}</div>}
+          {why.strategy_purpose && !suppressStrategyPurpose && <div style={{ fontSize: 9, color: MUTED, marginBottom: 4 }}>Strategy: {why.strategy_purpose}</div>}
           <div style={body}>{why.headline || why.approve_case || why.summary}</div>
           {why.rr != null && <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>Plan R:R {why.rr}:1{why.signal_grade ? ` · ${why.signal_grade} grade` : ''}</div>}
           {why.invalidation && <div style={{ fontSize: 9, color: AMBER, marginTop: 4 }}>Invalidate if: {why.invalidation}</div>}
