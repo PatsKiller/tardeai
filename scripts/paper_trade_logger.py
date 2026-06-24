@@ -1126,7 +1126,7 @@ def promote_proposal_to_broker(
             pass
         evaluation = bps.evaluate_broker_promote(
             acct, strategy_id, entry, stop, target, shares, quote=live_quote,
-            operator_route=operator_route,
+            operator_route=operator_route, proposal_id=proposal_id,
         )
         try:
             import broker_promote_oversight as bpo

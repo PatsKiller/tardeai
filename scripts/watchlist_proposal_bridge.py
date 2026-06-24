@@ -112,7 +112,8 @@ def _fetch_buy_candidates(cur) -> list[dict]:
                ORDER BY created_at DESC LIMIT 1
            ) ep ON true
            LEFT JOIN LATERAL (
-               SELECT strategy_type, ideal_entry, stop_loss, target_price
+               SELECT strategy_type, ideal_entry, stop_loss, target_price,
+                      support, resistance
                FROM watchlist_strategy_cards
                WHERE symbol = wi.symbol ORDER BY updated_at DESC NULLS LAST LIMIT 1
            ) wsc ON true
@@ -150,45 +151,23 @@ def _active_proposal(cur, symbol: str) -> dict | None:
     return dict(zip(cols, row))
 
 
-def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, float, float, dict] | None:
-    """Entry / stop / target from entry plan, strategy card, then strategy YAML exit policy."""
-    import broker_strategy_resolver as bsr
+def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, float, float, dict, str] | None:
+    """Entry / stop / target from authoritative plan only — no generic 2R gambling geometry."""
+    import broker_trade_plan_gate as btpg
 
     sym = str(c.get("symbol") or "").upper()
-    sleeve = str(c.get("wl_strategy") or "")
-    resolved = bsr.resolve_executable_strategy(sym, sleeve)
-    strategy_id = resolved["strategy_id"]
-
-    entry = _f(c.get("limit_price")) or _f(c.get("card_entry"))
-    if not entry and c.get("entry_zone_high"):
-        entry = _f(c.get("entry_zone_high"))
-    if not entry and quote_cache is not None:
-        entry = _f(quote_cache.get(sym))
-    if not entry or entry <= 0:
+    conn = _get_conn()
+    resolved = btpg.resolve_authoritative_levels(conn, sym, candidate=c, quote_cache=quote_cache)
+    if not resolved:
+        log.info(f"skip {sym}: no authoritative trade plan (trade_plans/card/confluence required)")
         return None
-
-    stop = _f(c.get("card_stop"))
-    if c.get("entry_zone_low"):
-        zl = _f(c["entry_zone_low"])
-        if zl and zl < entry and (not stop or stop > zl * 0.98):
-            stop = round(zl * 0.98, 2)
-    target = _f(c.get("card_target"))
-    support = _f(c.get("card_support"))
-    resistance = _f(c.get("card_resistance"))
-
-    entry, stop, target, exit_rationale = bsr.apply_strategy_exit_plan(
-        entry, stop, target, strategy_id,
-        support=support, resistance=resistance,
+    return (
+        resolved["entry"],
+        resolved["stop"],
+        resolved["target"],
+        resolved["exit_rationale"],
+        str(resolved.get("plan_source") or "authoritative"),
     )
-    exit_rationale["resolve"] = resolved
-    if _f(c.get("card_stop")):
-        exit_rationale.setdefault("sources", []).insert(0, "stop from watchlist strategy card")
-    if _f(c.get("card_target")):
-        exit_rationale.setdefault("sources", []).insert(0, "target from watchlist strategy card")
-    if _f(c.get("limit_price")) or _f(c.get("card_entry")):
-        exit_rationale.setdefault("sources", []).insert(0, "entry from watchlist entry plan / card")
-
-    return entry, stop, target, exit_rationale
 
 
 def _size_shares(entry: float, stop: float) -> int:
@@ -341,12 +320,12 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         if not levels:
             skipped += 1
             continue
-        entry, stop, target, exit_rationale = levels
+        entry, stop, target, exit_rationale, plan_source = levels
         import broker_strategy_resolver as bsr
-        resolved = bsr.resolve_executable_strategy(
-            sym, str(c.get("wl_strategy") or DEFAULT_STRATEGY),
-        )
-        strat = resolved["strategy_id"]
+        strat = str(exit_rationale.get("strategy_id") or exit_rationale.get("resolve", {}).get("strategy_id") or "")
+        if not strat:
+            resolved = bsr.resolve_executable_strategy(sym, str(c.get("wl_strategy") or DEFAULT_STRATEGY))
+            strat = resolved["strategy_id"]
         shares = _size_shares(entry, stop)
         if shares <= 0:
             skipped += 1
@@ -356,14 +335,16 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         dollar_risk = round(abs(entry - stop) * shares, 2)
         rr = round((target - entry) / (entry - stop), 2) if entry > stop else 0
         expires = datetime.now(timezone.utc) + timedelta(days=7)
+        resolve_meta = exit_rationale.get("resolve") or {}
         basis = {
             "engine": "watchlist_proposal_bridge",
+            "plan_source": plan_source,
             "watchlist_rating": c["watchlist_rating"],
             "rating_source": c["rating_source"],
             "wl_status": c.get("wl_status"),
-            "watchlist_sleeve": resolved.get("watchlist_sleeve") or c.get("wl_strategy"),
-            "strategy_resolve_source": resolved.get("resolve_source"),
-            "classified_strategy": resolved.get("classified_strategy"),
+            "watchlist_sleeve": resolve_meta.get("watchlist_sleeve") or c.get("wl_strategy"),
+            "strategy_resolve_source": resolve_meta.get("resolve_source"),
+            "classified_strategy": resolve_meta.get("classified_strategy"),
             "exit_rationale": exit_rationale,
             "exit_summary": bsr.build_exit_summary(exit_rationale, entry, stop, target),
             "hermes_score": _f(c.get("hermes_composite_score")),

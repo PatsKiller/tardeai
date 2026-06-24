@@ -178,7 +178,7 @@ def route_preview(proposal_id: int, *, trade: dict | None = None) -> dict:
         pass
     evaluation = bps.evaluate_broker_promote(
         acct, strategy_id, entry, stop, target, shares,
-        quote=quote, operator_route=True,
+        quote=quote, operator_route=True, proposal_id=proposal_id,
     )
     packet = bps.build_trade_packet(
         acct, sym, strategy_id, entry, stop, target, shares,

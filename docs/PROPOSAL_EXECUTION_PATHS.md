@@ -55,7 +55,8 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 6. **Schwab auto (operator route):**
    - **Auto route (2FA)** opens **Route confirm** modal — review/edit account, shares, entry, stop, target.
    - Live preview: `POST /api/v2/broker-proposals/route-preview` (debounced) — gates, risk, investment, R:R.
-   - P0 / policy / paper-queue caps → **warnings** (not GATE BLOCK); hard blocks: invalid plan, 0 shares, over cash, market gates.
+   - P0 / policy / paper-queue caps → **warnings** (not GATE BLOCK); hard blocks: **authoritative trade plan** (`broker_trade_plan_gate`), invalid geometry, 0 shares, over cash, market gates.
+   - Watchlist bridge **skips** symbols without `trade_plans` / strategy-card / confluence levels — no generic 2×R inserts.
    - **Request 2FA** → `POST /api/v2/broker-proposals/route` with operator trade packet → OTOCO bracket intent.
    - Card shows same trade packet on 2FA step; Telegram summary includes risk, investment, R:R.
    - Approve 2FA → `POST /api/v2/broker-proposals/route/confirm` submits Schwab OTOCO.
@@ -64,7 +65,8 @@ Every signal becomes a **broker-agnostic proposal** first. You choose how to exe
 ### Code touchpoints
 
 - `scripts/paper_trade_logger.py` — `promote_proposal_to_broker(..., operator_route=True)` on live route
-- `scripts/broker_promote_sizing.py` — `evaluate_broker_promote(..., operator_route=True)` — operator size authoritative
+- `scripts/broker_trade_plan_gate.py` — blocks live route without authoritative plan (never waived on operator route)
+- `scripts/broker_promote_sizing.py` — `evaluate_broker_promote(..., operator_route=True)` — operator size authoritative; trade-plan gate always enforced
 - `scripts/queue_router.py` — passes operator `trade` dict to Schwab route
 - `scripts/brokers/broker_entry_pilot.py` — `route_preview()`, `apply_route_trade()`, `request_route(trade=...)`
 - `scripts/brokers/approval_service.py` — 2FA/Telegram summary with risk, investment, R:R
