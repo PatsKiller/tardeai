@@ -268,16 +268,26 @@ def evaluate_broker_promote(
     quote: dict | None = None,
     shared_rules: dict | None = None,
     operator_route: bool = False,
+    proposal_id: int | None = None,
 ) -> dict:
     """Full pre-save evaluation: sizing caps + live market validation → PASS | WARN | BLOCK.
 
     operator_route=True (Path B desk): operator-edited size is authoritative — P0/policy/paper-queue
-    caps surface as warnings only; hard blocks are invalid plan, zero shares, cash, and market gates.
+    caps surface as warnings only; hard blocks are invalid plan, zero shares, cash, market, and
+    authoritative trade-plan gates (never waived — no gambling on generic 2R geometry).
     """
     from paper_trade_logger import validate_paper_proposal_live_market
 
     entry, stop, target = float(entry), float(stop), float(target)
     shares = int(shares)
+    trade_plan_gate: dict = {}
+    try:
+        import broker_trade_plan_gate as btpg
+        trade_plan_gate = btpg.assess_broker_trade_plan(
+            entry, stop, target, strategy_id, proposal_id=proposal_id,
+        )
+    except Exception:
+        trade_plan_gate = {"status": "BLOCK", "allowed": False, "violations": ["Trade plan gate error"]}
     sizing = compute_broker_sizing(
         account_key, strategy_id, entry, stop,
         desired_shares=shares, shared_rules=shared_rules,
@@ -286,6 +296,8 @@ def evaluate_broker_promote(
     max_shares = shares if operator_route else policy_max_shares
     violations: list[str] = []
     warnings: list[str] = []
+    violations.extend(trade_plan_gate.get("violations") or [])
+    warnings.extend(trade_plan_gate.get("warnings") or [])
 
     dollar_risk = round(abs(entry - stop) * shares, 2)
     dollar_size = round(shares * entry, 2)
@@ -379,6 +391,7 @@ def evaluate_broker_promote(
         "status": overall,
         "allowed": overall != "BLOCK",
         "operator_route": operator_route,
+        "trade_plan": trade_plan_gate,
         "sizing": sizing,
         "account_activity": activity,
         "max_shares": max_shares,

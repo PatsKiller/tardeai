@@ -154,7 +154,7 @@ def run_litmus(proposal_id: int, *, account: str | None = None, refresh: bool = 
             sizing = bps.compute_broker_sizing(acct, strat, entry, stop) or {}
             evaluation = bps.evaluate_broker_promote(
                 acct, strat, entry, stop, target, int(shares or 0), quote=qd,
-                operator_route=True,
+                operator_route=True, proposal_id=proposal_id,
             ) or {}
     except Exception:
         pass

@@ -4,6 +4,7 @@ import sys
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -11,8 +12,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import broker_promote_sizing as bps
 import account_policy as ap
 
+_PASS_TRADE_PLAN = {"status": "PASS", "allowed": True, "violations": [], "warnings": []}
+
 
 class TestBrokerPromoteSizing(unittest.TestCase):
+    def setUp(self):
+        self._tp_patch = unittest.mock.patch(
+            "broker_trade_plan_gate.assess_broker_trade_plan",
+            return_value=_PASS_TRADE_PLAN,
+        )
+        self._tp_patch.start()
+
+    def tearDown(self):
+        self._tp_patch.stop()
     def test_effective_policy_applies_momentum_scalp_live_rules(self):
         pol = bps.effective_policy_for_broker("schwab_taxable", "momentum_scalp")
         self.assertEqual(pol.get("max_notional_per_trade"), 2000)

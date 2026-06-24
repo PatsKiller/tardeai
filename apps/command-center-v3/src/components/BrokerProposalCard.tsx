@@ -102,11 +102,14 @@ export default function BrokerProposalCard({
   const oversized = Boolean(
     policyCap != null && savedShares && Number(savedShares) > Number(policyCap),
   ) && !operatorRoute
+  const tradePlanBlocked = Boolean(
+    evalData?.trade_plan?.status === 'BLOCK' || evalData?.trade_plan?.allowed === false,
+  )
   const hardGateViolations = sizingViolations.filter(
     (v: string) => !/exceed max|exceeds cap|SIZE_TOO_SMALL|policy cap|Operator/i.test(v),
   )
   const gateBlocked = !operatorRoute && (gate === 'BLOCK' || ovStatus === 'BLOCK')
-  const routeBlocked = hardGateViolations.length > 0 || savedShares < 1
+  const routeBlocked = hardGateViolations.length > 0 || savedShares < 1 || tradePlanBlocked
   const savedEcon = tradeEconomics(savedShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
   const capEcon = oversized && capShares > 0 && capShares !== savedShares
     ? tradeEconomics(capShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
@@ -555,7 +558,11 @@ export default function BrokerProposalCard({
           size="md"
           disabled={(routeBlocked && !fid) || routeBusy}
           onClick={onRoute}
-          title={routeBlocked ? 'Resolve hard blocks (cash, market) first' : (fid ? 'Record-only at Fidelity' : 'Review trade → request Schwab 2FA')}
+          title={routeBlocked
+            ? (tradePlanBlocked
+              ? 'No authoritative trade plan — run cards/bridge before live route'
+              : 'Resolve hard blocks (cash, market, trade plan) first')
+            : (fid ? 'Record-only at Fidelity' : 'Review trade → request Schwab 2FA')}
           style={fid ? { background: `${PURPLE}33`, color: PURPLE, border: `1px solid ${PURPLE}` } : { background: `${AMBER}22`, color: AMBER, border: `1px solid ${AMBER}` }}
         >
           {routeBusy ? '…' : fid ? 'Record proposal' : routeIntent ? 'Re-review route' : 'Auto route (2FA)'}

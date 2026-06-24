@@ -13226,6 +13226,7 @@ def _enrich_broker_proposal_row_light(row: dict) -> dict:
         if acct:
             ev = _bps.evaluate_broker_promote(
                 acct, strat, en, st, tg, int(sh or 0), quote=qd, operator_route=True,
+                proposal_id=int(pid) if pid else None,
             )
             ev = _merge_broker_oversight(ev, pid)
             row["evaluation"] = ev
@@ -13290,6 +13291,7 @@ def _enrich_broker_proposal_row(row: dict) -> dict:
         if acct:
             ev = _bps.evaluate_broker_promote(
                 acct, strat, en, st, tg, int(sh or 0), quote=qd, operator_route=True,
+                proposal_id=int(pid) if pid else None,
             )
             ev = _merge_broker_oversight(ev, pid)
             row["evaluation"] = ev
@@ -13769,7 +13771,9 @@ def _broker_refresh_prices(body: dict):
         tg = float(enriched.get("proposed_target1") or 0)
         sizing = bps.compute_broker_sizing(acct, strat, en, st) if acct and en and st else {}
         rec_sh = int(sizing.get("shares") or enriched.get("proposed_shares") or 0)
-        ev = bps.evaluate_broker_promote(acct, strat, en, st, tg, rec_sh, quote=quote) if acct else {}
+        ev = bps.evaluate_broker_promote(
+            acct, strat, en, st, tg, rec_sh, quote=quote, proposal_id=int(pid) if pid else None,
+        ) if acct else {}
         ev = _merge_broker_oversight(ev, pid) if ev else {}
         recal = {
             "recommended_shares": ev.get("recommended_shares") or rec_sh,
@@ -14027,7 +14031,7 @@ def _evaluate_broker_promote(body: dict):
     ev = bps.evaluate_broker_promote(
         acct, strategy_id or "momentum_scalp",
         float(entry), float(stop), float(target), int(shares),
-        quote=quote, operator_route=bool(op_route),
+        quote=quote, operator_route=bool(op_route), proposal_id=pid,
     )
     ev = _merge_broker_oversight(ev, pid)
     return {"ok": True, "data": ev, "quote": quote}
@@ -14106,7 +14110,7 @@ def _prepare_broker_promote(body: dict):
     evaluation = bps.evaluate_broker_promote(
         acct, strategy_id,
         float(rec_en or 0), float(rec_st or 0), float(rec_tg or 0),
-        int(rec_sh or 0), quote=quote,
+        int(rec_sh or 0), quote=quote, proposal_id=pid,
     )
     evaluation = _merge_broker_oversight(evaluation, pid)
     intel = {}

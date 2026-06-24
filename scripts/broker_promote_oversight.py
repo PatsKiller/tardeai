@@ -663,6 +663,15 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
     intel_dd = evaluate_intel_diligence(proposal_id)
     violations.extend(intel_dd.get("violations") or [])
     warnings.extend(intel_dd.get("warnings") or [])
+
+    try:
+        import broker_trade_plan_gate as btpg
+        tp_gate = btpg.assess_proposal_trade_plan(proposal_id)
+        violations.extend(tp_gate.get("violations") or [])
+        warnings.extend(tp_gate.get("warnings") or [])
+    except Exception:
+        violations.append("Trade plan gate unavailable — refresh before live route")
+
     violations = _dedupe(violations)
     warnings = _dedupe(warnings)
 
@@ -748,7 +757,7 @@ def build_promote_diligence_stages(
     intel_dd: dict | None = None,
     oversight: dict | None = None,
 ) -> list[dict]:
-    """Six-step broker promote maturity checklist."""
+    """Seven-step broker promote maturity checklist."""
     snap = snap or get_oversight_snapshot(proposal_id)
     intel_row = intel_row or _proposal_intel_row(proposal_id)
     if intel_dd is None:
@@ -837,7 +846,27 @@ def build_promote_diligence_stages(
         lanes = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
         cloud_stage = _stage("WARN" if lanes else "PENDING", "Not run", "Run Grok+ChatGPT (optional)")
 
-    # 6 Broker gate (oversight + sizing deferred to modal/account)
+    # 6 Trade plan (authoritative entry/stop/target — no generic 2R gambling)
+    try:
+        import broker_trade_plan_gate as btpg
+        tp_gate = btpg.assess_proposal_trade_plan(proposal_id)
+    except Exception:
+        tp_gate = {"status": "BLOCK", "violations": ["Trade plan gate error"], "plan_source": None}
+    if tp_gate.get("violations"):
+        trade_plan = _stage(
+            "BLOCK",
+            tp_gate["violations"][0][:80],
+            "Run materialize cards + bridge refresh or add trade_plans row",
+        )
+    elif tp_gate.get("warnings"):
+        trade_plan = _stage("WARN", tp_gate["warnings"][0][:80], "Refresh plan before live route")
+    elif tp_gate.get("status") == "PASS":
+        src = tp_gate.get("plan_source") or "authoritative"
+        trade_plan = _stage("PASS", f"Plan: {src}")
+    else:
+        trade_plan = _stage("BLOCK", "No authoritative plan", "Add trade_plans or strategy card levels")
+
+    # 7 Broker gate (oversight + sizing deferred to modal/account)
     ov_st = oversight.get("status") or "PASS"
     if ov_st == "BLOCK":
         broker = _stage("BLOCK", f"{len(oversight.get('violations') or [])} blocker(s)", "Resolve diligence blockers")
@@ -852,6 +881,7 @@ def build_promote_diligence_stages(
         {"id": "local_llm", "label": "AI Review", **llm},
         {"id": "research", "label": "Intel", **research},
         {"id": "cloud", "label": "Cloud", **cloud_stage},
+        {"id": "trade_plan", "label": "Trade plan", **trade_plan},
         {"id": "broker", "label": "Broker", **broker},
     ]
 
