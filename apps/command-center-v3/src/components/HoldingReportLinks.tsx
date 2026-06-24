@@ -1,4 +1,5 @@
-/** Inline prospectus report links for portfolio holding cards and drawer. */
+/** Inline prospectus report icon-links for portfolio holding + watchlist cards and drawer.
+ *  Icon links (PDF / Word / open / regenerate) with a rich hover tooltip showing date created etc. */
 import type { AnalystReportEntry } from '../hooks/useAnalystReportMap'
 
 type Props = {
@@ -8,53 +9,90 @@ type Props = {
   reportType?: 'symbol_holding' | 'symbol_watchlist'
 }
 
-const linkStyle = {
-  fontSize: 9,
-  fontWeight: 800,
+const iconBtn = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 22,
+  height: 18,
+  fontSize: 11,
+  lineHeight: 1,
   textDecoration: 'none' as const,
-  padding: '2px 7px',
   borderRadius: 4,
   cursor: 'pointer' as const,
 }
 
+function relTime(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const mins = Math.round((Date.now() - d.getTime()) / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
+}
+
+/** Multi-line native tooltip: date created + generation + editorial/oversight state. */
+function tooltip(sym: string, e?: AnalystReportEntry): string {
+  if (!e?.generated_at) return `Generate a summary prospectus for ${sym}`
+  const created = new Date(e.generated_at)
+  const lines = [
+    `${sym} — Analyst Prospectus`,
+    `Created: ${created.toLocaleString()} (${relTime(e.generated_at)})`,
+  ]
+  if (e.generation) lines.push(`Generation: #${e.generation}`)
+  if (e.recommendation) lines.push(`Stance: ${e.recommendation}`)
+  if (e.oversight_verdict) lines.push(`Cloud oversight: ${e.oversight_verdict}`)
+  lines.push(e.grok_edited ? 'Grok editorial: applied' : 'Grok editorial: none')
+  lines.push('Click PDF/Word to open · ↻ to regenerate')
+  return lines.join('\n')
+}
+
 export default function HoldingReportLinks({ symbol, entry, compact, reportType }: Props) {
   const sym = symbol.toUpperCase()
-  const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const stop = (ev: React.MouseEvent) => ev.stopPropagation()
   const rtype = reportType || entry?.report_type || 'symbol_holding'
   const buildHref = `/v3/reports?symbol=${encodeURIComponent(sym)}&type=${rtype}`
-  const dateHint = entry?.generated_at
-    ? `Generated ${new Date(entry.generated_at).toLocaleString()}${entry.grok_edited ? ' · Grok edited' : ''}`
-    : 'Generate summary prospectus'
+  const tip = tooltip(sym, entry)
 
+  // No report yet → single "generate" icon-link that opens Reports (on-the-fly execution).
   if (!entry?.docx && !entry?.pdf) {
     return (
       <a
         href={buildHref}
         onClick={stop}
-        title="Open Analyst Reports — generate holding prospectus"
-        style={{ ...linkStyle, color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)' }}
+        title={tip}
+        aria-label={`Generate analyst prospectus for ${sym}`}
+        style={{ ...iconBtn, width: 'auto', padding: '0 7px', gap: 4, color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 9 }}
       >
-        {compact ? '📄 Report' : '📄 Generate report →'}
+        📄{compact ? '' : ' Generate'}
       </a>
     )
   }
 
+  const verdictColor =
+    entry.oversight_verdict === 'BLOCK' ? '#ef4444'
+    : entry.oversight_verdict === 'PUBLISH' ? '#22c55e'
+    : '#f59e0b'
+
   return (
-    <span
-      onClick={stop}
-      title={dateHint}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
-    >
-      <span style={{ fontSize: 8.5, fontWeight: 850, color: '#22c55e', letterSpacing: '.03em' }}>PROSPECTUS</span>
+    <span onClick={stop} title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span
+        aria-hidden
+        title={tip}
+        style={{ width: 6, height: 6, borderRadius: '50%', background: verdictColor, flex: '0 0 auto' }}
+      />
       {entry.pdf && (
         <a
           href={entry.pdf}
           target="_blank"
           rel="noreferrer"
           onClick={stop}
-          style={{ ...linkStyle, color: '#f59e0b', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)' }}
+          aria-label={`Open ${sym} prospectus PDF`}
+          title={tip}
+          style={{ ...iconBtn, color: '#f59e0b', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)' }}
         >
-          PDF
+          📕
         </a>
       )}
       {entry.docx && (
@@ -63,19 +101,25 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           target="_blank"
           rel="noreferrer"
           onClick={stop}
-          style={{ ...linkStyle, color: '#60a5fa', background: 'rgba(96,165,250,.12)', border: '1px solid rgba(96,165,250,.35)' }}
+          aria-label={`Open ${sym} prospectus Word`}
+          title={tip}
+          style={{ ...iconBtn, color: '#60a5fa', background: 'rgba(96,165,250,.12)', border: '1px solid rgba(96,165,250,.35)' }}
         >
-          Word
+          📘
         </a>
       )}
       <a
         href={buildHref}
         onClick={stop}
-        title="Regenerate or preview in Reports"
-        style={{ ...linkStyle, color: '#94a3b8', background: 'transparent', border: '1px solid var(--border)', fontSize: 8 }}
+        aria-label={`Regenerate ${sym} prospectus`}
+        title={`Regenerate / preview ${sym} in Reports`}
+        style={{ ...iconBtn, color: '#94a3b8', background: 'transparent', border: '1px solid var(--border)' }}
       >
         ↻
       </a>
+      {!compact && (
+        <span style={{ fontSize: 7.5, color: '#64748b', whiteSpace: 'nowrap' }}>{relTime(entry.generated_at)}</span>
+      )}
     </span>
   )
 }

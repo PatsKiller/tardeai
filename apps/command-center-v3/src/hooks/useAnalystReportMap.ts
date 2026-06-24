@@ -9,6 +9,8 @@ export type AnalystReportEntry = {
   grok_edited?: boolean
   recommendation?: string
   report_type?: 'symbol_holding' | 'symbol_watchlist'
+  generation?: number
+  oversight_verdict?: string
 }
 
 export function useAnalystReportMap(): Record<string, AnalystReportEntry> {
