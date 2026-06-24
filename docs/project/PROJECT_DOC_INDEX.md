@@ -1,3 +1,10 @@
+## Analyst Prospectus RC1 — Full Coverage, Card Links, Urgent Cadence (2026-06-24)
+| Document | Purpose |
+|----------|---------|
+| `docs/reporting/REPORTING_ENGINE.md` | **Reporting module** (updated): RC1 batch tiers (`engine`/`oversight`), card icon-links + tooltip, refresh cadence table (weekly Grok+ChatGPT / urgent-email / monthly Claude / prewarm) |
+| `scripts/analyst_urgent_refresh.py` | Off-cycle urgent-change detector — regenerates rec-flipped holdings + emails operator the PDFs (cron 07:35 weekdays) |
+| `apps/command-center-v3/src/components/HoldingReportLinks.tsx` | Card icon-links (PDF/Word/regenerate) + rich date-created hover tooltip on Portfolio + Watchlist hubs |
+
 ## Analyst Prospectus v4 — Sell-Side Design Re-platform + Depth (2026-06-24)
 | Document | Purpose |
 |----------|---------|
