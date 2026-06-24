@@ -13175,6 +13175,18 @@ def _broker_proposal_row_base(
     else:
         row["routing_path"] = "paper_auto"           # autonomous Alpaca paper (backend maturation)
     sym = str(row.get("symbol") or "").upper()
+    # Surface rvol/gap/catalyst at top level so the card's meme/high-risk banner fires in the LIST
+    # (no detail-load required). Banner reads p.rvol / p.gap_pct / p.catalyst directly.
+    try:
+        row["rvol"] = float(row["rvol"]) if row.get("rvol") is not None else None
+    except Exception:
+        row["rvol"] = None
+    try:
+        row["gap_pct"] = float(row["gap_pct"]) if row.get("gap_pct") is not None else None
+    except Exception:
+        row["gap_pct"] = None
+    _catraw = row.get("catalyst")
+    row["catalyst"] = str(_catraw)[:300] if _catraw else None
     sh = float(row.get("proposed_shares") or 0)
     en = float(row.get("proposed_entry") or 0)
     st = float(row.get("proposed_stop") or 0)
@@ -13608,7 +13620,7 @@ def _broker_proposals(query=None):
                        COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
                        proposed_entry, proposed_stop, proposed_target1, current_price,
                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                       created_at, expires_at, updated_at,
+                       created_at, expires_at, updated_at, rvol, gap_pct, catalyst,
                        last_curated_at, curation_status, curation_snapshot, technical_context
                   FROM paper_trade_proposals
                  WHERE {where_sql}

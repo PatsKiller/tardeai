@@ -288,6 +288,29 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     rvol = row.get("rvol") or row.get("scan_rvol")
     gap_pct = row.get("gap_pct") or row.get("scan_gap_pct")
 
+    # Social / meme-momentum signal — Hermes momentum_catalyst research (Reddit/StockTwits discovery).
+    # Surfacing this on the proposal lets the card's meme/high-risk banner fire even when the proposal
+    # itself came from a non-social strategy (e.g. fib bounce) but the symbol is socially pumping.
+    social_flag = False
+    social_sources = None
+    social_summary = None
+    try:
+        soc = _q(
+            """SELECT summary, confidence_score FROM hermes_research_intelligence
+               WHERE symbol=%s AND research_type='momentum_catalyst'
+                 AND created_at > NOW() - INTERVAL '36 hours'
+               ORDER BY created_at DESC LIMIT 1""",
+            (sym,), one=True,
+        )
+        if soc and soc.get("summary"):
+            social_flag = True
+            social_summary = str(soc.get("summary"))[:200]
+            import re as _re
+            m = _re.search(r"(\d+)\s+sources", social_summary)
+            social_sources = int(m.group(1)) if m else None
+    except Exception:
+        social_flag = False
+
     rsi = vwap_dist = None
     ind_result = row.get("ind_full_result")
     if isinstance(ind_result, str):
@@ -435,6 +458,11 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
             "confidence": float(row["catalyst_confidence"]) if row.get("catalyst_confidence") is not None else None,
             "critic_verdict": row.get("critic_verdict"),
             "critic_reasoning": (str(row.get("critic_reasoning") or ""))[:600] or None,
+            "rvol": float(rvol) if rvol else None,
+            "gap_pct": float(gap_pct) if gap_pct else None,
+            "social": social_flag,
+            "social_sources": social_sources,
+            "social_summary": social_summary,
         },
         "technicals": {
             "summary": " · ".join(tech_parts) if tech_parts else row.get("technical_summary"),
