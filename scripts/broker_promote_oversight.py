@@ -16,9 +16,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-REQUIRED_AGENTS = ("maria", "risk_agent", "steph")
-BLOCK_VOTES = frozenset({"BLOCK"})
-WARN_VOTES = frozenset({"REJECT", "CAUTIOUS_TEST", "WAIT_FOR_DATA"})
+# Config-driven (env override) — no hardcoded gate roster (per no-hardcoded-values rule).
+REQUIRED_AGENTS = tuple(
+    a.strip() for a in os.getenv("BROKER_REQUIRED_AGENTS", "maria,risk_agent,steph").split(",") if a.strip()
+)
+BLOCK_VOTES = frozenset(v.strip().upper() for v in os.getenv("BROKER_BLOCK_VOTES", "BLOCK").split(",") if v.strip())
+WARN_VOTES = frozenset(
+    v.strip().upper() for v in os.getenv("BROKER_WARN_VOTES", "REJECT,CAUTIOUS_TEST,WAIT_FOR_DATA").split(",") if v.strip()
+)
 WATCHLIST_REC_TO_VOTE = {
     "BUY": "APPROVE_TEST",
     "HOLD": "CAUTIOUS_TEST",
@@ -684,6 +689,9 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         violations.append("Grok/ChatGPT cloud review DISAGREE with local thesis")
     elif cloud_status == "caution" and lanes_ok >= 1:
         warnings.append("Grok/ChatGPT cloud review CAUTION — review concerns before sending")
+    elif cloud_status in ("disagree", "caution") and lanes_ok < 1:
+        # Fail-closed (visible): a verdict with 0 usable lanes is inconclusive, not a silent pass.
+        warnings.append("Cloud oversight INCONCLUSIVE — 0 lanes returned a usable verdict; re-run Grok+ChatGPT before sending")
     elif cloud_status == "running":
         warnings.append("Cloud oversight running (Grok+ChatGPT) — refresh in a minute")
     elif cloud_status in ("not_run", "unknown", ""):
