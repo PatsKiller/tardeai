@@ -32,16 +32,16 @@ from scalp_ws_client import broadcast_scalp_update
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s")
 logger = logging.getLogger(__name__)
 
-# --- Config ---
-LOOKBACK_HOURS = 18
-MIN_MENTIONS = 2
-GO_THRESHOLD = 40
-APLUS_THRESHOLD = 48
-DEDUP_MINUTES = 90
-MAX_CANDIDATES = 15
+# --- Config (env-tunable; defaults preserve prior behavior) ---
+LOOKBACK_HOURS      = int(os.getenv("SCALP_LOOKBACK_HOURS", "18"))       # social_posts window
+MIN_MENTIONS        = int(os.getenv("SCALP_MIN_MENTIONS", "2"))          # min ticker mentions to consider
+GO_THRESHOLD        = int(os.getenv("SCALP_GO_THRESHOLD", "40"))         # GO alert floor (of 55)
+APLUS_THRESHOLD     = int(os.getenv("SCALP_APLUS_THRESHOLD", "48"))      # A+ alert floor
+DEDUP_MINUTES       = int(os.getenv("SCALP_DEDUP_MINUTES", "90"))        # suppress re-alert window
+MAX_CANDIDATES      = int(os.getenv("SCALP_MAX_CANDIDATES", "15"))       # top-N by mentions per run
 
-SKIP_IF_PRICE_ABOVE = 50.0
-SKIP_IF_FLOAT_ABOVE = 200  # millions
+SKIP_IF_PRICE_ABOVE = float(os.getenv("SCALP_SKIP_IF_PRICE_ABOVE", "50.0"))   # $ — above → route to portfolio
+SKIP_IF_FLOAT_ABOVE = float(os.getenv("SCALP_SKIP_IF_FLOAT_ABOVE", "200"))    # millions of shares
 
 PORTFOLIO_ROUTE_TAGS = {"retirement_income", "dividend_growth"}
 
