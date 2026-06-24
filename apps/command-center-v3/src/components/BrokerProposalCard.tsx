@@ -121,6 +121,9 @@ export default function BrokerProposalCard({
   )
   const gateBlocked = !operatorRoute && (gate === 'BLOCK' || ovStatus === 'BLOCK')
   const routeBlocked = hardGateViolations.length > 0 || savedShares < 1 || tradePlanBlocked
+  // The card's left-section blocker box renders the consolidated ⛔ list. When it does, suppress
+  // the duplicate ⛔/⚠ list inside BrokerIntelPanel's AI-oversight block so blockers show once.
+  const cardShowsBlockers = gateBlocked || (!operatorRoute && oversized) || hardGateViolations.length > 0
   const savedEcon = tradeEconomics(savedShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
   const capEcon = oversized && capShares > 0 && capShares !== savedShares
     ? tradeEconomics(capShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
@@ -196,11 +199,11 @@ export default function BrokerProposalCard({
               ${liveQ.price.toFixed(2)}
             </span>
             {liveQ.driftPct != null && (
-              <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'ui-monospace, monospace', color: driftColor }}>
+              <span style={{ fontSize: 15, fontWeight: 800, fontFamily: 'ui-monospace, monospace', color: driftColor }}>
                 {liveQ.driftPct >= 0 ? '+' : ''}{liveQ.driftPct.toFixed(2)}%
               </span>
             )}
-            <span style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
               {liveQ.label}
             </span>
           </div>
@@ -209,17 +212,17 @@ export default function BrokerProposalCard({
         )}
         <span
           title={tickerCtx.strategyPurpose || p.strategy_id}
-          style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
+          style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
         >
           {tickerCtx.strategyDisplay}
         </span>
         {tickerCtx.strategyTypeLabel && (
-          <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
             {tickerCtx.strategyTypeLabel}
           </span>
         )}
         {tickerCtx.signalGrade && (
-          <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
+          <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
             {tickerCtx.signalGrade} grade
           </span>
         )}
@@ -285,66 +288,65 @@ export default function BrokerProposalCard({
         borderBottom: '1px solid rgba(148,163,184,.1)',
         background: 'rgba(15,23,42,.45)',
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-        gap: '10px 18px',
-        fontSize: 10,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '12px 20px',
+        fontSize: 11,
       }}>
         <div>
-          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Strategy</div>
-          <div style={{ fontWeight: 800, color: '#fb923c' }}>{tickerCtx.strategyDisplay}</div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Strategy</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#fb923c' }}>{tickerCtx.strategyDisplay}</div>
           {tickerCtx.resolvedStrategyId && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
               id {tickerCtx.resolvedStrategyId}
               {tickerCtx.watchlistSleeve ? ` · sleeve ${tickerCtx.watchlistSleeve}` : ''}
             </div>
           )}
           {tickerCtx.strategyPurpose && (
-            <div style={{ fontSize: 9, color: TEXT1, marginTop: 3, lineHeight: 1.4 }}>{tickerCtx.strategyPurpose}</div>
+            <div style={{ fontSize: 10.5, color: TEXT1, marginTop: 3, lineHeight: 1.4 }}>{tickerCtx.strategyPurpose}</div>
           )}
           {tickerCtx.strategyMisaligned && (
-            <div style={{ fontSize: 9, color: AMBER, marginTop: 4, fontWeight: 700 }}>
+            <div style={{ fontSize: 10, color: AMBER, marginTop: 4, fontWeight: 700 }}>
               Sleeve label ≠ executable strategy — exits use resolved YAML policy
             </div>
           )}
         </div>
         <div>
-          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Exit plan</div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Exit plan</div>
           {tickerCtx.exitSummary ? (
-            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.exitSummary}</div>
+            <div style={{ fontSize: 11, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.exitSummary}</div>
           ) : intel?.exit_plan?.summary ? (
-            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{intel.exit_plan.summary}</div>
+            <div style={{ fontSize: 11, color: TEXT1, lineHeight: 1.45 }}>{intel.exit_plan.summary}</div>
           ) : (
-            <div style={{ fontSize: 9, color: RED, fontWeight: 700 }}>Generic 5% stop / 2R — refresh watchlist bridge</div>
+            <div style={{ fontSize: 10.5, color: RED, fontWeight: 700 }}>Generic 5% stop / 2R — refresh watchlist bridge</div>
           )}
           {(tickerCtx.exitRationale?.stop_method || intel?.exit_plan?.rationale?.stop_method) && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 3, fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 3, fontFamily: 'monospace' }}>
               stop {String(tickerCtx.exitRationale?.stop_method || intel?.exit_plan?.rationale?.stop_method)}
               {' · '}target {String(tickerCtx.exitRationale?.target_method || intel?.exit_plan?.rationale?.target_method)}
-              {' · '}policy R:R {String(tickerCtx.exitRationale?.target_rr_policy ?? intel?.exit_plan?.rationale?.target_rr_policy ?? '—')}
             </div>
           )}
         </div>
         <div>
-          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Sector</div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Sector</div>
           {(tickerCtx.sector || tickerCtx.industry) ? (
-            <div style={{ fontWeight: 700, color: TEXT0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT0 }}>
               {[tickerCtx.sector, tickerCtx.industry].filter(Boolean).join(' · ')}
             </div>
           ) : (
-            <div style={{ fontWeight: 700, color: RED }}>Sector missing</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: RED }}>Sector missing</div>
           )}
           {tickerCtx.instrumentType && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>{tickerCtx.instrumentType}</div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{tickerCtx.instrumentType}</div>
           )}
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
-          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Company</div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Company</div>
           {tickerCtx.companyLine ? (
-            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.companyLine}</div>
+            <div style={{ fontSize: 11, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.companyLine}</div>
           ) : detailLoading ? (
-            <div style={{ fontSize: 9, color: MUTED, fontStyle: 'italic' }}>Loading company profile…</div>
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Loading company profile…</div>
           ) : (
-            <div style={{ fontSize: 9, color: MUTED, fontStyle: 'italic' }}>No company profile — run Enrich on paper proposal</div>
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>No company profile — run Enrich on paper proposal</div>
           )}
         </div>
       </div>
@@ -381,12 +383,12 @@ export default function BrokerProposalCard({
             />
           )}
           {p.refreshed_at && (
-            <div style={{ fontSize: 8.5, color: MUTED, marginTop: 6 }}>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>
               Refreshed {p.refreshed_at}{p.quote_provider ? ` · ${p.quote_provider}` : ''}
             </div>
           )}
           {(p.support_1 != null || p.resistance_1 != null) && (
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {p.support_1 != null && (
                 <span>Support <b style={{ color: GREEN, fontFamily: 'monospace' }}>${Number(p.support_1).toFixed(2)}</b></span>
               )}
@@ -397,7 +399,7 @@ export default function BrokerProposalCard({
             </div>
           )}
           {(p.last_curated_at || p.curation_status) && (
-            <div style={{ fontSize: 8.5, color: MUTED, marginTop: 4 }}>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
               Curated {p.last_curated_at ? String(p.last_curated_at).slice(0, 19).replace('T', ' ') : '—'}
               {p.curation_status && (
                 <span style={{
@@ -412,21 +414,21 @@ export default function BrokerProposalCard({
             marginTop: 10, padding: '8px 10px', borderRadius: 8,
             background: oversized ? 'rgba(239,68,68,.06)' : 'rgba(15,23,42,.4)',
             border: `1px solid ${oversized ? 'rgba(239,68,68,.25)' : 'rgba(148,163,184,.15)'}`,
-            fontSize: 10,
+            fontSize: 11,
           }}>
-            <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Route size</div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Route size</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'baseline' }}>
               <span style={{ color: TEXT0 }}>
                 <b style={{ fontFamily: 'monospace' }}>Route:</b> {savedShares.toLocaleString()} sh
                 {p.account && p.account !== dest ? ` · routed ${p.account}` : ''}
               </span>
               {evalData?.policy_max_shares != null && (
-                <span style={{ color: MUTED, fontSize: 9.5 }}>
+                <span style={{ color: MUTED, fontSize: 10 }}>
                   policy ref {Number(evalData.policy_max_shares).toLocaleString()} sh
                 </span>
               )}
             </div>
-            <div style={{ marginTop: 6, color: MUTED, fontSize: 9.5 }}>
+            <div style={{ marginTop: 6, color: MUTED, fontSize: 10 }}>
               <b>Auto route (2FA)</b> opens review — edit shares/prices/risk before requesting approval.
             </div>
           </div>
@@ -436,7 +438,7 @@ export default function BrokerProposalCard({
               {(evalData.warnings || []).map((w: string, i: number) => <div key={i}>⚠ {w}</div>)}
             </div>
           )}
-          {(gateBlocked || (!operatorRoute && oversized) || hardGateViolations.length > 0) && (() => {
+          {cardShowsBlockers && (() => {
             const blockers: string[] = [
               ...hardGateViolations,
               ...(!operatorRoute ? (ov.violations || []) : []),
@@ -464,38 +466,38 @@ export default function BrokerProposalCard({
 
           <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             <div style={metricBox}>
-              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
+              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
                 {savedEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
               </div>
-              <div style={{ fontSize: 9, color: MUTED }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
+              <div style={{ fontSize: 10, color: MUTED }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
             </div>
             <div style={metricBox}>
-              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ queued</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(savedEcon.max_risk)}</div>
-              <div style={{ fontSize: 9, color: MUTED }}>invest {fmtMoney(savedEcon.investment)}</div>
+              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ queued</div>
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(savedEcon.max_risk)}</div>
+              <div style={{ fontSize: 10, color: MUTED }}>invest {fmtMoney(savedEcon.investment)}</div>
             </div>
             <div style={metricBox}>
-              <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ tgt</div>
-              <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(savedEcon.profit_at_target)}</div>
-              <div style={{ fontSize: 9, color: MUTED }}>R:R {p.live_rr ?? p.proposed_rr ?? '—'}{p.live_rr ? ' live' : ''}</div>
+              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ tgt</div>
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(savedEcon.profit_at_target)}</div>
+              <div style={{ fontSize: 10, color: MUTED }}>R:R {p.live_rr ?? p.proposed_rr ?? '—'}{p.live_rr ? ' live' : ''}</div>
             </div>
           </div>
           {capEcon && (
             <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 8, opacity: 0.92 }}>
               <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
-                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>If resized to cap</div>
-                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>
+                <div style={{ fontSize: 10, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>If resized to cap</div>
+                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>
                   {capEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
                 </div>
               </div>
               <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
-                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ cap</div>
-                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>{fmtMoney(capEcon.max_risk)}</div>
+                <div style={{ fontSize: 10, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ cap</div>
+                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>{fmtMoney(capEcon.max_risk)}</div>
               </div>
               <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
-                <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ cap</div>
-                <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>+{fmtMoney(capEcon.profit_at_target)}</div>
+                <div style={{ fontSize: 10, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ cap</div>
+                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>+{fmtMoney(capEcon.profit_at_target)}</div>
               </div>
             </div>
           )}
@@ -527,6 +529,8 @@ export default function BrokerProposalCard({
           onRunCloudOversight={onRunCloudOversight}
           oversightBusy={oversightBusy}
           cloudBusy={cloudBusy}
+          suppressViolationList={cardShowsBlockers}
+          suppressStrategyPurpose
         />
         {oversightMsg && (
           <div style={{ fontSize: 9.5, marginTop: 6, color: oversightMsg.startsWith('✅') ? GREEN : AMBER }}>{oversightMsg}</div>

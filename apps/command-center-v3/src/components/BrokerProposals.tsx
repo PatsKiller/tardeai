@@ -736,7 +736,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 1180, marginInline: 'auto' }}>
       {modalSeed && (
         <ManualExecutionModal seed={modalSeed} onClose={() => setModalSeed(null)} onLogged={refreshAll} />
       )}
@@ -760,8 +760,6 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
       )}
 
-      <ExecutionPathsStrip variant="live" />
-
       <QueueHealthPanel onRequeued={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }} />
 
       {!!data?.hygiene?.changed && (
@@ -772,11 +770,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Proposals — Unified Queue</div>
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-            All proposals — broker-routed (Path B) <b style={{ color: BLUE }}>+</b> paper proposals (badged <span style={{ color: '#2dd4bf', fontWeight: 700 }}>PROPOSAL</span>) · use the Type filter to narrow · thesis band + cloud oversight before route
+          <div style={{ fontSize: 11, color: MUTED }}>
+            broker-routed (Path B) <b style={{ color: BLUE }}>+</b> paper <span style={{ color: '#2dd4bf', fontWeight: 700 }}>PROPOSAL</span> · live thesis + cloud oversight before route
           </div>
+          <details style={{ fontSize: 11 }}>
+            <summary style={{ cursor: 'pointer', color: BLUE, fontWeight: 700, listStyle: 'none', userSelect: 'none' }} title="Path A / Path B execution paths">ⓘ paths</summary>
+            <div style={{ marginTop: 8, maxWidth: 520 }}>
+              <ExecutionPathsStrip variant="live" />
+            </div>
+          </details>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
