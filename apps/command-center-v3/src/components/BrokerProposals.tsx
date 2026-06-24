@@ -236,19 +236,21 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     if (freshOv && Object.keys(freshOv).length) {
       merged.oversight = freshOv
       merged.evaluation = { ...(merged.evaluation || raw.evaluation || {}), oversight: freshOv }
-      const baseIntel = merged.intel || raw.intel
+      const baseIntel = detail.intel || merged.intel || raw.intel
       if (baseIntel?.ok === true) {
         merged.intel = {
           ...baseIntel,
           oversight: pickFreshOversight(freshOv, baseIntel.oversight),
           agent_reviews: freshOv.agents?.reviews || baseIntel.agent_reviews || [],
         }
-      } else {
+      } else if (!baseIntel?.lazy) {
         merged.intel = {
           ok: true,
           oversight: freshOv,
           agent_reviews: freshOv.agents?.reviews || [],
         }
+      } else {
+        merged.intel = baseIntel
       }
     }
     const preview = acctPreview[raw.id]
