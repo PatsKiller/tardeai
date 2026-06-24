@@ -339,44 +339,20 @@ def _reports_analyst_validate(query=None):
 
 
 def _reports_analyst_eligible(query=None):
-    """GET /api/v2/reports/analyst/eligible — all holdings + eligible watchlist due for prospectus."""
+    """GET /api/v2/reports/analyst/eligible — all holdings + eligible watchlist due for prospectus.
+
+    Served from a pre-warmed disk TTL cache (R0) so the heavy per-symbol fingerprinting never blocks
+    the single-threaded server. `?fresh=1` forces a recompute.
+    """
     import sys as _s
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
     import reporting_engine as _re
-    rows = _re.eligible_holding_symbols()
-    wl_rows = _re.eligible_watchlist_symbols(limit=int((query or {}).get("watchlist_limit", 120) or 120))
-    reg = _re.load_registry()
-    from report_lineage import canonical_registry_map
-    by_holding = canonical_registry_map(reg.get("reports") or [], "symbol_holding")
-    by_watchlist = canonical_registry_map(reg.get("reports") or [], "symbol_watchlist")
-    stale_days = int((query or {}).get("stale_days") or 6)
-    for row in rows:
-        prev = by_holding.get(row["symbol"])
-        needs, reason = _re.prospectus_needs_refresh(
-            prev, row["fingerprint"], stale_days=stale_days,
-        )
-        row["needs_refresh"] = needs
-        row["refresh_reason"] = reason
-        row["last_generated"] = (prev or {}).get("generated_at")
-        row["report_type"] = "symbol_holding"
-    for row in wl_rows:
-        prev = by_watchlist.get(row["symbol"])
-        needs, reason = _re.prospectus_needs_refresh(
-            prev, row["fingerprint"], stale_days=stale_days,
-        )
-        row["needs_refresh"] = needs
-        row["refresh_reason"] = reason
-        row["last_generated"] = (prev or {}).get("generated_at")
-        row["report_type"] = "symbol_watchlist"
-    return {
-        "eligible": rows,
-        "watchlist_eligible": wl_rows,
-        "count": len(rows),
-        "watchlist_count": len(wl_rows),
-        "needs_refresh": sum(1 for r in rows if r.get("needs_refresh"))
-            + sum(1 for r in wl_rows if r.get("needs_refresh")),
-        "stale_days": stale_days,
-    }
+    q = query or {}
+    return _re.eligible_report_payload(
+        stale_days=int(q.get("stale_days") or 6),
+        watchlist_limit=int(q.get("watchlist_limit", 120) or 120),
+        use_cache=str(q.get("fresh") or "").lower() not in ("1", "true", "yes"),
+    )
 
 
 def _reports_analyst_symbols(query=None):
@@ -10286,6 +10262,12 @@ def _paper_proposals_enriched():
             pass
 
         pending_list = [p for p in proposals if p.get('status') == 'PENDING']
+        try:
+            from proposal_routing import counts_toward_promotion_cap as _counts_cap
+        except Exception:
+            _counts_cap = lambda _p: True
+        review_pending_list = [p for p in pending_list if _counts_cap(p)]
+        broker_desk_count = len(pending_list) - len(review_pending_list)
 
         # Strategy performance from closed paper trades
         strategy_perf = {}
@@ -10657,12 +10639,13 @@ def _paper_proposals_enriched():
                 ) if ready_count == 0 and len(pending_list) > 0 else None,
                 "incubator_diagnostics": {
                     "ready_count": incubator_ready_count,
-                    "pending_proposals": len(pending_list),
+                    "pending_proposals": len(review_pending_list),
+                    "broker_desk_excluded": broker_desk_count,
                     "pending_limit": 20,
-                    "headroom": max(0, 20 - len(pending_list)),
+                    "headroom": max(0, 20 - len(review_pending_list)),
                     "last_promotion_run": last_promotion_run,
                     "promotion_blocked_reason": (
-                        "Pending proposals at limit (20)" if len(pending_list) >= 20
+                        "Review queue at limit (20)" if len(review_pending_list) >= 20
                         else "No incubator candidates ready" if incubator_ready_count == 0
                         else None
                     ),
@@ -13695,6 +13678,33 @@ def _broker_refresh_prices(body: dict):
     enriched["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
     enriched["quote_provider"] = quote.get("provider")
     return {"ok": True, "data": enriched, "recalibration": recal}
+
+
+def _broker_validate_trade(body: dict):
+    """POST /api/v2/broker-proposals/validate — litmus test: live quote, thesis band, R:R, gates, cloud snapshot."""
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    acct = str(b.get("account") or "").strip() or None
+    refresh = str(b.get("refresh", "1")).lower() not in ("0", "false", "no")
+    try:
+        import broker_trade_litmus as litmus
+        result = litmus.run_litmus(pid, account=acct, refresh=refresh)
+        if not result.get("ok"):
+            return result
+        data = dict(result)
+        if str(b.get("run_cloud", "")).lower() in ("1", "true", "yes"):
+            try:
+                import broker_promote_oversight as bpo
+                cloud = bpo.run_cloud_oversight(pid, timeout=int(b.get("timeout") or 120))
+                data["cloud_run"] = cloud
+                data["oversight"] = bpo.evaluate_oversight(pid, cloud=cloud if cloud.get("ok") else None)
+            except Exception as e:
+                data["cloud_run"] = {"ok": False, "error": str(e)[:160]}
+        return {"ok": True, "data": data, "litmus": data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def _broker_refresh_prices_batch(body: dict):
@@ -22539,6 +22549,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return (200 if res.get("ok") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/validate":
+            try:
+                res = _broker_validate_trade(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
 
         if base_path == "/api/v2/broker-proposals/prepare-promote":
             try:
