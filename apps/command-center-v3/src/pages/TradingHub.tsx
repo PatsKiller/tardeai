@@ -5,7 +5,8 @@ import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
-import ProposalsRich from '../components/ProposalsRich'
+// ProposalsRich retired — the old "Proposals" tab now renders the unified <BrokerProposals/>.
+// Kept in the repo (src/components/ProposalsRich.tsx) for reference / fallback; intentionally unused here.
 import BrokerOrders from '../components/BrokerOrders'
 import TimeExitProposals from '../components/TimeExitProposals'
 import ATMControlPanel from '../components/ATMControlPanel'
@@ -16,7 +17,7 @@ import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Broker Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -25,7 +26,9 @@ export default function TradingHub({ onDrill }: Props) {
   // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
   // message links the operator straight to the exact order item.
   const [searchParams] = useSearchParams()
-  const urlTab = searchParams.get('tab')
+  // Proposals unified into a single tab — old "Broker Proposals" deep-links land on "Proposals".
+  const rawUrlTab = searchParams.get('tab')
+  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals' : rawUrlTab
   const [tab, setTab] = useState<typeof TABS[number]>(
     (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
@@ -33,7 +36,7 @@ export default function TradingHub({ onDrill }: Props) {
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
-  const brokerDesk = tab === 'Broker Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
+  const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
@@ -89,7 +92,7 @@ export default function TradingHub({ onDrill }: Props) {
       </div>
 
       {/* Readiness bar */}
-      {readiness && tab !== 'Broker Proposals' && tab !== 'Broker Orders' && (
+      {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
           <span style={{ color: 'var(--text3)' }}>Paper Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
@@ -100,7 +103,7 @@ export default function TradingHub({ onDrill }: Props) {
           <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 9 }}>LIVE BLOCKED</span>
         </div>
       )}
-      {tab === 'Broker Proposals' && (
+      {tab === 'Proposals' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, fontSize: 10, color: '#fbbf24' }}>
           Path B operator route — P0/paper caps are advisory only. <b>Auto route (2FA)</b> opens trade review (edit size/risk) before Schwab approval.
         </div>
@@ -343,8 +346,7 @@ export default function TradingHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Proposals' && <ProposalsRich onOpenBrokerProposals={() => setTab('Broker Proposals')} />}
-      {tab === 'Broker Proposals' && <BrokerProposals focusSymbol={searchParams.get('symbol') || undefined} />}
+      {tab === 'Proposals' && <BrokerProposals focusSymbol={searchParams.get('symbol') || undefined} />}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
       {tab === 'Schwab Accounts' && (
         <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />

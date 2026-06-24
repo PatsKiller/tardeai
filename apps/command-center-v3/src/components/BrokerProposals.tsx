@@ -24,6 +24,7 @@ type ListFilters = {
   page: number
   pageSize: number
   sort: string
+  kind: string
   source: string
   zone: string
   account: string
@@ -35,6 +36,7 @@ const DEFAULT_FILTERS: ListFilters = {
   page: 1,
   pageSize: 15,
   sort: 'priority',
+  kind: 'all',
   source: '',
   zone: '',
   account: '',
@@ -61,6 +63,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       ? RR_PRESET_SORT[listFilters.rrPreset]
       : listFilters.sort
     if (sort) p.set('sort', sort)
+    if (listFilters.kind && listFilters.kind !== 'all') p.set('kind', listFilters.kind)
     if (listFilters.source) p.set('source', listFilters.source)
     if (listFilters.zone) p.set('zone', listFilters.zone)
     if (listFilters.account) p.set('account', listFilters.account)
@@ -717,9 +720,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Live Broker Queue</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Proposals — Unified Queue</div>
           <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-            Path B — Schwab auto/manual · Fidelity FA manual · thesis band + cloud oversight before route
+            All proposals — broker-routed (Path B) <b style={{ color: BLUE }}>+</b> paper proposals (badged <span style={{ color: '#2dd4bf', fontWeight: 700 }}>PROPOSAL</span>) · use the Type filter to narrow · thesis band + cloud oversight before route
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -818,6 +821,14 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             </select>
           </label>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            Type
+            <select style={sel} value={listFilters.kind} onChange={e => patchFilters({ kind: e.target.value })}>
+              <option value="all">All</option>
+              <option value="broker">Broker-routed</option>
+              <option value="proposal">Proposals</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
             Source
             <select style={sel} value={listFilters.source} onChange={e => patchFilters({ source: e.target.value })}>
               <option value="">All</option>
@@ -868,7 +879,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               onChange={e => patchFilters({ symbol: e.target.value.toUpperCase() })}
             />
           </label>
-          {(listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.rrPreset || listFilters.sort !== 'priority') && (
+          {(listFilters.kind !== 'all' || listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.rrPreset || listFilters.sort !== 'priority') && (
             <button
               onClick={() => patchFilters({ ...DEFAULT_FILTERS })}
               style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}
@@ -945,7 +956,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           <div style={{ fontSize: 11, color: AMBER }}>Unavailable ({error}) — <span onClick={() => refetch?.()} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>retry</span></div>
         )}
         {!loading && !error && proposals.length === 0 && (
-          <div style={{ fontSize: 11, color: MUTED }}>No Schwab/Fidelity proposals — promote from Proposals tab.</div>
+          <div style={{ fontSize: 11, color: MUTED }}>No proposals match the current Type filter{listFilters.kind !== 'all' ? ` (${listFilters.kind})` : ''}.</div>
         )}
         {proposals.length > 0 && shown.length === 0 && (
           <div style={{ fontSize: 11, color: MUTED }}>No held-symbol proposals. <span onClick={() => setHeldOnly(false)} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Show all</span></div>
