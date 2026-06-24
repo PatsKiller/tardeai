@@ -159,3 +159,35 @@ export function tradeEconomics(shares: number, entry: number, stop: number, targ
     profit_at_target: sh && rewardPs ? rewardPs * sh : null,
   }
 }
+
+export type LiveQuote = {
+  price: number | null
+  driftPct: number | null
+  stale: boolean
+  label: 'Live' | 'Last'
+  provider?: string
+}
+
+/** Best available quote for broker cards — list live quote beats stale DB price. */
+export function resolveLiveQuote(proposal: {
+  thesis_validity?: ThesisValidity | null
+  quote_last?: number | null
+  current_price?: number | null
+  price_drift_pct?: number | null
+  price_stale?: boolean
+  quote_provider?: string
+} | null | undefined): LiveQuote {
+  const tv = proposal?.thesis_validity
+  const raw = tv?.current_price ?? proposal?.quote_last ?? proposal?.current_price
+  const price = raw != null && !Number.isNaN(Number(raw)) ? Number(raw) : null
+  const driftRaw = tv?.drift_pct ?? proposal?.price_drift_pct
+  const driftPct = driftRaw != null && !Number.isNaN(Number(driftRaw)) ? Number(driftRaw) : null
+  const stale = Boolean(tv?.price_stale ?? proposal?.price_stale)
+  return {
+    price,
+    driftPct,
+    stale,
+    label: stale ? 'Last' : 'Live',
+    provider: proposal?.quote_provider || tv?.price_source,
+  }
+}
