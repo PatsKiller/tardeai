@@ -13135,6 +13135,14 @@ def _broker_proposal_row_base(
     _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()
     row["source_kind"] = "broker" if (_broker_route.startswith("schwab") or _broker_route.startswith("fidelity")) else "proposal"
     row["proposal_origin"] = str(row.get("origin") or row.get("discovery_source") or "auto")
+    # P1-9: which live-submit path this row uses if routed. Proposal promotion always goes through the
+    # queue-route OTOCO + per-order 2FA path (distinct from the separate canary pilot mechanism).
+    if _broker_route.startswith("schwab"):
+        row["routing_path"] = "queue_route_2fa"      # OTOCO bracket via approval_service 2FA
+    elif _broker_route.startswith("fidelity"):
+        row["routing_path"] = "record_only"          # FA-executed, recorded
+    else:
+        row["routing_path"] = "paper_auto"           # autonomous Alpaca paper (backend maturation)
     sym = str(row.get("symbol") or "").upper()
     sh = float(row.get("proposed_shares") or 0)
     en = float(row.get("proposed_entry") or 0)
