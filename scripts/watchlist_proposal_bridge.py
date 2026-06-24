@@ -113,7 +113,7 @@ def _fetch_buy_candidates(cur) -> list[dict]:
            ) ep ON true
            LEFT JOIN LATERAL (
                SELECT strategy_type, ideal_entry, stop_loss, target_price,
-                      support, resistance
+                      support, resistance, risk_reward
                FROM watchlist_strategy_cards
                WHERE symbol = wi.symbol ORDER BY updated_at DESC NULLS LAST LIMIT 1
            ) wsc ON true
