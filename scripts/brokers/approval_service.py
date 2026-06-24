@@ -208,9 +208,22 @@ def intent_action_summary(intent) -> dict:
         tgt_px = (intent.exit_policy.targets[0].price if intent.exit_policy and intent.exit_policy.targets else None)
         ep = f"${float(entry_px):.2f}" if entry_px is not None else "limit"
         sp = f"${float(stop_px):.2f}" if stop_px is not None else "stop"
+        tp = f"${float(tgt_px):.2f}" if tgt_px is not None else None
+        risk_ps = (float(entry_px) - float(stop_px)) if entry_px is not None and stop_px is not None else None
+        risk_usd = (risk_ps * float(qty)) if risk_ps is not None and qty is not None else None
+        invest = (float(entry_px) * float(qty)) if entry_px is not None and qty is not None else None
+        rr = None
+        if risk_ps and risk_ps > 0 and tgt_px is not None and entry_px is not None:
+            rr = round((float(tgt_px) - float(entry_px)) / risk_ps, 2)
         detail = f"BUY LIMIT {ep} + child STOP {sp} GTC"
-        if tgt_px:
-            detail += f" + TARGET ${float(tgt_px):.2f} (OCO)"
+        if tp:
+            detail += f" + TARGET {tp} (OCO)"
+        if risk_usd is not None:
+            detail += f" · risk ${risk_usd:,.0f}"
+        if invest is not None:
+            detail += f" · invest ${invest:,.0f}"
+        if rr is not None:
+            detail += f" · R:R {rr}:1"
         return {
             "kind": "trade",
             "symbol": sym,
@@ -219,6 +232,12 @@ def intent_action_summary(intent) -> dict:
             "approve_btn": "Approve BUY",
             "headline": f"BUY {qty_s} sh {sym} LIMIT {ep} + STOP {sp} ({acct})",
             "detail": detail,
+            "entry": entry_px,
+            "stop": stop_px,
+            "target": tgt_px,
+            "dollar_risk": round(risk_usd, 2) if risk_usd is not None else None,
+            "dollar_size": round(invest, 2) if invest is not None else None,
+            "risk_reward": rr,
         }
 
     if is_protective and instr == "SELL":

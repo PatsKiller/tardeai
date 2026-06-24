@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', RED = '#ef4444', PURPLE = '#a78bfa'
 const sec = { fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }
@@ -242,13 +243,27 @@ export default function BrokerIntelPanel({
           </div>
 
           <div style={{ fontSize: 9.5, color: TEXT1, marginBottom: 6 }}>
-            Local: <span style={{ color: localLlm.status === 'complete' ? GREEN : localLlm.status === 'queued' ? AMBER : MUTED }}>
-              {localLlm.status || 'unknown'}
+            Local: <span style={{
+              color: localLlm.status === 'complete' ? GREEN
+                : localLlm.status === 'watchlist_plan' ? BLUE
+                : localLlm.status === 'queued' ? AMBER : MUTED,
+            }}>
+              {localLlmLabel(localLlm.status)}
             </span>
             {localLlm.model ? ` (${localLlm.model})` : ''}
             {' · '}
             Cloud: <span style={{ color: cloudColor(cloud.status) }}>{cloud.status || 'not_run'}</span>
-            {cloud.ran_at ? ` · ${cloud.ran_at}` : ''}
+            {cloud.ran_at ? (() => {
+              const fmt = formatCloudRanAt(cloud.ran_at)
+              return (
+                <span style={{ color: fmt.stale ? AMBER : MUTED }}>
+                  {` · ${fmt.label}`}
+                  {cloud.fresh_run ? ' · fresh run' : cloud.cached ? ' · cached' : ''}
+                </span>
+              )
+            })() : cloud.status && cloud.status !== 'not_run' ? (
+              <span style={{ color: AMBER }}> · no timestamp</span>
+            ) : null}
             {(lanes.grok || lanes.chatgpt) && (
               <span style={{ color: MUTED }}> · lanes: {[lanes.grok && 'Grok', lanes.chatgpt && 'ChatGPT'].filter(Boolean).join(', ')}</span>
             )}

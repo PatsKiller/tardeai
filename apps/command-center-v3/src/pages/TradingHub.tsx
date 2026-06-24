@@ -89,7 +89,7 @@ export default function TradingHub({ onDrill }: Props) {
       </div>
 
       {/* Readiness bar */}
-      {readiness && (
+      {readiness && tab !== 'Broker Proposals' && tab !== 'Broker Orders' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
           <span style={{ color: 'var(--text3)' }}>Paper Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
@@ -98,6 +98,11 @@ export default function TradingHub({ onDrill }: Props) {
             <div style={{ width: `${Math.min(100, readiness.pct_to_2000 ?? 0)}%`, height: '100%', background: '#f59e0b', borderRadius: 2, minWidth: 2 }} />
           </div>
           <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 9 }}>LIVE BLOCKED</span>
+        </div>
+      )}
+      {tab === 'Broker Proposals' && (
+        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, fontSize: 10, color: '#fbbf24' }}>
+          Path B operator route — P0/paper caps are advisory only. <b>Auto route (2FA)</b> opens trade review (edit size/risk) before Schwab approval.
         </div>
       )}
 
@@ -338,7 +343,7 @@ export default function TradingHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Proposals' && <ProposalsRich />}
+      {tab === 'Proposals' && <ProposalsRich onOpenBrokerProposals={() => setTab('Broker Proposals')} />}
       {tab === 'Broker Proposals' && <BrokerProposals focusSymbol={searchParams.get('symbol') || undefined} />}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
       {tab === 'Schwab Accounts' && (

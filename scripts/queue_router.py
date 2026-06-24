@@ -36,8 +36,11 @@ def _set_routing_state(pid: int, state: str) -> None:
             pass
 
 
-def route_proposal(pid: int, *, actor: str = "system") -> dict:
-    """Dispatch an APPROVED queue row to its intended broker. Returns a result dict; never raises."""
+def route_proposal(pid: int, *, actor: str = "system", trade: dict | None = None) -> dict:
+    """Dispatch an APPROVED queue row to its intended broker. Returns a result dict; never raises.
+
+    trade: optional operator-confirmed {account, shares, entry, stop, target} applied before Schwab 2FA.
+    """
     try:
         import trade_modify as _tm
     except Exception:
@@ -112,7 +115,7 @@ def route_proposal(pid: int, *, actor: str = "system") -> dict:
         # ARMED: step 1 — build OTOCO bracket + request per-order 2FA (submit at route/confirm).
         try:
             _set_routing_state(pid, "routing")
-            res = _bep.request_route(pid)
+            res = _bep.request_route(pid, trade=trade)
             ok = bool(res.get("ok"))
             if not ok:
                 _set_routing_state(pid, "rejected")

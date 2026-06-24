@@ -1073,8 +1073,12 @@ def promote_proposal_to_broker(
     *,
     risk_reward: float = None,
     operator: str = "operator",
+    operator_route: bool = False,
 ) -> dict:
-    """Promote a broker-agnostic proposal to the Schwab/Fidelity execution queue (in-place update)."""
+    """Promote a broker-agnostic proposal to the Schwab/Fidelity execution queue (in-place update).
+
+    operator_route=True: operator-confirmed live size — skip P0/policy/paper-queue cap blocks.
+    """
     acct = (account or "").strip()
     acct_l = acct.lower()
     if not acct or not ("schwab" in acct_l or "fidelity" in acct_l):
@@ -1122,6 +1126,7 @@ def promote_proposal_to_broker(
             pass
         evaluation = bps.evaluate_broker_promote(
             acct, strategy_id, entry, stop, target, shares, quote=live_quote,
+            operator_route=operator_route,
         )
         try:
             import broker_promote_oversight as bpo

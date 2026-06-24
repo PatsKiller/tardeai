@@ -13117,7 +13117,7 @@ def _enrich_broker_proposal_row_light(row: dict) -> dict:
             }
         if acct:
             ev = _bps.evaluate_broker_promote(
-                acct, strat, en, st, tg, int(sh or 0), quote=qd,
+                acct, strat, en, st, tg, int(sh or 0), quote=qd, operator_route=True,
             )
             ev = _merge_broker_oversight(ev, pid)
             row["evaluation"] = ev
@@ -13133,7 +13133,7 @@ def _enrich_broker_proposal_row_light(row: dict) -> dict:
                 "warnings": ev.get("warnings") or [],
             }
         else:
-            row["oversight"] = _bpo.evaluate_oversight(int(pid)) if pid else {}
+            row["oversight"] = _broker_oversight_for_proposal(int(pid)) if pid else {}
     except Exception:
         row["evaluation"] = row.get("evaluation") or {}
         row["oversight"] = row.get("oversight") or {}
@@ -13171,7 +13171,7 @@ def _enrich_broker_proposal_row(row: dict) -> dict:
             }
         if acct:
             ev = _bps.evaluate_broker_promote(
-                acct, strat, en, st, tg, int(sh or 0), quote=qd,
+                acct, strat, en, st, tg, int(sh or 0), quote=qd, operator_route=True,
             )
             ev = _merge_broker_oversight(ev, pid)
             row["evaluation"] = ev
@@ -13856,12 +13856,24 @@ def _broker_promote_quote(symbol: str) -> dict:
     return quote
 
 
+def _broker_oversight_for_proposal(proposal_id: int, *, auto_queue_cloud: bool = True) -> dict:
+    """Evaluate AI oversight; optionally spawn background Grok+ChatGPT when prerequisites are met."""
+    import broker_promote_oversight as bpo
+    pid = int(proposal_id)
+    if auto_queue_cloud:
+        try:
+            bpo.maybe_queue_cloud_oversight(pid)
+        except Exception:
+            pass
+    return bpo.evaluate_oversight(pid)
+
+
 def _merge_broker_oversight(ev: dict, proposal_id: int | None) -> dict:
     if not proposal_id:
         return ev
     try:
         import broker_promote_oversight as bpo
-        oversight = bpo.evaluate_oversight(int(proposal_id))
+        oversight = _broker_oversight_for_proposal(int(proposal_id))
         return bpo.merge_evaluation_with_oversight(ev, oversight)
     except Exception:
         return ev
@@ -13889,10 +13901,13 @@ def _evaluate_broker_promote(body: dict):
     if not (acct and shares is not None and entry is not None and stop is not None and target is not None):
         return {"ok": False, "error": "account, shares, entry, stop, target are required"}
     quote = b.get("quote") if isinstance(b.get("quote"), dict) else _broker_promote_quote(symbol)
+    op_route = b.get("operator_route", True)
+    if isinstance(op_route, str):
+        op_route = op_route.lower() not in ("0", "false", "no")
     ev = bps.evaluate_broker_promote(
         acct, strategy_id or "momentum_scalp",
         float(entry), float(stop), float(target), int(shares),
-        quote=quote,
+        quote=quote, operator_route=bool(op_route),
     )
     ev = _merge_broker_oversight(ev, pid)
     return {"ok": True, "data": ev, "quote": quote}
@@ -13982,12 +13997,10 @@ def _prepare_broker_promote(body: dict):
         if _bpo.needs_oversight_queue(pid):
             _bpo.queue_oversight_jobs(pid)
             diligence_auto_queued = True
-            oversight = _bpo.evaluate_oversight(pid)
-            evaluation = _bpo.merge_evaluation_with_oversight(evaluation, oversight)
-        if _bpo.needs_cloud_oversight(pid):
-            cq = _bpo.queue_cloud_oversight(pid)
-            if cq.get("queued"):
-                diligence_auto_queued = True
+        oversight = _broker_oversight_for_proposal(pid)
+        evaluation = _bpo.merge_evaluation_with_oversight(evaluation, oversight)
+        if str((oversight.get("cloud_review") or {}).get("status") or "").lower() == "running":
+            diligence_auto_queued = True
     except Exception:
         pass
     diligence_plan = {}
@@ -16096,9 +16109,9 @@ def _hermes_infra():
 
 
 def _hermes_sources():
-    """GET /api/v2/hermes/sources — the source registry: web domains (yield-scored, self-learning)
-    + connector types (social/youtube/sec/rss/AI-APIs/seeking-alpha) with active/dormant status."""
+    """GET /api/v2/hermes/sources — registry split: connectors / news maturity / web yield + vetting queue."""
     try:
+        import hermes_source_registry as hsr
         rows = _db_query("SELECT source_type, source_name, source_url, credibility_score, specialty, active, notes "
                          "FROM research_sources ORDER BY active DESC, source_type, credibility_score DESC") or []
         out = []
@@ -16107,10 +16120,57 @@ def _hermes_sources():
             out.append({"type": r["source_type"], "name": r["source_name"], "url": r.get("source_url"),
                         "credibility": _json_clean(r.get("credibility_score")), "active": r.get("active"),
                         "specialty": (sp[0] if isinstance(sp, list) and sp else sp), "notes": r.get("notes")})
+        enriched = hsr.enrich_source_rows(out)
         active = sum(1 for x in out if x["active"])
-        return {"sources": out, "active": active, "total": len(out)}
+        return {
+            "sources": out,
+            "active": active,
+            "total": len(out),
+            **enriched,
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _hermes_source_policy(query: dict | None):
+    """GET /api/v2/hermes/sources/policy?source= — runtime ingest/promotion policy for one source."""
+    try:
+        import hermes_source_policy as hsp
+        src = str((query or {}).get("source") or "").strip()
+        if not src:
+            return {"ok": False, "error": "source query param required"}
+        pol = hsp.resolve(src, force_refresh=True)
+        return {"ok": True, "policy": pol.as_dict()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _hermes_source_approve(body: dict):
+    """POST /api/v2/hermes/sources/approve — operator activates a news maturity source."""
+    try:
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import hermes_source_registry as hsr
+        from db_adapter import _get_conn, USE_DB
+        if not USE_DB:
+            return {"ok": False, "error": "database unavailable"}
+        b = body or {}
+        name = str(b.get("source_name") or b.get("source") or "").strip()
+        if not name:
+            return {"ok": False, "error": "source_name required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        try:
+            result = hsr.approve_news_source(cur, name, operator=str(b.get("operator") or "operator"))
+            if result.get("ok"):
+                conn.commit()
+            else:
+                conn.rollback()
+            return result
+        finally:
+            cur.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def _hermes_provenance():
@@ -22256,6 +22316,7 @@ ROUTES = {
     "/api/v2/hermes/infra": lambda: _hermes_infra(),
     "/api/v2/hermes/provenance": lambda: _hermes_provenance(),
     "/api/v2/hermes/sources": lambda: _hermes_sources(),
+    "/api/v2/hermes/sources/policy": lambda q: _hermes_source_policy(q),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
@@ -22464,6 +22525,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                              "bytes": len(content)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/hermes/sources/approve":
+            try:
+                res = _hermes_source_approve(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/hermes/advisory-choice":
             try:
                 import json as _jac2
@@ -22648,15 +22716,35 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}
 
+        if base_path == "/api/v2/broker-proposals/route-preview":
+            try:
+                b = body or {}
+                pid = int(b.get("proposal_id"))
+                trade = {}
+                for k in ("account", "shares", "entry", "stop", "target"):
+                    if b.get(k) is not None:
+                        trade[k] = b.get(k)
+                from brokers import broker_entry_pilot as _bep
+                res = _bep.route_preview(pid, trade=trade or None)
+                return (200 if res.get("ok") else 400), {"ok": bool(res.get("ok")), "data": res}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
         if base_path == "/api/v2/broker-proposals/route":
-            # STEP 1 — Schwab armed: build OTOCO bracket (LIMIT+STOP) + request per-order 2FA.
+            # STEP 1 — Schwab armed: operator trade review applied, OTOCO bracket + per-order 2FA.
             # Ungated: preview spec only. Fidelity → record-only. Audited via queue_router.
             try:
                 b = body or {}
                 pid = int(b.get("proposal_id"))
                 actor = str(b.get("operator") or "operator")[:60]
+                trade = {}
+                for k in ("account", "shares", "entry", "stop", "target"):
+                    if b.get(k) is not None:
+                        trade[k] = b.get(k)
+                if trade:
+                    trade["operator"] = actor
                 import queue_router as _qr
-                res = _qr.route_proposal(pid, actor=actor)
+                res = _qr.route_proposal(pid, actor=actor, trade=trade or None)
                 http = 200 if (res.get("ok") or res.get("gated") or res.get("mode") == "awaiting_approval") else 400
                 return http, {"ok": bool(res.get("ok")), "data": res}
             except Exception as e:

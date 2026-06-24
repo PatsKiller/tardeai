@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import BrokerIntelPanel from './BrokerIntelPanel'
 import BrokerDiligenceStrip from './BrokerDiligenceStrip'
+import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a78bfa', RED = '#ef4444'
 const overlay = { position: 'fixed' as const, inset: 0, background: 'rgba(2,6,23,.78)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
@@ -518,6 +519,15 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
                   </button>
                 </div>
               </div>
+            )}
+
+            {f.shares && (evaluation?.max_shares != null || evaluation?.recommended_shares != null) && (
+              <PositionSizingRiskBar
+                queuedShares={Number(f.shares) || 0}
+                capShares={Number(evaluation?.recommended_shares ?? evaluation?.max_shares ?? f.shares) || 0}
+                accountLabel={f.account ? brokerOf(f.account) : undefined}
+                alwaysShow
+              />
             )}
 
             {econ && (

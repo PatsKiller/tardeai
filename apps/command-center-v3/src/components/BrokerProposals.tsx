@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
+import BrokerRouteConfirmModal from './BrokerRouteConfirmModal'
 import ManualExecutionLog from './ManualExecutionLog'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import BrokerProposalCard from './BrokerProposalCard'
-import { brokerOf } from '../lib/brokerThesis'
+import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
 import type { BrokerAccount } from './BrokerAccountPicker'
 
 const MUTED = '#94a3b8'
@@ -82,7 +83,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<Record<number, string>>({})
-  const [routeIntent, setRouteIntent] = useState<Record<number, { intent_id: string; symbol: string; summary?: string }>>({})
+  const [routeIntent, setRouteIntent] = useState<Record<number, {
+    intent_id: string
+    symbol: string
+    summary?: string
+    trade?: any
+    trade_packet?: any
+    policy_warnings?: string[]
+  }>>({})
+  const [routeSeed, setRouteSeed] = useState<any | null>(null)
   const [routeApproveTk, setRouteApproveTk] = useState<Record<number, string>>({})
   const [routeApproveCode, setRouteApproveCode] = useState<Record<number, string>>({})
   const [routeBusy, setRouteBusy] = useState<Record<number, boolean>>({})
@@ -101,6 +110,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [detailBusy, setDetailBusy] = useState<Record<number, boolean>>({})
   const [batchCloudBusy, setBatchCloudBusy] = useState(false)
   const [batchCloudMsg, setBatchCloudMsg] = useState('')
+  const [validateBusy, setValidateBusy] = useState<Record<number, boolean>>({})
+  const [litmusMap, setLitmusMap] = useState<Record<number, any>>({})
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
@@ -168,21 +179,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     for (const t of Object.values(cloudPollRef.current)) clearInterval(t)
   }, [])
 
-  // Light detail for first 2 cards only — avoids blocking single-threaded API with Schwab calls.
-  const DETAIL_PREFETCH_MAX = 2
+  // Light detail (DB-only oversight, no Schwab) for every card on the current page.
   useEffect(() => {
     if (!proposals.length || loading) return
     let cancelled = false
     const run = async () => {
-      await new Promise(r => setTimeout(r, 2500))
+      await new Promise(r => setTimeout(r, 800))
       if (cancelled) return
-      let n = 0
       for (const p of proposals) {
-        if (!p.detail_pending) continue
-        if (n >= DETAIL_PREFETCH_MAX) break
+        if (!p.detail_pending && detailLoadedRef.current.has(p.id)) continue
         fetchProposalDetail(p.id)
-        n++
-        await new Promise(r => setTimeout(r, 400))
+        await new Promise(r => setTimeout(r, 250))
         if (cancelled) return
       }
     }
@@ -217,6 +224,32 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       merged.refreshed_at = raw.refreshed_at
       merged.quote_provider = raw.quote_provider
       merged.price_drift_pct = raw.price_drift_pct
+    }
+    const freshOv = pickFreshOversight(
+      detail.oversight,
+      detail.intel?.oversight,
+      detail.evaluation?.oversight,
+      acctPreview[raw.id]?.evaluation?.oversight,
+      raw.evaluation?.oversight,
+      raw.oversight,
+    )
+    if (freshOv && Object.keys(freshOv).length) {
+      merged.oversight = freshOv
+      merged.evaluation = { ...(merged.evaluation || raw.evaluation || {}), oversight: freshOv }
+      const baseIntel = merged.intel || raw.intel
+      if (baseIntel?.ok === true) {
+        merged.intel = {
+          ...baseIntel,
+          oversight: pickFreshOversight(freshOv, baseIntel.oversight),
+          agent_reviews: freshOv.agents?.reviews || baseIntel.agent_reviews || [],
+        }
+      } else {
+        merged.intel = {
+          ok: true,
+          oversight: freshOv,
+          agent_reviews: freshOv.agents?.reviews || [],
+        }
+      }
     }
     const preview = acctPreview[raw.id]
     if (preview) merged._preview = preview
@@ -261,50 +294,52 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
-  const route = async (pid: number) => {
-    setRouteBusy(b => ({ ...b, [pid]: true }))
-    setRouteMsg(m => ({ ...m, [pid]: '…' }))
+  const openRouteReview = (p: any) => {
+    const pid = p.id
     setRouteIntent(prev => { const n = { ...prev }; delete n[pid]; return n })
     setRouteApproveTk(prev => { const n = { ...prev }; delete n[pid]; return n })
     setRouteApproveCode(prev => { const n = { ...prev }; delete n[pid]; return n })
-    try {
-      const r = await fetch('/api/v2/broker-proposals/route', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: pid }),
-      }).then(x => x.json())
-      const d = r.data ?? r
-      if (d.mode === 'awaiting_approval' && d.intent_id) {
-        const summ = d.summary?.summary || d.summary || ''
-        setRouteIntent(prev => ({
-          ...prev,
-          [pid]: { intent_id: d.intent_id, symbol: String(d.symbol || '').toUpperCase(), summary: summ },
-        }))
-        const short = String(d.intent_id).slice(0, 8)
-        setRouteMsg(prev => ({
-          ...prev,
-          [pid]: `🔐 2FA required — intent ${short}${d.ttl_min ? ` · ${d.ttl_min}min` : ''}${summ ? ` · ${summ}` : ''}`,
-        }))
-        return
-      }
-      const leg = d.order_spec?.orderLegCollection?.[0]
-      const bracket = d.bracket ? ' OTOCO bracket' : ''
-      const wouldSubmit = leg
-        ? ` · would POST${bracket}: ${leg.instruction} ${leg.quantity} ${leg.instrument?.symbol} ${d.order_spec.orderType} $${d.order_spec.price}`
-        : ''
-      const m = d.ok && d.record_only
-        ? `📝 ${d.detail}`
-        : d.gated
-          ? `🔒 ${d.detail}${wouldSubmit}`
-          : d.ok
-            ? `✅ routed`
-            : `⛔ ${d.error || d.detail || 'failed'}`
-      setRouteMsg(prev => ({ ...prev, [pid]: m }))
+    setRouteMsg(m => ({ ...m, [pid]: '' }))
+    setRouteSeed({ ...p, account: destAccount[pid] ?? p.account ?? '' })
+  }
+
+  const handleRouteComplete = (pid: number, d: any) => {
+    if (d.mode === 'awaiting_approval' && d.intent_id) {
+      const summ = d.summary?.summary || d.summary || ''
+      const trade = d.trade_packet || d.trade || {}
+      setRouteIntent(prev => ({
+        ...prev,
+        [pid]: {
+          intent_id: d.intent_id,
+          symbol: String(d.symbol || trade.symbol || '').toUpperCase(),
+          summary: summ,
+          trade,
+          trade_packet: trade,
+          policy_warnings: d.policy_warnings || trade.policy_warnings,
+        },
+      }))
+      const short = String(d.intent_id).slice(0, 8)
+      setRouteMsg(prev => ({
+        ...prev,
+        [pid]: `🔐 2FA required — intent ${short}${d.ttl_min ? ` · ${d.ttl_min}min` : ''}`,
+      }))
       refetch?.()
-    } catch (e: any) {
-      setRouteMsg(prev => ({ ...prev, [pid]: '⛔ ' + String(e).slice(0, 60) }))
-    } finally {
-      setRouteBusy(b => ({ ...b, [pid]: false }))
+      return
     }
+    const leg = d.order_spec?.orderLegCollection?.[0]
+    const bracket = d.bracket ? ' OTOCO bracket' : ''
+    const wouldSubmit = leg
+      ? ` · would POST${bracket}: ${leg.instruction} ${leg.quantity} ${leg.instrument?.symbol} ${d.order_spec.orderType} $${d.order_spec.price}`
+      : ''
+    const m = d.ok && d.record_only
+      ? `📝 ${d.detail}`
+      : d.gated
+        ? `🔒 ${d.detail}${wouldSubmit}`
+        : d.ok
+          ? `✅ routed`
+          : `⛔ ${d.error || d.detail || 'failed'}`
+    setRouteMsg(prev => ({ ...prev, [pid]: m }))
+    refetch?.()
   }
 
   const confirmRoute = async (pid: number, channel: 'web' | 'telegram') => {
@@ -388,6 +423,77 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }, [proposals, destAccount, acctPreview, fetchAccountPreview])
 
+  const validateTrade = async (p: any, opts?: { runCloud?: boolean }) => {
+    const pid = p.id
+    const dest = destAccount[pid] || p.account || ''
+    setValidateBusy(m => ({ ...m, [pid]: true }))
+    setOversightMsg(m => ({ ...m, [pid]: '' }))
+    try {
+      const r = await fetch('/api/v2/broker-proposals/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposal_id: pid,
+          account: dest || undefined,
+          refresh: 1,
+          run_cloud: opts?.runCloud ? 1 : 0,
+        }),
+      }).then(x => x.json())
+      const d = r.data?.facts ? r.data : (r.data?.data ?? r.litmus ?? r.data ?? r)
+      if (r.ok && Array.isArray(d?.facts) && d.facts.length) {
+        setLitmusMap(prev => ({ ...prev, [pid]: d }))
+        const cloudRan = d.cloud_review?.ran_at
+        const cloudSt = d.cloud_review?.status
+        setOversightMsg(m => ({
+          ...m,
+          [pid]: `Litmus ${d.verdict || '—'}${d.validated_at ? ` · ${d.validated_at}` : ''}`
+            + (cloudSt && cloudSt !== 'not_run'
+              ? ` · cloud ${String(cloudSt).toUpperCase()}${cloudRan ? ` (${formatCloudRanAt(cloudRan).label})` : ''}`
+              : ''),
+        }))
+        const freshOv = d.oversight || (d.evaluation?.oversight ? d.evaluation.oversight : null)
+        detailLoadedRef.current.add(pid)
+        setDetailMap(prev => ({
+          ...prev,
+          [pid]: {
+            ...(prev[pid] || {}),
+            thesis_validity: d.thesis_validity ?? prev[pid]?.thesis_validity,
+            live_rr: d.live_rr ?? prev[pid]?.live_rr,
+            current_price: d.live_price ?? prev[pid]?.current_price,
+            refreshed_at: d.validated_at_utc ?? prev[pid]?.refreshed_at,
+            quote_provider: d.quote?.provider ?? prev[pid]?.quote_provider,
+            price_drift_pct: d.drift_pct ?? prev[pid]?.price_drift_pct,
+            gate_status: d.gate_status ?? prev[pid]?.gate_status,
+            evaluation: d.evaluation
+              ? { ...(prev[pid]?.evaluation || {}), ...d.evaluation, oversight: freshOv || d.evaluation?.oversight }
+              : prev[pid]?.evaluation,
+            oversight: freshOv || prev[pid]?.oversight,
+            intel: freshOv ? {
+              ...(prev[pid]?.intel || { ok: true }),
+              ok: true,
+              oversight: freshOv,
+              agent_reviews: freshOv.agents?.reviews || prev[pid]?.intel?.agent_reviews || [],
+            } : prev[pid]?.intel,
+          },
+        }))
+        if (opts?.runCloud || d.cloud_run) {
+          detailLoadedRef.current.delete(pid)
+          setTimeout(() => fetchProposalDetail(pid, { force: true }), 2000)
+        }
+        refetch?.()
+      } else {
+        setOversightMsg(m => ({
+          ...m,
+          [pid]: `⛔ Validate: ${r.error || d?.error || 'no facts returned'}`,
+        }))
+      }
+    } catch (e: any) {
+      setOversightMsg(m => ({ ...m, [pid]: `⛔ Validate: ${String(e).slice(0, 80)}` }))
+    } finally {
+      setValidateBusy(m => ({ ...m, [pid]: false }))
+    }
+  }
+
   const refreshPrices = async (p: any) => {
     const pid = p.id
     const dest = destAccount[pid] || p.account || ''
@@ -444,21 +550,35 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       if (r.ok) {
         const cloud = payload.cloud || {}
         const oversight = payload.oversight || {}
-        const v = cloud.consensus?.verdict || cloud.status || oversight.status || 'done'
-        setOversightMsg(m => ({ ...m, [pid]: `✅ Cloud: ${v}` }))
+        const verdict = cloud.consensus?.verdict || cloud.status || oversight.cloud_review?.status || 'done'
+        const ran = cloud.ran_at || oversight.cloud_review?.ran_at
+        const ts = ran ? formatCloudRanAt(ran).label : ''
+        setOversightMsg(m => ({
+          ...m,
+          [pid]: `✅ Cloud: ${verdict}${ts ? ` · ${ts}` : ''}`,
+        }))
         setDetailMap(prev => ({
           ...prev,
           [pid]: {
             ...(prev[pid] || {}),
             oversight,
+            evaluation: {
+              ...(prev[pid]?.evaluation || {}),
+              oversight,
+              warnings: oversight.warnings || prev[pid]?.evaluation?.warnings,
+              violations: oversight.violations || prev[pid]?.evaluation?.violations,
+              status: prev[pid]?.evaluation?.status === 'BLOCK' ? 'BLOCK' : oversight.status,
+            },
             intel: {
               ...(prev[pid]?.intel || {}),
               ok: true,
               oversight,
+              agent_reviews: oversight.agents?.reviews || prev[pid]?.intel?.agent_reviews || [],
             },
           },
         }))
-        detailLoadedRef.current.add(pid)
+        detailLoadedRef.current.delete(pid)
+        await fetchProposalDetail(pid, { force: true })
         refetch?.()
       } else {
         setOversightMsg(m => ({ ...m, [pid]: `⛔ ${r.error || payload.error || 'failed'}` }))
@@ -555,6 +675,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       {adjustSeed && (
         <BrokerPromoteModal seed={adjustSeed} mode="adjust" onClose={() => setAdjustSeed(null)} onPromoted={refreshAll} />
       )}
+      {routeSeed && (
+        <BrokerRouteConfirmModal
+          proposal={routeSeed}
+          account={destAccount[routeSeed.id] ?? routeSeed.account ?? ''}
+          accounts={accounts}
+          onClose={() => setRouteSeed(null)}
+          onRouted={d => handleRouteComplete(routeSeed.id, d)}
+        />
+      )}
 
       {focus && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, fontSize: 11.5, background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.35)', color: '#93c5fd' }}>
@@ -589,7 +718,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           </button>
           {shown.length > 0 && (
             <button onClick={refreshAllPrices} disabled={refreshAllBusy} style={btn(GREEN, refreshAllBusy)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
-              {refreshAllBusy ? '…' : '↻ Refresh all prices'}
+              {refreshAllBusy ? '…' : '↻ Refresh all + recalibrate'}
             </button>
           )}
         </div>
@@ -842,9 +971,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 onRefresh={() => { refreshPrices(p); if (p.detail_pending) fetchProposalDetail(p.id, { force: true }) }}
                 onEdit={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })}
                 onManual={() => openManual(p)}
-                onRoute={() => route(p.id)}
+                onRoute={() => openRouteReview(p)}
                 onQueueOversight={() => queueOversight(p.id)}
                 onRunCloudOversight={() => runCloudOversight(p.id)}
+                litmus={litmusMap[p.id]}
+                validateBusy={!!validateBusy[p.id]}
+                onValidate={() => validateTrade(p)}
               />
             )
           })}

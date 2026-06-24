@@ -155,6 +155,9 @@ def _fetch_local_llm(proposal_id: int) -> dict:
     else:
         state = "missing"
     preview = analysis.get("approve_case") or analysis.get("summary") or ""
+    fallback = _build_thesis_fallback(prop)
+    if state == "missing" and fallback.strip():
+        state = "watchlist_plan"
     return {
         "status": state,
         "model": analysis.get("model_used"),
@@ -165,7 +168,7 @@ def _fetch_local_llm(proposal_id: int) -> dict:
         "agent_review_status": prop.get("agent_review_status"),
         "symbol": prop.get("symbol"),
         "strategy_id": prop.get("strategy_id"),
-        "thesis": preview or _build_thesis_fallback(prop),
+        "thesis": preview or fallback,
     }
 
 
@@ -262,26 +265,113 @@ def _persist_cloud_oversight(proposal_id: int, symbol: str, result: dict) -> Non
         pass
 
 
-def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
-    """Run Grok+ChatGPT second opinion on the local thesis. Persists cache row."""
-    local = _fetch_local_llm(proposal_id)
-    thesis = (local.get("thesis") or "").strip()
-    if not thesis:
-        return {"ok": False, "error": "No local thesis to review — run AI Review on paper proposal first"}
-
-    context = {
+def _cloud_review_context(proposal_id: int, local: dict) -> dict:
+    """Facts cloud lanes need: timestamp, live price, thesis band, live R:R."""
+    ctx = {
         "proposal_id": proposal_id,
         "symbol": local.get("symbol"),
         "strategy": local.get("strategy_id"),
         "local_llm_status": local.get("status"),
         "local_model": local.get("model"),
         "agent_review_status": local.get("agent_review_status"),
-        "note": "Broker promote oversight — validate thesis before live queue",
+        "note": "Broker promote oversight — judge thesis vs LIVE price band, not plan entry alone",
     }
+    try:
+        from zoneinfo import ZoneInfo
+        ctx["as_of_et"] = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M %Z")
+    except Exception:
+        ctx["as_of_utc"] = datetime.now(timezone.utc).isoformat()[:19]
+    prop = _q(
+        """SELECT proposed_entry, proposed_stop, proposed_target1, proposed_rr, current_price,
+                  origin, discovery_source, cio_view
+           FROM paper_trade_proposals WHERE id=%s""",
+        (proposal_id,), one=True,
+    ) or {}
+    try:
+        from broker_trade_litmus import _fetch_live_quote
+        from broker_thesis_validity import attach_thesis_validity
+        sym = str(local.get("symbol") or "").upper()
+        quote = _fetch_live_quote(sym)
+        work = {**prop, "symbol": sym}
+        if quote.get("last") is not None:
+            work["current_price"] = quote["last"]
+            work["quote_provider"] = quote.get("provider")
+            work["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
+        attach_thesis_validity(work)
+        tv = work.get("thesis_validity") or {}
+        ctx.update({
+            "live_price": tv.get("current_price") or quote.get("last"),
+            "quote_provider": quote.get("provider"),
+            "planned_entry": prop.get("proposed_entry"),
+            "stop": prop.get("proposed_stop"),
+            "target": prop.get("proposed_target1"),
+            "planned_rr": tv.get("planned_rr") or prop.get("proposed_rr"),
+            "live_rr": tv.get("current_rr"),
+            "drift_pct": tv.get("drift_pct"),
+            "thesis_zone": tv.get("zone_status"),
+            "thesis_valid_low": tv.get("valid_low"),
+            "thesis_valid_high": tv.get("valid_high"),
+            "thesis_actionable": tv.get("actionable"),
+            "thesis_reasons": (tv.get("reasons") or [])[:4],
+            "watchlist_rating": prop.get("cio_view"),
+            "origin": prop.get("origin"),
+        })
+    except Exception as e:
+        ctx["live_context_error"] = str(e)[:120]
+    return ctx
+
+
+def _build_cloud_review_subject(local: dict, context: dict) -> str:
+    """Structured live trade packet — cloud judges the setup, not meta 'paper test' wording."""
+    sym = local.get("symbol") or context.get("symbol") or "?"
+    strat = local.get("strategy_id") or context.get("strategy") or "?"
+    lines = [
+        f"LIVE broker queue trade review (Path B — real Schwab/Fidelity desk, not Alpaca paper).",
+        f"Symbol {sym} · strategy {strat} · proposal #{context.get('proposal_id')}.",
+        f"As of {context.get('as_of_et') or context.get('as_of_utc') or 'now'}.",
+    ]
+    if context.get("watchlist_rating") or context.get("origin") == "watchlist":
+        lines.append(f"Source: watchlist {context.get('watchlist_rating') or 'BUY'}.")
+    if context.get("planned_entry"):
+        lines.append(
+            f"Plan entry ${context.get('planned_entry')} · stop ${context.get('stop')} · "
+            f"target ${context.get('target')} · planned R:R {context.get('planned_rr') or '—'}."
+        )
+    if context.get("live_price") is not None:
+        lines.append(
+            f"Live ${context.get('live_price')} · drift {context.get('drift_pct')}% · "
+            f"live R:R {context.get('live_rr') or '—'} · zone {context.get('thesis_zone') or '—'}."
+        )
+    if context.get("thesis_valid_low") is not None:
+        lines.append(
+            f"Valid band ${context.get('thesis_valid_low')} – ${context.get('thesis_valid_high')} "
+            f"(actionable={context.get('thesis_actionable')})."
+        )
+    reasons = context.get("thesis_reasons") or []
+    if reasons:
+        lines.append("Band notes: " + "; ".join(str(r) for r in reasons[:3]))
+    notes = (local.get("thesis") or "").strip()
+    if notes:
+        lines.append(f"Background: {notes[:500]}")
+    lines.append(
+        "Question: Given LIVE price and band, is this long setup still disciplined "
+        "(ignore paperwork about paper testing — judge the trade math and thesis only)."
+    )
+    return "\n".join(lines)
+
+
+def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
+    """Run Grok+ChatGPT second opinion on the local thesis. Persists cache row."""
+    local = _fetch_local_llm(proposal_id)
+    context = _cloud_review_context(proposal_id, local)
+    thesis = _build_cloud_review_subject(local, context).strip()
+    if not thesis:
+        return {"ok": False, "error": "No trade context to review — refresh prices first"}
+
     try:
         import cloud_review
         result = cloud_review.review(
-            "broker_promote_oversight",
+            "broker_live_trade_review",
             local_output=thesis,
             context=context,
             timeout=timeout,
@@ -590,8 +680,6 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
     elif cloud_status in ("not_run", "unknown", ""):
         if REQUIRE_CLOUD:
             violations.append("Cloud oversight required but not run (Grok+ChatGPT)")
-        elif AUTO_CLOUD_OVERSIGHT and needs_cloud_oversight(proposal_id):
-            warnings.append("Cloud oversight queued automatically (Grok+ChatGPT)")
         else:
             avail = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
             if avail:
@@ -611,6 +699,17 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         status = "PASS"
         allowed = True
 
+    out_snap = dict(snap)
+    if cloud is not None and cloud.get("ok") is not False:
+        out_snap["cloud_review"] = {
+            "status": str(cloud.get("status") or "unknown").lower(),
+            "consensus": cloud.get("consensus") or {},
+            "lanes": cloud.get("lanes") or {},
+            "ran_at": cloud.get("ran_at"),
+            "cached": bool(cloud.get("cached")),
+            "fresh_run": not cloud.get("cached", True),
+        }
+
     return {
         "status": status,
         "allowed": allowed,
@@ -618,7 +717,7 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         "warnings": warnings,
         "intel_diligence": intel_dd,
         "promote_ready": allowed and status == "PASS",
-        **snap,
+        **out_snap,
     }
 
 
