@@ -53,7 +53,11 @@ See `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` for the full hub map.
 
 Changing account re-runs `evaluate-promote` sizing caps for that destination (cash, daily limits).
 
-**Operator route mode (`operator_route=True`):** Broker Proposals list/detail and live route use operator-confirmed size as authoritative. P0 readiness, policy caps, paper-queue sizing, and daily/concurrent limits surface as **warnings** — not GATE BLOCK. Hard blocks remain: invalid entry/stop, zero shares, over available cash, and live market gates.
+**Operator route mode (`operator_route=True`):** Broker Proposals list/detail and live route use operator-confirmed size as authoritative. P0 readiness, policy caps, paper-queue sizing, and daily/concurrent limits surface as **warnings** — not GATE BLOCK. Hard blocks remain: **authoritative trade plan** (`broker_trade_plan_gate`), invalid entry/stop, zero shares, over available cash, and live market gates.
+
+**Strategy strip:** Each card shows resolved YAML strategy (not sleeve label), sector, company, and exit plan row (`broker_strategy_resolver`). Sleeve ≠ executable strategy.
+
+**Trade plan diligence:** Promote checklist includes step **Trade plan** before Broker gate (`docs/BROKER_TRADE_PLAN_GATE.md`).
 
 **Share sizing display:** The card always shows two numbers when they differ:
 
@@ -194,6 +198,8 @@ Each list row includes `source_attribution` for badge rendering.
 | Schwab entry | `scripts/brokers/broker_entry_pilot.py`, `scripts/queue_router.py`, `scripts/schwab_broker_trade_monitor.py` |
 | Queue hygiene | `scripts/broker_queue_hygiene.py` (watchlist-exempt expiry) |
 | Thesis math | `scripts/broker_thesis_validity.py` |
+| Strategy + exits | `scripts/broker_strategy_resolver.py` |
+| Trade plan gate | `scripts/broker_trade_plan_gate.py` |
 | Oversight | `scripts/broker_promote_oversight.py` |
 | Sizing | `scripts/broker_promote_sizing.py` |
 | API | `scripts/api_v2.py` — `_broker_proposals`, `_attach_source_attribution`, `_broker_refresh_prices` |
@@ -201,6 +207,7 @@ Each list row includes `source_attribution` for badge rendering.
 
 ## Related docs
 
+- `docs/BROKER_TRADE_PLAN_GATE.md` — authoritative plan + policy R:R floor
 - `docs/WATCHLIST_PROPOSAL_BRIDGE.md` — watchlist BUY+ → broker queue sync
 - `docs/PROPOSAL_EXECUTION_PATHS.md` — Path A vs Path B
 - `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` — options desk + shared manual-log flow

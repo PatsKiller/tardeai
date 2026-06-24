@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-24 - Broker trade plan gate: no gambling 2×R, strategy alignment, policy R:R floor
+
+**Gate:** `broker_trade_plan_gate.py` blocks Path B live routes without authoritative plans
+(`trade_plans` / strategy card / confluence). Generic 2×R geometry is never waived on operator route.
+Watchlist bridge skips symbols without real levels (872 skipped in enforcement run).
+
+**Strategy:** `broker_strategy_resolver.py` maps watchlist sleeves → YAML strategies; exit plan uses
+support/resistance with **policy R:R floor** when resistance is too close (`max(YAML target_rr, 2.0)`).
+Held rows refreshed: MS `core_growth_compounder` 3:1, DFAI `international_dividend` 2:1, DB
+`dividend_growth_compounder` 2:1. DFAI reclassified from `covered_call_income`.
+
+**UI:** `BrokerProposalCard` disables Auto route on `trade_plan` BLOCK; diligence adds Trade plan stage.
+Docs: `docs/BROKER_TRADE_PLAN_GATE.md`. Restart portfolio server after Python gate changes (submodules
+not hot-reloaded with `api_v2.py` alone).
+
 ## 2026-06-24 - Analyst prospectus RC1: full coverage, card icon-links, urgent-change cadence
 
 Full report coverage generated: 33 holdings (Grok + free dual-lane oversight) + 300 watchlist

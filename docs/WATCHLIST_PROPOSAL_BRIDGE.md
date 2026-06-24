@@ -26,10 +26,12 @@ Closes the gap where **watchlist BUY / STRONG_BUY** ratings lived in research ta
 ### Persistence rules
 
 - **Stay** while watchlist rating remains BUY, STRONG_BUY, ADD, or ADD_ON_PULLBACK.
-- **Refresh** entry/stop/target from `watchlist_entry_plans` or `watchlist_strategy_cards` on each sync.
+- **Refresh** entry/stop/target from authoritative sources only (`trade_plans` → strategy card → confluence).
+- **Skip (no insert)** when no authoritative plan exists — **no generic 2×R geometry** (see `docs/BROKER_TRADE_PLAN_GATE.md`).
 - **Expire (REJECTED)** when rating drops below BUY.
 - **Skip** symbols that already have an active **non-watchlist** proposal (screener wins).
 - **Dedupe** older duplicate watchlist rows per symbol (keeps newest).
+- **Reconcile** sleeve labels (`income`, `core_holding`) → executable YAML via `broker_strategy_resolver`.
 
 ### Entry pricing
 
@@ -40,7 +42,17 @@ Priority for `proposed_entry`:
 3. `watchlist_entry_plans.entry_zone_high`
 4. Batch Schwab quote (`last`) for top-ranked names missing plans (max 40 per run)
 
-Names without any of the above are **skipped** until an entry plan or quote exists.
+Names without entry **and** without authoritative stop/target (strategy card / trade plan) are **skipped**.
+
+### Exit levels + R:R policy floor
+
+`broker_strategy_resolver.apply_strategy_exit_plan()`:
+
+- Stop below watchlist **support** (fundamental / level_based).
+- Target above **resistance** when configured.
+- If resistance caps R:R below YAML/thesis minimum (`max(target_rr, 2.0)`), target is **raised** to the policy floor (stop stays support-anchored).
+
+`sizing_basis.plan_source` and `exit_rationale.sources` record provenance for the trade-plan gate.
 
 ## Operator commands
 
@@ -102,6 +114,7 @@ Duplicate watchlist copies are rejected by hygiene + bridge dedupe.
 
 ## Related docs
 
+- `docs/BROKER_TRADE_PLAN_GATE.md` — authoritative plan enforcement (no gambling 2×R)
 - `docs/BROKER_PROPOSALS_UI.md` — live desk UI + Schwab OTOCO 2FA
 - `docs/PROPOSAL_EXECUTION_PATHS.md` — Path A paper vs Path B live
 - `docs/CHEAT_SHEET.md` — operator commands
@@ -111,6 +124,8 @@ Duplicate watchlist copies are rejected by hygiene + bridge dedupe.
 | File | Role |
 |------|------|
 | `scripts/watchlist_proposal_bridge.py` | Sync engine |
+| `scripts/broker_strategy_resolver.py` | Sleeve → YAML + exit policy |
+| `scripts/broker_trade_plan_gate.py` | Live-route plan gate |
 | `scripts/api_v2.py` | `_fetch_watchlist_buy_symbols`, `_attach_source_attribution`, `maybe_sync_on_load` hook |
 | `scripts/broker_queue_hygiene.py` | Watchlist-exempt expiry + dedupe reject |
 | `apps/command-center-v3/src/components/ProposalSourceBadges.tsx` | Badge UI |
