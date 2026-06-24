@@ -589,6 +589,14 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     # Sentiment + social context
     sentiment_block = _get_sentiment_social_context(symbol)
 
+    # Hermes intelligence — canonical composite score/rank + research + external-lane opinions
+    hermes_block = ""
+    try:
+        from hermes_data_access import hermes_prompt_block
+        hermes_block = hermes_prompt_block(symbol)
+    except Exception:
+        hermes_block = ""
+
     # RAG pre-context — prior intelligence from all source types
     rag_block = ""
     global _last_rag_sources
@@ -758,6 +766,7 @@ G10 NO DIRECT EXECUTION: No trade executes without human approval.
 Context:
 {scan_block}
 {context_text}
+{hermes_block}
 {rag_block}
 {research_block}
 {peer_notes}
