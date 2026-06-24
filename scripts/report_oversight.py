@@ -209,6 +209,8 @@ def _free_lane_flagged(critiques: list[dict]) -> bool:
     for c in critiques:
         if c.get("fabrications") or c.get("stale_or_contradictory"):
             return True
+        if c.get("missing_required"):
+            return True
     return False
 
 
@@ -408,6 +410,13 @@ def oversee_report(
     symbol = meta.get("symbol")
     # deterministic integrity normalization BEFORE critique (so the overlay never re-flags structure)
     integrity_applied = enforce_integrity(report)
+    catalyst_gate: dict = {}
+    catalyst_gate_applied = 0
+    try:
+        from report_catalyst_gate import evaluate_catalyst_gate, apply_catalyst_gate_block
+        catalyst_gate = evaluate_catalyst_gate(report, attempt_refresh=True)
+    except Exception as exc:
+        catalyst_gate = {"required": False, "block": False, "error": str(exc)[:160]}
     packet = build_data_packet(report)
 
     free: list[dict] = []
@@ -437,7 +446,16 @@ def oversee_report(
             "skipped": "lane_down(claude)" if reason == "claude_lane_down" else None,
         }
 
-    fixes_applied = apply_fixes(report, oversight) + len(integrity_applied)
+    if catalyst_gate.get("block"):
+        oversight["verdict"] = "BLOCK"
+        oversight["confidence_check"] = (
+            (oversight.get("confidence_check") or "")
+            + (" " if oversight.get("confidence_check") else "")
+            + "; ".join(catalyst_gate.get("issues") or ["catalyst gate: empty news section"])
+        ).strip()
+        catalyst_gate_applied = apply_catalyst_gate_block(report, catalyst_gate)
+
+    fixes_applied = apply_fixes(report, oversight) + len(integrity_applied) + catalyst_gate_applied
     # Re-validate: never ship a report that still contains an issue the overlay said to fix.
     unresolved = _unresolved_after_apply(report)
     verdict = oversight.get("verdict")
@@ -453,10 +471,12 @@ def oversee_report(
         "unresolved": unresolved or None,
         "claude_ran": run_claude,
         "claude_gate_reason": reason,
+        "catalyst_gate": catalyst_gate if catalyst_gate.get("required") else None,
         "free_lanes": [
             {"lane": c.get("lane"), "available": c.get("available"),
              "fabrications": len(c.get("fabrications") or []),
-             "stale": len(c.get("stale_or_contradictory") or [])}
+             "stale": len(c.get("stale_or_contradictory") or []),
+             "missing_required": len(c.get("missing_required") or [])}
             for c in free
         ],
         "confidence_check": oversight.get("confidence_check"),

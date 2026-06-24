@@ -626,6 +626,31 @@ Respond in JSON only:
     return report
 
 
+def _batch_record_generate(results: dict, sym: str, out: dict, *, reason: str) -> None:
+    """Classify generate_report outcome into generated vs blocked vs failed."""
+    if out.get("blocked"):
+        results.setdefault("blocked", []).append({
+            "symbol": sym,
+            "block_reason": out.get("block_reason"),
+            "exports": out.get("exports"),
+            "refresh_reason": reason,
+        })
+        return
+    if not out.get("ok"):
+        results["failed"].append({
+            "symbol": sym,
+            "error": str(out.get("block_reason") or "generate_failed")[:200],
+        })
+        return
+    results["generated"].append({
+        "symbol": sym,
+        "id": out["registry_entry"]["id"],
+        "exports": out["exports"],
+        "grok_edited": out["registry_entry"].get("grok_edited"),
+        "refresh_reason": reason,
+    })
+
+
 def generate_report(
     *,
     report_type: str,
@@ -722,9 +747,22 @@ def generate_report(
 
     sym = symbol or meta.get("report_type", "report")
     in_place = bool(sym_u and report_type.startswith("symbol_"))
+    blocked = False
+    block_reason = ""
+    if oversight and report_type.startswith("symbol_"):
+        try:
+            from report_catalyst_gate import publication_blocked
+            blocked = publication_blocked(report)
+        except Exception:
+            blocked = (meta.get("claude_oversight") or {}).get("verdict") == "BLOCK"
+        if blocked:
+            cg = meta.get("catalyst_gate") or (meta.get("claude_oversight") or {}).get("catalyst_gate") or {}
+            block_reason = "catalyst_gate" if cg.get("block") or cg.get("adequate") is False else "oversight_block"
+
     if in_place:
         paths = canonical_export_paths(sym_u, report_type)
-        archive_snapshot_before_update(sym_u, report_type)
+        if not blocked:
+            archive_snapshot_before_update(sym_u, report_type)
         stem = paths["json"].stem
         json_path = paths["json"]
         json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -737,9 +775,9 @@ def generate_report(
     exports: dict[str, Any] = {}
     docx_path: Path | None = None
     pdf_path: Path | None = None
-    want = formats or ["docx", "pdf"]
+    want = [] if blocked else (formats or ["docx", "pdf"])
     use_v4 = engine in ("playwright", "weasyprint") and report_type.startswith("symbol_")
-    if use_v4:
+    if use_v4 and want:
         # v4 single-source HTML/CSS renderer (Playwright PDF + styled python-docx)
         from report_render import render_pdf, render_docx, _rel_url_safe
         base = REPORT_OUT
@@ -757,7 +795,7 @@ def generate_report(
                 docx_path = docx_out; exports["docx"] = _rel_url_safe(docx_out)
             else:
                 exports["docx"] = {"error": r.get("error")}
-    else:
+    elif want:
         for fmt in want:
             result = export_report(report, fmt, output_stem=stem, in_place=in_place)
             if result.get("ok"):
@@ -770,17 +808,25 @@ def generate_report(
             else:
                 exports[fmt] = {"error": result.get("error")}
 
+    if blocked:
+        exports["blocked"] = block_reason or "publication_blocked"
+        exports["blocked_detail"] = (
+            (meta.get("catalyst_gate") or {}).get("issues")
+            or [(meta.get("claude_oversight") or {}).get("confidence_check")]
+        )
+
     if in_place:
         from report_lineage import _export_url
         exports["json"] = _export_url(json_path)
-        archive_report(
-            report,
-            report_id=stable_registry_id(sym_u, report_type),
-            report_type=report_type,
-            symbol=sym_u,
-            json_path=Path(json_path),
-            fingerprint=fp,
-        )
+        if not blocked:
+            archive_report(
+                report,
+                report_id=stable_registry_id(sym_u, report_type),
+                report_type=report_type,
+                symbol=sym_u,
+                json_path=Path(json_path),
+                fingerprint=fp,
+            )
     else:
         exports["json"] = str(json_path)
 
@@ -795,16 +841,26 @@ def generate_report(
         "fingerprint": fp,
         "grok_edited": bool((meta.get("grok_editorial") or {}).get("applied")),
         "oversight_verdict": (meta.get("claude_oversight") or {}).get("verdict"),
+        "publication_blocked": blocked,
+        "block_reason": block_reason or None,
         "generated_at": meta.get("generated_at") or _now_iso(),
         "generation": meta.get("generation"),
         "prior_report_at": meta.get("prior_report_at"),
         "exports": exports,
     }
-    reg = load_registry()
-    reg["reports"] = upsert_registry_reports(reg.get("reports") or [], entry)
-    save_registry(reg)
+    if not blocked:
+        reg = load_registry()
+        reg["reports"] = upsert_registry_reports(reg.get("reports") or [], entry)
+        save_registry(reg)
 
-    return {"ok": True, "report": report, "registry_entry": entry, "exports": exports}
+    return {
+        "ok": not blocked,
+        "blocked": blocked,
+        "block_reason": block_reason or None,
+        "report": report,
+        "registry_entry": entry,
+        "exports": exports,
+    }
 
 
 def generate_holding_prospectus_batch(
@@ -832,7 +888,7 @@ def generate_holding_prospectus_batch(
     by_sym = canonical_registry_map(reg.get("reports") or [], "symbol_holding")
 
     results = {
-        "generated": [], "skipped": [], "failed": [], "eligible": len(eligible),
+        "generated": [], "skipped": [], "failed": [], "blocked": [], "eligible": len(eligible),
         "stale_days": stale_days, "force": force,
     }
     for row in eligible:
@@ -861,17 +917,11 @@ def generate_holding_prospectus_batch(
                 engine=engine,
                 oversight=oversight,
             )
-            results["generated"].append({
-                "symbol": sym,
-                "id": out["registry_entry"]["id"],
-                "exports": out["exports"],
-                "grok_edited": out["registry_entry"].get("grok_edited"),
-                "refresh_reason": reason,
-            })
+            _batch_record_generate(results, sym, out, reason=reason)
         except Exception as e:
             results["failed"].append({"symbol": sym, "error": str(e)[:200]})
 
-    results["ok"] = len(results["failed"]) == 0
+    results["ok"] = len(results["failed"]) == 0 and len(results.get("blocked") or []) == 0
     results["completed_at"] = _now_iso()
     batch_path = PROSPECTUS_DIR / f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     PROSPECTUS_DIR.mkdir(parents=True, exist_ok=True)
@@ -897,7 +947,8 @@ def generate_watchlist_prospectus_batch(
     reg = load_registry()
     by_sym = canonical_registry_map(reg.get("reports") or [], "symbol_watchlist")
     results = {
-        "generated": [], "skipped": [], "failed": [], "eligible": len(eligible), "force": force,
+        "generated": [], "skipped": [], "failed": [], "blocked": [],
+        "eligible": len(eligible), "force": force,
     }
     for row in eligible:
         sym = row["symbol"]
@@ -921,17 +972,11 @@ def generate_watchlist_prospectus_batch(
                 engine=engine,
                 oversight=oversight,
             )
-            results["generated"].append({
-                "symbol": sym,
-                "id": out["registry_entry"]["id"],
-                "exports": out["exports"],
-                "grok_edited": out["registry_entry"].get("grok_edited"),
-                "refresh_reason": reason,
-            })
+            _batch_record_generate(results, sym, out, reason=reason)
         except Exception as e:
             results["failed"].append({"symbol": sym, "error": str(e)[:200]})
 
-    results["ok"] = len(results["failed"]) == 0
+    results["ok"] = len(results["failed"]) == 0 and len(results.get("blocked") or []) == 0
     results["completed_at"] = _now_iso()
     return results
 
