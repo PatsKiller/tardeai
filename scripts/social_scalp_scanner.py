@@ -422,6 +422,21 @@ def _upsert_trade_ai_scans(conn, symbol: str, mention_count: int, finviz_data: d
         logger.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
 
 
+def _also_send_proposals_channel(msg: str):
+    """Mirror actionable meme/social-movement alerts to the proposals Telegram channel.
+    Direct send to TRADEAI_PROPOSAL_ALERT_CHAT_ID (bypasses the router — these are operator-facing
+    discovery alerts, same channel the proposal queue uses)."""
+    import os
+    cid = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
+    if not cid:
+        return
+    try:
+        from telegram_alert import _raw_send_telegram
+        _raw_send_telegram(msg, chat_ids=[cid])
+    except Exception as e:
+        logger.warning("proposals-channel mirror failed: %s", e)
+
+
 def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
                      finviz_data: dict, mention_count: int, sources: list,
                      bull: int, bear: int):
@@ -450,6 +465,8 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
         f"Decision: {decision}"
     )
     send_telegram(msg)
+    # Mirror meme/social movements to the proposals channel (operator's discovery feed)
+    _also_send_proposals_channel(msg)
 
 
 def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: int):

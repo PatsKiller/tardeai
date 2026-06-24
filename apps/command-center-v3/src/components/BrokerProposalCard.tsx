@@ -144,13 +144,16 @@ export default function BrokerProposalCard({
   // not buried in the AI-oversight section. Driven by the agents' own words + the risk signals.
   const _riskReviews: any[] = ov.agents?.reviews || intel?.agent_reviews || p.intel?.agent_reviews || []
   const _cat: any = (intel as any)?.catalyst || p.intel?.catalyst || {}
-  const _memeRe = /\b(meme|short[ -]?squeeze|heavily shorted|social sentiment|reddit|wsb|wallstreetbets|meme[ -]?trader|pump|frenzy|squeeze)\b/i
+  const _tech: any = (intel as any)?.technicals || p.intel?.technicals || {}
+  const _memeRe = /\b(meme|short[ -]?squeeze|heavily shorted|social sentiment|reddit|wsb|wallstreetbets|meme[ -]?trader|pump|frenzy|squeeze|social)\b/i
   const _reviewText = _riskReviews.map((r: any) => String(r.summary || r.reasoning || '')).join(' ')
-  const _catText = `${String(_cat.headline || _cat.title || '')} ${String(_cat.summary || '')}`
-  const _rvol = Number(p.rvol ?? _cat.rvol ?? p.intel?.catalyst?.rvol ?? 0)
-  const _gap = Number(p.gap_pct ?? _cat.gap_pct ?? 0)
+  const _catText = `${String(_cat.headline || _cat.title || '')} ${String(_cat.summary || '')} ${String(_cat.social_summary || '')} ${String(_cat.text || (p as any).catalyst || '')}`
+  // rvol/gap live in intel.technicals; also mirrored onto intel.catalyst — read both + top-level.
+  const _rvol = Number(p.rvol ?? _cat.rvol ?? _tech.rvol ?? 0)
+  const _gap = Number(p.gap_pct ?? _cat.gap_pct ?? _tech.gap_pct ?? 0)
   const _catUnverified = !!_cat && (_cat.verified === false || Number(_cat.confidence ?? 0) <= 0)
-  const _memeFlag = _memeRe.test(_catText) || _memeRe.test(_reviewText)
+  const _socialFlag = _cat.social === true
+  const _memeFlag = _socialFlag || _memeRe.test(_catText) || _memeRe.test(_reviewText)
   const _extremeRvol = _rvol >= 10
   const highRisk = _memeFlag || (_extremeRvol && (_catUnverified || Math.abs(_gap) >= 15))
   const _riskLine = String(
@@ -158,7 +161,7 @@ export default function BrokerProposalCard({
     _riskReviews.find((r: any) => _memeRe.test(String(r.summary || '')))?.summary || '',
   )
   const _riskReasons = [
-    _memeFlag ? 'meme-driven' : null,
+    _socialFlag ? `social-momentum${_cat.social_sources ? ` (${_cat.social_sources} src)` : ''}` : (_memeFlag ? 'meme-driven' : null),
     _extremeRvol ? `RVOL ${_rvol.toFixed(0)}×` : null,
     Math.abs(_gap) >= 10 ? `gap ${_gap > 0 ? '+' : ''}${_gap.toFixed(0)}%` : null,
     _catUnverified ? 'unverified catalyst' : null,
