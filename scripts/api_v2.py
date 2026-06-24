@@ -19100,10 +19100,39 @@ def _finviz_enrichment(query=None):
             "note": "Finviz enrichment (daily). Advisory."}
 
 
+_FINVIZ_STRIP_CACHE_PATH = PROJECT_ROOT / "data" / "runtime" / "finviz_strip_map_cache.json"
+_FINVIZ_STRIP_TTL_SEC = int(os.getenv("FINVIZ_STRIP_TTL_SEC", "600"))  # 10 min
+
+
 def _finviz_strip_map(query=None):
-    """GET /api/v2/finviz-strip-map — compact Finviz metrics for the whole watch universe in ONE call
-    (rsi, perf week/month/ytd, sma50, change) so cards can show an inline strip without one request each.
-    Reuses the mtime-cached enrichment file. Read-only."""
+    """GET /api/v2/finviz-strip-map — compact Finviz metrics for the whole watch universe in ONE call.
+
+    Served from a pre-warmed disk TTL cache so the per-call universe queries (watchlist + proposals +
+    symbol_profiles ANY(...)) never block the single-threaded server. `?fresh=1` forces recompute.
+    """
+    import time as _time
+    _q = query or {}
+    _fresh = str((_q.get("fresh", [""])[0] if isinstance(_q.get("fresh"), list) else _q.get("fresh")) or "").lower()
+    if _fresh not in ("1", "true", "yes") and _FINVIZ_STRIP_CACHE_PATH.exists():
+        try:
+            _cached = json.loads(_FINVIZ_STRIP_CACHE_PATH.read_text())
+            if _time.time() - float(_cached.get("_cached_at") or 0) < _FINVIZ_STRIP_TTL_SEC:
+                _cached["cached"] = True
+                return _cached
+        except Exception:
+            pass
+    _out = _finviz_strip_map_compute()
+    try:
+        _out["_cached_at"] = _time.time()
+        _FINVIZ_STRIP_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _FINVIZ_STRIP_CACHE_PATH.write_text(json.dumps(_out, default=str))
+    except Exception:
+        pass
+    return _out
+
+
+def _finviz_strip_map_compute(query=None):
+    """Heavy computation for the Finviz strip map (cached by _finviz_strip_map). Read-only."""
     try:
         p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
         mt = p.stat().st_mtime
