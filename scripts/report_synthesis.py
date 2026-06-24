@@ -22,6 +22,7 @@ HOLDING_REPORT_SECTIONS = (
     "news_catalysts",
     "technical_analysis",
     "fundamental_valuation",
+    "analyst_predictions",
     "intelligence_view",
     "risk_assessment",
     "action_plan",
@@ -227,6 +228,9 @@ def momentum_label(rsi: Any, sma20: Any, sma50: Any) -> str:
     return "Mixed momentum — no clear trend"
 
 
+SLEEVE_LIMIT_PCT = float(__import__("os").getenv("REPORT_SLEEVE_LIMIT_PCT", "8"))
+
+
 def build_action_steps(
     rec: str,
     *,
@@ -236,21 +240,41 @@ def build_action_steps(
     enrich: dict,
     pro: dict | None,
     thesis: str,
+    levels: dict | None = None,
 ) -> list[str]:
     steps: list[str] = []
     rec_u = rec.upper()
-    stop = _f((proposal or {}).get("proposed_stop")) or None
-    target = _f((proposal or {}).get("proposed_target1")) or _f((pro or {}).get("target_mean_price"))
+    levels = levels or {}
+    stop = _f((proposal or {}).get("proposed_stop")) or _f(levels.get("stop")) or None
+    # Only an analyst/plan target is cited as a "target"; a synthetic +12% structural level is not.
+    target_is_analyst = bool(levels.get("target_is_analyst")) or bool((proposal or {}).get("proposed_target1"))
+    target = (
+        _f((proposal or {}).get("proposed_target1"))
+        or _f((pro or {}).get("target_mean_price"))
+    ) if target_is_analyst else 0
+    add_low = _f(levels.get("valid_low")) or stop
+    add_high = _f(levels.get("entry")) or price
     pct = _f(personal.get("portfolio_pct"))
     gl_pct = personal.get("unrealized_pnl_pct")
+    is_add = "ADD" in rec_u or "BUY" in rec_u
+    over_limit = pct >= SLEEVE_LIMIT_PCT
 
-    if "ADD" in rec_u or "BUY" in rec_u:
-        if stop and stop > 0:
-            steps.append(f"Consider adding only on pullback toward ${stop:,.2f} (advised stop / support zone).")
-        elif target and target > price:
-            steps.append(f"Street mean target ${target:,.2f} — scale in; avoid chasing above ${price * 1.03:,.2f} (+3%).")
+    if is_add:
+        zone = (
+            f"${min(add_low, add_high):,.2f}–${max(add_low, add_high):,.2f}"
+            if add_low and add_high else (f"toward ${stop:,.2f}" if stop else "on defined pullbacks")
+        )
+        ceiling = f" Do not chase above ${price * 1.03:,.2f} (+3%)." if price else ""
+        if over_limit:
+            # P1-4: reconcile ADD with concentration — qualify, do not contradict.
+            steps.append(
+                f"ADD bias intact, but position is already {pct:.1f}% of book (≥{SLEEVE_LIMIT_PCT:.0f}% sleeve cap): "
+                f"add only on pullbacks into {zone} AND only if trimming elsewhere keeps the sleeve within limit.{ceiling}"
+            )
         else:
-            steps.append("Scale in per plan; confirm position size vs portfolio risk budget before adding.")
+            steps.append(f"Accumulate on pullbacks into {zone}.{ceiling}")
+        if target and target > price:
+            steps.append(f"Consensus mean target ${target:,.2f} — stagger adds, leave room for the {((target-price)/price*100):+.0f}% path.")
     elif "TRIM" in rec_u or "SELL" in rec_u or "REDUCE" in rec_u:
         steps.append(f"Reduce exposure — current allocation {pct:.2f}% may exceed risk tolerance.")
         if stop:
@@ -260,6 +284,11 @@ def build_action_steps(
     else:
         steps.append("Maintain position size; review on material news or stop breach.")
 
+    if stop and not is_add:
+        steps.append(f"Protective level: reassess on a close below ${stop:,.2f}.")
+    elif stop and is_add:
+        steps.append(f"Invalidation: a close below ${stop:,.2f} (support) negates the add thesis.")
+
     if gl_pct is not None and _f(gl_pct) < -20:
         steps.append(f"Personal P&L {_pct(gl_pct)} — revisit original thesis; avoid averaging down without fresh catalyst.")
     if thesis == "At risk":
@@ -267,9 +296,7 @@ def build_action_steps(
     elif thesis == "Broken":
         steps.append("Thesis broken — default action is exit or hedge; do not add.")
 
-    if pct > 8:
-        steps.append(f"Concentration note: {pct:.1f}% of portfolio — consider trim if above sleeve limit.")
-    elif pct < 1 and ("ADD" in rec_u or "BUY" in rec_u):
+    if pct < 1 and is_add:
         steps.append(f"Underweight at {pct:.2f}% — room to add if thesis intact.")
 
     return steps[:5]
@@ -293,10 +320,14 @@ def compose_symbol_sections(
     continuity: dict | None = None,
     peer_rows: list[dict] | None = None,
     option_rows: list[dict] | None = None,
+    agent_meta: dict | None = None,
+    levels: dict | None = None,
+    pro: dict | None = None,
 ) -> list[dict]:
     """Build v2 actionable sections from pre-fetched context."""
     sym = symbol.upper()
-    pro = _pro_analyst(sym)
+    pro = pro or _pro_analyst(sym)
+    levels = levels or {}
     price = _f(enrich.get("price") or enrich.get("latest_price") or personal.get("current_price"))
     company = enrich.get("company") or personal.get("name") or sym
     sector = enrich.get("sector") or (wl or {}).get("sector") or "—"
@@ -312,12 +343,14 @@ def compose_symbol_sections(
         action_recommendation_line,
         compose_executive,
         compact_metrics,
+        narrative_analyst_predictions,
         narrative_fundamental,
         narrative_news,
         narrative_personal,
         narrative_risk,
         narrative_technical,
         polish_sections,
+        rating_distribution,
         synthesize_agent_collective,
         thesis_rationale,
     )
@@ -326,7 +359,7 @@ def compose_symbol_sections(
         "intelligence_view", "agent_synthesis", "agent_performance_note", "ensemble_validation",
     ))
     action_line = action_recommendation_line(
-        rec, price=price, proposal=proposal, pro=pro, thesis=thesis,
+        rec, price=price, proposal=proposal, pro=pro, thesis=thesis, levels=levels,
     )
     thesis_why = thesis_rationale(
         thesis, synthesis=synthesis, proposal=proposal, enrich=enrich,
@@ -362,11 +395,20 @@ def compose_symbol_sections(
             day_pct=enrich.get("day_change_pct"), rec=rec, conf_label=conf_label,
             thesis=thesis, thesis_why=thesis_why, action_line=action_line,
             synthesis=synthesis, enrich=enrich, gl_pct=gl_pct, continuity=continuity,
+            synthesis_age_days=(agent_meta or {}).get("synthesis_age_days"),
         )
+        exec_content = exec_block["content"]
+        _adjs = exec_metrics.get("confidence_adjustments")
+        if _adjs and exec_metrics.get("confidence") is not None:
+            exec_content += (
+                f" Confidence is set at {_f(exec_metrics['confidence']):.0f}% ({conf_label}), "
+                f"discounted from a raw {_f(exec_metrics.get('confidence_raw')):.0f}% for "
+                + "; ".join(_adjs) + "."
+            )
         out.append({
             "id": "executive_summary",
             "title": "Executive Summary & Action Recommendation",
-            "content": exec_block["content"],
+            "content": exec_content,
             "metrics": exec_block["metrics"],
             "callouts": exec_block.get("callouts"),
         })
@@ -430,12 +472,16 @@ def compose_symbol_sections(
                 "rvol": enrich.get("rvol"),
                 "sma20_pct": enrich.get("sma20_pct"),
                 "sma50_pct": enrich.get("sma50_pct"),
+                "perf_ytd_pct": enrich.get("perf_ytd_pct") or enrich.get("perf_ytd"),
                 "momentum": mom,
-            }, ("rsi", "rvol", "sma20_pct", "sma50_pct", "momentum")),
+            }, ("rsi", "rvol", "sma20_pct", "sma50_pct", "perf_ytd_pct", "momentum")),
         })
 
     if "fundamental_valuation" in sections:
-        rating = (pro or {}).get("recommendation_key") or enrich.get("analyst_rating")
+        # Only a real professional rating (Yahoo street coverage) — never the Finviz recom
+        # field, which is a technical screen, not an analyst rating (finviz-is-not-a-rating).
+        rating = (pro or {}).get("recommendation_key")
+        rating = str(rating).replace("_", " ").title() if rating else None
         target = (pro or {}).get("target_mean_price") or enrich.get("target_mean_price")
         upside = (pro or {}).get("upside_to_mean_target_pct")
         out.append({
@@ -451,23 +497,42 @@ def compose_symbol_sections(
             }, ("pe", "forward_pe", "street_rating", "target_mean", "upside_to_target_pct")),
         })
 
+    if "analyst_predictions" in sections:
+        ap_content, ap_metrics, ap_bullets = narrative_analyst_predictions(pro, enrich, price)
+        out.append({
+            "id": "analyst_predictions",
+            "title": "Analyst Predictions & Wall-Street Ratings",
+            "content": ap_content,
+            "metrics": compact_metrics(ap_metrics, (
+                "consensus_rating", "analysts", "target_low", "target_mean",
+                "target_high", "upside_to_mean_pct", "pe", "forward_pe",
+            )),
+            "bullets": ap_bullets,
+            "rating_distribution": rating_distribution(pro),
+        })
+
     if want_intel:
-        intel = synthesize_agent_collective(agents, synthesis, ensemble, continuity)
+        intel = synthesize_agent_collective(agents, synthesis, ensemble, continuity, agent_meta)
+        _am = agent_meta or {}
         out.append({
             "id": "intelligence_view",
             "title": "Synthesized Agent & Intelligence View",
             "content": intel["narrative"],
             "agents": intel["agents"],
-            "bullets": [intel["performance_note"]] if intel.get("performance_note") else [],
+            "bullets": intel.get("bullets") or ([intel["performance_note"]] if intel.get("performance_note") else []),
             "metrics": compact_metrics({
                 "ensemble_decision": (ensemble or {}).get("final_decision"),
                 "ensemble_score": (ensemble or {}).get("final_score"),
             }, ("ensemble_decision", "ensemble_score")) if ensemble else {},
             "ensemble": ensemble,
+            # exposed so the oversight packet can verify these are real (not fabricated)
+            "dual_lane": _am.get("dual_lane"),
+            "synthesis_age_days": _am.get("synthesis_age_days"),
+            "agents_suppressed": _am.get("suppressed_count"),
         })
 
     if "risk_assessment" in sections:
-        tv = (proposal or {}).get("thesis_validity") or {}
+        tv = (proposal or {}).get("thesis_validity") or levels.get("thesis_validity") or {}
         risk_narr, risk_flags = narrative_risk(enrich, thesis, tv, synthesis)
         out.append({
             "id": "risk_assessment",
@@ -475,29 +540,51 @@ def compose_symbol_sections(
             "content": risk_narr,
             "metrics": compact_metrics({
                 "beta": enrich.get("beta"),
+                "realized_vol_pct": enrich.get("realized_vol_annualized_pct"),
+                "atr_pct": enrich.get("atr_pct"),
                 "thesis_status": thesis,
-                "zone_status": tv.get("zone_status"),
-                "drift_pct": tv.get("drift_pct"),
-            }, ("beta", "thesis_status", "zone_status", "drift_pct")),
+                "zone_status": str(tv.get("zone_status")).replace("_", " ") if tv.get("zone_status") else None,
+                "valid_low": tv.get("valid_low"),
+                "valid_high": tv.get("valid_high"),
+                "reward_risk": tv.get("planned_rr") or tv.get("current_rr"),
+            }, ("beta", "realized_vol_pct", "atr_pct", "thesis_status", "zone_status", "valid_low", "valid_high", "reward_risk")),
             "bullets": risk_flags,
         })
 
     if "peer_comparison" in sections and peer_rows:
-        bullets = [
-            f"{p['symbol']}: {_pct(p.get('day_change_pct'))} today · PE {p.get('pe', '—')} · 1M {_pct(p.get('perf_month_pct'))}"
-            for p in peer_rows[:8]
-        ]
+        is_etf = str(enrich.get("instrument_type") or "").lower() in ("etf", "fund", "etn")
+        peer_label = peer_rows[0].get("peer_basis") if peer_rows else None
+        basis = peer_label or (enrich.get("industry") or sector)
+        if is_etf:
+            bullets = [
+                f"{p['symbol']}: {_pct(p.get('day_change_pct'))} today · YTD {_pct(p.get('ytd_return_pct'))} · yield {p.get('dividend_yield_pct', '—')}%"
+                for p in peer_rows[:8]
+            ]
+        else:
+            bullets = [
+                f"{p['symbol']}: {_pct(p.get('day_change_pct'))} today · PE {p.get('pe', '—')} · 1M {_pct(p.get('perf_month_pct'))}"
+                for p in peer_rows[:8]
+            ]
         sym_day = _f(enrich.get("day_change_pct"))
         rank = sum(1 for p in peer_rows if _f(p.get("day_change_pct")) > sym_day) + 1
+        # Valuation read vs peer median PE (skip for ETFs — no meaningful equity PE)
+        val_read = ""
+        if not is_etf:
+            peer_pes = sorted(_f(p.get("pe")) for p in peer_rows if _f(p.get("pe")) > 0)
+            sym_pe = _f(enrich.get("pe"))
+            if peer_pes and sym_pe > 0:
+                med = peer_pes[len(peer_pes) // 2]
+                rel = "a premium to" if sym_pe > med * 1.05 else ("a discount to" if sym_pe < med * 0.95 else "in line with")
+                val_read = f" At {sym_pe:.1f}× earnings it trades at {rel} the {len(peer_pes)}-peer median of {med:.1f}×."
         out.append({
             "id": "peer_comparison",
             "title": "Peer Comparison",
             "content": (
-                f"{sym} vs {len(peer_rows)} {sector} peers — "
-                f"today rank {rank}/{len(peer_rows) + 1} by day change ({_pct(sym_day)})."
+                f"{sym} vs {len(peer_rows)} {basis} peers — "
+                f"today rank {rank}/{len(peer_rows) + 1} by day change ({_pct(sym_day)}).{val_read}"
             ),
             "bullets": bullets,
-            "metrics": {"peer_count": len(peer_rows), "sector": sector, "day_rank": rank},
+            "metrics": {"peer_count": len(peer_rows), "peer_basis": basis, "day_rank": rank},
         })
 
     if "options_strategy" in sections and option_rows:
@@ -521,7 +608,8 @@ def compose_symbol_sections(
 
     if "action_plan" in sections:
         steps = build_action_steps(
-            rec, price=price, personal=personal, proposal=proposal, enrich=enrich, pro=pro, thesis=thesis,
+            rec, price=price, personal=personal, proposal=proposal, enrich=enrich, pro=pro,
+            thesis=thesis, levels=levels,
         )
         out.append({
             "id": "action_plan",

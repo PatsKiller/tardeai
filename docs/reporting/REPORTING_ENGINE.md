@@ -192,28 +192,76 @@ Registry dedupes on load; API `/registry?type=symbol_holding` returns canonical 
 
 Facts are preserved; no invented data. Sections gain `grok_edited: true` and `meta.grok_editorial` records the pass.
 
+## Claude Cloud Oversight (`report_oversight.py`)
+
+Advisory, read-only senior-review pass that runs **after the report JSON is assembled, before export**.
+Never a broker action. Pipeline:
+
+1. **Free dual-lane sanity** — Grok (`:8645`) + ChatGPT (`:8646`) OAuth proxies each critique the
+   assembled prose against a live **data packet** (ground-truth KPIs, agent panel, targets, peers,
+   technicals, Hermes notes). Each returns `{fabrications, stale_or_contradictory, unsupported_claims,
+   missing_required, section_grades}`. These run on **every** symbol report.
+2. **Claude arbiter** (metered Anthropic lane) — receives the report + data packet + both free critiques
+   and returns `{verdict: PUBLISH | PUBLISH_WITH_FIXES | BLOCK, fixes[], analyst_note, confidence_check}`.
+   Model resolved from config: `REPORT_CLAUDE_MODEL` → `CLAUDE_ESCALATION_MODEL` → lane default
+   (**never hardcoded**).
+3. **Deterministic fix application** — the safe subset is applied: senior `analyst_note` overlay injected
+   into the executive summary, per-section `oversight_flags`, and a prominent **HOLD FOR REVIEW** callout
+   on `BLOCK`. The builder still governs all numeric data; the model never silently rewrites numbers.
+   Result is stamped at `meta.claude_oversight = {verdict, model, ts, fixes_applied, claude_ran,
+   claude_gate_reason, free_lanes[], confidence_check}`.
+
+**Cost gate (hard).** Free lanes always run. The metered Claude lane runs only when:
+- `--claude-oversight` is passed (operator / single-symbol), **or**
+- `REPORT_CLAUDE_OVERSIGHT=1` **and** a trigger fires (a free lane flagged a fabrication/contradiction,
+  or a monthly-cadence `BUY`/`ADD` holding).
+
+Default **OFF** for batch (`REPORT_CLAUDE_OVERSIGHT=0`) so daily/weekly runs never meter Claude. If the
+Claude lane is down it degrades to the dual free-lane verdict (`model: free_lanes_only`,
+`skipped: lane_down(claude)`) and **never blocks** the report.
+
+```
+# Operator single-symbol with Claude arbiter
+.venv/bin/python scripts/reporting_engine.py generate --symbol V --type symbol_holding --grok --claude-oversight
+# Re-run oversight on an existing living prospectus (no rebuild)
+.venv/bin/python scripts/reporting_engine.py oversight-only --symbol V --claude-oversight
+```
+
+Env: `REPORT_CLAUDE_OVERSIGHT` (default 0), `REPORT_CLAUDE_MODEL` (blank → escalation model),
+`AGENT_FRESHNESS_DAYS` (default 30). Monthly Claude cron (operator adds; not auto-installed):
+
+```
+30 21 1 * * cd $PROJ && flock -n /tmp/analyst_reports_monthly_oversight.lock \
+  env REPORT_CLAUDE_OVERSIGHT=1 .venv/bin/python scripts/generate_analyst_reports_autonomous.py --mode full \
+  >> logs/analyst_reports_autonomous.log 2>&1
+```
+
 ## v3 Section Schema (Holdings & Watchlist)
 
 Default prospectus sections (`PROSPECTUS_SECTIONS`):
 
 ```
 header_context, executive_summary, personal_performance, report_continuity,
-news_catalysts, technical_analysis, fundamental_valuation, intelligence_view,
-risk_assessment, action_plan
+news_catalysts, technical_analysis, fundamental_valuation, analyst_predictions,
+intelligence_view, risk_assessment, action_plan
 ```
+
+Symbol reports also append `peer_comparison` and `hermes_research` when data exists.
 
 | Section id | Purpose | Key fields |
 |------------|---------|------------|
 | `header_context` | Symbol, sector, personal P&L | `metrics` (entry, cost basis, accounts) |
-| `executive_summary` | Actionable synthesis | `callouts[]`, `metrics.what_to_do_now` |
+| `executive_summary` | Actionable synthesis (+ Claude overlay) | `callouts[]`, `metrics.what_to_do_now` |
 | `personal_performance` | User-specific performance | `content`, `metrics.entry_quality` |
-| `report_continuity` | Delta vs last archived report | `metrics.price_delta_pct`, `prior_call_assessment` |
-| `news_catalysts` | 30–90d catalysts | `bullets` with sentiment tags |
+| `report_continuity` | Delta vs last archived report; same-day/unchanged-fingerprint builds are flagged as intraday refreshes (no fabricated +0.00%) | `metrics.price_delta_pct`, `prior_call_assessment` |
+| `news_catalysts` | 30–90d catalysts, entity-relevance gated | `bullets` with sentiment tags |
 | `technical_analysis` | RSI, MAs, momentum | `metrics`, charts in `visuals` |
-| `fundamental_valuation` | PE, street consensus | `metrics` (street_rating, target_mean) |
-| `intelligence_view` | Merged agent + ensemble synthesis | `agents[]`, `ensemble`, narrative |
-| `risk_assessment` | Thesis validity, beta | `bullets`, thesis validity chart |
-| `action_plan` | Recommendation + steps | `bullets` (sizing, stops, catalyst dates) |
+| `fundamental_valuation` | PE + **professional** rating only (never the Finviz recom) | `metrics` (street_rating, target_mean); ETF-honest YTD/yield |
+| `analyst_predictions` | Wall-Street consensus: low/mean/high targets, upside, Buy/Hold/Sell split | `metrics`, `rating_distribution`, target + rating-split charts |
+| `intelligence_view` | Calibration-weighted agent synthesis + Layer-4 + dual-lane (Grok/ChatGPT) consensus with the disagreement ×0.8 rule | `agents[]` (with `accuracy_pct`), narrative |
+| `risk_assessment` | Thesis-validity band (computed from support/stop/target for holdings) + **realized** volatility (never the Finviz weekly-range field) | `bullets`, thesis validity chart |
+| `action_plan` | Recommendation + concrete add-zone/do-not-chase/stop levels; concentration reconciled with ADD | `bullets` (sizing, stops, catalyst dates) |
+| `hermes_research` | Hermes graded research; labeled web-grounded only when sources are attached | `bullets`, `metrics` |
 
 ## Extending Report Templates
 

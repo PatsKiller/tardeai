@@ -189,6 +189,16 @@ def compute_continuity(
     prior_date = str(prior_meta.get("generated_at") or "")[:10]
     gen = int(prior_meta.get("generation") or 1) + 1
 
+    # P0-2 guard: a prior generation built on the SAME calendar day (or with an
+    # identical content fingerprint) is not a meaningful comparison baseline —
+    # it self-compares to +0.00%. Treat it as an intraday refresh / first material
+    # update rather than fabricating a zero delta.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    same_day = bool(prior_date) and prior_date == today
+    same_fingerprint = bool(fingerprint) and bool(prior_fp) and prior_fp == fingerprint
+    no_material_change = same_day or same_fingerprint
+    have_prior_thesis = prior_thesis not in ("—", "", "None", "none")
+
     price_delta_pct = None
     if prior_price and prior_price > 0 and price > 0:
         price_delta_pct = (price - prior_price) / prior_price * 100
@@ -198,8 +208,46 @@ def compute_continuity(
         pnl_delta = _f(unrealized_pnl_pct) - _f(prior_pnl)
 
     rec_changed = prior_rec.upper().split()[0] != str(recommendation).upper().split()[0]
-    thesis_changed = prior_thesis != thesis_status
+    # Never claim a thesis change against a null/absent prior thesis.
+    thesis_changed = have_prior_thesis and prior_thesis != thesis_status
     data_changed = prior_fp != fingerprint if fingerprint else False
+
+    if no_material_change:
+        reason = "same-day rebuild" if same_day else "unchanged intelligence fingerprint"
+        bullets = [
+            f"Prior build {prior_date or 'today'} · rec **{prior_rec}**"
+            + (f" · thesis **{prior_thesis}**" if have_prior_thesis else ""),
+            f"No material change since last build ({reason}) — price and P&L deltas suppressed (not a fresh trading day).",
+        ]
+        if rec_changed:
+            bullets.append(f"Recommendation refined intraday: {prior_rec} → {recommendation}")
+        if thesis_changed:
+            bullets.append(f"Thesis status changed: {prior_thesis} → {thesis_status}")
+        content = (
+            f"First material update since inception."
+            if gen <= 2 and same_fingerprint and not same_day else
+            f"Intraday refresh of the generation {gen - 1} report ({reason}). "
+            f"No new trading session has elapsed, so price/P&L deltas are not meaningful; "
+            f"next dated comparison will run on the following session."
+        )
+        return {
+            "first_report": False,
+            "generation": gen,
+            "no_material_change": True,
+            "content": content,
+            "bullets": bullets[:3],
+            "metrics": {
+                "prior_report_date": prior_date,
+                "prior_recommendation": prior_rec,
+                "prior_thesis_status": prior_thesis if have_prior_thesis else None,
+                "price_delta_pct": None,
+                "pnl_delta_pct": None,
+                "recommendation_changed": rec_changed,
+                "thesis_changed": thesis_changed,
+                "prior_call_assessment": "Same-session rebuild — no dated move to score yet",
+                "generation": gen,
+            },
+        }
 
     accuracy = "Insufficient history"
     if price_delta_pct is not None:

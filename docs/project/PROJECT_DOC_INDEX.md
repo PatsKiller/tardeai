@@ -1,3 +1,9 @@
+## Analyst Prospectus v3.1 — Synthesis Quality + Claude Oversight (2026-06-24)
+| Document | Purpose |
+|----------|---------|
+| `docs/reporting/REPORTING_ENGINE.md` | **Reporting module** (updated): Claude cloud-oversight pipeline + cost gate + `--claude-oversight`/`oversight-only` flags; v3.1 section schema incl. `analyst_predictions`, `hermes_research`; continuity/volatility/agent/thesis-band/peer/Finviz-rating fixes |
+| `scripts/report_oversight.py` | Advisory free dual-lane critique + cost-gated Claude arbiter; `meta.claude_oversight` stamp; `tests/test_report_oversight.py` |
+
 ## Documentation Consolidation (2026-06-22)
 | Document | Purpose |
 |----------|---------|

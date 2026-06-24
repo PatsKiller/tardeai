@@ -29,7 +29,9 @@ def _plt():
 def _save(fig, path: Path) -> str:
     plt = _plt()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(str(path), bbox_inches="tight", dpi=120, facecolor=DARK_BG, edgecolor="none")
+    # Sharper, crisper export — high DPI for polished report graphics.
+    fig.savefig(str(path), bbox_inches="tight", dpi=170, facecolor=DARK_BG,
+                edgecolor="none", pad_inches=0.15)
     plt.close(fig)
     return chart_url(path)
 
@@ -229,21 +231,91 @@ def chart_peer_movers(rows: list[dict], *, stem: str = "sector", title: str = "P
     pcts = [d["pct"] for d in reversed(data)]
     colors = [GREEN if p >= 0 else RED for p in pcts]
 
-    fig, ax = plt.subplots(figsize=(6.5, max(3, len(syms) * 0.38)))
-    ax.barh(syms, pcts, color=colors, alpha=0.85, height=0.6)
-    ax.axvline(0, color=MUTED_COL, linewidth=1)
+    fig, ax = plt.subplots(figsize=(6.8, max(3, len(syms) * 0.42)))
+    bars = ax.barh(syms, pcts, color=colors, alpha=0.92, height=0.62,
+                   edgecolor=TEXT_COL, linewidth=0.4)
+    ax.axvline(0, color=MUTED_COL, linewidth=1.2)
     ax.set_facecolor(CARD_BG)
     fig.patch.set_facecolor(DARK_BG)
-    ax.tick_params(colors=MUTED_COL, labelsize=8)
+    ax.tick_params(colors=MUTED_COL, labelsize=9)
     for spine in ax.spines.values():
         spine.set_edgecolor(GRID_COL)
-    ax.set_title(title, color=TEXT_COL, fontsize=10, fontweight="bold", pad=8)
+    ax.set_title(title, color=TEXT_COL, fontsize=11, fontweight="bold", pad=9)
+    pad = (max(abs(p) for p in pcts) or 1) * 0.04
+    for p, sym in zip(pcts, syms):
+        ax.text(p + (pad if p >= 0 else -pad), sym, f"{p:+.2f}%",
+                va="center", ha="left" if p >= 0 else "right",
+                color=TEXT_COL, fontsize=8, fontweight="bold")
+    ax.margins(x=0.18)
     fig.tight_layout()
 
     ts = datetime.now().strftime("%Y%m%d")
     path = REPORT_CHARTS / f"{stem}_peer_movers_{ts}.png"
     url = _save(fig, path)
     return {"type": "peer_movers", "chart_path": url}
+
+
+def chart_analyst_targets(symbol: str, pro: dict, price: float) -> dict:
+    """Analyst price-target range (low/mean/high) with current price + consensus rating."""
+    pro = pro or {}
+    t_low = _f(pro.get("target_low_price"))
+    t_mean = _f(pro.get("target_mean_price"))
+    t_high = _f(pro.get("target_high_price"))
+    if t_mean <= 0 or t_low <= 0 or t_high <= 0:
+        return {}
+    plt = _plt()
+    lo = min(t_low, price) * 0.97
+    hi = max(t_high, price) * 1.03
+    fig, ax = plt.subplots(figsize=(7.2, 2.4))
+    fig.patch.set_facecolor(DARK_BG)
+    ax.set_facecolor(CARD_BG)
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    # target range band
+    ax.plot([t_low, t_high], [0.5, 0.5], color=BLUE, linewidth=7, alpha=0.45, solid_capstyle="round", zorder=1)
+    for val, label, col in [(t_low, "Low", MUTED_COL), (t_mean, "Mean", GREEN), (t_high, "High", BLUE)]:
+        ax.scatter([val], [0.5], s=120, color=col, zorder=3, edgecolors=TEXT_COL, linewidths=0.6)
+        ax.text(val, 0.74, f"{label}\n${val:,.0f}", ha="center", fontsize=8.5, color=col, fontweight="bold")
+    if price > 0:
+        ax.axvline(price, color=YELLOW, linewidth=2.2, alpha=0.95, zorder=2)
+        ax.text(price, 0.20, f"Price\n${price:,.2f}", ha="center", fontsize=8.5, color=YELLOW, fontweight="bold")
+    n = int(_f(pro.get("number_of_analyst_opinions")))
+    up = _f(pro.get("upside_to_mean_target_pct"))
+    rk = str(pro.get("recommendation_key") or "").replace("_", " ").title()
+    ax.set_title(f"{symbol} — Wall-Street Price Targets ({n} analysts · {rk})",
+                 color=TEXT_COL, fontsize=11, fontweight="bold", pad=10)
+    ax.text(0.5, 0.04, f"Mean upside {up:+.1f}%", transform=ax.transAxes, ha="center",
+            fontsize=9, color=GREEN if up >= 0 else RED, fontweight="bold")
+    fig.tight_layout()
+    ts = datetime.now().strftime("%Y%m%d")
+    path = REPORT_CHARTS / f"{symbol or 'sym'}_targets_{ts}.png"
+    return {"type": "analyst_targets", "chart_path": _save(fig, path),
+            "caption": f"{n} analysts · mean ${t_mean:,.0f} ({up:+.1f}%)", "symbol": symbol}
+
+
+def chart_rating_distribution(symbol: str, dist: dict) -> dict:
+    """Buy / Hold / Sell analyst rating split."""
+    if not dist or not dist.get("n"):
+        return {}
+    plt = _plt()
+    labels = ["Buy", "Hold", "Sell"]
+    vals = [int(dist.get("buy") or 0), int(dist.get("hold") or 0), int(dist.get("sell") or 0)]
+    colors = [GREEN, YELLOW, RED]
+    fig, ax = plt.subplots(figsize=(4.8, 2.6))
+    bars = ax.bar(labels, vals, color=colors, alpha=0.92, width=0.6, edgecolor=TEXT_COL, linewidth=0.4)
+    ax.set_facecolor(CARD_BG)
+    fig.patch.set_facecolor(DARK_BG)
+    ax.tick_params(colors=MUTED_COL, labelsize=9)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(GRID_COL)
+    ax.set_title(f"{symbol} — Implied Rating Split (from mean · n={dist['n']})", color=TEXT_COL, fontsize=10, fontweight="bold", pad=8)
+    for i, v in enumerate(vals):
+        ax.text(i, v + max(vals) * 0.03, str(v), ha="center", color=TEXT_COL, fontsize=10, fontweight="bold")
+    fig.tight_layout()
+    ts = datetime.now().strftime("%Y%m%d")
+    path = REPORT_CHARTS / f"{symbol or 'sym'}_ratingdist_{ts}.png"
+    return {"type": "rating_distribution", "chart_path": _save(fig, path), "symbol": symbol}
 
 
 def chart_coverage_bars(labels: list[str], values: list[int], *, stem: str = "sector", title: str = "Coverage") -> dict:

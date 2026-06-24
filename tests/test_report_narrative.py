@@ -52,7 +52,7 @@ def test_synthesize_agent_collective_no_verbatim_dump():
         {"final_decision": "block", "final_score": 4.2, "final_confidence": 0.55},
         None,
     )
-    assert "Across 3 agent notes" in intel["narrative"]
+    assert "Across 3" in intel["narrative"] and "agent notes" in intel["narrative"]
     assert len(intel["agents"]) == 3
     assert all("summary" not in ag for ag in intel["agents"])
     assert intel["agents"][0].get("weight") in ("Primary", "Secondary", "Low")
@@ -66,8 +66,10 @@ def test_action_recommendation_line_add_with_stop():
         pro=None,
         thesis="Still valid",
     )
-    assert "pullbacks" in line.lower()
+    # accumulation band is anchored on the stop/support as the lower bound
+    assert "accumulate" in line.lower()
     assert "$95" in line
+    assert "chase" in line.lower()
 
 
 def test_thesis_rationale_broken():

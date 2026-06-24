@@ -42,8 +42,8 @@ MANUAL_WATCHLIST_SOURCES = frozenset({"operator", "personal_watchlist"})
 
 PROSPECTUS_SECTIONS = [
     "header_context", "executive_summary", "personal_performance", "report_continuity",
-    "news_catalysts", "technical_analysis", "fundamental_valuation", "intelligence_view",
-    "risk_assessment", "action_plan",
+    "news_catalysts", "technical_analysis", "fundamental_valuation", "analyst_predictions",
+    "intelligence_view", "risk_assessment", "action_plan",
 ]
 
 
@@ -465,6 +465,9 @@ def apply_grok_editorial(report: dict, *, lane: str = "grok", timeout: int = 120
 Polish the following machine-generated holding prospectus for {sym} into sharp, confident analyst prose.
 Write like a published research note — synthesized and actionable, not a data dump.
 Keep all facts accurate; do not invent prices, ratings, or catalysts.
+HARD RULE: Do NOT introduce any number (price, level, %, target, support/resistance) that is not
+already present verbatim in the draft text or KEY METRICS below. You may rephrase and remove, never
+add a new figure. Inventing a support/price level is a fabrication and will block publication.
 
 EXECUTIVE SUMMARY (draft):
 {exec_sec.get('content', '')[:1200]}
@@ -489,29 +492,60 @@ Respond in JSON only:
   "intelligence_view": "2-3 sentences synthesizing agent panel — no verbatim quotes",
   "editor_notes": "brief list of what you refined"}}"""
 
+    # Allowed numeric universe = every figure already in the draft sections + KPIs.
+    allowed_src = " ".join([
+        exec_sec.get("content", ""), rec_sec.get("content", ""),
+        " ".join(rec_sec.get("bullets") or []), intel_sec.get("content", ""),
+        cont_ctx, json.dumps(kpis, default=str),
+    ])
+    allowed_nums = {round(float(x.replace(",", "")), 2) for x in re.findall(r"\d[\d,]*\.?\d*", allowed_src) if x.strip(".,")}
+
+    allowed_src_low = allowed_src.lower()
+
+    def _grok_safe(original: str, edited: str) -> tuple[str, bool]:
+        """Reject a grok edit that introduces a number or an analyst-action claim absent from the
+        source (hallucination guard). Grok has been observed inventing targets, weightings, RSI, and
+        fake 'analyst upgrade' phrases — revert the whole section to the trusted draft when detected."""
+        for tok in re.findall(r"\$?\d[\d,]*\.?\d*", edited):
+            t = tok.replace("$", "").replace(",", "")
+            if not t.strip("."):
+                continue
+            try:
+                v = round(float(t), 2)
+            except ValueError:
+                continue
+            # police any figure >= 1 (catches fabricated % weightings, RSI, targets); allow trivial 0/1
+            if v >= 1.5 and not any(abs(v - a) <= max(0.05, a * 0.01) for a in allowed_nums):
+                return original, True
+        # narrative fabrication: an analyst up/downgrade claim not present in the source draft
+        for phrase in ("analyst upgrade", "analyst downgrade", "recent upgrade", "recent downgrade",
+                       "upgraded", "downgraded"):
+            if phrase in edited.lower() and phrase not in allowed_src_low:
+                return original, True
+        return edited, False
+
     try:
         raw = llm_lane.generate(prompt, lane=lane, timeout=timeout)
         m = re.search(r"\{[\s\S]*\}", raw)
         parsed = json.loads(m.group(0)) if m else {}
-        if parsed.get("executive_summary"):
+        reverted: list[str] = []
+        for key, sids in (("executive_summary", ("executive_summary",)),
+                          ("recommendation", ("recommendation", "action_plan")),
+                          ("intelligence_view", ("intelligence_view",))):
+            if not parsed.get(key):
+                continue
             for s in sections:
-                if s.get("id") == "executive_summary":
-                    s["content"] = parsed["executive_summary"]
-                    s["grok_edited"] = True
-        if parsed.get("recommendation"):
-            for s in sections:
-                if s.get("id") in ("recommendation", "action_plan"):
-                    s["content"] = parsed["recommendation"]
-                    s["grok_edited"] = True
-        if parsed.get("intelligence_view"):
-            for s in sections:
-                if s.get("id") == "intelligence_view":
-                    s["content"] = parsed["intelligence_view"]
-                    s["grok_edited"] = True
+                if s.get("id") in sids:
+                    safe, was_reverted = _grok_safe(s.get("content", ""), parsed[key])
+                    s["content"] = safe
+                    s["grok_edited"] = not was_reverted
+                    if was_reverted:
+                        reverted.append(s.get("id"))
         meta["grok_editorial"] = {
             "applied": True,
             "lane": lane,
             "editor_notes": parsed.get("editor_notes"),
+            "reverted_sections": reverted or None,
             "edited_at": _now_iso(),
         }
         report["meta"] = meta
@@ -533,8 +567,10 @@ def generate_report(
     grok_edit: bool = False,
     output_stem: str | None = None,
     generation_mode: str = "adhoc",
+    claude_oversight: bool | None = None,
+    oversight_cadence: str | None = None,
 ) -> dict:
-    """Build one report, optionally Grok-edit, export DOCX/PDF, register in manifest."""
+    """Build one report, optionally Grok-edit, run cloud oversight, export DOCX/PDF, register."""
     import sys
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from analyst_report_builder import build_report, save_report_json
@@ -600,6 +636,16 @@ def generate_report(
 
     if grok_edit and report_type.startswith("symbol_"):
         report = apply_grok_editorial(report)
+
+    # Cloud oversight pass (advisory): free dual-lane critique always; metered Claude is cost-gated.
+    if report_type.startswith("symbol_"):
+        try:
+            from report_oversight import oversee_report
+            oversee_report(report, claude_oversight=claude_oversight, cadence=oversight_cadence)
+        except Exception as _ov_exc:
+            report.setdefault("meta", {})["claude_oversight"] = {
+                "verdict": "PUBLISH", "skipped": f"oversight_error:{str(_ov_exc)[:120]}", "ts": _now_iso(),
+            }
 
     sym = symbol or meta.get("report_type", "report")
     in_place = bool(sym_u and report_type.startswith("symbol_"))
@@ -924,6 +970,8 @@ def main() -> int:
     p_gen.add_argument("--sector")
     p_gen.add_argument("--topic")
     p_gen.add_argument("--grok", action="store_true")
+    p_gen.add_argument("--claude-oversight", action="store_true",
+                       help="run the metered Claude oversight arbiter (free dual-lane always runs)")
     p_gen.add_argument("--format", default="all", choices=("docx", "pdf", "all", "json"))
 
     p_batch = sub.add_parser("batch-holdings", help="Batch prospectus for all portfolio holdings")
@@ -957,6 +1005,11 @@ def main() -> int:
     p_auto.add_argument("--no-grok", action="store_true")
     p_auto.add_argument("--limit", type=int, default=120)
 
+    p_ovr = sub.add_parser("oversight-only", help="Re-run cloud oversight on an existing report (no rebuild)")
+    p_ovr.add_argument("--symbol", required=True)
+    p_ovr.add_argument("--type", default="symbol_holding")
+    p_ovr.add_argument("--claude-oversight", action="store_true")
+
     args = ap.parse_args()
 
     if args.cmd == "generate":
@@ -968,8 +1021,18 @@ def main() -> int:
             topic=args.topic,
             grok_edit=args.grok,
             formats=fmts,
+            claude_oversight=True if getattr(args, "claude_oversight", False) else None,
         )
         print(json.dumps({"meta": out["report"].get("meta"), "exports": out["exports"]}, indent=2, default=str))
+        return 0
+
+    if args.cmd == "oversight-only":
+        from report_oversight import run_oversight_only
+        out = run_oversight_only(
+            args.symbol, args.type,
+            claude_oversight=True if getattr(args, "claude_oversight", False) else None,
+        )
+        print(json.dumps(out, indent=2, default=str))
         return 0
 
     if args.cmd == "batch-holdings":

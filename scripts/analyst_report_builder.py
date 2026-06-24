@@ -16,7 +16,11 @@ Extending templates
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,10 +37,12 @@ SECTION_IDS = (
     "news_catalysts",
     "technical_analysis",
     "fundamental_valuation",
+    "analyst_predictions",
     "intelligence_view",
     "risk_assessment",
     "action_plan",
     "peer_comparison",
+    "hermes_research",
     "options_strategy",
     # legacy aliases (still accepted in section filters)
     "agent_synthesis",
@@ -251,7 +257,8 @@ def _synthesis(symbol: str) -> dict | None:
     rows = _db_query(
         """SELECT symbol, recommendation, confidence, action, decision_safety, safety_reasons,
                   human_review_required, conflicts_detected, synthesis_narrative, raw_response,
-                  updated_at
+                  updated_at, grok_recommendation, chatgpt_recommendation, models_agree,
+                  dual_consensus_json, synthesis_version
            FROM watchlist_final_synthesis WHERE symbol = %s ORDER BY updated_at DESC LIMIT 1""",
         (symbol.upper(),),
         fetch="one",
@@ -279,14 +286,136 @@ def _watchlist_rating(wl: dict | None, synthesis: dict | None) -> str:
     return "Review"
 
 
-def _agent_notes(symbol: str) -> list[dict]:
+AGENT_FRESHNESS_DAYS = int(os.getenv("AGENT_FRESHNESS_DAYS", "30"))
+AGENT_POSITION_DEVIATION_PCT = float(os.getenv("AGENT_POSITION_DEVIATION_PCT", "15"))
+_POS_VALUE_RE = re.compile(r"\$?\s*([\d,]+(?:\.\d+)?)\s*([kKmM])?")
+_SHARE_RE = re.compile(r"([\d,]+(?:\.\d+)?)\s*[- ]?shares?", re.I)
+
+
+def _agent_calibration_map() -> dict:
+    rows = _db_query(
+        """SELECT DISTINCT ON (agent_name) agent_name, accuracy_pct, recent_accuracy_30d
+           FROM agent_calibration ORDER BY agent_name, window_days ASC""",
+    ) or []
+    out: dict[str, float] = {}
+    for r in rows:
+        r = dict(r)
+        name = str(r.get("agent_name") or "").lower()
+        acc = r.get("recent_accuracy_30d")
+        if acc is None:
+            acc = r.get("accuracy_pct")
+        if name and acc is not None:
+            out[name] = _f(acc) * (100.0 if _f(acc) <= 1.0 else 1.0)
+    return out
+
+
+def _summary_position_stale(summary: str, live_mv: float | None, live_shares: float | None) -> bool:
+    """True when an agent note quotes a position value/share count that deviates materially
+    from the live holding (i.e. the note pre-dates the current position)."""
+    if not summary or (not live_mv and not live_shares):
+        return False
+    s = str(summary)
+    # share-count reference
+    if live_shares and live_shares > 0:
+        m = _SHARE_RE.search(s)
+        if m:
+            try:
+                q = float(m.group(1).replace(",", ""))
+                if q > 0 and abs(q - live_shares) / live_shares > AGENT_POSITION_DEVIATION_PCT / 100:
+                    return True
+            except ValueError:
+                pass
+    # dollar position reference like "$42.55K position"
+    if live_mv and live_mv > 0:
+        for m in re.finditer(r"\$\s*([\d,]+(?:\.\d+)?)\s*([kKmM])?\s*(?:position|holding|stake|value)", s):
+            try:
+                val = float(m.group(1).replace(",", ""))
+                unit = (m.group(2) or "").lower()
+                if unit == "k":
+                    val *= 1_000
+                elif unit == "m":
+                    val *= 1_000_000
+                if val > 1000 and abs(val - live_mv) / live_mv > AGENT_POSITION_DEVIATION_PCT / 100:
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
+def _agent_notes(symbol: str, *, live_mv: float | None = None, live_shares: float | None = None) -> tuple[list[dict], dict]:
+    """Fresh, de-duplicated, calibration-weighted agent notes + meta.
+
+    Returns (kept_rows, meta) where meta carries suppressed_count / fresh_count.
+    """
     rows = _db_query(
         """SELECT agent, recommendation, confidence, summary, created_at
            FROM watchlist_agent_results WHERE symbol = %s
-           ORDER BY created_at DESC LIMIT 8""",
-        (symbol.upper(),),
+             AND created_at >= NOW() - (%s || ' days')::interval
+           ORDER BY created_at DESC LIMIT 40""",
+        (symbol.upper(), AGENT_FRESHNESS_DAYS),
     ) or []
-    return [dict(r) for r in rows]
+    calib = _agent_calibration_map()
+    kept: list[dict] = []
+    seen: set[str] = set()
+    suppressed_stale = 0
+    for r in rows:
+        r = dict(r)
+        agent = str(r.get("agent") or "agent")
+        rec = str(r.get("recommendation") or "—")
+        summary = str(r.get("summary") or "")
+        # dedupe identical (agent, recommendation, narrative-hash)
+        key = f"{agent.lower()}|{rec.upper()}|{hashlib.md5(summary[:160].encode()).hexdigest()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        if _summary_position_stale(summary, live_mv, live_shares):
+            suppressed_stale += 1
+            continue
+        r["accuracy"] = calib.get(agent.lower())
+        kept.append(r)
+        if len([k for k in kept]) >= 8:
+            break
+    meta = {
+        "fresh_count": len(kept),
+        "suppressed_count": suppressed_stale,
+        "freshness_days": AGENT_FRESHNESS_DAYS,
+        "raw_count": len(rows),
+    }
+    return kept, meta
+
+
+def _hermes_research(symbol: str, *, limit: int = 3) -> list[dict]:
+    """Hermes normalized/grounded research lane for this ticker (web-grounded, graded)."""
+    rows = _db_query(
+        """SELECT topic, summary, thesis, confidence_score, quality_score, freshness_date,
+                  source_urls_json, research_type, created_at
+           FROM hermes_research_intelligence
+           WHERE symbol = %s AND status NOT IN ('rejected','superseded')
+             AND summary IS NOT NULL
+           ORDER BY COALESCE(quality_score, 0) DESC, freshness_date DESC NULLS LAST, created_at DESC
+           LIMIT %s""",
+        (symbol.upper(), limit),
+    ) or []
+    out: list[dict] = []
+    for r in rows:
+        r = dict(r)
+        urls = r.get("source_urls_json")
+        if isinstance(urls, str):
+            try:
+                urls = json.loads(urls)
+            except Exception:
+                urls = []
+        out.append({
+            "topic": r.get("topic"),
+            "summary": (str(r.get("summary") or ""))[:400],
+            "thesis": (str(r.get("thesis") or ""))[:240],
+            "confidence": r.get("confidence_score"),
+            "quality": r.get("quality_score"),
+            "as_of": str(r.get("freshness_date") or r.get("created_at") or "")[:10],
+            "sources": len(urls) if isinstance(urls, list) else 0,
+            "research_type": r.get("research_type"),
+        })
+    return out
 
 
 def _ensemble(symbol: str) -> dict | None:
@@ -378,19 +507,52 @@ def _attach_symbol_charts(symbol: str, enrich: dict, visuals: list[dict], propos
         )
 
 
-def _news_for_symbol(symbol: str, limit: int = 6) -> list[dict]:
+def _news_relevant(symbol: str, company: str | None, title: str, summary: str) -> bool:
+    """P0-3 relevance gate: drop generic PR attributed by a stray token — require the
+    ticker or a company-name token to actually appear, OR a confident entity link."""
+    blob = f"{title} {summary}".lower()
+    sym = symbol.lower()
+    # ticker as a word, or $TICKER
+    if re.search(rf"(?<![a-z]){re.escape(sym)}(?![a-z])", blob) or f"${sym}" in blob:
+        return True
+    if company:
+        base = re.sub(r"\b(inc|corp|corporation|co|company|ltd|plc|holdings|class [a-z]|the)\b", "", company.lower())
+        tokens = [t for t in re.split(r"[^a-z]+", base) if len(t) >= 4]
+        if any(t in blob for t in tokens):
+            return True
+    # confident entity link in content_entity_links
+    row = _db_query(
+        """SELECT 1 FROM content_entity_links
+           WHERE entity_type='ticker' AND UPPER(entity_value)=%s AND COALESCE(confidence,0) >= 0.6
+           LIMIT 1""",
+        (symbol.upper(),), fetch="one",
+    )
+    return bool(row)
+
+
+def _news_for_symbol(symbol: str, limit: int = 6, *, company: str | None = None) -> list[dict]:
     news = _load(STATE_DIR / "portfolio_news.json")
     sym = symbol.upper()
     articles = news.get("all_scored") or news.get("catalysts") or []
-    out = []
+    out, dropped = [], 0
+    seen_titles: set[str] = set()
     for a in articles:
         if a.get("portfolio_symbol") == sym or a.get("symbol") == sym:
+            title = a.get("title") or a.get("headline") or ""
+            summary = (a.get("summary") or "")[:280]
+            tkey = title.strip().lower()[:80]
+            if tkey in seen_titles:
+                continue
+            if company is not None and not _news_relevant(sym, company, title, summary):
+                dropped += 1
+                continue
+            seen_titles.add(tkey)
             out.append({
-                "title": a.get("title") or a.get("headline"),
+                "title": title,
                 "score": a.get("score") or a.get("catalyst_score"),
                 "source": a.get("source"),
                 "date": a.get("published_at") or a.get("created_at"),
-                "summary": (a.get("summary") or "")[:280],
+                "summary": summary,
             })
         if len(out) >= limit:
             break
@@ -513,20 +675,27 @@ def _build_executive_summary(
     )
     if holding:
         text += f" Position represents {_f(holding.get('portfolio_pct')):.2f}% of portfolio."
+    # Prefer the REAL model confidence (synthesis / watchlist LLM) over heuristic constants —
+    # a hardcoded "72" reads as a precise score it is not (flagged by oversight).
     conf = None
-    if synthesis and synthesis.get("human_review_required"):
-        conf = 45.0
-    elif synthesis and safety == "safe":
-        conf = 72.0
+    conf_source = "heuristic"
+    if synthesis and synthesis.get("confidence") is not None:
+        conf = _normalize_confidence(synthesis.get("confidence"))
+        conf_source = "synthesis"
     elif wl and wl.get("holdings_llm_confidence") is not None:
         conf = _normalize_confidence(wl.get("holdings_llm_confidence"))
-    elif synthesis and synthesis.get("confidence") is not None:
-        conf = _normalize_confidence(synthesis.get("confidence"))
+        conf_source = "watchlist_llm"
+    elif synthesis and synthesis.get("human_review_required"):
+        conf = 45.0
+    # Human-review gate still caps displayed confidence even when a model score exists.
+    if synthesis and synthesis.get("human_review_required") and conf is not None:
+        conf = min(conf, 50.0)
     return {
         "text": text,
         "recommendation": rec,
         "confidence": conf,
         "confidence_label": _confidence_label(conf),
+        "confidence_source": conf_source,
     }
 
 
@@ -535,27 +704,139 @@ def _default_symbol_sections(report_type: str) -> list[str]:
     return list(HOLDING_REPORT_SECTIONS)
 
 
-def _sector_peer_rows(symbol: str, sector: str | None, *, limit: int = 10) -> list[dict]:
+# Curated comparable maps for well-known names (industry filters can be too broad/narrow).
+_COMP_MAP = {
+    "V": ["MA", "AXP", "PYPL", "FIS", "GPN", "DFS"],
+    "MA": ["V", "AXP", "PYPL", "FIS", "GPN", "DFS"],
+    "AXP": ["V", "MA", "DFS", "COF", "PYPL"],
+    "PYPL": ["V", "MA", "SQ", "FIS", "GPN"],
+}
+
+
+def _instrument_meta(symbol: str) -> dict:
+    """instrument_type + ETF-honest fields (ytd/yield/distribution) from symbol_profiles."""
+    row = _db_query(
+        """SELECT instrument_type, industry, sector, ytd_return_pct, dividend_yield_pct, ttm_dividend
+           FROM symbol_profiles WHERE symbol = %s LIMIT 1""",
+        (symbol.upper(),), fetch="one",
+    )
+    return dict(row) if row else {}
+
+
+def _peer_day_change(ec: dict) -> float | None:
+    """Reconstruct true day-change% from cache fields (gap% + change-from-open% ≈ last vs prev close)."""
+    if ec.get("day_change_pct") is not None:
+        return _f(ec.get("day_change_pct"))
+    gap = ec.get("gap_pct")
+    cfo = ec.get("change_from_open_pct")
+    if gap is not None or cfo is not None:
+        return round(_f(gap) + _f(cfo), 2)
+    return None
+
+
+def _industry_peer_rows(symbol: str, enrich: dict, *, limit: int = 8) -> list[dict]:
+    """True comparable set by industry (or curated comp map / ETF category) with populated day-change."""
     sym = symbol.upper()
-    sec = str(sector or "").strip()
-    if not sec or sec == "—":
-        return []
     cache = _enrichment_cache()
-    peers: list[dict] = []
-    for s, ec in cache.items():
-        if not isinstance(ec, dict) or str(s).upper() == sym:
+    inst = _instrument_meta(sym)
+    is_etf = str(inst.get("instrument_type") or enrich.get("instrument_type") or "").lower() in ("etf", "fund", "etn")
+    industry = str(enrich.get("industry") or inst.get("industry") or "").strip()
+
+    # 1. curated comps (pinned, in order)  2. same-industry equities by market cap (largest = most comparable)
+    pinned: list[str] = [c for c in _COMP_MAP.get(sym, []) if c in cache]
+    basis = "comparables" if pinned else (industry or "comparables")
+    industry_fill: list[tuple[str, float]] = []
+    if industry:
+        basis = industry
+        for s, ec in cache.items():
+            su = str(s).upper()
+            if su == sym or su in pinned or not isinstance(ec, dict):
+                continue
+            if str(ec.get("industry") or "") == industry and str(ec.get("instrument_type") or "stock").lower() == "stock":
+                industry_fill.append((su, _f(ec.get("market_cap_b"))))
+    # bigger, more established names first — avoids burying V under micro-cap fintech noise
+    industry_fill.sort(key=lambda t: t[1], reverse=True)
+    ordered = pinned + [su for su, _ in industry_fill if su not in pinned]
+
+    rows: list[dict] = []
+    for su in ordered[:limit]:
+        ec = cache.get(su) or {}
+        if not isinstance(ec, dict):
             continue
-        if str(ec.get("sector") or "") != sec:
-            continue
-        peers.append({
-            "symbol": str(s).upper(),
-            "day_change_pct": ec.get("day_change_pct") or ec.get("perf_day_pct"),
+        prof = _instrument_meta(su) if is_etf else {}
+        rows.append({
+            "symbol": su,
+            "day_change_pct": _peer_day_change(ec),
             "pe": ec.get("pe"),
             "price": ec.get("price") or ec.get("latest_price"),
             "perf_month_pct": ec.get("perf_month_pct"),
+            "market_cap_b": ec.get("market_cap_b"),
+            "ytd_return_pct": prof.get("ytd_return_pct"),
+            "dividend_yield_pct": prof.get("dividend_yield_pct"),
+            "peer_basis": basis,
         })
-    peers.sort(key=lambda x: abs(_f(x.get("day_change_pct"))), reverse=True)
-    return peers[:limit]
+    return rows
+
+
+# Backwards-compatible alias (older callers)
+def _sector_peer_rows(symbol: str, sector: str | None, *, limit: int = 10) -> list[dict]:
+    enrich = _enriched(symbol, fast=True)
+    return _industry_peer_rows(symbol, enrich, limit=limit)
+
+
+def _attach_volatility(symbol: str, enrich: dict) -> None:
+    """P0-4: attach a correctly-labelled volatility — 20d realized (annualized) + ATR%.
+
+    Never surfaces the Finviz weekly-range field (volatility_w_pct) as 'volatility'.
+    """
+    price = _f(enrich.get("price") or enrich.get("latest_price"))
+    atr = _f(enrich.get("atr"))
+    if price > 0 and atr > 0:
+        enrich["atr_pct"] = round(atr / price * 100, 2)
+    # realized vol from recent history (stdev of daily log returns * sqrt(252))
+    try:
+        from portfolio_technical_charts import _fetch_yahoo_history
+        hist = _fetch_yahoo_history(symbol.upper(), 30)
+        prices = [float(p) for p in (hist or {}).get("prices") or [] if p]
+        if len(prices) >= 10:
+            rets = [math.log(prices[i] / prices[i - 1]) for i in range(1, len(prices)) if prices[i - 1] > 0]
+            if len(rets) >= 5:
+                mean = sum(rets) / len(rets)
+                var = sum((r - mean) ** 2 for r in rets) / (len(rets) - 1)
+                enrich["realized_vol_annualized_pct"] = round((var ** 0.5) * (252 ** 0.5) * 100, 1)
+    except Exception:
+        pass
+
+
+def _holding_levels(enrich: dict, pro: dict | None, proposal: dict | None) -> dict:
+    """P1-1: synthesize entry/stop/target + thesis-validity band for a holding that has
+    no live broker proposal, so the thesis band renders instead of 'n/a'."""
+    if proposal and (proposal.get("thesis_validity") or {}).get("ok"):
+        tv = proposal["thesis_validity"]
+        return {"entry": tv.get("entry"), "stop": tv.get("stop"), "target": tv.get("target"),
+                "valid_low": tv.get("valid_low"), "valid_high": tv.get("valid_high"), "thesis_validity": tv}
+    price = _f(enrich.get("price") or enrich.get("latest_price"))
+    if price <= 0:
+        return {}
+    atr = _f(enrich.get("atr"))
+    # nearest support below price: SMA50 level or price - 2*ATR (use the higher, i.e. closer, support)
+    sma50_pct = enrich.get("sma50_pct")
+    sma50_price = price / (1 + _f(sma50_pct) / 100) if sma50_pct is not None else None
+    atr_stop = price - 2 * atr if atr > 0 else None
+    supports = [s for s in (sma50_price, atr_stop) if s and 0 < s < price]
+    stop = round(max(supports), 2) if supports else round(price * 0.93, 2)
+    # forward target: street mean if above price, else a structural +12% (NOT an analyst target)
+    t_mean = _f((pro or {}).get("target_mean_price"))
+    target_is_analyst = t_mean > price
+    target = round(t_mean, 2) if target_is_analyst else round(price * 1.12, 2)
+    entry = round(price, 2)
+    try:
+        from broker_thesis_validity import compute_thesis_validity
+        tv = compute_thesis_validity(entry, stop, target, price, strategy_id="position")
+    except Exception:
+        tv = {}
+    return {"entry": entry, "stop": stop, "target": target, "target_is_analyst": target_is_analyst,
+            "valid_low": tv.get("valid_low"), "valid_high": tv.get("valid_high"), "thesis_validity": tv}
 
 
 def _options_for_underlying(symbol: str) -> list[dict]:
@@ -600,14 +881,45 @@ def build_symbol_report(
     holding = _holding_for_symbol(sym)
     personal = aggregate_holdings(sym, _holding_rows_raw) if holding else {}
     enrich = _enriched(sym, holding or personal.get("primary"))
+    inst_meta = _instrument_meta(sym)
+    if inst_meta.get("instrument_type"):
+        enrich.setdefault("instrument_type", inst_meta["instrument_type"])
+    for k in ("ytd_return_pct", "dividend_yield_pct", "ttm_dividend"):
+        if inst_meta.get(k) is not None:
+            enrich.setdefault(k, inst_meta[k])
+    _attach_volatility(sym, enrich)
     wl = _watchlist_row(sym)
     synthesis = _synthesis(sym)
-    agents = _agent_notes(sym)
+    from report_synthesis import _pro_analyst
+    pro = _pro_analyst(sym)
+    live_mv = _f(personal.get("market_value")) or (_f(holding.get("market_value")) if holding else None)
+    live_shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else None)
+    agents, agent_meta = _agent_notes(sym, live_mv=live_mv, live_shares=live_shares)
     ensemble = _normalize_ensemble_row(_ensemble(sym))
-    news = _news_for_symbol(sym, limit=8)
+    news = _news_for_symbol(sym, limit=8, company=enrich.get("company") or personal.get("name"))
     proposal = _proposal_context(sym)
+    levels = _holding_levels(enrich, pro, proposal)
+    hermes = _hermes_research(sym)
+    # P1-2: dual-lane consensus + synthesis age for the intelligence view
+    syn_age_days = None
+    if synthesis and synthesis.get("updated_at"):
+        try:
+            _ts = synthesis["updated_at"]
+            if isinstance(_ts, str):
+                _ts = datetime.fromisoformat(_ts.replace("Z", "+00:00")[:26])
+            if _ts.tzinfo is None:
+                _ts = _ts.replace(tzinfo=timezone.utc)
+            syn_age_days = (datetime.now(timezone.utc) - _ts).days
+        except Exception:
+            syn_age_days = None
+    agent_meta["synthesis_age_days"] = syn_age_days
+    agent_meta["dual_lane"] = {
+        "grok": (synthesis or {}).get("grok_recommendation"),
+        "chatgpt": (synthesis or {}).get("chatgpt_recommendation"),
+        "models_agree": (synthesis or {}).get("models_agree"),
+    }
     sector_name = enrich.get("sector") or (wl or {}).get("sector")
-    peer_rows = _sector_peer_rows(sym, sector_name)
+    peer_rows = _industry_peer_rows(sym, enrich)
     option_rows = _options_for_underlying(sym)
     for extra in ("peer_comparison", "options_strategy"):
         if extra == "peer_comparison" and peer_rows and extra not in sections:
@@ -621,6 +933,26 @@ def build_symbol_report(
         report_type = "symbol_holding"
 
     exec_metrics = _build_executive_summary(sym, enrich, synthesis, holding, wl, report_type)
+    # Make the HEADLINE confidence consistent with the caveats we surface elsewhere: apply the
+    # dual-lane-disagreement ×0.8 rule and a staleness discount so 'confidence' isn't overstated.
+    _conf = exec_metrics.get("confidence")
+    if _conf is not None:
+        _adj, _reasons = _f(_conf), []
+        if (synthesis or {}).get("models_agree") is False:
+            _adj *= 0.8
+            _reasons.append("dual-lane models disagree (×0.8)")
+        if syn_age_days is not None and syn_age_days > 30:
+            _adj *= 0.9
+            _reasons.append(f"synthesis {int(syn_age_days)}d stale (×0.9)")
+        if any(str(a.get("recommendation") or "").upper() in ("AVOID", "SELL") for a in agents):
+            _adj *= 0.92
+            _reasons.append("an internal agent flags AVOID/SELL (×0.92)")
+        _adj = round(_adj, 1)
+        if _reasons:
+            exec_metrics["confidence_raw"] = _conf
+            exec_metrics["confidence"] = _adj
+            exec_metrics["confidence_label"] = _confidence_label(_adj)
+            exec_metrics["confidence_adjustments"] = _reasons
     thesis_st = None
     try:
         from report_synthesis import thesis_status
@@ -666,6 +998,9 @@ def build_symbol_report(
         "recommendation": exec_metrics.get("recommendation"),
         "confidence": exec_metrics.get("confidence"),
         "confidence_label": exec_metrics.get("confidence_label"),
+        "confidence_source": exec_metrics.get("confidence_source"),
+        "confidence_raw": exec_metrics.get("confidence_raw"),
+        "confidence_adjustments": exec_metrics.get("confidence_adjustments"),
         "portfolio_pct": personal.get("portfolio_pct") or (holding.get("portfolio_pct") if holding else None),
         "portfolio_value": personal.get("market_value") or (holding.get("market_value") if holding else None),
         "unrealized_pnl": personal.get("unrealized_pnl") or (holding.get("gain_loss") if holding else None),
@@ -692,7 +1027,39 @@ def build_symbol_report(
         continuity=continuity,
         peer_rows=peer_rows,
         option_rows=option_rows,
+        agent_meta=agent_meta,
+        levels=levels,
+        pro=pro,
     )
+
+    # Hermes normalized-research lane — append grounded research as a section + callouts.
+    if hermes:
+        _total_sources = sum(int(h.get("sources") or 0) for h in hermes)
+        _grounded = _total_sources > 0
+        _title = "Hermes Research (Web-Grounded, Graded)" if _grounded else "Hermes Research (Internal, Graded)"
+        _lead = (
+            f"Hermes contributes {len(hermes)} graded research note(s) on {sym}"
+            + (f", citing {_total_sources} web source(s)." if _grounded else " (internal synthesis — no external citations attached).")
+            + " " + (hermes[0].get("summary") or "")
+        )
+        _hermes_section = {
+            "id": "hermes_research",
+            "title": _title,
+            "content": _lead,
+            "bullets": [
+                (f"[{h.get('as_of') or '—'}] {h.get('topic') or h.get('research_type') or 'Research'}: "
+                 f"{(h.get('thesis') or h.get('summary') or '')[:140]}"
+                 f" (conf {h.get('confidence')}"
+                 + (f", {h.get('sources')} sources" if int(h.get('sources') or 0) > 0 else "") + ")")
+                for h in hermes[:4]
+            ],
+            "metrics": {
+                "research_notes": len(hermes),
+                "top_quality": hermes[0].get("quality"),
+                "as_of": hermes[0].get("as_of"),
+            },
+        }
+        report_sections.append(_hermes_section)
 
     visuals: list[dict] = []
     if peer_rows:
@@ -721,12 +1088,43 @@ def build_symbol_report(
     if "risk_assessment" in sections:
         if proposal:
             visuals.append(_thesis_visual(proposal, enrich, sym))
+        elif levels.get("thesis_validity", {}).get("ok"):
+            # P1-1: holding thesis band rendered from synthesized entry/support/target
+            try:
+                from report_visuals import chart_thesis_validity_range
+                tv = levels["thesis_validity"]
+                chart = chart_thesis_validity_range(
+                    symbol=sym, entry=_f(levels.get("entry")), stop=_f(levels.get("stop")),
+                    target=_f(levels.get("target")), price=_f(enrich.get("price") or enrich.get("latest_price")),
+                    valid_low=_f(tv.get("valid_low")) or None, valid_high=_f(tv.get("valid_high")) or None,
+                    zone_status=str(tv.get("zone_status") or ""), drift_pct=tv.get("drift_pct"),
+                )
+                if chart.get("chart_path"):
+                    visuals.append(chart)
+            except Exception:
+                pass
         visuals.append(_risk_visual(holding, enrich, proposal))
+
+    if "analyst_predictions" in sections and pro:
+        try:
+            from report_visuals import chart_analyst_targets, chart_rating_distribution
+            from report_narrative import rating_distribution
+            ar = chart_analyst_targets(sym, pro, _f(enrich.get("price") or enrich.get("latest_price")))
+            if ar.get("chart_path"):
+                visuals.append(ar)
+            rd = chart_rating_distribution(sym, rating_distribution(pro))
+            if rd.get("chart_path"):
+                visuals.append(rd)
+        except Exception:
+            pass
 
     sources = [
         {"id": "ticker_enrichment_cache", "label": "Market enrichment"},
         {"id": "watchlist_final_synthesis", "label": "Watchlist synthesis", "present": bool(synthesis)},
-        {"id": "watchlist_agent_results", "label": "Agent notes", "count": len(agents)},
+        {"id": "watchlist_agent_results", "label": "Agent notes (fresh)", "count": len(agents)},
+        {"id": "agent_calibration", "label": "Agent calibration weighting", "present": True},
+        {"id": "hermes_research_intelligence", "label": "Hermes web-grounded research", "count": len(hermes)},
+        {"id": "pro_analyst_pills", "label": "Street analyst coverage", "present": bool(pro)},
         {"id": "portfolio_news", "label": "News/catalysts", "count": len(news)},
         {"id": "inference_ensemble_results", "label": "Layer 4 ensemble", "present": bool(ensemble)},
         {"id": "paper_trade_proposals", "label": "Broker proposal", "present": bool(proposal)},
