@@ -336,6 +336,63 @@ def _audit_log(symbol: str, oversight: dict, free: list[dict]) -> None:
         pass
 
 
+def enforce_integrity(report: dict) -> list[str]:
+    """Deterministic pre-render normalization the oversight overlay should never have to re-flag.
+
+    Collapses the agent panel to one row per (agent, recommendation) with a net calibration-weighted
+    stance, and reconciles the peer-median PE shown in the peer section to the actually-listed peers.
+    Returns a list of applied normalizations (for the audit/stamp).
+    """
+    applied: list[str] = []
+    secs = {s.get("id"): s for s in (report.get("sections") or [])}
+
+    intel = secs.get("intelligence_view")
+    if intel and intel.get("agents"):
+        seen: dict[tuple, dict] = {}
+        for a in intel["agents"]:
+            key = (str(a.get("agent") or "").lower(), str(a.get("recommendation") or "").upper())
+            if key not in seen:
+                seen[key] = dict(a)
+        if len(seen) < len(intel["agents"]):
+            applied.append(f"deduped agent panel {len(intel['agents'])}→{len(seen)} (one row per agent+rec)")
+        intel["agents"] = list(seen.values())
+
+    peer = secs.get("peer_comparison")
+    if peer and peer.get("bullets"):
+        # recompute the displayed peer-median PE from the rows actually listed in the section bullets
+        import re
+        pes = []
+        for b in peer["bullets"]:
+            m = re.search(r"PE\s+([\d.]+)", str(b))
+            if m:
+                try:
+                    pes.append(float(m.group(1)))
+                except ValueError:
+                    pass
+        if pes:
+            pes.sort()
+            med = pes[len(pes) // 2]
+            content = str(peer.get("content") or "")
+            m = re.search(r"median of ([\d.]+)×", content)
+            if m and abs(float(m.group(1)) - med) > 0.05:
+                peer["content"] = re.sub(r"median of [\d.]+×", f"median of {med:.1f}×", content)
+                applied.append(f"reconciled peer-median PE → {med:.1f}× from {len(pes)} listed peers")
+    return applied
+
+
+def _unresolved_after_apply(report: dict) -> list[str]:
+    """Re-validate: a published report must not still contain an issue its overlay flagged to fix."""
+    issues = []
+    secs = {s.get("id"): s for s in (report.get("sections") or [])}
+    intel = secs.get("intelligence_view")
+    if intel and intel.get("agents"):
+        keys = [(str(a.get("agent") or "").lower(), str(a.get("recommendation") or "").upper())
+                for a in intel["agents"]]
+        if len(keys) != len(set(keys)):
+            issues.append("duplicate agent rows still present")
+    return issues
+
+
 def oversee_report(
     report: dict,
     *,
@@ -346,6 +403,8 @@ def oversee_report(
     """Run the oversight pipeline and stamp meta.claude_oversight. Mutates + returns report."""
     meta = report.setdefault("meta", {})
     symbol = meta.get("symbol")
+    # deterministic integrity normalization BEFORE critique (so the overlay never re-flags structure)
+    integrity_applied = enforce_integrity(report)
     packet = build_data_packet(report)
 
     free: list[dict] = []
@@ -375,12 +434,20 @@ def oversee_report(
             "skipped": "lane_down(claude)" if reason == "claude_lane_down" else None,
         }
 
-    fixes_applied = apply_fixes(report, oversight)
+    fixes_applied = apply_fixes(report, oversight) + len(integrity_applied)
+    # Re-validate: never ship a report that still contains an issue the overlay said to fix.
+    unresolved = _unresolved_after_apply(report)
+    verdict = oversight.get("verdict")
+    if unresolved and verdict in ("PUBLISH", "PUBLISH_WITH_FIXES"):
+        verdict = "BLOCK"
+        oversight["verdict"] = "BLOCK"
     stamp = {
-        "verdict": oversight.get("verdict"),
+        "verdict": verdict,
         "model": oversight.get("model"),
         "ts": _now_iso(),
         "fixes_applied": fixes_applied,
+        "integrity_normalizations": integrity_applied or None,
+        "unresolved": unresolved or None,
         "claude_ran": run_claude,
         "claude_gate_reason": reason,
         "free_lanes": [

@@ -236,6 +236,37 @@ Env: `REPORT_CLAUDE_OVERSIGHT` (default 0), `REPORT_CLAUDE_MODEL` (blank → esc
   >> logs/analyst_reports_autonomous.log 2>&1
 ```
 
+## v4 Rendering Stack (sell-side design)
+
+One section model (the `analyst_report_builder` JSON) → two renderers in `scripts/report_render.py`:
+
+- `render_html(report)` — Jinja2 `templates/analyst_report.html.j2` + `assets/analyst_report.css`
+  (cover KPI band, two-column TOC, prose-first sections with one compact KPI table, charts inlined as
+  base64 data URIs, `break-inside: avoid` so a figure never splits a page).
+- `render_pdf(report, path)` — **headless Chromium via Playwright** (`page.pdf`, CSS Paged Media,
+  `displayHeaderFooter` running header + footer with `pageNumber`/`totalPages`).
+- `render_docx(report, path)` — styled **python-docx** from the same model.
+
+**Stack note / flag-back:** WeasyPrint and Pandoc require system libs (`libpango`, `libcairo`) installed
+via `sudo apt`, which is not available passwordless in this environment. The active stack is therefore
+Playwright (PDF) + python-docx (DOCX) + mplfinance (charts) — all pip/already-installed, no sudo. To use
+WeasyPrint/Pandoc instead, run:
+
+```
+sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 pandoc fonts-inter
+.venv/bin/pip install weasyprint mplfinance jinja2
+```
+
+CLI: `generate --engine playwright|weasyprint|legacy` (default `playwright`). `legacy` = the old
+python-docx hand-placement export. Real TA charts: `report_visuals.chart_technical` (mplfinance
+candlestick + volume + RSI + MACD + Bollinger + SMA20/50/200 with drawn entry/stop/target/support lines).
+
+**Oversight enforcement (v4):** `report_oversight.enforce_integrity` runs deterministically before
+critique — dedupes the agent panel to one row per (agent, recommendation) and reconciles the peer-median
+PE to the listed peers. After fixes are applied, `_unresolved_after_apply` re-validates; if a flagged
+issue survives, the verdict is downgraded to BLOCK (a report never ships contradicting its own overlay).
+`meta.claude_oversight` gains `integrity_normalizations` and `unresolved`.
+
 ## v3 Section Schema (Holdings & Watchlist)
 
 Default prospectus sections (`PROSPECTUS_SECTIONS`):

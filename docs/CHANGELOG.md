@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-24 - Analyst prospectus v4: sell-side design re-platform + depth
+
+Presentation re-platform on top of the v3.1 intelligence engine. Single HTML/CSS source of truth
+(`scripts/report_render.py` + `templates/analyst_report.html.j2` + `assets/analyst_report.css`) rendered
+to a paginated PDF via **headless Chromium/Playwright** (WeasyPrint/Pandoc blocked by sudo in this env —
+flagged) and a styled DOCX via python-docx. Layout fixes: charts INLINE in their owning sections (no
+trailing "Visual Summary" dump), spaced labelled KPI band, running header/footer with page X of N, TOC,
+prose-first with one compact KPI table per section, fixed-layout wrapping tables (no "do not c"
+truncation), single Senior Analyst Overlay, markdown-emphasis stripped. Real TA charts via **mplfinance**
+(`chart_technical`: candlestick + volume + RSI + MACD + Bollinger + SMA20/50/200 with drawn
+entry/stop/target/support lines matching the Action Plan). Oversight now ENFORCES: deterministic
+`enforce_integrity` dedupes the agent panel (one row per agent+rec) and reconciles the peer-median PE
+pre-render, plus re-validation that downgrades to BLOCK if a flagged issue survives. New depth sections:
+**Options & Income** (`aegis_covered_call_candidates`; honest "IV/Greeks not available"; ETF skipped with
+one-liner) and **Analyst Commentary** (rating/target CHANGES from `analyst_consensus_history` +
+`yahoo_analyst_targets_history` + bull/bear synthesis). CLI `--engine playwright|weasyprint|legacy`. V (8pp)
+and DIVI (6pp) render PUBLISH_WITH_FIXES. Tests: `test_report_render.py`. Doc: `REPORTING_ENGINE.md`.
+
 ## 2026-06-24 - Analyst prospectus v3.1: synthesis quality lift + Claude cloud oversight
 
 Stale-finding fixes across the five report modules (no engine rewrite): continuity no longer

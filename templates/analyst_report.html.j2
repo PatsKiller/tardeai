@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{{ title }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Trade AI v12 · Analyst Research</div>
+  <h1>{{ title }}</h1>
+  <div class="meta">
+    {% if company %}<b>{{ company }}</b>{% if sector %} · {{ sector }}{% endif %}<br/>{% endif %}
+    Symbol <b>{{ symbol }}</b> · Generated {{ generated_at }} · Report schema v{{ version }}
+  </div>
+
+  <div class="kpi-band">
+    {% for t in cover_tiles %}
+    <div class="kpi-tile"><div class="lab">{{ t.label }}</div><div class="val {{ t.cls }}">{{ t.value }}</div></div>
+    {% endfor %}
+  </div>
+
+  <div class="toc">
+    <h2>Contents</h2>
+    <ol>
+      {% for s in sections %}<li>{{ s.title }}</li>{% endfor %}
+    </ol>
+  </div>
+
+  {% if oversight.verdict %}
+  <div class="oversight-stamp">
+    Cloud oversight: <b>{{ oversight.verdict }}</b>
+    {% if oversight.fixes_applied is not none %}· {{ oversight.fixes_applied }} fix(es) applied{% endif %}
+    {% if oversight.model %}· {{ oversight.model }}{% endif %} · advisory
+  </div>
+  {% endif %}
+</div>
+
+{% for s in sections %}
+<section{% if loop.first %} class="first"{% endif %}>
+  <h2>{{ s.title }}</h2>
+
+  {% for c in s.callouts %}
+  <div class="callout {% if 'REVIEW' in c.label or '⚠' in c.label %}warn{% endif %}">
+    <span class="lab">{{ c.label }}:</span> {{ c.text }}
+  </div>
+  {% endfor %}
+
+  {% if s.content %}<p class="body">{{ s.content }}</p>{% endif %}
+
+  {% if s.bullets %}
+  <ul class="bullets">{% for b in s.bullets %}<li>{{ b.lstrip('• ') }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if s.kpi_rows %}
+  <table class="kpi">
+    <tr><th>Metric</th><th style="text-align:right">Value</th></tr>
+    {% for r in s.kpi_rows %}<tr><td class="lab">{{ r.label }}</td><td class="val">{{ r.value }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+
+  {% if s.agents %}
+  <table class="agents">
+    <tr><th>Agent</th><th>Recommendation</th><th class="w">Relevance</th></tr>
+    {% for a in s.agents %}
+    <tr><td>{{ a.agent }}</td><td>{{ a.recommendation }}</td><td class="w">{{ a.relevance or a.weight }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% for f in s.figures %}
+  <figure>
+    <img src="{{ f.uri }}" alt="{{ s.title }} chart"/>
+    {% if f.caption %}<figcaption>{{ f.caption }}</figcaption>{% endif %}
+  </figure>
+  {% endfor %}
+</section>
+{% endfor %}
+
+{% if sources %}
+<div class="sources">
+  <b>Data sources:</b>
+  {% for src in sources %}<span>{{ src.label }}{% if src.count is not none %} ({{ src.count }}){% endif %}{% if src.present %} ✓{% endif %}</span>{% endfor %}
+</div>
+{% endif %}
+
+</body>
+</html>
