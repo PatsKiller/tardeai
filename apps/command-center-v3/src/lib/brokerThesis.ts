@@ -169,6 +169,41 @@ export type LiveQuote = {
 }
 
 /** Best available quote for broker cards — list live quote beats stale DB price. */
+export type TickerContext = {
+  strategyDisplay: string
+  strategyTypeLabel?: string | null
+  strategyPurpose?: string | null
+  sector?: string | null
+  industry?: string | null
+  instrumentType?: string | null
+  signalGrade?: string | null
+  companyLine?: string | null
+}
+
+export function resolveTickerContext(proposal: Record<string, any> | null | undefined, intel?: any): TickerContext {
+  const co = intel?.company || {}
+  const st = intel?.strategy || {}
+  const tech = intel?.technicals || {}
+  const why = intel?.why_purchase || {}
+  const desc = co.description || proposal?.company_description
+  let companyLine: string | null = null
+  if (desc) {
+    const s = String(desc).trim()
+    const dot = s.search(/[.!?]/)
+    companyLine = (dot > 20 ? s.slice(0, dot + 1) : s.slice(0, 140)).trim()
+  }
+  return {
+    strategyDisplay: proposal?.strategy_display_name || st.display_name || proposal?.strategy_id || '—',
+    strategyTypeLabel: proposal?.strategy_type_label || st.strategy_type_label || proposal?.strategy_type || null,
+    strategyPurpose: proposal?.strategy_description || st.purpose || why.strategy_purpose || null,
+    sector: proposal?.sector || co.sector || null,
+    industry: proposal?.industry || co.industry || null,
+    instrumentType: proposal?.instrument_type || co.instrument_type || null,
+    signalGrade: tech.grade || why.signal_grade || null,
+    companyLine,
+  }
+}
+
 export function resolveLiveQuote(proposal: {
   thesis_validity?: ThesisValidity | null
   quote_last?: number | null

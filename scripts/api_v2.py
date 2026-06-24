@@ -13017,7 +13017,72 @@ def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = 
     return row
 
 
-def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_buy_syms: set[str] | None = None) -> dict:
+_BROKER_STRATEGY_META_CACHE: dict[str, dict] = {}
+
+
+def _broker_strategy_meta(strategy_id: str) -> dict:
+    sid = (strategy_id or "").strip()
+    if sid in _BROKER_STRATEGY_META_CACHE:
+        return _BROKER_STRATEGY_META_CACHE[sid]
+    meta: dict = {"strategy_id": sid, "display_name": sid.replace("_", " ").title() if sid else "—"}
+    try:
+        from proposal_lifecycle import get_strategy_metadata
+        meta.update(get_strategy_metadata(sid) or {})
+    except Exception:
+        pass
+    try:
+        from strategy_config_loader import load_strategy_config
+        cfg = load_strategy_config(sid) or {}
+        if cfg.get("display_name"):
+            meta["display_name"] = cfg["display_name"]
+        if cfg.get("purpose"):
+            meta["purpose"] = cfg["purpose"]
+        if cfg.get("timeframe"):
+            meta["timeframe"] = cfg["timeframe"]
+        if cfg.get("timeframe_class"):
+            meta["timeframe_class"] = cfg["timeframe_class"]
+    except Exception:
+        pass
+    _BROKER_STRATEGY_META_CACHE[sid] = meta
+    return meta
+
+
+def _broker_symbol_profiles_batch(symbols: list) -> dict[str, dict]:
+    syms = sorted({str(s or "").upper() for s in symbols if s})
+    if not syms:
+        return {}
+    rows = _db_query(
+        """SELECT upper(symbol) AS symbol, description_1s, sector, industry, instrument_type
+           FROM symbol_profiles WHERE upper(symbol) = ANY(%s)""",
+        (syms,),
+    ) or []
+    return {str(r.get("symbol") or "").upper(): r for r in rows}
+
+
+def _attach_broker_ticker_context(row: dict, profile: dict | None = None) -> dict:
+    """Strategy display + sector/industry for broker card headers (list + detail)."""
+    prof = profile or {}
+    sm = _broker_strategy_meta(str(row.get("strategy_id") or ""))
+    row["strategy_display_name"] = sm.get("display_name")
+    row["strategy_type"] = sm.get("strategy_type")
+    row["strategy_type_label"] = sm.get("strategy_type_label")
+    row["strategy_description"] = sm.get("purpose")
+    row["strategy_timeframe"] = sm.get("timeframe") or sm.get("timeframe_class")
+    row["sector"] = prof.get("sector") or row.get("sector")
+    row["industry"] = prof.get("industry") or row.get("industry")
+    row["instrument_type"] = prof.get("instrument_type") or row.get("instrument_type")
+    desc = prof.get("description_1s")
+    if desc:
+        row["company_description"] = str(desc)[:400]
+    return row
+
+
+def _broker_proposal_row_base(
+    r: dict,
+    quote_map: dict | None = None,
+    watchlist_buy_syms: set[str] | None = None,
+    profiles_map: dict | None = None,
+) -> dict:
     """Lightweight broker queue row — economics + quotes only."""
     row = {k: _json_clean(v) for k, v in r.items()}
     basis = row.get("sizing_basis")
@@ -13090,6 +13155,8 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_
             row["support_1"] = tc.get("support_1")
             row["resistance_1"] = tc.get("resistance_1")
             row["levels_source"] = tc.get("levels_source")
+    prof = (profiles_map or {}).get(sym) or {}
+    _attach_broker_ticker_context(row, prof)
     return _attach_source_attribution(row, watchlist_buy_syms)
 
 
@@ -13479,10 +13546,11 @@ def _broker_proposals(query=None):
                             pass
 
         wl_buy_syms = _fetch_watchlist_buy_symbols([r.get("symbol") for r in proposals])
+        profiles_map = _broker_symbol_profiles_batch([r.get("symbol") for r in proposals])
         acct_meta_cache: dict = {}
         prop_rows = []
         for r in proposals:
-            row = _broker_proposal_row_base(r, quote_map, wl_buy_syms)
+            row = _broker_proposal_row_base(r, quote_map, wl_buy_syms, profiles_map)
             if source_f == "both":
                 sa = row.get("source_attribution") or {}
                 if sa.get("label") != "both":
@@ -13820,7 +13888,8 @@ def _broker_proposal_detail(body: dict):
         except Exception:
             pass
     wl_buy = _fetch_watchlist_buy_symbols([sym])
-    base = _broker_proposal_row_base(row, quote_map, wl_buy)
+    profiles_map = _broker_symbol_profiles_batch([sym])
+    base = _broker_proposal_row_base(row, quote_map, wl_buy, profiles_map)
     acct = base.get("account") or ""
     if light and not full:
         base.update(_broker_account_label_meta(acct))

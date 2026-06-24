@@ -4,7 +4,7 @@ import ThesisValidityBar from './ThesisValidityBar'
 import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 import ActionButton from './ActionButton'
 import ProposalSourceBadges from './ProposalSourceBadges'
-import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, tradeEconomics } from '../lib/brokerThesis'
+import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, resolveTickerContext, tradeEconomics } from '../lib/brokerThesis'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -122,7 +122,7 @@ export default function BrokerProposalCard({
     : p.intel?.lazy
       ? null
       : { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }
-  const strategyPurpose = intel?.why_purchase?.strategy_purpose
+  const tickerCtx = resolveTickerContext(p, intel)
   const liveQ = resolveLiveQuote(p)
   const driftColor = liveQ.driftPct == null ? MUTED
     : Math.abs(liveQ.driftPct) > 3 ? AMBER
@@ -174,14 +174,19 @@ export default function BrokerProposalCard({
           <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, fontStyle: 'italic' }}>No live price</span>
         )}
         <span
-          title={strategyPurpose || p.strategy_id}
+          title={tickerCtx.strategyPurpose || p.strategy_id}
           style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
         >
-          {p.strategy_id}
+          {tickerCtx.strategyDisplay}
         </span>
-        {strategyPurpose && (
-          <span style={{ fontSize: 9, color: MUTED, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={strategyPurpose}>
-            {strategyPurpose}
+        {tickerCtx.strategyTypeLabel && (
+          <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
+            {tickerCtx.strategyTypeLabel}
+          </span>
+        )}
+        {tickerCtx.signalGrade && (
+          <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
+            {tickerCtx.signalGrade} grade
           </span>
         )}
         <ProposalSourceBadges proposal={p} size="md" />
@@ -239,6 +244,51 @@ export default function BrokerProposalCard({
           ✎ Edit trade
         </ActionButton>
       </header>
+
+      {/* Ticker context — strategy, sector, company one-liner */}
+      <div style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid rgba(148,163,184,.1)',
+        background: 'rgba(15,23,42,.45)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gap: '10px 18px',
+        fontSize: 10,
+      }}>
+        <div>
+          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Strategy</div>
+          <div style={{ fontWeight: 800, color: '#fb923c' }}>{tickerCtx.strategyDisplay}</div>
+          {tickerCtx.strategyPurpose && (
+            <div style={{ fontSize: 9, color: TEXT1, marginTop: 3, lineHeight: 1.4 }}>{tickerCtx.strategyPurpose}</div>
+          )}
+          {!tickerCtx.strategyPurpose && p.strategy_id && p.strategy_id !== tickerCtx.strategyDisplay && (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>{p.strategy_id}</div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Sector</div>
+          {(tickerCtx.sector || tickerCtx.industry) ? (
+            <div style={{ fontWeight: 700, color: TEXT0 }}>
+              {[tickerCtx.sector, tickerCtx.industry].filter(Boolean).join(' · ')}
+            </div>
+          ) : (
+            <div style={{ fontWeight: 700, color: RED }}>Sector missing</div>
+          )}
+          {tickerCtx.instrumentType && (
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>{tickerCtx.instrumentType}</div>
+          )}
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Company</div>
+          {tickerCtx.companyLine ? (
+            <div style={{ fontSize: 9.5, color: TEXT1, lineHeight: 1.45 }}>{tickerCtx.companyLine}</div>
+          ) : detailLoading ? (
+            <div style={{ fontSize: 9, color: MUTED, fontStyle: 'italic' }}>Loading company profile…</div>
+          ) : (
+            <div style={{ fontSize: 9, color: MUTED, fontStyle: 'italic' }}>No company profile — run Enrich on paper proposal</div>
+          )}
+        </div>
+      </div>
 
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>

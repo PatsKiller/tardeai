@@ -211,6 +211,18 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const mergeProposal = (raw: any) => {
     const detail = detailMap[raw.id] || {}
     const merged = { ...raw, ...detail }
+    const intel = merged.intel || detail.intel
+    if (intel?.company) {
+      merged.sector = merged.sector || intel.company.sector
+      merged.industry = merged.industry || intel.company.industry
+      merged.instrument_type = merged.instrument_type || intel.company.instrument_type
+      if (intel.company.description) merged.company_description = intel.company.description
+    }
+    if (intel?.strategy) {
+      merged.strategy_display_name = intel.strategy.display_name || merged.strategy_display_name
+      merged.strategy_type_label = intel.strategy.strategy_type_label || merged.strategy_type_label
+      merged.strategy_description = intel.strategy.purpose || merged.strategy_description
+    }
     // Light detail prefetch uses DB price — must not clobber list live-quote thesis band.
     const listFresh = raw.price_stale === false || (raw.thesis_validity && !raw.thesis_validity.price_stale)
     const detailStale = detail.price_stale === true || detail.thesis_validity?.zone_status === 'stale_price'

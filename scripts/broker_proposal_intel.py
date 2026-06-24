@@ -208,7 +208,7 @@ def _symbol_card(symbol: str, live_price: float | None = None) -> dict:
     if not sym:
         return {}
     prof = _q(
-        "SELECT description_1s, sector, industry FROM symbol_profiles WHERE symbol=%s",
+        "SELECT description_1s, sector, industry, instrument_type FROM symbol_profiles WHERE symbol=%s",
         (sym,), one=True,
     ) or {}
     analyst = _analyst_intel(sym, live_price=live_price)
@@ -224,6 +224,7 @@ def _symbol_card(symbol: str, live_price: float | None = None) -> dict:
         "description": prof.get("description_1s"),
         "sector": prof.get("sector"),
         "industry": prof.get("industry"),
+        "instrument_type": prof.get("instrument_type"),
         "analyst": analyst,
         "news": [
             {"title": n.get("title"), "source": n.get("source"), "at": str(n.get("published_at") or "")[:19]}
@@ -348,15 +349,22 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     if tech_parts and not why_parts:
         why_parts.append(f"Technical setup: {' · '.join(tech_parts)}. Strategy {row.get('strategy_id')}.")
 
+    strategy_meta: dict = {}
+    strategy_purpose = None
     try:
-        import yaml
-        cfg_path = Path(__file__).resolve().parent.parent / "config" / "strategies" / f"{row.get('strategy_id')}.yaml"
-        strategy_purpose = None
-        if cfg_path.exists():
-            cfg = yaml.safe_load(cfg_path.read_text()) or {}
+        from proposal_lifecycle import get_strategy_metadata
+        strategy_meta = dict(get_strategy_metadata(str(row.get("strategy_id") or "")) or {})
+        strategy_purpose = strategy_meta.get("purpose")
+        if not strategy_purpose:
+            from strategy_config_loader import load_strategy_config
+            cfg = load_strategy_config(str(row.get("strategy_id") or "")) or {}
             strategy_purpose = cfg.get("purpose")
+            if cfg.get("display_name"):
+                strategy_meta["display_name"] = cfg["display_name"]
+            if strategy_purpose:
+                strategy_meta["purpose"] = strategy_purpose
     except Exception:
-        strategy_purpose = None
+        strategy_meta = {}
 
     oversight = {}
     if include_oversight:
@@ -372,10 +380,20 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
         "symbol": sym,
         "oversight": oversight,
         "strategy_id": row.get("strategy_id"),
+        "strategy": {
+            "strategy_id": row.get("strategy_id"),
+            "display_name": strategy_meta.get("display_name")
+            or str(row.get("strategy_id") or "").replace("_", " ").title(),
+            "strategy_type": strategy_meta.get("strategy_type"),
+            "strategy_type_label": strategy_meta.get("strategy_type_label"),
+            "purpose": strategy_purpose,
+            "timeframe": strategy_meta.get("timeframe") or strategy_meta.get("timeframe_class"),
+        },
         "company": {
             "description": card.get("description"),
             "sector": card.get("sector") or row.get("sector"),
             "industry": card.get("industry") or row.get("industry"),
+            "instrument_type": card.get("instrument_type") or row.get("instrument_type"),
         },
         "catalyst": {
             "text": catalyst,
