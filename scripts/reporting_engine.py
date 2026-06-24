@@ -490,7 +490,15 @@ def report_links_map(*, symbols: list[str] | None = None, limit: int = 300) -> d
         if not verified:
             continue
         reg_row = (by_holding if rtype == "symbol_holding" else by_watchlist).get(sym) or {}
-        links[sym] = {**verified, "recommendation": reg_row.get("recommendation")}
+        links[sym] = {
+            **verified,
+            "recommendation": reg_row.get("recommendation"),
+            "generated_at": verified.get("generated_at") or reg_row.get("generated_at"),
+            "generation": reg_row.get("generation"),
+            "grok_edited": reg_row.get("grok_edited"),
+            "oversight_verdict": reg_row.get("oversight_verdict"),
+            "report_type": rtype,
+        }
 
     ordered = sorted(links.items(), key=lambda kv: kv[1].get("generated_at") or "", reverse=True)
     if limit and len(ordered) > limit:
@@ -632,6 +640,7 @@ def generate_report(
     claude_oversight: bool | None = None,
     oversight_cadence: str | None = None,
     engine: str = "playwright",
+    oversight: bool = True,
 ) -> dict:
     """Build one report, optionally Grok-edit, run cloud oversight, export DOCX/PDF, register."""
     import sys
@@ -701,7 +710,8 @@ def generate_report(
         report = apply_grok_editorial(report)
 
     # Cloud oversight pass (advisory): free dual-lane critique always; metered Claude is cost-gated.
-    if report_type.startswith("symbol_"):
+    # oversight=False skips it entirely (used for fast bulk watchlist render).
+    if oversight and report_type.startswith("symbol_"):
         try:
             from report_oversight import oversee_report
             oversee_report(report, claude_oversight=claude_oversight, cadence=oversight_cadence)
@@ -784,6 +794,7 @@ def generate_report(
         "recommendation": (meta.get("kpis") or {}).get("recommendation"),
         "fingerprint": fp,
         "grok_edited": bool((meta.get("grok_editorial") or {}).get("applied")),
+        "oversight_verdict": (meta.get("claude_oversight") or {}).get("verdict"),
         "generated_at": meta.get("generated_at") or _now_iso(),
         "generation": meta.get("generation"),
         "prior_report_at": meta.get("prior_report_at"),
@@ -804,6 +815,8 @@ def generate_holding_prospectus_batch(
     limit: int = 120,
     stale_days: int | None = None,
     generation_mode: str = "batch",
+    engine: str = "playwright",
+    oversight: bool = True,
 ) -> dict:
     """Generate/update prospectus for all portfolio holdings.
 
@@ -845,6 +858,8 @@ def generate_holding_prospectus_batch(
                 formats=formats or ["docx", "pdf"],
                 grok_edit=use_grok,
                 generation_mode=generation_mode,
+                engine=engine,
+                oversight=oversight,
             )
             results["generated"].append({
                 "symbol": sym,
@@ -872,6 +887,8 @@ def generate_watchlist_prospectus_batch(
     formats: list[str] | None = None,
     limit: int = 30,
     generation_mode: str = "batch_watchlist",
+    engine: str = "playwright",
+    oversight: bool = True,
 ) -> dict:
     """Generate/update watchlist prospectus for operator-added / BUY-side names not held."""
     eligible = eligible_watchlist_symbols(limit=limit)
@@ -901,6 +918,8 @@ def generate_watchlist_prospectus_batch(
                 formats=formats or ["docx", "pdf"],
                 grok_edit=use_grok,
                 generation_mode=generation_mode,
+                engine=engine,
+                oversight=oversight,
             )
             results["generated"].append({
                 "symbol": sym,
