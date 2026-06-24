@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-24 - Social/meme momentum: early discovery + proposals-channel alerts + meme banner wiring
+
+**Root-cause fix (WEN case).** WEN's social pump (Reddit/StockTwits, RVOL 33×, +25% gap, "Heavily
+Shorted… Meme Traders Pounce") was caught only mid-day and never surfaced on its proposal card. Three
+disconnects, all closed:
+**1. Discovery ingest:** `social_ingest` cron ran bare → holdings-only; the trending/discovery code
+existed but was never invoked. Now runs `--source all` (06:00 + 12/18) and `--source stocktwits
+--discover` intraday (08:30/10:30/13:30). Verified: discovery surfaces WEN as #2 StockTwits trending.
+**2. Scalp scanner re-scheduled:** `social_scalp_scanner.py` (social_posts → Finviz → 6-pillar score →
+momentum candidates) was unscheduled since May; now `0,30 6-9` then hourly `10-16` M-F (flock-guarded).
+**3. Proposals-channel alerts:** scanner GO/A+ meme/social alerts now mirror to the proposals Telegram
+(`TRADEAI_PROPOSAL_ALERT_CHAT_ID`) via `_raw_send_telegram` — delivery confirmed.
+**Meme banner wiring:** fixed the path bug where rvol/gap lived in `intel.technicals` but the card read
+`intel.catalyst.rvol` (always undefined). `broker_proposal_intel` catalyst packet now carries
+rvol/gap + a `social` flag (from `hermes_research_intelligence` momentum_catalyst); broker-proposals
+LIST emits rvol/gap/catalyst at top level (banner fires without a detail-load); `BrokerProposalCard`
+reads technicals+catalyst+top-level and treats the social flag/catalyst text as meme triggers
+(`social-momentum (N src)`). Verified: WEN banner renders (triggers: "Heavily Shorted"+"Meme", RVOL 33×,
+gap +25%). Commit `01941081`.
+
+**Hermes data access (canonical):** all agents + local (gemma) + OAuth (Grok/ChatGPT) LLMs now read
+Hermes intelligence (composite score/rank, graded research, external-lane opinions) through one helper,
+`hermes_data_access.py` (`get_hermes_context` / `hermes_prompt_block`); wired into `llm_context_engine`,
+`process_watchlist_agent_jobs`, and `hermes_external_researcher` (redacted, whitelist-respecting).
+Doc: `docs/HERMES_DATA_ACCESS.md`. Commit `ea333239`.
+
 ## 2026-06-24 - Proposals unified surface + safety + dashboard perf + meme-risk banner
 
 **Unified proposals (A-E).** Paper proposals now appear in the single "Proposals" tab on the broker-card
