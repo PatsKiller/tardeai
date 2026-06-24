@@ -140,6 +140,32 @@ export default function BrokerProposalCard({
       ? null
       : { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }
   const tickerCtx = resolveTickerContext(p, intel)
+  // High-risk / meme-speculation surfacing — the operator asked for this to be BOLD at the top,
+  // not buried in the AI-oversight section. Driven by the agents' own words + the risk signals.
+  const _riskReviews: any[] = ov.agents?.reviews || intel?.agent_reviews || p.intel?.agent_reviews || []
+  const _cat: any = (intel as any)?.catalyst || p.intel?.catalyst || {}
+  const _memeRe = /\b(meme|short[ -]?squeeze|heavily shorted|social sentiment|reddit|wsb|wallstreetbets|meme[ -]?trader|pump|frenzy|squeeze)\b/i
+  const _reviewText = _riskReviews.map((r: any) => String(r.summary || r.reasoning || '')).join(' ')
+  const _catText = `${String(_cat.headline || _cat.title || '')} ${String(_cat.summary || '')}`
+  const _rvol = Number(p.rvol ?? _cat.rvol ?? p.intel?.catalyst?.rvol ?? 0)
+  const _gap = Number(p.gap_pct ?? _cat.gap_pct ?? 0)
+  const _catUnverified = !!_cat && (_cat.verified === false || Number(_cat.confidence ?? 0) <= 0)
+  const _memeFlag = _memeRe.test(_catText) || _memeRe.test(_reviewText)
+  const _extremeRvol = _rvol >= 10
+  const highRisk = _memeFlag || (_extremeRvol && (_catUnverified || Math.abs(_gap) >= 15))
+  const _riskLine = String(
+    _riskReviews.find((r: any) => /risk/i.test(String(r.agent || '')))?.summary ||
+    _riskReviews.find((r: any) => _memeRe.test(String(r.summary || '')))?.summary || '',
+  )
+  const _riskReasons = [
+    _memeFlag ? 'meme-driven' : null,
+    _extremeRvol ? `RVOL ${_rvol.toFixed(0)}×` : null,
+    Math.abs(_gap) >= 10 ? `gap ${_gap > 0 ? '+' : ''}${_gap.toFixed(0)}%` : null,
+    _catUnverified ? 'unverified catalyst' : null,
+  ].filter(Boolean).join(' · ')
+  const _stances = _riskReviews
+    .map((r: any) => String(r.vote || r.verdict || r.recommendation || '').toUpperCase().replace(/_/g, ' '))
+    .filter(Boolean)
   const liveQ = resolveLiveQuote(p)
   const driftColor = liveQ.driftPct == null ? MUTED
     : Math.abs(liveQ.driftPct) > 3 ? AMBER
@@ -350,6 +376,33 @@ export default function BrokerProposalCard({
           )}
         </div>
       </div>
+
+      {/* High-risk / meme-speculation banner — bold, top-of-card (the agents' verdict, surfaced) */}
+      {highRisk && (
+        <div role="alert" style={{
+          margin: '10px 14px 2px', padding: '10px 12px', borderRadius: 8,
+          background: 'rgba(239,68,68,.13)', border: '1px solid rgba(239,68,68,.5)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 900, color: RED, letterSpacing: '.3px' }}>
+              ⚠ MEME / HIGH-RISK SPECULATION
+            </span>
+            {_riskReasons && (
+              <span style={{ fontSize: 11, fontWeight: 800, color: AMBER }}>{_riskReasons}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: TEXT1, lineHeight: 1.5, marginTop: 5 }}>
+            {_riskLine
+              ? `${_riskLine.slice(0, 240)}${_riskLine.length > 240 ? '…' : ''}`
+              : 'Agents flag this as a speculative, non-actionable setup — confirm the catalyst before any size.'}
+          </div>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 5, fontWeight: 700 }}>
+            Consensus:&nbsp;
+            {_stances.length ? _stances.join(' · ') : 'agents reviewing'}
+            {ovStatus ? <span style={{ color: ovStatus === 'BLOCK' ? RED : AMBER }}> · oversight {ovStatus}</span> : null}
+          </div>
+        </div>
+      )}
 
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
