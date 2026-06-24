@@ -130,13 +130,32 @@ def apply_strategy_exit_plan(
             sources.append("stop 5% below entry (generic fallback)")
 
     risk_ps = max(0.01, en - st)
+    resistance_target = None
     if not tg or tg <= en:
         if resistance and target_method in ("trailing", "rr_based", "level_based"):
-            tg = round(float(resistance) * 1.02, 2)
+            resistance_target = round(float(resistance) * 1.02, 2)
+            tg = resistance_target
             sources.append(f"target above resistance ${float(resistance):.2f} ({target_method})")
         else:
             tg = round(en + risk_ps * target_rr, 2)
             sources.append(f"target {target_rr}:1 R:R policy ({strategy_id})")
+
+    # Thesis + YAML floor: keep support-anchored stop, raise target if resistance caps R:R too low.
+    try:
+        from broker_thesis_validity import MIN_RR_DEFAULT
+        min_rr = max(float(target_rr), float(MIN_RR_DEFAULT))
+    except Exception:
+        min_rr = max(float(target_rr), 2.0)
+    policy_floor = round(en + risk_ps * min_rr, 2)
+    if tg < policy_floor:
+        capped = tg
+        tg = policy_floor
+        if resistance_target is not None:
+            sources.append(
+                f"target raised to {min_rr:.1f}:1 policy floor (resistance capped ${capped:.2f})"
+            )
+        else:
+            sources.append(f"target set to {min_rr:.1f}:1 policy floor ({strategy_id})")
 
     execution = cfg.get("execution") or {}
     rationale = {
