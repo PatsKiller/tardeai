@@ -128,10 +128,12 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     except Exception:
         pass
 
-    # Add active AI-generated and analyst-curated watchlist symbols from DB
+    # Add directive + AI/topic watchlist symbols from DB (canonical lifecycle statuses)
     try:
         from db_adapter import get_active_watchlist_symbols
-        _db_wl_rows = get_active_watchlist_symbols(["ai_generated", "analyst_curated"])
+        _db_wl_rows = get_active_watchlist_symbols([
+            "ai_discovered", "ai_watchlist", "topic_research", "hermes", "paper_proposal",
+        ])
         _ai_added = 0
         for _r in _db_wl_rows:
             _ws = (_r.get("symbol") or "").upper().strip()

@@ -986,13 +986,43 @@ def expire_stale_ai_watchlist() -> list:
     ) or []
 
 
-def get_active_watchlist_symbols(source_types: list) -> list:
-    """Return active watchlist symbols for given source_types. Each row has 'symbol' key."""
-    placeholders = ",".join(["%s"] * len(source_types))
-    return _execute(
-        f"SELECT symbol FROM watchlist_items WHERE status='active' AND source_type IN ({placeholders})",
-        tuple(source_types), fetch="all"
-    ) or []
+_WATCHLIST_ACTIVE_STATUSES = (
+    "active", "researched", "review", "queued", "researching", "tracking",
+)
+_WATCHLIST_SOURCE_ALIASES = {
+    "ai_generated": "ai_discovered",
+    "analyst_curated": "ai_watchlist",
+}
+
+
+def get_active_watchlist_symbols(source_types: list | None = None) -> list:
+    """Return non-removed watchlist symbols in active lifecycle statuses.
+
+    source_types filters watchlist_items.source (legacy aliases mapped).
+    Each row has a 'symbol' key.
+    """
+    statuses = _WATCHLIST_ACTIVE_STATUSES
+    ph_status = ",".join(["%s"] * len(statuses))
+    srcs: list[str] = []
+    for raw in source_types or []:
+        mapped = _WATCHLIST_SOURCE_ALIASES.get(raw, raw)
+        if mapped and mapped not in srcs:
+            srcs.append(mapped)
+    if srcs:
+        ph_src = ",".join(["%s"] * len(srcs))
+        sql = (
+            f"SELECT DISTINCT symbol FROM watchlist_items "
+            f"WHERE status IN ({ph_status}) AND source IN ({ph_src}) "
+            f"AND symbol IS NOT NULL"
+        )
+        params: tuple = tuple(statuses) + tuple(srcs)
+    else:
+        sql = (
+            f"SELECT DISTINCT symbol FROM watchlist_items "
+            f"WHERE status IN ({ph_status}) AND symbol IS NOT NULL"
+        )
+        params = tuple(statuses)
+    return _execute(sql, params, fetch="all") or []
 
 
 def get_escalations_by_date_severity(date_str: str, severity: int) -> list:

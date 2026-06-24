@@ -55,6 +55,10 @@ MEDIUM_IMPACT_KEYWORDS = [
     "partnership", "licensing agreement", "supply agreement", "contract award",
     "new product launch", "fda clearance", "510k clearance",
     "secondary offering", "atm offering", "shelf registration s-3",
+    "executive order", "national security", "government funding", "federal funding",
+    "department of commerce", "commerce department", "dod contract", "defense contract",
+    "chips act", "us government", "u.s. government", "government investment",
+    "national quantum", "quantum initiative",
 ]
 
 

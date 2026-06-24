@@ -14,6 +14,8 @@ from analyst_report_builder import (  # noqa: E402
     EVENT_FILTERS,
     SECTION_IDS,
     _ensemble,
+    _merge_news_rows,
+    _normalize_news_row,
     _synthesis,
     _synthesis_narrative,
     _watchlist_rating,
@@ -170,3 +172,43 @@ def test_intelligence_deep_report_has_charts():
     report = build_report(report_type="intelligence_deep", topic="defense")
     charts = [v for v in report.get("visuals", []) if v.get("chart_path")]
     assert len(charts) >= 2
+
+
+def test_normalize_news_row_maps_impact_tier_to_score():
+    row = _normalize_news_row(
+        {"title": "Trump Signs Executive Order on Quantum", "impact_tier": "medium_impact", "provider": "yahoo_finance"},
+        provenance="catalyst_enrichment",
+    )
+    assert row is not None
+    assert row["score"] == 65
+    assert row["_provenance"] == "catalyst_enrichment"
+
+
+def test_merge_news_rows_dedupes_and_sorts_by_score():
+    batch = [
+        _normalize_news_row({"title": "Low story", "score": 40}, provenance="portfolio_news"),
+        _normalize_news_row({"title": "High story", "score": 90}, provenance="catalyst_enrichment"),
+        _normalize_news_row({"title": "Low story", "score": 35}, provenance="portfolio_history"),
+    ]
+    merged = _merge_news_rows("RGTI", [batch], limit=5)
+    assert len(merged) == 2
+    assert merged[0]["title"] == "High story"
+
+
+@patch("analyst_report_builder._news_from_catalyst_enrichment")
+@patch("analyst_report_builder._news_from_db")
+@patch("analyst_report_builder._news_from_portfolio_history")
+@patch("analyst_report_builder._news_from_portfolio_state")
+def test_news_for_symbol_falls_back_to_live_enrichment(mock_state, mock_hist, mock_db, mock_live):
+    from analyst_report_builder import _news_for_symbol
+
+    mock_state.return_value = []
+    mock_hist.return_value = []
+    mock_db.return_value = []
+    mock_live.return_value = [
+        {"title": "Commerce funds quantum pilot", "score": 70, "summary": "US investment", "_provenance": "catalyst_enrichment"},
+    ]
+    out = _news_for_symbol("RGTI", limit=3, company=None, use_live_enrichment=True)
+    assert len(out) == 1
+    assert "Commerce" in out[0]["title"]
+    mock_live.assert_called_once()

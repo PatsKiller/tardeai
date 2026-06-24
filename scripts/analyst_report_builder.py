@@ -875,33 +875,158 @@ def _news_relevant(symbol: str, company: str | None, title: str, summary: str) -
     return bool(row)
 
 
-def _news_for_symbol(symbol: str, limit: int = 6, *, company: str | None = None) -> list[dict]:
+_IMPACT_SCORE = {"high_impact": 85, "medium_impact": 65, "low_impact": 45}
+
+
+def _normalize_news_row(item: dict, *, provenance: str) -> dict | None:
+    title = (item.get("title") or item.get("headline") or "").strip()
+    if not title:
+        return None
+    impact = item.get("impact_tier") or ""
+    score = item.get("score") or item.get("catalyst_score") or item.get("relevance_score")
+    if score is None and impact:
+        score = _IMPACT_SCORE.get(impact, 50)
+    return {
+        "title": title,
+        "score": score,
+        "source": item.get("source") or item.get("provider"),
+        "date": item.get("published_at") or item.get("date") or item.get("created_at"),
+        "summary": (item.get("summary") or "")[:280],
+        "impact_tier": impact or None,
+        "_provenance": provenance,
+    }
+
+
+def _news_from_portfolio_state(symbol: str, *, company: str | None = None) -> list[dict]:
     news = _load(STATE_DIR / "portfolio_news.json")
     sym = symbol.upper()
     articles = news.get("all_scored") or news.get("catalysts") or []
-    out, dropped = [], 0
-    seen_titles: set[str] = set()
+    out: list[dict] = []
     for a in articles:
-        if a.get("portfolio_symbol") == sym or a.get("symbol") == sym:
-            title = a.get("title") or a.get("headline") or ""
-            summary = (a.get("summary") or "")[:280]
-            tkey = title.strip().lower()[:80]
-            if tkey in seen_titles:
+        if a.get("portfolio_symbol") != sym and a.get("symbol") != sym:
+            continue
+        row = _normalize_news_row(a, provenance="portfolio_news")
+        if not row:
+            continue
+        if company is not None and not _news_relevant(sym, company, row["title"], row["summary"]):
+            continue
+        out.append(row)
+    return out
+
+
+def _news_from_portfolio_history(symbol: str, *, company: str | None = None, days: int = 14) -> list[dict]:
+    history_dir = STATE_DIR / "portfolio_news_history"
+    if not history_dir.is_dir():
+        return []
+    sym = symbol.upper()
+    out: list[dict] = []
+    for fp in sorted(history_dir.glob("*.json"), reverse=True)[:days]:
+        data = _load(fp)
+        if not isinstance(data, dict):
+            continue
+        for a in data.get("all_scored") or data.get("catalysts") or []:
+            if a.get("portfolio_symbol") != sym and a.get("symbol") != sym:
                 continue
-            if company is not None and not _news_relevant(sym, company, title, summary):
-                dropped += 1
+            row = _normalize_news_row(a, provenance="portfolio_history")
+            if not row:
                 continue
-            seen_titles.add(tkey)
-            out.append({
-                "title": title,
-                "score": a.get("score") or a.get("catalyst_score"),
-                "source": a.get("source"),
-                "date": a.get("published_at") or a.get("created_at"),
-                "summary": summary,
-            })
+            if company is not None and not _news_relevant(sym, company, row["title"], row["summary"]):
+                continue
+            out.append(row)
+    return out
+
+
+def _news_from_db(symbol: str, *, limit: int = 12) -> list[dict]:
+    sym = symbol.upper()
+    rows = _db_query(
+        """SELECT title, summary, source, published_at, relevance_score
+           FROM news_articles
+           WHERE UPPER(symbol) = %s
+             AND published_at > NOW() - INTERVAL '14 days'
+           ORDER BY published_at DESC
+           LIMIT %s""",
+        (sym, limit),
+    ) or []
+    linked = _db_query(
+        """SELECT na.title, na.summary, na.source, na.published_at, na.relevance_score
+           FROM news_articles na
+           JOIN content_entity_links cel
+             ON cel.content_id = na.id AND cel.content_type = 'news_article'
+           WHERE cel.entity_type = 'ticker' AND UPPER(cel.entity_value) = %s
+             AND na.published_at > NOW() - INTERVAL '14 days'
+             AND COALESCE(cel.confidence, 0) >= 0.5
+           ORDER BY na.published_at DESC
+           LIMIT %s""",
+        (sym, limit),
+    ) or []
+    out: list[dict] = []
+    for raw in list(rows) + list(linked):
+        row = _normalize_news_row(dict(raw), provenance="news_articles_db")
+        if row:
+            out.append(row)
+    return out
+
+
+def _news_from_catalyst_enrichment(symbol: str, *, company: str | None = None, limit: int = 10) -> list[dict]:
+    try:
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from catalyst_enrichment import enrich_ticker
+        result = enrich_ticker(symbol.upper(), company or "")
+    except Exception:
+        return []
+    out: list[dict] = []
+    for c in result.get("catalysts") or []:
+        row = _normalize_news_row(c, provenance="catalyst_enrichment")
+        if row:
+            out.append(row)
         if len(out) >= limit:
             break
     return out
+
+
+def _merge_news_rows(
+    symbol: str,
+    batches: list[list[dict]],
+    *,
+    company: str | None = None,
+    limit: int,
+) -> list[dict]:
+    sym = symbol.upper()
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for batch in batches:
+        for row in batch:
+            tkey = (row.get("title") or "").strip().lower()[:80]
+            if not tkey or tkey in seen:
+                continue
+            if company is not None and not _news_relevant(sym, company, row["title"], row.get("summary") or ""):
+                continue
+            seen.add(tkey)
+            merged.append(row)
+    merged.sort(key=lambda r: (_f(r.get("score")), str(r.get("date") or "")), reverse=True)
+    return merged[:limit]
+
+
+def _news_for_symbol(
+    symbol: str,
+    limit: int = 6,
+    *,
+    company: str | None = None,
+    use_live_enrichment: bool = True,
+) -> list[dict]:
+    """Multi-source news: portfolio state, history, DB articles, live catalyst enrichment."""
+    sym = symbol.upper()
+    batches = [
+        _news_from_portfolio_state(sym, company=company),
+        _news_from_portfolio_history(sym, company=company),
+        _news_from_db(sym, limit=limit * 2),
+    ]
+    merged = _merge_news_rows(sym, batches, company=company, limit=limit)
+    if use_live_enrichment and len(merged) < limit:
+        live = _news_from_catalyst_enrichment(sym, company=company, limit=limit * 2)
+        merged = _merge_news_rows(sym, [merged, live], company=company, limit=limit)
+    return merged
 
 
 def _proposal_context(symbol: str) -> dict | None:
