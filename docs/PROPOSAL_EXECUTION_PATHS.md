@@ -119,6 +119,7 @@ Watchlist bridge rows land directly on `schwab_taxable` (configurable) — no ma
 
 ## Related docs
 
+- `docs/BROKER_TRADE_PLAN_GATE.md` — authoritative trade plan gate + R:R policy floor
 - `docs/WATCHLIST_PROPOSAL_BRIDGE.md` — watchlist → broker queue sync + source badges
 - `docs/BROKER_PROPOSALS_UI.md` — Broker Proposals tab (thesis band, refresh, cloud oversight)
 - `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` — options desk (same auto vs manual split)
