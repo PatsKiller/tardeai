@@ -1697,6 +1697,43 @@ def reject_proposal(proposal_id: int, reason: str = 'manual') -> dict:
         return {'success': False, 'message': f'Reject failed: {e}'}
 
 
+def requeue_proposal(proposal_id: int, *, actor: str = "operator") -> dict:
+    """Un-reject / re-open a REJECTED or EXPIRED proposal back to PENDING (operator action).
+
+    Refreshes expiry so it is actionable again; never re-opens a row that already produced a trade.
+    """
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE paper_trade_proposals
+                 SET status='PENDING', rejected_at=NULL, rejection_reason=NULL,
+                     expires_at=GREATEST(COALESCE(expires_at, NOW()), NOW() + INTERVAL '24 hours'),
+                     updated_at=NOW()
+               WHERE id=%s AND status IN ('REJECTED','EXPIRED') AND paper_trade_id IS NULL
+               RETURNING symbol""",
+            [proposal_id],
+        )
+        row = cur.fetchone()
+        conn.commit()
+        conn.close()
+        if not row:
+            return {"success": False, "message": f"Proposal #{proposal_id} not requeueable (not REJECTED/EXPIRED, or already traded)"}
+        try:
+            import trade_modify as _tm
+            _tm.audit_decision("requeue", proposal_id=proposal_id, actor=actor, channel="web",
+                               reason=f"Re-opened #{proposal_id} ({row[0]}) to PENDING")
+        except Exception:
+            pass
+        return {"success": True, "message": f"Proposal #{proposal_id} ({row[0]}) re-queued to PENDING"}
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return {"success": False, "message": f"Requeue failed: {e}"}
+
+
 def get_pending_proposals() -> list:
     """Get all pending proposals."""
     conn = get_conn()

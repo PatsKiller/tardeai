@@ -26649,6 +26649,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if method == "POST" and base_path in ("/api/v2/paper-proposals/requeue", "/api/v2/broker-proposals/requeue"):
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_trade_logger import requeue_proposal
+            result = requeue_proposal(int(pid), actor=str(body.get('actor') or 'operator'))
+            try:
+                _broker_list_cache_clear()
+            except Exception:
+                pass
+            return 200 if result.get('success') else 400, {"ok": result.get('success', False), "data": result}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 17v3: Research packet endpoints ──
 
     if base_path == "/api/v2/paper-proposals/research-packet":
