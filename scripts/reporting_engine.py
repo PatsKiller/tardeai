@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,27 +140,33 @@ def _import_builder():
 
 
 def symbol_fingerprint(symbol: str) -> str:
-    """Content hash for change detection — holdings, synthesis, ensemble, technicals, proposals."""
+    """Content hash for change detection — holdings, synthesis, ensemble, technicals, proposals.
+
+    R0: fast-mode enrichment ONLY (no per-symbol Yahoo network fetch — that hung /eligible >120s on
+    the single-threaded server). Volatile live price/day-change are excluded so the hash reflects
+    *material* change (rec/synthesis/ensemble/proposal/coarse-price), not every market tick.
+    """
     arb = _import_builder()
     sym = symbol.upper()
     holding = arb._holding_for_symbol(sym)
-    enrich = arb._enriched(sym, holding)
+    enrich = arb._enriched(sym, holding, fast=True)  # no network
     wl = arb._watchlist_row(sym)
     syn = arb._synthesis(sym)
     ens = arb._ensemble(sym)
     proposal = arb._proposal_context(sym)
     rec = arb._watchlist_rating(wl, syn)
+    # coarse price bucket (whole dollar) so a real move still triggers a refresh, a tick does not
+    px = arb._f(enrich.get("price") or enrich.get("latest_price") or (holding or {}).get("current_price"))
     payload = {
         "symbol": sym,
         "recommendation": rec,
-        "price": enrich.get("price") or enrich.get("latest_price"),
-        "day_change_pct": enrich.get("day_change_pct") or (holding or {}).get("day_change_pct"),
+        "price_bucket": round(px) if px else None,
         "synthesis_updated": (syn or {}).get("updated_at"),
         "decision_safety": (syn or {}).get("decision_safety"),
         "portfolio_pct": (holding or {}).get("portfolio_pct"),
-        "market_value": (holding or {}).get("market_value"),
+        "market_value": round(arb._f((holding or {}).get("market_value")) / 100) if holding else None,
         "score": (wl or {}).get("score"),
-        "rsi": enrich.get("rsi"),
+        "rsi": round(arb._f(enrich.get("rsi"))) if enrich.get("rsi") is not None else None,
         "ensemble_score": (ens or {}).get("final_score"),
         "ensemble_decision": (ens or {}).get("final_decision"),
         "proposal_status": (proposal or {}).get("status"),
@@ -333,6 +340,61 @@ def eligible_watchlist_symbols(*, limit: int = 120) -> list[dict]:
     manual_rows.sort(key=lambda x: x["symbol"])
     buy_rows.sort(key=lambda x: x["symbol"])
     return (manual_rows + buy_rows)[:limit]
+
+
+_ELIGIBLE_CACHE = PROJECT_ROOT / "data" / "runtime" / "analyst_eligible_cache.json"
+ELIGIBLE_CACHE_TTL_SEC = int(os.getenv("ELIGIBLE_CACHE_TTL_SEC", "1800"))  # 30 min
+
+
+def eligible_report_payload(*, stale_days: int = 6, watchlist_limit: int = 120,
+                            use_cache: bool = True, write_cache: bool = True) -> dict:
+    """Eligible holdings + watchlist due for prospectus, with disk TTL cache.
+
+    R0: this is the heavy /eligible computation (per-symbol fingerprints). Cached to disk and
+    pre-warmed by cron so the single-threaded request path never blocks on it.
+    """
+    import time
+    if use_cache and _ELIGIBLE_CACHE.exists():
+        try:
+            cached = json.loads(_ELIGIBLE_CACHE.read_text())
+            age = time.time() - float(cached.get("_cached_at") or 0)
+            if age < ELIGIBLE_CACHE_TTL_SEC and int(cached.get("stale_days") or -1) == stale_days:
+                cached["_cache_age_sec"] = round(age)
+                return cached
+        except Exception:
+            pass
+
+    arb = _import_builder()
+    rows = eligible_holding_symbols()
+    wl_rows = eligible_watchlist_symbols(limit=watchlist_limit)
+    reg = load_registry()
+    from report_lineage import canonical_registry_map
+    by_holding = canonical_registry_map(reg.get("reports") or [], "symbol_holding")
+    by_watchlist = canonical_registry_map(reg.get("reports") or [], "symbol_watchlist")
+    for row in rows:
+        prev = by_holding.get(row["symbol"])
+        needs, reason = prospectus_needs_refresh(prev, row["fingerprint"], stale_days=stale_days)
+        row.update({"needs_refresh": needs, "refresh_reason": reason,
+                    "last_generated": (prev or {}).get("generated_at"), "report_type": "symbol_holding"})
+    for row in wl_rows:
+        prev = by_watchlist.get(row["symbol"])
+        needs, reason = prospectus_needs_refresh(prev, row["fingerprint"], stale_days=stale_days)
+        row.update({"needs_refresh": needs, "refresh_reason": reason,
+                    "last_generated": (prev or {}).get("generated_at"), "report_type": "symbol_watchlist"})
+    payload = {
+        "eligible": rows, "watchlist_eligible": wl_rows,
+        "count": len(rows), "watchlist_count": len(wl_rows),
+        "needs_refresh": sum(1 for r in rows if r.get("needs_refresh"))
+            + sum(1 for r in wl_rows if r.get("needs_refresh")),
+        "stale_days": stale_days, "_cached_at": time.time(), "_cache_age_sec": 0,
+    }
+    if write_cache:
+        try:
+            _ELIGIBLE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _ELIGIBLE_CACHE.write_text(json.dumps(payload, default=str))
+        except Exception:
+            pass
+    return payload
 
 
 def validate_report_coverage() -> dict:
