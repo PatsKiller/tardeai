@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import BrokerIntelPanel from './BrokerIntelPanel'
 import BrokerAccountPicker, { type BrokerAccount } from './BrokerAccountPicker'
 import ThesisValidityBar from './ThesisValidityBar'
@@ -54,6 +55,10 @@ type Props = {
   litmus?: any
   validateBusy?: boolean
   onValidate?: () => void
+  narrow?: boolean
+  selectMode?: boolean
+  selected?: boolean
+  onToggleSelected?: () => void
 }
 
 export default function BrokerProposalCard({
@@ -85,7 +90,12 @@ export default function BrokerProposalCard({
   litmus,
   validateBusy,
   onValidate,
+  narrow,
+  selectMode,
+  selected,
+  onToggleSelected,
 }: Props) {
+  const [showAllBlockers, setShowAllBlockers] = useState(false)
   const preview = p._preview
   const previewForDest = Boolean(preview && preview.account === dest)
   const evalData = (previewForDest ? preview?.evaluation : null) || p.evaluation
@@ -154,6 +164,15 @@ export default function BrokerProposalCard({
         borderBottom: '1px solid rgba(148,163,184,.12)',
         background: 'rgba(0,0,0,.2)',
       }}>
+        {selectMode && (
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={onToggleSelected}
+            aria-label={`Select proposal ${p.symbol} #${p.id} for bulk actions`}
+            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: BLUE }}
+          />
+        )}
         <span style={{
           fontSize: 18, fontWeight: 900, color: TEXT0, fontFamily: 'ui-monospace, monospace', letterSpacing: '-.02em',
         }}>{p.symbol}</span>
@@ -331,8 +350,8 @@ export default function BrokerProposalCard({
       </div>
 
       {/* Body grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
-        <section style={{ padding: '12px 14px', borderRight: '1px solid rgba(148,163,184,.1)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
+        <section style={{ padding: '12px 14px', borderRight: narrow ? 'none' : '1px solid rgba(148,163,184,.1)', borderBottom: narrow ? '1px solid rgba(148,163,184,.1)' : 'none' }}>
           {litmus?.facts?.length > 0 && (
             <div style={{
               marginBottom: 10, padding: '8px 10px', borderRadius: 8, fontSize: 9.5, lineHeight: 1.45,
@@ -417,15 +436,33 @@ export default function BrokerProposalCard({
               {(evalData.warnings || []).map((w: string, i: number) => <div key={i}>⚠ {w}</div>)}
             </div>
           )}
-          {(gateBlocked || (!operatorRoute && oversized) || hardGateViolations.length > 0) && (
-            <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)' }}>
-              {hardGateViolations.map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
-              {!operatorRoute && (ov.violations || []).map((v: string, i: number) => <div key={`o${i}`}>⛔ {v}</div>)}
-              {!operatorRoute && sizingViolations.filter((v: string) => !(ov.violations || []).includes(v)).map((v: string, i: number) => <div key={`s${i}`}>⛔ {v}</div>)}
-            </div>
-          )}
+          {(gateBlocked || (!operatorRoute && oversized) || hardGateViolations.length > 0) && (() => {
+            const blockers: string[] = [
+              ...hardGateViolations,
+              ...(!operatorRoute ? (ov.violations || []) : []),
+              ...(!operatorRoute ? sizingViolations.filter((v: string) => !(ov.violations || []).includes(v)) : []),
+            ]
+            const LIMIT = 3
+            const truncated = !showAllBlockers && blockers.length > LIMIT
+            const visible = truncated ? blockers.slice(0, LIMIT) : blockers
+            return (
+              <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)' }}>
+                {visible.map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
+                {blockers.length > LIMIT && (
+                  <button
+                    onClick={() => setShowAllBlockers(s => !s)}
+                    aria-expanded={showAllBlockers}
+                    aria-label={truncated ? `Show all ${blockers.length} blockers` : 'Show fewer blockers'}
+                    style={{ marginTop: 4, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.35)', background: 'transparent', color: RED, cursor: 'pointer' }}
+                  >
+                    {truncated ? `+${blockers.length - LIMIT} more` : 'Show fewer'}
+                  </button>
+                )}
+              </div>
+            )
+          })()}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             <div style={metricBox}>
               <div style={{ fontSize: 8, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
               <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
@@ -445,7 +482,7 @@ export default function BrokerProposalCard({
             </div>
           </div>
           {capEcon && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8, opacity: 0.92 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 8, opacity: 0.92 }}>
               <div style={{ ...metricBox, borderColor: 'rgba(96,165,250,.25)' }}>
                 <div style={{ fontSize: 8, color: BLUE, fontWeight: 800, textTransform: 'uppercase' }}>If resized to cap</div>
                 <div style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: BLUE }}>
@@ -538,22 +575,26 @@ export default function BrokerProposalCard({
               value={routeApproveTk || ''}
               onChange={e => onRouteApproveTkChange?.(e.target.value)}
               placeholder={`ticker ${routeIntent.symbol}`}
+              aria-label={`Web 2FA confirmation — type ticker ${routeIntent.symbol}`}
               style={{ fontSize: 10, padding: '4px 7px', borderRadius: 5, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: 72 }}
             />
             <button
               onClick={() => onConfirmRoute('web')}
               disabled={routeBusy || (routeApproveTk || '').trim().toUpperCase() !== routeIntent.symbol}
+              aria-label="Confirm route via web 2FA"
               style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: 'rgba(34,197,94,.12)', color: GREEN }}
             >Web ✓</button>
             <input
               value={routeApproveCode || ''}
               onChange={e => onRouteApproveCodeChange?.(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="6-digit"
+              aria-label="Telegram 2FA confirmation — 6-digit code"
               style={{ fontSize: 10, padding: '4px 7px', borderRadius: 5, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: 64 }}
             />
             <button
               onClick={() => onConfirmRoute('telegram')}
               disabled={routeBusy || (routeApproveCode || '').length !== 6}
+              aria-label="Confirm route via Telegram 2FA code"
               style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.12)', color: BLUE }}
             >Code ✓</button>
             </div>
