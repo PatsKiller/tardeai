@@ -23,3 +23,14 @@ def test_apply_strategy_exit_plan_uses_target_rr():
 def test_is_watchlist_sleeve():
     assert bsr.is_watchlist_sleeve("income")
     assert not bsr.is_watchlist_sleeve("momentum_scalp")
+
+
+def test_policy_floor_raises_target_when_resistance_too_close():
+    en, st, tg, rat = bsr.apply_strategy_exit_plan(
+        220.3, None, None, "core_growth_compounder",
+        support=209.28, resistance=231.32,
+    )
+    rr = round((tg - en) / (en - st), 2)
+    assert rr >= 3.0
+    assert any("policy floor" in s for s in rat.get("sources") or [])
+    assert any("support" in s for s in rat.get("sources") or [])
