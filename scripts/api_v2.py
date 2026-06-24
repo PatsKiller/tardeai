@@ -13094,14 +13094,18 @@ def _broker_proposal_row_base(r: dict, quote_map: dict | None = None, watchlist_
 
 
 def _enrich_broker_proposal_row_light(row: dict) -> dict:
-    """Fast detail — oversight + sizing gates without intel packet or live Schwab account calls."""
+    """Fast detail — DB intel packet + oversight + sizing gates (no live Schwab account snapshot)."""
     acct = row.get("account") or ""
     sh = float(row.get("proposed_shares") or 0)
     en = float(row.get("proposed_entry") or 0)
     st = float(row.get("proposed_stop") or 0)
     tg = float(row.get("proposed_target1") or 0)
     pid = row.get("id")
-    row["intel"] = {"ok": False, "lazy": True}
+    try:
+        import broker_proposal_intel as _bpi
+        row["intel"] = _bpi.get_intel_packet(pid, include_oversight=False)
+    except Exception:
+        row["intel"] = {"ok": False}
     row["activity_pending"] = True
     try:
         import broker_promote_sizing as _bps
@@ -13132,8 +13136,18 @@ def _enrich_broker_proposal_row_light(row: dict) -> dict:
                 "violations": ev.get("violations") or [],
                 "warnings": ev.get("warnings") or [],
             }
+            if isinstance(row.get("intel"), dict) and row["intel"].get("ok"):
+                row["intel"]["oversight"] = row["oversight"]
+                if row["oversight"].get("status"):
+                    row["intel"]["oversight"]["status"] = row["oversight"]["status"]
+                if row["oversight"].get("violations"):
+                    row["intel"]["oversight"]["violations"] = row["oversight"]["violations"]
+                if row["oversight"].get("warnings"):
+                    row["intel"]["oversight"]["warnings"] = row["oversight"]["warnings"]
         else:
             row["oversight"] = _broker_oversight_for_proposal(int(pid)) if pid else {}
+            if isinstance(row.get("intel"), dict) and row["intel"].get("ok"):
+                row["intel"]["oversight"] = row["oversight"]
     except Exception:
         row["evaluation"] = row.get("evaluation") or {}
         row["oversight"] = row.get("oversight") or {}
@@ -13764,8 +13778,8 @@ def _broker_refresh_prices_batch(body: dict):
 def _broker_proposal_detail(body: dict):
     """POST /api/v2/broker-proposals/detail — lazy-load gates for one queue card.
 
-    Default light=1: no Schwab quote/account API — uses stored current_price.
-    Pass light=0 or full=1 for intel packet + live broker snapshot (slow).
+    Default light=1: DB intel packet + oversight + sizing (no live Schwab account snapshot).
+    Pass light=0 or full=1 for live broker account activity + Schwab quote refresh (slow).
     """
     b = body or {}
     pid = int(b.get("proposal_id") or 0)

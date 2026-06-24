@@ -113,10 +113,16 @@ export default function BrokerProposalCard({
     : null
   const accountLabel = dest || p.account || 'account'
   const previewNote = previewForDest && dest !== (p.account || '') ? ' (preview)' : ''
-  const intel = p.intel?.ok ? {
-    ...p.intel,
-    oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
-  } : (p.intel?.ok === false ? null : { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] })
+  const intel = p.intel?.ok
+    ? {
+        ...p.intel,
+        oversight: { ...ov, status: ovStatus || ov.status, violations: ov.violations, warnings: ov.warnings },
+        agent_reviews: ov.agents?.reviews || p.intel.agent_reviews || [],
+      }
+    : p.intel?.lazy
+      ? null
+      : { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }
+  const strategyPurpose = intel?.why_purchase?.strategy_purpose
 
   const metricBox = {
     background: 'rgba(2,6,23,.35)',
@@ -143,9 +149,17 @@ export default function BrokerProposalCard({
         <span style={{
           fontSize: 18, fontWeight: 900, color: TEXT0, fontFamily: 'ui-monospace, monospace', letterSpacing: '-.02em',
         }}>{p.symbol}</span>
-        <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}>
+        <span
+          title={strategyPurpose || p.strategy_id}
+          style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
+        >
           {p.strategy_id}
         </span>
+        {strategyPurpose && (
+          <span style={{ fontSize: 9, color: MUTED, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={strategyPurpose}>
+            {strategyPurpose}
+          </span>
+        )}
         <ProposalSourceBadges proposal={p} size="md" />
         <span style={{
           fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
