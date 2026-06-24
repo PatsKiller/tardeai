@@ -236,6 +236,29 @@ Env: `REPORT_CLAUDE_OVERSIGHT` (default 0), `REPORT_CLAUDE_MODEL` (blank → esc
   >> logs/analyst_reports_autonomous.log 2>&1
 ```
 
+## RC1 — Coverage, Card Links & Refresh Cadence
+
+**Batch tiers.** `generate_report(..., oversight=bool, engine=...)` and the holding/watchlist batches
+(`generate_holding_prospectus_batch` / `generate_watchlist_prospectus_batch`) take `engine` + `oversight`
+so a bulk run mixes quality: holdings render with Grok + free dual-lane oversight; watchlist can render
+fast (`oversight=False`, `grok_edit=False`) with on-the-fly full generation per symbol from the card / Reports.
+
+**Card icon-links.** `HoldingReportLinks` (Portfolio + Watchlist hubs) renders 📕 PDF · 📘 Word · ↻
+regenerate icon-links + an oversight-verdict dot, with a multi-line hover tooltip (date created + relative
+age, generation #, stance, cloud-oversight verdict, Grok status). Populated from `report_links_map`, which
+carries `generation` / `grok_edited` / `oversight_verdict` per symbol (also stamped on the registry entry).
+
+**Refresh cadence (cron):**
+
+| When | Job | Behaviour |
+|------|-----|-----------|
+| Weekday 07:35 | `analyst_urgent_refresh.py` | Regenerates ONLY holdings whose recommendation bucket flipped vs the last report; emails operator the updated PDFs (attached). Silent otherwise. |
+| Sun 20:30 / 21:15 | `generate_analyst_reports_autonomous.py --mode weekly` | Baseline full refresh — **Grok + ChatGPT free dual-lane oversight** (batch defaults; Claude gated off). |
+| Day-1 21:30 | `... --mode full` (`REPORT_CLAUDE_OVERSIGHT=1`) | Monthly full refresh with the metered Claude arbiter. |
+| `*/15` 06–17 wkdays | `eligible_report_payload(use_cache=False)` | Pre-warm the `/eligible` disk cache out of the request path (R0). |
+
+`ai_oversight_audit` table logs every oversight pass (surface/symbol/verdict/model/free_lanes/payload).
+
 ## v4 Rendering Stack (sell-side design)
 
 One section model (the `analyst_report_builder` JSON) → two renderers in `scripts/report_render.py`:

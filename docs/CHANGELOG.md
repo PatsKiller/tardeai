@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-24 - Analyst prospectus RC1: full coverage, card icon-links, urgent-change cadence
+
+Full report coverage generated: 33 holdings (Grok + free dual-lane oversight) + 300 watchlist
+(manual-add / buy / strong-buy, fast render-only), 0 failed. All 33/33 holding + 300/300 watchlist
+eligible cards now show live report links (339 total served by `/api/v2/reports/analyst/links`).
+
+**Per-batch controls:** `generate_report` gains an `oversight` toggle; holding/watchlist batches gain
+`engine` + `oversight` so a bulk run can mix tiers (holdings = oversight, watchlist = render-only with
+on-the-fly full generation per symbol from the card).
+
+**Cards (Portfolio + Watchlist):** `HoldingReportLinks` rebuilt as icon-links (📕 PDF · 📘 Word · ↻
+regenerate) with an oversight-verdict dot and a rich multi-line hover tooltip (date created + relative
+age, generation #, stance, cloud-oversight verdict, Grok status). Registry entry + `report_links_map`
+now carry generation / grok_edited / oversight_verdict.
+
+**Cadence:** weekly baseline (Sun 21:15) now uses Grok + ChatGPT free dual-lane oversight via batch
+defaults; new `scripts/analyst_urgent_refresh.py` (cron 7:35 weekdays) replaces the daily full-refresh —
+regenerates ONLY holdings whose recommendation bucket flipped vs the last report and emails the operator
+the updated PDFs attached (silent otherwise); monthly = metered Claude. `ai_oversight_audit` table
+created (oversight audit log). On request, ad-hoc reports for RGTI/IBM/GFS/QBTS were generated with
+Grok+ChatGPT oversight and emailed with PDFs attached.
+
 ## 2026-06-24 - Analyst prospectus v4.1: depth tiers + /eligible reliability fix
 
 **R0 reliability:** `/api/v2/reports/analyst/eligible` hung >120s (froze the single-threaded dashboard
