@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIM = 768
+EMBED_TIMEOUT = 120  # increased from 30s to handle slow Ollama embed calls
 
 
 def get_db_connection():
@@ -38,34 +40,64 @@ def get_db_connection():
 
 
 def get_embedding(text):
-    """Get embedding vector from Ollama nomic-embed-text."""
+    """Get embedding vector from Ollama nomic-embed-text. Retries on transient errors."""
     payload = json.dumps({"model": EMBEDDING_MODEL, "input": text}).encode()
     req = urllib.request.Request(OLLAMA_EMBED_URL, data=payload,
                                  headers={"Content-Type": "application/json"})
-    resp = urllib.request.urlopen(req, timeout=30)
-    result = json.loads(resp.read())
-    embeddings = result.get("embeddings", [])
-    if embeddings and len(embeddings) > 0:
-        return embeddings[0]
-    return None
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = urllib.request.urlopen(req, timeout=EMBED_TIMEOUT)
+            result = json.loads(resp.read())
+            embeddings = result.get("embeddings", [])
+            if embeddings and len(embeddings) > 0:
+                return embeddings[0]
+            return None
+        except Exception as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    raise last_err
 
 
 def main():
     parser = argparse.ArgumentParser(description="Hermes embedding worker")
     parser.add_argument("--apply", action="store_true", help="Commit embeddings (default: dry-run)")
-    parser.add_argument("--limit", type=int, default=2, help="Max items to process (default: 2)")
+    parser.add_argument("--limit", type=int, default=15, help="Max items to process (default: 15)")
+    parser.add_argument("--retry-failed", action="store_true",
+                        help="Include failed queue rows (pending first, then oldest failed)")
+    parser.add_argument("--reset-failed", type=int, default=0, metavar="N",
+                        help="Before processing, reset up to N failed rows back to pending")
     args = parser.parse_args()
     dry_run = not args.apply
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Read pending queue items
-    cur.execute("""
+    if args.reset_failed and args.reset_failed > 0 and not dry_run:
+        cur.execute("""
+            UPDATE hermes_embedding_queue
+            SET embedding_status='pending', error_message=NULL, embedded_at=NULL
+            WHERE id IN (
+                SELECT id FROM hermes_embedding_queue
+                WHERE embedding_status='failed'
+                ORDER BY created_at ASC LIMIT %s
+            )
+        """, (args.reset_failed,))
+        reset_n = cur.rowcount
+        conn.commit()
+        if reset_n:
+            print(f"Reset {reset_n} failed queue rows → pending")
+
+    status_clause = "q.embedding_status IN ('pending','failed')" if args.retry_failed else "q.embedding_status = 'pending'"
+    order_clause = "CASE q.embedding_status WHEN 'pending' THEN 0 ELSE 1 END, q.created_at" if args.retry_failed else "q.created_at"
+
+    # Read pending (and optionally failed) queue items
+    cur.execute(f"""
         SELECT q.id, q.source_research_id, q.title, q.content, q.source_type_target
         FROM hermes_embedding_queue q
-        WHERE q.embedding_status = 'pending'
-        ORDER BY q.created_at
+        WHERE {status_clause}
+        ORDER BY {order_clause}
         LIMIT %s
     """, (args.limit,))
     items = cur.fetchall()

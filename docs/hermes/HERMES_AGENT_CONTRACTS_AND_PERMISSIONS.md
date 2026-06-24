@@ -1,7 +1,17 @@
 # Hermes Agent Contracts and Permissions Registry
 
-**Date:** 2026-05-31
+**Date:** 2026-05-31 (updated 2026-06-24 with maturity remediation notes)
 **Status:** AUTHORITATIVE — governance document
+
+> **Recent Operational Hardening (2026-06-24):** See [HERMES_MATURITY_AUDIT_REMEDIATION_20260624.md](HERMES_MATURITY_AUDIT_REMEDIATION_20260624.md) for the six prioritized fixes executed after the Hermes maturity audit:
+> - Embedding worker timeout/retry + caps
+> - Deprioritized openai-codex for interactive profiles
+> - Auto-promote backpressure
+> - Retired artifact hygiene + cleanup script
+> - New smoke tests for coordinator/promotion
+> - Directive B now explicitly surfaced in maturity dashboard + logs
+
+
 
 > **🔓 WALL OPENED BY OPERATOR DIRECTIVE — 2026-06-02 (John, "Option B").** The challenger wall is intentionally opened: the **Chief Hermes Coordinator** (`scripts/hermes_coordinator.py`) was built and is scheduled **continuously** (cron `*/15`, flock-guarded) to run the **entire fleet LIVE (`--apply`)**, including:
 > - **Auto-promote (ungated)** — staged research auto-promotes into the intelligence/RAG the **core trading agents read** (no confidence floor, no operator review). Every promote is logged to `hermes_promotion_audit` with `rollback_sql` (reversible).

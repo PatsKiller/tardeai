@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Chief Hermes Coordinator — orchestrates the full Hermes agent fleet.
 
-OPERATOR DIRECTIVE 2026-06-02 (Option B): runs all agents LIVE (--apply), including
-auto-promote and RAG embedding. Kill switch left un-tripped (off) but STILL CHECKED
-each run, so `touch data/runtime/HERMES_DISABLED` halts everything next tick.
+OPERATOR DIRECTIVE B (2026-06-02, "Option B"): runs all agents LIVE (--apply), including
+auto-promote and RAG embedding into the shared intelligence layer. 
+Kill switch (data/runtime/HERMES_DISABLED) is still checked every tick.
 
-WALL NOTE: this opens the challenger wall by operator directive — promoted research +
-embeddings flow into the core intelligence/RAG the trading agents read. Every promote
-and embed is audited + reversible (see rollback_sql / content_embeddings delete).
+This is the explicit "challenger wall open" mode. All promotions are logged to
+hermes_promotion_audit with rollback_sql. Embeddings are reversible by deleting rows.
+See docs/hermes/HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md for full contract.
 
-Scheduled continuously via cron (~every 15 min), flock-guarded. Per-tick caps keep it
-bounded; the kill switch is the instant stop.
+Scheduled 24/7 via cron (every 15 min), flock-guarded. Runs the research curator every
+tick for conscious signal mining + curation; per-tick caps keep it bounded; kill switch
+halts the next tick.
 """
 import os
 import sys
@@ -43,8 +44,12 @@ DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", 
 # Per-tick caps (continuous schedule → keep each tick small)
 CAP_LIBRARIAN = 10
 CAP_AUTONOMOUS = 3
+CAP_BACKLOG_DRAIN = 2
+CAP_SOURCE_AUTO = 8
+# 24/7 research curator — always-on conscious curation (deep synthesis also on think_tank cron)
 CAP_PROMOTE = 10        # ungated by confidence (operator directive B); capped per tick for sanity
-CAP_EMBED = 10
+CAP_EMBED = 15
+CAP_EMBED_RESET_FAILED = 20
 
 
 def kill_switch_active():
@@ -71,11 +76,24 @@ def run_script(label, args, timeout=600):
 
 
 def auto_promote(conn):
-    """Ungated auto-promote of staged research (operator directive B). Audited + reversible."""
+    """Ungated auto-promote of staged research (operator directive B). Audited + reversible.
+    Includes basic backpressure: if embedding queue is heavily backlogged, reduce promotions
+    this tick to avoid worsening the RAG gap.
+    """
     from hermes_embedding_enqueue import enqueue_research
     cur = conn.cursor()
+
+    # Backpressure: query pending embeds
+    cur.execute("SELECT count(*) FROM hermes_embedding_queue WHERE embedding_status='pending'")
+    pending = cur.fetchone()[0] or 0
+    effective_cap = CAP_PROMOTE
+    if pending > 150:
+        effective_cap = max(3, CAP_PROMOTE // 2)
+    elif pending > 80:
+        effective_cap = max(5, CAP_PROMOTE - 4)
+
     cur.execute("""SELECT id, symbol, research_type, confidence_score FROM hermes_research_intelligence
-                   WHERE status='staged' ORDER BY confidence_score DESC NULLS LAST LIMIT %s""", (CAP_PROMOTE,))
+                   WHERE status='staged' ORDER BY confidence_score DESC NULLS LAST LIMIT %s""", (effective_cap,))
     rows = cur.fetchall()
     promoted = 0
     enqueued = 0
@@ -92,7 +110,8 @@ def auto_promote(conn):
             enqueued += 1
         promoted += 1
     conn.commit()
-    log.info("  auto-promote: %d staged → promoted, %d enqueued for RAG (reversible via hermes_promotion_audit.rollback_sql)", promoted, enqueued)
+    throttled = effective_cap < CAP_PROMOTE
+    log.info("  auto-promote: %d staged → promoted (cap=%d%s), %d enqueued for RAG (reversible via hermes_promotion_audit.rollback_sql)", promoted, effective_cap, " throttled" if throttled else "", enqueued)
     return promoted
 
 
@@ -112,22 +131,39 @@ def main():
     if ks:
         log.warning("KILL SWITCH ACTIVE (%s) — coordinator halted, no agents run.", ks)
         return 0
-    log.info("Coordinator tick START (LIVE / directive B — auto-promote + RAG on, kill switch off)")
+    log.info("Coordinator tick START (LIVE / **DIRECTIVE B ACTIVE** — auto-promote + RAG on, kill switch off. See HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md)")
     agents = []
     # 1. Research generation (Source Discovery + Autonomous Research Manager via the autonomous loop)
     for loop in ("ticker_challenger", "pipeline_quality"):
         agents.append(run_script(f"autonomous:{loop}", ["scripts/hermes_autonomous_loop.py", "--loop", loop, "--apply", "--max-rows", str(CAP_AUTONOMOUS)]))
-    # 2. Librarian + Backlog manager
+    # 2. Librarian + Backlog drain (files findings + resolves staged backlog)
     agents.append(run_script("librarian_backlog", ["scripts/hermes_autonomous_librarian_backlog_loop.py", "--apply", "--max-rows", str(CAP_LIBRARIAN)]))
-    # 3. Auto-promote (ungated) + 4. RAG embedding worker — each isolated so one failure won't abort the tick
+    agents.append(run_script("backlog_drain", ["scripts/hermes_backlog_drain.py", "--apply", "--max-rows", str(CAP_BACKLOG_DRAIN)]))
+    # 2b. Autonomous source vetting closure (no operator approval queue)
+    agents.append(run_script("source_auto_approval", ["scripts/hermes_source_auto_approval.py", "--apply", "--max-actions", str(CAP_SOURCE_AUTO)]))
+    agents.append(run_script("research_curator", ["scripts/hermes_research_curator.py", "--apply"], timeout=900))
+    # 3. Auto-promote (ungated) + backfill RAG gap + 4. embedding worker — isolated per step
     conn = psycopg2.connect(**DB)
     promoted = 0
+    backfilled = 0
     try:
         promoted = auto_promote(conn)
     except Exception as e:
         conn.rollback(); log.warning("auto-promote failed (rolled back): %s", e)
-    agents.append(run_script("embedding_worker", ["scripts/hermes_embedding_worker.py", "--apply", "--limit", str(CAP_EMBED)]))
-    summary = {"ts": datetime.now(timezone.utc).isoformat(), "promoted": promoted, "agents": agents}
+    try:
+        from hermes_embedding_enqueue import backfill_promoted
+        backfilled = backfill_promoted(conn, limit=30)
+        if backfilled:
+            log.info("  embed-backfill: enqueued %d promoted rows missing from RAG queue", backfilled)
+    except Exception as e:
+        conn.rollback(); log.warning("embed-backfill failed: %s", e)
+    agents.append(run_script(
+        "embedding_worker",
+        ["scripts/hermes_embedding_worker.py", "--apply", "--limit", str(CAP_EMBED),
+         "--retry-failed", "--reset-failed", str(CAP_EMBED_RESET_FAILED)],
+    ))
+    summary = {"ts": datetime.now(timezone.utc).isoformat(), "promoted": promoted,
+               "embed_backfilled": backfilled, "agents": agents}
     try:
         log_plan(conn, summary)
     except Exception as e:
