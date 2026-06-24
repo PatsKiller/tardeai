@@ -4,7 +4,7 @@ import ThesisValidityBar from './ThesisValidityBar'
 import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 import ActionButton from './ActionButton'
 import ProposalSourceBadges from './ProposalSourceBadges'
-import { brokerOf, fmtMoney, pickFreshOversight, tradeEconomics } from '../lib/brokerThesis'
+import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, tradeEconomics } from '../lib/brokerThesis'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -123,6 +123,10 @@ export default function BrokerProposalCard({
       ? null
       : { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }
   const strategyPurpose = intel?.why_purchase?.strategy_purpose
+  const liveQ = resolveLiveQuote(p)
+  const driftColor = liveQ.driftPct == null ? MUTED
+    : Math.abs(liveQ.driftPct) > 3 ? AMBER
+    : liveQ.driftPct >= 0 ? GREEN : RED
 
   const metricBox = {
     background: 'rgba(2,6,23,.35)',
@@ -149,6 +153,26 @@ export default function BrokerProposalCard({
         <span style={{
           fontSize: 18, fontWeight: 900, color: TEXT0, fontFamily: 'ui-monospace, monospace', letterSpacing: '-.02em',
         }}>{p.symbol}</span>
+        {liveQ.price != null ? (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }} title={`${liveQ.label} price${liveQ.provider ? ` · ${liveQ.provider}` : ''}`}>
+            <span style={{
+              fontSize: 26, fontWeight: 900, color: liveQ.stale ? MUTED : TEXT0,
+              fontFamily: 'ui-monospace, monospace', letterSpacing: '-.03em', lineHeight: 1,
+            }}>
+              ${liveQ.price.toFixed(2)}
+            </span>
+            {liveQ.driftPct != null && (
+              <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'ui-monospace, monospace', color: driftColor }}>
+                {liveQ.driftPct >= 0 ? '+' : ''}{liveQ.driftPct.toFixed(2)}%
+              </span>
+            )}
+            <span style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+              {liveQ.label}
+            </span>
+          </div>
+        ) : (
+          <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, fontStyle: 'italic' }}>No live price</span>
+        )}
         <span
           title={strategyPurpose || p.strategy_id}
           style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
