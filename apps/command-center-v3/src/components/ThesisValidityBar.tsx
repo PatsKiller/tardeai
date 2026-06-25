@@ -48,11 +48,14 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote, refresh
   // a quote was pulled — not only when thesis_validity happened to carry price_age_min/price_source.
   const _asOf = (tv.price_as_of as string | undefined) || refreshedAt || null
   const ageM = tv.price_age_min != null ? Number(tv.price_age_min) : _ageMinFromIso(_asOf)
-  const pullLabel = ageM == null
-    ? null
-    : ageM < 1 ? 'just now'
-    : ageM < 60 ? `${Math.round(ageM)}m ago`
-    : `${(ageM / 60).toFixed(1)}h ago`
+  // Show the ACTUAL clock time of the last pull (operator asked for the real time, not "just now"),
+  // with a relative-age fallback if the timestamp can't be parsed.
+  const _asOfDate = _asOf ? new Date(/[zZ]$|[+-]\d\d:?\d\d$/.test(_asOf) ? _asOf : _asOf + 'Z') : null
+  const _clock = _asOfDate && !isNaN(_asOfDate.getTime())
+    ? _asOfDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null
+  const pullLabel = _clock
+    || (ageM == null ? null : ageM < 1 ? 'just now' : ageM < 60 ? `${Math.round(ageM)}m ago` : `${(ageM / 60).toFixed(1)}h ago`)
   const srcLabel = (tv.price_source || quoteProvider || '').toString()
 
   return (
