@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -165,27 +166,45 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     log.info(f"  🔧 Executing retry_cmd: {cmd[:100]}")
     timeout = allowlist.get("max_runtime_seconds", 120) if allowlist else 120
     t0 = time.time()
+    # Run in a NEW SESSION (own process group) so a timeout kills the WHOLE tree, not just the
+    # shell wrapper. The old subprocess.run(timeout=) only SIGKILLed the `/bin/sh -c`, leaving the
+    # python grandchild (e.g. a --limit 15 processor) orphaned to keep loading Ollama for minutes —
+    # the 2026-06-25 thundering-herd. killpg on timeout closes that leak.
+    proc = None
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
-            timeout=timeout, cwd=str(PROJECT_ROOT),
+        proc = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=str(PROJECT_ROOT), start_new_session=True,
         )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            duration = time.time() - t0
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(pgid, signal.SIGKILL)
+                    proc.communicate(timeout=5)
+            except Exception as kex:
+                log.warning(f"  ⏱️ retry_cmd timeout cleanup error: {kex}")
+            log.warning(f"  ⏱️ retry_cmd timeout ({timeout}s) — process group killed")
+            _log_retry(item, cmd, True, reason, "retry_cmd_timeout", duration=duration)
+            return True, False, f"timeout after {timeout}s"
         duration = time.time() - t0
-        if result.returncode == 0:
+        rc = proc.returncode
+        if rc == 0:
             log.info(f"  ✅ retry_cmd succeeded ({duration:.1f}s)")
             _log_retry(item, cmd, True, reason, "retry_cmd_succeeded",
-                       result.returncode, result.stdout, result.stderr, duration)
-            return True, True, result.stdout[-500:]
+                       rc, stdout, stderr, duration)
+            return True, True, (stdout or "")[-500:]
         else:
-            log.warning(f"  ❌ retry_cmd failed (rc={result.returncode}, {duration:.1f}s)")
+            log.warning(f"  ❌ retry_cmd failed (rc={rc}, {duration:.1f}s)")
             _log_retry(item, cmd, True, reason, "retry_cmd_failed",
-                       result.returncode, result.stdout, result.stderr, duration)
-            return True, False, f"exit_code={result.returncode}: {result.stderr[-200:]}"
-    except subprocess.TimeoutExpired:
-        duration = time.time() - t0
-        log.warning(f"  ⏱️ retry_cmd timeout ({timeout}s)")
-        _log_retry(item, cmd, True, reason, "retry_cmd_timeout", duration=duration)
-        return True, False, f"timeout after {timeout}s"
+                       rc, stdout, stderr, duration)
+            return True, False, f"exit_code={rc}: {(stderr or '')[-200:]}"
     except Exception as e:
         duration = time.time() - t0
         log.error(f"  💥 retry_cmd error: {e}")

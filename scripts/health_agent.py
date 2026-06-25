@@ -363,19 +363,31 @@ def collect_data_quality() -> list[dict]:
 
 
 def _count_real_pipeline_failures(hours: int = 24) -> int:
-    """Count failed pipeline runs with substantive errors (exclude zombies + empty-error rows)."""
+    """Count failed pipeline runs with substantive errors that have NOT since recovered.
+
+    Recovery-aware: a pipeline that failed earlier but has a later successful run for the same
+    pipeline_key is healthy now — counting those stale failures kept execution_health pinned low
+    for a full 24h after a transient blip (e.g. a morning 'connection already closed' burst that
+    recovered by 08:18). We only count failures with no same-key success at a later started_at.
+    Still excludes zombie rows and failed-with-empty-errors bookkeeping."""
     row = _db(
-        f"""SELECT COUNT(*) AS c FROM pipeline_runs
-            WHERE status='failed'
-              AND started_at > now() - interval '{int(hours)} hours'
-              AND (summary IS NULL OR summary::text NOT LIKE '%%zombie run cleared%%')
+        f"""SELECT COUNT(*) AS c FROM pipeline_runs f
+            WHERE f.status='failed'
+              AND f.started_at > now() - interval '{int(hours)} hours'
+              AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
               AND NOT (
-                summary IS NOT NULL AND (
-                  summary::text ~ '"errors"\\s*:\\s*\\[\\s*\\]'
-                  OR COALESCE(summary::jsonb->>'errors', 'x') IN ('', '[]')
-                  OR (jsonb_typeof(summary::jsonb->'errors') = 'array'
-                      AND jsonb_array_length(summary::jsonb->'errors') = 0)
+                f.summary IS NOT NULL AND (
+                  f.summary::text ~ '"errors"\\s*:\\s*\\[\\s*\\]'
+                  OR COALESCE(f.summary::jsonb->>'errors', 'x') IN ('', '[]')
+                  OR (jsonb_typeof(f.summary::jsonb->'errors') = 'array'
+                      AND jsonb_array_length(f.summary::jsonb->'errors') = 0)
                 )
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM pipeline_runs s
+                WHERE s.pipeline_key = f.pipeline_key
+                  AND s.status = 'success'
+                  AND s.started_at > f.started_at
               )""",
         fetch="one",
     )
@@ -390,11 +402,25 @@ def collect_execution_health() -> list[dict]:
         if pf_count > 0:
             out.append(_f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
                           f"{pf_count} pipeline run failures in 24h", count=pf_count))
-        # stuck queued agent jobs
-        q = _db("SELECT COUNT(*) AS c FROM watchlist_agent_jobs WHERE status='queued' AND created_at < now() - interval '2 hours'", fetch="one")
-        if q and q.get("c", 0) > 0:
-            out.append(_f("execution_health", "agent_jobs_stuck", "warning",
-                          f"{q['c']} agent jobs queued >2h", count=q["c"]))
+        # stuck queued agent jobs — distinguish DECISION-FEEDING jobs (have an SLA) from the rolling
+        # background research/discovery queue (no SLA; drained by priority, intentionally backloggy).
+        # Penalizing execution_health for a research backlog was a false signal — only time-sensitive
+        # jobs starved >2h are an execution defect; the rolling backlog is reported as info.
+        _TIME_SENSITIVE = ("proposal_review", "full_analysis", "research_gap", "event")
+        qt = _db("""SELECT COUNT(*) AS c FROM watchlist_agent_jobs
+                    WHERE status='queued' AND created_at < now() - interval '2 hours'
+                      AND request_type = ANY(%s)""", (list(_TIME_SENSITIVE),), fetch="one")
+        if qt and qt.get("c", 0) > 0:
+            n = qt["c"]
+            out.append(_f("execution_health", "agent_jobs_stuck", "warning" if n < 40 else "critical",
+                          f"{n} decision-feeding agent jobs queued >2h", count=n))
+        qr = _db("""SELECT COUNT(*) AS c FROM watchlist_agent_jobs
+                    WHERE status='queued' AND created_at < now() - interval '2 hours'
+                      AND request_type <> ALL(%s)""", (list(_TIME_SENSITIVE),), fetch="one")
+        if qr and qr.get("c", 0) >= 150:
+            out.append(_f("execution_health", "research_backlog", "info",
+                          f"{qr['c']} background research/discovery jobs queued >2h (no SLA, priority-drained)",
+                          count=qr["c"]))
         # execution-integrity escalation queue depth (system_health_agent output)
         try:
             items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
@@ -538,12 +564,21 @@ def collect_risk_protection() -> list[dict]:
         if al and al.get("c", 0) > 0:
             out.append(_f("risk_protection", "stop_alerts", "warning",
                           f"{al['c']} stops in alert state (no synthetic coverage)", count=al["c"]))
-        # recent P0/P1 protection SIEM events
-        p = _db("""SELECT COUNT(*) AS c FROM alert_events
-                   WHERE severity IN ('critical','urgent') AND created_at > now() - interval '24 hours'""", fetch="one")
+        # recent P0/P1 protection SIEM events — count DISTINCT unresolved issues, not duplicate
+        # re-alert rows. The log scraper (and others) can emit the same underlying error every cycle;
+        # counting raw rows let one stale-but-fixed traceback read as "26 P0/P1 alerts" and pinned
+        # risk_protection critical. We dedup by raw_text and exclude already-resolved alerts so the
+        # score reflects distinct open problems. (log_error_scraper now also offset-tails to stop the
+        # re-alert source at the root.)
+        p = _db("""SELECT COUNT(DISTINCT COALESCE(NULLIF(raw_text,''), alert_uid::text, id::text)) AS c
+                   FROM alert_events
+                   WHERE severity IN ('critical','urgent')
+                     AND created_at > now() - interval '24 hours'
+                     AND COALESCE(lifecycle_state,'active') NOT IN ('resolved','acknowledged')""",
+                fetch="one")
         if p and p.get("c", 0) > 0:
             out.append(_f("risk_protection", "siem_p0p1", "warning" if p["c"] < 5 else "critical",
-                          f"{p['c']} P0/P1 SIEM alerts in 24h", count=p["c"]))
+                          f"{p['c']} distinct P0/P1 SIEM issues open (24h)", count=p["c"]))
     except Exception as e:
         out.append(_f("risk_protection", "collector_error", "info", f"risk check error: {e}"))
     return out
@@ -769,7 +804,8 @@ WHY = {
     "log_errors": "A component log is throwing repeated errors — a job is failing/looping and silently dropping work.",
     "strategy_zero_output": "An active, tilt-weighted strategy produced nothing today — missed setups/proposals for that edge.",
     "pipeline_failures": "Failed pipeline runs mean downstream signals, proposals or decisions may be missing/stale.",
-    "agent_jobs_stuck": "Agent jobs aren't draining — analysis is backing up and results are going stale.",
+    "agent_jobs_stuck": "Decision-feeding agent jobs (proposal/full-analysis/research-gap) aren't draining within SLA — proposals and reviews are going stale.",
+    "research_backlog": "Background research/discovery queue is large but has no SLA — drained by priority; informational unless it never shrinks.",
     "execution_escalations": "Critical execution escalations are unresolved failures already flagged by the integrity agent.",
     "orphaned_stops": "Orphaned stop orders may not actually protect a live position — real risk exposure.",
     "unprotected_positions": "Open positions with no stop = unbounded downside risk.",
@@ -951,6 +987,13 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
     except Exception:
         existing = []
     seen = {f"{i.get('component')}:{i.get('detail','')[:40]}" for i in existing}
+    # Dedup health findings by COMPONENT (category:type) alone. The message embeds a changing count
+    # ("14 agent jobs queued >2h" → "132 ..."), so a message-based key never matched and the same
+    # finding piled up — 14 agent_jobs_stuck items each carrying the --limit 15 retry_cmd, which the
+    # handler then ran concurrently (the 2026-06-25 Ollama thundering-herd). One open escalation per
+    # finding type is enough; the latest detail is what matters.
+    existing_components = {i.get("component") for i in existing
+                          if (i.get("source") or "") in ("health_agent", "health_agent_meta")}
     added = 0
     for f in findings_flat:
         if f.get("severity") not in ("warning", "critical"):
@@ -960,6 +1003,8 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
         if f.get("type") == "execution_escalations":
             continue
         comp = f"health:{f['category']}:{f['type']}"
+        if comp in existing_components:
+            continue
         key = f"{comp}:{f['message'][:40]}"
         if key in seen:
             continue
@@ -980,6 +1025,7 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
             item["kind"] = f.get("kind", "code")
         existing.append(item)
         seen.add(key)
+        existing_components.add(comp)
         added += 1
     if added:
         try:
