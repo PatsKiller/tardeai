@@ -31,6 +31,10 @@ allowed_script_patterns:
   - "scripts/finviz_screener_runner.py"
   # Data gap resolution (Health Agent enqueues this; read+enrich, no order submission)
   - "scripts/data_gap_resolver.py"
+  # Backtest refresh (read-only replay/aggregation; no order submission) — health-agent auto-fix for
+  # stale strategy_backtest_results / proposal_backtest_snapshots.
+  - "scripts/backtest_results_aggregator.py"
+  - "scripts/proposal_backtest_engine.py"
   # Portfolio pricing (Finviz repricer + quotes ingest — updates holdings.json only, no broker orders)
   - "scripts/portfolio_repricer.py"
   - "scripts/external_market_data_ingest.py"
