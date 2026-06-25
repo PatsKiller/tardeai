@@ -275,8 +275,13 @@ def attach_thesis_validity(row: dict, quote: dict | None = None) -> dict:
         tv["price_age_min"] = fresh.get("price_age_min")
         tv["price_as_of"] = fresh.get("price_as_of")
         tv["price_source"] = fresh.get("price_source")
-        if tv.get("current_rr") is not None:
-            row["live_rr"] = tv["current_rr"]
+        # CRITICAL (trading correctness): always reflect the freshly computed live R:R, INCLUDING None.
+        # _rr_at_price returns None once the live price blows past target (or to/below stop) — the thesis
+        # is invalid and there is no meaningful live R:R. The old code only wrote on non-None, so a stale
+        # FAVORABLE R:R (e.g. WEN 13.48, computed when price was near the $7.37 stop) persisted after the
+        # price ran to $8.64 past the $8.53 target, making an at_risk/invalid setup look like a 13:1 entry.
+        # Never display a stale R:R that contradicts the live zone.
+        row["live_rr"] = tv.get("current_rr")
 
     row["thesis_validity"] = tv
     if tv.get("drift_pct") is not None:

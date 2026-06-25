@@ -838,6 +838,7 @@ WHY = {
     "pipeline_failures": "Failed pipeline runs mean downstream signals, proposals or decisions may be missing/stale.",
     "agent_jobs_stuck": "Decision-feeding agent jobs (proposal/full-analysis/research-gap) aren't draining within SLA — proposals and reviews are going stale.",
     "research_backlog": "Background research/discovery queue is large but has no SLA — drained by priority; informational unless it never shrinks.",
+    "proposal_thesis_broken": "A PENDING proposal's live price has passed its target or fallen to its stop — there is no valid live R:R; verify it's expiring/recalibrating and not displaying a stale favorable R:R.",
     "execution_escalations": "Critical execution escalations are unresolved failures already flagged by the integrity agent.",
     "orphaned_stops": "Orphaned stop orders may not actually protect a live position — real risk exposure.",
     "unprotected_positions": "Open positions with no stop = unbounded downside risk.",
@@ -921,6 +922,57 @@ def collect_pipeline_freshness() -> list[dict]:
     return out
 
 
+def collect_proposal_integrity() -> list[dict]:
+    """Per-proposal FINANCIAL correctness — the gap that let a stale favorable live R:R (WEN 13.48,
+    computed when price was near the $7.37 stop) keep showing after the price blew past the $8.53
+    target. The health agent previously watched only pipelines/freshness/scores, never the semantic
+    correctness of individual proposal math, so a logically-inconsistent-but-fresh card passed every
+    check. This recomputes thesis_validity from stored entry/stop/target + current_price (no broker API
+    hit) and flags PENDING proposals whose LIVE thesis is invalid (price past target or at/below stop →
+    no valid live R:R). A pile of these means expiry/recalibration is lagging and stale R:R may show."""
+    out = []
+    cfg = (_POLICY.get("proposal_integrity") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        rows = _db("""SELECT id, symbol, proposed_entry, proposed_stop, proposed_target1, current_price,
+                             updated_at
+                      FROM paper_trade_proposals
+                      WHERE status='PENDING' AND atm_expired_at IS NULL
+                        AND proposed_entry > 0 AND proposed_stop > 0 AND proposed_target1 > 0
+                        AND current_price IS NOT NULL""", fetch="all") or []
+        if not rows:
+            return out
+        try:
+            from broker_thesis_validity import compute_thesis_validity
+        except Exception:
+            return out
+        broken = []
+        for r in rows:
+            try:
+                entry = float(r["proposed_entry"]); stop = float(r["proposed_stop"])
+                tgt = float(r["proposed_target1"]); px = float(r["current_price"])
+            except (TypeError, ValueError):
+                continue
+            if px <= 0:
+                continue
+            tv = compute_thesis_validity(entry, stop, tgt, px, strategy_id="")
+            # No valid live R:R at the current price = thesis broken (price past target or ≤ stop).
+            if tv.get("ok") and tv.get("current_rr") is None:
+                broken.append(f"{r['symbol']}@{px:.2f}")
+        n = len(broken)
+        if n > 0:
+            warn_at = int(cfg.get("broken_warn", 3))
+            out.append(_f("execution_health", "proposal_thesis_broken",
+                          "warning" if n >= warn_at else "info",
+                          f"{n} PENDING proposal(s) with an invalidated live thesis "
+                          f"(price past target/stop) — verify not displaying a stale live R:R",
+                          count=n, sample=broken[:6]))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"proposal_integrity check error: {e}"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_execution_health,
@@ -931,6 +983,7 @@ COLLECTORS = [
     collect_proposal_maturity,
     collect_log_errors,
     collect_pipeline_freshness,
+    collect_proposal_integrity,
 ]
 
 

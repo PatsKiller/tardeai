@@ -33,6 +33,15 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props
   const pct = (v: number) => `${Math.min(100, Math.max(0, ((v - chartMin) / chartSpan) * 100))}%`
   const color = zoneColor(tv.zone_status, tv.zone_color)
 
+  // Last live-pull label (Schwab/Finviz) shown next to the Live price.
+  const ageM = tv.price_age_min != null ? Number(tv.price_age_min) : null
+  const pullLabel = ageM == null
+    ? null
+    : ageM < 1 ? 'just now'
+    : ageM < 60 ? `${Math.round(ageM)}m ago`
+    : `${(ageM / 60).toFixed(1)}h ago`
+  const srcLabel = (tv.price_source || '').toString()
+
   return (
     <div style={{
       padding: compact ? '8px 10px' : '10px 12px',
@@ -43,28 +52,35 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <ThesisValidityGauge tv={tv} size={compact ? 'sm' : 'md'} />
-          <div style={{ fontSize: 10, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '.04em' }}>
             Drift gap · {String(tv.zone_status || 'unknown').replace(/_/g, ' ')}
           </div>
         </div>
         {live != null && (
-          <div style={{ fontSize: 10, fontFamily: 'monospace', color: TEXT0 }}>
-            {tv.price_stale ? 'Last' : 'Live'} <b style={{ color: tv.price_stale ? MUTED : color }}>${live.toFixed(2)}</b>
-            {tv.price_stale && (
-              <span style={{ color: '#f59e0b', marginLeft: 6, fontWeight: 700 }}>
-                stale{tv.price_age_min != null ? ` ${tv.price_age_min}m` : ''}
-              </span>
-            )}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', fontFamily: 'monospace', fontSize: 13, color: TEXT0 }}>
+            <span>{tv.price_stale ? 'Last' : 'Live'} <b style={{ color: tv.price_stale ? MUTED : color, fontSize: 16 }}>${live.toFixed(2)}</b></span>
             {!tv.price_stale && tv.drift_pct != null && (
-              <span style={{ color: Math.abs(tv.drift_pct) > 3 ? '#f59e0b' : MUTED, marginLeft: 6 }}>
+              <span style={{ color: Math.abs(tv.drift_pct) > 3 ? '#f59e0b' : MUTED }}>
                 {tv.drift_pct >= 0 ? '+' : ''}{tv.drift_pct}%
               </span>
             )}
             {tv.current_rr != null && (
-              <span style={{ color: MUTED, marginLeft: 6 }}>R:R {tv.current_rr}:1</span>
+              <span style={{ color: MUTED }}>R:R {tv.current_rr}:1</span>
             )}
             {tv.price_stale && (
-              <span style={{ color: MUTED, marginLeft: 6 }}>R:R — refresh</span>
+              <span style={{ color: MUTED }}>R:R — refresh</span>
+            )}
+            {tv.price_stale && (
+              <span style={{ color: '#f59e0b', fontWeight: 700 }}>
+                stale{ageM != null ? ` ${Math.round(ageM)}m` : ''}
+              </span>
+            )}
+            {/* last live-pull timestamp + source (Schwab/Finviz) */}
+            {(pullLabel || srcLabel) && (
+              <span title={`${tv.price_as_of ? `as of ${tv.price_as_of}` : ''}${srcLabel ? ` · source ${srcLabel}` : ''}`}
+                style={{ fontFamily: 'system-ui', fontSize: 11, color: MUTED, fontWeight: 600 }}>
+                · ⟳ {pullLabel || '—'}{srcLabel ? ` · ${srcLabel}` : ''}
+              </span>
             )}
           </div>
         )}
@@ -103,21 +119,21 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote }: Props
         )}
       </div>
 
-      <div style={{ fontSize: 9.5, color: TEXT0, fontWeight: 600, marginBottom: 4 }}>
+      <div style={{ fontSize: 11.5, color: TEXT0, fontWeight: 600, marginBottom: 4 }}>
         {tv.label || `Valid $${low.toFixed(2)} – $${high.toFixed(2)}`}
       </div>
       {showSourceNote && (
-        <div style={{ fontSize: 8.5, color: MUTED, marginBottom: 4 }}>
+        <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 4 }}>
           Price math from entry/stop/target + live quote — not Grok/ChatGPT cloud review.
         </div>
       )}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 9, color: MUTED }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: MUTED }}>
         <span>↓ room {tv.room_down_pct != null ? `${tv.room_down_pct.toFixed(1)}%` : '—'}</span>
         <span>↑ room {tv.room_up_pct != null ? `${tv.room_up_pct.toFixed(1)}%` : '—'}</span>
         <span>band ${(span).toFixed(2)} wide</span>
       </div>
       {(tv.reasons?.length ?? 0) > 0 && (
-        <div style={{ marginTop: 6, fontSize: 9 }}>
+        <div style={{ marginTop: 6, fontSize: 11 }}>
           {tv.reasons!.map((r, i) => (
             <div key={i} style={{ color: tv.zone_color === 'red' ? '#ef4444' : '#f59e0b' }}>• {r}</div>
           ))}

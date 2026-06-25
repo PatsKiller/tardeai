@@ -212,7 +212,7 @@ export default function BrokerProposalCard({
           <span
             title={`Paper-source proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — not yet broker-routed`}
             style={{
-              fontSize: 9, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
+              fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
               background: 'rgba(45,212,191,.14)', color: TEAL, border: `1px solid ${TEAL}55`, textTransform: 'uppercase',
             }}
           >
@@ -232,7 +232,7 @@ export default function BrokerProposalCard({
                 {liveQ.driftPct >= 0 ? '+' : ''}{liveQ.driftPct.toFixed(2)}%
               </span>
             )}
-            <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
               {liveQ.label}
             </span>
           </div>
@@ -246,38 +246,38 @@ export default function BrokerProposalCard({
           {tickerCtx.strategyDisplay}
         </span>
         {tickerCtx.strategyTypeLabel && (
-          <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
             {tickerCtx.strategyTypeLabel}
           </span>
         )}
         {tickerCtx.signalGrade && (
-          <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
             {tickerCtx.signalGrade} grade
           </span>
         )}
         <ProposalSourceBadges proposal={p} size="md" />
         <span style={{
-          fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
+          fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
           background: fid ? 'rgba(168,85,247,.18)' : 'rgba(96,165,250,.15)',
           color: fid ? PURPLE : BLUE,
         }}>{p.execution_label || (fid ? 'Manual · Fidelity FA' : 'Schwab · auto or manual')}</span>
         {gate && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${gateColor(gate)}22`, color: gateColor(gate) }}>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: `${gateColor(gate)}22`, color: gateColor(gate) }}>
             GATE {gate}
           </span>
         )}
         {ovStatus && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${gateColor(ovStatus)}18`, color: ovStatus === 'PASS' ? PURPLE : gateColor(ovStatus) }}>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: `${gateColor(ovStatus)}18`, color: ovStatus === 'PASS' ? PURPLE : gateColor(ovStatus) }}>
             AI {ovStatus}
           </span>
         )}
         {oversized && policyCap != null && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: 'rgba(239,68,68,.15)', color: RED }}>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: 'rgba(239,68,68,.15)', color: RED }}>
             OVERSIZED · cap {Number(policyCap).toLocaleString()} sh
           </span>
         )}
         {operatorRoute && policyCap != null && savedShares > Number(policyCap) && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: 'rgba(245,158,11,.12)', color: AMBER }}>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: 'rgba(245,158,11,.12)', color: AMBER }}>
             vs policy {Number(policyCap).toLocaleString()} sh
           </span>
         )}
@@ -287,7 +287,7 @@ export default function BrokerProposalCard({
           const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
           const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
           return (
-            <span title="Finviz daily" style={{ display: 'inline-flex', gap: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)', fontSize: 9, color: MUTED }}>
+            <span title="Finviz daily" style={{ display: 'inline-flex', gap: 7, padding: '3px 8px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)', fontSize: 11, color: MUTED }}>
               RSI <b style={{ color: rsiC }}>{fv.rsi ?? '—'}</b>
               W <b style={{ color: pc(fv.perf_week) }}>{fv.perf_week != null ? `${fv.perf_week > 0 ? '+' : ''}${Number(fv.perf_week).toFixed(1)}%` : '—'}</b>
             </span>
@@ -412,7 +412,7 @@ export default function BrokerProposalCard({
         <section style={{ padding: '12px 14px', borderRight: narrow ? 'none' : '1px solid rgba(148,163,184,.1)', borderBottom: narrow ? '1px solid rgba(148,163,184,.1)' : 'none' }}>
           {litmus?.facts?.length > 0 && (
             <div style={{
-              marginBottom: 10, padding: '8px 10px', borderRadius: 8, fontSize: 9.5, lineHeight: 1.45,
+              marginBottom: 10, padding: '8px 10px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.45,
               background: litmus.verdict === 'GO' ? 'rgba(34,197,94,.08)' : litmus.verdict === 'CAUTION' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)',
               border: `1px solid ${litmus.verdict === 'GO' ? 'rgba(34,197,94,.28)' : litmus.verdict === 'CAUTION' ? 'rgba(245,158,11,.28)' : 'rgba(239,68,68,.28)'}`,
             }}>
@@ -490,7 +490,7 @@ export default function BrokerProposalCard({
           </div>
 
           {!!(evalData?.warnings || []).length && operatorRoute && (
-            <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 9.5, color: AMBER, background: 'rgba(245,158,11,.08)', borderRadius: 8, border: '1px solid rgba(245,158,11,.2)' }}>
+            <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 11.5, color: AMBER, background: 'rgba(245,158,11,.08)', borderRadius: 8, border: '1px solid rgba(245,158,11,.2)' }}>
               {(evalData.warnings || []).map((w: string, i: number) => <div key={i}>⚠ {w}</div>)}
             </div>
           )}
@@ -511,7 +511,7 @@ export default function BrokerProposalCard({
                     onClick={() => setShowAllBlockers(s => !s)}
                     aria-expanded={showAllBlockers}
                     aria-label={truncated ? `Show all ${blockers.length} blockers` : 'Show fewer blockers'}
-                    style={{ marginTop: 4, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.35)', background: 'transparent', color: RED, cursor: 'pointer' }}
+                    style={{ marginTop: 4, fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.35)', background: 'transparent', color: RED, cursor: 'pointer' }}
                   >
                     {truncated ? `+${blockers.length - LIMIT} more` : 'Show fewer'}
                   </button>
@@ -522,21 +522,27 @@ export default function BrokerProposalCard({
 
           <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             <div style={metricBox}>
-              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
-              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>At queued size</div>
+              <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: oversized ? RED : TEXT0 }}>
                 {savedEcon.shares.toLocaleString()} sh @ ${Number(p.proposed_entry).toFixed(2)}
               </div>
-              <div style={{ fontSize: 10, color: MUTED }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
+              <div style={{ fontSize: 11, color: MUTED }}>stop ${Number(p.proposed_stop).toFixed(2)} · tgt ${Number(p.proposed_target1).toFixed(2)}</div>
             </div>
             <div style={metricBox}>
-              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ queued</div>
-              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(savedEcon.max_risk)}</div>
-              <div style={{ fontSize: 10, color: MUTED }}>invest {fmtMoney(savedEcon.investment)}</div>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Risk @ queued</div>
+              <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: RED }}>{fmtMoney(savedEcon.max_risk)}</div>
+              <div style={{ fontSize: 11, color: MUTED }}>invest {fmtMoney(savedEcon.investment)}</div>
             </div>
             <div style={metricBox}>
-              <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ tgt</div>
-              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(savedEcon.profit_at_target)}</div>
-              <div style={{ fontSize: 10, color: MUTED }}>R:R {p.live_rr ?? p.proposed_rr ?? '—'}{p.live_rr ? ' live' : ''}</div>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 800, textTransform: 'uppercase' }}>Profit @ tgt</div>
+              <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: GREEN }}>+{fmtMoney(savedEcon.profit_at_target)}</div>
+              {/* R:R: live (from fresh thesis) when available, else the plan R:R — never a stale live value. */}
+              <div style={{ fontSize: 11, color: MUTED }}>
+                R:R <b style={{ color: TEXT0 }}>{p.live_rr ?? p.proposed_rr ?? '—'}</b>
+                <span style={{ color: p.live_rr != null ? GREEN : MUTED, marginLeft: 4, fontWeight: 700 }}>
+                  {p.live_rr != null ? 'live' : (p.proposed_rr != null ? 'plan' : '')}
+                </span>
+              </div>
             </div>
           </div>
           {capEcon && (
@@ -568,7 +574,7 @@ export default function BrokerProposalCard({
             compact
           />
           {(detailLoading || acctPreviewBusy) && (
-            <div style={{ fontSize: 9, color: MUTED, fontStyle: 'italic' }}>Updating sizing & gates…</div>
+            <div style={{ fontSize: 11, color: MUTED, fontStyle: 'italic' }}>Updating sizing & gates…</div>
           )}
         </section>
       </div>
@@ -589,7 +595,7 @@ export default function BrokerProposalCard({
           suppressStrategyPurpose
         />
         {oversightMsg && (
-          <div style={{ fontSize: 9.5, marginTop: 6, color: oversightMsg.startsWith('✅') ? GREEN : AMBER }}>{oversightMsg}</div>
+          <div style={{ fontSize: 11.5, marginTop: 6, color: oversightMsg.startsWith('✅') ? GREEN : AMBER }}>{oversightMsg}</div>
         )}
       </section>
 
@@ -616,21 +622,21 @@ export default function BrokerProposalCard({
                     {' · '}STOP ${Number(t.stop || 0).toFixed(2)}
                     {t.target ? ` · TGT $${Number(t.target).toFixed(2)}` : ''}
                   </div>
-                  <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
                     risk {fmtMoney(t.dollar_risk)} · invest {fmtMoney(t.dollar_size)}
                     {t.risk_reward ? ` · R:R ${t.risk_reward}:1` : ''}
                   </div>
                   {routeIntent.summary && (
-                    <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>{routeIntent.summary}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{routeIntent.summary}</div>
                   )}
                   {(routeIntent.policy_warnings || []).map((w, i) => (
-                    <div key={i} style={{ fontSize: 9, color: AMBER, marginTop: 2 }}>⚠ {w}</div>
+                    <div key={i} style={{ fontSize: 11, color: AMBER, marginTop: 2 }}>⚠ {w}</div>
                   ))}
                 </div>
               )
             })()}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>2FA confirm:</span>
+            <span style={{ fontSize: 11, color: MUTED, fontWeight: 700 }}>2FA confirm:</span>
             <input
               value={routeApproveTk || ''}
               onChange={e => onRouteApproveTkChange?.(e.target.value)}
@@ -642,7 +648,7 @@ export default function BrokerProposalCard({
               onClick={() => onConfirmRoute('web')}
               disabled={routeBusy || (routeApproveTk || '').trim().toUpperCase() !== routeIntent.symbol}
               aria-label="Confirm route via web 2FA"
-              style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: 'rgba(34,197,94,.12)', color: GREEN }}
+              style={{ fontSize: 11, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: 'rgba(34,197,94,.12)', color: GREEN }}
             >Web ✓</button>
             <input
               value={routeApproveCode || ''}
@@ -655,7 +661,7 @@ export default function BrokerProposalCard({
               onClick={() => onConfirmRoute('telegram')}
               disabled={routeBusy || (routeApproveCode || '').length !== 6}
               aria-label="Confirm route via Telegram 2FA code"
-              style={{ fontSize: 9, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.12)', color: BLUE }}
+              style={{ fontSize: 11, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.12)', color: BLUE }}
             >Code ✓</button>
             </div>
           </div>
