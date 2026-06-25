@@ -112,6 +112,10 @@ export default function AgentsHub({ onDrill }: Props) {
   const agents: any[] = summary?.agents ?? []
   const handoffs: any[] = summary?.handoffs ?? []
   const perf: any[] = perfData?.history ?? []
+  // Freshness cue: rows are ordered newest-first, so perf[0].period_end is the latest scored period.
+  // The scoring pipeline (decision_outcomes price capture) decayed in Apr 2026 and is superseded by
+  // Calibration + Recommendation Intelligence — without this banner stale data reads as current.
+  const perfStaleDays = perf[0]?.period_end ? Math.floor((Date.now() - Date.parse(String(perf[0].period_end))) / 86400000) : null
   const windows: any[] = (Array.isArray(calWindows) ? calWindows : calWindows?.windows) ?? []
   const agentList: any[] = (Array.isArray(calAgents) ? calAgents : calAgents?.agents) ?? []
   const symbolsByAgent: Record<string, number> = {}
@@ -391,6 +395,11 @@ export default function AgentsHub({ onDrill }: Props) {
       {tab === 'Performance' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Performance History ({perf.length})</div>
+          {perfStaleDays != null && perfStaleDays > 4 && (
+            <div style={{ background: 'rgba(245,158,11,0.12)', border: `1px solid ${A}`, borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11, color: 'var(--text1)' }}>
+              ⚠ Not current — latest scored period ended {perfStaleDays}d ago. Agent-performance scoring is paused (decision-outcome price capture retired Apr 2026); superseded by <strong>Calibration</strong> + <strong>Recommendation Intelligence</strong>.
+            </div>
+          )}
           {perf.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16 }}>No performance history recorded.</div> : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
