@@ -1,13 +1,18 @@
-# Hermes composite watchlist score — TUNABLE factor weights (H-1).
-# Each factor is normalized 0-100, weighted, then re-normalized over the factors that have data
-# (missing factors are dropped — never filled with a fabricated neutral). Adjust over time / via
-# calibration (H-4 backtest-vs-outcome). Highest composite = strongest combined setup.
-version: 1
+# Hermes composite watchlist score — TUNABLE factor weights (H-1 / H-4).
+# Each factor is normalized 0-100, weighted, then re-normalized over the factors that have data.
+# Missing factors are dropped (never filled with fabricated neutral values).
+# Adjust over time via calibration (backtest vs outcome). Highest composite = strongest combined setup.
+#
+# Version 2 weights were auto-grafted from recent calibration run.
+
+version: 2
 weights:
-  technical_momentum: 0.20   # RSI posture + trend + RVOL + confluence
-  setup_quality:      0.18   # RSI-band prior + Bucket-2/3 classifier qualification
-  analyst:            0.16   # consensus rating + target upside + internal-vs-Street alignment
-  social_sentiment:   0.12   # social score + sentiment direction
-  sector_strength:    0.12   # sector ETF momentum vs SPY
-  news_catalyst:      0.12   # verified catalyst presence + recency
-  risk_reward:        0.10   # target/stop R:R where available
+  technical_momentum: 0.1629   # RSI posture + trend + RVOL + confluence
+  setup_quality:      0.11     # RSI-band prior + Bucket-2/3 classifier qualification
+  analyst:            0.2582   # consensus rating + target upside + internal-vs-Street alignment
+  social_sentiment:   0.1291   # social score + sentiment direction
+  sector_strength:    0.0997   # sector ETF momentum vs SPY
+  news_catalyst:      0.1291   # verified catalyst presence + recency
+  risk_reward:        0.111    # target/stop R:R where available
+
+auto_grafted_at: '2026-06-24T20:38:15.248457+00:00'
