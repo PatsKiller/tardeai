@@ -908,11 +908,18 @@ def collect_pipeline_freshness() -> list[dict]:
     try:
         import pipeline_freshness_monitor as pfm
         stale, missing, _ok = pfm.check()
+        # A stale OUTPUT with a known data-REFRESH remediation (e.g. backtest aggregator / proposal
+        # backtest engine) is auto-retryable — don't tag it kind='code' (which would route it to the AI
+        # coder); the escalation handler runs the allowlisted refresh instead. Only feeders with NO
+        # remediation stay kind='code' (genuinely stale-despite-cron → needs a real code fix).
+        rmap = (_POLICY.get("remediation_map") or {})
         for s in stale:
             sev = "critical" if s["age_days"] > (s["threshold_days"] * 4) else "warning"
-            out.append(_f("pipeline_freshness", f"stale_{s['name']}", sev,
+            ftype = f"stale_{s['name']}"
+            extra = {} if ftype in rmap else {"kind": "code"}
+            out.append(_f("pipeline_freshness", ftype, sev,
                           f"{s['name']} output {s['age_days']}d stale (>{s['threshold_days']}d) — shown on {s['surfaced']}",
-                          kind="code", age_days=s["age_days"], surfaced=s["surfaced"]))
+                          age_days=s["age_days"], surfaced=s["surfaced"], **extra))
         for m in missing:
             out.append(_f("pipeline_freshness", f"missing_{m['name']}", "warning",
                           f"{m['name']} produces no output ({m['reason']}) — {m['surfaced']}",

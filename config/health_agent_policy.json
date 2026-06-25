@@ -80,7 +80,9 @@
     "portfolio_totals_drift": ".venv/bin/python scripts/portfolio_repricer.py",
     "account_summary_drift": ".venv/bin/python scripts/portfolio_repricer.py",
     "snaptrade_cash_stale": ".venv/bin/python scripts/snaptrade_sync.py --apply",
-    "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
+    "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+    "stale_strategy_backtest_results": "flock -n /tmp/bt_aggregator.lock .venv/bin/python scripts/backtest_results_aggregator.py",
+    "stale_proposal_backtest_snapshots": "flock -n /tmp/proposal_backtest.lock .venv/bin/python scripts/proposal_backtest_engine.py --all-pending --apply"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

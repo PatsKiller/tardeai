@@ -39,6 +39,11 @@ REGISTRY = [
     #   monitored (was a legacy schwab_shadow_recon_runs feed, last run 2026-06-12).
     ("morning_synthesis",     "table", ("llm_intelligence_cache", "generated_at", "section='morning_synthesis'"), 2, "Home → AI Briefing"),
     ("rotation_summary",      "file",  "data/runtime/rotation_summary_cache.json", 1, "Rotation Intelligence"),
+    # Backtest integration — engine runs daily but its OUTPUTS went stale (aggregator unscheduled →
+    # strategy_backtest_results 14d old; proposal engine PENDING-only + unscheduled → snapshots 34d old,
+    # Backtest field blank on cards). Now scheduled; watched here so a re-break auto-remediates.
+    ("strategy_backtest_results", "table", ("strategy_backtest_results", "created_at", None), 3, "Strategy backtest evidence / leaderboard"),
+    ("proposal_backtest_snapshots", "table", ("proposal_backtest_snapshots", "created_at", None), 3, "Proposal card Backtest field"),
 ]
 
 
