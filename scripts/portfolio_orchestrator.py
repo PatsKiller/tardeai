@@ -946,11 +946,26 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             print(f"  [fidelity-perf] Updated {len([k for k,v in _fid_periods.items() if isinstance(v,dict)])} periods from {len(_fund_returns)} funds")
         else:
             print(f"  [fidelity-perf] No Fidelity positions with real ticker mappings")
+        # 1D: canonical market day from holdings (matches header TODAY)
+        try:
+            from portfolio_snapshot_sanity import account_market_days, apply_market_day_1d, portfolio_market_day
+            _ph = apply_market_day_1d(_ph, portfolio)
+            for _ak, _md in account_market_days(portfolio).items():
+                _acct = _ph.setdefault("accounts", {}).setdefault(_ak, {})
+                _acct.setdefault("periods", {})["1D"] = _md
+                if not _acct.get("current_value"):
+                    _acct["current_value"] = _md.get("end_value")
+            _md_top = portfolio_market_day(portfolio)
+            if _md_top:
+                _ph.setdefault("periods", {})["1D"] = _md_top
+        except Exception as _mde:
+            print(f"  [perf] market_day 1D overlay failed: {_mde}")
+
         # Recompute portfolio-level from all accounts with sanity filter
         # (runs unconditionally — even if Fidelity block above was skipped)
         _MAX = {"1D":15,"1W":30,"1M":50,"3M":80,"6M":100,"YTD":150,"1Y":200}
         _total_current = sum(a.get("current_value",0) for a in _ph.get("accounts",{}).values() if isinstance(a,dict))
-        for _lbl in ["1D","1W","1M","3M","6M","YTD","1Y"]:
+        for _lbl in ["1W","1M","3M","6M","YTD","1Y"]:
             _tc, _ts, _n = 0, 0, 0
             for _ak, _av in _ph.get("accounts",{}).items():
                 if not isinstance(_av, dict): continue
@@ -966,6 +981,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     _st = _cv / (1 + _pct/100); _tc += _cv - _st; _ts += _st; _n += 1
             if _n >= 1 and _ts > 0:
                 _ph.setdefault("periods",{})[_lbl] = {"change_pct": round((_tc/_ts)*100, 2), "change": round(_tc, 2), "source": "account-aggregated"}
+        # Never overwrite market_day 1D with account-aggregated snapshot delta
+        try:
+            from portfolio_snapshot_sanity import portfolio_market_day
+            _md_final = portfolio_market_day(portfolio)
+            if _md_final:
+                _ph.setdefault("periods", {})["1D"] = _md_final
+        except Exception:
+            pass
         json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
         perf_history = _ph  # update for dashboard rebuild below
     except Exception as e:

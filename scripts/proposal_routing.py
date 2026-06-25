@@ -24,6 +24,16 @@ def is_broker_routed(proposal: dict) -> bool:
     return k.startswith("schwab") or k.startswith("fidelity")
 
 
+def is_broker_desk_watchlist(proposal: dict) -> bool:
+    """Watchlist bridge rows on Path B — managed on Broker Proposals, not review cap."""
+    return str(proposal.get("origin") or "").lower() == "watchlist" and is_broker_routed(proposal)
+
+
+def counts_toward_promotion_cap(proposal: dict) -> bool:
+    """Whether a pending row consumes the incubator / review-queue ceiling."""
+    return not is_broker_desk_watchlist(proposal)
+
+
 def is_paper_routed(proposal: dict) -> bool:
     k = routing_key(proposal)
     return bool(k) and not is_broker_routed(proposal)

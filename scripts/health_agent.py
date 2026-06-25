@@ -362,16 +362,34 @@ def collect_data_quality() -> list[dict]:
     return out
 
 
+def _count_real_pipeline_failures(hours: int = 24) -> int:
+    """Count failed pipeline runs with substantive errors (exclude zombies + empty-error rows)."""
+    row = _db(
+        f"""SELECT COUNT(*) AS c FROM pipeline_runs
+            WHERE status='failed'
+              AND started_at > now() - interval '{int(hours)} hours'
+              AND (summary IS NULL OR summary::text NOT LIKE '%%zombie run cleared%%')
+              AND NOT (
+                summary IS NOT NULL AND (
+                  summary::text ~ '"errors"\\s*:\\s*\\[\\s*\\]'
+                  OR COALESCE(summary::jsonb->>'errors', 'x') IN ('', '[]')
+                  OR (jsonb_typeof(summary::jsonb->'errors') = 'array'
+                      AND jsonb_array_length(summary::jsonb->'errors') = 0)
+                )
+              )""",
+        fetch="one",
+    )
+    return int((row or {}).get("c") or 0)
+
+
 def collect_execution_health() -> list[dict]:
     out = []
     try:
-        # recent pipeline failures (exclude zombie bookkeeping rows — not real failures)
-        pf = _db("""SELECT COUNT(*) AS c FROM pipeline_runs
-                    WHERE status='failed' AND started_at > now() - interval '24 hours'
-                      AND (summary IS NULL OR summary::text NOT LIKE '%%zombie run cleared%%')""", fetch="one")
-        if pf and pf.get("c", 0) > 0:
-            out.append(_f("execution_health", "pipeline_failures", "warning" if pf["c"] < 5 else "critical",
-                          f"{pf['c']} pipeline run failures in 24h", count=pf["c"]))
+        # recent pipeline failures — exclude zombie rows and failed-with-empty-errors bookkeeping
+        pf_count = _count_real_pipeline_failures(24)
+        if pf_count > 0:
+            out.append(_f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
+                          f"{pf_count} pipeline run failures in 24h", count=pf_count))
         # stuck queued agent jobs
         q = _db("SELECT COUNT(*) AS c FROM watchlist_agent_jobs WHERE status='queued' AND created_at < now() - interval '2 hours'", fetch="one")
         if q and q.get("c", 0) > 0:

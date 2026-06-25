@@ -125,6 +125,11 @@ def score_content(title: str, text: str, source: str = "unknown",
             break
 
     quality_score = min(100, max(0, base_quality))
+    try:
+        from hermes_source_policy import apply_quality_policy
+        quality_score = apply_quality_policy(source, quality_score)
+    except Exception:
+        pass
 
     # --- Relevance Score ---
     matched = []

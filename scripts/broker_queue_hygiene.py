@@ -29,6 +29,9 @@ BROKER_QUEUE_STATUSES = ("PENDING", "APPROVED_FOR_PAPER_TEST")
 
 ENTRY_MISSED_DRIFT_MULT = float(os.getenv("BROKER_QUEUE_ENTRY_MISSED_MULT", "1.5"))
 BROKER_MAX_AGE_HOURS = float(os.getenv("BROKER_QUEUE_MAX_AGE_HOURS", "24"))
+BROKER_THESIS_RISK_EXPIRE_DAYS = float(os.getenv("BROKER_THESIS_RISK_EXPIRE_DAYS", "3"))
+BROKER_STALE_PRICE_EXPIRE_DAYS = float(os.getenv("BROKER_STALE_PRICE_EXPIRE_DAYS", "1"))
+BROKER_APPROACHING_EXPIRE_DAYS = float(os.getenv("BROKER_APPROACHING_EXPIRE_DAYS", "7"))
 
 
 def _get_conn():
@@ -128,6 +131,57 @@ def fetch_broker_queue_rows(*, include_pending: bool = True) -> list[dict]:
     return [r for r in rows if is_broker_routed(r)]
 
 
+def _attach_thesis_zone(row: dict) -> dict:
+    """Attach thesis_validity zone for hygiene (skip if already stamped or incomplete row)."""
+    tv = row.get("thesis_validity") or {}
+    if tv.get("zone_status"):
+        return row
+    if not (row.get("proposed_entry") and row.get("proposed_stop") and row.get("proposed_target1")):
+        return row
+    try:
+        from broker_thesis_validity import attach_thesis_validity
+        attach_thesis_validity(row)
+    except Exception:
+        pass
+    return row
+
+
+def _classify_thesis_zone(
+    row: dict,
+    *,
+    now: datetime,
+    created: datetime | None,
+    reasons: list[str],
+) -> tuple[str, str | None]:
+    """Expire stale / at-risk thesis bands (all origins, including watchlist)."""
+    action = "keep"
+    new_status = None
+    if not created:
+        return action, new_status
+    age_d = (now - created).total_seconds() / 86400
+    tv = row.get("thesis_validity") or {}
+    zone = str(tv.get("zone_status") or "").lower()
+    if zone == "invalid":
+        reasons.append("Thesis invalid — entry/stop/target band broken")
+        return "expire", "EXPIRED"
+    if zone == "stale_price" and age_d > BROKER_STALE_PRICE_EXPIRE_DAYS:
+        reasons.append(
+            f"Stale price {age_d:.1f}d > {BROKER_STALE_PRICE_EXPIRE_DAYS:.0f}d — refresh failed"
+        )
+        return "expire", "EXPIRED"
+    if zone == "at_risk" and age_d > BROKER_THESIS_RISK_EXPIRE_DAYS:
+        reasons.append(
+            f"Thesis at_risk {age_d:.1f}d > {BROKER_THESIS_RISK_EXPIRE_DAYS:.0f}d cap"
+        )
+        return "expire", "EXPIRED"
+    if zone == "approaching" and age_d > BROKER_APPROACHING_EXPIRE_DAYS:
+        reasons.append(
+            f"Thesis approaching edge {age_d:.1f}d > {BROKER_APPROACHING_EXPIRE_DAYS:.0f}d cap"
+        )
+        return "expire", "EXPIRED"
+    return action, new_status
+
+
 def _drift_threshold(strategy_id: str) -> float:
     try:
         from proposal_lifecycle import get_price_drift_threshold
@@ -164,8 +218,14 @@ def classify_broker_queue_row(
     if drift_f is None and live_f is not None and entry > 0:
         drift_f = round((live_f - entry) / entry * 100, 2)
 
+    _attach_thesis_zone(row)
+    t_action, t_status = _classify_thesis_zone(row, now=now, created=created, reasons=reasons)
+    if t_action != "keep":
+        action = t_action
+        new_status = t_status
+
     # Watchlist-origin rows persist while BUY/STRONG_BUY — bridge handles rating-based expiry.
-    if not is_watchlist:
+    if not is_watchlist and action == "keep":
         if expires and now > expires:
             reasons.append(f"Past expires_at ({expires.strftime('%Y-%m-%d %H:%M')} UTC)")
             action = "expire"
@@ -211,6 +271,7 @@ def classify_broker_queue_row(
                 action = "reject"
                 new_status = "REJECTED"
 
+    tv = row.get("thesis_validity") or {}
     return {
         "proposal_id": pid,
         "symbol": sym,
@@ -219,6 +280,7 @@ def classify_broker_queue_row(
         "new_status": new_status,
         "reasons": reasons,
         "drift_pct": drift_f,
+        "thesis_zone": tv.get("zone_status"),
         "expires_at": expires.isoformat() if expires else None,
         "created_at": created.isoformat() if created else None,
         "routing_state": row.get("routing_state"),

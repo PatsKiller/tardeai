@@ -176,6 +176,54 @@ export default function HealthHub({ onDrill }: Props) {
             </div>
           )}
 
+          {(() => {
+            const broker = propHealth?.broker
+            const conc = propHealth?.concentration
+            const driftAlerts = (broker?.at_risk_symbols || []) as any[]
+            const hasDrift = (broker?.approaching_count ?? 0) > 0 || (broker?.at_risk_count ?? 0) > 0
+            const hasConc = conc?.elevated
+            if (!hasDrift && !hasConc && !(broker?.stale_count > 0)) return null
+            return (
+              <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg1)',
+                border: '1px solid rgba(245,158,11,.35)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--amber)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber)', marginBottom: 8 }}>
+                  Risk Alerts
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10.5, color: 'var(--text2)' }}>
+                  {(broker?.stale_count ?? 0) > 0 && (
+                    <div>⚠ <b>{broker.stale_count}</b> broker proposal(s) have stale prices — refresh before routing.</div>
+                  )}
+                  {hasDrift && (
+                    <div>
+                      ⚠ Thesis drift: <b>{broker.approaching_count ?? 0}</b> approaching edge
+                      {(broker.at_risk_count ?? 0) > 0 && <> · <b style={{ color: 'var(--red)' }}>{broker.at_risk_count}</b> at risk</>}
+                      {driftAlerts.length > 0 && (
+                        <span style={{ display: 'block', marginTop: 4, fontFamily: 'monospace', fontSize: 10, color: 'var(--text3)' }}>
+                          {driftAlerts.slice(0, 6).map((a: any) => (
+                            <span key={a.id || a.symbol} style={{ marginRight: 10 }}>
+                              {a.symbol} <span style={{ color: a.zone === 'at_risk' || a.zone === 'invalid' ? 'var(--red)' : 'var(--amber)' }}>{a.zone}</span>
+                              {a.drift_pct != null ? ` ${Number(a.drift_pct) >= 0 ? '+' : ''}${a.drift_pct}%` : ''}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {hasConc && (
+                    <div style={{ color: 'var(--red)' }}>
+                      ⚠ Concentration risk: top 3 positions = <b>{conc.top3_pct}%</b> of portfolio max loss
+                      {conc.top3_symbols?.length > 0 && (
+                        <span style={{ color: 'var(--text3)', marginLeft: 6, fontFamily: 'monospace' }}>
+                          ({conc.top3_symbols.join(' · ')})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Recent changes */}
           {(activity?.activity || []).length > 0 && (
             <div style={{ marginBottom: 16, padding: '8px 12px', background: 'var(--bg1)',

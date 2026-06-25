@@ -29,8 +29,37 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 TARGET_N = int(os.getenv("CHALLENGER_TARGET_N", "100"))
 BATCH_N = int(os.getenv("CHALLENGER_BATCH_N", "25"))    # per-call size (small enough to fit token budget + HTTP timeout)
+TRENDS_N = int(os.getenv("CHALLENGER_TRENDS_N", "20"))  # macro trends per run
+SITES_N = int(os.getenv("CHALLENGER_SITES_N", "20"))    # candidate research sites per run
 MODEL = os.getenv("CHALLENGER_MODEL", "claude-sonnet-4-6")
 SOURCE_TAG = "claude_challenger"
+
+TRENDS_PROMPT = """You are a macro/thematic strategist. Identify exactly {n} distinct TRENDS or sector
+rotations with favorable risk/reward over the next 1-3 months — structural/secular shifts a mechanical
+screener cannot see. Diversify across sectors and time-horizons.
+
+Return ONLY a JSON array of exactly {n} objects, keys:
+  "trend"          (short label, e.g. "AI datacenter power buildout"),
+  "thesis"         (1-2 sentences — why now),
+  "keywords"       (array of 3-6 search terms for tracking this trend),
+  "sectors"        (array of affected GICS sectors),
+  "example_tickers"(array of 2-4 beneficiary US tickers),
+  "conviction"     ("high" | "medium" | "low").
+No prose before or after the JSON."""
+
+SITES_PROMPT = """You are a research librarian for a systematic equity-research system. Propose exactly {n}
+high-signal, publicly-accessible research/data WEBSITES (domains) the system should monitor but likely is
+NOT — analyst aggregators, specialized sector/industry intelligence, alternative-data, regulatory/filing
+trackers, high-quality independent research blogs. Avoid mainstream sites everyone already watches
+(yahoo, bloomberg, cnbc, reuters, marketwatch, wsj, ft, seekingalpha).{avoid}
+
+Return ONLY a JSON array of exactly {n} objects, keys:
+  "domain"   (bare domain, e.g. "koyfin.com"),
+  "name"     (short name),
+  "category" ("analyst" | "sector" | "altdata" | "regulatory" | "blog" | "data"),
+  "provides" (the unique signal it offers),
+  "why"      (why it's worth monitoring).
+No prose before or after the JSON."""
 
 PROMPT = """You are a senior buy-side portfolio manager building a CHALLENGER watchlist that will be \
 A/B-tested against a mechanical Finviz screener. Curate exactly {n} US-listed equities (common stocks \
@@ -136,6 +165,103 @@ def curate() -> list[dict]:
     return out
 
 
+def curate_trends() -> list[dict]:
+    """One Claude call → N macro trends."""
+    from hermes_external_researcher import call_external
+    raw = call_external("claude", MODEL, TRENDS_PROMPT.format(n=TRENDS_N), max_tokens=5000)
+    out, seen = [], set()
+    for it in _parse_json_array(raw):
+        if not isinstance(it, dict):
+            continue
+        label = str(it.get("trend") or "").strip()[:120]
+        if not label or label.lower() in seen:
+            continue
+        seen.add(label.lower())
+        out.append({
+            "trend": label,
+            "thesis": str(it.get("thesis") or "")[:600],
+            "keywords": [str(k)[:40] for k in (it.get("keywords") or []) if k][:6],
+            "sectors": [str(s)[:40] for s in (it.get("sectors") or []) if s][:6],
+            "tickers": [str(t).upper()[:6] for t in (it.get("example_tickers") or []) if _is_symbol(str(t).upper())][:4],
+            "conviction": str(it.get("conviction") or "medium").lower()[:10],
+        })
+    return out
+
+
+def curate_sites() -> list[dict]:
+    """One Claude call → N candidate research sites (avoids already-registered domains)."""
+    from hermes_external_researcher import call_external
+    from db_adapter import _execute
+    have = {str(dict(r).get("source_url") or "").lower().replace("www.", "")
+            for r in (_execute("SELECT source_url FROM research_sources WHERE source_url IS NOT NULL", fetch="all") or [])}
+    avoid = ""
+    sample = sorted({h for h in have if h})[:40]
+    if sample:
+        avoid = "\n- Also avoid these already-registered domains: " + ", ".join(sample) + "."
+    raw = call_external("claude", MODEL, SITES_PROMPT.format(n=SITES_N, avoid=avoid), max_tokens=5000)
+    out, seen = [], set()
+    for it in _parse_json_array(raw):
+        if not isinstance(it, dict):
+            continue
+        dom = str(it.get("domain") or "").strip().lower().replace("https://", "").replace("http://", "").replace("www.", "").strip("/")
+        if not dom or "." not in dom or dom in seen or dom in have:
+            continue
+        seen.add(dom)
+        out.append({
+            "domain": dom[:120],
+            "name": str(it.get("name") or dom)[:120],
+            "category": str(it.get("category") or "data").lower()[:20],
+            "provides": str(it.get("provides") or "")[:200],
+            "why": str(it.get("why") or "")[:300],
+        })
+    return out
+
+
+def infuse_trends(trends: list[dict], apply: bool) -> int:
+    """Write trends as kind='trend' watch_directives (created_by=claude_challenger). Idempotent by label."""
+    from db_adapter import _execute
+    n = 0
+    for t in trends:
+        label = f"trend {t['trend']}"
+        if not apply:
+            continue
+        dup = _execute("SELECT id FROM watch_directives WHERE kind='trend' AND label=%s", (label,), fetch="one")
+        spec = json.dumps({"keywords": t["keywords"], "sectors": t["sectors"],
+                           "example_tickers": t["tickers"], "conviction": t["conviction"],
+                           "evidence": "claude_challenger"})
+        if dup:
+            _execute("""UPDATE watch_directives SET spec=%s::jsonb, rationale=%s, status='active',
+                        last_confirmed_at=NOW(), updated_at=NOW() WHERE id=%s""",
+                     (spec, t["thesis"], dict(dup)["id"]), fetch=None)
+        else:
+            _execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days,
+                          priority, status, trade_ai_enabled, hermes_enabled, created_at, updated_at)
+                        VALUES ('trend',%s,%s::jsonb,%s,'claude_challenger',45,'normal','active',true,true,NOW(),NOW())""",
+                     (label, spec, t["thesis"]), fetch=None)
+        n += 1
+    return n
+
+
+def infuse_sites(sites: list[dict], apply: bool) -> int:
+    """Write sites as CANDIDATE research_sources (active=False) → they earn promotion on yield."""
+    from db_adapter import _execute
+    n = 0
+    for s in sites:
+        if not apply:
+            continue
+        dup = _execute("SELECT id FROM research_sources WHERE source_url=%s", (s["domain"],), fetch="one")
+        if dup:
+            continue  # already known — don't disturb its ladder state
+        _execute("""INSERT INTO research_sources
+                    (source_type, source_name, source_url, credibility_score, specialty, active, notes, created_at)
+                    VALUES (%s,%s,%s,40,%s,false,%s,NOW())""",
+                 (s["category"] if s["category"] in ("analyst", "sector", "data") else "web",
+                  s["name"], s["domain"], [s["provides"][:60]],
+                  f"claude_source_challenger: {s['why'][:160]}"), fetch=None)
+        n += 1
+    return n
+
+
 def infuse(cands: list[dict], apply: bool) -> dict:
     """Idempotent upsert keyed on (symbol, strategy_id='claude_challenger') — NEVER touches other
     strategies' incubator rows. Each pick → incubator_universe + incubator_events + rec attribution."""
@@ -180,20 +306,42 @@ def infuse(cands: list[dict], apply: bool) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true", help="write to incubator + attribution (default dry-run)")
-    ap.add_argument("--show", action="store_true", help="print the curated list")
+    ap.add_argument("--apply", action="store_true", help="write (default dry-run)")
+    ap.add_argument("--what", default="all", help="comma list: tickers,trends,sites (default all)")
+    ap.add_argument("--show", action="store_true", help="print the curated lists")
     a = ap.parse_args()
-    print(f"[challenger] curating {TARGET_N} names via Claude ({MODEL})…")
-    cands = curate()
-    print(f"[challenger] Claude returned {len(cands)} valid unique candidates")
-    sectors = sorted({c["sector"] for c in cands if c["sector"]})
-    themes = sorted({c["theme"] for c in cands if c["theme"]})
-    print(f"[challenger] diversity: {len(sectors)} sectors, {len(themes)} themes")
-    if a.show or not a.apply:
-        for c in cands[:120]:
-            print(f"  {c['symbol']:6s} {c['conviction']:6s} {c['sector'][:18]:18s} {c['theme'][:26]:26s} {c['thesis'][:60]}")
-    res = infuse(cands, a.apply)
-    print(f"[challenger] {'APPLIED' if a.apply else 'DRY'} — {res}")
+    what = {w.strip() for w in a.what.split(",")} if a.what != "all" else {"tickers", "trends", "sites"}
+    summary = {}
+
+    if "tickers" in what:
+        print(f"[challenger] curating {TARGET_N} tickers via Claude ({MODEL})…")
+        cands = curate()
+        sectors = sorted({c["sector"] for c in cands if c["sector"]})
+        print(f"[challenger] {len(cands)} tickers, {len(sectors)} sectors")
+        if a.show or not a.apply:
+            for c in cands[:120]:
+                print(f"  {c['symbol']:6s} {c['conviction']:6s} {c['sector'][:16]:16s} {c['theme'][:24]:24s} {c['thesis'][:54]}")
+        summary["tickers"] = infuse(cands, a.apply)
+
+    if "trends" in what:
+        print(f"[challenger] curating {TRENDS_N} trends…")
+        trends = curate_trends()
+        print(f"[challenger] {len(trends)} trends")
+        if a.show or not a.apply:
+            for t in trends:
+                print(f"  TREND {t['conviction']:6s} {t['trend'][:34]:34s} {','.join(t['tickers'])} | {t['thesis'][:50]}")
+        summary["trends"] = infuse_trends(trends, a.apply)
+
+    if "sites" in what:
+        print(f"[challenger] curating {SITES_N} candidate sites…")
+        sites = curate_sites()
+        print(f"[challenger] {len(sites)} new sites")
+        if a.show or not a.apply:
+            for s in sites:
+                print(f"  SITE  {s['category']:10s} {s['domain'][:26]:26s} {s['provides'][:46]}")
+        summary["sites"] = infuse_sites(sites, a.apply)
+
+    print(f"[challenger] {'APPLIED' if a.apply else 'DRY'} — {summary}")
     return 0
 
 

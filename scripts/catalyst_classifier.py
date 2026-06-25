@@ -36,15 +36,19 @@ _MATURITY_CACHE = None
 
 
 def _source_tier(source):
-    global _MATURITY_CACHE
     if not source:
         return None
-    if _MATURITY_CACHE is None:
-        try:
-            _MATURITY_CACHE = {s["source"]: s["tier"] for s in json.loads(MATURITY.read_text()).get("sources", [])}
-        except Exception:
-            _MATURITY_CACHE = {}
-    return _MATURITY_CACHE.get(source)
+    try:
+        from hermes_source_policy import get_source_tier
+        return get_source_tier(source, for_promotion=True)
+    except Exception:
+        global _MATURITY_CACHE
+        if _MATURITY_CACHE is None:
+            try:
+                _MATURITY_CACHE = {s["source"]: s["tier"] for s in json.loads(MATURITY.read_text()).get("sources", [])}
+            except Exception:
+                _MATURITY_CACHE = {}
+        return _MATURITY_CACHE.get(source)
 
 # --- directional catalyst taxonomy: catalyst_type -> (base_weight 0..1, direction, [regex]) ---
 TYPE_PATTERNS = [

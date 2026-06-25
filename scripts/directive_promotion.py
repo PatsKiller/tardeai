@@ -40,13 +40,20 @@ def _conn():
 
 # ── tier + divergence reads (advisory read-models; fail-closed) ──────────────────
 def get_source_tier(source_system, conn=None):
-    """research_sources/source-maturity -> core|trusted|probationary|candidate|demoted.
-    Unknown source or missing model -> 'candidate' (conservative; won't auto-promote)."""
+    """research_sources + operator activation -> effective promotion tier."""
+    try:
+        from hermes_source_policy import get_source_tier as _policy_tier
+        return _policy_tier(source_system, for_promotion=True)
+    except Exception:
+        pass
     try:
         d = json.loads(_TIER_JSON.read_text())
         for r in d.get("sources", []):
             if str(r.get("source", "")).lower() == str(source_system or "").lower():
-                return r.get("tier") or "candidate"
+                tier = r.get("tier") or "candidate"
+                if tier == "core":
+                    return "trusted"
+                return tier
     except Exception:
         pass
     return "candidate"

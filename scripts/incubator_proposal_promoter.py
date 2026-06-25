@@ -260,10 +260,20 @@ def _check_promotion_gate(conn):
     """Strategy-aware promotion gate. Returns (can_promote, reason)."""
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM paper_trade_proposals WHERE status = 'PENDING'")
+    cur.execute("""
+        SELECT COUNT(*) FROM paper_trade_proposals
+        WHERE status = 'PENDING'
+          AND NOT (
+            COALESCE(origin, '') = 'watchlist'
+            AND (
+              lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'
+              OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%'
+            )
+          )
+    """)
     total = cur.fetchone()[0]
     if total >= MAX_ACTIVE_PROPOSALS:
-        return False, f"Global gate: {total}/{MAX_ACTIVE_PROPOSALS} pending proposals"
+        return False, f"Global gate: {total}/{MAX_ACTIVE_PROPOSALS} review-queue proposals"
 
     cur.execute("""
         SELECT strategy_id, COUNT(*) as cnt FROM paper_trade_proposals

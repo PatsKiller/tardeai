@@ -305,6 +305,13 @@ def ingest(priority_only: bool = False) -> dict:
 
         for a in articles:
             src = a.get("source", "")
+            try:
+                from hermes_source_policy import should_ingest
+                ok, why = should_ingest(src)
+                if not ok:
+                    continue
+            except Exception:
+                pass
             is_google = src.startswith("google_news:") or src in ("seeking_alpha", "motley_fool", "morningstar", "barrons", "marketwatch", "benzinga_rss")
             # Dedup: Google News sources dedup by URL only (titles overlap with Yahoo)
             # Yahoo/Finnhub dedup by symbol + title

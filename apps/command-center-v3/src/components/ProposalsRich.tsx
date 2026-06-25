@@ -784,7 +784,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
 }
 
 // -- Main proposals surface --
-export default function ProposalsRich() {
+export default function ProposalsRich({ onOpenBrokerProposals }: { onOpenBrokerProposals?: () => void } = {}) {
   const { data, refetch, loading, error, stale } = useApi<any>('/api/v2/paper-proposals', 30000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
@@ -793,6 +793,7 @@ export default function ProposalsRich() {
   const [strategyFilter, setStrategyFilter] = useState('ALL')
   const [stateFilter, setStateFilter] = useState('ALL')
   const [symbolSearch, setSymbolSearch] = useState('')
+  const [showBrokerDeskRows, setShowBrokerDeskRows] = useState(false)
   const [runHealth, setRunHealth] = useState<any>(null)
 
   React.useEffect(() => {
@@ -895,10 +896,14 @@ export default function ProposalsRich() {
   const allProposals = data?.proposals ?? []
   const pending = allProposals.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
   const brokerRouted = pending.filter(isBrokerRouted)
+  const reviewPending = pending.filter((p: any) => !isBrokerRouted(p))
+  const listPending = showBrokerDeskRows ? pending : reviewPending
+  const pendingLimit = summary.incubator_diagnostics?.pending_limit ?? 20
+  const reviewHeadroom = Math.max(0, pendingLimit - reviewPending.length)
 
-  const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
+  const strategies = Array.from(new Set(listPending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
 
-  let filtered = pending
+  let filtered = listPending
   if (strategyFilter !== 'ALL') {
     filtered = filtered.filter((p: any) => p.strategy_id === strategyFilter)
   }
@@ -923,7 +928,7 @@ export default function ProposalsRich() {
   const displayed = showAll ? sorted : sorted.slice(0, 5)
 
   const stateCounts: Record<string, number> = {}
-  for (const p of pending) {
+  for (const p of listPending) {
     const s = normalizeProposal(p).actionState
     stateCounts[s] = (stateCounts[s] || 0) + 1
   }
@@ -941,10 +946,14 @@ export default function ProposalsRich() {
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>Automated Trade Proposals</div>
           <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-            {loading && !data ? 'Loading proposals…' : `${pending.length} pending`}
+            {loading && !data ? 'Loading proposals…' : (
+              brokerRouted.length && !showBrokerDeskRows
+                ? `${reviewPending.length} to review here · ${brokerRouted.length} on broker desk`
+                : `${pending.length} pending`
+            )}
             {stale ? ' · showing cached data' : ''}
             {summary.expired_today ? ` · ${summary.expired_today} expired today` : ''}{summary.incubator_ready_count ? ` · ${summary.incubator_ready_count} incubator ready` : ''}
-            {brokerRouted.length ? ` · ${brokerRouted.length} broker-routed` : ''}
+            {showBrokerDeskRows && brokerRouted.length ? ` · ${brokerRouted.length} broker-routed` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -963,6 +972,41 @@ export default function ProposalsRich() {
           </ActionButton>
         </div>
       </div>
+
+      {brokerRouted.length > 0 && (
+        <div style={{
+          padding: '10px 14px', marginBottom: 10, borderRadius: 8, fontSize: 11, lineHeight: 1.5,
+          background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd',
+        }}>
+          <div style={{ fontWeight: 800, color: '#60A5FA', marginBottom: 4 }}>
+            {brokerRouted.length} on Broker desk (Path B) — not reviewed on this tab by default
+          </div>
+          <div style={{ color: 'var(--text2)', fontSize: 10.5 }}>
+            Watchlist-synced names already routed to Schwab/Fidelity. Work them on{' '}
+            <strong style={{ color: '#f8fafc' }}>Broker Proposals</strong>: refresh prices → thesis band → route (2FA or manual).
+            This tab is for Path A paper testing and promoting new screener/incubator signals.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+            {onOpenBrokerProposals && (
+              <ActionButton variant="primary" size="sm" onClick={onOpenBrokerProposals}
+                style={{ background: 'rgba(96,165,250,0.2)', border: '1px solid rgba(96,165,250,0.45)', color: '#93c5fd', fontWeight: 800 }}>
+                Open Broker Proposals →
+              </ActionButton>
+            )}
+            <button
+              onClick={() => setShowBrokerDeskRows(v => !v)}
+              style={{
+                fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                border: `1px solid ${showBrokerDeskRows ? 'rgba(96,165,250,0.5)' : 'var(--border)'}`,
+                background: showBrokerDeskRows ? 'rgba(96,165,250,0.12)' : 'transparent',
+                color: showBrokerDeskRows ? '#60A5FA' : 'var(--text3)',
+              }}
+            >
+              {showBrokerDeskRows ? 'Hide broker desk rows' : `Show ${brokerRouted.length} broker desk rows here`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -990,7 +1034,8 @@ export default function ProposalsRich() {
           style={{ ...btnStyle, ...mono, width: 110 }}
         />
         <span style={{ fontSize: 9, color: 'var(--text3)' }}>
-          Showing {displayed.length} of {pending.length}
+          Showing {displayed.length} of {listPending.length}
+          {brokerRouted.length > 0 && !showBrokerDeskRows ? ` (${brokerRouted.length} hidden on broker desk)` : ''}
         </span>
       </div>
 
@@ -1031,8 +1076,13 @@ export default function ProposalsRich() {
             </>}
             {summary.incubator_diagnostics && <>
               <span>Incubator ready: <strong>{summary.incubator_diagnostics.ready_count}</strong></span>
-              <span>Pending: <strong>{summary.incubator_diagnostics.pending_proposals}/{summary.incubator_diagnostics.pending_limit}</strong></span>
-              <span>Headroom: <strong>{summary.incubator_diagnostics.headroom}</strong></span>
+              <span>Review queue: <strong>{reviewPending.length}/{pendingLimit}</strong></span>
+              <span>Headroom: <strong>{reviewHeadroom}</strong></span>
+              {brokerRouted.length > 0 && (
+                <span title="Broker-desk watchlist rows count toward API pending total but not incubator headroom on this tab">
+                  Broker desk: <strong>{brokerRouted.length}</strong> (excluded)
+                </span>
+              )}
             </>}
           </div>
           {runHealth?.latest_run?.status !== 'RUN_HEALTHY' && runHealth?.latest_run && (
@@ -1040,9 +1090,14 @@ export default function ProposalsRich() {
               Why underfilled: Only {runHealth.latest_run.go_count} GO candidates from {runHealth.latest_run.symbols_scanned} scanned symbols
             </div>
           )}
-          {summary.incubator_diagnostics?.promotion_blocked_reason && (
+          {reviewHeadroom === 0 && (summary.incubator_diagnostics?.ready_count ?? 0) > 0 && (
             <div style={{ marginTop: 3, fontSize: 9, color: '#F59E0B' }}>
-              Incubator promotion: {summary.incubator_diagnostics.promotion_blocked_reason}
+              Incubator promotion: review queue at limit ({reviewPending.length}/{pendingLimit})
+            </div>
+          )}
+          {reviewHeadroom > 0 && (summary.incubator_diagnostics?.ready_count ?? 0) > 0 && (
+            <div style={{ marginTop: 3, fontSize: 9, color: '#4ADE80' }}>
+              Incubator promotion: {reviewHeadroom} slot(s) available in review queue
             </div>
           )}
           {runHealth?.paper_proposals?.blocked_reasons?.length > 0 && (
@@ -1054,7 +1109,7 @@ export default function ProposalsRich() {
       )}
 
       {/* Operator verdict summary bar */}
-      {pending.length > 0 && (
+      {listPending.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8, marginBottom: 10 }}>
           <StateCard title="Ready" value={summary.ready_count ?? 0} status="ready" compact />
           <StateCard title="Need Action" value={summary.needs_review_count ?? 0} status="warning" compact />
@@ -1099,21 +1154,40 @@ export default function ProposalsRich() {
               <>Loading proposals from /api/v2/paper-proposals… (this can take 10–15s)</>
             ) : error && !data ? (
               <>Failed to load proposals: {error}. <ActionButton variant="secondary" size="sm" onClick={refetch}>Retry</ActionButton></>
-            ) : pending.length === 0 ? (
+            ) : listPending.length === 0 ? (
               <>
-                No pending proposals.
-                {runHealth?.latest_run ? (
-                  <div style={{ marginTop: 8, fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
-                    <div>Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.status} &middot; {runHealth.latest_run.symbols_scanned} scanned &middot; {runHealth.latest_run.go_count} GO</div>
-                  </div>
+                {brokerRouted.length > 0 && !showBrokerDeskRows ? (
+                  <>
+                    Nothing to review here — all {brokerRouted.length} pending row(s) are on the Broker desk (Path B).
+                    {onOpenBrokerProposals && (
+                      <div style={{ marginTop: 10 }}>
+                        <ActionButton variant="primary" size="sm" onClick={onOpenBrokerProposals}
+                          style={{ background: 'rgba(96,165,250,0.2)', border: '1px solid rgba(96,165,250,0.45)', color: '#93c5fd', fontWeight: 800 }}>
+                          Open Broker Proposals →
+                        </ActionButton>
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 10, color: '#64748B' }}>
+                      Promote from Incubator adds screener rows here (blue ◆ Proposal badge). Headroom: {reviewHeadroom}/{pendingLimit}.
+                    </div>
+                  </>
                 ) : (
-                  <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>
-                    The system generates proposals automatically when GO signals appear in the morning scan.
-                  </div>
+                  <>
+                    No pending proposals.
+                    {runHealth?.latest_run ? (
+                      <div style={{ marginTop: 8, fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
+                        <div>Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.status} &middot; {runHealth.latest_run.symbols_scanned} scanned &middot; {runHealth.latest_run.go_count} GO</div>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>
+                        The system generates proposals automatically when GO signals appear in the morning scan.
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             ) : (
-              <>No proposals match current filters. {pending.length} pending total.</>
+              <>No proposals match current filters. {listPending.length} in current view{brokerRouted.length > 0 && !showBrokerDeskRows ? ` (${brokerRouted.length} on broker desk)` : ''}.</>
             )}
           </div>
         ) : displayed.map((p: any) => (
