@@ -516,11 +516,17 @@ def collect_risk_protection() -> list[dict]:
         if unp and unp.get("c", 0) > 0:
             out.append(_f("risk_protection", "unprotected_positions", "critical",
                           f"{unp['c']} open positions without a stop", count=unp["c"]))
-        # stop lifecycle alerts
-        al = _db("SELECT COUNT(*) AS c FROM stop_lifecycle WHERE health='alert'", fetch="one")
+        # stop lifecycle alerts — but a rejected NATIVE stop is NOT unprotected if an armed SYNTHETIC stop
+        # covers the same symbol/account (Schwab rejects fractional STOPs by design → synthetic takes over).
+        # Cross-reference synthetic_stops so fractional positions don't trip a false 'unprotected' alert.
+        al = _db("""SELECT COUNT(*) AS c FROM stop_lifecycle sl
+                    WHERE sl.health='alert'
+                      AND NOT EXISTS (SELECT 1 FROM synthetic_stops ss
+                                      WHERE ss.symbol = sl.symbol AND ss.account = sl.account
+                                        AND ss.status = 'armed')""", fetch="one")
         if al and al.get("c", 0) > 0:
             out.append(_f("risk_protection", "stop_alerts", "warning",
-                          f"{al['c']} stops in alert state", count=al["c"]))
+                          f"{al['c']} stops in alert state (no synthetic coverage)", count=al["c"]))
         # recent P0/P1 protection SIEM events
         p = _db("""SELECT COUNT(*) AS c FROM alert_events
                    WHERE severity IN ('critical','urgent') AND created_at > now() - interval '24 hours'""", fetch="one")
