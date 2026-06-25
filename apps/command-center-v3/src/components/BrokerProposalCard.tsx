@@ -328,7 +328,14 @@ export default function BrokerProposalCard({
         const tf = p.strategy_timeframe ? String(p.strategy_timeframe).replace(/_/g, ' ') : null
         const planRR = p.proposed_rr != null ? p.proposed_rr : null
         const liveRR = p.live_rr != null ? p.live_rr : null
-        const isPaper = String(p.execution_mode || '').toLowerCase() === 'paper' || String(p.status || '').toUpperCase().includes('PAPER')
+        // Source: automated (auto-generated) vs watchlist-originated. Account-agnostic.
+        const isWatchlist = Boolean(p.also_on_watchlist || p.watchlist_sleeve || /watch/i.test(String(p.discovery_source || p.proposal_origin || p.origin || '')))
+        // Journals to the SELECTED destination account (not the proposal's paper source). Only an ATM
+        // automated trade is tagged Alpaca paper; a routed proposal journals to its chosen broker account.
+        const journalAcct = String(dest || p.target_account || p.account || '').trim()
+        const journalLabel = !journalAcct ? '—'
+          : /alpaca/i.test(journalAcct) ? 'Alpaca (paper)'
+          : journalAcct.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
         const chip = (label: string, value: any, color: string = TEXT0) => (
           <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline', padding: '4px 9px', borderRadius: 6, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.16)' }}>
             <span style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '.3px' }}>{label}</span>
@@ -337,6 +344,7 @@ export default function BrokerProposalCard({
         )
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 14px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(2,6,23,.55)' }}>
+            {chip('Source', isWatchlist ? 'Watchlist' : 'Automated', isWatchlist ? BLUE : PURPLE)}
             {chip('Strategy', tickerCtx.strategyDisplay || p.strategy_id || '—', '#fb923c')}
             {tf && chip('Hold', tf)}
             {chip('Catalyst', catOk ? 'verified' : `unverified${cconf != null ? ` ${Math.round(cconf)}%` : ''}`, catOk ? GREEN : AMBER)}
@@ -354,7 +362,7 @@ export default function BrokerProposalCard({
               if (bt.win_rate != null) parts.push(`${Math.round(Number(bt.win_rate) * 100)}% win`)
               return chip('Backtest', parts.join(' · '), qc)
             })()}
-            {chip('Journals', isPaper ? 'Alpaca (paper)' : (p.account || '—'), TEAL)}
+            {chip('Journals', journalLabel, TEAL)}
           </div>
         )
       })()}
