@@ -426,8 +426,13 @@ def _save_diff_artifact(wt: Path, branch: str) -> Path:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     art = ARTIFACT_DIR / f"{branch.replace('/', '_')}.diff"
     try:
-        r = _git("diff", "HEAD", cwd=wt)
-        art.write_text(r.stdout)
+        # uncommitted changes (verify_failed path, before commit)
+        out = _git("diff", "HEAD", cwd=wt).stdout
+        if not out.strip():
+            # advisory-success path already committed the fix → diff the autofix commit vs its parent,
+            # else the artifact is empty and the change is lost when the branch is removed.
+            out = _git("diff", "HEAD~1", "HEAD", cwd=wt).stdout
+        art.write_text(out)
     except Exception:
         pass
     return art
