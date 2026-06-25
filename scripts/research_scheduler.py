@@ -109,9 +109,12 @@ def load_universe() -> dict:
                    WHERE kind='ticker' AND status='active' AND spec ? 'symbol'"""):
         if dict(r).get("s"):
             add(dict(r)["s"], "T1-WATCH")
-    # T2-INCUB: recently-proposed names (maturing)
+    # T2-INCUB: recently-proposed names + active incubator members (incl. claude_challenger cohort)
     for r in _q("""SELECT DISTINCT symbol FROM paper_trade_proposals
                    WHERE created_at > NOW() - INTERVAL '21 days'"""):
+        add(dict(r)["symbol"], "T2-INCUB")
+    for r in _q("""SELECT DISTINCT symbol FROM incubator_universe
+                   WHERE status='active' AND symbol IS NOT NULL"""):
         add(dict(r)["symbol"], "T2-INCUB")
     # T3-COLD: the rest of the profiled universe
     for r in _q("SELECT DISTINCT symbol FROM symbol_profiles"):
