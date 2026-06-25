@@ -116,7 +116,7 @@ def compute_thesis_validity(
     strategy_id: str = "",
     min_rr: float = MIN_RR_DEFAULT,
     drift_threshold_pct: float | None = None,
-    stop_proximity_warn_pct: float = 2.5,
+    stop_proximity_warn_pct: float = 4.0,
 ) -> dict:
     """Return visual + numeric thesis validity band for a long proposal."""
     entry = float(entry or 0)
