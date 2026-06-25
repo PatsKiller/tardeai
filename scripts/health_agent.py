@@ -216,6 +216,13 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
     ])
     cooldown_m = float(cfg.get("cooldown_minutes", 10))
+    # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
+    # within ineffective_window_minutes, the fix isn't actually fixing it — stop the futile loop and
+    # the false "✅ Auto-fixed" pings after max_ineffective_attempts; escalate for operator/code review.
+    # (Caught snaptrade_cash_stale: 24 identical "fixes" of SPAXX $277,333, value never changed —
+    # SnapTrade likely doesn't expose buying_power for that rollover IRA, or the cash is simply correct.)
+    max_ineffective = int(cfg.get("max_ineffective_attempts", 3))
+    ineff_window_m = float(cfg.get("ineffective_window_minutes", 60))
     rmap = policy.get("remediation_map") or {}
     actionable = [f for f in findings
                   if f.get("severity") in ("warning", "critical") and f.get("type") in types]
@@ -228,19 +235,42 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     now = datetime.now(timezone.utc)
     results = []
     ran_cmds: set[str] = set()
+
+    def _st(ftype):  # normalize legacy str-timestamp state → dict
+        s = state.get(ftype)
+        if isinstance(s, str):
+            return {"last_success": s, "ineffective_streak": 0}
+        return s if isinstance(s, dict) else {"last_success": None, "ineffective_streak": 0}
+
     for f in actionable:
         ftype = f.get("type")
         cmd = rmap.get(ftype)
         if not cmd or cmd in ran_cmds:
             continue
-        last = state.get(ftype)
+        st = _st(ftype)
+        last = st.get("last_success")
         if last:
             try:
                 last_dt = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
-                if (now - last_dt).total_seconds() < cooldown_m * 60:
-                    continue
+                gap = (now - last_dt).total_seconds()
+                if gap < cooldown_m * 60:
+                    continue  # cooldown — too soon to retry
+                # Recurred within the ineffective window despite a recent "successful" fix → it didn't hold.
+                st["ineffective_streak"] = st.get("ineffective_streak", 0) + 1 if gap < ineff_window_m * 60 else 0
             except Exception:
                 pass
+        # Circuit broken: don't re-run; record an ineffective result so the alert escalates (not "fixed").
+        if st.get("ineffective_streak", 0) >= max_ineffective:
+            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False, "ineffective": True,
+                     "streak": st["ineffective_streak"],
+                     "note": f"remediation ineffective {st['ineffective_streak']}x within {int(ineff_window_m)}m "
+                             f"— not re-running; needs operator/code review",
+                     "trigger": f.get("message", "")[:200]}
+            results.append(entry)
+            with open(REMEDIATION_LOG, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            state[ftype] = st
+            continue
         # Safe portfolio-pricing scripts only (no broker order submission).
         if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
                 and "snaptrade_sync.py" not in cmd:
@@ -254,6 +284,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 "exit_code": proc.returncode,
                 "stdout_tail": (proc.stdout or "")[-400:],
                 "stderr_tail": (proc.stderr or "")[-400:],
+                "ineffective_streak": st.get("ineffective_streak", 0),
                 "trigger": f.get("message", "")[:200],
             }
             results.append(entry)
@@ -261,7 +292,8 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             with open(REMEDIATION_LOG, "a") as fh:
                 fh.write(json.dumps(entry) + "\n")
             if ok:
-                state[ftype] = now.isoformat()
+                st["last_success"] = now.isoformat()
+                state[ftype] = st
                 ran_cmds.add(cmd)
         except Exception as ex:
             results.append({"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
@@ -1092,7 +1124,11 @@ def alert(policy: dict, snapshot: dict):
         lines.append(f"→ {snapshot['enqueued']} finding(s) queued for auto-remediation")
     fixed = [r for r in (snapshot.get("remediated") or []) if r.get("ok")]
     if fixed:
-        lines.append(f"✅ Auto-fixed: {', '.join(r.get('type', '?') for r in fixed)}")
+        suffix = " (score is post-fix)" if snapshot.get("rescored_after_remediation") else ""
+        lines.append(f"✅ Auto-fixed: {', '.join(r.get('type', '?') for r in fixed)}{suffix}")
+    ineffective = [r for r in (snapshot.get("remediated") or []) if r.get("ineffective")]
+    if ineffective:
+        lines.append(f"🔁 Remediation ineffective (needs operator): {', '.join(r.get('type', '?') for r in ineffective)}")
     try:
         from telegram_alert import send_telegram
         send_telegram("\n".join(lines))
@@ -1122,6 +1158,21 @@ def main():
     if not args.no_enqueue:
         remediated = run_auto_remediation(policy, findings_flat)
 
+    # If auto-remediation actually fixed something, RE-SCORE so the snapshot/alert reflect the
+    # post-fix state. Otherwise the alert pings DEGRADED for an issue resolved in the SAME cycle
+    # (e.g. snaptrade_cash_stale → snaptrade_sync ran → data_quality already back to 100, yet the
+    # pre-remediation score said data:70). The fix scripts (repricer/snaptrade_sync) mutate the
+    # underlying data, so a fresh compute() reflects them honestly. Only re-score on a real success.
+    rescored = False
+    if remediated and any(r.get("ok") for r in remediated):
+        try:
+            overall, status, cat_scores, cat_findings = compute(policy)
+            findings_flat = [f for fs in cat_findings.values() for f in fs]
+            trends = detect_trends(policy, overall, cat_scores)
+            rescored = True
+        except Exception:
+            pass
+
     scheduler = os.getenv("HEALTH_AGENT_SCHEDULER", "cron")
     hist_cfg = policy.get("history") or {}
     snapshot = {
@@ -1129,6 +1180,7 @@ def main():
         "overall_score": overall, "status": status, "mode": mode,
         "category_scores": cat_scores, "findings": findings_flat,
         "trends": trends, "enqueued": enqueued, "remediated": remediated,
+        "rescored_after_remediation": rescored,
         "scheduler": scheduler,
         "history_retention_days": int(hist_cfg.get("retention_days", 90)),
         "summary": f"{status} {overall}/100 · {len([f for f in findings_flat if f['severity']=='critical'])} critical · "
