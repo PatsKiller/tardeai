@@ -395,12 +395,18 @@ def main():
     try:
         if args.all_pending or args.pending:
             cur = conn.cursor()
+            # Active proposals = PENDING and APPROVED_FOR_PAPER_TEST. The old filter was PENDING-only, so
+            # proposals that moved to approved/paper-test (the ones actually shown + executed) never got a
+            # backtest snapshot — proposal_backtest_snapshots went 34d stale and the card's Backtest field
+            # stayed blank. Cover both active statuses.
+            _ACTIVE = ('PENDING', 'APPROVED_FOR_PAPER_TEST')
             if args.strategy:
                 cur.execute("""SELECT id FROM paper_trade_proposals
-                             WHERE status='PENDING' AND strategy_id=%s
-                             ORDER BY created_at DESC""", [args.strategy])
+                             WHERE status = ANY(%s) AND strategy_id=%s
+                             ORDER BY created_at DESC""", [list(_ACTIVE), args.strategy])
             else:
-                cur.execute("SELECT id FROM paper_trade_proposals WHERE status='PENDING' ORDER BY created_at DESC")
+                cur.execute("SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC",
+                            [list(_ACTIVE)])
             results = []
             for (pid,) in cur.fetchall():
                 result = backtest_proposal(conn, pid)
