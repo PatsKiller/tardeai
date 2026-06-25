@@ -30,7 +30,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 REGISTRY = [
     ("ticker_snapshot_daily", "table", ("ticker_snapshot_daily", "snapshot_date", None), 2, "Strategy/Watchlist setup-advisory RSI bands"),
     ("setup_advisory",        "table", ("candidate_setup_advisory", "snapshot_date", None), 3, "Strategy → Incubator, Watchlist advisory pills"),
-    ("agent_performance",     "table", ("agent_performance_history", "period_end", None), 4, "Agents → Performance"),
+    # agent_performance: RETIRED — the decision_outcomes price-capture chain decayed (Apr) and the system
+    #   is superseded by agent-calibration + rec-intel return-by-origin. Not monitored. (Operator decision
+    #   2026-06-24; the older update_agent_performance cron is a harmless no-op left in place.)
     ("paper_trade_stats",     "file",  "data/paper_trading/paper_trade_statistics_latest.json", 1, "Strategy → Analytics, Home win-rate"),
     ("hermes_canonical",      "file",  "data/runtime/hermes_canonical_status_latest.json", 1, "Hermes/System lane statuses"),
     # broker_shadow_recon: RETIRED — superseded by the Manual ToS Desk live recon; intentionally not
