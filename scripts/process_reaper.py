@@ -79,6 +79,13 @@ def _ps_snapshot() -> list[dict]:
                 pid, etimes, args = int(parts[0]), int(parts[1]), parts[2]
             except ValueError:
                 continue
+            # Sanity-guard the age: ps can momentarily report a garbage etimes for a just-spawned
+            # process (observed 2026-06-25: 68,719,476 min ≈ 2^32 s on a fresh process_watchlist run →
+            # false 'over runtime cap' kill of a healthy job). No real batch job runs longer than the
+            # 30-day ceiling; an implausible reading is treated as age 0 (never reaped for runtime; a
+            # genuinely hung proc gets a correct reading on the next 3-min pass and is reaped then).
+            if etimes < 0 or etimes > 2_592_000:
+                etimes = 0
             out.append({"pid": pid, "etimes": etimes, "args": args})
     except Exception:
         pass
