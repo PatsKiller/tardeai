@@ -21,7 +21,7 @@ export default function PositionSizingRiskBar({ queuedShares, capShares, account
 
   return (
     <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: bg, border: `1px solid ${border}` }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color: headColor, marginBottom: 6, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: headColor, marginBottom: 6, textTransform: 'uppercase' }}>
         {oversized
           ? `Position sizing risk · ${overPct}% over cap`
           : `Sizing vs cap · ${fillPct}% of limit`}
@@ -35,7 +35,7 @@ export default function PositionSizingRiskBar({ queuedShares, capShares, account
           title={oversized ? `Cap ${c.toLocaleString()} sh` : `${q.toLocaleString()} sh of ${c.toLocaleString()} cap`}
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, color: 'var(--text3)', marginTop: 5 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>
         <span>Cap {c.toLocaleString()} sh{accountLabel ? ` · ${accountLabel}` : ''}</span>
         <span style={{ color: oversized ? '#ef4444' : 'var(--text1)' }}>Queued {q.toLocaleString()} sh</span>
       </div>

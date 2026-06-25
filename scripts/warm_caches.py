@@ -26,6 +26,15 @@ def main():
         print(f"[warm_caches] rotation_summary FAILED: {str(e)[:200]}")
         return 1
 
+    # Market Opportunities Scanner — heavy (run JSONs + hundreds-row trade_ai_scans). Warm it OUT of
+    # the request path so the single-threaded server never blocks on it (the 2026-06-25 outage).
+    t_ta = time.time()
+    try:
+        api_v2.trade_ai(force=True)   # computes + writes data/runtime/trade_ai_cache.json
+        print(f"[warm_caches] trade_ai warmed in {time.time() - t_ta:.1f}s")
+    except Exception as e:
+        print(f"[warm_caches] trade_ai FAILED: {str(e)[:200]}")
+
     # Autonomous trend-switch screening (IWM vs SPY) — lightweight tick every ~8 min
     t1 = time.time()
     try:

@@ -602,7 +602,10 @@ def _attempt_retry(comp, conn):
     except Exception:
         pass
 
-    # Clear stale lock if present
+    # Clear stale lock ONLY when the PID is genuinely dead. (Do NOT pre-clear before running — that
+    # defeated the lock and let every cycle spawn another heavy orchestrator: the 2026-06-25 pile-up
+    # of 3+ concurrent trade_ai_orchestrator --run-label 0900 runs that starved the single-threaded
+    # API server.)
     lock_file = comp.get("lock_file")
     if lock_file:
         lock_info = _check_lock_contention(lock_file)
@@ -615,22 +618,46 @@ def _attempt_retry(comp, conn):
             except Exception:
                 pass
 
+    # SINGLE-FLIGHT the retry through the SAME safe_flock.sh the cron uses, so a remediation can never
+    # stack on the cron run or on a prior still-running remediation. If the lock is held, safe_flock
+    # exits without running — exactly what we want (it's already running; don't pile on).
+    run_cmd = cmd
+    if lock_file:
+        run_cmd = f"bash {PROJECT_ROOT}/scripts/safe_flock.sh {lock_file} {cmd}"
+
     log.info(f"[retry] {component} — attempt {retries_today + 1}/{MAX_RETRIES}")
+    timeout_s = comp.get("max_runtime_sec", 300)
+    proc = None
     try:
-        result = subprocess.run(
-            cmd, shell=True, timeout=comp.get("max_runtime_sec", 300),
-            capture_output=True, text=True, cwd=str(PROJECT_ROOT))
-        success = result.returncode == 0
+        # new session so a timeout kills the WHOLE tree (heavy orchestrator child included), not just
+        # the shell — the old subprocess.run(timeout) orphaned the python child to keep loading the host.
+        proc = subprocess.Popen(
+            run_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=str(PROJECT_ROOT), start_new_session=True)
+        try:
+            out, err = proc.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            try:
+                import signal as _sig
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, _sig.SIGTERM)
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(pgid, _sig.SIGKILL)
+                    proc.communicate(timeout=5)
+            except Exception:
+                pass
+            _log_event(conn, component, "RETRY_TIMEOUT", "WARN",
+                       f"Retry timed out after {timeout_s}s — process group killed",
+                       action=cmd[:100], success=False)
+            return False
+        success = proc.returncode == 0
         _log_event(conn, component, "RETRY", "INFO" if success else "WARN",
-                   f"exit={result.returncode} stdout={result.stdout[-200:]}" if success
-                   else f"exit={result.returncode} stderr={result.stderr[-200:]}",
+                   f"exit={proc.returncode} stdout={(out or '')[-200:]}" if success
+                   else f"exit={proc.returncode} stderr={(err or '')[-200:]}",
                    action=cmd[:100], success=success)
         return success
-    except subprocess.TimeoutExpired:
-        _log_event(conn, component, "RETRY_TIMEOUT", "WARN",
-                   f"Retry timed out after {comp.get('max_runtime_sec', 300)}s",
-                   action=cmd[:100], success=False)
-        return False
     except Exception as e:
         _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200],
                    action=cmd[:100], success=False)
