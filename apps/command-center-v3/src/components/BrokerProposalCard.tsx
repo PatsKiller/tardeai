@@ -320,6 +320,29 @@ export default function BrokerProposalCard({
         </ActionButton>
       </header>
 
+      {/* Expired meta — bold proposed / expired timestamps + trade result (if it became a trade). */}
+      {String(p.status || '').toUpperCase() === 'EXPIRED' && (() => {
+        const fmt = (iso?: string) => {
+          if (!iso) return '—'
+          const d = new Date(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z')
+          return isNaN(d.getTime()) ? iso : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        }
+        const tr: any = p.traded
+        const traded = tr && tr.pnl != null
+        const won = traded && Number(tr.pnl) > 0
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, padding: '8px 14px', borderBottom: '1px solid rgba(148,163,184,.14)', background: 'rgba(15,23,42,.65)', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11, color: MUTED }}>Proposed <b style={{ fontSize: 13.5, color: TEXT0 }}>{fmt(p.created_at)}</b></span>
+            <span style={{ fontSize: 11, color: MUTED }}>Expired <b style={{ fontSize: 13.5, color: AMBER }}>{fmt(p.updated_at || p.expires_at)}</b></span>
+            <span style={{ fontSize: 11, color: MUTED }}>Result <b style={{ fontSize: 13.5, color: traded ? (won ? GREEN : RED) : MUTED }}>
+              {traded
+                ? `${won ? 'WIN' : 'LOSS'} ${tr.pnl_pct != null ? `${Number(tr.pnl_pct) > 0 ? '+' : ''}${tr.pnl_pct}%` : ''}${tr.r_multiple != null ? ` (${tr.r_multiple}R)` : ''}`.trim()
+                : 'Not traded'}
+            </b></span>
+          </div>
+        )
+      })()}
+
       {/* Decision Summary — at-a-glance answers: strategy · hold · catalyst · R:R · backtest · journal */}
       {(() => {
         const cat: any = (intel as any)?.catalyst || p.intel?.catalyst || {}
