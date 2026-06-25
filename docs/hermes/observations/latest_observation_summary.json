@@ -1,6 +1,6 @@
 {
-  "date": "2026-06-23",
-  "timestamp": "2026-06-23T06:30:48.064767+00:00",
+  "date": "2026-06-24",
+  "timestamp": "2026-06-24T06:30:44.043830+00:00",
   "total_checks": 12,
   "passed": 11,
   "warnings": [
@@ -16,7 +16,7 @@
       "ok": true
     },
     "hermes_loop_last_log": {
-      "log": "Jun 22 21:03:42 ms01-openclaw python[3109920]: No new ticker targets found (all already researched)\nJun 22 21:03:42 ms01-openclaw python[3109920]: Done in 0.1s: 0 validated, 0 failed/rejected\nJun 22 21:03:42 ms01-openclaw systemd[2973]: Finished hermes-autonomous-loop.service - Hermes Autonomous Tic",
+      "log": "Jun 23 21:05:49 ms01-openclaw python[587647]:     VALIDATION FAILED: ['MISSING required column: summary', 'evidence_json has only 1 substantive keys (need >= 2)']\nJun 23 21:05:49 ms01-openclaw python[587647]: Done in 67.4s: 0 validated, 2 failed/rejected\nJun 23 21:05:50 ms01-openclaw systemd[2973]: ",
       "ok": true
     },
     "searxng_container": {
@@ -32,13 +32,13 @@
       "ok": true
     },
     "hermes_rows": {
-      "total": 4816,
+      "total": 4957,
       "staged": 0,
-      "promoted": 2342,
+      "promoted": 2483,
       "ok": true
     },
     "hermes_embeddings": {
-      "count": 565,
+      "count": 1591,
       "ok": true
     },
     "kill_switch": {
@@ -54,7 +54,7 @@
       "ok": true
     },
     "cron_count": {
-      "count": 310,
+      "count": 315,
       "ok": true
     }
   }
