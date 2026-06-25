@@ -97,6 +97,15 @@ def _matches(procs: list[dict], pattern: str) -> list[dict]:
             continue
         if any(nk in a for nk in NEVER_KILL):
             continue
+        # Count ONLY the actual python worker, not its wrappers. A single cron run is a process tree —
+        # `bash -c … → flock … → timeout … → python … <script>` — and EVERY level carries the script
+        # name in argv. Counting all of them read one legit run as a 3-4× "pile-up" and the reaper
+        # killed healthy "duplicates" (the 2026-06-25 false positives). The real worker is the python
+        # process; its argv[0] basename starts with "python". Wrappers (bash/sh/flock/timeout/
+        # safe_flock.sh) have a non-python argv[0] and are skipped.
+        argv0 = a.split(None, 1)[0] if a else ""
+        if not argv0.rsplit("/", 1)[-1].startswith("python"):
+            continue
         res.append(p)
     return res
 
