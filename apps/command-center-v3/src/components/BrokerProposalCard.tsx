@@ -330,9 +330,16 @@ export default function BrokerProposalCard({
         const liveRR = p.live_rr != null ? p.live_rr : null
         // Source: automated (auto-generated) vs watchlist-originated. Account-agnostic.
         const isWatchlist = Boolean(p.also_on_watchlist || p.watchlist_sleeve || /watch/i.test(String(p.discovery_source || p.proposal_origin || p.origin || '')))
-        // Journals to the SELECTED destination account (not the proposal's paper source). Only an ATM
-        // automated trade is tagged Alpaca paper; a routed proposal journals to its chosen broker account.
-        const journalAcct = String(dest || p.target_account || p.account || '').trim()
+        // Journals to where it ROUTES: the selected/destination broker account. A paper proposal
+        // (account=alpaca_paper) journals to its Path-B routing destination — the Schwab (then Fidelity)
+        // account it would route to — not its paper source. Only a genuinely ATM-auto trade stays Alpaca.
+        const _routeAcct = (accounts || []).find((a) => brokerOf(a.account_key) === 'Schwab')
+          || (accounts || []).find((a) => brokerOf(a.account_key) === 'Fidelity')
+        const _selAcct = String(dest || p.target_account || '').trim()
+        const _isPaperSel = !_selAcct || /alpaca/i.test(_selAcct)
+        const journalAcct = (_isPaperSel && _routeAcct)
+          ? (_routeAcct.display_name || _routeAcct.account_key)
+          : (_selAcct || String(p.account || '').trim())
         const journalLabel = !journalAcct ? '—'
           : /alpaca/i.test(journalAcct) ? 'Alpaca (paper)'
           : journalAcct.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
