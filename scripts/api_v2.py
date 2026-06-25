@@ -13227,6 +13227,26 @@ def _broker_proposal_row_base(
             }
     except Exception:
         pass
+    # Trade outcome — did this proposal become a trade, and how did it do (Expired-view "results").
+    try:
+        _trows = _db_query("""SELECT status, pnl, pnl_pct, dollar_risk, exit_reason, exit_time
+                              FROM paper_trades WHERE proposal_id=%s OR source_proposal_id=%s
+                              ORDER BY entry_time DESC LIMIT 1""",
+                           [row.get("id"), str(row.get("id"))]) if row.get("id") else None
+        _tr = _trows[0] if _trows else None
+        if _tr:
+            _pnl = float(_tr["pnl"]) if _tr.get("pnl") is not None else None
+            _risk = float(_tr["dollar_risk"]) if _tr.get("dollar_risk") else None
+            row["traded"] = {
+                "status": _tr.get("status"),
+                "pnl": _pnl,
+                "pnl_pct": float(_tr["pnl_pct"]) if _tr.get("pnl_pct") is not None else None,
+                "r_multiple": round(_pnl / _risk, 2) if (_pnl is not None and _risk) else None,
+                "exit_reason": _tr.get("exit_reason"),
+                "exit_time": str(_tr.get("exit_time"))[:19] if _tr.get("exit_time") else None,
+            }
+    except Exception:
+        pass
     # Unified queue: a row is a real broker-routed entry, or a paper-source PROPOSAL surfaced
     # in the broker view (badged by origin). The backend paper automation is unchanged.
     _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()
