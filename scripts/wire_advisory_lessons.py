@@ -53,13 +53,20 @@ def _grade_quality(g: str | None) -> str | None:
     return {"A": "excellent", "B": "good", "C": "fair", "D": "poor", "F": "poor"}.get(g)
 
 
+def _trade_source(r) -> str:
+    """Automated vs Watchlist — the proposal-source badge, tracked into the journal lesson."""
+    o = f"{r.get('prop_origin') or ''} {r.get('prop_disc') or ''}".lower()
+    return "watchlist" if "watch" in o else "automated"
+
+
 def main():
     rows = _db(
         """SELECT h.id AS adv_id, h.lane, h.symbol, h.recommendation, h.trigger_reason,
                   pt.id AS trade_id, pt.strategy_id, pt.exit_reason, pt.exit_time::date AS close_date,
-                  pt.pnl, pt.dollar_risk
+                  pt.pnl, pt.dollar_risk, prop.origin AS prop_origin, prop.discovery_source AS prop_disc
            FROM hermes_external_research h
            JOIN paper_trades pt ON pt.id = CAST(split_part(h.trigger_reason, ':', 2) AS INTEGER)
+           LEFT JOIN paper_trade_proposals prop ON prop.id = pt.proposal_id
            WHERE h.trigger_reason LIKE 'paper_postmortem:%'
              AND COALESCE(h.recommendation,'') <> ''""", fetch="all") or []
 
@@ -90,8 +97,8 @@ def main():
                          created_at=now()
                    RETURNING id""",
                 (r["trade_id"], r["symbol"], r["strategy_id"], r["close_date"], r["exit_reason"],
-                 f"external:{r['lane']}", _grade_quality(grade), _category(lesson),
-                 "external_advisory", f"[{r['lane']}] {lesson}", lesson,
+                 f"external:{r['lane']}:{_trade_source(r)}", _grade_quality(grade), _category(lesson),
+                 "external_advisory", f"[{r['lane']} · {_trade_source(r)}] {lesson}", lesson,
                  f"external_{r['lane']}", r["pnl"], rmult, sph),
                 fetch="one")
             wired += 1 if res else 0
