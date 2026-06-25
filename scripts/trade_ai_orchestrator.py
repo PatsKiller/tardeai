@@ -592,8 +592,20 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     # 18b. Persist to trade_ai_scans DB (historical record)
     try:
         from db_adapter import _execute
+        import math as _math
         _run_id = f"{date_str}_{run_label}"
         _inserted = 0
+
+        def _num(v):
+            """Coerce to a float Postgres NUMERIC accepts; NaN/inf/non-castable -> None.
+            Mirrors db_adapter._fit (918c7ff5): a single garbage value (e.g. an inf change_pct
+            from a zero base) raised 'cannot convert infinity to numeric' and failed that row's
+            INSERT — one '[db_adapter] SQL error:' line per bad ticker in screener_pm.log."""
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return None
+            return f if _math.isfinite(f) else None
         # sector defense (2026-06-11): degraded runs (429 storms -> cached-ticker fallback) inserted
         # empty sectors (68% of some days). Resolve empties from the DB's latest known sector per symbol.
         _sector_map = {}
@@ -656,22 +668,22 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     scanned_at = now()
             """, (
                 _run_id, date_str, run_label, sym,
-                t.get("score", 0), t.get("grade", ""), t.get("decision", ""),
-                t.get("original_decision"), t.get("relative_volume"), t.get("price"),
-                t.get("change_percent"), t.get("gap_percent"), t.get("float_m"),
+                _num(t.get("score", 0)), t.get("grade", ""), t.get("decision", ""),
+                t.get("original_decision"), _num(t.get("relative_volume")), _num(t.get("price")),
+                _num(t.get("change_percent")), _num(t.get("gap_percent")), _num(t.get("float_m")),
                 (t.get("top_catalyst") or {}).get("title", "")[:200],
-                t.get("catalyst_verified"), t.get("catalyst_confidence"),
+                t.get("catalyst_verified"), _num(t.get("catalyst_confidence")),
                 (t.get("top_catalyst") or {}).get("provider", ""),
-                t.get("critic_verdict"), t.get("critic_confidence"),
+                t.get("critic_verdict"), _num(t.get("critic_confidence")),
                 (t.get("critic_reasoning") or "")[:500],
                 t.get("decision_changed", False),
                 t.get("disqualified", False), t.get("disqualification_reason", ""),
                 t.get("sector", ""), t.get("industry", ""), t.get("country", ""),
                 t.get("sector_etf", ""),
-                t.get("ticker_perf_1m"), t.get("sector_perf_1m"), t.get("vs_sector_pct"),
-                soc.get("sentiment_label", ""), soc.get("sentiment_score"),
+                _num(t.get("ticker_perf_1m")), _num(t.get("sector_perf_1m")), _num(t.get("vs_sector_pct")),
+                soc.get("sentiment_label", ""), _num(soc.get("sentiment_score")),
                 soc.get("reddit_mentions", 0), soc.get("stocktwits_messages", 0),
-                soc.get("stocktwits_bullish_pct"), soc.get("wsb_mentions", 0),
+                _num(soc.get("stocktwits_bullish_pct")), soc.get("wsb_mentions", 0),
                 "screener",
                 # attribution restored 2026-06-11: which Finviz list produced this row (was tagged at
                 # ingestion and dropped here — made per-list efficacy unmeasurable)
