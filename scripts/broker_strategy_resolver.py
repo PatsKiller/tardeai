@@ -60,19 +60,24 @@ def resolve_executable_strategy(symbol: str, strategy_id_or_sleeve: str | None =
     explicit = raw if raw and not sleeve else None
 
     classified = _ticker_classification(sym) if sym else None
-    if classified and _load_cfg(classified):
-        return {
-            "strategy_id": classified,
-            "watchlist_sleeve": sleeve or (raw if is_watchlist_sleeve(raw) else None),
-            "resolve_source": "ticker_classification",
-            "classified_strategy": classified,
-        }
 
+    # EXPLICIT proposal strategy_id wins first: it's the strategy the signal actually fired on. A
+    # generic ticker_classification must NOT override it — that mislabeled TECH's fib_retracement_bounce
+    # as 'high_yield_income_bdc' (TECH is misclassified as income; a fib bounce on a biotech is not a
+    # BDC/CLO income trade). Classification is only a fallback when there's no explicit signal strategy.
     if explicit and _load_cfg(explicit):
         return {
             "strategy_id": explicit,
             "watchlist_sleeve": sleeve,
             "resolve_source": "proposal_strategy_id",
+            "classified_strategy": classified,
+        }
+
+    if classified and _load_cfg(classified):
+        return {
+            "strategy_id": classified,
+            "watchlist_sleeve": sleeve or (raw if is_watchlist_sleeve(raw) else None),
+            "resolve_source": "ticker_classification",
             "classified_strategy": classified,
         }
 
