@@ -239,6 +239,45 @@ def _classify(stop: dict, held: dict | None) -> dict:
             "health": health, "flags": flags}
 
 
+def _manual_stops() -> list[dict]:
+    """Operator-recorded broker stops for accounts WITHOUT an order API (Fidelity via SnapTrade is
+    read-only, so its GTC stops can't be auto-pulled like Schwab/Alpaca). Persisted in
+    manual_broker_stops and re-merged into every snapshot, since stop_lifecycle is rebuilt each run.
+    Active, still-working rows only."""
+    rows = []
+    try:
+        from db_adapter import _get_conn
+        import psycopg2.extras
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""CREATE TABLE IF NOT EXISTS manual_broker_stops (
+                         id SERIAL PRIMARY KEY, account TEXT, symbol TEXT, broker TEXT,
+                         order_id TEXT, order_type TEXT DEFAULT 'STOP', stop_price NUMERIC,
+                         qty NUMERIC, status TEXT DEFAULT 'open', placed_date DATE, note TEXT,
+                         active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW(),
+                         updated_at TIMESTAMPTZ DEFAULT NOW())""")
+        conn.commit()
+        cur.execute("""SELECT account, symbol, broker, order_id, order_type, stop_price, qty, status
+                       FROM manual_broker_stops
+                       WHERE active = TRUE
+                         AND lower(COALESCE(status,'open')) NOT IN ('cancelled','canceled','filled','closed')""")
+        for r in cur.fetchall():
+            rows.append({
+                "broker": r["broker"] or "manual",
+                "account": r["account"],
+                "symbol": str(r["symbol"] or "").upper(),
+                "order_id": str(r["order_id"] or f"manual-{r['symbol']}"),
+                "order_type": str(r["order_type"] or "STOP").upper(),
+                "stop_price": float(r["stop_price"]) if r["stop_price"] is not None else None,
+                "qty": float(r["qty"]) if r["qty"] is not None else None,
+                "status": str(r["status"] or "open").lower(),
+                "manual": True,
+            })
+    except Exception:
+        pass
+    return rows
+
+
 def _persist(records: list[dict]) -> None:
     try:
         import json
@@ -268,7 +307,7 @@ def scan(persist: bool = True) -> dict:
     import datetime as _dt
     hmap = _holdings_map()
     hmap.update(_alpaca_positions_map())   # add paper held shares so paper stops aren't false-orphaned
-    stops = _schwab_stops() + _alpaca_stops()
+    stops = _schwab_stops() + _alpaca_stops() + _manual_stops()
     records = [_classify(s, hmap.get((s["account"], s["symbol"]))) for s in stops]
     summary = {
         "total": len(records),

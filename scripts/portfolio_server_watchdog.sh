@@ -13,8 +13,9 @@ set -uo pipefail
 URL="http://localhost:7777/api/health"
 LOG="/home/johnclaw/logs/portfolio_server_watchdog.log"
 PROC="scripts/portfolio_server.py"
-FAILS=2          # consecutive failed probes before acting
-TIMEOUT=8        # seconds per probe
+FAILS=3          # consecutive failed probes before acting (was 2 — too twitchy; a transiently
+                 # backed-up single-threaded server got cold-killed and re-wedged on restart = kill-loop)
+TIMEOUT=12       # seconds per probe (was 8)
 
 mkdir -p "$(dirname "$LOG")"
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
