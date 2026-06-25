@@ -682,8 +682,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                 t.get("sector_etf", ""),
                 _num(t.get("ticker_perf_1m")), _num(t.get("sector_perf_1m")), _num(t.get("vs_sector_pct")),
                 soc.get("sentiment_label", ""), _num(soc.get("sentiment_score")),
-                soc.get("reddit_mentions", 0), soc.get("stocktwits_messages", 0),
-                _num(soc.get("stocktwits_bullish_pct")), soc.get("wsb_mentions", 0),
+                int(_num(soc.get("reddit_mentions", 0)) or 0), int(_num(soc.get("stocktwits_messages", 0)) or 0),
+                _num(soc.get("stocktwits_bullish_pct")), int(_num(soc.get("wsb_mentions", 0)) or 0),
                 "screener",
                 # attribution restored 2026-06-11: which Finviz list produced this row (was tagged at
                 # ingestion and dropped here — made per-list efficacy unmeasurable)
