@@ -339,6 +339,18 @@ export default function BrokerProposalCard({
                 ? `${won ? 'WIN' : 'LOSS'} ${tr.pnl_pct != null ? `${Number(tr.pnl_pct) > 0 ? '+' : ''}${tr.pnl_pct}%` : ''}${tr.r_multiple != null ? ` (${tr.r_multiple}R)` : ''}`.trim()
                 : 'Not traded'}
             </b></span>
+            {!traded && p.would_have && (() => {
+              const wh: any = p.would_have
+              const c = wh.verdict === 'hit TARGET' ? GREEN : wh.verdict === 'STOPPED' ? RED : (Number(wh.move_pct) >= 0 ? TEAL : AMBER)
+              return (
+                <span style={{ fontSize: 11, color: MUTED }} title={`If entered at the plan: ${wh.method}`}>
+                  Would‑have <b style={{ fontSize: 13.5, color: c }}>
+                    {wh.verdict} {Number(wh.move_pct) >= 0 ? '+' : ''}{wh.move_pct}%
+                    {wh.to_target_pct != null ? ` · ${wh.to_target_pct}% to target` : ''}
+                  </b>
+                </span>
+              )
+            })()}
           </div>
         )
       })()}

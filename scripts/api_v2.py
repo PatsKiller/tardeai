@@ -13247,6 +13247,28 @@ def _broker_proposal_row_base(
             }
     except Exception:
         pass
+    # Would-have-played-out — for an UNTRADED proposal, where the trade would stand now if it had been
+    # entered at its plan. Uses the live current price (a snapshot, NOT an intraday path: ticker_prices
+    # stores close-only, so we can't prove an intraday target/stop touch). Honest about the method.
+    try:
+        if not row.get("traded"):
+            _en = float(row.get("proposed_entry") or 0); _st = float(row.get("proposed_stop") or 0)
+            _tg = float(row.get("proposed_target1") or 0); _cur = float(row.get("current_price") or 0)
+            if _en > 0 and _cur > 0:
+                _move = round((_cur - _en) / _en * 100, 1)
+                if _tg and _cur >= _tg:
+                    _verdict, _to_tgt = "hit TARGET", 0.0
+                elif _st and _cur <= _st:
+                    _verdict, _to_tgt = "STOPPED", None
+                else:
+                    _verdict = "open"
+                    _to_tgt = round((_tg - _cur) / _cur * 100, 1) if _tg and _cur else None
+                row["would_have"] = {
+                    "verdict": _verdict, "move_pct": _move,
+                    "to_target_pct": _to_tgt, "method": "live snapshot (close-only — not intraday path)",
+                }
+    except Exception:
+        pass
     # Unified queue: a row is a real broker-routed entry, or a paper-source PROPOSAL surfaced
     # in the broker view (badged by origin). The backend paper automation is unchanged.
     _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()

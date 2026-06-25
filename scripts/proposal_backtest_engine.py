@@ -387,6 +387,9 @@ def main():
     parser.add_argument("--all-pending", action="store_true")
     parser.add_argument("--pending", action="store_true", help="Alias for --all-pending")
     parser.add_argument("--strategy", type=str, help="Filter by strategy_id")
+    parser.add_argument("--statuses", type=str, help="comma list of statuses to backtest with --all-pending "
+                        "(default PENDING,APPROVED_FOR_PAPER_TEST). e.g. EXPIRED to backfill the Expired view.")
+    parser.add_argument("--limit", type=int, help="cap number of proposals (backfill batching)")
     parser.add_argument("--apply", action="store_true", help="Write to DB")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -399,13 +402,15 @@ def main():
             # proposals that moved to approved/paper-test (the ones actually shown + executed) never got a
             # backtest snapshot — proposal_backtest_snapshots went 34d stale and the card's Backtest field
             # stayed blank. Cover both active statuses.
-            _ACTIVE = ('PENDING', 'APPROVED_FOR_PAPER_TEST')
+            _ACTIVE = [s.strip().upper() for s in args.statuses.split(",")] if args.statuses \
+                else ['PENDING', 'APPROVED_FOR_PAPER_TEST']
+            _lim = f" LIMIT {int(args.limit)}" if args.limit else ""
             if args.strategy:
-                cur.execute("""SELECT id FROM paper_trade_proposals
+                cur.execute(f"""SELECT id FROM paper_trade_proposals
                              WHERE status = ANY(%s) AND strategy_id=%s
-                             ORDER BY created_at DESC""", [list(_ACTIVE), args.strategy])
+                             ORDER BY created_at DESC{_lim}""", [list(_ACTIVE), args.strategy])
             else:
-                cur.execute("SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC",
+                cur.execute(f"SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC{_lim}",
                             [list(_ACTIVE)])
             results = []
             for (pid,) in cur.fetchall():
