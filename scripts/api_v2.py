@@ -13208,6 +13208,25 @@ def _broker_proposal_row_base(
             basis = {}
     if isinstance(basis, dict) and basis.get("watchlist_rating"):
         row["watchlist_rating"] = basis["watchlist_rating"]
+    # Backtest snapshot (proposal_backtest_engine) — surfaces the Backtest chip on the card instead of
+    # a hardcoded 'not run'. Latest snapshot per proposal; compact for the UI.
+    try:
+        _btrows = _db_query("""SELECT backtest_quality, sample_size, win_rate, avg_r, expectancy,
+                                      similar_setup_summary, created_at
+                               FROM proposal_backtest_snapshots WHERE proposal_id=%s
+                               ORDER BY created_at DESC LIMIT 1""", [row.get("id")]) if row.get("id") else None
+        _bt = _btrows[0] if _btrows else None
+        if _bt:
+            row["backtest"] = {
+                "quality": _bt.get("backtest_quality"),
+                "samples": _bt.get("sample_size"),
+                "win_rate": float(_bt["win_rate"]) if _bt.get("win_rate") is not None else None,
+                "avg_r": float(_bt["avg_r"]) if _bt.get("avg_r") is not None else None,
+                "summary": _bt.get("similar_setup_summary"),
+                "as_of": str(_bt.get("created_at"))[:19] if _bt.get("created_at") else None,
+            }
+    except Exception:
+        pass
     # Unified queue: a row is a real broker-routed entry, or a paper-source PROPOSAL surfaced
     # in the broker view (badged by origin). The backend paper automation is unchanged.
     _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()
