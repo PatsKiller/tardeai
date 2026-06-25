@@ -53,7 +53,16 @@ export default function RetirementHub({ onDrill }: Props) {
   const { data: ret } = useApi<any>('/api/v2/retirement', 300_000)
   const { data: planning } = useApi<any>('/api/v2/retirement/planning-research', 300_000)
 
-  const accounts = ret?.accounts ?? []
+  // /api/v2/retirement returns accounts as a dict {total, roth, traditional, taxable} — normalize to rows
+  const _rawAccts = ret?.accounts
+  const _acctLabel: Record<string, string> = { roth: 'Roth IRA', traditional: 'Traditional / Rollover IRA', taxable: 'Taxable', rollover: 'Rollover IRA' }
+  const accounts: any[] = Array.isArray(_rawAccts)
+    ? _rawAccts
+    : (_rawAccts && typeof _rawAccts === 'object')
+      ? Object.entries(_rawAccts)
+          .filter(([k]) => k !== 'total')
+          .map(([k, v]) => ({ name: _acctLabel[k] ?? (k.charAt(0).toUpperCase() + k.slice(1)), type: k, value: Number(v) || 0 }))
+      : []
   const timeline = ret?.timeline ?? []
   const golden = ret?.golden_window ?? {}
   const divIncome = ret?.dividend_income ?? {}
