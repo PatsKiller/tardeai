@@ -491,6 +491,18 @@ def collect_execution_health() -> list[dict]:
             out.append(_f("execution_health", "never_submitted_stale", "warning",
                           f"{stale_ns['c']} trade(s) pending >20m without broker order",
                           count=stale_ns["c"]))
+        # ATM-bypass guard: every executed/automated trade must trace back to a proposal that was
+        # PRESENTED in the queue (account-agnostic). A trade with no source_proposal_id/proposal_id
+        # skipped the proposal review — flag it (operator requirement: any ATM trade → Proposals).
+        byp = _db("""SELECT COUNT(*) AS c FROM paper_trades
+                     WHERE status IN ('open','closed') AND created_at > now() - interval '7 days'
+                       AND (source_proposal_id IS NULL OR source_proposal_id='') AND proposal_id IS NULL""",
+                  fetch="one")
+        if byp and byp.get("c", 0) > 0:
+            out.append(_f("execution_health", "atm_proposal_bypass", "warning",
+                          f"{byp['c']} executed trade(s) in 7d not linked to a proposal — every ATM trade "
+                          f"must be presented in Proposals first",
+                          count=byp["c"]))
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"execution check error: {e}"))
     return out
@@ -839,6 +851,7 @@ WHY = {
     "agent_jobs_stuck": "Decision-feeding agent jobs (proposal/full-analysis/research-gap) aren't draining within SLA — proposals and reviews are going stale.",
     "research_backlog": "Background research/discovery queue is large but has no SLA — drained by priority; informational unless it never shrinks.",
     "proposal_thesis_broken": "A PENDING proposal's live price has passed its target or fallen to its stop — there is no valid live R:R; verify it's expiring/recalibrating and not displaying a stale favorable R:R.",
+    "atm_proposal_bypass": "An executed/automated trade isn't linked to a proposal — it skipped the Proposals queue review. Every ATM trade must be presented in Proposals first (account-agnostic).",
     "execution_escalations": "Critical execution escalations are unresolved failures already flagged by the integrity agent.",
     "orphaned_stops": "Orphaned stop orders may not actually protect a live position — real risk exposure.",
     "unprotected_positions": "Open positions with no stop = unbounded downside risk.",
