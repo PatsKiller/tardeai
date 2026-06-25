@@ -113,7 +113,7 @@ export function EnsembleValidationCard({ result, onRevalidate }: {
         <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
           {subs.map(s => (
             <span key={s.label} title={`${s.label} sub-score (0-10) — finance/retirement ensemble`} style={{
-              fontSize: 9.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+              fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
               background: 'var(--bg1)', border: `1px solid ${subColor(s.val)}55`, color: subColor(s.val) }}>
               {s.label} {s.val.toFixed(1)}
             </span>
@@ -218,7 +218,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     } catch { setState('error') }
   }, [targetType, targetId, subject, content, task, poll])
 
-  if (state === 'loading') return <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
+  if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
   if (state === 'done' && result) {
     if (compact) {
       return (
@@ -226,7 +226,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
             {(result.votes || []).map((v, i) => (
               <span key={i} title={v.reasoning || ''} style={{
-                fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
+                fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
                 color: v.decision === 'approve' ? '#22c55e' : '#ef4444',
                 background: 'var(--bg1)', border: `1px solid ${v.decision === 'approve' ? '#22c55e44' : '#ef444444'}`,
                 cursor: v.reasoning ? 'help' : undefined,
@@ -234,12 +234,12 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
                 {LANE_ICON[v.lane] || '•'} {LANE_LABEL[v.lane] || v.lane} {v.score?.toFixed(1)} {(v.decision || '').toUpperCase()}
               </span>
             ))}
-            <span style={{ fontSize: 9, fontWeight: 900, color: result.final_decision === 'approve' ? '#22c55e' : '#ef4444' }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: result.final_decision === 'approve' ? '#22c55e' : '#ef4444' }}>
               → {(result.final_decision || '').toUpperCase()} {result.final_score?.toFixed(1)}/10
             </span>
             <button onClick={request} style={{ ...linkBtn, marginLeft: 4 }}>re-run</button>
           </div>
-          {result.reasoning_summary && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{result.reasoning_summary}</div>}
+          {result.reasoning_summary && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{result.reasoning_summary}</div>}
         </div>
       )
     }
