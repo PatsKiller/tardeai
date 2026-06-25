@@ -303,6 +303,8 @@ def run_cycle():
         sym = p["symbol"]
         sid = p["strategy_id"] or "unknown"
         target = p["target_account"]
+        reasons = []   # init before any branch appends to it — the no-target branch below referenced it
+                       # before it was set (was only assigned after this block), crashing the whole cycle.
         if not target:
             reasons.append({"gate": "account_resolution_missing", "detail": "proposal has no target_account"})
             _log_decision(conn, pid, sym, sid, "UNRESOLVED", "unknown", "unknown",
@@ -310,7 +312,6 @@ def run_cycle():
                          False, config_hash, mode)
             log.info(f"  {sym}: deferred (no target_account on proposal)")
             continue
-        reasons = []
         decision = None
         b1_flag = False
 
