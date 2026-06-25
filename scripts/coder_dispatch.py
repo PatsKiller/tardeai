@@ -23,6 +23,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 import argparse
 import json
 import logging
@@ -341,7 +342,11 @@ def dispatch_one(problem: dict, reg: dict, apply: bool) -> dict:
 
     base = (reg.get("defaults") or {}).get("base_branch", "main")
     sid = f"{int(time.time())}"
-    branch = f"autofix/{comp}-{sid}"[:60].replace(" ", "-")
+    # Sanitize the component into a valid git branch ref — components are 'health:cat:type' and the
+    # colons (plus any other invalid char) made EVERY autofix branch invalid → 'worktree_failed' on
+    # every queue item (the 8/8 failures the health audit surfaced).
+    _safe = re.sub(r"[^A-Za-z0-9._-]+", "-", comp).strip("-/.") or "fix"
+    branch = f"autofix/{_safe}-{sid}"[:60]
     wt = make_worktree(branch, base)
     if not wt:
         res = {"component": comp, "backend": b["name"], "branch": branch,
