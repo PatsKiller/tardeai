@@ -16433,6 +16433,74 @@ def _hermes_agent_footprint():
         return {"ok": False, "error": str(e)}
 
 
+def _hermes_agent_runstate():
+    """GET /api/v2/hermes/agent-runstate — LIVE run-state per Hermes fleet agent, computed from real
+    evidence (coordinator heartbeat + each agent's last actual output) so the UI can't show a dormant
+    agent as 'operational'. Read-only."""
+    import os as _os
+    import time as _time
+    ROOT = str(PROJECT_ROOT)
+    # agent_id -> ('file', relpath) | ('table', table, where, tscol)
+    EVIDENCE = {
+        "coordinator":      ("file", "logs/hermes_coordinator.log"),
+        "research_curator": ("file", "data/runtime/research_critique_latest.json"),
+        "source_discovery": ("table", "hermes_research_intelligence",
+                             "hermes_agent_name ILIKE '%source%' OR research_type='source_discovery'", "created_at"),
+        "librarian":        ("table", "hermes_research_intelligence", "hermes_agent_name ILIKE '%librarian%'", "created_at"),
+        "embedding":        ("table", "hermes_embedding_queue", "1=1", "created_at"),
+        "promotion":        ("table", "hermes_promotion_audit", "1=1", "promoted_at"),
+        "backlog":          ("table", "hermes_research_intelligence",
+                             "research_type IN ('research_backlog','backlog_resolution')", "created_at"),
+        "autonomous":       ("table", "hermes_research_intelligence", "hermes_agent_name ILIKE '%autonomous%'", "created_at"),
+    }
+
+    def _age_hours(ev):
+        try:
+            if ev[0] == "file":
+                p = _os.path.join(ROOT, ev[1])
+                if not _os.path.exists(p):
+                    return None
+                return (_time.time() - _os.path.getmtime(p)) / 3600.0
+            _, tbl, where, tscol = ev
+            r = _db_query(f"SELECT EXTRACT(EPOCH FROM (NOW()-max({tscol})))/3600 AS h FROM {tbl} WHERE {where}", fetch="one")
+            return float(r["h"]) if r and r.get("h") is not None else None
+        except Exception:
+            return None
+
+    # coordinator heartbeat is the fleet signal
+    coord_age = _age_hours(EVIDENCE["coordinator"])
+    fleet_down = coord_age is None or coord_age > 2.0  # coordinator runs */15; >2h = not ticking
+
+    def _state(agent_id, age):
+        if agent_id != "coordinator" and fleet_down:
+            return "fleet_down"
+        if age is None:
+            return "dormant"
+        if age < 6:
+            return "live"
+        if age < 48:
+            return "idle"
+        return "dormant"
+
+    out = []
+    for aid, ev in EVIDENCE.items():
+        age = coord_age if aid == "coordinator" else _age_hours(ev)
+        out.append({
+            "id": aid,
+            "live_state": _state(aid, age),
+            "age_hours": round(age, 2) if age is not None else None,
+            "last_active_h": round(age, 1) if age is not None else None,
+            "evidence": ev[1] if ev[0] == "file" else f"{ev[1]}",
+        })
+    return {
+        "coordinator_heartbeat_h": round(coord_age, 2) if coord_age is not None else None,
+        "fleet_live": not fleet_down,
+        "agents": out,
+        "note": "live_state computed from real evidence (coordinator log mtime + each agent's last output); "
+                "overrides the static UI labels. live=<6h · idle=<48h · dormant=stale/never · fleet_down=coordinator not ticking.",
+    }
+
+
 def _hermes_research_backlog():
     """GET /api/v2/hermes/research-backlog — read-only research backlog items."""
     rows = _db_query("""
@@ -22645,6 +22713,7 @@ ROUTES = {
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),
+    "/api/v2/hermes/agent-runstate": lambda: _hermes_agent_runstate(),
     "/api/v2/hermes/infra": lambda: _hermes_infra(),
     "/api/v2/hermes/provenance": lambda: _hermes_provenance(),
     "/api/v2/hermes/sources": lambda: _hermes_sources(),

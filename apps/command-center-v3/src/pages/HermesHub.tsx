@@ -15,7 +15,7 @@ const GAP_SEV_COLOR: Record<string, string> = { critical: '#ef4444', warning: '#
 
 // Ground truth: HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md (Drive 2026-05-31).
 // state is run-state, the most important honest encoding: operational vs designed vs disabled vs live_data(doc-mismatch).
-type HState = 'operational' | 'designed' | 'disabled' | 'live_data' | 'running_unapproved'
+type HState = 'operational' | 'designed' | 'disabled' | 'live_data' | 'running_unapproved' | 'idle' | 'dormant'
 interface HAgent {
   id: string; label: string; state: HState; phase: string; mission: string;
   reads: string; writes: string; forbidden: string; caps: string;
@@ -84,8 +84,8 @@ function domainsOf(srcJson: any): string[] {
   for (const u of urls) { if (typeof u === 'string' && u.startsWith('http')) { try { out.push(new URL(u).hostname.replace('www.', '')) } catch { /* skip */ } } }
   return [...new Set(out)]
 }
-const HSTATE_COLOR: Record<HState, string> = { operational: '#22c55e', live_data: '#06b6d4', running_unapproved: '#f59e0b', designed: '#64748b', disabled: '#ef4444' }
-const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (approved)', live_data: 'live data', running_unapproved: 'running — NOT approved', designed: 'designed — no footprint', disabled: 'disabled — not approved' }
+const HSTATE_COLOR: Record<HState, string> = { operational: '#22c55e', live_data: '#06b6d4', running_unapproved: '#f59e0b', designed: '#64748b', disabled: '#ef4444', idle: '#f59e0b', dormant: '#ef4444' }
+const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (live)', live_data: 'live data', running_unapproved: 'running — NOT approved', designed: 'designed — no footprint', disabled: 'disabled — not approved', idle: 'idle — ran recently', dormant: 'DORMANT — no recent output' }
 
 export default function HermesHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Overview')
@@ -98,6 +98,7 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
   const { data: promo } = useApi<any>('/api/v2/hermes/promotion-review', 120_000)
   const { data: footprint } = useApi<any>('/api/v2/hermes/agent-footprint', 120_000)
+  const { data: runstate } = useApi<any>('/api/v2/hermes/agent-runstate', 60_000)
   const { data: infra } = useApi<any>('/api/v2/hermes/infra', 60_000)
   const { data: provData } = useApi<any>('/api/v2/hermes/provenance', 60_000)
   const { data: sourcesData } = useApi<any>('/api/v2/hermes/sources', 120_000)
@@ -178,13 +179,26 @@ export default function HermesHub({ onDrill }: Props) {
     autonomous: { rows: sumRows('ticker_research_agent', 'trade_reflection_agent'), last: lastOf('ticker_research_agent', 'trade_reflection_agent'), mode: LIVE, cls: clsOf('ticker_research_agent', 'trade_reflection_agent') },
   }
   // Effective run-state = approval-state crossed with real footprint (the honest two-axis truth).
+  // live run-state (real evidence) WINS over the static contract label — a dormant agent must not show 'operational'
+  const liveById: Record<string, { live_state: string; last_active_h: number | null }> =
+    Object.fromEntries(((runstate?.agents) || []).map((r: any) => [r.id, r]))
   const effState = (a: HAgent): HState => {
+    const live = liveById[a.id]?.live_state
+    if (live) {
+      if (live === 'live') return 'operational'
+      if (live === 'idle') return 'idle'
+      if (live === 'dormant' || live === 'fleet_down') return 'dormant'
+    }
     const f = fp[a.id]
     if (a.state === 'disabled') return 'disabled'
     if (a.state === 'operational') return 'operational'
-    // contract says design/not-approved — but did it actually run?
     if (f && f.rows > 0 && f.mode !== 'smoke-test only') return 'running_unapproved'
     return 'designed'
+  }
+  const lastActiveLabel = (a: HAgent): string => {
+    const h = liveById[a.id]?.last_active_h
+    if (h == null) return ''
+    return h < 1 ? `${Math.round(h * 60)}m ago` : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`
   }
   const { wfNodes, wfEdges } = useMemo(() => {
     const TRADE_AI = 'trade_ai_safe'
@@ -197,7 +211,7 @@ export default function HermesHub({ onDrill }: Props) {
       const act = f && f.rows > 0 ? `${f.rows} rows${topCls ? ` · ${topCls}` : ''}` : null
       return {
         id: a.id, position: a.pos,
-        data: { label: `${a.orchestrator ? '★ ' : ''}${a.label}${act ? `\n${act}` : ''}\n${HSTATE_LABEL[es]}` },
+        data: { label: `${a.orchestrator ? '★ ' : ''}${a.label}${act ? `\n${act}` : ''}\n${HSTATE_LABEL[es]}${lastActiveLabel(a) ? ` · ${lastActiveLabel(a)}` : ''}` },
         style: {
           background: `${col}${dim ? '0d' : '1f'}`, color: 'var(--text0)', width: 182,
           border: `${a.orchestrator ? 2.5 : 1.5}px ${dim ? 'dashed' : 'solid'} ${col}`,
@@ -246,7 +260,7 @@ export default function HermesHub({ onDrill }: Props) {
       markerEnd: { type: MarkerType.ArrowClosed, color: '#06b6d4' },
     }))
     return { wfNodes: nodes, wfEdges: edges }
-  }, [staging, promo, backlog, footprint, searxUp])
+  }, [staging, promo, backlog, footprint, searxUp, runstate])
 
   return (
     <div>
