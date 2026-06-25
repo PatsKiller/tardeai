@@ -72,8 +72,10 @@ const RR_PRESET_SORT: Record<string, string> = {
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
   const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
   const [bypassCache, setBypassCache] = useState(false)
+  const [view, setView] = useState<'active' | 'expired'>('active')
   const listPath = useMemo(() => {
     const p = new URLSearchParams()
+    if (view === 'expired') p.set('status', 'EXPIRED')
     p.set('page', String(listFilters.page))
     p.set('page_size', String(listFilters.pageSize))
     if (bypassCache) p.set('refresh', '1')
@@ -88,7 +90,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     if (listFilters.symbol) p.set('symbol', listFilters.symbol)
     if (listFilters.rrPreset) p.set('rr_preset', listFilters.rrPreset)
     return `/api/v2/broker-proposals?${p.toString()}`
-  }, [listFilters, bypassCache])
+  }, [listFilters, bypassCache, view])
 
   const { data, loading, error, stale, refetch } = useApi<any>(listPath, 30_000)
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
@@ -772,6 +774,19 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Proposals — Unified Queue</div>
+          {/* Active / Expired view toggle — Expired = chronological, newest first, paginated. */}
+          <div style={{ display: 'inline-flex', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(148,163,184,.25)' }}>
+            {(['active', 'expired'] as const).map(v => (
+              <button key={v} onClick={() => { setView(v); setListFilters(f => ({ ...f, page: 1 })) }}
+                style={{
+                  padding: '4px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', border: 'none',
+                  background: view === v ? (v === 'expired' ? 'rgba(148,163,184,.22)' : 'rgba(96,165,250,.22)') : 'transparent',
+                  color: view === v ? TEXT0 : MUTED, textTransform: 'capitalize',
+                }}>
+                {v}
+              </button>
+            ))}
+          </div>
           <div style={{ fontSize: 11, color: MUTED }}>
             broker-routed (Path B) <b style={{ color: BLUE }}>+</b> paper <span style={{ color: '#2dd4bf', fontWeight: 700 }}>PROPOSAL</span> · live thesis + cloud oversight before route
           </div>
