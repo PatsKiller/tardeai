@@ -247,28 +247,42 @@ def chart_support_gap(positions: Dict, output_path: Optional[Path] = None) -> st
 
 
 def _fetch_yahoo_history(symbol: str, days: int = 180) -> Optional[Dict]:
-    """Fetch historical price data from Yahoo Finance."""
+    """Fetch historical OHLCV from Yahoo Finance."""
     try:
         end   = int(datetime.now().timestamp())
         start = int((datetime.now() - timedelta(days=days)).timestamp())
         url   = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
         resp  = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},
-                             params={"interval":"1d","period1":start,"period2":end},
+                             params={"interval": "1d", "period1": start, "period2": end},
                              timeout=12)
         if not resp.ok:
             return None
         data = resp.json()
-        result = data.get("chart",{}).get("result")
+        result = data.get("chart", {}).get("result")
         if not result:
             return None
-        ts     = result[0].get("timestamp",[])
-        closes = result[0].get("indicators",{}).get("quote",[{}])[0].get("close",[])
+        ts = result[0].get("timestamp", [])
+        quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+        closes = quote.get("close", [])
+        volumes = quote.get("volume", [])
         if not ts or not closes:
             return None
-        dates  = [datetime.fromtimestamp(t).strftime("%Y-%m-%d") for t in ts]
-        prices = [c for c in closes if c is not None]
-        dates  = [d for d, c in zip(dates, closes) if c is not None]
-        return {"dates": dates, "prices": prices}
+        rows = []
+        for t, c, v in zip(ts, closes, volumes or [None] * len(closes)):
+            if c is None:
+                continue
+            rows.append({
+                "date": datetime.fromtimestamp(t).strftime("%Y-%m-%d"),
+                "close": float(c),
+                "volume": float(v) if v is not None else None,
+            })
+        if not rows:
+            return None
+        return {
+            "dates": [r["date"] for r in rows],
+            "prices": [r["close"] for r in rows],
+            "volumes": [r["volume"] for r in rows],
+        }
     except Exception:
         return None
 
@@ -279,6 +293,50 @@ def _calc_sma(prices: List[float], period: int) -> List[Optional[float]]:
     for i in range(period - 1, len(prices)):
         result[i] = sum(prices[i-period+1:i+1]) / period
     return result
+
+
+def chart_volume_rvol(symbol: str, rvol: Optional[float] = None,
+                      output_path: Optional[Path] = None) -> str:
+    """Volume bars with 20-day average overlay; annotates relative volume."""
+    plt = _plt()
+    hist = _fetch_yahoo_history(symbol, 120)
+    if not hist or len(hist.get("volumes") or []) < 10:
+        return ""
+
+    n = min(60, len(hist["volumes"]))
+    volumes = [v or 0 for v in hist["volumes"][-n:]]
+    dates = hist["dates"][-n:]
+    avg20 = []
+    for i in range(len(volumes)):
+        window = volumes[max(0, i - 19): i + 1]
+        avg20.append(sum(window) / len(window) if window else 0)
+
+    calc_rvol = None
+    if volumes[-1] and avg20[-1]:
+        calc_rvol = round(volumes[-1] / avg20[-1], 2)
+    display_rvol = rvol if rvol is not None else calc_rvol
+
+    x = range(len(volumes))
+    tick_idx = [i for i in range(0, len(dates), max(1, len(dates) // 5))]
+    tick_labels = [dates[i][5:] for i in tick_idx]
+
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    colors = [BLUE if v >= avg20[i] else MUTED_COL for i, v in enumerate(volumes)]
+    ax.bar(x, volumes, color=colors, alpha=0.75, width=0.85, label="Volume")
+    ax.plot(x, avg20, color=YELLOW, linewidth=1.4, label="20d avg")
+    ax.set_xticks(tick_idx)
+    ax.set_xticklabels(tick_labels)
+    title = f"{symbol} — Volume & RVOL"
+    if display_rvol is not None:
+        title += f" (RVOL {display_rvol:.2f}x)"
+    _apply_dark(ax, fig, title)
+    ax.legend(fontsize=7, facecolor=CARD_BG, labelcolor=TEXT_COL, edgecolor=GRID_COL, loc="upper left")
+    fig.tight_layout()
+
+    if output_path:
+        _save_png(fig, output_path)
+        return str(output_path)
+    return _b64_png(fig)
 
 
 def chart_price_history(symbol: str, current_price: float,
@@ -293,6 +351,8 @@ def chart_price_history(symbol: str, current_price: float,
         return ""
 
     prices = hist["prices"]
+    if current_price <= 0 and prices:
+        current_price = float(prices[-1])
     dates  = hist["dates"]
     sma20_line  = _calc_sma(prices, 20)
     sma50_line  = _calc_sma(prices, 50)

@@ -99,11 +99,19 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
     conn = _conn(); cur = conn.cursor()
     cur.execute("SELECT id, label, spec, hermes_enabled FROM watch_directives WHERE status='active' AND kind='trend'")
     directives = cur.fetchall()
-    report = {"trend_directives": len(directives), "staged": 0, "detail": []}
+    try:
+        from research_critique_pipeline import is_removal_flagged, load_critique_snapshot
+        stale_ids = set((load_critique_snapshot().get("index") or {}).get("stale_directive_ids") or [])
+    except Exception:
+        stale_ids = set()
+    report = {"trend_directives": len(directives), "staged": 0, "skipped_stale": 0, "detail": []}
     for did, label, spec, hermes_enabled in directives:
         if not hermes_enabled:
             continue
         spec = spec if isinstance(spec, dict) else json.loads(spec)
+        if did in stale_ids or is_removal_flagged(spec) or spec.get("composite_verdict") == "reject":
+            report["skipped_stale"] += 1
+            continue
         cands = _discover_for(cur, spec)
         staged_here = 0
         for sym, (thesis, strength) in list(cands.items()):

@@ -76,6 +76,41 @@ class TestBrokerQueueHygiene(unittest.TestCase):
     def test_active_symbol_statuses_include_approved(self):
         self.assertIn("APPROVED_FOR_PAPER_TEST", bqh.ACTIVE_SYMBOL_STATUSES)
 
+    def test_classify_thesis_invalid_watchlist(self):
+        now = datetime.now(timezone.utc)
+        row = {
+            "id": 99,
+            "symbol": "TEST",
+            "strategy_id": "momentum_scalp",
+            "origin": "watchlist",
+            "proposed_entry": 10.0,
+            "proposed_stop": 9.0,
+            "proposed_target1": 12.0,
+            "created_at": now - timedelta(hours=2),
+            "thesis_validity": {"ok": True, "zone_status": "invalid"},
+        }
+        clf = bqh.classify_broker_queue_row(row, now=now)
+        self.assertEqual(clf["action"], "expire")
+        self.assertTrue(any("invalid" in r.lower() for r in clf["reasons"]))
+
+    def test_classify_at_risk_young_keeps(self):
+        now = datetime.now(timezone.utc)
+        row = {
+            "id": 100,
+            "symbol": "YOUNG",
+            "strategy_id": "momentum_scalp",
+            "origin": "watchlist",
+            "proposed_entry": 10.0,
+            "proposed_stop": 9.5,
+            "proposed_target1": 11.5,
+            "price_drift_pct": 0.2,
+            "created_at": now - timedelta(hours=6),
+            "expires_at": now + timedelta(days=2),
+            "thesis_validity": {"ok": True, "zone_status": "at_risk"},
+        }
+        clf = bqh.classify_broker_queue_row(row, now=now)
+        self.assertEqual(clf["action"], "keep")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """source_vetting_ladder.py — Gate 4 of Hermes source maturity. Guarded discovery→vetting ladder.
 
-ADVISORY + SAFE. Reads data/runtime/source_maturity_latest.json and:
-  1. Registers any maturity-scored source NOT in research_sources as a CANDIDATE (active=false) for vetting.
-  2. Persists the computed maturity tier into research_sources.notes (JSON) — advisory; does NOT flip `active`.
-  3. Emits an operator action queue: core-eligible (needs operator approval to activate) + demote-review.
+Reads data/runtime/source_maturity_latest.json and:
+  1. Registers any maturity-scored source NOT in research_sources as a CANDIDATE (active=false).
+  2. Persists maturity tier into research_sources.notes (JSON).
+  3. Emits a vetting action queue for hermes_source_auto_approval.py (autonomous closure — no operator UI).
 
-It deliberately does NOT auto-activate/deactivate live sources — promotion to 'core' and deactivation of a
-high-volume source are operator decisions (avoids disrupting major feeds). Dry-run default; --apply writes
-only research_sources registrations + notes (never trades/scoring/active flips).
+When invoked with --apply (cron default), chains hermes_source_auto_approval immediately after writing
+the queue so eligible sources activate in the same daily maturity tick.
 """
 import os, sys, json
 from datetime import datetime, timezone
@@ -62,9 +61,23 @@ def main():
     if not dry:
         c.commit()
         ACTIONS.write_text(json.dumps({"updated_at": datetime.now(timezone.utc).isoformat(), "actions": actions}, indent=2))
+        try:
+            import hermes_source_policy as hsp
+            hsp.invalidate_cache()
+        except Exception:
+            pass
+    auto_result = None
+    if not dry and actions:
+        try:
+            sys.path.insert(0, str(ROOT / "scripts"))
+            from hermes_source_auto_approval import run_auto_approval
+            auto_result = run_auto_approval(apply=True, max_actions=15, use_llm=True)
+        except Exception as e:
+            auto_result = {"error": str(e)[:120]}
     c.close()
     print(json.dumps({"registered_new_candidates": registered, "tier_updates": tiered,
-                      "operator_actions": len(actions), "action_sample": actions[:8]}, indent=2, default=str))
+                      "vetting_actions": len(actions), "action_sample": actions[:8],
+                      "auto_approval": auto_result}, indent=2, default=str))
 
 
 if __name__ == "__main__":

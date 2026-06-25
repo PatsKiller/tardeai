@@ -6,7 +6,12 @@ import type { DrillContext } from '../components/DetailDrawer'
 import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Overview', 'Workflow', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+const TABS = ['Overview', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+
+const MATURITY_COLOR: Record<string, string> = {
+  full: '#22c55e', mostly: '#84cc16', semi: '#f59e0b', manual: '#ef4444',
+}
+const GAP_SEV_COLOR: Record<string, string> = { critical: '#ef4444', warning: '#f59e0b', info: '#60a5fa' }
 
 // Ground truth: HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md (Drive 2026-05-31).
 // state is run-state, the most important honest encoding: operational vs designed vs disabled vs live_data(doc-mismatch).
@@ -17,10 +22,14 @@ interface HAgent {
   targets: string[]; pos: { x: number; y: number }; orchestrator?: boolean; readsTradeAI?: boolean;
 }
 const HERMES_AGENTS: HAgent[] = [
-  { id: 'coordinator', label: 'Chief Hermes Coordinator', state: 'operational', phase: 'BUILT + OPERATIONAL — directive B 2026-06-02 (cron */15, orchestrates full fleet live)', orchestrator: true,
-    mission: 'Orchestrate daily/weekly agent plan, enforce caps, route tasks', reads: 'All hermes_* tables, Trade AI safe views, SearXNG health',
+  { id: 'coordinator', label: 'Chief Hermes Coordinator', state: 'operational', phase: 'BUILT + OPERATIONAL — 24/7 cron */15 (conscious research + fleet live)', orchestrator: true,
+    mission: 'Orchestrate continuous research curation, enforce caps, route tasks', reads: 'All hermes_* tables, Trade AI safe views, SearXNG health',
     writes: 'hermes_memory_events (coordination logs only)', forbidden: 'Trade, promote, embed, mutate proposals/trades/journal/holdings, broker',
-    caps: '1 plan/day; defers to operator', targets: ['source_discovery', 'librarian', 'backlog', 'promotion'], pos: { x: 430, y: 0 }, readsTradeAI: true },
+    caps: 'Bounded per tick; kill switch halts next tick', targets: ['research_curator', 'source_discovery', 'librarian', 'backlog', 'promotion'], pos: { x: 430, y: 0 }, readsTradeAI: true },
+  { id: 'research_curator', label: '24/7 Research Curator', state: 'operational', phase: 'OPERATIONAL — every coordinator tick (*/15, 24/7)',
+    mission: 'Sector+industry universe, signals, prospects → watchlist; momentum scalp leads beyond Finviz → incubator', reads: 'finviz_group_performance, scalp_scan_results, trade_ai_scans, market_quotes, intelligence_entities, incubator_universe, hermes_research, news, enrichment, SearXNG',
+    writes: 'watch_directives, topic_monitor, incubator_universe (momentum_scalp), research_critique_latest.json, hermes_consciousness_latest.json', forbidden: 'Trade, broker, operator approval gates',
+    caps: '12 universe/tick · 8 scalp leads/tick · librarian+taxonomy score each batch · tagger hourly', targets: ['source_discovery', 'librarian'], pos: { x: 250, y: 70 }, readsTradeAI: true },
   { id: 'source_discovery', label: 'Source Discovery', state: 'operational', phase: 'OPERATIONAL (Phase 17–19)',
     mission: 'Discover research sources via SearXNG, stage candidates', reads: 'SearXNG (localhost), hermes_research_intelligence, Trade AI safe views',
     writes: "hermes_research_intelligence (source_discovery, staged)", forbidden: 'Embed, promote, mutate core, broker, public SearXNG',
@@ -37,10 +46,10 @@ const HERMES_AGENTS: HAgent[] = [
     mission: 'Review staged rows for promotion (advisory only)', reads: 'hermes_research_intelligence, hermes_promotion_audit, llm_intelligence_cache',
     writes: 'NONE (advisory output only)', forbidden: 'Promote directly, embed, mutate core, broker',
     caps: 'Review all staged rows', targets: ['operator'], pos: { x: 660, y: 160 } },
-  { id: 'backlog', label: 'Research Backlog Manager', state: 'operational', phase: 'APPROVED — operator-authorized 2026-06-02 (staging-only; dedicated table optional)',
-    mission: 'Maintain structured research backlog (priority/owner/status)', reads: 'hermes_research_intelligence, hermes_validation_findings, hermes_alerts, alert_events',
-    writes: 'hermes_research_backlog — NOT YET CREATED (the /research-backlog endpoint surfaces backlog-tagged hermes_research_intelligence rows, not this agent\'s output)', forbidden: 'Embed, promote, mutate core, broker, send messages',
-    caps: '10 backlog items/batch', targets: ['source_discovery', 'librarian'], pos: { x: 660, y: 250 } },
+  { id: 'backlog', label: 'Research Backlog Manager', state: 'operational', phase: 'AUTONOMOUS — backlog_drain_agent (Coordinator */15)',
+    mission: 'File backlog findings + drain staged items into LLM research (archives parent)', reads: 'hermes_research_intelligence, hermes_validation_findings, hermes_alerts, alert_events',
+    writes: 'hermes_research_intelligence (research_backlog + backlog_resolution)', forbidden: 'Embed, promote, mutate core, broker, send messages',
+    caps: '2 drains/tick · 10 backlog files/day', targets: ['source_discovery', 'librarian'], pos: { x: 660, y: 250 } },
   { id: 'autonomous', label: 'Autonomous Research Manager', state: 'operational', phase: 'ENABLED — directive B 2026-06-02 (live under caps + kill switch)',
     mission: 'Schedule autonomous source discovery (when approved)', reads: 'hermes_research_intelligence, SearXNG, Trade AI safe views',
     writes: 'hermes_research_intelligence (staged, when approved)', forbidden: 'Embed, promote, mutate core, broker',
@@ -86,6 +95,7 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: backlog } = useApi<any>('/api/v2/hermes/research-backlog', 120_000)
   const { data: dualOp } = useApi<any>('/api/v2/hermes/dual-opinion', 120_000)
   const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
+  const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
   const { data: promo } = useApi<any>('/api/v2/hermes/promotion-review', 120_000)
   const { data: footprint } = useApi<any>('/api/v2/hermes/agent-footprint', 120_000)
   const { data: infra } = useApi<any>('/api/v2/hermes/infra', 60_000)
@@ -317,6 +327,33 @@ export default function HermesHub({ onDrill }: Props) {
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/hermes/health</div>
           </div>
 
+          {/* Autonomous closure loops */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Autonomous closure loops</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11 }}>
+              {[
+                ['Backlog staged', String((backlog?.items ?? []).filter((i: any) => i.status === 'staged').length || staging.hermes_research_backlog || 0), 'hermes_backlog_drain.py drains → backlog_resolution'],
+                ['Embed queue', `${health?.embedding_queue?.pending ?? 0} pending · ${health?.embedding_queue?.failed ?? 0} failed (auto-retry)`, 'Coordinator resets failed → pending each tick'],
+                ['RAG coverage', `${health?.rag_pipeline?.embedded ?? 0}/${health?.rag_pipeline?.promoted ?? 0} (${health?.rag_pipeline?.coverage_pct ?? 0}%)`, 'backfill_promoted + embedding worker'],
+                ['Source auto-approval', `${sourcesData?.stats?.news_active ?? 0}/${sourcesData?.stats?.news_total ?? 0} news active · ${sourcesData?.stats?.vetting_pending ?? 0} queued`, 'hermes_source_auto_approval.py — no operator step'],
+                ['24/7 Research Curator', 'Shared critique snapshot + API', 'research_critique_latest.json + /api/v2/hermes/research-critique consumed by Trade AI processes'],
+              ].map(([k, v, hint]) => (
+                <div key={k} style={{ padding: '5px 6px', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text2)' }}>{k}</span>
+                    <span style={{ fontWeight: 600, color: '#22c55e' }}>{v}</span>
+                  </div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{hint}</div>
+                </div>
+              ))}
+            </div>
+            {(sourcesData?.auto_approval?.activated?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 10, fontSize: 9, color: 'var(--text3)' }}>
+                Last auto-activation tick: {sourcesData.auto_approval.updated_at?.slice(0, 19) ?? '—'} · {sourcesData.auto_approval.activated.length} activated
+              </div>
+            )}
+          </div>
+
           {/* Advisory choices */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Advisory Choices</div>
@@ -499,33 +536,119 @@ export default function HermesHub({ onDrill }: Props) {
       )}
 
       {tab === 'Sources' && (() => {
-        const srcs: any[] = sourcesData?.sources ?? []
-        const connectors = srcs.filter(s => s.type !== 'web')
-        const web = srcs.filter(s => s.type === 'web').sort((a, b) => Number(b.credibility) - Number(a.credibility))
+        const stats = sourcesData?.stats ?? {}
+        const connectors: any[] = sourcesData?.connectors ?? []
+        const newsMaturity: any[] = sourcesData?.news_maturity ?? []
+        const web: any[] = sourcesData?.web ?? []
+        const vettingActions: any[] = sourcesData?.vetting_actions ?? []
+        const autoApproval = sourcesData?.auto_approval ?? {}
         const credColor = (c: number) => c >= 50 ? '#22c55e' : c >= 25 ? '#f59e0b' : '#ef4444'
+        const tierColor = (t: string) => t === 'core' ? '#a855f7' : t === 'trusted' ? '#22c55e' : t === 'probationary' ? '#f59e0b' : t === 'demoted' ? '#ef4444' : 'var(--text3)'
+        const newsByTier = ['core', 'trusted', 'probationary', 'candidate', 'demoted'].map(tier => ({
+          tier,
+          items: newsMaturity.filter(n => (n.maturity_tier || 'candidate') === tier),
+        })).filter(g => g.items.length > 0)
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Self-learning source registry — connectors (where research can come from) + web domains scored by yield. Curated nightly by <code>hermes_source_curation.py</code>.</div>
-            {/* Connectors */}
+            <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.45 }}>
+              Registry has three layers: <b>ingestion connectors</b> (live pipes), <b>news maturity labels</b> (attribution scores — dormant ≠ offline), and <b>web yield domains</b> (SearXNG self-learning). Gate 4 closes autonomously via <code>hermes_source_auto_approval.py</code> (Coordinator + daily maturity cron) — no operator approval step.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10 }}>
+              {[
+                [`Connectors`, `${stats.connectors_active ?? 0}/${stats.connectors_total ?? 0} live`],
+                [`News maturity`, `${stats.news_active ?? 0}/${stats.news_total ?? 0} activated`],
+                [`Web preferred`, `${stats.web_preferred ?? 0}/${stats.web_total ?? 0}`],
+                [`Linked news→web`, String(stats.news_linked_to_preferred_web ?? 0)],
+                [`Auto-pending`, String(stats.vetting_pending ?? vettingActions.length)],
+                [`Auto-activated`, String(stats.auto_activated_total ?? 0)],
+              ].map(([k, v]) => (
+                <span key={k} style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+                  <b style={{ color: 'var(--text0)' }}>{k}</b> · {v}
+                </span>
+              ))}
+            </div>
+            {/* Autonomous source activation audit */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Autonomous source activation</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+                <code>hermes_source_auto_approval.py</code> activates core/trusted news sources when maturity thresholds pass (LLM for borderline trusted). Pending queue: {vettingActions.length}.
+              </div>
+              {(autoApproval.activated?.length ?? 0) > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 140, overflow: 'auto' }}>
+                  {autoApproval.activated.slice(0, 12).map((a: any, i: number) => (
+                    <div key={`${a.source}-${i}`} style={{ display: 'flex', gap: 8, fontSize: 10, padding: '4px 6px', background: 'var(--bg2)', borderRadius: 5 }}>
+                      <span style={{ flex: 1, color: 'var(--text0)', fontWeight: 600 }}>{a.source?.replace(/^google_news:/, 'GN:')}</span>
+                      <span style={{ color: '#22c55e' }}>{a.approval_reason || a.action}</span>
+                      <span style={{ color: 'var(--text3)' }}>{a.score}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>No auto-activation audit yet — runs on Coordinator tick + daily 05:45 maturity chain.</div>
+              )}
+              {vettingActions.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 9, color: '#f59e0b' }}>
+                  {vettingActions.length} sources awaiting next auto-approval pass (below threshold or LLM deferred).
+                </div>
+              )}
+            </div>
+            {/* Ingestion connectors */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Connectors ({connectors.filter(c => c.active).length} active / {connectors.length})</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Ingestion connectors ({connectors.filter(c => c.active).length} live / {connectors.length})</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Real pipes: RSS, SEC, social, YouTube, AI APIs. ACTIVE = ingest path running today.</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 10 }}>
                 {connectors.map(s => (
-                  <div key={s.type} onClick={() => onDrill({ title: s.name, subtitle: s.type, endpoint: '/api/v2/hermes/sources', rows: [s] })}
+                  <div key={`${s.type}-${s.name}`} onClick={() => onDrill({ title: s.name, subtitle: s.type, endpoint: '/api/v2/hermes/sources', rows: [s] })}
                     style={{ padding: '10px 12px', borderRadius: 8, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${s.active ? 'rgba(34,197,94,.3)' : 'rgba(100,116,139,.3)'}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text0)' }}>{s.name}</span>
-                      <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 700, background: s.active ? 'rgba(34,197,94,.15)' : 'rgba(100,116,139,.15)', color: s.active ? '#22c55e' : 'var(--text3)' }}>{s.active ? 'ACTIVE' : 'DORMANT'}</span>
+                      <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 700, background: s.active ? 'rgba(34,197,94,.15)' : 'rgba(100,116,139,.15)', color: s.active ? '#22c55e' : 'var(--text3)' }}>{s.active ? 'LIVE' : 'OFF'}</span>
                     </div>
-                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{s.notes}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{typeof s.notes === 'string' && s.notes.startsWith('{') ? `maturity · ${s.maturity_tier || '—'}` : s.notes}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* News maturity candidates */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>News maturity — attribution labels ({newsMaturity.filter(n => n.active).length} activated / {newsMaturity.length})</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+                Scored by <code>source_maturity.py</code> from signal precision + outcomes. DORMANT = not yet auto-activated — many publishers still flow via RSS or a linked preferred web domain below.
+              </div>
+              <div style={{ maxHeight: 340, overflow: 'auto' }}>
+                {newsByTier.map(({ tier, items }) => (
+                  <div key={tier} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: tierColor(tier), marginBottom: 4, textTransform: 'uppercase' }}>{tier} ({items.length})</div>
+                    {items.slice(0, tier === 'candidate' ? 25 : 12).map(n => (
+                      <div key={n.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, flexWrap: 'wrap' }}>
+                        <span style={{ width: 200, fontFamily: 'monospace', color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>
+                          {n.name.replace(/^google_news:/, 'GN:')}
+                        </span>
+                        <span style={{ width: 36, fontWeight: 700, color: tierColor(n.maturity_tier) }}>{Math.round(n.maturity_score || 0)}</span>
+                        <span style={{ width: 48, color: 'var(--text3)' }}>{n.go_rate != null ? `${Math.round(n.go_rate * 100)}% go` : '—'}</span>
+                        <span style={{ width: 56, fontSize: 8, color: n.active ? '#22c55e' : 'var(--text3)' }}>{n.active ? 'activated' : 'candidate'}</span>
+                        <span style={{ width: 72, fontSize: 8, color: n.ingest_allowed === false ? '#ef4444' : '#60a5fa' }} title={n.policy?.reason}>
+                          {n.ingest_allowed === false ? 'ingest⛔' : `promo ${n.promotion_tier || n.policy?.promotion_tier || '—'}`}
+                        </span>
+                        {n.linked_web && (
+                          <span style={{ fontSize: 8, color: n.web_preferred ? '#22c55e' : '#60a5fa' }} title="Linked web domain from SearXNG yield">
+                            ↔ {n.linked_web}{n.web_preferred ? ' ✓preferred' : ''}
+                          </span>
+                        )}
+                        {n.vetting_action && !n.active && (
+                          <span style={{ fontSize: 8, color: '#f59e0b' }}>auto-pending</span>
+                        )}
+                      </div>
+                    ))}
+                    {tier === 'candidate' && items.length > 25 && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>+{items.length - 25} candidate rows (low priority noise)</div>}
                   </div>
                 ))}
               </div>
             </div>
             {/* Web domains scored by yield (Track A) */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Web sources — learned yield ({web.filter(w => w.active).length} preferred / {web.length})</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Yield = (promoted+embedded) ÷ research produced. Preferred ≥30% (boosted in future queries); low-yield = candidate/noise.</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Web domains — SearXNG yield ({web.filter(w => w.active).length} preferred / {web.length})</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Yield = (promoted+embedded) ÷ research produced. Preferred ≥30% — these are the live research paths Hermes actually uses from web search.</div>
               {web.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No web sources scored yet.</div> :
                 web.map(s => (
                   <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -537,7 +660,6 @@ export default function HermesHub({ onDrill }: Props) {
                     <span style={{ width: 70, fontSize: 8, color: s.active ? '#22c55e' : 'var(--text3)', textAlign: 'right' }}>{s.active ? 'preferred' : 'candidate'}</span>
                   </div>
                 ))}
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/sources · scored by hermes_source_curation.py (Tracks A + B). New domains auto-discovered as candidates.</div>
             </div>
           </div>
         )
@@ -605,6 +727,111 @@ export default function HermesHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/dual-opinion</div>
         </div>
       )}
+
+      {tab === 'Maturity' && maturity && (() => {
+        const layers = maturity.layer_scores ?? {}
+        const areas: any[] = maturity.areas ?? []
+        const gaps: any[] = maturity.gaps ?? []
+        const lm = maturity.live_metrics ?? {}
+        const caps = maturity.coordinator_caps ?? {}
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Layer scores */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              {[
+                { l: 'Overall autonomous', v: layers.overall_autonomous, c: '#60a5fa' },
+                { l: 'Research mind', v: layers.research_mind, c: '#22c55e' },
+                { l: 'Portfolio attention', v: layers.portfolio_attention, c: '#84cc16' },
+                { l: 'Trade execution', v: layers.trade_execution, c: '#ef4444' },
+              ].map(k => (
+                <div key={k.l} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: k.c }}>{k.v ?? '—'}%</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{k.l}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 10, color: 'var(--text3)', padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6 }}>
+              Live from DB + coordinator caps · kill switch: <b style={{ color: maturity.kill_switch_active ? '#ef4444' : '#22c55e' }}>{maturity.kill_switch_active ? 'ON' : 'off'}</b>
+              {' · '}embed {lm.embed_pending ?? 0} pending / {lm.embed_failed ?? 0} failed
+              {' · '}watchlist jobs {lm.watchlist_jobs_queued ?? 0} queued
+              {' · '}held {lm.held_count ?? 0}
+              {caps.embed != null && <span> · caps promote {caps.promote}/tick embed {caps.embed}/tick</span>}
+            </div>
+
+            {/* Areas grid */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Autonomy by area ({areas.length})</div>
+              {areas.map((a: any) => (
+                <div key={a.id} onClick={() => onDrill({ title: a.label, subtitle: a.level_label, endpoint: '/api/v2/hermes/maturity-dashboard', rows: [a] })}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 100px 72px 90px', gap: 8, alignItems: 'center',
+                    padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                  <div>
+                    <span style={{ fontWeight: 600, color: 'var(--text0)' }}>{a.label}</span>
+                    {a.policy_manual && <span style={{ marginLeft: 6, fontSize: 8, color: '#f59e0b', padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.12)' }}>POLICY</span>}
+                    {a.cadence && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{a.cadence}</div>}
+                  </div>
+                  <span style={{ fontSize: 9, color: MATURITY_COLOR[a.level] ?? 'var(--text3)' }}>{a.level_label}</span>
+                  <span style={{ fontWeight: 700, color: MATURITY_COLOR[a.level] ?? 'var(--text2)', textAlign: 'right' }}>{a.autonomy_pct}%</span>
+                  <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${a.autonomy_pct}%`, background: MATURITY_COLOR[a.level] ?? '#64748b' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Gaps — policy vs automatable */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Autonomy gaps — what&apos;s blocking full automation</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
+                {maturity.gap_summary?.automatable_now ?? 0} fixable without policy change · {maturity.gap_summary?.needs_operator_policy_change ?? 0} require operator policy change
+              </div>
+              {gaps.map((g: any) => (
+                <div key={g.id} style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8,
+                  borderLeft: `3px solid ${GAP_SEV_COLOR[g.severity] ?? 'var(--text3)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{g.title}</span>
+                    <span style={{ fontSize: 9, display: 'flex', gap: 6 }}>
+                      <span style={{ color: GAP_SEV_COLOR[g.severity] }}>{g.severity}</span>
+                      {g.policy_manual
+                        ? <span style={{ color: '#f59e0b' }}>manual by policy</span>
+                        : <span style={{ color: '#22c55e' }}>automatable</span>}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6 }}>{g.why_not_autonomous_yet}</div>
+                  {g.policy_reason && (
+                    <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, padding: '6px 8px', background: 'rgba(245,158,11,.08)', borderRadius: 4 }}>
+                      Policy: {g.policy_reason}
+                    </div>
+                  )}
+                  {g.blockers?.length > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
+                      <b style={{ color: 'var(--text2)' }}>Blockers:</b>{' '}
+                      {(g.blockers as string[]).join(' · ')}
+                    </div>
+                  )}
+                  {g.recommended_fixes?.length > 0 && (
+                    <div style={{ fontSize: 10, color: '#60a5fa', marginTop: 6 }}>
+                      <b>Fixes:</b>{' '}
+                      {(g.recommended_fixes as string[]).slice(0, 2).join(' · ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {maturity.consciousness?.attention?.length > 0 && (
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Curator attention (latest)</div>
+                {(maturity.consciousness.attention as string[]).slice(0, 6).map((line: string, i: number) => (
+                  <div key={i} style={{ fontSize: 10, color: 'var(--text2)', padding: '3px 0' }}>· {line}</div>
+                ))}
+              </div>
+            )}
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/hermes/maturity-dashboard · refreshed every 2 min</div>
+          </div>
+        )
+      })()}
 
       {tab === 'Pipeline' && pipeQual && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>

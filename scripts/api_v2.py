@@ -17732,6 +17732,103 @@ def _hermes_pipeline_quality():
     }
 
 
+def _hermes_maturity_dashboard():
+    """GET /api/v2/hermes/maturity-dashboard — live autonomy maturity + policy/gap analysis."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from hermes_maturity_dashboard import build_maturity_report
+        import psycopg2
+        import os
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "127.0.0.1"),
+            port=int(os.getenv("DB_PORT", "5432")),
+            dbname=os.getenv("DB_NAME", "trade_ai"),
+            user=os.getenv("DB_USER", "trade_ai"),
+            password=os.getenv("DB_PASSWORD", ""),
+        )
+        report = build_maturity_report(conn)
+        conn.close()
+        return {k: _json_clean(v) for k, v in report.items()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "advisory_notice": "Maturity dashboard unavailable"}
+
+
+def _hermes_research_critique(query=None):
+    """GET /api/v2/hermes/research-critique — shared librarian/taxonomy scores + stale removal flags.
+
+    Primary source: data/runtime/research_critique_latest.json (written each curator tick).
+    Supplements with live DB index for scored directives and open critique findings.
+    """
+    q = query or {}
+    agent = (q.get("agent") or [None])[0] if isinstance(q.get("agent"), list) else q.get("agent")
+    snapshot = {}
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from research_critique_pipeline import load_critique_snapshot, extract_critique_fields
+        snapshot = load_critique_snapshot()
+    except Exception as e:
+        snapshot = {"load_error": str(e)[:160]}
+
+    findings_sql = """
+        SELECT id, hermes_agent_name, finding_type, severity, symbol,
+               affected_table, affected_id, LEFT(description, 300) AS description,
+               evidence_json, recommended_action, status, created_at
+        FROM hermes_validation_findings
+        WHERE source='hermes' AND hermes_agent_name='research_critique_pipeline'
+    """
+    args = []
+    if agent:
+        findings_sql += " AND hermes_agent_name=%s"
+        args.append(agent)
+    findings_sql += " ORDER BY created_at DESC LIMIT 60"
+    findings = _db_query(findings_sql, tuple(args) if args else None) or []
+
+    directives = _db_query("""
+        SELECT id, kind, label, status, priority, created_by, spec, updated_at
+        FROM watch_directives
+        WHERE status IN ('active', 'paused')
+          AND created_by IN ('think_tank', 'sector_universe')
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT 60
+    """) or []
+    scored = []
+    for d in directives:
+        spec = d.get("spec") or {}
+        critique = extract_critique_fields(spec)
+        if not critique:
+            continue
+        scored.append({
+            "id": d["id"],
+            "label": d.get("label"),
+            "status": d.get("status"),
+            "created_by": d.get("created_by"),
+            "updated_at": _json_clean(d.get("updated_at")),
+            "critique": {k: _json_clean(v) for k, v in critique.items()},
+        })
+
+    consciousness = {}
+    try:
+        consciousness = json.loads((PROJECT_ROOT / "data" / "runtime" / "hermes_consciousness_latest.json").read_text())
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "snapshot": {k: _json_clean(v) for k, v in snapshot.items()},
+        "scored_directives": scored,
+        "open_findings": [{k: _json_clean(v) for k, v in f.items()} for f in findings if f.get("status") == "open"],
+        "findings_recent": [{k: _json_clean(v) for k, v in f.items()} for f in findings[:20]],
+        "consciousness_attention": consciousness.get("attention"),
+        "shared_paths": snapshot.get("shared_paths") or {
+            "critique_latest": "data/runtime/research_critique_latest.json",
+            "consciousness": "data/runtime/hermes_consciousness_latest.json",
+        },
+        "advisory_notice": "Librarian/taxonomy critique — shared with Trade AI processes; advisory only",
+    }
+
+
 def _hermes_intelligence():
     """GET /api/v2/hermes/intelligence — full Hermes intelligence view."""
     rows = _db_query("""
@@ -18901,8 +18998,23 @@ def _watch_directives(query=None):
                       "trend": [{"date": s["date"], "hits_7d": s.get("hits_7d"), "promoted_total": s.get("promoted_total")} for s in _h[-14:]]}
     except Exception:
         pass
+    critique_summary = {}
+    critique_snapshot_at = None
+    try:
+        import sys as _sysc2
+        _sysc2.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from research_critique_pipeline import load_critique_snapshot, extract_critique_fields
+        _critique_snap = load_critique_snapshot()
+        critique_summary = _critique_snap.get("summary") or {}
+        critique_snapshot_at = _critique_snap.get("updated_at")
+        _extract = extract_critique_fields
+    except Exception:
+        _extract = lambda _s: {}
+
     return {"note": "Operator-owned watch directives honored by Trade AI + Hermes (firewall: Hermes proposes via "
                     "staging only). Advisory; no GO/WAIT or scoring change.",
+            "critique_summary": {k: _json_clean(v) for k, v in critique_summary.items()},
+            "critique_snapshot_at": critique_snapshot_at,
             "directive_count": len(directives),
             # surface the spec context (gap_type/sleeve/symbol) + created_by so the Watchpool can label
             # rotate-gap directives instead of showing them as generic ticker directives (operator 2026-06-19)
@@ -18910,6 +19022,7 @@ def _watch_directives(query=None):
                             "symbol": (r.get("spec") or {}).get("symbol"),
                             "gap_type": (r.get("spec") or {}).get("gap_type"),
                             "sleeve": (r.get("spec") or {}).get("sleeve"),
+                            "critique": {k: _json_clean(v) for k, v in _extract(r.get("spec") or {}).items()},
                             "hit_symbols": _hit_sym_map.get(r["id"], []),
                             "hit_count": _hit_cnt.get(r["id"], (0, 0))[0],
                             "staged_count": _hit_cnt.get(r["id"], (0, 0))[1]} for r in directives],
@@ -22527,6 +22640,8 @@ ROUTES = {
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
+    "/api/v2/hermes/research-critique": lambda q: _hermes_research_critique(q),
+    "/api/v2/hermes/maturity-dashboard": lambda: _hermes_maturity_dashboard(),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),

@@ -36,6 +36,14 @@ const scoreColor = (s?: number) => (s == null ? 'var(--text2)' : s >= 8 ? '#34d3
 const LANE_ICON: Record<string, string> = { grok: '𝕏', chatgpt: '◎', local: '🖥', claude: '✶' }
 const LANE_LABEL: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', local: 'Gemma', claude: 'Claude' }
 
+/** Map DB score to 0–10 (some rows store 0–1 fractions). */
+export function normalizeScore10(val: unknown): number {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return 0
+  if (n > 0 && n <= 1) return Math.round(n * 100) / 10
+  return n
+}
+
 /** DB rows store votes/lanes_used as JSON strings — normalize for the card. */
 export function normalizeEnsembleResult(raw: any): EnsembleResult | null {
   if (!raw) return null
@@ -43,17 +51,21 @@ export function normalizeEnsembleResult(raw: any): EnsembleResult | null {
     const votes = typeof raw.votes === 'string' ? JSON.parse(raw.votes) : raw.votes
     const lanes_used = typeof raw.lanes_used === 'string' ? JSON.parse(raw.lanes_used) : raw.lanes_used
     if (!raw.final_decision && !votes?.length) return null
+    const normVotes = (Array.isArray(votes) ? votes : []).map((v: EnsembleVote) => ({
+      ...v,
+      score: normalizeScore10(v.score),
+    }))
     return {
       final_decision: raw.final_decision === 'approve' ? 'approve' : 'block',
-      final_score: Number(raw.final_score) || 0,
+      final_score: normalizeScore10(raw.final_score),
       final_confidence: Number(raw.final_confidence) || 0,
       consensus_reached: !!raw.consensus_reached,
       lanes_used: Array.isArray(lanes_used) ? lanes_used : [],
-      votes: Array.isArray(votes) ? votes : [],
+      votes: normVotes,
       reasoning_summary: raw.reasoning_summary,
-      retirement_relevance: raw.retirement_relevance,
-      finance_actionability: raw.finance_actionability,
-      risk_alignment: raw.risk_alignment,
+      retirement_relevance: raw.retirement_relevance != null ? normalizeScore10(raw.retirement_relevance) : undefined,
+      finance_actionability: raw.finance_actionability != null ? normalizeScore10(raw.finance_actionability) : undefined,
+      risk_alignment: raw.risk_alignment != null ? normalizeScore10(raw.risk_alignment) : undefined,
     }
   } catch {
     return null

@@ -64,6 +64,11 @@ def search_catalyst(symbol, query_suffix="latest news"):
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read())
         results = data.get("results", [])[:MAX_SOURCES_PER_TICKER]
+        try:
+            from hermes_source_policy import filter_search_results
+            results = filter_search_results(results)
+        except Exception:
+            pass
         return [{
             "title": r.get("title", ""),
             "url": r.get("url", ""),

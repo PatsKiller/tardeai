@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishPosition } from '../lib/optionsNovice'
 import { WhatIfBox } from './OptionsNovicePanel'
+import OptionMoneynessBar from './risk/OptionMoneynessBar'
+import OptionsPnLProfile from './risk/OptionsPnLProfile'
 
 const BLUE = '#60a5fa'
 const GREEN = '#22c55e'
@@ -61,6 +64,9 @@ export type OptionPosition = {
   qty?: number
   account_key?: string
   iv_rank?: number
+  delta?: number
+  theta?: number
+  vega?: number
 }
 
 function fmtExpiry(iso?: string): string {
@@ -85,6 +91,7 @@ export default function OptionPositionCard({
   onAction: (action: string, id: string) => void
   onDrill?: () => void
 }) {
+  const [showRisk, setShowRisk] = useState(false)
   const sv = SEV(p.severity, p.still_working)
   const pnl = p.unrealized_pnl
   const pnlColor = pnl == null ? TEXT1 : pnl >= 0 ? GREEN : RED
@@ -141,15 +148,55 @@ export default function OptionPositionCard({
         </div>
       )}
 
+      <OptionMoneynessBar
+        moneyness={p.moneyness}
+        spot={Number(p.underlying_price)}
+        strike={Number(p.strike)}
+        popOtm={p.pop_otm_pct}
+        popItm={p.pop_itm_pct}
+        optionType={p.option_type || 'call'}
+        compact
+      />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
         <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip="Current underlying price." />
         <Metric label="Mark" value={p.mark != null ? fmt$(p.mark, 2) : '—'} tip="Current option mark from broker." />
         <Metric label="Entry" value={p.avg_entry != null ? fmt$(p.avg_entry, 2) : '—'} tip="Average entry premium per contract." />
         <Metric label="P/L" value={pnl != null ? fmt$(pnl) : '—'} color={pnlColor} tip="Unrealized P&L on this leg." />
+        <Metric label="Δ" value={p.delta != null ? p.delta.toFixed(2) : '—'} color={BLUE} tip="Delta from Schwab chain." />
         <Metric label="POP OTM" value={p.pop_otm_pct != null ? `${p.pop_otm_pct.toFixed(0)}%` : '—'} color={GREEN} tip="Chance option expires out of the money." />
         <Metric label="POP ITM" value={p.pop_itm_pct != null ? `${p.pop_itm_pct.toFixed(0)}%` : '—'} tip="Chance option finishes in the money." />
         <Metric label="Qty" value={p.qty ?? '—'} tip="Contracts held (negative = short)." />
         <Metric label="Edge" value={p.edge_score != null ? Math.round(p.edge_score) : '—'} tip="Monitor edge score from POP and IV." />
+      </div>
+
+      <div onClick={e => e.stopPropagation()} style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setShowRisk(v => !v)}
+          style={{
+            fontSize: 9, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+            border: `1px solid ${BLUE}55`, background: showRisk ? 'rgba(96,165,250,.14)' : 'transparent', color: BLUE,
+          }}
+        >
+          {showRisk ? '▾ Hide' : '▸ Show'} expiry P/L profile
+        </button>
+        {showRisk && p.strike && p.underlying_price && (
+          <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: '1px solid var(--border)' }}>
+            <OptionsPnLProfile
+              underlying={p.underlying}
+              side={p.side || p.strategy}
+              optionType={p.option_type || 'call'}
+              strike={Number(p.strike)}
+              spot={Number(p.underlying_price)}
+              qty={Math.abs(Number(p.qty) || 1)}
+              avgEntry={Number(p.avg_entry)}
+              mark={Number(p.mark)}
+              compact
+              hideTitle
+            />
+          </div>
+        )}
       </div>
 
       {novice && p.strategy && <WhatIfBox strategy={(p.strategy === 'short_put' ? 'cash_secured_put' : p.strategy === 'short_call' ? 'covered_call' : p.strategy.replace(/^long_/, 'long_'))} symbol={p.underlying} />}

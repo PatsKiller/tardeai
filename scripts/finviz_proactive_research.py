@@ -72,6 +72,11 @@ def run(max_n=150, lookback_hours=72, dry_run=False):
             if dry_run:
                 saved += 1; continue
             try:
+                from hermes_source_policy import should_ingest
+                ok, _why = should_ingest("finviz_news")
+                if not ok:
+                    skipped += 1
+                    continue
                 sc = score_content(title=head, text="", source="finviz_news", symbols=[sym])
                 tg = tag_content(text="", title=head)
                 pub = datetime.fromtimestamp(int(it["datetime"]), tz=timezone.utc) if it.get("datetime") else None

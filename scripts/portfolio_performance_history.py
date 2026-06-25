@@ -409,23 +409,38 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
                 "source": "live",
             }))
 
+    from portfolio_snapshot_sanity import (
+        account_market_days,
+        holding_phantom_corrections,
+        load_snapshots_from_dir,
+        portfolio_market_day,
+        snapshot_period_return_reliable,
+    )
+
+    _raw_snaps = load_snapshots_from_dir(snap_dir)
+    _outlier_dates = set(holding_phantom_corrections(_raw_snaps).keys())
+    if _outlier_dates:
+        print(f"  [perf] Reconciliation outlier dates (excluded from 1D baseline): {sorted(_outlier_dates)}")
+
     snapshots: Dict[str, float] = {}
     account_snapshots: Dict[str, Dict[str, float]] = {}  # {date: {acct_key: value}}
-    for f in snap_dir.glob("*.json"):
+    for d in _raw_snaps:
         try:
-            d = json.loads(f.read_text())
-            snapshots[d["date"]] = float(d["total_value"])
+            dt = d["date"]
+            if dt in _outlier_dates:
+                continue
+            snapshots[dt] = float(d["total_value"])
             if "accounts" in d:
                 acct_vals = {}
                 for ak, av in d["accounts"].items():
                     if isinstance(av, dict):
                         acct_vals[ak] = float(av.get("value", av.get("total_value", 0)) or 0)
                 if acct_vals:
-                    account_snapshots[d["date"]] = acct_vals
+                    account_snapshots[dt] = acct_vals
         except Exception:
             pass
 
-    # Guard: reject outlier snapshots (>25% jump from neighbors)
+    # Guard: reject outlier snapshots (>25% jump from median)
     _sorted_dates = sorted(snapshots.keys())
     _rejected = []
     if len(_sorted_dates) >= 3:
@@ -573,16 +588,36 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
                 }
             else:
                 acct_periods[period] = None
+
+        # 1D: prefer market day (sum of holding day_change) over snapshot delta
+        _acct_md = account_market_days(portfolio).get(acct_key)
+        if _acct_md:
+            _snap_1d = (acct_periods.get("1D") or {}) if isinstance(acct_periods.get("1D"), dict) else {}
+            _snap_pct = _snap_1d.get("change_pct")
+            if not snapshot_period_return_reliable(_snap_pct, "1D", market_day_pct=_acct_md.get("change_pct")):
+                _acct_md = {**_acct_md, "snapshot_1d_pct": _snap_pct, "snapshot_replaced": True}
+            acct_periods["1D"] = _acct_md
+
         accounts_out[acct_key] = {
             "label": label,
             "current_value": acct_cv,
             "periods": acct_periods,
         }
 
+    # Portfolio-level 1D: canonical market day (matches header TODAY)
+    _md = portfolio_market_day(portfolio)
+    if _md:
+        _snap_1d = results.get("1D") if isinstance(results.get("1D"), dict) else {}
+        _snap_pct = _snap_1d.get("change_pct")
+        if not snapshot_period_return_reliable(_snap_pct, "1D", market_day_pct=_md.get("change_pct")):
+            _md = {**_md, "snapshot_1d_pct": _snap_pct, "snapshot_1d_change": _snap_1d.get("change"), "snapshot_replaced": True}
+        results["1D"] = _md
+
     return {
         "periods":        results,
         "snapshot_count": snap_count,
         "snapshot_dates": snap_dates[-7:],
+        "snapshot_outliers": sorted(_outlier_dates),
         "building":       [p for p, d in results.items() if d.get("source") == "pending"],
         "reconstructed":  [p for p, d in results.items() if d.get("source") == "repriced"],
         "current_value":  current_val,

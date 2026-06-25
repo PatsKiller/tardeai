@@ -274,7 +274,10 @@ def process_queue(dry_run=False):
         QUEUE_FILE.write_text("[]")
         return
 
-    log.info(f"Processing {len(actionable)} escalation(s)")
+    tier3_max = max(1, int(os.getenv("ESCALATION_TIER3_MAX_BATCH", "5")))
+    tier2_max = max(1, int(os.getenv("ESCALATION_TIER2_MAX_BATCH", "3")))
+
+    log.info(f"Processing {len(actionable)} escalation(s) (tier3 cap {tier3_max})")
     allowlist = _load_allowlist()
     conn = _get_conn()
 
@@ -310,11 +313,15 @@ def process_queue(dry_run=False):
             _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
         return
 
-    # ── Tier 2: Local LLM diagnosis for remaining fixable items ──
+    # ── Tier 2: Local LLM diagnosis for remaining fixable items (capped per run) ──
     remaining_fixable = [i for i in remaining if i.get("fixable")]
     if remaining_fixable:
-        log.info(f"Tier 2: LLM diagnosis for {len(remaining_fixable)} remaining fixable item(s)")
-        for item in remaining_fixable:
+        tier2_batch = remaining_fixable[:tier2_max]
+        if len(remaining_fixable) > tier2_max:
+            log.info(f"Tier 2: diagnosing {tier2_max}/{len(remaining_fixable)} fixable item(s) this run")
+        else:
+            log.info(f"Tier 2: LLM diagnosis for {len(tier2_batch)} remaining fixable item(s)")
+        for item in tier2_batch:
             try:
                 _detail = item.get("detail", "")
                 _retry_output = item.get("retry_output", "")
@@ -350,10 +357,12 @@ def process_queue(dry_run=False):
             except Exception as e:
                 log.warning(f"  Local LLM diagnosis failed: {e}")
 
-    # ── Tier 3: Local LLM deep analysis (gemma4:31b → gemma3:12b → Claude CLI) ──
-    # Tier 3a: gemma4:31b via llama.cpp (best quality, slow, hybrid GPU/CPU)
-    # Tier 3b: gemma3:12b via Ollama (good quality, fast GPU)
-    # Tier 3c: Claude Code CLI (optional, requires API credits)
+    # ── Tier 3: Local LLM deep analysis (batched — defer overflow to next cron tick) ──
+    deferred = remaining[tier3_max:]
+    remaining = remaining[:tier3_max]
+    if deferred:
+        log.info(f"Tier 3: deferring {len(deferred)} escalation(s) to next handler run")
+
     problems = []
     for item in remaining:
         comp = item.get("component", "unknown")
@@ -396,14 +405,14 @@ def process_queue(dry_run=False):
         analysis_prompt += f"\n\nRecent system logs for context:\n{_context_logs[-3000:]}"
 
     if dry_run:
-        log.info(f"[DRY RUN] Tier 3: Would analyze with local LLM:\n{analysis_prompt[:500]}...")
+        log.info(f"[DRY RUN] Tier 3: Would analyze {len(remaining)} item(s) via local LLM:\n{analysis_prompt[:500]}...")
         if conn:
             for item in remaining:
                 _log_intervention(conn, item.get("component", "unknown"),
                                   json.dumps(item, default=str)[:500],
                                   status="deferred",
                                   session_log="dry_run — not invoked")
-        QUEUE_FILE.write_text("[]")
+        QUEUE_FILE.write_text(json.dumps(deferred, indent=2) if deferred else "[]")
         return
 
     log.info(f"Tier 3: Deep LLM analysis for {len(remaining)} item(s)...")
@@ -526,20 +535,27 @@ def process_queue(dry_run=False):
     if not success:
         try:
             import requests as _req
-            # Use whatever model is already loaded to avoid costly model swap
+            # Prefer smaller model for large batches; use loaded model when batch is tiny
             _ps_resp = _req.get("http://localhost:11434/api/ps", timeout=5).json()
             _loaded = [m["name"] for m in _ps_resp.get("models", []) if "embed" not in m["name"].lower()]
-            _model = _loaded[0] if _loaded else os.getenv("ESCALATION_LLM_MODEL", "gemma3:4b")
-            log.info(f"  Tier 3b: Attempting {_model} via Ollama (already loaded)...")
+            _small = os.getenv("ESCALATION_LLM_MODEL_SMALL", "gemma3:4b")
+            _default = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
+            if len(remaining) > 3:
+                _model = _small
+            else:
+                _model = _loaded[0] if _loaded else _default
+            _timeout = min(300, 90 + 20 * len(remaining))
+            _predict = 512 if len(remaining) > 3 else 1024
+            log.info(f"  Tier 3b: {_model} via Ollama · batch {len(remaining)} · timeout {_timeout}s")
             _resp = _req.post("http://localhost:11434/api/chat", json={
                 "model": _model,
                 "stream": False,
                 "messages": [
                     {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
-                    {"role": "user", "content": analysis_prompt},
+                    {"role": "user", "content": analysis_prompt[:12000]},
                 ],
-                "options": {"temperature": 0.2, "num_predict": 1024, "num_ctx": 4096},
-            }, timeout=180)
+                "options": {"temperature": 0.2, "num_predict": _predict, "num_ctx": 4096},
+            }, timeout=_timeout)
             if _resp.ok:
                 _analysis = _resp.json().get("message", {}).get("content", "").strip()
                 if _analysis and len(_analysis) > 50:
@@ -593,13 +609,17 @@ def process_queue(dry_run=False):
         conn.commit()
 
     resolved_count = len(resolved_by_retry)
+    defer_note = f"\nDeferred: {len(deferred)} queued for next run" if deferred else ""
     _notify(f"{'✅' if success else '❌'} Escalation analysis {'complete' if success else 'failed'}\n"
             f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
-            f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}\n"
+            f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}{defer_note}\n"
             f"Analysis: {session_log[:200]}")
 
-    QUEUE_FILE.write_text("[]")
-    log.info(f"Queue cleared. {resolved_count} retried + {len(remaining)} escalated → {final_status}")
+    QUEUE_FILE.write_text(json.dumps(deferred, indent=2) if deferred else "[]")
+    log.info(
+        f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, "
+        f"{len(deferred)} deferred"
+    )
 
 
 if __name__ == "__main__":

@@ -575,34 +575,62 @@ def json_response(handler, status: int, data: dict) -> None:
     handler.wfile.write(body)
 
 
+def _content_type_for_path(path: Path) -> str:
+    """MIME type for static downloads — PDF/DOCX must not default to text/html."""
+    import mimetypes
+    ext = path.suffix.lower()
+    explicit = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+        ".json": "application/json",
+        ".js": "application/javascript",
+        ".css": "text/css",
+        ".html": "text/html; charset=utf-8",
+        ".htm": "text/html; charset=utf-8",
+        ".yaml": "text/plain; charset=utf-8",
+        ".yml": "text/plain; charset=utf-8",
+        ".py": "text/plain; charset=utf-8",
+        ".txt": "text/plain; charset=utf-8",
+        ".csv": "text/csv; charset=utf-8",
+        ".log": "text/plain; charset=utf-8",
+    }
+    if ext in explicit:
+        return explicit[ext]
+    guessed, _ = mimetypes.guess_type(str(path))
+    return guessed or "application/octet-stream"
+
+
 def serve_file(handler, path: Path) -> None:
-    if not path.exists():
+    if not path.exists() or not path.is_file():
         handler.send_error(404, f"Not found: {path.name}")
         return
-    ctype = "text/html"
-    if path.suffix == ".json":
-        ctype = "application/json"
-    elif path.suffix in (".yaml", ".yml"):
-        ctype = "text/plain"
-    elif path.suffix == ".js":
-        ctype = "application/javascript"
-    elif path.suffix == ".css":
-        ctype = "text/css"
-    elif path.suffix == ".py":
-        ctype = "text/plain"
+    ctype = _content_type_for_path(path)
     data = path.read_bytes()
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(data)))
     handler.send_header("Access-Control-Allow-Origin", "*")
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        handler.send_header("Content-Disposition", f'inline; filename="{path.name}"')
+    elif ext in (".docx", ".doc", ".xlsx", ".pptx"):
+        handler.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
     # Cache: HTML pages no-cache, hashed assets cache forever
-    if path.suffix == ".html":
+    if ext == ".html":
         handler.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-    elif path.suffix in (".js", ".css") and "-" in path.stem:
+    elif ext in (".js", ".css") and "-" in path.stem:
         handler.send_header("Cache-Control", "public, max-age=31536000, immutable")
     else:
         handler.send_header("Cache-Control", "no-cache")
-    handler.send_header("Cache-Control", "no-cache")
     handler.end_headers()
     handler.wfile.write(data)
 
@@ -1191,6 +1219,34 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"Not found")
             return
 
+        # Command Center v3 — live boot script (always fresh; busts stale SPA bundles)
+        if path == "/v3/cc-boot.js":
+            _build_ver = "1.6"
+            _meta_path = PROJECT_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json"
+            if _meta_path.exists():
+                try:
+                    import json as _json
+                    _build_ver = str(_json.loads(_meta_path.read_text()).get("ui_version") or _build_ver)
+                except Exception:
+                    pass
+            _js = (
+                "(function(){fetch('/v3/build-meta.json',{cache:'no-store'})"
+                ".then(function(r){return r.json();})"
+                ".then(function(m){var v=m.ui_version||'%s',k='cc_v3_build';"
+                "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
+                "if(location.search.indexOf('_cc_reload')===-1){"
+                "var q=location.search?'&':'?';"
+                "location.replace(location.pathname+location.search+q+'_cc_reload='+Date.now());}}"
+                "}catch(e){}}).catch(function(){});})();" % _build_ver
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Content-Length", str(len(_js)))
+            self.end_headers()
+            self.wfile.write(_js)
+            return
+
         # Command Center v3 — serve built app at /v3/
         if path == "/v3" or path.startswith("/v3/"):
             _v3_dist = PROJECT_ROOT / "apps" / "command-center-v3" / "dist"
@@ -1213,6 +1269,28 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
                 _body = _v3_file.read_bytes()
+                if _v3_sub.endswith("index.html") or _v3_sub == "/index.html":
+                    _build_ver = "1.5"
+                    _meta_path = _v3_dist / "build-meta.json"
+                    if _meta_path.exists():
+                        try:
+                            import json as _json
+                            _build_ver = str(_json.loads(_meta_path.read_text()).get("ui_version") or _build_ver)
+                        except Exception:
+                            pass
+                    _inject = (
+                        "<script>(function(){var v='%s',k='cc_v3_build';"
+                        "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
+                        "if(location.search.indexOf('_cc_reload')===-1){"
+                        "var q=location.search?'&':'?';"
+                        "location.replace(location.pathname+location.search+q+'_cc_reload='+Date.now());}}"
+                        "}catch(e){}})();</script>" % _build_ver
+                    ).encode()
+                    _boot = b'<script src="/v3/cc-boot.js"></script>'
+                    if _boot not in _body and b"</head>" in _body:
+                        _body = _body.replace(b"</head>", _boot + b"</head>", 1)
+                    if b"</head>" in _body:
+                        _body = _body.replace(b"</head>", _inject + b"</head>", 1)
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
                 self.wfile.write(_body)

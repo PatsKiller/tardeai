@@ -24,6 +24,7 @@ import psycopg2
 import psycopg2.extras
 sys.path.insert(0, str(ROOT / "scripts"))
 import directive_promotion as dp  # the real evaluation engine (governor → classify Bucket 2/3 → watchpool)
+from research_critique_pipeline import is_removal_flagged, load_critique_snapshot
 
 
 def _db():
@@ -132,12 +133,45 @@ def pause_cold_trends(c, cur, dry, report):
             report["detail"].append({"directive": d["label"], "event": "auto_paused_cold", "cold_days": int(cold_days)})
 
 
+def _drain_orphan_staging(cur, dry, report):
+    """Staging rows for archived/paused directives never drain in the active loop — clear them."""
+    cur.execute("""SELECT count(*) AS n FROM hermes_directive_hits_staging h
+                   JOIN watch_directives d ON d.id=h.directive_id
+                   WHERE h.drained=false AND d.status <> 'active'""")
+    orphans = (cur.fetchone() or {}).get("n") or 0
+    if orphans and not dry:
+        cur.execute("""UPDATE hermes_directive_hits_staging h
+                       SET drained=true, drained_at=now()
+                       FROM watch_directives d
+                       WHERE h.directive_id=d.id AND h.drained=false AND d.status <> 'active'""")
+    report["orphan_staging_cleared"] = orphans
+
+
+def _max_hermes_drain():
+    for i, a in enumerate(sys.argv):
+        if a == "--max-hermes-drain" and i + 1 < len(sys.argv):
+            try:
+                return max(1, int(sys.argv[i + 1]))
+            except ValueError:
+                pass
+    return 50
+
+
 def main():
     dry = "--apply" not in sys.argv
+    max_hermes_drain = _max_hermes_drain()
     pills = _pills()
     c = _db(); cur = c.cursor()
+    critique_snap = load_critique_snapshot()
+    critique_index = critique_snap.get("index") or {}
+    stale_ids = set(critique_index.get("stale_directive_ids") or [])
+    report = {"directives": 0, "ta_hits": 0, "hermes_drained": 0,
+              "promoted": 0, "staged": 0, "skipped_stale": 0, "stale_staging_discarded": 0,
+              "critique_snapshot_at": critique_snap.get("updated_at"), "detail": []}
+    _drain_orphan_staging(cur, dry, report)
     cur.execute("SELECT * FROM watch_directives WHERE status='active'")
     directives = cur.fetchall()
+    report["directives"] = len(directives)
 
     def recent_hit(did, sym, by):
         cur.execute("""SELECT 1 FROM watch_directive_hits WHERE directive_id=%s AND symbol=%s AND surfaced_by=%s
@@ -154,10 +188,14 @@ def main():
         except Exception as e:
             return {"status": "ERROR", "error": str(e)[:140]}
 
-    report = {"directives": len(directives), "ta_hits": 0, "hermes_drained": 0,
-              "promoted": 0, "staged": 0, "detail": []}
     for d in directives:
         did = d["id"]
+        spec = d["spec"] if isinstance(d["spec"], dict) else json.loads(d["spec"] or "{}")
+        if did in stale_ids or is_removal_flagged(spec):
+            report["skipped_stale"] += 1
+            report["detail"].append({"directive": d["label"], "event": "skipped_stale_flag",
+                                     "id": did, "reasons": spec.get("stale_reasons")})
+            continue
         # ── Trade AI side: resolve the directive's own symbols ──
         if d["trade_ai_enabled"]:
             # ticker = operator named the exact symbol → auto (real eval; scalp firewall still applies).
@@ -180,10 +218,19 @@ def main():
                 report["ta_hits"] += 1
         # ── Hermes drain (firewall: app drains staging, then evaluates under app role) ──
         if d["hermes_enabled"]:
-            cur.execute("""SELECT * FROM hermes_directive_hits_staging WHERE drained=false AND directive_id=%s LIMIT 50""", (did,))
+            cur.execute("""SELECT * FROM hermes_directive_hits_staging WHERE drained=false AND directive_id=%s LIMIT %s""",
+                        (did, max_hermes_drain))
             for h in cur.fetchall():
                 sym = (h["symbol"] or "").upper()
                 if not sym:
+                    continue
+                hit_detail = h.get("source_detail") if isinstance(h.get("source_detail"), dict) else json.loads(h.get("source_detail") or "{}")
+                if is_removal_flagged(hit_detail):
+                    if not dry:
+                        cur.execute("UPDATE hermes_directive_hits_staging SET drained=true, drained_at=now() WHERE id=%s", (h["id"],))
+                    report["stale_staging_discarded"] += 1
+                    report["detail"].append({"directive": d["label"], "symbol": sym,
+                                             "event": "discarded_stale_staging"})
                     continue
                 if not dry:
                     res = evaluate(sym, did, f"hermes:{(h.get('thesis') or '')[:60]}", "hermes", None)

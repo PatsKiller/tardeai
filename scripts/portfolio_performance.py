@@ -79,6 +79,9 @@ def save_snapshot(portfolio: Dict, analysis: Dict, state_dir: Path) -> None:
                 "account_display": h.get("account_display"),
                 "market_value": h.get("market_value"),
                 "price": h.get("price"),
+                "shares": h.get("shares"),
+                "day_change": h.get("day_change"),
+                "day_change_pct": h.get("day_change_pct"),
                 "portfolio_pct": h.get("portfolio_pct"),
             }
             for h in holdings
@@ -86,24 +89,32 @@ def save_snapshot(portfolio: Dict, analysis: Dict, state_dir: Path) -> None:
         },
     }
 
-    # Guard: check previous snapshot for >25% drift before writing
-    _snap_ok = True
-    _total_val = snapshot.get("total_value", 0) or 0
+    # Guard: total drift + per-holding reconciliation jumps
+    _prev_snap = None
     _prev_files = sorted(snap_dir.glob("*.json"), key=lambda f: f.name, reverse=True)
-    for _pf in _prev_files[:3]:
+    for _pf in _prev_files[:5]:
         if _pf.name == snap_path.name:
             continue
         try:
-            _pd = json.loads(_pf.read_text())
-            _pv = float(_pd.get("total_value", 0))
+            _prev_snap = json.load(open(_pf))
+            break
+        except Exception:
+            continue
+    try:
+        from portfolio_snapshot_sanity import snapshot_total_write_ok
+        _snap_ok, _reason = snapshot_total_write_ok(snapshot, _prev_snap)
+        if not _snap_ok:
+            print(f"  [snapshot] ⛔ REJECTED: {_reason}")
+    except ImportError:
+        _snap_ok = True
+        _total_val = snapshot.get("total_value", 0) or 0
+        if _prev_snap:
+            _pv = float(_prev_snap.get("total_value", 0))
             if _pv > 0 and _total_val > 0:
                 _drift = abs(_total_val - _pv) / _pv * 100
                 if _drift > 25:
                     print(f"  [snapshot] ⛔ REJECTED: ${_total_val:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)")
                     _snap_ok = False
-                break
-        except Exception:
-            continue
 
     if _snap_ok:
         with open(snap_path, "w") as f:

@@ -309,34 +309,57 @@ def main():
     parser = argparse.ArgumentParser(description="Weekly DOCX Report Generator")
     parser.add_argument("--dry-run", action="store_true", help="Print data without generating docx")
     parser.add_argument("--output", help="Custom output path")
+    parser.add_argument("--legacy", action="store_true", help="Use legacy table-based DOCX layout")
+    parser.add_argument("--format", default="docx", choices=("docx", "pdf", "all"))
     args = parser.parse_args()
 
-    conn = _get_conn()
-    try:
-        data = gather_weekly_data(conn)
+    from analyst_report_builder import build_weekly_review, save_report_json
+    from report_export import export_report
 
-        if args.dry_run:
-            print(json.dumps(data, indent=2, default=str))
-            return
+    report = build_weekly_review()
+    today = date.today()
+    stem = f"weekly_review_{today.strftime('%Y%m%d')}"
 
-        # Determine output path
-        today = date.today()
-        week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
-        week_dir.mkdir(parents=True, exist_ok=True)
-        output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
+    if args.dry_run:
+        print(json.dumps(report, indent=2, default=str))
+        return
 
-        path = generate_docx(data, output)
-        print(f"Weekly report generated: {path} ({path.stat().st_size / 1024:.1f} KB)")
+    week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
+    week_dir.mkdir(parents=True, exist_ok=True)
+    analyst_dir = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+    analyst_dir.mkdir(parents=True, exist_ok=True)
 
-        # Also send Telegram notification
+    save_report_json(report, stem=stem)
+
+    if args.legacy:
+        conn = _get_conn()
         try:
-            from telegram_alert import send_telegram
-            send_telegram(f"*Weekly Report Generated*\n{path.name} ({path.stat().st_size / 1024:.0f} KB)\nView at /v2/reports")
-        except Exception:
-            pass
+            data = gather_weekly_data(conn)
+            output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
+            path = generate_docx(data, output)
+            print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
+        finally:
+            conn.close()
 
-    finally:
-        conn.close()
+    formats = ["docx", "pdf"] if args.format == "all" else [args.format]
+    for fmt in formats:
+        result = export_report(report, fmt, output_stem=stem)
+        if result.get("ok"):
+            dest = week_dir / result["filename"]
+            try:
+                import shutil
+                shutil.copy2(result["path"], dest)
+            except Exception:
+                dest = Path(result["path"])
+            print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
+        else:
+            print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
+
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

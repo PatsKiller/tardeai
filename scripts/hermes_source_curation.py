@@ -182,9 +182,22 @@ def main():
         upsert_source(cur, c["type"], c["name"], 50 if active else 0, active, c["specialty"], note)
     log.info("connector types registered: %d", len(CONNECTOR_TYPES))
 
+    try:
+        import hermes_source_registry as hsr
+        removed = hsr.cleanup_orphan_rss_rows(cur)
+        if removed:
+            log.info("removed %d orphan RSS stub row(s)", removed)
+    except Exception as e:
+        log.warning("RSS stub cleanup skipped: %s", e)
+
     cur.execute("SELECT COUNT(*) FILTER (WHERE active), COUNT(*) FROM research_sources")
     a, t = cur.fetchone()
     log.info("research_sources: %d active / %d total", a, t)
+    try:
+        import hermes_source_policy as hsp
+        hsp.invalidate_cache()
+    except Exception:
+        pass
     conn.close()
 
 

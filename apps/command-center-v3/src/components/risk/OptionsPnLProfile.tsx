@@ -12,11 +12,12 @@ type Props = {
   avgEntry?: number
   mark?: number
   compact?: boolean
+  hideTitle?: boolean
 }
 
 export default function OptionsPnLProfile({
   underlying, side = 'short', optionType = 'call', strike = 0, spot = 0,
-  qty = 1, avgEntry, mark, compact,
+  qty = 1, avgEntry, mark, compact, hideTitle,
 }: Props) {
   const data = useMemo(() => {
     if (!strike || !spot) return []
@@ -32,9 +33,11 @@ export default function OptionsPnLProfile({
   const h = compact ? 140 : 180
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>
-        Risk profile · {underlying} {side} {optionType} @ ${strike}
-      </div>
+      {!hideTitle && (
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>
+          Risk profile · {underlying} {side} {optionType} @ ${strike}
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={h}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
           <XAxis
