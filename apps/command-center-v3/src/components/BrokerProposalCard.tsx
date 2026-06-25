@@ -250,11 +250,20 @@ export default function BrokerProposalCard({
             {tickerCtx.strategyTypeLabel}
           </span>
         )}
-        {tickerCtx.signalGrade && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: BLUE }}>
-            {tickerCtx.signalGrade} grade
-          </span>
-        )}
+        {tickerCtx.signalGrade && (() => {
+          // Stoplight grade pill — bold + green/amber/red so quality reads at a glance.
+          const g = String(tickerCtx.signalGrade).toUpperCase()
+          const gc = g.startsWith('A') ? GREEN : g.startsWith('B') ? TEAL
+            : g.startsWith('C') ? AMBER : RED
+          return (
+            <span style={{
+              fontSize: 14, fontWeight: 900, padding: '3px 10px', borderRadius: 6,
+              background: `${gc}22`, color: gc, border: `1.5px solid ${gc}`, letterSpacing: '.3px',
+            }}>
+              {g} grade
+            </span>
+          )
+        })()}
         <ProposalSourceBadges proposal={p} size="md" />
         <span style={{
           fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5,

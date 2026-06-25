@@ -32,6 +32,24 @@ function criticColor(verdict: string | null | undefined) {
   return TEXT1
 }
 
+const TEAL = '#2dd4bf'
+function gradeColor(g: string | null | undefined) {
+  const v = String(g || '').toUpperCase()
+  if (v.includes('INCOMPLETE') || v.includes('FAIL') || v.startsWith('D') || v.startsWith('F')) return RED
+  if (v.startsWith('A')) return GREEN
+  if (v.startsWith('B')) return TEAL
+  if (v.startsWith('C')) return AMBER
+  return MUTED
+}
+function GradePill({ grade, prefix }: { grade: string; prefix?: string }) {
+  const c = gradeColor(grade)
+  return (
+    <span style={{ fontSize: 12, fontWeight: 900, padding: '1px 7px', borderRadius: 5, background: `${c}22`, color: c, border: `1px solid ${c}`, letterSpacing: '.3px' }}>
+      {prefix}{grade}
+    </span>
+  )
+}
+
 const VOTE_BUCKETS = [
   { key: 'strong_buy', label: 'Strong buy', color: '#16a34a' },
   { key: 'buy', label: 'Buy', color: '#4ade80' },
@@ -346,7 +364,7 @@ export default function BrokerIntelPanel({
           <div style={{ ...sec, color: GREEN }}>Why purchase</div>
           {why.strategy_purpose && !suppressStrategyPurpose && <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Strategy: {why.strategy_purpose}</div>}
           <div style={body}>{why.headline || why.approve_case || why.summary}</div>
-          {why.rr != null && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Plan R:R {why.rr}:1{why.signal_grade ? ` · ${why.signal_grade} grade` : ''}</div>}
+          {why.rr != null && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>Plan R:R {why.rr}:1{why.signal_grade ? <GradePill grade={`${why.signal_grade} grade`} /> : null}</div>}
           {why.invalidation && <div style={{ fontSize: 11, color: AMBER, marginTop: 4 }}>Invalidate if: {why.invalidation}</div>}
           {why.reject_case && <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>Bear case: {String(why.reject_case).slice(0, 200)}</div>}
         </div>
@@ -372,7 +390,7 @@ export default function BrokerIntelPanel({
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
             <div style={sec}>Technicals</div>
             <div style={{ ...body, fontFamily: 'monospace', fontSize: 10 }}>{tech.summary || '—'}</div>
-            {tech.technical_grade && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>Grade: {tech.technical_grade}{tech.confluence_tier ? ` · ${tech.confluence_tier}` : ''}</div>}
+            {tech.technical_grade && <div style={{ fontSize: 11, color: MUTED, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>Grade: <GradePill grade={String(tech.technical_grade)} />{tech.confluence_tier ? ` · ${tech.confluence_tier}` : ''}</div>}
           </div>
         )}
       </div>
