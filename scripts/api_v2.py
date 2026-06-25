@@ -10808,9 +10808,13 @@ def _local_llm_status_api():
             WHERE status='closed' AND (post_trade_analyzed IS NOT TRUE)
         """, fetch="one") or {}
 
+        # "awaiting analysis" = non-terminal proposals that still lack an LLM analysis row.
+        # (Was counting EXPIRED/REJECTED — terminal proposals that will NEVER be analyzed — inflating
+        #  the backlog to a scary stale 530 and making the lane look stalled when it is idle-correct.)
         awaiting_proposals = _db_query("""
-            SELECT COUNT(*) as cnt FROM paper_trade_proposals
-            WHERE status IN ('EXPIRED', 'REJECTED')
+            SELECT COUNT(*) as cnt FROM paper_trade_proposals p
+            WHERE upper(p.status) NOT IN ('EXPIRED', 'REJECTED', 'RISK_BLOCKED', 'CANCELLED', 'FILLED', 'CLOSED')
+              AND NOT EXISTS (SELECT 1 FROM paper_proposal_analysis a WHERE a.proposal_id = p.id)
         """, fetch="one") or {}
 
         result = {

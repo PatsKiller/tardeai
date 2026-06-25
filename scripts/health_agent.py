@@ -811,7 +811,30 @@ def _annotate(f: dict, rmap: dict):
 
 
 CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
-              "risk_protection", "retirement_planning"]
+              "risk_protection", "retirement_planning", "pipeline_freshness"]
+
+def collect_pipeline_freshness() -> list[dict]:
+    """OUTPUT-freshness of key data pipelines — the blind spot that let ticker_snapshot_daily,
+    setup_advisory, agent_performance etc. rot for weeks while their crons logged false success.
+    The health agent aggregates; this is the missing prober. Stale findings are tagged kind='code'
+    so a feeder that's stale despite its cron firing gets routed to coder_dispatch for a real fix."""
+    out: list[dict] = []
+    try:
+        import pipeline_freshness_monitor as pfm
+        stale, missing, _ok = pfm.check()
+        for s in stale:
+            sev = "critical" if s["age_days"] > (s["threshold_days"] * 4) else "warning"
+            out.append(_f("pipeline_freshness", f"stale_{s['name']}", sev,
+                          f"{s['name']} output {s['age_days']}d stale (>{s['threshold_days']}d) — shown on {s['surfaced']}",
+                          kind="code", age_days=s["age_days"], surfaced=s["surfaced"]))
+        for m in missing:
+            out.append(_f("pipeline_freshness", f"missing_{m['name']}", "warning",
+                          f"{m['name']} produces no output ({m['reason']}) — {m['surfaced']}",
+                          kind="code", surfaced=m["surfaced"]))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "monitor_error", "info", f"freshness monitor failed: {str(e)[:80]}"))
+    return out
+
 
 COLLECTORS = [
     collect_data_quality,
@@ -822,6 +845,7 @@ COLLECTORS = [
     collect_strategy_output,
     collect_proposal_maturity,
     collect_log_errors,
+    collect_pipeline_freshness,
 ]
 
 
