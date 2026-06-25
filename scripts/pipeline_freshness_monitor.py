@@ -29,7 +29,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 #   file  spec: relpath
 REGISTRY = [
     ("ticker_snapshot_daily", "table", ("ticker_snapshot_daily", "snapshot_date", None), 2, "Strategy/Watchlist setup-advisory RSI bands"),
-    ("setup_advisory",        "table", ("candidate_setup_advisory", "snapshot_date", None), 3, "Strategy → Incubator, Watchlist advisory pills"),
+    # setup_advisory: watch updated_at (when the advisory was last rebuilt by setup_quality_prior.py),
+    #   NOT snapshot_date — that's the inherited RSI market-data date and lags for thinly-snapshotted
+    #   candidate symbols, producing a false stale alert. Upstream RSI freshness is covered by the
+    #   ticker_snapshot_daily entry above.
+    ("setup_advisory",        "table", ("candidate_setup_advisory", "updated_at", None), 3, "Strategy → Incubator, Watchlist advisory pills"),
     # agent_performance: RETIRED — the decision_outcomes price-capture chain decayed (Apr) and the system
     #   is superseded by agent-calibration + rec-intel return-by-origin. Not monitored. (Operator decision
     #   2026-06-24; the older update_agent_performance cron is a harmless no-op left in place.)
