@@ -21428,7 +21428,7 @@ def _hermes_researcher_matrix(query=None):
             "status": deep_status, "gemma4": "deferred — not installed"},
         "external_lanes": [
             {"lane": "Claude (Anthropic)", "role": "high-stakes: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": lane_status("anthropic"), "advisory_only": True},
-            {"lane": "ChatGPT (Codex)", "role": "second opinion, code/design review, synthesis", "status": lane_status("openai-codex") + " (interactive-only on 0.16.0)", "advisory_only": True},
+            {"lane": "ChatGPT (Codex)", "role": "second opinion, code/design review, synthesis", "status": lane_status("openai-codex"), "advisory_only": True},
             {"lane": "Grok (xAI)", "role": "market/social/news narrative, sentiment/catalyst (source-scored)", "status": lane_status("xai-oauth"), "advisory_only": True},
             {"lane": "Consensus Panel", "role": "run when internal vs TradeAI disagree sharply + high importance", "status": "designed", "advisory_only": True},
         ],
