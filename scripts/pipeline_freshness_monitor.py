@@ -33,7 +33,8 @@ REGISTRY = [
     ("agent_performance",     "table", ("agent_performance_history", "period_end", None), 4, "Agents → Performance"),
     ("paper_trade_stats",     "file",  "data/paper_trading/paper_trade_statistics_latest.json", 1, "Strategy → Analytics, Home win-rate"),
     ("hermes_canonical",      "file",  "data/runtime/hermes_canonical_status_latest.json", 1, "Hermes/System lane statuses"),
-    ("broker_shadow_recon",   "table", ("schwab_shadow_recon_runs", "started_at", None), 3, "Manual ToS Desk reconciliation"),
+    # broker_shadow_recon: RETIRED — superseded by the Manual ToS Desk live recon; intentionally not
+    #   monitored (was a legacy schwab_shadow_recon_runs feed, last run 2026-06-12).
     ("morning_synthesis",     "table", ("llm_intelligence_cache", "generated_at", "section='morning_synthesis'"), 2, "Home → AI Briefing"),
     ("rotation_summary",      "file",  "data/runtime/rotation_summary_cache.json", 1, "Rotation Intelligence"),
 ]
