@@ -341,7 +341,19 @@ export default function BrokerProposalCard({
             {tf && chip('Hold', tf)}
             {chip('Catalyst', catOk ? 'verified' : `unverified${cconf != null ? ` ${Math.round(cconf)}%` : ''}`, catOk ? GREEN : AMBER)}
             {(planRR != null || liveRR != null) && chip('R:R', `${planRR ?? '—'} plan${liveRR != null ? ` → ${liveRR} live` : ''}`, BLUE)}
-            {chip('Backtest', 'not run', MUTED)}
+            {(() => {
+              const bt: any = p.backtest
+              if (!bt) return chip('Backtest', 'not run', MUTED)
+              const q = String(bt.quality || '').toUpperCase()
+              const qc = (q.includes('STRONG') || q.includes('GOOD')) ? GREEN
+                : (q.includes('INSUFFICIENT') || q.includes('THIN') || q.includes('LOW')) ? AMBER
+                : (q.includes('WEAK') || q.includes('POOR') || q.includes('FAIL')) ? RED : TEXT0
+              const parts = [bt.quality || '—']
+              if (bt.samples != null) parts.push(`${bt.samples} samples`)
+              if (bt.avg_r != null) parts.push(`${bt.avg_r}R`)
+              if (bt.win_rate != null) parts.push(`${Math.round(Number(bt.win_rate) * 100)}% win`)
+              return chip('Backtest', parts.join(' · '), qc)
+            })()}
             {chip('Journals', isPaper ? 'Alpaca (paper)' : (p.account || '—'), TEAL)}
           </div>
         )
