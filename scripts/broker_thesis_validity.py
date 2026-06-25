@@ -116,6 +116,7 @@ def compute_thesis_validity(
     strategy_id: str = "",
     min_rr: float = MIN_RR_DEFAULT,
     drift_threshold_pct: float | None = None,
+    stop_proximity_warn_pct: float = 2.5,
 ) -> dict:
     """Return visual + numeric thesis validity band for a long proposal."""
     entry = float(entry or 0)
@@ -157,6 +158,12 @@ def compute_thesis_validity(
             current_rr = round(current_rr, 2)
 
     span = valid_high - valid_low
+    # Room to each band edge — computed up-front so the zone logic can use proximity-to-stop.
+    room_up_pct = round((valid_high - (live or entry)) / (live or entry) * 100, 2) if (live or entry) > 0 else None
+    room_down_pct = round(((live or entry) - valid_low) / (live or entry) * 100, 2) if (live or entry) > 0 else None
+    # Actual distance to the STOP (not the band floor — they differ when entry_low > stop). This is the
+    # real stop-out risk + the denominator that inflates a near-stop R:R.
+    stop_proximity_pct = round((live - stop) / live * 100, 2) if (live and stop and live > stop) else None
     zone_status = "comfortable"
     zone_color = "green"
     reasons: list[str] = []
@@ -187,13 +194,23 @@ def compute_thesis_validity(
                 zone_status = "approaching"
                 zone_color = "yellow"
                 reasons.append(f"R:R tightening ({current_rr:.1f}:1)")
+            # Near-stop danger: valid_low is usually the stop itself, so a price hovering just above it
+            # is HIGH stop-out risk even though it's technically "in band" — and its live R:R is INFLATED
+            # by the tiny risk distance (WEN $7.45 vs stop $7.37 → a "14:1" that is really $0.08 of risk,
+            # not a quality setup). Flag it so the card stops reading "comfortable / 14:1" on a precarious
+            # position. Critical: a high R:R from a near-stop price is a red flag, not a green light.
+            if stop_proximity_pct is not None and stop_proximity_pct < stop_proximity_warn_pct:
+                zone_status = "approaching"
+                zone_color = "yellow"
+                if current_rr is not None and current_rr >= min_rr * 2:
+                    reasons.append(f"Price only {stop_proximity_pct:.1f}% above stop — high stop-out risk; "
+                                   f"live R:R {current_rr:.0f}:1 is inflated by the small risk distance")
+                else:
+                    reasons.append(f"Price only {stop_proximity_pct:.1f}% above stop — high stop-out risk")
     else:
         zone_status = "unknown"
         zone_color = "gray"
         reasons.append("No live price — refresh to assess thesis band")
-
-    room_up_pct = round((valid_high - (live or entry)) / (live or entry) * 100, 2) if (live or entry) > 0 else None
-    room_down_pct = round(((live or entry) - valid_low) / (live or entry) * 100, 2) if (live or entry) > 0 else None
 
     label = (
         f"Thesis valid ${valid_low:.2f} – ${valid_high:.2f} "
@@ -216,6 +233,7 @@ def compute_thesis_validity(
         "planned_rr": round((target - entry) / (entry - stop), 2) if entry > stop else None,
         "room_up_pct": room_up_pct,
         "room_down_pct": room_down_pct,
+        "stop_proximity_pct": stop_proximity_pct,
         "rr_cap_price": rr_cap_r,
         "entry_band_low": entry_low,
         "entry_band_high": entry_high,
