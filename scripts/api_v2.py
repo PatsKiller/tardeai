@@ -7532,8 +7532,10 @@ def _forecast():
         "retirement_age": ret.get("current_age"),
     }
 
-def trade_ai():
-    """Trade AI workspace — latest run data from run_summary + watchlist CSV."""
+def _compute_trade_ai():
+    """Trade AI workspace — latest run data from run_summary + watchlist CSV. HEAVY (run JSON glob +
+    a DISTINCT-ON scan of trade_ai_scans, hundreds of rows). Never call from the request path — go
+    through trade_ai(), which serves the disk cache that warm_caches.py refreshes."""
     import csv, io, glob
 
     # Find all runs for today + yesterday
@@ -7856,6 +7858,47 @@ def trade_ai():
         "sectors": dict(sorted(sectors.items(), key=lambda x: -x[1])),
         "run_history": run_history,
     }
+
+
+_TRADE_AI_CACHE = {"ts": 0.0, "data": None}
+
+
+def trade_ai(force=False):
+    """GET /api/v2/trade-ai — served from a disk cache (data/runtime/trade_ai_cache.json) refreshed by
+    warm_caches.py. The compute is heavy (run JSONs + a hundreds-row trade_ai_scans scan); running it
+    in the single-threaded request path let one cold/loaded request hang long enough for the health
+    watchdog to kill+restart-loop the server (the 2026-06-25 "Reconnecting" outage). Stale is served
+    (flagged) rather than blocking. force=True (warm cron) recomputes + rewrites the cache."""
+    import time as _t, json as _j, datetime as _dt
+    _disk = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
+    _now = _t.time()
+    if not force:
+        # 1) in-memory fresh (<2m)
+        if _TRADE_AI_CACHE["data"] and (_now - _TRADE_AI_CACHE["ts"] < 120):
+            return _TRADE_AI_CACHE["data"]
+        # 2) disk cache — serve fresh OR stale without a heavy recompute in the request path
+        try:
+            if _disk.exists():
+                _d = _j.loads(_disk.read_text())
+                _age = _now - (_d.get("_cached_ts") or 0)
+                _d["cached_at"] = _d.get("_cached_at")
+                _d["cache_age_sec"] = round(_age)
+                _d["stale"] = _age > 600
+                _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
+                return _d
+        except Exception:
+            pass
+        # 3) no disk cache yet (first ever) — fall through to compute once to bootstrap
+    data = _compute_trade_ai()
+    try:
+        data["_cached_ts"] = _now
+        data["_cached_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        _disk.parent.mkdir(parents=True, exist_ok=True)
+        _disk.write_text(_j.dumps(data, default=str))
+    except Exception:
+        pass
+    _TRADE_AI_CACHE.update(ts=_now, data=data)
+    return data
 
 
 # ── Journal Review Layer ──────────────────────────────────────────────────
