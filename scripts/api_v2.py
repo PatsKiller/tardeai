@@ -13623,7 +13623,14 @@ def _broker_proposals(query=None):
             "(lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'schwab%%'"
             " OR lower(COALESCE(intended_broker, target_account, proposed_account, '')) LIKE 'fidelity%%')"
         )
-        where = ["status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')"]
+        # status view: default = active queue; status=EXPIRED → the Expired tab (chronological, newest
+        # first, paginated). Account-agnostic — any account's expired proposals.
+        status_view = str(_broker_qp(query, "status", "") or "").upper().strip()
+        if status_view == "EXPIRED":
+            where = ["status = 'EXPIRED'"]
+            sort = "created"   # chronological, newest first
+        else:
+            where = ["status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')"]
         if kind_f == "broker":
             where.append(broker_routed)
         elif kind_f == "proposal":
