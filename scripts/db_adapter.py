@@ -528,6 +528,30 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
     if not USE_DB or not enrichment_cache:
         return
     from datetime import datetime as _dt
+    import math as _math
+
+    def _fit(v, max_abs):
+        """Coerce to float that FITS the numeric column; NaN/inf/garbage-overflow → None.
+        Prevents one extreme Finviz value (e.g. ELOX beta -148303, ytd +1.28M) from failing the
+        whole batch INSERT — the bug that silently killed this feeder on 2026-06-12."""
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        if not _math.isfinite(f) or abs(f) >= max_abs:
+            return None
+        return f
+
+    def _clean_json(o):
+        """Recursively replace non-finite floats with None so the jsonb column never rejects the payload."""
+        if isinstance(o, float):
+            return o if _math.isfinite(o) else None
+        if isinstance(o, dict):
+            return {k: _clean_json(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [_clean_json(v) for v in o]
+        return o
+
     rows = []
     for sym, data in enrichment_cache.items():
         if not isinstance(data, dict) or not sym or sym.startswith("_"):
@@ -555,12 +579,12 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
         }
         rows.append((
             snapshot_date, sym, "finviz",
-            data.get("rsi"), data.get("beta"),
-            data.get("sma20_pct"), data.get("sma50_pct"), data.get("sma200_pct"),
-            data.get("perf_week_pct"), data.get("perf_month_pct"), data.get("perf_ytd_pct"),
-            data.get("week52_high_pct"), data.get("week52_low_pct"),
+            _fit(data.get("rsi"), 1000), _fit(data.get("beta"), 1000),       # rsi numeric(5,2), beta numeric(6,3)
+            _fit(data.get("sma20_pct"), 10000), _fit(data.get("sma50_pct"), 10000), _fit(data.get("sma200_pct"), 10000),
+            _fit(data.get("perf_week_pct"), 10000), _fit(data.get("perf_month_pct"), 10000), _fit(data.get("perf_ytd_pct"), 10000),
+            _fit(data.get("week52_high_pct"), 10000), _fit(data.get("week52_low_pct"), 10000),   # all _pct numeric(6,2)
             str(data.get("recom", ""))[:20] if data.get("recom") else None,
-            json.dumps(_full_data, default=str),
+            json.dumps(_clean_json(_full_data), default=str),
         ))
     if not rows:
         return
