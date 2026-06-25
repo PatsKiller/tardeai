@@ -478,12 +478,23 @@ def collect_intelligence_quality() -> list[dict]:
                 out.append(_f("intelligence_quality", "hermes_rag_gap", "warning",
                               f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
                               promoted=promoted, embedded=embedded, coverage_pct=round(cov * 100, 1)))
+        # Gate-aware: the RAG embedding worker is operator-gated (curator approved 2026-06-02, RAG write
+        # still gated → hermes_embedding_worker defaults dry-run + has no scheduled --apply run). When
+        # gated, a pending backlog is BY DESIGN, not a quality defect — surface as info, don't penalize.
+        rag_gated = True
+        try:
+            import subprocess as _sp
+            _cr = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout
+            rag_gated = not any("hermes_embedding_worker" in ln and "--apply" in ln for ln in _cr.splitlines())
+        except Exception:
+            rag_gated = True
+        _gate_note = " (RAG worker gated by design — not a defect)" if rag_gated else " in queue"
         if pending >= 2000:
-            out.append(_f("intelligence_quality", "hermes_embed_backlog", "critical",
-                          f"{pending} Hermes embeddings pending in queue", count=pending))
+            out.append(_f("intelligence_quality", "hermes_embed_backlog", "info" if rag_gated else "critical",
+                          f"{pending} Hermes embeddings pending{_gate_note}", count=pending, rag_gated=rag_gated))
         elif pending >= 200:
-            out.append(_f("intelligence_quality", "hermes_embed_backlog", "warning",
-                          f"{pending} Hermes embeddings pending in queue", count=pending))
+            out.append(_f("intelligence_quality", "hermes_embed_backlog", "info" if rag_gated else "warning",
+                          f"{pending} Hermes embeddings pending{_gate_note}", count=pending, rag_gated=rag_gated))
         if failed >= 10:
             out.append(_f("intelligence_quality", "hermes_embed_failures", "warning",
                           f"{failed} Hermes embedding jobs failed", count=failed))
