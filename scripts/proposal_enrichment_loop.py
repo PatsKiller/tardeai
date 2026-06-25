@@ -151,6 +151,36 @@ def ensure_strategy_identity(conn, proposal):
         return False
 
 
+# ── Company profile ────────────────────────────────────────────────────
+
+def ensure_symbol_profile(conn, proposal):
+    """Build the company profile (symbol_profiles.description_1s) for a proposal symbol that lacks one,
+    so a LIVE proposal never shows 'No company profile' (the TECH gap: the symbol wasn't in the 06:45
+    build_symbol_profiles --watchlist-top 300 run, so it had no row). One-shot per new symbol — skipped
+    once a profile exists."""
+    sym = (proposal.get('symbol') or '').upper()
+    if not sym:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM symbol_profiles WHERE symbol=%s AND COALESCE(description_1s,'') <> ''", (sym,))
+        if cur.fetchone():
+            return False  # already profiled
+    except Exception:
+        return False
+    try:
+        import subprocess as _sp, sys as _sys
+        from pathlib import Path as _P
+        root = _P(__file__).resolve().parent.parent
+        _sp.run([_sys.executable, str(root / 'scripts' / 'build_symbol_profiles.py'), '--symbols', sym, '--force'],
+                cwd=str(root), capture_output=True, text=True, timeout=120)
+        log.info(f"  [profile] built missing company profile for {sym}")
+        return True
+    except Exception as e:
+        log.warning(f"  [profile] failed building profile for {sym}: {str(e)[:120]}")
+        return False
+
+
 # ── Technical snapshot ─────────────────────────────────────────────────
 
 def refresh_technical(conn, proposal):
@@ -543,6 +573,11 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
     # 1. Strategy identity
     if ensure_strategy_identity(conn, proposal):
         actions.append('strategy_identity')
+
+    # 1a. Company profile — build it if this symbol has none, so the card never shows
+    # "No company profile" on a live proposal (the TECH gap).
+    if not dry_run and ensure_symbol_profile(conn, proposal):
+        actions.append('company_profile')
 
     # 1b. Sector/industry backfill from latest scan
     if not dry_run and not proposal.get('sector'):

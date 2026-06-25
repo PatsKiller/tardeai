@@ -372,6 +372,28 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
     if tech_parts and not why_parts:
         why_parts.append(f"Technical setup: {' · '.join(tech_parts)}. Strategy {row.get('strategy_id')}.")
 
+    # Honesty guard: a STORED approve_case/summary can claim a 'verified catalyst' that the LIVE
+    # catalyst data contradicts (TECH: approve_case read 'Verified catalyst with clear trade plan' while
+    # live catalyst confidence was 0% / unverified). Prepend the real status so the rationale can't
+    # overstate the catalyst — a high R:R + 'verified' claim on an unverified setup is exactly the kind
+    # of misleading green light to avoid.
+    import re as _re
+    _cconf = None
+    try:
+        _cc = row.get("catalyst_confidence")
+        _cconf = float(_cc) if _cc is not None else None
+        if _cconf is not None and _cconf > 1:   # some rows store 0-100
+            _cconf = _cconf / 100.0
+    except Exception:
+        _cconf = None
+    _cat_unverified = bool(catalyst) and (not catalyst_verified or (_cconf is not None and _cconf < 0.30))
+    if (_cat_unverified and why_parts
+            and _re.search(r'verified catalyst', why_parts[0], _re.I)
+            and not _re.search(r'unverified', why_parts[0], _re.I)):
+        _pct = f"{int(round((_cconf or 0) * 100))}%" if _cconf is not None else "unconfirmed"
+        why_parts.insert(0, f"⚠ Catalyst NOT verified (confidence {_pct}) — rationale below may overstate it; "
+                            f"confirm a real catalyst before any size.")
+
     import broker_strategy_resolver as bsr
     resolved = bsr.resolve_executable_strategy(sym, str(row.get("strategy_id") or ""))
     strategy_meta: dict = {}
