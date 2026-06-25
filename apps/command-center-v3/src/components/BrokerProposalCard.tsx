@@ -430,7 +430,7 @@ export default function BrokerProposalCard({
               )}
             </div>
           )}
-          <ThesisValidityBar tv={p.thesis_validity} showSourceNote />
+          <ThesisValidityBar tv={p.thesis_validity} refreshedAt={p.refreshed_at} quoteProvider={p.quote_provider} showSourceNote />
           {!operatorRoute && (
             <PositionSizingRiskBar
               queuedShares={savedShares}
