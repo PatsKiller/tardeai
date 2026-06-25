@@ -355,7 +355,13 @@ export default function BrokerIntelPanel({
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr', gap: 8 }}>
         {(cat.text || cat.critic_verdict || cat.critic_reasoning) && (
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)' }}>
-            <div style={sec}>Catalyst {cat.verified ? '✅' : '⚠️'}</div>
+            {(() => {
+              // Confidence-aware badge: a 'verified' flag with ~0% confidence is not really verified
+              // (TECH showed ✅ over 'Confidence 0%'). Treat low-confidence as unverified for the badge.
+              const _cpct = cat.confidence != null ? (Number(cat.confidence) <= 1 ? Number(cat.confidence) * 100 : Number(cat.confidence)) : null
+              const _trusted = !!cat.verified && (_cpct == null || _cpct >= 30)
+              return <div style={sec}>Catalyst {_trusted ? '✅' : '⚠️'}{cat.verified && !_trusted ? ' (low-confidence)' : ''}</div>
+            })()}
             <div style={body}>{cat.text ? String(cat.text).slice(0, compact ? 220 : 400) : '—'}</div>
             {cat.confidence != null && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>Confidence {Math.round((Number(cat.confidence) <= 1 ? Number(cat.confidence) * 100 : Number(cat.confidence)))}%</div>}
             <CatalystCritic cat={cat} compact={compact} />
