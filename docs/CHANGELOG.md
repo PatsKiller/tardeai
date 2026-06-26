@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-26 - Pullback/MACD: authoritative trade plans + proposal cap
+
+- **Authoritative levels** — the screener now derives technical entry/stop/target (stop = recent
+  swing-low support, target = retrace toward the 52-week high) and writes a `trade_plans` row per
+  emitted proposal. `broker_trade_plan_gate` resolves it (`plan_source=trade_plans`, authoritative),
+  clearing the system-wide "No authoritative trade plan — target is R:R math only (gambling blocked)"
+  route block that fires on any generic `entry + 2×risk` target. Verified on AES: gate violations now
+  empty (other gates — agent reviews, intel readiness — are independent).
+- **Proposal cap** — `max_proposals_per_scan` (default 5) bounds proposals created per scan so a
+  market-wide selloff producing many triggers can't overload the LLM-oversight fleet again. Highest
+  score wins the slots; the rest stay on the tab + pipeline. The cap logs what it dropped.
+
 ## 2026-06-26 - Pullback/MACD screener: follow-ups (Telegram env + trigger-only proposals)
 
 - **Telegram under cron** — the screener now loads the full `.env` (`_load_env`) before alerting.

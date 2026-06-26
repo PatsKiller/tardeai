@@ -18,7 +18,12 @@ Two tiers:
 - **trigger** — all gates pass; the cross is imminent
 - **watch** — uptrend + pullback, but the cross hasn't triggered yet (carries a `why_not`)
 
-Entry = last close; stop = `entry − 1.5×ATR(14)`; target1 = `entry + 2.0×risk` (R:R ~2.0). All tunable.
+**Authoritative levels** (not generic R:R geometry — so proposals clear `broker_trade_plan_gate`):
+entry = last close; **stop = recent swing low** (`swing_low_lookback`, support); **target = retrace toward
+the 52-week high** (`target_retrace_frac`, the resistance the name pulled back from). Each emitted
+proposal also writes a `trade_plans` row, which the gate resolves as authoritative (`plan_source =
+trade_plans`) — clearing the "no authoritative trade plan / R:R-math-only (gambling blocked)" route block.
+A pure `entry + 2×risk` target would be rejected as gambling geometry, so the screener never uses it.
 
 ## Why it fires rarely
 
