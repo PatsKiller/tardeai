@@ -463,6 +463,25 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     except Exception as exc:
         _err("options_flow", f"{exc}  — continuing without options data")
 
+    # 10c Options desk — portfolio proposals (CC/CSP/spreads) for GO tickers + run summary
+    options_desk: dict = {}
+    try:
+        import options_engine as _oe
+        import options_research_bridge as _orb
+        _orb.run(apply=True, force=False)
+        options_desk = _oe.build_options_desk_summary()
+        for t in scored:
+            ctx = _oe.options_context_for_symbol(t.get("symbol", ""), options_desk)
+            if ctx:
+                t["options_desk"] = ctx
+        strat_n = options_desk.get("strategy_counts") or {}
+        _ok("options_desk",
+            f"{options_desk.get('proposal_count', 0)} ideas · "
+            f"CC {strat_n.get('covered_call', 0)} · CSP {strat_n.get('cash_secured_put', 0)} · "
+            f"spreads {strat_n.get('credit_spread', 0)}")
+    except Exception as exc:
+        _err("options_desk", f"{exc}  — continuing without desk context")
+
     # 11 Squeeze bonus (v12)
     try:
         from short_interest import enrich_short_interest, apply_squeeze_bonus_to_scores
@@ -893,6 +912,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             "breadth":           market_snapshot.get("breadth_label"),
             "vix":               market_snapshot.get("vix",{}).get("price"),
             "options_sweeps":    options_summary.get("total_sweeps",0),
+            "options_desk_count": options_desk.get("proposal_count", 0),
+            "options_desk_strategies": options_desk.get("strategy_counts", {}),
             "high_squeeze":      short_summary.get("high_squeeze_count",0),
             "halted":            halt_data.get("halt_count",0),
             "resumed":           halt_data.get("resume_count",0),

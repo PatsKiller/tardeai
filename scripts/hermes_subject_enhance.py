@@ -9,7 +9,7 @@ generic endpoint /api/v2/hermes/subject-intel?type=&key= reads it back; surfaces
 pattern. NEVER touches orders/stops/holdings.
 
   python3 scripts/hermes_subject_enhance.py --type position --lanes grok --apply [--limit N]
-  types: proposal | position | closed_trade | sector | report
+  types: proposal | position | closed_trade | sector | report | options_proposal
 """
 from __future__ import annotations
 import argparse, json, subprocess, sys
@@ -143,6 +143,27 @@ def gather_report(conn, limit):
         f"being underweighted? End: FOCUS: <one line>."}][:limit]
 
 
+def gather_options_proposal(conn, limit):
+    """Top options desk proposals — advisory review before manual/auto route."""
+    try:
+        import options_engine as oe
+        summary = oe.build_options_desk_summary()
+    except Exception:
+        return []
+    out = []
+    for p in (summary.get("top_proposals") or [])[:limit]:
+        sym = p.get("symbol") or ""
+        if not sym:
+            continue
+        out.append({"key": sym, "question":
+            f"Review this OPTIONS desk proposal (advisory, no dollar figures). "
+            f"{sym} · {p.get('strategy', '').replace('_', ' ')} · {p.get('option_type')} · "
+            f"strike ${p.get('strike')} · edge {p.get('edge_score')} · POP {p.get('pop_pct')}%. "
+            f"Is the strike/DTE sensible, is IV rank favorable, and what is the biggest assignment "
+            f"or gap risk? End: VERDICT: route|caution|pass | CONVICTION: high|med|low."})
+    return out
+
+
 def gather_scalp(conn, limit):
     """gap-and-go / momentum-scalp candidates from the scalp scanner. READ-ONLY advisory context — does
     NOT touch the scalp screeners, the Bucket-1 fast path, or the scalp decision. Intraday-fresh."""
@@ -165,7 +186,8 @@ def gather_scalp(conn, limit):
 
 
 GATHERERS = {"proposal": gather_proposal, "position": gather_position, "closed_trade": gather_closed_trade,
-             "sector": gather_sector, "report": gather_report, "scalp": gather_scalp}
+             "sector": gather_sector, "report": gather_report, "scalp": gather_scalp,
+             "options_proposal": gather_options_proposal}
 # scalp setups are intraday/time-sensitive → shorter freshness; the rest re-curate every 12h
 FRESH_BY_TYPE = {"scalp": 4}
 

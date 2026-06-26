@@ -20,11 +20,22 @@ import options_engine as oe
 def main():
     props = oe.generate_proposals(force=True)
     mon = oe.monitor_positions(force=True)
+    bridge = {}
+    try:
+        import options_research_bridge as orb
+        bridge = orb.run(apply=True, force=False)
+    except Exception as e:
+        bridge = {"ok": False, "error": str(e)[:120]}
     print(json.dumps({
         "ok": True,
         "proposals": props.get("count", 0),
         "positions": mon.get("position_count", 0),
         "needs_action": mon.get("needs_action_count", 0),
+        "strategy_counts": {
+            k: sum(1 for p in (props.get("proposals") or []) if p.get("strategy") == k)
+            for k in ("covered_call", "cash_secured_put", "protective_put", "long_call", "credit_spread")
+        },
+        "research_bridge": bridge,
     }))
 
 

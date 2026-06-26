@@ -7853,6 +7853,18 @@ def _compute_trade_ai():
     except Exception:
         pass
 
+    # Options desk context (portfolio proposals: CC/CSP/spreads)
+    options_desk_summary = {}
+    try:
+        import options_engine as _oe
+        options_desk_summary = _load_json(_oe.OPTIONS_DESK_RUNTIME) or _oe.build_options_desk_summary()
+        for t in tickers:
+            ctx = _oe.options_context_for_symbol(t.get("symbol", ""), options_desk_summary)
+            if ctx:
+                t["options_desk"] = ctx
+    except Exception:
+        options_desk_summary = {}
+
     # Sector breakdown from tickers (basic)
     sectors: dict = {}
     _ec_cache = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -7946,6 +7958,12 @@ def _compute_trade_ai():
         "tickers": tickers,
         "sectors": dict(sorted(sectors.items(), key=lambda x: -x[1])),
         "run_history": run_history,
+        "options_desk": {
+            "generated_at": options_desk_summary.get("generated_at"),
+            "proposal_count": options_desk_summary.get("proposal_count", 0),
+            "strategy_counts": options_desk_summary.get("strategy_counts", {}),
+            "top_proposals": (options_desk_summary.get("top_proposals") or [])[:8],
+        },
     }
 
 
