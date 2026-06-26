@@ -35,7 +35,7 @@ weighted overall. Weights/penalties/thresholds live in `config/health_agent_poli
 | Category | Weight | Signals |
 |---|---|---|
 | Data Quality | 0.25 | holdings/risk/dividends/news/CIO/agent-job freshness + open data gaps + **portfolio Finviz price freshness** (market hours) |
-| Execution Health | 0.25 | pipeline failures, stuck agent jobs, critical execution escalations, orphaned stops |
+| Execution Health | 0.25 | pipeline failures, stuck agent jobs, critical execution escalations, orphaned stops, **options proposal staleness/volume**, **options desk infra** (chain-snapshot retention + approval-queue backlog) |
 | Intelligence Quality | 0.20 | local LLM reachability, ensemble failures, stale research backlog |
 | Risk Protection | 0.20 | unprotected positions, stops in alert, recent P0/P1 SIEM |
 | Retirement Planning | 0.10 | Golden Window present, dividend income consistency, calendar freshness |
@@ -133,6 +133,26 @@ Center portfolio cards.
    and enqueues `portfolio_repricer.py` / `external_market_data_ingest.py --quotes` via remediation_map.
 
 Install cron: `bash scripts/install_health_agent_cron.sh` (was comment-only in crontab before 2026-06-22).
+
+## Options desk infra monitoring (2026-06-26)
+
+**Problem:** `collect_proposal_maturity` watched options *output* (cache staleness, zero/ignored
+proposals) but nothing watched the enterprise desk *infrastructure* — the vol-surface snapshot table
+silently growing if retention regressed, or the operator approval queue backing up and blocking the
+live path.
+
+**Fix:** `collect_options_desk_health()` (`health_agent.py`, category `execution_health`) adds two
+cheap DB-aggregate checks:
+
+1. **Snapshot retention** — `options_chain_snapshots` oldest-row age vs
+   `OPTIONS_SNAPSHOT_RETENTION_DAYS` (45) + `snapshot_grace_days` (7) → `options_snapshot_retention_stale`;
+   row count vs `snapshot_row_warn` (50k) → `options_snapshot_table_bloat`.
+2. **Approval queue** — pending+blocked count vs `approval_backlog_warn` (20) →
+   `options_approval_backlog`; pending proposals past their 24h `expires_at` →
+   `options_approval_expired_pending`.
+
+Thresholds live under the `options_desk` policy block. Findings carry `WHY` hints and route as
+`refresh` (retention) / `review` (queue).
 
 ## Extending
 
