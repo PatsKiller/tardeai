@@ -87,15 +87,23 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
     """Next earnings date per symbol (FMP), cached 6h."""
     global _EARNINGS_CACHE, _EARNINGS_CACHE_AT
     syms = {s.upper() for s in symbols if s}
-    if _EARNINGS_CACHE_AT and (_now() - _EARNINGS_CACHE_AT).total_seconds() < 21600:
-        return {s: _EARNINGS_CACHE[s] for s in syms if s in _EARNINGS_CACHE}
-    try:
-        from portfolio_options import _get_earnings_dates
-        fetched = _get_earnings_dates(list(syms), PROJECT_ROOT)
-        _EARNINGS_CACHE.update(fetched)
-        _EARNINGS_CACHE_AT = _now()
-    except Exception:
-        pass
+    fresh = bool(_EARNINGS_CACHE_AT) and (_now() - _EARNINGS_CACHE_AT).total_seconds() < 21600
+    missing = {s for s in syms if s not in _EARNINGS_CACHE}
+    # Refetch when the cache is stale, OR when newly-requested symbols aren't cached
+    # yet — otherwise a name added mid-window silently skips its earnings blackout.
+    if not fresh or missing:
+        to_fetch = syms if not fresh else missing
+        try:
+            from portfolio_options import _get_earnings_dates
+            fetched = _get_earnings_dates(list(to_fetch), PROJECT_ROOT)
+            _EARNINGS_CACHE.update(fetched)
+            # Record "looked, none found" so a no-earnings name doesn't refetch every call.
+            for s in to_fetch:
+                _EARNINGS_CACHE.setdefault(s, "")
+            if not fresh:
+                _EARNINGS_CACHE_AT = _now()
+        except Exception:
+            pass
     return {s: _EARNINGS_CACHE.get(s, "") for s in syms}
 
 
@@ -338,16 +346,20 @@ def _theta_decay_estimate(delta: float, gamma: float, iv: float, spot: float, dt
         return 0.0
     t = max(dte, 1) / 365.0
     vol = max(iv, 0.12)
-    # Brenner-Subrahmanyam approximation scaled per contract
+    # Brenner-Subrahmanyam approximation scaled per contract. Returns the long-option
+    # daily theta (negative), matching real chain theta convention; aggregate_book_greeks
+    # flips the sign for short legs via side_mult.
     approx = -(spot * vol) / (2 * math.sqrt(t)) / 365.0
-    sign = -1.0 if abs(delta) < 0.55 else -0.5
-    return round(approx * sign * 100.0, 2)
+    # ATM contracts decay faster than OTM — magnitude scalar, NOT a sign flip.
+    moneyness_scale = 1.0 if abs(delta) < 0.55 else 0.5
+    return round(approx * moneyness_scale * 100.0, 2)
 
 
 def aggregate_book_greeks(positions: List[dict], tech_map: Optional[dict] = None) -> dict:
     """Portfolio-level greeks from monitored open legs."""
     tech_map = tech_map or {}
     net_delta = net_gamma = net_theta = net_vega = 0.0
+    net_delta_notional = 0.0
     by_underlying: Dict[str, dict] = {}
     legs = 0
     for pos in positions:
@@ -377,11 +389,14 @@ def aggregate_book_greeks(positions: List[dict], tech_map: Optional[dict] = None
         theta = _f(pos.get("theta")) * mult * side_mult
         vega = _f(pos.get("vega")) * mult * side_mult
         if theta == 0:
-            theta = _theta_decay_estimate(delta, gamma, 0.25, _f(pos.get("underlying_price")), int(pos.get("dte") or 30)) * qty
+            # Estimate is long-convention (negative); flip for short premium so the
+            # book's net theta/day reflects decay collected, not decay paid.
+            theta = _theta_decay_estimate(delta, gamma, 0.25, _f(pos.get("underlying_price")), int(pos.get("dte") or 30)) * qty * side_mult
         net_delta += leg_delta
         net_gamma += gamma
         net_theta += theta
         net_vega += vega
+        net_delta_notional += leg_delta * _f(pos.get("underlying_price"))
         und = (pos.get("underlying") or "").upper()
         if und:
             bucket = by_underlying.setdefault(und, {"delta": 0.0, "theta": 0.0, "legs": 0})
@@ -392,6 +407,7 @@ def aggregate_book_greeks(positions: List[dict], tech_map: Optional[dict] = None
     return {
         "leg_count": legs,
         "net_delta_shares": round(net_delta, 1),
+        "net_delta_notional": round(net_delta_notional, 2),
         "net_gamma": round(net_gamma, 4),
         "net_theta_per_day": round(net_theta, 2),
         "net_vega": round(net_vega, 2),
@@ -445,6 +461,10 @@ def enterprise_enrich_proposal(
 
     tier = desk_tier(edge, cfg)
     live_eligible = not blocks and liq.get("pass", True)
+    # No chain contract means no verifiable fill liquidity — never live-eligible,
+    # regardless of the require_chain_for_live operator override.
+    if contract is None:
+        live_eligible = False
     if proposal.get("data_source") == "bs_estimate" and cfg.get("require_chain_for_live"):
         live_eligible = False
 
@@ -476,10 +496,9 @@ def portfolio_risk_preflight(
     cfg = cfg or load_desk_config()
     total_mv = sum(_f(h.get("market_value")) for h in holdings if not h.get("is_cash")) or 1.0
     greeks = aggregate_book_greeks(positions)
-    net_delta_pct = abs(greeks["net_delta_shares"]) / max(total_mv / 100.0, 1.0) * 100.0 / 100.0
-    # net_delta_shares is share-equivalent; compare to portfolio share exposure proxy
-    if total_mv > 0:
-        net_delta_pct = abs(greeks["net_delta_shares"]) * 150.0 / total_mv * 100.0  # rough notional proxy
+    # Dollar-delta exposure (share-equivalent delta × each leg's real underlying price)
+    # as a pct of book MV. No assumed share price.
+    net_delta_pct = abs(greeks.get("net_delta_notional") or 0.0) / total_mv * 100.0
 
     sym_notional: Dict[str, float] = {}
     for p in proposals:
@@ -662,12 +681,28 @@ def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
     conn = _conn()
     if not conn or not vol.get("ok"):
         return
+    sym = symbol.upper()
+    # fetch_vol_history reads only vol_analytics_json. Persisting the full chain blob
+    # both bloated the table and risked invalid JSON (a byte-slice of serialized JSON
+    # is malformed → ::jsonb cast threw → snapshot silently lost). Store a small,
+    # always-valid summary instead.
+    chain_meta = {
+        "underlying_price": _f(chain.get("underlying_price")),
+        "expiration_count": len(chain.get("expirations") or []),
+        "note": "summary only — full chain not persisted (size/retention)",
+    }
+    keep_days = int(os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
     try:
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO options_chain_snapshots (symbol, chain_json, vol_analytics_json, captured_at)
                VALUES (%s, %s::jsonb, %s::jsonb, NOW())""",
-            (symbol.upper(), json.dumps(chain, default=str)[:500000], json.dumps(vol, default=str)),
+            (sym, json.dumps(chain_meta), json.dumps(vol, default=str)),
+        )
+        # Bounded retention — uses idx_options_chain_snap_sym_time; cheap per-symbol prune.
+        cur.execute(
+            "DELETE FROM options_chain_snapshots WHERE symbol=%s AND captured_at < NOW() - (%s || ' days')::interval",
+            (sym, str(keep_days)),
         )
         conn.commit()
     except Exception:
