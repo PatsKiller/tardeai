@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-26 - Pullback/MACD: intraday proposal monitoring
+
+Pullback proposals are now monitored multiple times a day and kept in sync with the live setup
+(previously the screener only ran post-close). New `--monitor` mode (cron `15 10-15 * * 1-5`, hourly)
+re-evaluates only the active candidate set + open proposals (cheap): refreshes proposals that still
+fit the plan (live entry/stop/target/VWAP), and `_reconcile_proposals` **expires** those that no
+longer fit — the name fell off the trigger (MACD inflection / VWAP / pullback no longer line up), or
+live price hit/broke the stop/target. Verified live: caught STLD as a new intraday trigger, refreshed
+DDOG's levels, and expired the morning AES proposal once it dropped below VWAP.
+
 ## 2026-06-26 - Pullback/MACD: earliest-recovery trigger + VWAP confirmation
 
 The pullback screener now catches the move earlier and confirms it with two indicators:
