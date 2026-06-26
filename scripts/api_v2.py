@@ -56,6 +56,22 @@ def _enrich_cache() -> dict:
     return _ENRICH_CACHE["data"]
 
 
+# Intraday session VWAP cache (compute_intraday_vwap.py) — VWAP is intraday-only so it can't come
+# from the daily Finviz cache; memoized by mtime.
+_VWAP_CACHE = {"data": {}, "mtime": 0.0}
+
+def _vwap_cache() -> dict:
+    p = PROJECT_ROOT / "data" / "state" / "intraday_vwap_cache.json"
+    try:
+        mt = p.stat().st_mtime
+        if mt != _VWAP_CACHE["mtime"]:
+            _VWAP_CACHE["data"] = json.loads(p.read_text()) or {}
+            _VWAP_CACHE["mtime"] = mt
+    except Exception:
+        pass
+    return _VWAP_CACHE["data"]
+
+
 def _ma_context(sym: str, live_price) -> dict | None:
     """Build a moving-average / entry-helper context for a symbol from the finviz enrichment cache:
     price vs SMA20/50/200 (derive the absolute MA from live price + finviz %-from-price), RSI, RVOL,
@@ -84,7 +100,14 @@ def _ma_context(sym: str, live_price) -> dict | None:
         ma_price = round(px / (1 + pct / 100), 2) if (px and pct != -100) else None
         mas.append({"label": label, "pct_above": round(pct, 2), "price": ma_price, "above": pct >= 0})
     out["mas"] = mas
-    # Entry hint — trend posture from the stack + RSI extremes (advisory, helps time the entry).
+    # Intraday session VWAP (cached) — institutional entry anchor: longs prefer entries near/below VWAP.
+    vw = (_vwap_cache() or {}).get(str(sym or "").upper())
+    if isinstance(vw, dict) and vw.get("vwap"):
+        out["vwap"] = vw.get("vwap")
+        out["above_vwap"] = vw.get("above_vwap")
+        out["vwap_dist_pct"] = vw.get("dist_pct")
+        out["vwap_at"] = vw.get("computed_at")
+    # Entry hint — trend posture from the stack + RSI extremes + VWAP location (advisory).
     above_ct = sum(1 for m in mas if m["above"])
     rsi = out["rsi"]
     if mas:
@@ -94,6 +117,9 @@ def _ma_context(sym: str, live_price) -> dict | None:
             hint = "Below all MAs — downtrend; wait for reclaim of SMA20/50"
         else:
             hint = "Mixed MA stack — chop; wait for a clean SMA20/50 break"
+        if out.get("vwap") is not None:
+            hint += (" · below VWAP (better long entry)" if not out.get("above_vwap")
+                     else " · above VWAP (extended, wait for pullback)")
         if rsi is not None and rsi >= 70:
             hint += " · RSI overbought, avoid chasing"
         elif rsi is not None and rsi <= 30:

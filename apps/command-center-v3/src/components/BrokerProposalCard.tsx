@@ -437,7 +437,15 @@ export default function BrokerProposalCard({
             {mc.rsi != null && stat('RSI', mc.rsi, rsiC)}
             {mc.rvol != null && stat('RVOL', `${mc.rvol}×`, mc.rvol >= 2 ? AMBER : TEXT1)}
             {mc.atr_pct != null && stat('ATR', `${mc.atr_pct}%`, TEXT1)}
-            {mc.vwap != null && stat('VWAP', `$${mc.vwap}`, TEXT1)}
+            {mc.vwap != null && (
+              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'baseline' }}
+                title={`Price is ${Math.abs(Number(mc.vwap_dist_pct ?? 0))}% ${mc.above_vwap ? 'above' : 'below'} session VWAP`}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '.3px' }}>VWAP</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: mc.above_vwap ? GREEN : RED, fontFamily: 'ui-monospace, monospace' }}>
+                  {mc.above_vwap ? '↑' : '↓'}${mc.vwap}
+                </span>
+              </span>
+            )}
             {mc.entry_hint && (
               <span style={{ flexBasis: '100%', fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 1 }}>↳ {mc.entry_hint}</span>
             )}
