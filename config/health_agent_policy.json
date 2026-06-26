@@ -42,6 +42,14 @@
     "broker_unrouted_critical": 8,
     "link_rate_warn_pct": 5
   },
+  "options_desk": {
+    "_comment": "Enterprise options desk infra: chain-snapshot retention + approval-queue backlog.",
+    "enabled": true,
+    "approval_backlog_warn": 15,
+    "expired_pending_warn": 1,
+    "snapshot_grace_days": 7,
+    "snapshot_row_warn": 50000
+  },
   "portfolio_price_freshness": {
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",
     "enabled": true,
