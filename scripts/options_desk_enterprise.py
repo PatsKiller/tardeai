@@ -242,6 +242,96 @@ def vol_analytics_from_chain(chain: dict, underlying: float) -> dict:
     }
 
 
+def build_iv_surface_grid(chain: dict, underlying: float, *, max_exps: int = 6, moneyness: float = 0.12) -> dict:
+    """Strike × DTE IV grid from normalized Schwab chain (heatmap / surface UI)."""
+    if not chain or underlying <= 0:
+        return {"ok": False}
+    expirations = sorted(chain.get("expirations") or [], key=lambda x: int(x.get("dte") or 0))
+    expirations = [e for e in expirations if int(e.get("dte") or 0) >= 7][:max_exps]
+    if not expirations:
+        return {"ok": False, "reason": "no_expirations"}
+    strike_set: set = set()
+    for exp in expirations:
+        for row in exp.get("strikes") or []:
+            strike = _f(row.get("strike"))
+            if strike > 0 and abs(strike - underlying) / underlying <= moneyness:
+                strike_set.add(round(strike, 2))
+    strikes = sorted(strike_set)
+    if not strikes:
+        return {"ok": False, "reason": "no_strikes"}
+    cells: List[dict] = []
+    expiries: List[dict] = []
+    for exp in expirations:
+        dte = int(exp.get("dte") or 0)
+        expiries.append({"exp": exp.get("exp"), "dte": dte})
+        by_strike: Dict[float, List[float]] = {}
+        for row in exp.get("strikes") or []:
+            strike = round(_f(row.get("strike")), 2)
+            if strike not in strike_set:
+                continue
+            iv = _f(row.get("iv"))
+            if iv > 3:
+                iv /= 100.0
+            if iv <= 0:
+                continue
+            by_strike.setdefault(strike, []).append(iv)
+        for strike in strikes:
+            ivs = by_strike.get(strike) or []
+            cells.append({
+                "strike": strike,
+                "dte": dte,
+                "exp": exp.get("exp"),
+                "iv_pct": round(sum(ivs) / len(ivs) * 100.0, 1) if ivs else None,
+            })
+    return {
+        "ok": True,
+        "underlying": round(underlying, 2),
+        "strikes": strikes,
+        "expiries": expiries,
+        "cells": cells,
+    }
+
+
+def fetch_vol_history(symbol: str, limit: int = 48) -> List[dict]:
+    """Recent ATM IV / skew snapshots for trends sparkline."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+    conn = _conn()
+    if not conn:
+        return []
+    lim = max(1, min(int(limit), 200))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT captured_at, vol_analytics_json
+               FROM options_chain_snapshots
+               WHERE symbol = %s
+               ORDER BY captured_at DESC
+               LIMIT %s""",
+            (sym, lim),
+        )
+        rows = cur.fetchall() or []
+    except Exception:
+        return []
+    out: List[dict] = []
+    for captured_at, vol_json in reversed(rows):
+        vol = vol_json if isinstance(vol_json, dict) else {}
+        if isinstance(vol_json, str):
+            try:
+                vol = json.loads(vol_json)
+            except Exception:
+                vol = {}
+        out.append({
+            "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+            "front_iv_pct": vol.get("front_iv_pct"),
+            "back_iv_pct": vol.get("back_iv_pct"),
+            "term_slope_pct": vol.get("term_slope_pct"),
+            "avg_put_skew_pct": vol.get("avg_put_skew_pct"),
+        })
+    return out
+
+
 def _theta_decay_estimate(delta: float, gamma: float, iv: float, spot: float, dte: int) -> float:
     """Rough daily theta when chain theta unavailable."""
     if dte <= 0 or spot <= 0:

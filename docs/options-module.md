@@ -336,11 +336,10 @@ python scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTI
 ## Extending
 
 1. **Approval queue UI tab** in OptionsHub (API ready; wire `GET /api/v2/options/approval-queue`)
-2. **Vol surface UI** — `options_chain_snapshots` + Plotly term-structure chart
-3. **Fidelity option legs** — extend `monitor_positions()` beyond Schwab-only
-4. **Hard portfolio risk block** — promote `portfolio_risk_preflight` warnings to preflight rejects
-5. **Roll automation** — wire monitor `roll` action to preflight with new expiration
-6. **Edge calibration** — log closed proposal outcomes → edge model tuning
+2. **Fidelity option legs** — extend `monitor_positions()` beyond Schwab-only
+3. **Hard portfolio risk block** — promote `portfolio_risk_preflight` warnings to preflight rejects
+4. **Roll automation** — wire monitor `roll` action to preflight with new expiration
+5. **Edge calibration** — log closed proposal outcomes → edge model tuning
 
 ---
 
@@ -354,6 +353,6 @@ python scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTI
 | Liquidity gates | ✗ | ✓ | ✓ |
 | Operator approval queue | ✗ | ✓ | ✓ |
 | Book greeks | ✗ | ✓ (Δ, Θ, ν) | ✓ (streaming) |
-| Vol surface | ✗ | term structure + skew | full 3D surface |
+| Vol surface | ✗ | term structure + skew + strike×DTE heatmap (Options Trends tab) | full 3D surface |
 | Multi-broker book | ✗ | Schwab only | all brokers |
 | Auto-execution | ✗ | gated (arm + queue + 2FA) | policy-driven |

@@ -14,6 +14,24 @@ export const TABS = {
   proposals: 'Ranked trade ideas that passed quality gates — not yet executed.',
   positions: 'Live Schwab option legs with dynamic R:R, POP, and mature-vs-harvest guidance.',
   overview: 'Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts.',
+  trends: 'IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains.',
+} as const
+
+export const TRENDS = {
+  symbol: 'Underlying to load live vol analytics from Schwab option chain.',
+  symbolChip: 'Desk symbol from proposals, holdings, or open legs.',
+  refresh: 'Reload live chain + persist IV snapshot for history chart.',
+  frontIv: 'ATM implied vol at the nearest expiry (≥7 DTE).',
+  backIv: 'ATM implied vol at the furthest expiry in the term structure.',
+  termSlope: 'Back IV minus front IV — positive = backwardation (near-term fear).',
+  skew: 'Average put IV minus call IV at ATM strikes (%).',
+  spot: 'Underlying price from chain or technical snapshot.',
+  ivRank: '52-week IV rank from desk proposal when symbol is on the desk.',
+  termChart: 'ATM implied volatility across expirations — richness vs calendar.',
+  skewChart: 'Put minus call IV at each expiry — downside fear gauge.',
+  surface: 'Heatmap of IV% by strike and days-to-expiration (±12% moneyness).',
+  history: 'Front IV over time from options_chain_snapshots (built on each view).',
+  research: 'Per-symbol ideas staged by options_research_bridge for Hermes/TradeAI.',
 } as const
 
 export const FILTERS = {

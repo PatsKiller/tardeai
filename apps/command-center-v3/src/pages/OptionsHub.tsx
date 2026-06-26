@@ -12,12 +12,13 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import GreeksOverview from '../components/risk/GreeksOverview'
 import OptionsPnLProfile from '../components/risk/OptionsPnLProfile'
+import OptionsTrendsPanel from '../components/OptionsTrendsPanel'
 import { Tip, TipChip, TipKpi, TipLabel, TipSection } from '../components/OptionsTip'
 import { HEADER, TABS as TAB_TIPS, FILTERS, OVERVIEW, POSITION } from '../lib/optionsTooltips'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Proposals', 'Open Positions', 'Strategy Overview'] as const
+const TABS = ['Proposals', 'Open Positions', 'Strategy Overview', 'Options Trends'] as const
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
 const PURPLE = '#a855f7'
@@ -92,6 +93,10 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
 
   const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
+  const proposalSymbols = useMemo(
+    () => [...new Set(propList.map(p => (p.symbol || '').toUpperCase()).filter(Boolean))].sort(),
+    [propList],
+  )
   const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
@@ -262,7 +267,12 @@ export default function OptionsHub({ onDrill }: Props) {
           {TABS.map(t => (
             <button
               key={t}
-              title={t === 'Proposals' ? TAB_TIPS.proposals : t === 'Open Positions' ? TAB_TIPS.positions : TAB_TIPS.overview}
+              title={
+                t === 'Proposals' ? TAB_TIPS.proposals
+                  : t === 'Open Positions' ? TAB_TIPS.positions
+                    : t === 'Strategy Overview' ? TAB_TIPS.overview
+                      : TAB_TIPS.trends
+              }
               onClick={() => selectTab(t)}
               style={{
                 padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'help',
@@ -493,6 +503,13 @@ export default function OptionsHub({ onDrill }: Props) {
             ))}
           </div>
         </>
+      )}
+
+      {tab === 'Options Trends' && (
+        <OptionsTrendsPanel
+          defaultSymbol={symbolFilter ? symbolFilter.toUpperCase() : undefined}
+          proposalSymbols={proposalSymbols}
+        />
       )}
 
       {tab === 'Strategy Overview' && (
