@@ -459,6 +459,9 @@ export default function BrokerProposalCard({
             <div style={{ fontSize: 12, fontWeight: 700, color: TEXT0 }}>
               {[tickerCtx.sector, tickerCtx.industry].filter(Boolean).join(' · ')}
             </div>
+          ) : (/^(the fund|the index|under normal|u\.?s\.?|specifically|the trust)/i.test(String(tickerCtx.companyLine || '')) || /etf|fund/i.test(String(tickerCtx.instrumentType || ''))) ? (
+            // Funds/ETFs have no single GICS sector — labeling it "missing" (red) is a false alarm.
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEAL }}>ETF / Fund <span style={{ fontSize: 10, fontWeight: 600, color: MUTED }}>· no single sector</span></div>
           ) : (
             <div style={{ fontSize: 12, fontWeight: 700, color: RED }}>Sector missing</div>
           )}
@@ -691,6 +694,8 @@ export default function BrokerProposalCard({
           cloudBusy={cloudBusy}
           suppressViolationList={cardShowsBlockers}
           suppressStrategyPurpose
+          suppressCompanyPurpose={!!tickerCtx.companyLine}
+          sourceKind={String(p.discovery_source || p.origin || '')}
         />
         {oversightMsg && (
           <div style={{ fontSize: 11.5, marginTop: 6, color: oversightMsg.startsWith('✅') ? GREEN : AMBER }}>{oversightMsg}</div>

@@ -213,11 +213,16 @@ type Props = {
   /** When the host already shows the strategy purpose elsewhere (card "Strategy" cell),
    *  suppress the duplicate "Strategy: …" line inside "Why purchase". */
   suppressStrategyPurpose?: boolean
+  /** When the host card already renders the company description (its "Company" cell), suppress the
+   *  duplicate "What the company does" block here. */
+  suppressCompanyPurpose?: boolean
+  /** Proposal origin (watchlist | scanner | …) — drives the honest "why no momentum technicals" note. */
+  sourceKind?: string
 }
 
 export default function BrokerIntelPanel({
   intel, compact = false, onQueueOversight, onRunCloudOversight, oversightBusy, cloudBusy,
-  suppressViolationList = false, suppressStrategyPurpose = false,
+  suppressViolationList = false, suppressStrategyPurpose = false, suppressCompanyPurpose = false, sourceKind = '',
 }: Props) {
   if (!intel?.ok) {
     return (
@@ -349,7 +354,7 @@ export default function BrokerIntelPanel({
         </div>
       )}
 
-      {co.description && (
+      {!suppressCompanyPurpose && co.description && (
         <div>
           <div style={sec}>What the company does</div>
           <div style={body}>{co.description}</div>
@@ -386,11 +391,22 @@ export default function BrokerIntelPanel({
           </div>
         )}
 
-        {(tech.summary || tech.rsi != null) && (
+        {(tech.summary || tech.rsi != null) ? (
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
             <div style={sec}>Technicals</div>
             <div style={{ ...body, fontFamily: 'monospace', fontSize: 10 }}>{tech.summary || '—'}</div>
             {tech.technical_grade && <div style={{ fontSize: 11, color: MUTED, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>Grade: <GradePill grade={String(tech.technical_grade)} />{tech.confluence_tier ? ` · ${tech.confluence_tier}` : ''}</div>}
+          </div>
+        ) : (
+          // Never silently omit — an empty Technicals block reads as "broken". A watchlist/income
+          // proposal has NO momentum scan by design (its signal is price-vs-thesis-band, not RVOL/gap).
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(148,163,184,.06)', border: '1px solid rgba(148,163,184,.18)' }}>
+            <div style={sec}>Technicals</div>
+            <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45 }}>
+              {/watch/i.test(sourceKind)
+                ? 'Watchlist / income setup — no momentum scan run. Signal is price vs thesis band (entry/stop/target), not RVOL/gap. Momentum technicals apply to scanner-sourced ideas only.'
+                : 'No technical snapshot yet — run Enrich on the proposal to compute RVOL / gap / RSI / ATR.'}
+            </div>
           </div>
         )}
       </div>
