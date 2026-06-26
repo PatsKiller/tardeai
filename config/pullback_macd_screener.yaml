@@ -53,3 +53,7 @@ pullback_macd_screener:
   default_strategy_id: pullback_macd_reversal
   telegram_alerts: true
   feed_candidate_pipeline: true
+  # Intraday monitor (--monitor, scheduled hourly): keep standing pullback proposals in sync with the
+  # live setup — refresh those that still fit the plan, expire those that don't (dropped off the
+  # trigger, or price hit/broke the stop/target).
+  reconcile_proposals: true

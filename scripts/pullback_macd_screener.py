@@ -405,14 +405,66 @@ def _alert_new_triggers(cands: list[dict]) -> None:
         pass
 
 
+def _reconcile_proposals(cands: list[dict]) -> int:
+    """Retire PENDING pullback proposals that no longer FIT THE PLAN — run each intraday monitor pass.
+    A proposal is expired when the name is no longer a confirmed trigger (MACD/VWAP/pullback no longer
+    line up) or live price broke the thesis (<= stop or >= target). Still-fitting ones are refreshed by
+    _emit_proposals; this just prunes the ones that fell out so the queue reflects only valid setups."""
+    by_sym = {c["sym"]: c for c in cands}
+    trig = {c["sym"] for c in cands if c["tier"] == "trigger"}
+    rows = _db("""SELECT id, symbol, proposed_stop, proposed_target1 FROM paper_trade_proposals
+                  WHERE status='PENDING' AND COALESCE(discovery_source,'')='pullback_macd'""",
+               fetch="all") or []
+    retired = 0
+    for r in rows:
+        sym = r["symbol"]
+        c = by_sym.get(sym)
+        reason = None
+        if sym not in trig:
+            reason = "no longer a confirmed trigger (MACD inflection / VWAP / pullback no longer fit)"
+        elif c:
+            px = _f(c.get("price"))
+            stop, tgt = _f(r.get("proposed_stop")), _f(r.get("proposed_target1"))
+            if px and stop and px <= stop:
+                reason = f"plan broken: price {px} at/below stop {stop}"
+            elif px and tgt and px >= tgt:
+                reason = f"plan complete: price {px} at/above target {tgt}"
+        if reason:
+            _db("""UPDATE paper_trade_proposals SET status='EXPIRED', rejected_at=NOW(),
+                   rejection_reason=%s, updated_at=NOW() WHERE id=%s""",
+                (f"pullback monitor: {reason}", r["id"]))
+            retired += 1
+    return retired
+
+
+def _f(v, default=0.0) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 # ── main ────────────────────────────────────────────────────────────────────────────────
-def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
+def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool = False) -> dict:
     t0 = time.time()
     _load_env()
     cfg = load_cfg()
     if not cfg.get("enabled", True):
         return {"ok": False, "reason": "disabled"}
-    syms = _load_universe(dry)
+    if monitor:
+        # Intraday monitor: only re-evaluate the current active candidate set + any symbols with a
+        # standing pullback proposal — cheap enough to run several times a day. The daily pullback
+        # universe is set post-close; intraday we watch those names for VWAP/MACD confirmation and
+        # keep proposals in sync with the live setup.
+        act = _db("SELECT symbol FROM pullback_macd_candidates WHERE status='active'", fetch="all") or []
+        pend = _db("""SELECT DISTINCT symbol FROM paper_trade_proposals
+                      WHERE status='PENDING' AND COALESCE(discovery_source,'')='pullback_macd'""",
+                   fetch="all") or []
+        syms = sorted({r["symbol"] for r in act} | {r["symbol"] for r in pend})
+        if not syms:
+            return {"ok": True, "monitor": True, "note": "no active pullback candidates to monitor"}
+    else:
+        syms = _load_universe(dry)
     if limit:
         syms = syms[:limit]
     bars = _fetch_all(syms)
@@ -459,12 +511,16 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
     watch = [c for c in cands if c["tier"] == "watch"]
     scan_d = date.today()
 
-    emitted = 0
+    emitted = retired = 0
     if not dry:
         _persist_candidates(cands, scan_d)
         if cfg.get("emit_proposals", True):
             emitted = _emit_proposals(cands, cfg)
-        if cfg.get("feed_candidate_pipeline", True):
+        # Keep standing pullback proposals in sync with the live setup: refresh those that still fit
+        # (done inside _emit_proposals), expire those that no longer fit the plan.
+        if cfg.get("reconcile_proposals", True):
+            retired = _reconcile_proposals(cands)
+        if cfg.get("feed_candidate_pipeline", True) and not monitor:
             _feed_pipeline(cands, cfg)
         if cfg.get("telegram_alerts", True):
             _alert_new_triggers(cands)
@@ -476,10 +532,10 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
              len(triggers), len(watch), emitted, errors, round(time.time() - t0, 1)))
 
     summary = {
-        "ok": True, "dry_run": dry, "universe": len(syms),
+        "ok": True, "dry_run": dry, "monitor": monitor, "universe": len(syms),
         "in_pullback_uptrend": funnel["uptrend_pullback"],
         "triggers": len(triggers), "watch": len(watch),
-        "proposals_emitted": emitted, "data_errors": errors,
+        "proposals_emitted": emitted, "proposals_retired": retired, "data_errors": errors,
         "duration_s": round(time.time() - t0, 1),
         "top_triggers": sorted(triggers, key=lambda x: -x["score"])[:15],
         "top_watch": sorted(watch, key=lambda x: x["macd_prox_pct"])[:15],
@@ -487,10 +543,10 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
     if as_json:
         print(json.dumps(summary, indent=2, default=str))
     else:
-        print(f"\nuniverse={summary['universe']} errors={errors} | "
+        print(f"\n{'MONITOR ' if monitor else ''}universe={summary['universe']} errors={errors} | "
               f"uptrend+pullback={summary['in_pullback_uptrend']} → "
               f"TRIGGER={summary['triggers']} WATCH={summary['watch']} | "
-              f"proposals={emitted} ({'DRY' if dry else 'written'})")
+              f"proposals +{emitted}/-{retired} ({'DRY' if dry else 'written'})")
         print(f"\n{'TIER':<8}{'SYM':<7}{'PULL%':>7}{'PROX%':>7}{'VWAP':>9}{'>VWAP':>6}{'ENTRY':>9}{'STOP':>9}{'TGT':>9}{'R:R':>6}{'SCORE':>7}")
         for c in summary["top_triggers"] + summary["top_watch"][:8]:
             av = "yes" if c.get("above_vwap") else ("no" if c.get("above_vwap") is False else "—")
@@ -503,9 +559,12 @@ def main():
     ap = argparse.ArgumentParser(description="S&P 500 pullback + approaching-MACD-cross screener")
     ap.add_argument("--dry-run", action="store_true", help="compute + print, no DB writes / no proposals / no alerts")
     ap.add_argument("--limit", type=int, default=0, help="limit universe size (testing)")
+    ap.add_argument("--monitor", action="store_true",
+                    help="intraday monitor: re-evaluate only active candidates + open proposals; refresh "
+                         "those that still fit the plan, expire those that don't")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
-    run(dry=a.dry_run, limit=a.limit, as_json=a.json)
+    run(dry=a.dry_run, limit=a.limit, as_json=a.json, monitor=a.monitor)
 
 
 if __name__ == "__main__":

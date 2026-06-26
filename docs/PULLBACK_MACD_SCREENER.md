@@ -41,6 +41,7 @@ uptrend → ~22 in the pullback band → ~1 trigger + ~21 watch. Zero-trigger da
 | API | `GET /api/v2/pullback-macd/candidates` (`?tier=trigger\|watch`, `?limit=`) in `scripts/api_v2.py` |
 | UI | `apps/command-center-v3/src/pages/PullbackMacdHub.tsx` (nav: **Pullback/MACD**), with the amber **pullback banner** on each card |
 | Launcher / cron | `linux_launchers/run_pullback_macd_screener.sh`, cron `40 16 * * 1-5` (post-close) |
+| Intraday monitor | `--monitor` mode, cron `15 10-15 * * 1-5` (hourly) — re-evaluates active candidates + open proposals, refreshes those that still fit the plan, expires those that don't (off-trigger, or price hit/broke stop/target) |
 | Health | `collect_pullback_macd_screener()` in `health_agent.py` (scan freshness + universe size) |
 
 ## Outputs (all advisory)
@@ -66,6 +67,9 @@ A single scan fans out to four channels:
 
 # Real scan (writes candidates, emits proposals, feeds pipeline, alerts on new triggers)
 .venv/bin/python scripts/pullback_macd_screener.py [--json]
+
+# Intraday monitor — refresh/expire standing proposals vs the live setup (hourly cron)
+.venv/bin/python scripts/pullback_macd_screener.py --monitor
 
 # Limit universe for testing
 .venv/bin/python scripts/pullback_macd_screener.py --dry-run --limit 50
