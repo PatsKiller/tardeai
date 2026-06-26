@@ -39,6 +39,69 @@ def _load_json(path: Path):
         return None
 
 
+# Finviz technical enrichment cache (rsi, rvol, atr, sma20/50/200_pct) — refreshed by
+# finviz_enrichment / build_symbol_profiles. Memoized by file mtime so the proposals list can
+# attach moving-average / entry-helper context without a per-row disk read.
+_ENRICH_CACHE = {"data": {}, "mtime": 0.0}
+
+def _enrich_cache() -> dict:
+    p = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
+    try:
+        mt = p.stat().st_mtime
+        if mt != _ENRICH_CACHE["mtime"]:
+            _ENRICH_CACHE["data"] = json.loads(p.read_text()) or {}
+            _ENRICH_CACHE["mtime"] = mt
+    except Exception:
+        pass
+    return _ENRICH_CACHE["data"]
+
+
+def _ma_context(sym: str, live_price) -> dict | None:
+    """Build a moving-average / entry-helper context for a symbol from the finviz enrichment cache:
+    price vs SMA20/50/200 (derive the absolute MA from live price + finviz %-from-price), RSI, RVOL,
+    ATR%, plus a plain-English entry hint. VWAP is intraday-only (set when a snapshot has it)."""
+    d = (_enrich_cache() or {}).get(str(sym or "").upper())
+    if not isinstance(d, dict) or not d:
+        return None
+    def _f(k):
+        try:
+            v = d.get(k)
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+    try:
+        px = float(live_price) if live_price else None
+    except (TypeError, ValueError):
+        px = None
+    out: dict = {"rsi": _f("rsi"), "rvol": _f("rvol"), "atr": _f("atr"), "source": "finviz"}
+    if px and out["atr"]:
+        out["atr_pct"] = round(out["atr"] / px * 100, 2)
+    mas = []
+    for label, pk in (("SMA20", "sma20_pct"), ("SMA50", "sma50_pct"), ("SMA200", "sma200_pct")):
+        pct = _f(pk)  # finviz: % the live price sits ABOVE the MA (price = ma*(1+pct/100))
+        if pct is None:
+            continue
+        ma_price = round(px / (1 + pct / 100), 2) if (px and pct != -100) else None
+        mas.append({"label": label, "pct_above": round(pct, 2), "price": ma_price, "above": pct >= 0})
+    out["mas"] = mas
+    # Entry hint — trend posture from the stack + RSI extremes (advisory, helps time the entry).
+    above_ct = sum(1 for m in mas if m["above"])
+    rsi = out["rsi"]
+    if mas:
+        if above_ct == len(mas):
+            hint = "Above all MAs — uptrend; buy pullbacks toward SMA20"
+        elif above_ct == 0:
+            hint = "Below all MAs — downtrend; wait for reclaim of SMA20/50"
+        else:
+            hint = "Mixed MA stack — chop; wait for a clean SMA20/50 break"
+        if rsi is not None and rsi >= 70:
+            hint += " · RSI overbought, avoid chasing"
+        elif rsi is not None and rsi <= 30:
+            hint += " · RSI oversold, watch for reversal"
+        out["entry_hint"] = hint
+    return out
+
+
 # Cache overridden symbols for 60s so we don't query DB on every page load
 _override_cache = {"symbols": set(), "ts": 0}
 
@@ -13356,6 +13419,19 @@ def _broker_proposal_row_base(
             row["support_1"] = tc.get("support_1")
             row["resistance_1"] = tc.get("resistance_1")
             row["levels_source"] = tc.get("levels_source")
+    # Moving-average / entry-helper context (SMA20/50/200 vs live price, RSI, RVOL, ATR%, entry hint).
+    # Helps time the entry on watchlist/income proposals that carry no momentum-scanner technicals.
+    try:
+        _mc = _ma_context(sym, row.get("current_price") or row.get("proposed_entry"))
+        if _mc:
+            row["ma_context"] = _mc
+            # backfill top-level rsi/rvol if the proposal row had none (card header reads these)
+            if row.get("rsi") is None and _mc.get("rsi") is not None:
+                row["rsi"] = _mc["rsi"]
+            if row.get("rvol") is None and _mc.get("rvol") is not None:
+                row["rvol"] = _mc["rvol"]
+    except Exception:
+        pass
     prof = (profiles_map or {}).get(sym) or {}
     _attach_broker_ticker_context(row, prof)
     return _attach_source_attribution(row, watchlist_buy_syms)

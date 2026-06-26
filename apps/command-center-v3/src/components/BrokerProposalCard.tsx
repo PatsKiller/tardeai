@@ -409,6 +409,42 @@ export default function BrokerProposalCard({
         )
       })()}
 
+      {/* Entry helper — moving averages (SMA20/50/200), RSI, RVOL, ATR%, VWAP + plain-English hint.
+          Surfaces price-vs-MA structure to time the entry — esp. on watchlist/income proposals that
+          carry no momentum-scanner technicals. */}
+      {(() => {
+        const mc: any = p.ma_context
+        if (!mc || (!mc.mas?.length && mc.rsi == null)) return null
+        const stat = (label: string, value: any, color: string) => (
+          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>
+            <span style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '.3px' }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color, fontFamily: 'ui-monospace, monospace' }}>{value}</span>
+          </span>
+        )
+        const rsiC = mc.rsi == null ? MUTED : mc.rsi >= 70 ? RED : mc.rsi <= 30 ? GREEN : TEXT1
+        return (
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(45,212,191,.05)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px' }}>
+            <span style={{ fontSize: 9.5, fontWeight: 900, color: TEAL, textTransform: 'uppercase', letterSpacing: '.4px' }}>Entry helper</span>
+            {(mc.mas || []).map((m: any) => (
+              <span key={m.label} style={{ display: 'inline-flex', gap: 4, alignItems: 'baseline' }}
+                title={`Price is ${Math.abs(m.pct_above)}% ${m.above ? 'above' : 'below'} ${m.label} (${m.price != null ? '$' + m.price : 'n/a'})`}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: MUTED }}>{m.label}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: m.above ? GREEN : RED, fontFamily: 'ui-monospace, monospace' }}>
+                  {m.above ? '↑' : '↓'}{m.price != null ? `$${m.price}` : `${m.pct_above}%`}
+                </span>
+              </span>
+            ))}
+            {mc.rsi != null && stat('RSI', mc.rsi, rsiC)}
+            {mc.rvol != null && stat('RVOL', `${mc.rvol}×`, mc.rvol >= 2 ? AMBER : TEXT1)}
+            {mc.atr_pct != null && stat('ATR', `${mc.atr_pct}%`, TEXT1)}
+            {mc.vwap != null && stat('VWAP', `$${mc.vwap}`, TEXT1)}
+            {mc.entry_hint && (
+              <span style={{ flexBasis: '100%', fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 1 }}>↳ {mc.entry_hint}</span>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Ticker context — strategy, sector, company one-liner */}
       <div style={{
         padding: '10px 14px',
