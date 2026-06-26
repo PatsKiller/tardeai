@@ -67,6 +67,19 @@ export type OptionPosition = {
   delta?: number
   theta?: number
   vega?: number
+  risk_reward?: number
+  max_profit_at_open?: number
+  max_loss_at_open?: number
+  profit_captured_pct?: number
+  lifecycle_phase?: string
+  maturity_note?: string
+}
+
+const LIFECYCLE_STYLE: Record<string, { c: string; label: string }> = {
+  let_mature: { c: GREEN, label: 'LET MATURE' },
+  harvest: { c: AMBER, label: 'HARVEST' },
+  defend: { c: RED, label: 'DEFEND' },
+  monitor: { c: BLUE, label: 'MONITOR' },
 }
 
 function fmtExpiry(iso?: string): string {
@@ -93,9 +106,13 @@ export default function OptionPositionCard({
 }) {
   const [showRisk, setShowRisk] = useState(false)
   const sv = SEV(p.severity, p.still_working)
+  const lc = LIFECYCLE_STYLE[p.lifecycle_phase || 'monitor'] || LIFECYCLE_STYLE.monitor
   const pnl = p.unrealized_pnl
   const pnlColor = pnl == null ? TEXT1 : pnl >= 0 ? GREEN : RED
   const strat = (p.strategy || 'option').replace(/_/g, ' ')
+  const rrDisplay = p.risk_reward != null
+    ? (p.risk_reward >= 1 ? `${p.risk_reward.toFixed(2)}:1` : `1:${(1 / Math.max(p.risk_reward, 0.01)).toFixed(1)}`)
+    : '—'
 
   const btnStyle = (action: string): React.CSSProperties => {
     if (action === 'hold') return { fontSize: 10, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }
@@ -120,6 +137,7 @@ export default function OptionPositionCard({
         <div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: `${sv.c}22` }}>{sv.label}</span>
+            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: lc.c, background: `${lc.c}22` }}>{lc.label}</span>
             <span style={{ fontSize: 9, color: MUTED }}>{strat}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.underlying}</span>
             {p.moneyness && <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.moneyness === 'ITM' ? RED : p.moneyness === 'OTM' ? GREEN : AMBER, background: 'var(--bg2)' }}>{p.moneyness}</span>}
@@ -158,14 +176,31 @@ export default function OptionPositionCard({
         compact
       />
 
+      {p.maturity_note && (
+        <div style={{
+          marginTop: 10, padding: '8px 10px', borderRadius: 8, fontSize: 10.5, lineHeight: 1.45,
+          background: `${lc.c}12`, border: `1px solid ${lc.c}33`, color: TEXT2,
+        }}>
+          <span style={{ fontSize: 9, fontWeight: 800, color: lc.c, display: 'block', marginBottom: 3 }}>
+            {p.lifecycle_phase === 'let_mature' ? 'Let contract mature' : p.lifecycle_phase === 'harvest' ? 'When to sell' : p.lifecycle_phase === 'defend' ? 'Action needed' : 'Trade management'}
+          </span>
+          {p.maturity_note}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
         <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip="Current underlying price." />
         <Metric label="Mark" value={p.mark != null ? fmt$(p.mark, 2) : '—'} tip="Current option mark from broker." />
         <Metric label="Entry" value={p.avg_entry != null ? fmt$(p.avg_entry, 2) : '—'} tip="Average entry premium per contract." />
         <Metric label="P/L" value={pnl != null ? fmt$(pnl) : '—'} color={pnlColor} tip="Unrealized P&L on this leg." />
+        <Metric label="R:R (live)" value={rrDisplay} color={BLUE} tip="Dynamic risk/reward vs max loss at open — updates each monitor refresh." />
+        <Metric label="Max profit" value={p.max_profit_at_open != null ? fmt$(p.max_profit_at_open) : '—'} color={GREEN} tip="Best case at entry (short = full premium collected)." />
+        <Metric label="Max loss" value={p.max_loss_at_open != null ? fmt$(p.max_loss_at_open) : '—'} color={AMBER} tip="Worst-case loss modeled at entry." />
+        <Metric label="% captured" value={p.profit_captured_pct != null ? `${p.profit_captured_pct}%` : '—'} color={GREEN} tip="Short premium: % of entry credit already earned as mark decays." />
         <Metric label="Δ" value={p.delta != null ? p.delta.toFixed(2) : '—'} color={BLUE} tip="Delta from Schwab chain." />
         <Metric label="POP OTM" value={p.pop_otm_pct != null ? `${p.pop_otm_pct.toFixed(0)}%` : '—'} color={GREEN} tip="Chance option expires out of the money." />
         <Metric label="POP ITM" value={p.pop_itm_pct != null ? `${p.pop_itm_pct.toFixed(0)}%` : '—'} tip="Chance option finishes in the money." />
+        <Metric label="DTE" value={p.dte ?? '—'} tip="Days to expiration — theta accelerates under ~14 DTE." />
         <Metric label="Qty" value={p.qty ?? '—'} tip="Contracts held (negative = short)." />
         <Metric label="Edge" value={p.edge_score != null ? Math.round(p.edge_score) : '—'} tip="Monitor edge score from POP and IV." />
       </div>

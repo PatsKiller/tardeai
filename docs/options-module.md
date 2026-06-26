@@ -224,10 +224,14 @@ Reject or blocked proposals remain visible on the desk with `enterprise.blocks` 
 
 Positions sourced from Schwab `get_positions()` with OCC symbol parse.
 
-Per position:
+Per position (refreshed every 5–15 min with live Schwab mark):
 - Moneyness (ITM / ATM / OTM)
 - POP OTM / ITM (Black-Scholes N(d2))
 - Unrealized P/L vs mark
+- **Dynamic R:R** (`risk_reward`) vs max loss at open
+- **Premium captured %** on short legs (`profit_captured_pct`)
+- **Lifecycle phase:** `let_mature` | `harvest` | `defend` | `monitor`
+- **Maturity note** — plain-English when to sell vs let contract mature
 - Recommended action: Hold, Close for Profit, Roll, Close
 
 Book-level (`monitor_positions` → `book_greeks`):
