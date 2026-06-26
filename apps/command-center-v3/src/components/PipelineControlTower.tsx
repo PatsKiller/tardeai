@@ -11,19 +11,23 @@ export default function PipelineControlTower() {
   const { data: ps } = useApi<any>('/api/v2/system/pipeline-summary', 60_000)
   const { data: inv } = useApi<any>('/api/v2/system/runtime-inventory', 60_000)
   const { data: gateResp } = useApi<any>('/api/v2/atm/gate-status', 60_000)
+  const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000)
   const { data: gov } = useApi<any>('/api/v2/system/governance-pipeline-status', 60_000)
   const pipelines: any[] = ps?.pipelines ?? []
   const summary = inv?.summary ?? {}
   const dups: Record<string, number> = summary?.duplicate_scripts ?? {}
   const gate = gateResp?.gate
+  const operatorLive = !!execState?.operator_live_via_2fa_allowed
 
   return (
     <div>
       {/* SAFETY BADGES */}
       <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>PAPER-ONLY</span>
-        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>🔒 LIVE TRADING PROHIBITED</span>
-        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 PROHIBITED</span>
+        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>ALPACA PAPER</span>
+        {operatorLive
+          ? <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>✓ LIVE VIA 2FA</span>
+          : <span style={badge('rgba(245,158,11,.15)', '#f59e0b')}>🔒 OPERATOR LIVE LOCKED</span>}
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 / AUTO OFF</span>
         <span style={badge('rgba(96,165,250,.12)', '#60a5fa')}>
           gate {gate?.passed ? 'PASSED' : 'BLOCKED'} · trades {gate?.checks?.closed_trades?.have ?? '—'}/{gate?.checks?.closed_trades?.need ?? '—'}
         </span>

@@ -12820,7 +12820,13 @@ def _atm_gate_status():
             risk = {f: read_yaml_value(ATM_CONFIG_PATH, kp) for f, kp in RISK_CONFIG_FIELDS.items()}
         except Exception:
             pass
-        return {"gate": gs, "accounts": rows,
+        operator_path = {}
+        try:
+            import execution_state as es
+            operator_path = es.live_trading_labels()
+        except Exception as e:
+            operator_path = {"operator_path_inspect_error": str(e)[:120]}
+        return {"gate": gs, "operator_path": operator_path, "accounts": rows,
                 "atm_state": {k: _json_clean(v) for k, v in atm.items()},
                 "risk_config": risk}
     finally:
@@ -15570,6 +15576,13 @@ def _live_trading_gate():
 
     all_passed = all(g["passed"] for g in gates)
 
+    operator_path = {}
+    try:
+        import execution_state as es
+        operator_path = es.live_trading_labels()
+    except Exception as e:
+        operator_path = {"operator_path_inspect_error": str(e)[:120]}
+
     # Projections
     daily_rate = closed / max(months_active * 30, 1) if months_active else 0
     trades_needed = max(0, REQUIRED_SAMPLE - closed)
@@ -15579,6 +15592,12 @@ def _live_trading_gate():
     return {
         "status": "AUTHORIZED" if all_passed else "PAPER_ONLY",
         "all_gates_passed": all_passed,
+        "autonomous_live_trading_allowed": operator_path.get("autonomous_live_trading_allowed", False),
+        "operator_live_via_2fa_allowed": operator_path.get("operator_live_via_2fa_allowed", False),
+        "operator_approved_live_submit_possible": operator_path.get("operator_approved_live_submit_possible", False),
+        "operator_status_label": operator_path.get("operator_status_label"),
+        "autonomous_status_label": operator_path.get("autonomous_status_label"),
+        "per_order_2fa_required": True,
         "gates": gates,
         "summary": {
             "closed_trades": closed,

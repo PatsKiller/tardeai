@@ -1,13 +1,15 @@
 # Current Execution State
 
-Generated: 2026-06-26T15:35:16.919647+00:00
+Generated: 2026-06-26T18:39:06.193759+00:00
 
 ## Summary
 
 - **Live architecture built:** True
 - **Live trading globally allowed:** True
 - **Paper mode:** False
+- **Autonomous live (Alpaca gate):** BLOCKED — paper validation gate not passed
 - **Autonomous live submit allowed:** False
+- **Operator live via 2FA:** ENABLED via standing_db_unlock — per-order 2FA required; not autonomous
 - **Operator-approved live submit possible:** True
 - **Per-order 2FA required:** True
 
@@ -40,8 +42,8 @@ LLMs are advisory only — they never replace operator 2FA or desk approval.
 
 ## Repo hygiene
 
-- Dirty file count: 66
-- Live-adjacent dirty count: 6
+- Dirty file count: 13
+- Live-adjacent dirty count: 1
 
 ## Operator flow
 

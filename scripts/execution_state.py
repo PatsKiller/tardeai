@@ -135,6 +135,47 @@ def _current_blockers(live: dict, paths: dict) -> list[str]:
     return blockers
 
 
+def live_trading_labels() -> dict[str, Any]:
+    """Canonical split: Alpaca autonomous gate vs Schwab operator+2FA path."""
+    live = _live_unlock_status()
+    paths = _path_status()
+    autonomous_allowed = False
+    try:
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        cur.execute(
+            "SELECT live_trading_allowed FROM paper_validation_policy WHERE active=true ORDER BY id DESC LIMIT 1"
+        )
+        r = cur.fetchone()
+        autonomous_allowed = bool(r and r[0])
+    except Exception:
+        pass
+    operator_allowed = bool(live.get("live_unlocked"))
+    options_live = bool(
+        (paths.get("options") or {}).get("live_eligible")
+        or (paths.get("options") or {}).get("armed_for_execution")
+    )
+    operator_submit = operator_allowed and (
+        options_live or (paths.get("protective_stops") or {}).get("live_eligible")
+    )
+    unlock_via = live.get("unlock_via")
+    return {
+        "autonomous_live_trading_allowed": autonomous_allowed,
+        "operator_live_via_2fa_allowed": operator_allowed,
+        "operator_approved_live_submit_possible": operator_submit,
+        "per_order_2fa_required": True,
+        "unlock_via": unlock_via,
+        "autonomous_status_label": (
+            "AUTHORIZED" if autonomous_allowed else "BLOCKED — paper validation gate not passed"
+        ),
+        "operator_status_label": (
+            f"ENABLED via {unlock_via or 'standing unlock'} — per-order 2FA required; not autonomous"
+            if operator_allowed
+            else "LOCKED — standing operator unlock required before 2FA can arm submit"
+        ),
+    }
+
+
 def build_state() -> dict[str, Any]:
     """Single JSON object — reconciles live architecture built vs autonomous prohibition."""
     live = _live_unlock_status()
@@ -145,17 +186,20 @@ def build_state() -> dict[str, Any]:
     if live_dirty and live_dirty > 0:
         release_notes.append(f"live-adjacent dirty files: {live_dirty} (release gate only)")
 
+    labels = live_trading_labels()
     live_unlocked = bool(live.get("live_unlocked"))
-    options_live = bool((paths.get("options") or {}).get("live_eligible") or
-                        (paths.get("options") or {}).get("armed_for_execution"))
-    operator_possible = live_unlocked and (options_live or (paths.get("protective_stops") or {}).get("live_eligible"))
+    operator_possible = bool(labels.get("operator_approved_live_submit_possible"))
 
     return {
         "live_architecture_built": True,
         "live_trading_global_allowed": live_unlocked,
         "paper_mode": not live_unlocked,
+        "autonomous_live_trading_allowed": labels.get("autonomous_live_trading_allowed"),
         "autonomous_live_submit_allowed": False,
+        "operator_live_via_2fa_allowed": labels.get("operator_live_via_2fa_allowed"),
         "operator_approved_live_submit_possible": operator_possible,
+        "operator_status_label": labels.get("operator_status_label"),
+        "autonomous_status_label": labels.get("autonomous_status_label"),
         "per_order_2fa_required": True,
         "live_unlock": live,
         "live_paths": paths,
@@ -187,7 +231,9 @@ def to_markdown(state: dict) -> str:
         f"- **Live architecture built:** {state.get('live_architecture_built')}",
         f"- **Live trading globally allowed:** {state.get('live_trading_global_allowed')}",
         f"- **Paper mode:** {state.get('paper_mode')}",
+        f"- **Autonomous live (Alpaca gate):** {state.get('autonomous_status_label') or state.get('autonomous_live_trading_allowed')}",
         f"- **Autonomous live submit allowed:** {state.get('autonomous_live_submit_allowed')}",
+        f"- **Operator live via 2FA:** {state.get('operator_status_label') or state.get('operator_live_via_2fa_allowed')}",
         f"- **Operator-approved live submit possible:** {state.get('operator_approved_live_submit_possible')}",
         f"- **Per-order 2FA required:** {state.get('per_order_2fa_required', True)}",
         "",
