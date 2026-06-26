@@ -21268,6 +21268,56 @@ def _options_execution_status(query=None):
     return _json_clean(opa.status())
 
 
+def _options_desk_risk(query=None):
+    """GET /api/v2/options/desk/risk — enterprise book greeks + concentration preflight."""
+    import options_engine as oe
+    import options_desk_enterprise as ent
+    props = oe._load_json(oe.PROPOSALS_CACHE) or oe.generate_proposals()
+    holdings, _ = oe._load_holdings()
+    positions = oe._fetch_schwab_option_positions()
+    return _json_clean(ent.build_enterprise_summary(props.get("proposals") or [], holdings, positions))
+
+
+def _options_desk_vol(query=None):
+    """GET /api/v2/options/desk/vol-analytics — term structure + skew for a symbol."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    sym = (g("symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    import options_engine as oe
+    import options_desk_enterprise as ent
+    chain = oe._schwab_chain(sym, strikes=16)
+    und = oe._f(chain.get("underlying_price")) or oe._f((oe._load_technicals().get(sym) or {}).get("price"))
+    vol = ent.vol_analytics_from_chain(chain, und)
+    if vol.get("ok"):
+        ent.persist_chain_snapshot(sym, chain, vol)
+    return _json_clean({"symbol": sym, **vol})
+
+
+def _options_approval_queue(query=None):
+    """GET /api/v2/options/approval-queue — pending desk approvals."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    import options_desk_enterprise as ent
+    status = (g("status") or "").lower()
+    limit = int(g("limit", 50) or 50)
+    return _json_clean({"ok": True, "queue": ent.fetch_approval_queue(status=status, limit=limit)})
+
+
+def _options_approval_resolve(body=None):
+    """POST /api/v2/options/approval-queue/resolve — approve or reject desk proposal."""
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    action = str(b.get("action") or "").strip().lower()
+    if not pid or action not in ("approve", "reject"):
+        return {"ok": False, "error": "proposal_id and action (approve|reject) required"}
+    import options_desk_enterprise as ent
+    return _json_clean(ent.resolve_approval(
+        pid, action, reviewer=str(b.get("reviewer") or "operator"), note=str(b.get("note") or ""),
+    ))
+
+
 def _schwab_fundamentals(query=None):
     """GET /api/v2/schwab/fundamentals?symbols=A,B — READ-ONLY instrument fundamentals."""
     q = query or {}
@@ -22946,6 +22996,9 @@ ROUTES = {
     "/api/v2/options/monitor": _options_monitor,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
+    "/api/v2/options/desk/risk": _options_desk_risk,
+    "/api/v2/options/desk/vol-analytics": _options_desk_vol,
+    "/api/v2/options/approval-queue": _options_approval_queue,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,
@@ -26684,12 +26737,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
+    if method == "POST" and base_path == "/api/v2/options/approval-queue/resolve":
+        try:
+            return 200, _options_approval_resolve(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path == "/api/v2/options/preflight":
         try:
             b = body if isinstance(body, dict) else {}
             proposal_id = str(b.get("proposal_id") or "").strip()
             if not proposal_id:
                 return 400, {"ok": False, "error": "proposal_id required"}
+            import options_desk_enterprise as ent
+            ok_ap, ap_reason = ent.check_preflight_approval(proposal_id)
+            if not ok_ap:
+                return 200, {"ok": False, "mode": "blocked", "error": ap_reason, "gate": "desk_approval"}
             import options_engine as oe
             cached = oe._load_json(oe.PROPOSALS_CACHE)
             proposal = next((p for p in (cached.get("proposals") or []) if p.get("id") == proposal_id), None)
