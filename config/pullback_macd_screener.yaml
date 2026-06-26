@@ -18,8 +18,13 @@ pullback_macd_screener:
   macd_fast: 12
   macd_slow: 26
   macd_signal: 9
-  hist_rising_bars: 2            # histogram must rise this many consecutive bars
-  macd_proximity_pct: 0.6       # |MACD-signal| / price (%) — distance that counts as "approaching"
+  hist_rising_bars: 2            # histogram must rise this many consecutive bars (the inflection)
+  macd_proximity_pct: 0.6       # |MACD-signal| / price (%) — imminence-to-cross (score input)
+  macd_require_proximity: false  # false = trigger at the inflection (earliest); true = wait for near-cross
+
+  # VWAP entry-timing confirmation: a TRIGGER requires BOTH the MACD approaching-cross AND price
+  # holding above intraday session VWAP. MACD-approaching names below VWAP drop to watch.
+  vwap_trigger: true            # set false to ignore VWAP and trigger on MACD alone
 
   # --- optional confirmations ---
   rsi_confirm: false

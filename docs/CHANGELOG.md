@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-26 - Pullback/MACD: earliest-recovery trigger + VWAP confirmation
+
+The pullback screener now catches the move earlier and confirms it with two indicators:
+- **Earliest recovery (MACD)** — triggers at the histogram **inflection** (turned up off the pullback,
+  still pre-cross) instead of waiting for proximity-to-cross, which gave away the early move. Proximity
+  is now a score input (`macd_require_proximity: false`). E.g. DDOG triggered today at prox 1.5% — the
+  old proximity gate would have missed it.
+- **VWAP confirmation** — a TRIGGER requires price **above intraday session VWAP** (`vwap_trigger: true`)
+  in addition to the MACD inflection; recovering names below VWAP stay on watch. Intraday VWAP is pulled
+  (5-min bars) only for the daily-screen survivors. New columns `vwap/above_vwap/vwap_dist_pct`
+  (migration `2026_06_26_pullback_vwap.sql`), surfaced via API + a VWAP chip/metric on the tab.
+
 ## 2026-06-26 - Watchlist bridge revived (ranked + capped) + proposal-burst health guard
 
 - **Watchlist→proposal bridge** was dormant (orphaned script, nothing scheduled it — last proposal

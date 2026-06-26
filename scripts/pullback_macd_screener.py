@@ -163,7 +163,14 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
         s_f > float(sma_f.iloc[-1 - int(cfg.get("sma50_rising_lookback", 5))])
     uptrend = px > s_s and s_f > s_s and rising_sma
     in_pullback = float(cfg["pullback_min_pct"]) <= pull <= float(cfg["pullback_max_pct"])
-    approaching = below and neg_hist and rising and prox_ok
+
+    # EARLIEST confirmed recovery: the MACD histogram has turned up off the pullback trough — rising
+    # for hist_rising_bars while still negative and below the signal line (pre-cross). This fires at
+    # the momentum inflection, not when the cross is imminent. Proximity to the cross is a SCORE input
+    # by default (set macd_require_proximity to also gate on it — later, but tighter).
+    require_prox = bool(cfg.get("macd_require_proximity", False))
+    macd_recovering = below and neg_hist and rising
+    approaching = macd_recovering and (prox_ok or not require_prox)
 
     if cfg.get("rsi_confirm"):
         if _rsi(close, int(cfg.get("rsi_period", 14))) > float(cfg.get("rsi_max", 50)):
@@ -176,8 +183,8 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
     why = []
     if not below: why.append("already crossed")
     if not neg_hist: why.append("hist>0")
-    if not rising: why.append("hist falling")
-    if not prox_ok: why.append(f"prox {prox:.2f}>{cfg['macd_proximity_pct']}")
+    if not rising: why.append("hist not turning up yet")
+    if require_prox and not prox_ok: why.append(f"prox {prox:.2f}>{cfg['macd_proximity_pct']}")
     tier = "trigger" if approaching else "watch"
 
     atr = _atr(df, int(cfg.get("atr_period", 14)))
@@ -200,12 +207,43 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
                   - abs(pull - float(cfg.get("pullback_target_pct", 20))) * 1.5 + trend_pct, 1)
 
     return {
-        "sym": sym, "tier": tier, "price": entry, "pullback_pct": round(pull, 1),
+        "sym": sym, "tier": tier, "macd_approaching": approaching,
+        "price": entry, "pullback_pct": round(pull, 1),
         "trend_pct": trend_pct, "macd_prox_pct": round(prox, 3),
         "hist_rising_bars": rising_n if rising else 0, "bars_to_cross_est": bars,
         "atr": round(atr, 3), "entry": entry, "stop": stop, "target1": target1, "rr": rr,
         "score": score, "why_not": ", ".join(why), "skip": False,
     }
+
+
+def _session_vwap(syms: list[str]) -> dict:
+    """Intraday session VWAP for a small set of symbols (the daily-screen survivors), via 5-min bars.
+    Returns {sym: {vwap, last, above_vwap, dist_pct}}. Daily bars can't give VWAP, so this is a
+    separate light intraday pull used only as an entry-timing confirmation."""
+    out: dict = {}
+    if not syms:
+        return out
+    try:
+        import yfinance as yf
+        data = yf.download(syms, period="1d", interval="5m", group_by="ticker",
+                           threads=True, progress=False, auto_adjust=False)
+    except Exception:
+        return out
+    for s in syms:
+        try:
+            df = (data[s] if len(syms) > 1 else data).dropna()
+            if df.empty or df["Volume"].sum() <= 0:
+                continue
+            tp = (df["High"] + df["Low"] + df["Close"]) / 3.0
+            vwap = float((tp * df["Volume"]).cumsum().iloc[-1] / df["Volume"].cumsum().iloc[-1])
+            last = float(df["Close"].iloc[-1])
+            if vwap <= 0:
+                continue
+            out[s] = {"vwap": round(vwap, 2), "last": round(last, 2),
+                      "above_vwap": last >= vwap, "dist_pct": round((last / vwap - 1) * 100, 2)}
+        except Exception:
+            continue
+    return out
 
 
 def _fetch_all(syms: list[str]) -> dict:
@@ -231,19 +269,21 @@ def _persist_candidates(cands: list[dict], scan_d: date) -> None:
         _db("""INSERT INTO pullback_macd_candidates
                  (symbol, tier, prev_tier, price, pullback_pct, trend_pct, macd_prox_pct,
                   hist_rising_bars, bars_to_cross_est, atr, entry, stop, target1, rr, score,
-                  why_not, payload, status, scan_date, last_scan_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,'active',%s,NOW())
+                  why_not, vwap, above_vwap, vwap_dist_pct, payload, status, scan_date, last_scan_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,'active',%s,NOW())
                ON CONFLICT (symbol) DO UPDATE SET
                  prev_tier=pullback_macd_candidates.tier, tier=EXCLUDED.tier,
                  price=EXCLUDED.price, pullback_pct=EXCLUDED.pullback_pct, trend_pct=EXCLUDED.trend_pct,
                  macd_prox_pct=EXCLUDED.macd_prox_pct, hist_rising_bars=EXCLUDED.hist_rising_bars,
                  bars_to_cross_est=EXCLUDED.bars_to_cross_est, atr=EXCLUDED.atr, entry=EXCLUDED.entry,
                  stop=EXCLUDED.stop, target1=EXCLUDED.target1, rr=EXCLUDED.rr, score=EXCLUDED.score,
-                 why_not=EXCLUDED.why_not, payload=EXCLUDED.payload, status='active',
+                 why_not=EXCLUDED.why_not, vwap=EXCLUDED.vwap, above_vwap=EXCLUDED.above_vwap,
+                 vwap_dist_pct=EXCLUDED.vwap_dist_pct, payload=EXCLUDED.payload, status='active',
                  scan_date=EXCLUDED.scan_date, last_scan_at=NOW()""",
             (c["sym"], c["tier"], prev_tier, c["price"], c["pullback_pct"], c["trend_pct"],
              c["macd_prox_pct"], c["hist_rising_bars"], c["bars_to_cross_est"], c["atr"],
              c["entry"], c["stop"], c["target1"], c["rr"], c["score"], c["why_not"],
+             c.get("vwap"), c.get("above_vwap"), c.get("vwap_dist_pct"),
              json.dumps(c), scan_d))
         c["_prev_tier"] = prev_tier
     # mark anything not in this scan as stale
@@ -391,6 +431,30 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
             continue
         funnel["uptrend_pullback"] += 1
         cands.append(r)
+
+    # VWAP entry-timing confirmation. A TRIGGER requires BOTH the MACD approaching-cross AND price
+    # holding above intraday VWAP. MACD-approaching names below VWAP drop to watch (timing not there
+    # yet). VWAP is fetched only for the daily-screen survivors (a handful), not the whole universe.
+    vwap_required = bool(cfg.get("vwap_trigger", True))
+    vwap_map = _session_vwap([c["sym"] for c in cands]) if cands else {}
+    for c in cands:
+        vw = vwap_map.get(c["sym"])
+        if vw:
+            c["vwap"], c["above_vwap"], c["vwap_dist_pct"] = vw["vwap"], vw["above_vwap"], vw["dist_pct"]
+        else:
+            c["vwap"], c["above_vwap"], c["vwap_dist_pct"] = None, None, None
+        if not vwap_required:
+            continue
+        # Final tier: trigger only when MACD-approaching AND confirmed above VWAP.
+        if c.get("macd_approaching") and c.get("above_vwap"):
+            c["tier"] = "trigger"
+        else:
+            if c.get("macd_approaching"):  # MACD ok but VWAP not confirmed → demote with reason
+                why = [c.get("why_not", "")] if c.get("why_not") else []
+                why.append("below VWAP" if c.get("above_vwap") is False else "VWAP unconfirmed")
+                c["why_not"] = ", ".join(w for w in why if w)
+            c["tier"] = "watch"
+
     triggers = [c for c in cands if c["tier"] == "trigger"]
     watch = [c for c in cands if c["tier"] == "watch"]
     scan_d = date.today()
@@ -427,10 +491,11 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
               f"uptrend+pullback={summary['in_pullback_uptrend']} → "
               f"TRIGGER={summary['triggers']} WATCH={summary['watch']} | "
               f"proposals={emitted} ({'DRY' if dry else 'written'})")
-        print(f"\n{'TIER':<8}{'SYM':<7}{'PULL%':>7}{'TREND%':>7}{'PROX%':>7}{'ENTRY':>9}{'STOP':>9}{'TGT':>9}{'R:R':>6}{'SCORE':>7}")
+        print(f"\n{'TIER':<8}{'SYM':<7}{'PULL%':>7}{'PROX%':>7}{'VWAP':>9}{'>VWAP':>6}{'ENTRY':>9}{'STOP':>9}{'TGT':>9}{'R:R':>6}{'SCORE':>7}")
         for c in summary["top_triggers"] + summary["top_watch"][:8]:
-            print(f"{c['tier']:<8}{c['sym']:<7}{c['pullback_pct']:>7}{c['trend_pct']:>7}"
-                  f"{c['macd_prox_pct']:>7}{c['entry']:>9}{c['stop']:>9}{c['target1']:>9}{c['rr']:>6}{c['score']:>7}")
+            av = "yes" if c.get("above_vwap") else ("no" if c.get("above_vwap") is False else "—")
+            print(f"{c['tier']:<8}{c['sym']:<7}{c['pullback_pct']:>7}{c['macd_prox_pct']:>7}"
+                  f"{str(c.get('vwap') or '—'):>9}{av:>6}{c['entry']:>9}{c['stop']:>9}{c['target1']:>9}{c['rr']:>6}{c['score']:>7}")
     return summary
 
 

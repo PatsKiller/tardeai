@@ -10,9 +10,9 @@ All thresholds live in `config/pullback_macd_screener.yaml` (no hardcoded values
 
 1. **Uptrend gate** — `close > SMA200` AND `SMA50 > SMA200` AND `SMA50` rising (5-bar)
 2. **Pullback gate** — drawdown from the 52-week high in the **12–28%** band (centered on 20%)
-3. **MACD approaching cross** — MACD(12,26,9): `line < signal`, histogram `< 0` and rising ≥2 bars,
-   and `|MACD − signal| / price ≤ 0.6%` (proximity)
-4. Optional RSI confirmation (off by default)
+3. **Earliest recovery (MACD)** — MACD(12,26,9) histogram has **turned up off the pullback** (rising ≥2 bars, still `< 0` and below the signal line = pre-cross). Fires at the momentum inflection, not when the cross is imminent — proximity is a score input (`macd_require_proximity: false`).
+4. **VWAP confirmation** — price holding **above intraday session VWAP**. A TRIGGER requires BOTH #3 and #4; a recovering name below VWAP stays on watch (`vwap_trigger: true`).
+5. Optional RSI confirmation (off by default)
 
 Two tiers:
 - **trigger** — all gates pass; the cross is imminent

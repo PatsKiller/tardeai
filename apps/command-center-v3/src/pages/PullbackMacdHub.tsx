@@ -28,9 +28,11 @@ function PullbackBanner({ c }: { c: any }) {
     }}>
       <span style={{ fontSize: 12, fontWeight: 800, color: '#f59e0b' }}>📉 PULLBACK {fmt(c.pullback_pct, 1)}%</span>
       <span style={{ fontSize: 10, color: 'var(--text3)' }}>off 52-wk high · uptrend intact</span>
+      {c.above_vwap === true && <span style={{ fontSize: 10, fontWeight: 800, color: '#22c55e' }}>↑ VWAP {fmt(c.vwap)}</span>}
+      {c.above_vwap === false && <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>↓ VWAP {fmt(c.vwap)}</span>}
       {trigger
-        ? <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#22c55e' }}>📈 MACD CROSS APPROACHING</span>
-        : <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)' }}>watch · {c.why_not || 'cross not yet'}</span>}
+        ? <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#22c55e' }}>📈 RECOVERY CONFIRMED · MACD↑ + VWAP</span>
+        : <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)' }}>watch · {c.why_not || 'not confirmed'}</span>}
     </div>
   )
 }
@@ -54,8 +56,8 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
         <Metric label="Target1" value={fmt(c.target1)} />
         <Metric label="R:R" value={fmt(c.rr, 1)} />
         <Metric label="Trend (50/200)" value={`+${fmt(c.trend_pct, 1)}%`} />
-        <Metric label="MACD prox" value={`${fmt(c.macd_prox_pct, 3)}%`} tip="|MACD − signal| as % of price — distance to the cross" />
-        <Metric label="~bars to cross" value={c.bars_to_cross_est ?? '—'} />
+        <Metric label="MACD prox" value={`${fmt(c.macd_prox_pct, 3)}%`} tip="|MACD − signal| as % of price — imminence to the cross (lower = closer)" />
+        <Metric label="vs VWAP" value={c.vwap_dist_pct == null ? '—' : `${c.vwap_dist_pct > 0 ? '+' : ''}${fmt(c.vwap_dist_pct, 2)}%`} tip="Last price vs intraday session VWAP — entry-timing confirmation" />
         <Metric label="ATR" value={fmt(c.atr)} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
@@ -113,7 +115,7 @@ export default function PullbackMacdHub({ onDrill }: Props) {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Pullback / MACD Screener</h1>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            S&P 500 uptrends pulled back into the 12–28% band with MACD approaching a bullish cross ·
+            S&P 500 uptrends pulled back 12–28%, earliest recovery confirmed (MACD histogram turning up + above VWAP) ·
             advisory only, proposals require approval ·
             {run ? ` last scan ${run.scan_date} (${run.screened} screened)` : ' no scan recorded yet'}
           </div>
@@ -128,7 +130,7 @@ export default function PullbackMacdHub({ onDrill }: Props) {
 
       <section>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-          🎯 Triggers <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({triggers.length}) — MACD cross imminent</span>
+          🎯 Triggers <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({triggers.length}) — MACD turning up + above VWAP (earliest confirmed recovery)</span>
         </div>
         {triggers.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
@@ -139,7 +141,7 @@ export default function PullbackMacdHub({ onDrill }: Props) {
 
       <section>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-          👀 Watch <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({watch.length}) — in pullback, cross not yet triggered</span>
+          👀 Watch <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({watch.length}) — in pullback, recovery not yet confirmed</span>
         </div>
         {watch.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>

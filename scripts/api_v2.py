@@ -21542,7 +21542,8 @@ def _pullback_macd_candidates(query=None):
     rows = _execute(
         f"""SELECT symbol, tier, prev_tier, price, pullback_pct, trend_pct, macd_prox_pct,
                    hist_rising_bars, bars_to_cross_est, atr, entry, stop, target1, rr, score,
-                   why_not, proposal_id, scan_date, first_seen_at, last_scan_at
+                   why_not, vwap, above_vwap, vwap_dist_pct, proposal_id, scan_date,
+                   first_seen_at, last_scan_at
             FROM pullback_macd_candidates
             WHERE {where}
             ORDER BY (tier='trigger') DESC, score DESC LIMIT %s""",
