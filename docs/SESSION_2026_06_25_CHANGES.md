@@ -148,6 +148,26 @@ and orphaning the child on timeout → pile-up starved the deliberately single-t
   LLM). Re-review cadence of the other gates (unchanged): agent reviews `*/15`, enrichment `*/10`,
   revalidation `*/30`, cloud review `*/20`, broker curator `0,30`.
 
+## 10. (2026-06-26) New strategy — meme_squeeze_momentum (large-cap squeeze)
+
+- **Problem**: WEN (RVOL 33×, gap +25%, "Heavily Shorted … Meme Traders Pounce", 169M float) was
+  labeled `fib_retracement_bounce` — a mean-reversion **pullback** setup, the literal opposite of a
+  momentum squeeze. `momentum_scalp` is **micro-cap only** (`max_float_m 100`), so large-cap squeezes
+  had no correct home.
+- **`config/strategies/meme_squeeze_momentum.yaml` (NEW)** — SHORT_SWING; large float (≥50M) + high
+  RVOL (≥8) + gap (≥5%) + elevated short interest (≥10%) + social/news catalyst. High-risk
+  speculation, taxable-only, manual-review-required, multi-day hold w/ aggressive trailing. Validates
+  clean; synced to `strategy_config_versions`. The large-float gate is the explicit separator from
+  micro-cap `momentum_scalp`.
+- **`scripts/reclassify_squeeze_proposals.py` (NEW)** — corrects clearly-wrong mean-reversion labels on
+  squeeze setups → `meme_squeeze_momentum`. Conservative: **requires explicit squeeze language**
+  (heavily-shorted / meme / short-interest / short-squeeze) so a generic large-cap momentum gap
+  (e.g. TECH, "Tech Bulls Whistle Past Micron") is **not** mislabeled a squeeze. Micro-cap squeezes
+  left to `momentum_scalp`. dry-run default, `--apply` writes. Cron `*/30 9-16 * * 1-5` (flock).
+- **Applied to WEN #602**: `fib_retracement_bounce` → `meme_squeeze_momentum`; resolver confirms it
+  resolves (`resolve_source=proposal_strategy_id`, explicit wins) with the squeeze exit plan
+  (level_based stop / trailing target / 5d hold). Card shows "Meme / Squeeze Momentum".
+
 ---
 
 Reaper day-watch (2026-06-25 16:44Z → 2026-06-26 16:44Z) clean after both false-positive fixes.
