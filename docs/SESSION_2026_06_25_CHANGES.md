@@ -118,6 +118,36 @@ and orphaning the child on timeout → pile-up starved the deliberately single-t
   - `scripts/compute_intraday_vwap.py` (cron `*/20 13-21 * * 1-5`) computes session VWAP from yfinance
     5m bars (VWAP is intraday-only — can't come from daily Finviz). 164/170 symbols resolve.
 
+## 9. (2026-06-26) Proposal card clarity + routing/status honesty
+
+- **Tiled intel sections** — Catalyst / Technicals / Analyst no longer stack in one tall column; they
+  flow into a responsive auto-fit grid (`repeat(auto-fit, minmax(240px,1fr))`, align-start), 2–3
+  columns on wide cards, 1 when narrow. Why-purchase full-width on top, news full-width below.
+  Verified via Playwright (3 columns, same row, on TECH+WEN).
+- **Route button honesty** — a paper proposal (`account=alpaca_paper`) routes Path-B to Schwab, but the
+  card computed "manual/record-only" from its SOURCE account → mislabeled **"Record proposal"**.
+  Record-only now applies only to a Fidelity destination, or a manual proposal with **no** Schwab dest
+  available. TECH/WEN now show **"Auto route (2FA)"** (disabled, with the gate-block reason).
+- **On-card block reason** — a disabled Auto-route shows `⛔ Auto-route blocked: <reason>` (e.g. "No
+  authoritative trade plan — gambling-blocked") **on the card**, not just a tooltip, plus "stays in
+  this state until it expires in <Xh/d>".
+- **Expiration countdown** — `Expires in 15h / 3d 4h` chip in the Decision Summary strip (from
+  `p.expires_at`; red <24h, amber <48h, teal beyond).
+- **Accurate status label** — the raw enum `APPROVED_FOR_PAPER_TEST` is misleading (these are NOT
+  paper-only; they're eligible for LIVE Path-B Schwab routing, 2FA). Card header badge now
+  **"Approved · route-eligible"** (STATUS_LABELS map); PROPOSAL badge tooltip fixed ("eligible for
+  Path-B routing" not "not yet broker-routed").
+  - **Telegram alerts too**: `proposal_alerter.friendly_status()` + `STATUS_LABELS` (single source of
+    truth) → `proposal_alerter` and `run_atp_alert_evaluator` print "Approved · route-eligible
+    (paper-test + live Path-B Schwab, 2FA)" instead of the raw enum; ATP footer "No order
+    auto-submitted — review to route (paper-test or live Path-B, 2FA)" (was misleading "Paper mode").
+- **Trade-plan cadence raised** — `materialize_watchlist_strategy_cards.py` cron moved from once-daily
+  (`50 6`) to **every 30 min during the trading day** (`*/30 6-16 * * 1-5`, flock single-flight). A
+  proposal blocked on "No authoritative trade plan" now gets a fresh shot at card-backed entry/stop/
+  target every 30 min instead of waiting for the next 6:50am run (run is ~12s, idempotent upsert, no
+  LLM). Re-review cadence of the other gates (unchanged): agent reviews `*/15`, enrichment `*/10`,
+  revalidation `*/30`, cloud review `*/20`, broker curator `0,30`.
+
 ---
 
 Reaper day-watch (2026-06-25 16:44Z → 2026-06-26 16:44Z) clean after both false-positive fixes.
