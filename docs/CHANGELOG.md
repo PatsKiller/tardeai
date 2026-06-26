@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-26 - Options Desk enterprise: post-merge audit fixes
+
+Audit of the enterprise desk layer (`options_desk_enterprise.py`) surfaced six issues; all fixed:
+
+1. **Theta sign (correctness).** Estimated theta (used when chain theta is missing — the common case for short premium) was not sign-flipped for short legs, so the book's net theta/day reported decay *paid* instead of *collected*. Root cause was in `_theta_decay_estimate` itself: a "sign" scalar flipped the already-negative approximation positive. Reworked it to return long-convention (negative) theta; `aggregate_book_greeks` now flips via `side_mult` consistently with real chain theta.
+2. **Hardcoded $150 share-price proxy (No-Hardcoded-Values rule).** `portfolio_risk_preflight` derived net-delta-% from a magic `150.0`. Now uses real dollar-delta (`net_delta_notional` = share-equiv delta × each leg's actual underlying price) / book MV. Dead pre-overwrite computation removed.
+3. **Earnings-cache blackout gap.** Symbols requested mid-window that weren't already cached were never fetched → silently skipped their earnings blackout. Cache now fetches the missing subset and records "looked, none found" to avoid refetch storms.
+4. **Chain-snapshot persistence.** Stored full chain JSON byte-sliced to 500 KB → malformed JSON → `::jsonb` cast threw → snapshot silently lost on large chains. Now stores a small valid summary (`vol_analytics_json` is all `fetch_vol_history` reads).
+5. **Snapshot retention.** `options_chain_snapshots` had no pruning (unbounded growth). Added per-symbol retention via `OPTIONS_SNAPSHOT_RETENTION_DAYS` (default 45), enforced on the cron-driven insert path (uses `idx_options_chain_snap_sym_time`).
+6. **Live-eligibility invariant.** A proposal with no resolved chain contract (no verifiable fill liquidity) is now never `live_eligible`, independent of the `require_chain_for_live` override.
+
+Files: `scripts/options_desk_enterprise.py`, `docs/options-module.md`. Smoke-tested greeks signs + preflight + enrich invariants.
+
 ## 2026-06-25 - Options Desk enterprise sprint (audit → enterprise layer → filters → lifecycle → tooltips)
 
 Six-commit stack on `main` (`5645e068` … `606761c5`):
