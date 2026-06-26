@@ -248,11 +248,74 @@ def _execution_profile(account: str) -> dict:
     }
 
 
-def _stamp_execution(p: dict, account: str = "") -> dict:
+SCHWAB_ACCOUNT_PRIORITY: Tuple[str, ...] = (
+    "schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira",
+)
+
+
+def _canonical_account(h: dict) -> str:
+    """Canonical account_key — never use human display_name as the execution key."""
+    return (h.get("account") or h.get("account_id") or "").strip()
+
+
+def _normalize_account_key(raw: str, holdings: Optional[List[dict]] = None) -> str:
+    """Map display labels ('Fidelity Rollover Ira') back to account_key when leaked."""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if "_" in s and s == s.lower():
+        return s
+    for h in holdings or []:
+        disp = (h.get("account_display") or "").strip()
+        key = _canonical_account(h)
+        if s.lower() == disp.lower() or s.lower().replace(" ", "_") == key.lower():
+            return key
+    return s.lower().replace(" ", "_") if " " in s else s
+
+
+def _accounts_for_symbol(symbol: str, holdings: List[dict]) -> List[dict]:
+    sym = (symbol or "").upper()
+    return [
+        h for h in holdings
+        if (h.get("symbol") or "").upper() == sym and not h.get("is_cash")
+    ]
+
+
+def _auto_select_account(
+    symbol: str,
+    holdings: List[dict],
+    *,
+    strategy: str = "",
+    cash_map: Optional[Dict[str, float]] = None,
+    min_shares: float = 0,
+) -> str:
+    """Auto-pick account: symbol lot first; wheel plays default to Schwab (auto), Fidelity stays manual."""
+    lots = _accounts_for_symbol(symbol, holdings)
+    if min_shares > 0:
+        lots = [h for h in lots if _f(h.get("shares")) >= min_shares]
+    if lots:
+        lots.sort(key=lambda h: (-_f(h.get("shares")), -_f(h.get("market_value"))))
+        return _canonical_account(lots[0])
+    wheel = strategy in ("cash_secured_put", "long_call", "credit_spread", "long_put", "protective_put")
+    if wheel:
+        cmap = cash_map or {}
+        for key in SCHWAB_ACCOUNT_PRIORITY:
+            if cmap.get(key, 0) >= 5000:
+                return key
+        for key in SCHWAB_ACCOUNT_PRIORITY:
+            if any(_canonical_account(h) == key for h in holdings):
+                return key
+        return "schwab_taxable"
+    return ""
+
+
+def _stamp_execution(p: dict, account: str = "", holdings: Optional[List[dict]] = None) -> dict:
     """Attach broker + execution_mode labels to a proposal row."""
-    acct = account or p.get("account") or ""
+    acct = _normalize_account_key(account or p.get("account") or "", holdings)
     prof = _execution_profile(acct)
-    p["account"] = acct or p.get("account")
+    p["account"] = acct
+    if acct and not p.get("account_display"):
+        p["account_display"] = acct.replace("_", " ").title()
     p["broker"] = prof["broker"]
     p["execution_mode"] = prof["execution_mode"]
     p["execution_label"] = prof["execution_label"]
@@ -900,13 +963,14 @@ def generate_covered_call_proposals(
             "aegis": aegis.get("reasoning") or "",
             "income_note": f"Est. ${premium * 100 * contracts:,.0f} premium ({contracts} contract{'s' if contracts > 1 else ''})",
         }
-        acct = h.get("account_display") or h.get("account") or ""
+        acct = _canonical_account(h)
         proposals.append(_stamp_execution({
             "id": _proposal_id("covered_call", sym, acct, strike, exp),
             "strategy": "covered_call",
             "symbol": sym,
             "underlying": sym,
             "account": acct,
+            "account_display": h.get("account_display"),
             "intent_sleeve": in_intent,
             "aegis_note": (aegis.get("reasoning") or "")[:160] or None,
             "aegis_verdict": aegis.get("verdict"),
@@ -945,7 +1009,7 @@ def generate_covered_call_proposals(
             "data_source": data_source,
             "execution_note": _execution_note(),
             "generated_at": _iso(),
-        }, acct))
+        }, acct, holdings))
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals
 
@@ -1002,12 +1066,13 @@ def generate_holdings_put_proposals(
         min_edge = MIN_EDGE_CC_INTENT if gates["manual"] else (MIN_EDGE_SCORE - 8)
         if edge < min_edge:
             continue
-        acct_disp = h.get("account_display") or acct
         proposals.append(_stamp_execution({
-            "id": _proposal_id("protective_put", sym, acct_disp, strike, contract.get("exp") or ""),
+            "id": _proposal_id("protective_put", sym, acct, strike, contract.get("exp") or ""),
             "strategy": "protective_put",
             "symbol": sym,
             "underlying": sym,
+            "account": acct,
+            "account_display": h.get("account_display"),
             "side": "BUY",
             "option_type": "put",
             "strike": strike,
@@ -1040,7 +1105,7 @@ def generate_holdings_put_proposals(
             "data_source": data_source,
             "execution_note": _execution_note("Manual hedge — size to shares held."),
             "generated_at": _iso(),
-        }, acct))
+        }, acct, holdings))
 
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:12]
@@ -1056,6 +1121,9 @@ def _append_long_call_proposal(
     c: dict,
     contract: dict,
     data_source: str,
+    account: str = "",
+    holdings: Optional[List[dict]] = None,
+    cash_map: Optional[Dict[str, float]] = None,
 ) -> None:
     premium = contract["mid"]
     strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
@@ -1067,11 +1135,13 @@ def _append_long_call_proposal(
     min_edge = MIN_EDGE_CONVICTION - 8 if conf >= 0.65 else MIN_EDGE_CONVICTION - 3
     if edge < min_edge:
         return
+    acct = account or _auto_select_account(sym, holdings or [], strategy="long_call", cash_map=cash_map)
     proposals.append(_stamp_execution({
-        "id": _proposal_id("long_call", sym, "", strike, contract.get("exp") or ""),
+        "id": _proposal_id("long_call", sym, acct, strike, contract.get("exp") or ""),
         "strategy": "long_call",
         "symbol": sym,
         "underlying": sym,
+        "account": acct,
         "side": "BUY",
         "option_type": "call",
         "strike": strike,
@@ -1106,7 +1176,7 @@ def _append_long_call_proposal(
         "data_source": data_source,
         "execution_note": _execution_note(),
         "generated_at": _iso(),
-    }))
+    }, acct, holdings))
 
 
 def _append_csp_proposal(
@@ -1119,6 +1189,9 @@ def _append_csp_proposal(
     c: dict,
     contract: dict,
     data_source: str,
+    account: str = "",
+    holdings: Optional[List[dict]] = None,
+    cash_map: Optional[Dict[str, float]] = None,
 ) -> None:
     premium = contract["mid"]
     strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
@@ -1133,11 +1206,13 @@ def _append_csp_proposal(
     min_edge = MIN_EDGE_CONVICTION if conf >= 0.6 else MIN_EDGE_SCORE
     if edge < min_edge or pop < MIN_POP_PCT - 3:
         return
+    acct = account or _auto_select_account(sym, holdings or [], strategy="cash_secured_put", cash_map=cash_map)
     proposals.append(_stamp_execution({
-        "id": _proposal_id("cash_secured_put", sym, "", strike, contract.get("exp") or ""),
+        "id": _proposal_id("cash_secured_put", sym, acct, strike, contract.get("exp") or ""),
         "strategy": "cash_secured_put",
         "symbol": sym,
         "underlying": sym,
+        "account": acct,
         "side": "SELL",
         "option_type": "put",
         "strike": strike,
@@ -1174,7 +1249,7 @@ def _append_csp_proposal(
             "Verify buying power + SSDI income context before entry."
         ),
         "generated_at": _iso(),
-    }))
+    }, acct, holdings))
 
 
 def generate_defined_risk_proposals(
@@ -1182,6 +1257,7 @@ def generate_defined_risk_proposals(
     tech_map: dict,
     owned: set,
     holdings: Optional[List[dict]] = None,
+    cash_map: Optional[Dict[str, float]] = None,
 ) -> List[dict]:
     """Cash-secured puts + long calls on high-conviction names (not already full CC from same sleeve)."""
     proposals: List[dict] = []
@@ -1211,6 +1287,7 @@ def generate_defined_risk_proposals(
                 _append_long_call_proposal(
                     proposals, sym=sym, und=und, conf=conf, iv_rank=iv_rank,
                     c=c, contract=contract, data_source=data_source,
+                    holdings=holdings, cash_map=cash_map,
                 )
         elif conf >= 0.55:
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
@@ -1219,6 +1296,7 @@ def generate_defined_risk_proposals(
                 _append_csp_proposal(
                     proposals, sym=sym, und=und, conf=conf, iv_rank=iv_rank,
                     c=c, contract=contract, data_source=data_source,
+                    holdings=holdings, cash_map=cash_map,
                 )
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:12]
@@ -1245,6 +1323,7 @@ def generate_credit_spread_proposals(
     convictions: List[dict],
     tech_map: dict,
     holdings: Optional[List[dict]] = None,
+    cash_map: Optional[Dict[str, float]] = None,
 ) -> List[dict]:
     """Bull put / bear call credit spreads on high-conviction names (defined risk)."""
     proposals: List[dict] = []
@@ -1285,11 +1364,13 @@ def generate_credit_spread_proposals(
         min_edge = MIN_EDGE_CONVICTION if conf >= 0.62 else MIN_EDGE_SCORE
         if edge < min_edge or pop < MIN_POP_PCT - 3:
             continue
+        acct = _auto_select_account(sym, holdings or [], strategy="credit_spread", cash_map=cash_map)
         proposals.append(_stamp_execution({
-            "id": _proposal_id("credit_spread", sym, "", short_strike, short_c.get("exp") or ""),
+            "id": _proposal_id("credit_spread", sym, acct, short_strike, short_c.get("exp") or ""),
             "strategy": "credit_spread",
             "symbol": sym,
             "underlying": sym,
+            "account": acct,
             "option_type": "put",
             "short_strike": short_strike,
             "long_strike": long_strike,
@@ -1324,7 +1405,7 @@ def generate_credit_spread_proposals(
             "data_source": data_source,
             "execution_note": _execution_note(),
             "generated_at": _iso(),
-        }))
+        }, acct, holdings))
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:8]
 
@@ -1615,8 +1696,8 @@ def generate_proposals(force: bool = False) -> dict:
     cc = generate_covered_call_proposals(holdings, tech_map, intent_cfg, aegis_map)
     cash_map = _cash_by_account(holdings)
     puts = generate_holdings_put_proposals(holdings, tech_map, cash_map, aegis_map)
-    dr = generate_defined_risk_proposals(convictions, tech_map, owned, holdings)
-    spreads = generate_credit_spread_proposals(convictions, tech_map, holdings)
+    dr = generate_defined_risk_proposals(convictions, tech_map, owned, holdings, cash_map)
+    spreads = generate_credit_spread_proposals(convictions, tech_map, holdings, cash_map)
     pool = cc + puts + dr + spreads
     cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
 

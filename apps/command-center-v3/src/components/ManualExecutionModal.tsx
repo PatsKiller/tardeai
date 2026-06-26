@@ -14,6 +14,8 @@ export type ManualExecSeed = {
   execution_type?: 'equity' | 'option'
 }
 
+type AccountOpt = { account_key: string; label: string; broker?: string; mode?: string }
+
 type Props = {
   seed: ManualExecSeed
   onClose: () => void
@@ -71,8 +73,14 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
   }, [seed])
 
   const isOption = seed.execution_type === 'option' || data?.execution_type === 'option' || !!f.strike
+  const accountOptions: AccountOpt[] = data?.account_options?.length
+    ? data.account_options
+    : []
 
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
+
+  const selectedAcct = accountOptions.find(a => a.account_key === f.account)
+  const isFidelity = data?.broker === 'fidelity' || selectedAcct?.broker === 'fidelity' || (f.account || '').includes('fidelity')
 
   const submit = async () => {
     if (!f.account) { setMsg('Select an account'); return }
@@ -111,7 +119,7 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
     }
   }
 
-  const brokerBadge = data?.execution_label || (data?.broker === 'fidelity' ? 'Manual · Fidelity' : 'Schwab · auto or manual')
+  const brokerBadge = data?.execution_label || (isFidelity ? 'Manual · Fidelity' : 'Schwab · auto + 2FA')
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -120,7 +128,7 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
           <div>
             <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Manual execution — {seed.symbol}</div>
             <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>
-              Adjust sizing and levels, then log execution to close the learning loop.
+              Account auto-selected from holdings · Schwab = live+2FA · Fidelity = manual log only
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 18 }}>×</button>
@@ -129,7 +137,10 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
         {loading ? <div style={{ fontSize: 11, color: MUTED }}>Loading recommendations…</div> : (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: data?.broker === 'fidelity' ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: data?.broker === 'fidelity' ? PURPLE : AMBER }}>{brokerBadge}</span>
+              <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: isFidelity ? 'rgba(167,139,250,.18)' : 'rgba(245,158,11,.18)', color: isFidelity ? PURPLE : AMBER }}>{brokerBadge}</span>
+              {data?.account_auto_selected && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(96,165,250,.14)', color: BLUE }}>Account auto-selected</span>
+              )}
               {data?.origin_type && data.origin_type !== 'manual' && (
                 <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(96,165,250,.14)', color: BLUE }}>via {data.origin_type}{data.origin_id ? ` #${data.origin_id}` : ''}</span>
               )}
@@ -151,8 +162,18 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <label><span style={lbl}>Account</span>
-                <input style={inp} value={f.account} onChange={e => set('account', e.target.value)} placeholder="schwab_taxable" />
+              <label style={{ gridColumn: '1 / -1' }}><span style={lbl}>Account</span>
+                {accountOptions.length > 0 ? (
+                  <select style={inp} value={f.account} onChange={e => set('account', e.target.value)}>
+                    {accountOptions.map(a => (
+                      <option key={a.account_key} value={a.account_key}>
+                        {a.label} · {a.mode || (a.broker === 'fidelity' ? 'Manual' : 'Auto · 2FA')}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input style={inp} value={f.account} onChange={e => set('account', e.target.value)} placeholder="schwab_taxable" />
+                )}
               </label>
               {!isOption && <label><span style={lbl}>Shares</span>
                 <input style={inp} value={f.shares} onChange={e => set('shares', e.target.value.replace(/[^0-9]/g, ''))} />
