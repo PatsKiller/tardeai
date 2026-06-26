@@ -1,6 +1,6 @@
 # Current Execution State
 
-Generated: 2026-06-26T18:39:06.193759+00:00
+Generated: 2026-06-26T23:30:43.827676+00:00
 
 ## Summary
 
@@ -42,8 +42,8 @@ LLMs are advisory only — they never replace operator 2FA or desk approval.
 
 ## Repo hygiene
 
-- Dirty file count: 13
-- Live-adjacent dirty count: 1
+- Dirty file count: 7
+- Live-adjacent dirty count: 0
 
 ## Operator flow
 
