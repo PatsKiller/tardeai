@@ -98,4 +98,26 @@ and orphaning the child on timeout → pile-up starved the deliberately single-t
 
 ---
 
+## 8. (2026-06-26) Expired-view + Entry-helper technicals
+
+- **Expired cards** — bold **Proposed**/**Expired** timestamps + trade **Result**; a **Would-have**
+  outcome for untraded proposals (where the trade would stand now if entered at the plan — move% + %
+  to target, from the live price; honest "live snapshot, not intraday path").
+- **Backtest expired** — `proposal_backtest_engine --statuses/--limit` (similar-setup analog returns
+  NO_DATA for niche income tickers). 72 missing `symbol_profiles` backfilled (stocks get sector; ETFs
+  get a description). Funds show **"ETF / Fund · no single sector"** (teal) not red "Sector missing".
+- **Honest Technicals** — the panel never silently omits the Technicals section: a watchlist/income
+  proposal states it has **no momentum scan** (signal = price vs thesis band), not a blank box.
+- **Entry-helper strip (NEW)** — every proposal card now shows **SMA20/50/200** (↑/↓ + absolute
+  price derived from live price × Finviz %-from-price), **RSI**, **RVOL**, **ATR%**, **session VWAP**,
+  and a plain-English **entry hint** (uptrend → buy pullbacks toward SMA20 / below VWAP → better long
+  entry / RSI extremes). Works for watchlist proposals that carry no scanner technicals.
+  - `api_v2 _ma_context()` reads `ticker_enrichment_cache.json` (Finviz views 141+171, no cookie) +
+    `intraday_vwap_cache.json`; both mtime-memoized.
+  - `scripts/enrich_proposal_technicals.py` (cron `15 */2 * * *`) keeps MAs fresh for active proposals.
+  - `scripts/compute_intraday_vwap.py` (cron `*/20 13-21 * * 1-5`) computes session VWAP from yfinance
+    5m bars (VWAP is intraday-only — can't come from daily Finviz). 164/170 symbols resolve.
+
+---
+
 Reaper day-watch (2026-06-25 16:44Z → 2026-06-26 16:44Z) clean after both false-positive fixes.
