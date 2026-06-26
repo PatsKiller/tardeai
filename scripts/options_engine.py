@@ -1457,6 +1457,67 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     iv_rank = _iv_rank_proxy(und_sym, tech, chain_iv=iv)
     edge = _edge_score(pop_otm if is_short else pop_itm, iv_rank, 0.5, conviction=0.5)
 
+    qty = _f(pos.get("qty"), 1)
+    mult = 100.0 * qty
+    max_profit_at_open = round(entry * mult, 2) if entry else None
+    max_loss_at_open = None
+    if entry and strike:
+        if is_short and opt_type == "put":
+            max_loss_at_open = round(max(0.0, (strike - entry) * mult), 2)
+        elif is_short and opt_type == "call":
+            max_loss_at_open = round(max(strike * mult * 0.15, entry * mult * 3), 2)
+        elif not is_short:
+            max_loss_at_open = round(entry * mult, 2)
+
+    profit_captured_pct = None
+    if is_short and entry > 0 and mark >= 0:
+        profit_captured_pct = round(100.0 * max(0.0, entry - mark) / entry, 1)
+
+    risk_reward = None
+    if pnl_unrealized is not None and max_loss_at_open and max_loss_at_open > 0:
+        risk_reward = round(abs(pnl_unrealized) / max_loss_at_open, 3)
+    elif pnl_unrealized and max_profit_at_open and max_profit_at_open > 0 and is_short:
+        risk_reward = round(pnl_unrealized / max_profit_at_open, 3)
+
+    lifecycle_phase = "monitor"
+    maturity_note = ""
+    if is_short:
+        if action in ("close_profit",):
+            lifecycle_phase = "harvest"
+            maturity_note = "Target reached — close to lock premium before theta/assignment risk rises."
+        elif action == "roll":
+            lifecycle_phase = "defend"
+            maturity_note = "Assignment risk elevated — roll or close; do not let mature unchecked."
+        elif action == "close":
+            lifecycle_phase = "defend"
+            maturity_note = "Position stressed — close or adjust before expiration."
+        elif pop_otm >= 72 and dte > 14 and (pnl_unrealized or 0) >= 0:
+            lifecycle_phase = "let_mature"
+            maturity_note = f"Let mature — {pop_otm:.0f}% POP OTM with {dte} DTE; theta working in your favor."
+        elif pop_otm >= 60 and dte > 7:
+            lifecycle_phase = "let_mature"
+            maturity_note = f"Hold toward expiry — {pop_otm:.0f}% POP OTM; revisit if ITM or ≤7 DTE."
+        elif profit_captured_pct is not None and profit_captured_pct >= 50 and dte <= 21:
+            lifecycle_phase = "harvest"
+            maturity_note = f"Consider harvesting — {profit_captured_pct:.0f}% of premium captured with {dte} DTE left."
+        else:
+            maturity_note = f"Monitor daily — POP OTM {pop_otm:.0f}%, {dte} DTE to expiration."
+    else:
+        if action == "close_profit":
+            lifecycle_phase = "harvest"
+            maturity_note = "Take profit — edge realized; don't overstay long gamma/theta decay."
+        elif action == "close":
+            lifecycle_phase = "defend"
+            maturity_note = "Cut or roll — thesis weakened or loss threshold hit."
+        elif dte <= 7 and not itm:
+            lifecycle_phase = "harvest"
+            maturity_note = f"Expiry approaching ({dte} DTE) — decide roll, close, or let expire worthless."
+        elif dte > 14 and pop_itm >= 55:
+            lifecycle_phase = "let_mature"
+            maturity_note = f"Let work — {pop_itm:.0f}% ITM probability with {dte} DTE remaining."
+        else:
+            maturity_note = f"Long {opt_type}: {moneyness}, {dte} DTE — watch mark vs entry."
+
     return {
         "id": pos.get("occ_symbol") or f"{und_sym}_{strike}_{opt_type}",
         "occ_symbol": pos.get("occ_symbol"),
@@ -1480,6 +1541,12 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "delta": delta,
         "iv_rank": iv_rank,
         "edge_score": edge,
+        "risk_reward": risk_reward,
+        "max_profit_at_open": max_profit_at_open,
+        "max_loss_at_open": max_loss_at_open,
+        "profit_captured_pct": profit_captured_pct,
+        "lifecycle_phase": lifecycle_phase,
+        "maturity_note": maturity_note,
         "still_working": working,
         "recommended_action": action_label,
         "action": action,
