@@ -99,7 +99,14 @@ export default function BrokerProposalCard({
   const preview = p._preview
   const previewForDest = Boolean(preview && preview.account === dest)
   const evalData = (previewForDest ? preview?.evaluation : null) || p.evaluation
-  const fid = brokerOf(dest || p.account) === 'Fidelity' || p.execution_mode === 'manual'
+  // "Record-only" (no auto-route) is true for a Fidelity destination, OR a manual-mode proposal that
+  // has NO auto-capable (Schwab) destination available. A paper proposal (account=alpaca_paper) routes
+  // Path-B to Schwab, so it must NOT be mislabeled "Record proposal" just because its SOURCE account is
+  // manual — when a Schwab destination exists it shows "Auto route (2FA)" (disabled if gate-blocked).
+  const _autoDest = (accounts || []).some((a) => brokerOf(a.account_key) === 'Schwab')
+  const _destBroker = brokerOf(dest || p.account)
+  const fid = _destBroker === 'Fidelity'
+    || (_destBroker !== 'Schwab' && p.execution_mode === 'manual' && !_autoDest)
   const gate = evalData?.status || p.gate_status
   const ov = pickFreshOversight(evalData?.oversight, p.oversight, p.intel?.oversight)
   const ovStatus = ov.status || (ov.violations?.length ? 'BLOCK' : ov.warnings?.length ? 'WARN' : null)
