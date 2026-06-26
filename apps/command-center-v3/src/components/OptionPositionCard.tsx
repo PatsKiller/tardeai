@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishPosition } from '../lib/optionsNovice'
+import { ACTIONS, POSITION } from '../lib/optionsTooltips'
 import { WhatIfBox } from './OptionsNovicePanel'
 import OptionMoneynessBar from './risk/OptionMoneynessBar'
 import OptionsPnLProfile from './risk/OptionsPnLProfile'
@@ -136,11 +137,11 @@ export default function OptionPositionCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: `${sv.c}22` }}>{sv.label}</span>
-            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: lc.c, background: `${lc.c}22` }}>{lc.label}</span>
+            <span title={POSITION.status} style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: `${sv.c}22`, cursor: 'help' }}>{sv.label}</span>
+            <span title={POSITION.lifecycle} style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: lc.c, background: `${lc.c}22`, cursor: 'help' }}>{lc.label}</span>
             <span style={{ fontSize: 9, color: MUTED }}>{strat}</span>
             <span style={{ fontSize: 13, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.underlying}</span>
-            {p.moneyness && <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.moneyness === 'ITM' ? RED : p.moneyness === 'OTM' ? GREEN : AMBER, background: 'var(--bg2)' }}>{p.moneyness}</span>}
+            {p.moneyness && <span title={POSITION.moneyness} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.moneyness === 'ITM' ? RED : p.moneyness === 'OTM' ? GREEN : AMBER, background: 'var(--bg2)', cursor: 'help' }}>{p.moneyness}</span>}
           </div>
           <div style={{ fontSize: 13, fontWeight: 850, color: TEXT0, marginTop: 6 }}>
             ${fmtNum(p.strike, 2)} · {p.dte ?? '—'} DTE
@@ -148,7 +149,7 @@ export default function OptionPositionCard({
           </div>
         </div>
         {p.recommended_action && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${sv.c}18`, color: sv.c, whiteSpace: 'nowrap' }}>
+          <span title={POSITION.recommended} style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: `${sv.c}18`, color: sv.c, whiteSpace: 'nowrap', cursor: 'help' }}>
             {p.recommended_action}
           </span>
         )}
@@ -177,9 +178,9 @@ export default function OptionPositionCard({
       />
 
       {p.maturity_note && (
-        <div style={{
+        <div title={POSITION.maturityBox} style={{
           marginTop: 10, padding: '8px 10px', borderRadius: 8, fontSize: 10.5, lineHeight: 1.45,
-          background: `${lc.c}12`, border: `1px solid ${lc.c}33`, color: TEXT2,
+          background: `${lc.c}12`, border: `1px solid ${lc.c}33`, color: TEXT2, cursor: 'help',
         }}>
           <span style={{ fontSize: 9, fontWeight: 800, color: lc.c, display: 'block', marginBottom: 3 }}>
             {p.lifecycle_phase === 'let_mature' ? 'Let contract mature' : p.lifecycle_phase === 'harvest' ? 'When to sell' : p.lifecycle_phase === 'defend' ? 'Action needed' : 'Trade management'}
@@ -208,9 +209,10 @@ export default function OptionPositionCard({
       <div onClick={e => e.stopPropagation()} style={{ marginTop: 10 }}>
         <button
           type="button"
+          title={POSITION.expiryPnl}
           onClick={() => setShowRisk(v => !v)}
           style={{
-            fontSize: 9, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+            fontSize: 9, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: 'help',
             border: `1px solid ${BLUE}55`, background: showRisk ? 'rgba(96,165,250,.14)' : 'transparent', color: BLUE,
           }}
         >
@@ -247,7 +249,13 @@ export default function OptionPositionCard({
 
       <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
         {(p.action_buttons || []).map((b, i) => (
-          <button key={`${b.action}-${i}`} type="button" onClick={() => onAction(b.action, p.id)} style={btnStyle(b.action)}>
+          <button
+            key={`${b.action}-${i}`}
+            type="button"
+            title={b.action === 'hold' ? ACTIONS.hold : b.action === 'review_chain' ? ACTIONS.reviewChain : /close|roll/.test(b.action) ? ACTIONS.closeRoll : undefined}
+            onClick={() => onAction(b.action, p.id)}
+            style={{ ...btnStyle(b.action), cursor: 'help' }}
+          >
             {b.label}{b.action !== 'hold' ? ' →' : ''}
           </button>
         ))}

@@ -1,5 +1,6 @@
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
+import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
 import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 
 const BLUE = '#60a5fa'
@@ -189,12 +190,18 @@ export default function OptionProposalCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: sv.bg }}>{sv.label}</span>
+            <span title={PROPOSAL.recommended} style={{ fontSize: 8.5, fontWeight: 900, padding: '1px 6px', borderRadius: 4, color: sv.c, background: sv.bg, cursor: 'help' }}>{sv.label}</span>
             <span title={guide.oneLiner} style={{ fontSize: 9, color: MUTED, cursor: 'help' }}>{guide.emoji} {strat}</span>
             <span style={{ fontSize: 12, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.symbol}</span>
             {ds && <span title={ds.label === 'BS estimate' ? 'Premium estimated via Black-Scholes — confirm on chain before sizing.' : 'Live bid/ask mid from Schwab option chain.'} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: ds.c, background: `${ds.c}18`, border: `1px solid ${ds.c}44` }}>{ds.label}</span>}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: PURPLE, background: 'rgba(168,85,247,.15)', border: '1px solid rgba(168,85,247,.35)' }}>income sleeve</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
+            {p.enterprise?.live_eligible && (
+              <span title={PROPOSAL.liveOk} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: GREEN, background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.35)', cursor: 'help' }}>live eligible</span>
+            )}
+            {(p.enterprise?.blocks?.length ?? 0) > 0 && (
+              <span title={`${PROPOSAL.liveBlocked} ${p.enterprise!.blocks!.join('; ')}`} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: RED, background: 'rgba(239,68,68,.13)', border: '1px solid rgba(239,68,68,.35)', cursor: 'help' }}>blocked</span>
+            )}
             {p.execution_label && (
               <span title="Execution path for this proposal" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.execution_mode === 'manual' ? PURPLE : AMBER, background: p.execution_mode === 'manual' ? 'rgba(168,85,247,.15)' : 'rgba(245,158,11,.15)', border: `1px solid ${p.execution_mode === 'manual' ? 'rgba(168,85,247,.35)' : 'rgba(245,158,11,.35)'}` }}>
                 {p.execution_label}
@@ -204,10 +211,10 @@ export default function OptionProposalCard({
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>
             {p.symbol}{' '}
             {p.short_strike && p.long_strike
-              ? `$${fmtNum(p.short_strike, 0)}/$${fmtNum(p.long_strike, 0)} spread`
+              ? <span title={PROPOSAL.spreadPair} style={{ cursor: 'help' }}>${fmtNum(p.short_strike, 0)}/${fmtNum(p.long_strike, 0)} spread</span>
               : `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`}{' '}
-            · {p.dte ?? '—'} DTE
-            {p.desk_tier && <span style={{ marginLeft: 6, fontSize: 9, color: p.desk_tier === 'A' ? GREEN : p.desk_tier === 'B' ? BLUE : MUTED }}>Tier {p.desk_tier}</span>}
+            · <span title={PROPOSAL.dte} style={{ cursor: 'help' }}>{p.dte ?? '—'} DTE</span>
+            {p.desk_tier && <span title={PROPOSAL.deskTier} style={{ marginLeft: 6, fontSize: 9, color: p.desk_tier === 'A' ? GREEN : p.desk_tier === 'B' ? BLUE : MUTED, cursor: 'help' }}>Tier {p.desk_tier}</span>}
             <span style={{ fontSize: 11, fontWeight: 500, color: MUTED, marginLeft: 8 }}>{fmtExpiry(p.expiration)}</span>
           </div>
         </div>
@@ -282,7 +289,14 @@ export default function OptionProposalCard({
             <button
               key={`${b.action}-${i}`}
               type="button"
-              title={execLocked ? 'Execution locked — run options_pilot_arm.py --approve on server' : manualOnly && EXEC_ACTIONS.has(b.action) ? 'Manual execution at broker — use Executed manually to log' : undefined}
+              title={
+                b.action === 'hold' ? ACTIONS.hold
+                  : b.action === 'review_chain' ? ACTIONS.reviewChain
+                    : execLocked ? ACTIONS.preflightLocked
+                      : manualOnly && EXEC_ACTIONS.has(b.action) ? ACTIONS.preflightManual
+                        : EXEC_ACTIONS.has(b.action) ? PROPOSAL.recommended
+                          : undefined
+              }
               disabled={execLocked}
               onClick={() => onAction(b.action, p.id)}
               style={btnStyle(b.action)}
@@ -292,7 +306,7 @@ export default function OptionProposalCard({
           )
         })}
         {onManualLog && (
-          <button type="button" onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'rgba(96,165,250,.12)', color: BLUE, cursor: 'pointer' }}>
+          <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'rgba(96,165,250,.12)', color: BLUE, cursor: 'help' }}>
             Executed manually
           </button>
         )}
