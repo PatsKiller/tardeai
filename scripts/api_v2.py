@@ -21522,6 +21522,22 @@ def _options_approval_queue(query=None):
     return _json_clean({"ok": True, "queue": ent.fetch_approval_queue(status=status, limit=limit)})
 
 
+def _pullback_macd_adjustments(query=None):
+    """GET /api/v2/pullback-macd/adjustments — in-trade adjustment guidance for OPEN pullback
+    positions (trail stop / take-profit / exit). Advisory; refreshed each intraday monitor pass."""
+    from db_adapter import _execute
+    rows = _execute(
+        """SELECT trade_id, symbol, entry, current_stop, suggested_stop, target, live_price, vwap,
+                  above_vwap, macd_falling, unrealized_pct, action, rationale, actionable, updated_at
+           FROM pullback_trade_adjustments ORDER BY actionable DESC, updated_at DESC""",
+        fetch="all") or []
+    return _json_clean({
+        "ok": True, "adjustments": rows,
+        "open_trades": len(rows),
+        "actionable": sum(1 for r in rows if r.get("actionable")),
+    })
+
+
 def _pullback_macd_candidates(query=None):
     """GET /api/v2/pullback-macd/candidates — S&P 500 uptrend + pullback + approaching-MACD-cross.
 
@@ -23300,6 +23316,7 @@ ROUTES = {
     "/api/v2/options/desk/trends": _options_desk_trends,
     "/api/v2/options/approval-queue": _options_approval_queue,
     "/api/v2/pullback-macd/candidates": _pullback_macd_candidates,
+    "/api/v2/pullback-macd/adjustments": _pullback_macd_adjustments,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,

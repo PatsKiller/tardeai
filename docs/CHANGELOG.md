@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-26 - Pullback/MACD: in-trade adjustment process (hourly, trading-days)
+
+The intraday monitor is now a proper **in-trade adjustment** process — managing OPEN pullback
+positions, not just pending proposals.
+- Dedicated launcher `linux_launchers/run_pullback_macd_monitor.sh` + cron `35 9-15 * * 1-5`
+  (hourly, open→close, **trading days only** via `market_day_gate` — skips weekends/holidays).
+- `_adjust_open_trades`: for each OPEN position (`strategy_id=pullback_macd_reversal`), writes advisory
+  guidance to `pullback_trade_adjustments` each pass — **trail the stop up** (swing-low / breakeven /
+  under-VWAP, raise-only), **take-profit** at target, **exit** on thesis break (lost VWAP or MACD
+  rolling back down). Advisory only — never modifies a live stop (operator / ATM stop manager owns it).
+  `GET /api/v2/pullback-macd/adjustments`. Verified on a synthetic DDOG position (+6.6% → trail to BE).
+- Fixed `_fetch_all` single-symbol MultiIndex bug (broke monitor/adjust when fetching one symbol).
+
 ## 2026-06-26 - Pullback/MACD: intraday proposal monitoring
 
 Pullback proposals are now monitored multiple times a day and kept in sync with the live setup

@@ -41,7 +41,8 @@ uptrend → ~22 in the pullback band → ~1 trigger + ~21 watch. Zero-trigger da
 | API | `GET /api/v2/pullback-macd/candidates` (`?tier=trigger\|watch`, `?limit=`) in `scripts/api_v2.py` |
 | UI | `apps/command-center-v3/src/pages/PullbackMacdHub.tsx` (nav: **Pullback/MACD**), with the amber **pullback banner** on each card |
 | Launcher / cron | `linux_launchers/run_pullback_macd_screener.sh`, cron `40 16 * * 1-5` (post-close) |
-| Intraday monitor | `--monitor` mode, cron `15 10-15 * * 1-5` (hourly) — re-evaluates active candidates + open proposals, refreshes those that still fit the plan, expires those that don't (off-trigger, or price hit/broke stop/target) |
+| Intraday monitor | `--monitor` mode via `linux_launchers/run_pullback_macd_monitor.sh`, cron `35 9-15 * * 1-5` (hourly, **trading days only** via `market_day_gate`). Re-evaluates active candidates + open proposals; **manages open positions while in the trade** (next row) |
+| In-trade adjustments | For OPEN pullback positions (`strategy_id=pullback_macd_reversal`), each monitor pass writes advisory guidance to `pullback_trade_adjustments` (migration `2026_06_26_pullback_trade_adjustments.sql`): **trail the stop up** (swing-low / breakeven / under-VWAP, raise-only), **take-profit** at target, **exit** on thesis break (lost VWAP or MACD rolling back down). Advisory — never modifies a live stop (that stays with the operator / ATM stop manager). `GET /api/v2/pullback-macd/adjustments` |
 | Health | `collect_pullback_macd_screener()` in `health_agent.py` (scan freshness + universe size) |
 
 ## Outputs (all advisory)

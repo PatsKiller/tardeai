@@ -57,3 +57,7 @@ pullback_macd_screener:
   # live setup — refresh those that still fit the plan, expire those that don't (dropped off the
   # trigger, or price hit/broke the stop/target).
   reconcile_proposals: true
+  # In-trade adjustments for OPEN pullback positions (advisory; computed each monitor pass): trail the
+  # stop up (swing-low / breakeven / under-VWAP), flag take-profit at target, flag exit on thesis break.
+  adjust_open_trades: true
+  trail_vwap_buffer_pct: 0.5    # trailed stop sits this % under VWAP once the trade is green
