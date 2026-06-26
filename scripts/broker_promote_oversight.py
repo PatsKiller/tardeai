@@ -34,6 +34,7 @@ WATCHLIST_REC_TO_VOTE = {
 }
 CLOUD_CACHE_HOURS = int(os.getenv("BROKER_CLOUD_OVERSIGHT_CACHE_HOURS", "24"))
 REQUIRE_CLOUD = os.getenv("BROKER_REQUIRE_CLOUD_OVERSIGHT", "0") == "1"
+REQUIRE_CLOUD_LIVE = os.getenv("BROKER_REQUIRE_CLOUD_OVERSIGHT_LIVE", "0") == "1"
 AUTO_CLOUD_OVERSIGHT = os.getenv("BROKER_AUTO_CLOUD_OVERSIGHT", "1") == "1"
 CLOUD_INFLIGHT_STALE_SEC = int(os.getenv("BROKER_CLOUD_INFLIGHT_STALE_SEC", "300"))
 INTEL_READINESS_BLOCK = float(os.getenv("BROKER_INTEL_READINESS_BLOCK", "50"))
@@ -637,9 +638,22 @@ def get_oversight_snapshot(proposal_id: int) -> dict:
     }
 
 
-def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
+def _is_live_route_proposal(proposal_id: int) -> bool:
+    """True when proposal targets Schwab/Fidelity (live broker route, not simulation-only)."""
+    row = _q(
+        """SELECT intended_broker, target_account FROM paper_trade_proposals WHERE id=%s""",
+        (proposal_id,), one=True,
+    ) or {}
+    broker = str(row.get("intended_broker") or row.get("target_account") or "").lower()
+    return broker.startswith("schwab") or broker.startswith("fidelity")
+
+
+def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None, live_route: bool | None = None) -> dict:
     """PASS | WARN | BLOCK oversight verdict for broker promote."""
     snap = get_oversight_snapshot(proposal_id)
+    if live_route is None:
+        live_route = _is_live_route_proposal(proposal_id)
+    require_cloud = REQUIRE_CLOUD or (REQUIRE_CLOUD_LIVE and live_route)
     violations: list[str] = []
     warnings: list[str] = []
 
@@ -699,7 +713,7 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
     elif cloud_status == "running":
         warnings.append("Cloud oversight running (Grok+ChatGPT) — refresh in a minute")
     elif cloud_status in ("not_run", "unknown", ""):
-        if REQUIRE_CLOUD:
+        if require_cloud:
             violations.append("Cloud oversight required but not run (Grok+ChatGPT)")
         else:
             avail = [k for k, v in (snap.get("lanes_available") or {}).items() if v]
@@ -855,7 +869,7 @@ def build_promote_diligence_stages(
         cloud_stage = _stage("PASS", "Cloud AGREE")
     elif cloud_st == "running":
         cloud_stage = _stage("PENDING", "Grok+ChatGPT running", "Wait for cloud review")
-    elif REQUIRE_CLOUD:
+    elif REQUIRE_CLOUD or (REQUIRE_CLOUD_LIVE and _is_live_route_proposal(proposal_id)):
         cloud_stage = _stage("BLOCK", "Not run", "Run Grok+ChatGPT review")
     elif AUTO_CLOUD_OVERSIGHT and needs_cloud_oversight(proposal_id):
         cloud_stage = _stage("PENDING", "Auto-queuing cloud", "Grok+ChatGPT will run shortly")

@@ -298,7 +298,7 @@ def assess_broker_trade_plan(
 ) -> dict:
     """PASS | WARN | BLOCK — authoritative plan required for live routes."""
     if not REQUIRE_TRADE_PLAN:
-        return {
+        out = {
             "status": "PASS",
             "allowed": True,
             "violations": [],
@@ -307,6 +307,19 @@ def assess_broker_trade_plan(
             "plan_source": "disabled",
             "authoritative": True,
         }
+        try:
+            import trade_modify as _tm
+            _tm.audit_decision(
+                "trade_plan_gate_bypass",
+                proposal_id=proposal_id,
+                actor="system",
+                channel="env",
+                after={"required": False, "env": "BROKER_REQUIRE_TRADE_PLAN=0"},
+                reason="trade plan gate bypassed via env kill-switch",
+            )
+        except Exception:
+            pass
+        return out
 
     violations: list[str] = []
     warnings: list[str] = []

@@ -1,0 +1,39 @@
+{
+  "link": {
+    "generated_at": "2026-06-26T02:31:55.273263+00:00",
+    "since_days": 5,
+    "created": 289,
+    "approved": 2,
+    "execution_linked": 7,
+    "live_submit_tagged": 0,
+    "closed_trades": 0,
+    "expired": 171,
+    "rejected": 116,
+    "approval_rate_pct": 0.7,
+    "execution_link_rate_pct": 2.4,
+    "close_rate_pct": 0.0
+  },
+  "readiness": {
+    "captured_at": "2026-06-26T02:31:55.288300+00:00",
+    "since_days": 5,
+    "created": 289,
+    "approved": 2,
+    "linked_to_execution": 7,
+    "link_rate_pct": 2.4,
+    "pending_now": 2,
+    "broker_unrouted_48h": 0,
+    "risk_gate_blocks": {
+      "UNKNOWN": 130,
+      "APPROVED": 116,
+      "REJECTED": 43
+    },
+    "action_state_counts": {
+      "none": 1,
+      "PAPER_READY": 1
+    },
+    "avg_hours_to_approve": 15.87,
+    "avg_pending_age_h": 21.29,
+    "price_block_dominant": false,
+    "target_link_rate_pct": 15.0
+  }
+}

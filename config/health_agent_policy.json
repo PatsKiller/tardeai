@@ -37,7 +37,10 @@
     "options_stale_hours": 4,
     "check_after_hour": 10,
     "trade_pending_warn": 25,
-    "watchlist_stale_warn": 15
+    "watchlist_stale_warn": 15,
+    "broker_unrouted_warn": 3,
+    "broker_unrouted_critical": 8,
+    "link_rate_warn_pct": 5
   },
   "portfolio_price_freshness": {
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",

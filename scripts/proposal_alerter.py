@@ -17,11 +17,9 @@ log = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
-# Friendly, accurate status labels for operator-facing alerts. The raw enum APPROVED_FOR_PAPER_TEST is
-# misleading — these proposals are NOT paper-only; they're eligible for LIVE Path-B routing to a real
-# Schwab account (2FA). Single source of truth, reused by other alert evaluators.
+# Agnostic status labels — simulation or live destination; never paper-only framing.
 STATUS_LABELS = {
-    "APPROVED_FOR_PAPER_TEST": "Approved · route-eligible (paper-test + live Path-B Schwab, 2FA)",
+    "APPROVED_FOR_PAPER_TEST": "Approved · route-eligible",
     "APPROVED": "Approved · route-eligible",
     "PENDING": "Pending review",
     "MODIFIED": "Modified · pending re-review",

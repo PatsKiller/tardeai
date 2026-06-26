@@ -68,6 +68,40 @@ def route_proposal(pid: int, *, actor: str = "system", trade: dict | None = None
         _audit({"routing_required": True}, route_err or "routing not set")
         return {"ok": False, "routing_required": True, "error": route_err, "symbol": symbol}
     broker = broker.strip()
+    live_route = broker.startswith(SCHWAB_PREFIX) or broker.startswith("fidelity")
+
+    # Risk gate — fail-closed before any dispatch (simulation or live).
+    try:
+        from proposal_route_risk_gate import check_proposal_risk
+        conn = _get_conn()
+        trade_plan = {
+            "stop_loss": float(proposed_stop or 0),
+            "entry": float(entry or 0),
+            "target": float(proposed_target1 or 0),
+            "shares": int(shares or 0),
+        }
+        rg = check_proposal_risk(
+            conn,
+            symbol=symbol,
+            strategy_id=str(strategy_id or "momentum_scalp"),
+            trade_plan=trade_plan,
+            account=account or broker,
+            live_route=live_route,
+        )
+        if not rg.get("approved"):
+            _audit({"risk_gate": rg.get("result"), "codes": rg.get("reason_codes")},
+                   "risk gate blocked route")
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "broker": broker,
+                "risk_gate_blocked": True,
+                "error": f"Risk gate {rg.get('result')}: {', '.join(rg.get('reason_codes') or [])}",
+            }
+    except Exception as e:
+        _audit({"risk_gate_error": str(e)[:120]}, "risk gate error — fail closed")
+        return {"ok": False, "symbol": symbol, "broker": broker,
+                "risk_gate_blocked": True, "error": f"Risk gate error: {str(e)[:120]}"}
 
     # ── Paper (Alpaca) — default paper path when not Schwab/Fidelity ──
     if broker == ALPACA or (not broker.startswith(SCHWAB_PREFIX) and not broker.startswith("fidelity")):
