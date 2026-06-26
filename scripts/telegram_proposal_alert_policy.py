@@ -137,7 +137,7 @@ def format_telegram_message(packet: dict) -> str:
     if packet.get("strategy_timeframe"):
         _type_line += f" · {_esc_md(packet['strategy_timeframe'])}"
     lines = [
-        f"{emoji} *Paper Proposal: {packet['symbol']}*",
+        f"{emoji} *Trade Proposal: {packet['symbol']}*",
         f"Strategy: {_esc_md(packet['strategy_display'])}",
         f"Type: {_type_line} | {packet['alert_type'].replace('_', ' ')}",
         "",
@@ -171,7 +171,7 @@ def format_telegram_message(packet: dict) -> str:
     lines.append("")
     lines.append(f"*Action:* {packet['recommended_action']}")
     if packet["approval_allowed"]:
-        lines.append("_Approve Paper available_")
+        lines.append("_Approve & route available_")
     else:
         lines.append("_Approval blocked — review required_")
 
@@ -181,7 +181,7 @@ def format_telegram_message(packet: dict) -> str:
     if packet["approval_allowed"]:
         lines.append(f"`/ptapprove {pid}`")
     lines.append(f"`/ptreject {pid}`")
-    lines.append(f"`paper status`  |  Details: https://ms01-openclaw.tail163d14.ts.net/v3/trading")
+    lines.append(f"`proposal status`  |  Details: https://ms01-openclaw.tail163d14.ts.net/v3/trading")
 
     return "\n".join(lines)
 

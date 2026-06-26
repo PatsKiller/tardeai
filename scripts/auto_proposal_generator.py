@@ -1194,10 +1194,27 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
         "liquidity_rejected": 0,
         "quality_rejected": 0,
         "source_cap_rejected": 0,
+        "edge_floor_rejected": 0,
+        "daily_cap_rejected": 0,
         "sizing_adjusted": 0,
         "errors": 0,
         "details": [],
     }
+
+    min_edge = float(os.getenv("PROPOSAL_MIN_UNIFIED_EDGE", "0") or 0)
+    daily_cap = int(os.getenv("PROPOSAL_DAILY_CAP_PER_STRATEGY", "0") or 0)
+    strategy_today: dict[str, int] = {}
+    if daily_cap > 0 and not dry_run:
+        try:
+            cur.execute(
+                """SELECT strategy_id, COUNT(*) FROM paper_trade_proposals
+                   WHERE created_at >= CURRENT_DATE AND origin = 'auto'
+                   GROUP BY strategy_id"""
+            )
+            for sid_row, n in cur.fetchall():
+                strategy_today[str(sid_row or "")] = int(n or 0)
+        except Exception:
+            pass
 
     for sig in deduped:
         sym = sig["symbol"]
@@ -1411,6 +1428,29 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["sizing_adjusted"] += 1
                 log.info(f"  {sym}: sizing adjusted {sizing['original_shares']}→{sizing['adjusted_shares']} shares ({sizing.get('sizing_reason')})")
 
+            # 3b. Unified edge floor + per-strategy daily cap (noise filter)
+            edge_score = _unified_edge_for_signal(sig, sizing)
+            if min_edge > 0 and edge_score < min_edge and not force:
+                stats["edge_floor_rejected"] += 1
+                stats["proposals_skipped"] += 1
+                reason = f"SKIPPED_EDGE_FLOOR ({edge_score:.1f} < {min_edge:.1f})"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, "SKIPPED_EDGE_FLOOR",
+                                    [f"unified_edge {edge_score:.1f} < {min_edge:.1f}"], None, sizing, None)
+                stats["details"].append({"symbol": sym, "decision": "SKIPPED_EDGE_FLOOR", "reason": reason})
+                continue
+            if daily_cap > 0 and strategy_today.get(sid, 0) >= daily_cap and not force:
+                stats["daily_cap_rejected"] += 1
+                stats["proposals_skipped"] += 1
+                reason = f"SKIPPED_DAILY_CAP ({sid}: {strategy_today.get(sid, 0)}/{daily_cap})"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, "SKIPPED_DAILY_CAP",
+                                    [f"{sid} daily cap {daily_cap}"], None, sizing, None)
+                stats["details"].append({"symbol": sym, "decision": "SKIPPED_DAILY_CAP", "reason": reason})
+                continue
+
             # 4. Quality check
             q_pass, q_reasons = check_quality(sig, sizing)
             if not q_pass:
@@ -1470,6 +1510,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 record_decision(conn, run_label, sig, "CREATED", [], proposal_id, sizing, rg)
                 conn.commit()
                 stats["proposals_created"] += 1
+                strategy_today[sid] = strategy_today.get(sid, 0) + 1
                 log.info(f"  {sym}: CREATED proposal #{proposal_id} — {sid} score={sig.get('signal_score')} "
                          f"shares={sizing['adjusted_shares']} risk=${sizing['adjusted_dollar_risk']:.0f}")
                 stats["details"].append({"symbol": sym, "decision": "CREATED", "proposal_id": proposal_id,

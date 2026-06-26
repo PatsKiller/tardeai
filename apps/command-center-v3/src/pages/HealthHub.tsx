@@ -60,6 +60,7 @@ export default function HealthHub({ onDrill }: Props) {
   const { data: hist } = useApi<any>('/api/v2/health/history', 300_000)
   const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000)
   const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
+  const execReady = propHealth?.execution_readiness
   const { data: riskData } = useApi<any>('/api/v2/risk', 120_000)
   const [acting, setActing] = useState<Record<string, string>>({})
   const [histExpanded, setHistExpanded] = useState<number | null>(null)
@@ -173,6 +174,41 @@ export default function HealthHub({ onDrill }: Props) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {execReady && (
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg1)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+              borderLeft: `4px solid ${(execReady.link_rate_pct ?? 0) < (execReady.target_link_rate_pct ?? 15) ? 'var(--amber)' : 'var(--green)'}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>
+                Execution Readiness
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
+                Agnostic funnel — simulation or live destination · {execReady.since_days ?? 7}d window
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+                {[
+                  { label: 'Created', value: execReady.created ?? '—' },
+                  { label: 'Linked', value: execReady.linked_to_execution ?? '—' },
+                  { label: 'Link rate', value: execReady.link_rate_pct != null ? `${execReady.link_rate_pct}%` : '—',
+                    warn: (execReady.link_rate_pct ?? 100) < (execReady.target_link_rate_pct ?? 15) },
+                  { label: 'Pending now', value: execReady.pending_now ?? '—' },
+                  { label: 'Unrouted >48h', value: execReady.broker_unrouted_48h ?? '—',
+                    warn: (execReady.broker_unrouted_48h ?? 0) > 0 },
+                  { label: 'Avg approve (h)', value: execReady.avg_hours_to_approve ?? '—' },
+                ].map(k => (
+                  <div key={k.label} style={{ textAlign: 'center', padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: k.warn ? 'var(--amber)' : 'var(--text0)' }}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+              {execReady.price_block_dominant && (
+                <div style={{ marginTop: 8, fontSize: 10, color: 'var(--amber)' }}>
+                  Price/stale quote blocks dominate — run quote refresh before revalidation
+                </div>
+              )}
             </div>
           )}
 

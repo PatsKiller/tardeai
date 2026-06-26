@@ -32,6 +32,7 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
+  const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
   const { data: briefData } = useApi<any>('/api/v2/morning-brief', 300_000)
   const { data: repExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=report', 300_000)
   // latest report synthesis across lanes (most recent first)
@@ -196,6 +197,28 @@ export default function HomeHub({ onDrill }: Props) {
                 </div>
                 <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>last: {lastRepriced ?? '—'}</div>
               </div>
+              {propHealth?.execution_readiness && (() => {
+                const er = propHealth.execution_readiness
+                const lowLink = (er.link_rate_pct ?? 100) < (er.target_link_rate_pct ?? 15)
+                const unrouted = (er.broker_unrouted_48h ?? 0) > 0
+                return (
+                  <div onClick={() => onDrill({
+                    title: 'Proposal Execution Readiness',
+                    subtitle: `${er.link_rate_pct ?? '—'}% link rate · ${er.pending_now ?? 0} pending`,
+                    endpoint: '/api/v2/health/proposals',
+                    rows: [er],
+                  })}
+                    style={{ padding: '10px 12px', background: lowLink || unrouted ? 'rgba(245,158,11,.1)' : 'var(--bg1)',
+                      border: `1px solid ${lowLink || unrouted ? 'rgba(245,158,11,.3)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: lowLink || unrouted ? '#f59e0b' : 'var(--text2)' }}>
+                      Proposals: {er.link_rate_pct ?? '—'}% linked
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                      {er.pending_now ?? 0} pending{unrouted ? ` · ${er.broker_unrouted_48h} unrouted >48h` : ''}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
 

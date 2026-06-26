@@ -790,6 +790,27 @@ def collect_proposal_maturity() -> list[dict]:
                 out.append(_f("execution_health", "options_proposals_ignored", "info",
                               f"{opt_active} quality options proposals — none logged as manually executed",
                               options_active=opt_active, options_logged=opt_logged))
+        # Broker queue conversion: approved broker-route proposals stuck without live_submit_path
+        try:
+            from proposal_execution_readiness import collect_execution_readiness
+            readiness = collect_execution_readiness(since_days=7)
+            unrouted = int(readiness.get("broker_unrouted_48h") or 0)
+            link_pct = float(readiness.get("link_rate_pct") or 0)
+            target_link = float(readiness.get("target_link_rate_pct") or 15)
+            unrouted_warn = int(cfg.get("broker_unrouted_warn", 3))
+            unrouted_crit = int(cfg.get("broker_unrouted_critical", 8))
+            link_warn = float(cfg.get("link_rate_warn_pct", 5))
+            if unrouted >= unrouted_warn:
+                sev = "critical" if unrouted >= unrouted_crit else "warning"
+                out.append(_f("execution_health", "broker_proposals_unrouted", sev,
+                              f"{unrouted} broker-route proposals >48h without submit tag — conversion stalled",
+                              count=unrouted, link_rate_pct=link_pct))
+            if link_pct < link_warn and int(readiness.get("created") or 0) >= 10:
+                out.append(_f("execution_health", "proposal_link_rate_low", "warning",
+                              f"Execution link rate {link_pct:.1f}% (target {target_link:.0f}%)",
+                              link_rate_pct=link_pct, created=readiness.get("created")))
+        except Exception:
+            pass
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info",
                       f"proposal_maturity check error: {e}"))

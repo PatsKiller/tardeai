@@ -5,6 +5,8 @@ import ThesisValidityBar from './ThesisValidityBar'
 import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 import ActionButton from './ActionButton'
 import ProposalSourceBadges from './ProposalSourceBadges'
+import { EnsembleValidationInline } from './EnsembleValidationCard'
+import { PROPOSAL_STATUS_LABELS, routingPathLabel, unifiedEdgeFromProposal } from '../lib/proposalLabels'
 import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, resolveTickerContext, tradeEconomics } from '../lib/brokerThesis'
 
 const MUTED = '#94a3b8'
@@ -19,19 +21,7 @@ const TEAL = '#2dd4bf'
 
 const gateColor = (s: string) => s === 'PASS' ? GREEN : s === 'WARN' ? AMBER : s === 'BLOCK' ? RED : MUTED
 
-// Accurate, plain-language status labels. The raw enum APPROVED_FOR_PAPER_TEST is misleading — these
-// proposals are NOT paper-only; they're eligible for live Path-B broker routing to a real Schwab
-// account (2FA). Show what the status actually means to the operator.
-const STATUS_LABELS: Record<string, { label: string; title: string; color: string }> = {
-  APPROVED_FOR_PAPER_TEST: { label: 'Approved · route-eligible', color: GREEN,
-    title: 'Passed approval. Paper-testable AND eligible for LIVE Path-B broker routing to a real Schwab account (2FA required). "Paper test" alone is misleading — this is not paper-only.' },
-  PENDING: { label: 'Pending review', color: AMBER,
-    title: 'Awaiting agent + oversight review before it can route' },
-  APPROVED: { label: 'Approved · route-eligible', color: GREEN, title: 'Approved and eligible for Path-B broker routing (2FA)' },
-  EXPIRED: { label: 'Expired', color: MUTED, title: 'No longer routable — passed its expiry' },
-  REJECTED: { label: 'Rejected', color: RED, title: 'Rejected in review' },
-}
-const statusMeta = (s: any) => STATUS_LABELS[String(s || '').toUpperCase()] || null
+const statusMeta = (s: any) => PROPOSAL_STATUS_LABELS[String(s || '').toUpperCase()] || null
 
 type Props = {
   proposal: any
@@ -247,13 +237,24 @@ export default function BrokerProposalCard({
         }}>{p.symbol}</span>
         {p.source_kind === 'proposal' && (
           <span
-            title={`Paper-source proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — eligible for Path-B broker routing (2FA), not auto-executed`}
+            title={`Trade proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — simulation or live broker routing (operator-selected)`}
             style={{
               fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
               background: 'rgba(45,212,191,.14)', color: TEAL, border: `1px solid ${TEAL}55`, textTransform: 'uppercase',
             }}
           >
             PROPOSAL{p.proposal_origin ? ` · ${p.proposal_origin}` : ''}
+          </span>
+        )}
+        {p.live_submit_path && (
+          <span
+            title={`Submit path: ${routingPathLabel(p.live_submit_path)}`}
+            style={{
+              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
+              background: 'rgba(96,165,250,.12)', color: BLUE, border: '1px solid rgba(96,165,250,.3)',
+            }}
+          >
+            {routingPathLabel(p.live_submit_path)}
           </span>
         )}
         {statusMeta(p.status) && (
@@ -425,7 +426,7 @@ export default function BrokerProposalCard({
           ? (_routeAcct.display_name || _routeAcct.account_key)
           : (_selAcct || String(p.account || '').trim())
         const journalLabel = !journalAcct ? '—'
-          : /alpaca/i.test(journalAcct) ? 'Alpaca (paper)'
+          : /alpaca/i.test(journalAcct) ? 'Simulation'
           : journalAcct.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
         const chip = (label: string, value: any, color: string = TEXT0) => (
           <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline', padding: '4px 9px', borderRadius: 6, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.16)' }}>
@@ -436,6 +437,12 @@ export default function BrokerProposalCard({
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 14px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(2,6,23,.55)' }}>
             {chip('Source', isWatchlist ? 'Watchlist' : 'Automated', isWatchlist ? BLUE : PURPLE)}
+            {(() => {
+              const edge = unifiedEdgeFromProposal(p)
+              if (edge == null) return null
+              const ec = edge >= 70 ? GREEN : edge >= 50 ? TEAL : edge >= 35 ? AMBER : MUTED
+              return chip('Edge', edge.toFixed(1), ec)
+            })()}
             {chip('Strategy', tickerCtx.strategyDisplay || p.strategy_id || '—', '#fb923c')}
             {tf && chip('Hold', tf)}
             {chip('Catalyst', catOk ? 'verified' : `unverified${cconf != null ? ` ${Math.round(cconf)}%` : ''}`, catOk ? GREEN : AMBER)}
@@ -455,9 +462,20 @@ export default function BrokerProposalCard({
             })()}
             {chip('Journals', journalLabel, TEAL)}
             {expLabel && chip('Expires', expLabel === 'expired' ? 'expired' : `in ${expLabel}`, expColor)}
+            {p.live_submit_path && chip('Route', routingPathLabel(p.live_submit_path), BLUE)}
           </div>
         )
       })()}
+
+      <div style={{ padding: '6px 14px', borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(15,23,42,.35)' }}>
+        <EnsembleValidationInline
+          targetType="proposal"
+          targetId={p.id}
+          subject={p.symbol}
+          content={`${p.symbol} ${p.strategy_id || ''} entry ${p.proposed_entry} stop ${p.proposed_stop}`}
+          compact
+        />
+      </div>
 
       {/* Entry helper — moving averages (SMA20/50/200), RSI, RVOL, ATR%, VWAP + plain-English hint.
           Surfaces price-vs-MA structure to time the entry — esp. on watchlist/income proposals that
@@ -570,7 +588,7 @@ export default function BrokerProposalCard({
           ) : detailLoading ? (
             <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Loading company profile…</div>
           ) : (
-            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>No company profile — run Enrich on paper proposal</div>
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>No company profile — run Enrich on this proposal</div>
           )}
         </div>
       </div>

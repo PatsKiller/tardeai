@@ -21168,10 +21168,28 @@ def _options_overview(query=None):
     return _json_clean(oe.get_overview())
 
 
+def _proposals_execution_readiness(query=None):
+    """GET /api/v2/proposals/execution-readiness — agnostic funnel: blocks, link rate, timing."""
+    q = query or {}
+    since = int((q.get("since_days") or [7])[0] if isinstance(q.get("since_days"), list) else (q.get("since_days") or 7))
+    try:
+        from proposal_execution_readiness import collect_execution_readiness, collect_execution_link_audit
+        readiness = collect_execution_readiness(since_days=since)
+        link = collect_execution_link_audit(since_days=min(since, 14))
+        return _json_clean({"ok": True, "readiness": readiness, "link": link})
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _health_proposals(query=None):
     """GET /api/v2/health/proposals — cross-module proposal maturity metrics."""
     import options_engine as oe
     base = oe.get_proposal_health_metrics()
+    try:
+        from proposal_execution_readiness import collect_execution_readiness
+        base["execution_readiness"] = collect_execution_readiness(since_days=7)
+    except Exception:
+        base.setdefault("execution_readiness", {})
     # Broker queue thesis zones (drift gap narrowing)
     try:
         from broker_queue_hygiene import fetch_broker_queue_rows
@@ -22622,6 +22640,7 @@ ROUTES = {
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
+    "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/rotation/summary": _rotation_summary,

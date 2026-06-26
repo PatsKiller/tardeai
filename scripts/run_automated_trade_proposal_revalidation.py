@@ -48,7 +48,7 @@ def _q(sql: str, params=None) -> list[dict]:
         return []
 
 
-def revalidate_proposals(limit: int | None = None, verbose: bool = False) -> dict:
+def revalidate_proposals(limit: int | None = None, verbose: bool = False, *, refresh_quotes: bool = False) -> dict:
     """Revalidate all pending/approved proposals."""
     limit_clause = f"LIMIT {limit}" if limit else ""
     proposals = _q(
@@ -159,6 +159,19 @@ def revalidate_proposals(limit: int | None = None, verbose: bool = False) -> dic
         st = r["revalidation_status"]
         by_status[st] = by_status.get(st, 0) + 1
 
+    quote_refresh = None
+    price_dominated = (
+        by_status.get("needs_quote_refresh", 0) + by_status.get("human_review_required", 0)
+    ) > max(1, len(results) // 4)
+    if refresh_quotes and (price_dominated or by_status.get("needs_quote_refresh", 0) > 0):
+        try:
+            from proposal_execution_readiness import refresh_stale_proposal_quotes
+            quote_refresh = refresh_stale_proposal_quotes(limit=limit or 25)
+            if verbose:
+                print(f"[revalidation] quote refresh: {quote_refresh}")
+        except Exception as e:
+            quote_refresh = {"error": str(e)[:120]}
+
     return {
         "report": "Automated Trade Proposal Revalidation",
         "generated_at": NOW.isoformat(),
@@ -166,6 +179,7 @@ def revalidate_proposals(limit: int | None = None, verbose: bool = False) -> dic
         "by_revalidation_status": by_status,
         "still_valid_count": by_status.get("still_valid", 0),
         "needs_attention_count": len(results) - by_status.get("still_valid", 0),
+        "quote_refresh": quote_refresh,
         "proposals": results,
     }
 
@@ -225,10 +239,14 @@ def main():
     parser.add_argument("--output-json", type=str, help="Write JSON report to file")
     parser.add_argument("--output-md", type=str, help="Write Markdown report to file")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--refresh-quotes", action="store_true",
+                        help="Refresh stale live quotes when price/quote blocks dominate")
     args = parser.parse_args()
 
     print("[revalidation] Checking pending/approved proposals ...")
-    report = revalidate_proposals(limit=args.limit, verbose=args.verbose)
+    report = revalidate_proposals(
+        limit=args.limit, verbose=args.verbose, refresh_quotes=args.refresh_quotes,
+    )
 
     # Console summary
     print(f"[revalidation] Total checked: {report['total_proposals_checked']}")
