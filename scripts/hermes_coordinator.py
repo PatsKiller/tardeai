@@ -142,6 +142,7 @@ def main():
     # 2b. Autonomous source vetting closure (no operator approval queue)
     agents.append(run_script("source_auto_approval", ["scripts/hermes_source_auto_approval.py", "--apply", "--max-actions", str(CAP_SOURCE_AUTO)]))
     agents.append(run_script("research_curator", ["scripts/hermes_research_curator.py", "--apply"], timeout=900))
+    agents.append(run_script("options_research_bridge", ["scripts/options_research_bridge.py", "--apply"], timeout=300))
     # 3. Auto-promote (ungated) + backfill RAG gap + 4. embedding worker — isolated per step
     conn = psycopg2.connect(**DB)
     promoted = 0
