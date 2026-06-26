@@ -34,7 +34,10 @@ pullback_macd_screener:
 
   # --- outputs (approved: all three; proposals for trigger + watch) ---
   emit_proposals: true
-  proposal_tiers: [trigger, watch]
+  # Only the trigger tier creates approval-queue proposals — watch-tier names still appear on the
+  # Command Center tab and feed the candidate pipeline, but don't clutter the queue with
+  # lower-conviction (cross-not-yet) items. Set to [trigger, watch] to also queue watch names.
+  proposal_tiers: [trigger]
   proposal_expiry_hours: 48
   default_strategy_id: pullback_macd_reversal
   telegram_alerts: true
