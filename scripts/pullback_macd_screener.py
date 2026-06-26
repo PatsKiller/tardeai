@@ -182,9 +182,16 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
 
     atr = _atr(df, int(cfg.get("atr_period", 14)))
     entry = round(px, 2)
-    stop = round(px - float(cfg.get("stop_atr_mult", 1.5)) * atr, 2)
+    # Authoritative TECHNICAL levels (not generic R:R geometry — passes broker_trade_plan_gate):
+    #   stop   = recent swing low (the pullback's support); just under it
+    #   target = retrace toward the 52-week high (the resistance the name pulled back from)
+    swing_low = float(df["Low"].tail(int(cfg.get("swing_low_lookback", 10))).min())
+    stop = round(swing_low * 0.999, 2)
+    if stop >= entry:  # price sitting on a fresh low → fall back to an ATR buffer
+        stop = round(entry - max(float(cfg.get("stop_atr_mult", 1.5)) * atr, 0.01), 2)
+    frac = float(cfg.get("target_retrace_frac", 1.0))   # 1.0 = full retrace to the 52w high
+    target1 = round(entry + frac * (hi - entry), 2)
     risk = max(entry - stop, 0.01)
-    target1 = round(entry + float(cfg.get("rr_target", 2.0)) * risk, 2)
     rr = round((target1 - entry) / risk, 2)
     slope = float(h.iloc[-1]) - float(h.iloc[-2])
     bars = round(abs(float(h.iloc[-1]) / slope), 1) if slope > 0 else None
@@ -245,20 +252,60 @@ def _persist_candidates(cands: list[dict], scan_d: date) -> None:
             (seen,))
 
 
+def _write_trade_plan(c: dict, strat: str, shares: int, dollar_size: float, dollar_risk: float) -> int | None:
+    """Write an authoritative trade_plans row (technical entry/stop/target). broker_trade_plan_gate
+    resolves this by symbol and treats the levels as authoritative — clearing the 'no authoritative
+    trade plan / R:R-math-only (gambling blocked)' route block. Replaces this screener's prior plan."""
+    stop_pct = round((c["entry"] - c["stop"]) / c["entry"] * 100, 2) if c["entry"] else 0.0
+    _db("DELETE FROM trade_plans WHERE symbol=%s AND generated_by='pullback_macd_screener'", (c["sym"],))
+    row = _db("""INSERT INTO trade_plans
+                   (strategy_id, symbol, entry_low, entry_high, stop_loss, stop_pct, target_1,
+                    risk_reward_1, shares, dollar_size, dollar_risk, atr_value, disqualified,
+                    generated_at, generated_by)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,NOW(),'pullback_macd_screener')
+                 RETURNING id""",
+              (strat, c["sym"], c["entry"], c["entry"], c["stop"], stop_pct, c["target1"],
+               c["rr"], shares, dollar_size, dollar_risk, c.get("atr")), fetch="one")
+    return row["id"] if row else None
+
+
 def _emit_proposals(cands: list[dict], cfg: dict) -> int:
     tiers = set(cfg.get("proposal_tiers") or ["trigger"])
     notional = float(cfg.get("proposal_notional_usd", 5000))
     strat = cfg.get("default_strategy_id", "pullback_macd_reversal")
     exp_h = int(cfg.get("proposal_expiry_hours", 48))
+    cap = int(cfg.get("max_proposals_per_scan", 5))
+    # Tier-eligible, highest-score first, hard-capped. Each PENDING proposal spawns local+cloud LLM
+    # oversight, so the cap bounds load when many names trigger at once. Dropped names still appear
+    # on the tab + feed the pipeline.
+    eligible = sorted([c for c in cands if c["tier"] in tiers], key=lambda x: -x.get("score", 0))
+    if len(eligible) > cap:
+        print(f"  [proposals] capping {len(eligible)} eligible → {cap} (max_proposals_per_scan); "
+              f"rest stay on tab/pipeline only")
+        eligible = eligible[:cap]
     cols = _db("""SELECT column_name FROM information_schema.columns
                   WHERE table_name='paper_trade_proposals'""", fetch="all") or []
     avail = {r["column_name"] for r in cols}
     n = 0
-    for c in cands:
-        if c["tier"] not in tiers:
-            continue
+    for c in eligible:
         shares = max(1, int(notional / max(c["entry"], 0.01)))
         risk = round(shares * (c["entry"] - c["stop"]), 2)
+        dollar_size = round(shares * c["entry"], 2)
+        # Authoritative plan first, so the gate sees real technical levels for this symbol.
+        _write_trade_plan(c, strat, shares, dollar_size, risk)
+        # If an active proposal already exists, refresh its levels to match the authoritative plan
+        # instead of creating a duplicate.
+        dup0 = _db("""SELECT id FROM paper_trade_proposals
+                      WHERE symbol=%s AND status='PENDING'
+                        AND COALESCE(discovery_source,'')='pullback_macd'""", (c["sym"],), fetch="one")
+        if dup0:
+            _db("""UPDATE paper_trade_proposals
+                   SET proposed_entry=%s, proposed_stop=%s, proposed_target1=%s, proposed_rr=%s,
+                       updated_at=NOW()
+                   WHERE id=%s""", (c["entry"], c["stop"], c["target1"], c["rr"], dup0["id"]))
+            c["proposal_id"] = dup0["id"]
+            _db("UPDATE pullback_macd_candidates SET proposal_id=%s WHERE symbol=%s", (dup0["id"], c["sym"]))
+            continue
         data = {
             "symbol": c["sym"], "strategy_id": strat,
             "setup_type": f"Pullback {c['pullback_pct']}% + MACD {c['tier']}",
@@ -274,13 +321,6 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
             "expires_at": (datetime.now(timezone.utc) + timedelta(hours=exp_h)).isoformat(),
         }
         ins = {k: v for k, v in data.items() if k in avail and v is not None}
-        # de-dupe: skip if an active PENDING proposal for this symbol+source already exists
-        dup = _db("""SELECT id FROM paper_trade_proposals
-                     WHERE symbol=%s AND status='PENDING'
-                       AND COALESCE(discovery_source,'')='pullback_macd'""",
-                  (c["sym"],), fetch="one")
-        if dup:
-            c["proposal_id"] = dup["id"]; continue
         cols_str = ", ".join(ins)
         ph = ", ".join(["%s"] * len(ins))
         row = _db(f"INSERT INTO paper_trade_proposals ({cols_str}) VALUES ({ph}) RETURNING id",

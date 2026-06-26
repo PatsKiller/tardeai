@@ -28,12 +28,18 @@ pullback_macd_screener:
 
   # --- proposal sizing / risk (advisory) ---
   atr_period: 14
-  stop_atr_mult: 1.5            # stop = entry - stop_atr_mult * ATR
-  rr_target: 2.0               # target1 = entry + rr_target * (entry - stop)
+  # Authoritative technical levels (passes broker_trade_plan_gate — no generic R:R geometry):
+  swing_low_lookback: 10        # stop = recent N-bar swing low (support)
+  target_retrace_frac: 1.0      # target = entry + frac*(52w_high - entry); 1.0 = full retrace to high
+  stop_atr_mult: 1.5            # fallback stop only when price sits on a fresh low
   proposal_notional_usd: 5000   # advisory size; operator re-sizes at approval
 
   # --- outputs (approved: all three; proposals for trigger + watch) ---
   emit_proposals: true
+  # Hard cap on proposals created per scan — each PENDING proposal triggers per-proposal local+cloud
+  # LLM oversight, so a market-wide selloff producing many triggers at once could overload the box.
+  # Highest-score candidates win the slots; the rest still appear on the tab + feed the pipeline.
+  max_proposals_per_scan: 5
   # Only the trigger tier creates approval-queue proposals — watch-tier names still appear on the
   # Command Center tab and feed the candidate pipeline, but don't clutter the queue with
   # lower-conviction (cross-not-yet) items. Set to [trigger, watch] to also queue watch names.
