@@ -88,6 +88,10 @@ def build_telegram_message(prop, alert):
 
     icon = "\U0001f6a8" if alert["severity"] == "URGENT" else "\u26a0\ufe0f"
     type_label = alert["type"].replace("_", " ").upper()
+    try:
+        from proposal_alerter import friendly_status as _friendly_status
+    except Exception:
+        _friendly_status = lambda s: str(s or "?")
 
     msg = f"""{icon} ATP REVIEW ALERT -- {type_label}
 Symbol: {prop['symbol']}
@@ -97,13 +101,13 @@ Current: ${current:.2f} ({pct:+.1f}%)
 Target: ${target:.2f}
 Stop: ${stop:.2f}
 R:R: {rr:.1f}x
-Status: {prop.get('status', '?')}
+Status: {_friendly_status(prop.get('status'))}
 Approval: BLOCKED
 
 {alert['reason']}
 
 Action: Review /v3/trading
-Paper mode. No order submitted."""
+No order auto-submitted — review to route (paper-test or live Path-B, 2FA)."""
     return msg
 
 

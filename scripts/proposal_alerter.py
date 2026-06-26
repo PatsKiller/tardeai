@@ -17,6 +17,25 @@ log = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
+# Friendly, accurate status labels for operator-facing alerts. The raw enum APPROVED_FOR_PAPER_TEST is
+# misleading — these proposals are NOT paper-only; they're eligible for LIVE Path-B routing to a real
+# Schwab account (2FA). Single source of truth, reused by other alert evaluators.
+STATUS_LABELS = {
+    "APPROVED_FOR_PAPER_TEST": "Approved · route-eligible (paper-test + live Path-B Schwab, 2FA)",
+    "APPROVED": "Approved · route-eligible",
+    "PENDING": "Pending review",
+    "MODIFIED": "Modified · pending re-review",
+    "BROKER_SUBMITTED": "Routed to broker",
+    "EXPIRED": "Expired",
+    "REJECTED": "Rejected",
+    "CANCELLED": "Cancelled",
+}
+
+
+def friendly_status(status) -> str:
+    """Operator-facing proposal status label (avoids the misleading raw 'PAPER_TEST' enum)."""
+    return STATUS_LABELS.get(str(status or "").upper(), str(status or "?"))
+
 
 def _token():
     t = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -267,7 +286,7 @@ def build_proposal_info(pid):
 
     lines = [
         f"*Proposal #{p['id']}* — `{p.get('strategy_id', '?')}`",
-        f"*{p['symbol']}* | Status: `{p['status']}`",
+        f"*{p['symbol']}* | Status: {friendly_status(p.get('status'))}",
         "",
         f"Entry: ${entry:.2f}",
         f"Stop:  ${stop:.2f}",
