@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-26 - Options Desk: global snapshot retention sweep
+
+Added `prune_chain_snapshots()` (global, all-symbol retention) to
+`options_desk_enterprise.py` and wired it into the daily IV-snapshot cron
+(`scripts/options_iv_snapshot.py`, `20 16 * * 1-5`). The per-insert prune only
+touches the symbol being written, so names that go quiet kept their tails; the
+daily sweep now bounds the whole table. Honors `OPTIONS_SNAPSHOT_RETENTION_DAYS`
+(default 45). Verified against live DB.
+
 ## 2026-06-26 - Options Desk enterprise: post-merge audit fixes
 
 Audit of the enterprise desk layer (`options_desk_enterprise.py`) surfaced six issues; all fixed:

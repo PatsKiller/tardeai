@@ -712,6 +712,31 @@ def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
             pass
 
 
+def prune_chain_snapshots(keep_days: Optional[int] = None) -> dict:
+    """Global retention sweep across all symbols. Run from a daily cron so symbols
+    that stop receiving new snapshots still get their tail pruned (the per-insert
+    prune in persist_chain_snapshot only touches the symbol being written)."""
+    days = int(keep_days if keep_days is not None else os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
+    conn = _conn()
+    if not conn:
+        return {"ok": False, "error": "no_db"}
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM options_chain_snapshots WHERE captured_at < NOW() - (%s || ' days')::interval",
+            (str(days),),
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        return {"ok": True, "deleted": deleted, "keep_days": days}
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e)[:160]}
+
+
 def build_enterprise_summary(
     proposals: List[dict],
     holdings: List[dict],
