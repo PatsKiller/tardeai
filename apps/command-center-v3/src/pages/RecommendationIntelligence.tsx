@@ -181,7 +181,7 @@ export default function RecommendationIntelligence() {
           <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
               <thead><tr style={{ background: 'var(--bg2)', color: 'var(--text3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                {['Source', 'Trades', 'Win Rate', 'Avg Return', 'Total P&L', 'Avg Hold'].map(h => <th key={h} style={{ textAlign: h === 'Source' ? 'left' : 'right', padding: '8px 12px' }}>{h}</th>)}
+                {['Source', 'Trades', 'Source win rate', 'Avg Return', 'Total P&L', 'Avg Hold'].map(h => <th key={h} style={{ textAlign: h === 'Source' ? 'left' : 'right', padding: '8px 12px' }}>{h}</th>)}
               </tr></thead>
               <tbody>{perf.map((s, i) => (
                 <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>

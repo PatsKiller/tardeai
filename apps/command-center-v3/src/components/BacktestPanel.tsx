@@ -400,7 +400,7 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
       {/* Low-win-rate warning */}
       {flagged.length > 0 && (
         <div style={{ display: 'flex', gap: 10, padding: '10px 14px', marginBottom: 14, background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8, fontSize: 12, color: '#fca5a5' }}>
-          <span style={{ color: R, fontWeight: 700 }}>⚠ Low win rate</span>
+          <span style={{ color: R, fontWeight: 700 }}>⚠ Low backtest win rate</span>
           <span>{flagged.map(s => `${safeStr(s.strategy)} ${s.win_rate}%`).join('  ·  ')}</span>
         </div>
       )}
@@ -639,7 +639,7 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Entry RSI', 'n', 'Win rate', 'Avg left', 'LLM score', 'Dominant verdict', 'Confidence'].map(h => <th key={h} style={{ textAlign: h === 'Entry RSI' || h === 'Dominant verdict' ? 'left' : 'right', padding: '6px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                  {['Entry RSI', 'n', 'Backtest win rate', 'Avg left', 'LLM score', 'Dominant verdict', 'Confidence'].map(h => <th key={h} style={{ textAlign: h === 'Entry RSI' || h === 'Dominant verdict' ? 'left' : 'right', padding: '6px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
                 </tr></thead>
                 <tbody>{setupAdvisory.prior.map((p: any) => {
                   const sc = p.llm_score ?? p.grade_score
