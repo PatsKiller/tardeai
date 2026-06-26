@@ -809,6 +809,8 @@ def generate_covered_call_proposals(
 
     proposals: List[dict] = []
     for h in holdings:
+        if h.get("is_cash"):
+            continue  # cash sweep lines (is_cash) are not optionable equities
         sym = (h.get("symbol") or "").upper()
         shares = _f(h.get("shares"))
         price = _f(h.get("price"))

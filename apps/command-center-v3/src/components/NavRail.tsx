@@ -13,6 +13,7 @@ const HUBS = [
   { to: '/journal', label: 'Journal' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/watchpool', label: 'Watchpool' },
+  { to: '/pullback-macd', label: 'Pullback/MACD' },
   { to: '/sectors', label: 'Sectors' },
   { to: '/reports', label: 'Reports', hardNav: true },
   { to: '/rotation', label: 'Rotation' },

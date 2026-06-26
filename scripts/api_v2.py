@@ -21469,6 +21469,83 @@ def _options_approval_queue(query=None):
     return _json_clean({"ok": True, "queue": ent.fetch_approval_queue(status=status, limit=limit)})
 
 
+def _pullback_macd_candidates(query=None):
+    """GET /api/v2/pullback-macd/candidates — S&P 500 uptrend + pullback + approaching-MACD-cross.
+
+    Params: tier=trigger|watch (default all active), limit (default 100).
+    Returns trigger + watch tiers with pullback %, MACD proximity, entry/stop/target, linked proposal.
+    """
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    tier = (g("tier") or "").lower()
+    limit = int(g("limit", 100) or 100)
+    from db_adapter import _execute
+    where = "status='active'"
+    params = []
+    if tier in ("trigger", "watch"):
+        where += " AND tier=%s"
+        params.append(tier)
+    params.append(limit)
+    rows = _execute(
+        f"""SELECT symbol, tier, prev_tier, price, pullback_pct, trend_pct, macd_prox_pct,
+                   hist_rising_bars, bars_to_cross_est, atr, entry, stop, target1, rr, score,
+                   why_not, proposal_id, scan_date, first_seen_at, last_scan_at
+            FROM pullback_macd_candidates
+            WHERE {where}
+            ORDER BY (tier='trigger') DESC, score DESC LIMIT %s""",
+        params, fetch="all") or []
+    run = _execute("SELECT * FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
+    triggers = [r for r in rows if r.get("tier") == "trigger"]
+    return _json_clean({
+        "ok": True,
+        "candidates": rows,
+        "trigger_count": len(triggers),
+        "watch_count": sum(1 for r in rows if r.get("tier") == "watch"),
+        "last_run": run,
+        "generated_at": (run or {}).get("created_at"),
+    })
+
+
+def _pullback_macd_scan(body=None):
+    """POST /api/v2/pullback-macd/scan — trigger a screener run in the background.
+
+    Runs detached (full scan ~40s) so it never blocks the single-threaded API server; flock
+    prevents overlapping runs. Returns immediately; the UI re-fetches candidates after.
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    launcher = os.path.join(root, "linux_launchers", "run_pullback_macd_screener.sh")
+    try:
+        subprocess.Popen(["bash", launcher], cwd=root,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        return {"ok": True, "started": True, "note": "scan running in background (~40s); refresh shortly"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _pullback_macd_dismiss(body=None):
+    """POST /api/v2/pullback-macd/dismiss — dismiss a candidate (until next scan), optionally
+    cancelling its advisory proposal. Body: {symbol, cancel_proposal?: bool}."""
+    b = body if isinstance(body, dict) else {}
+    sym = str(b.get("symbol") or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    from db_adapter import _execute
+    row = _execute("SELECT proposal_id FROM pullback_macd_candidates WHERE symbol=%s", (sym,), fetch="one")
+    if not row:
+        return {"ok": False, "error": "candidate not found"}
+    _execute("UPDATE pullback_macd_candidates SET status='dismissed' WHERE symbol=%s", (sym,))
+    cancelled = None
+    if b.get("cancel_proposal") and row.get("proposal_id"):
+        _execute("""UPDATE paper_trade_proposals
+                    SET status='REJECTED', rejected_at=NOW(),
+                        rejection_reason='dismissed via Pullback/MACD screener'
+                    WHERE id=%s AND status='PENDING'""", (row["proposal_id"],))
+        cancelled = row["proposal_id"]
+    return {"ok": True, "symbol": sym, "dismissed": True, "proposal_cancelled": cancelled}
+
+
 def _options_approval_resolve(body=None):
     """POST /api/v2/options/approval-queue/resolve — approve or reject desk proposal."""
     b = body if isinstance(body, dict) else {}
@@ -23165,6 +23242,7 @@ ROUTES = {
     "/api/v2/options/desk/vol-history": _options_vol_history,
     "/api/v2/options/desk/trends": _options_desk_trends,
     "/api/v2/options/approval-queue": _options_approval_queue,
+    "/api/v2/pullback-macd/candidates": _pullback_macd_candidates,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,
@@ -26906,6 +26984,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/options/approval-queue/resolve":
         try:
             return 200, _options_approval_resolve(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/pullback-macd/scan":
+        try:
+            return 200, _pullback_macd_scan(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/pullback-macd/dismiss":
+        try:
+            return 200, _pullback_macd_dismiss(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
