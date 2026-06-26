@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-06-26T02:13:50.564778+00:00",
+  "since_days": 5,
+  "funnel": {
+    "screener_universe": 1286,
+    "scored_per_window": 5783,
+    "score_30_plus": 50,
+    "score_40_plus_go": 8,
+    "go_pass_rate_pct": 0.14,
+    "strategy_signals": 65,
+    "auto_proposals": 8,
+    "incubator_promotions": 11,
+    "total_proposals_created": 289,
+    "proposals_per_day": 57.8,
+    "auto_decision_blocks": 0,
+    "pending_now": 2,
+    "broker_queue_pending": 0,
+    "atm_approved_window": 2,
+    "linked_to_trade_window": 2,
+    "execution_link_rate_pct": 0.7
+  },
+  "score_bands": {
+    "40+ GO": 8,
+    "30-39 WAIT": 42,
+    "20-29": 150,
+    "10-19": 939,
+    "1-9": 4491,
+    "0 DISQUALIFIED": 153
+  },
+  "risk_gate_blocks": {
+    "APPROVED": 116,
+    "REJECTED": 43
+  }
+}

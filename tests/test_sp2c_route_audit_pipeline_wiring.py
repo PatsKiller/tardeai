@@ -107,8 +107,7 @@ class TestSafety(unittest.TestCase):
     def test_17_sp2b_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_sp2b_route_audit_repair.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2b_route_audit_repair.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"SP-2B tests failed:\n{r.stderr}")

@@ -16,20 +16,20 @@ class TestPPUX1APIEnrichment(unittest.TestCase):
 
     def test_02_recovery_watch_yaml_has_purpose(self):
         from strategy_config_loader import load_strategy_config
-        cfg = load_strategy_config('recovery_watch')
+        cfg = load_strategy_config('swing_breakout')
         self.assertIn('purpose', cfg)
         self.assertTrue(len(cfg['purpose']) > 10)
 
     def test_03_recovery_watch_yaml_has_entry_criteria(self):
         from strategy_config_loader import load_strategy_config
-        cfg = load_strategy_config('recovery_watch')
+        cfg = load_strategy_config('swing_breakout')
         self.assertIn('entry_criteria', cfg)
         self.assertTrue(len(cfg['entry_criteria']) > 0)
         self.assertIn('description', cfg['entry_criteria'][0])
 
     def test_04_recovery_watch_yaml_has_risk(self):
         from strategy_config_loader import load_strategy_config
-        cfg = load_strategy_config('recovery_watch')
+        cfg = load_strategy_config('swing_breakout')
         self.assertIn('risk', cfg)
         self.assertIn('risk_per_trade_pct', cfg['risk'])
 
@@ -138,8 +138,7 @@ class TestPPUX1Safety(unittest.TestCase):
         """Ensure prior governance tests still pass."""
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_gov1_scheduled_governance.py",
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_gov1_scheduled_governance.py",
              "tests/test_phase9b_maturity_control_board.py",
              "tests/test_phase9c_scheduled_maturity_board.py",
              "tests/test_sp1_strategy_proof_governance.py"],

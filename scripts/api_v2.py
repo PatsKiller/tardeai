@@ -13363,14 +13363,19 @@ def _broker_proposal_row_base(
     _broker_route = str(row.get("intended_broker") or row.get("account") or "").lower()
     row["source_kind"] = "broker" if (_broker_route.startswith("schwab") or _broker_route.startswith("fidelity")) else "proposal"
     row["proposal_origin"] = str(row.get("origin") or row.get("discovery_source") or "auto")
-    # P1-9: which live-submit path this row uses if routed. Proposal promotion always goes through the
-    # queue-route OTOCO + per-order 2FA path (distinct from the separate canary pilot mechanism).
-    if _broker_route.startswith("schwab"):
+    # P1-9: which live-submit path this row uses if routed. Prefer persisted tag (set at submit time);
+    # fall back to inferred path from account/broker when not yet submitted.
+    _stored_path = str(row.get("live_submit_path") or "").strip()
+    if _stored_path:
+        row["routing_path"] = _stored_path
+    elif _broker_route.startswith("schwab"):
         row["routing_path"] = "queue_route_2fa"      # OTOCO bracket via approval_service 2FA
     elif _broker_route.startswith("fidelity"):
         row["routing_path"] = "record_only"          # FA-executed, recorded
     else:
         row["routing_path"] = "paper_auto"           # autonomous Alpaca paper (backend maturation)
+    if row.get("last_correlation_id"):
+        row["correlation_id"] = str(row.get("last_correlation_id"))
     sym = str(row.get("symbol") or "").upper()
     # Surface rvol/gap/catalyst at top level so the card's meme/high-risk banner fires in the LIST
     # (no detail-load required). Banner reads p.rvol / p.gap_pct / p.catalyst directly.
@@ -13838,7 +13843,8 @@ def _broker_proposals(query=None):
                        proposed_entry, proposed_stop, proposed_target1, current_price,
                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
                        created_at, expires_at, updated_at, rvol, gap_pct, catalyst,
-                       last_curated_at, curation_status, curation_snapshot, technical_context
+                       last_curated_at, curation_status, curation_snapshot, technical_context,
+                       live_submit_path, last_correlation_id
                   FROM paper_trade_proposals
                  WHERE {where_sql}
                  ORDER BY {order_sql}

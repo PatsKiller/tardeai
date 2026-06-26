@@ -23,10 +23,14 @@ class TestPrePromotionPolicy(unittest.TestCase):
         self.assertFalse(r["promote_ready"])
 
     def test_03_unknown_provider_warns(self):
-        # Provider check is in quote trust, not pre-promotion — this tests source check
+        # Without quote data the gate blocks (quote_never_checked); fresh quote age passes with warnings only.
         from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
-        r = evaluate_pre_promotion_readiness({"strategy_id": "momentum_scalp", "proposed_entry": 10, "proposed_stop": 9, "proposed_target1": 12})
-        self.assertTrue(r["promote_ready"])  # No quote data = no price blocker
+        r = evaluate_pre_promotion_readiness({
+            "strategy_id": "momentum_scalp",
+            "proposed_entry": 10, "proposed_stop": 9, "proposed_target1": 12,
+            "quote_age_hours": 0.1,
+        })
+        self.assertTrue(r["promote_ready"])
 
     def test_04_price_moved_blocked(self):
         from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
@@ -91,8 +95,7 @@ class TestSafety(unittest.TestCase):
     def test_14_q1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_q1_proactive_quote_refresh.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_q1_proactive_quote_refresh.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"Q-1 tests failed:\n{r.stderr}")
@@ -100,8 +103,7 @@ class TestSafety(unittest.TestCase):
     def test_15_sp2c_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_sp2c_route_audit_pipeline_wiring.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2c_route_audit_pipeline_wiring.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"SP-2C tests failed:\n{r.stderr}")

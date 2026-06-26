@@ -51,7 +51,7 @@ class TestAlertPolicy(unittest.TestCase):
     def test_06_message_has_fields(self):
         from telegram_proposal_alert_policy import build_proposal_alert_packet, format_telegram_message
         pkt = build_proposal_alert_packet({
-            "symbol": "ATLN", "strategy_id": "recovery_watch", "status": "PENDING",
+            "symbol": "ATLN", "strategy_id": "swing_breakout", "status": "PENDING",
             "proposed_entry": 1.50, "proposed_stop": 1.43, "proposed_target1": 1.65,
             "proposed_rr": 2.1, "proposed_shares": 200, "sector": "Healthcare",
             "catalyst": "Contract win", "catalyst_verified": True,
@@ -59,7 +59,7 @@ class TestAlertPolicy(unittest.TestCase):
         })
         msg = format_telegram_message(pkt)
         self.assertIn("ATLN", msg)
-        self.assertIn("recovery_watch", msg)
+        self.assertIn("Swing Breakout", msg)
         self.assertIn("1.50", msg)
         self.assertIn("1.43", msg)
         self.assertIn("1.65", msg)
@@ -109,8 +109,7 @@ class TestSafety(unittest.TestCase):
     def test_15_promote1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_promote1_pre_promotion_readiness_gate.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_promote1_pre_promotion_readiness_gate.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"PROMOTE-1 tests failed:\n{r.stderr}")
