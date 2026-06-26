@@ -430,7 +430,7 @@ export default function JournalHub({ onDrill }: Props) {
               { l: 'Closed', v: kpis.closed, c: 'var(--text0)', tip: 'Trades closed within the selected time range.', rows: closed },
               { l: 'Wins', v: kpis.wins, c: '#22c55e', tip: 'Closed trades with positive realized P&L.', rows: closed.filter(t => t.pnl > 0) },
               { l: 'Losses', v: kpis.losses, c: '#ef4444', tip: 'Closed trades with negative realized P&L.', rows: closed.filter(t => t.pnl < 0) },
-              { l: 'Win Rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b', tip: 'Wins ÷ resolved trades (excludes $0 scratches). 55%+ is the target.' },
+              { l: 'Journal win rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b', tip: 'Wins ÷ resolved trades (excludes $0 scratches). 55%+ is the target.' },
               { l: 'P. Factor', v: kpis.pf.toFixed(2), c: 'var(--text0)', tip: 'Profit factor = gross wins ÷ gross losses. >1 profitable, >2 strong.' },
               { l: 'Expectancy', v: fmt$(kpis.expectancy, 0), c: kpis.expectancy >= 0 ? '#22c55e' : '#ef4444', tip: 'Average realized $ per closed trade — your edge per trade (total P&L ÷ closed count).' },
               (() => { const rs = closed.map(getR).filter(x => x.r != null).map(x => x.r as number); const a = rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null; return { l: 'Avg R', v: a != null ? `${a.toFixed(2)}R` : '—', c: a == null ? 'var(--text3)' : a >= 0 ? '#22c55e' : '#ef4444', tip: `Average R-multiple over ${rs.length} closed trades with risk data. Paper = real planned-stop R; Schwab = ~proxy (reward ÷ max adverse excursion). Risk-adjusted edge.` } })(),
@@ -672,7 +672,7 @@ export default function JournalHub({ onDrill }: Props) {
           {/* Performance KPIs — computed from filtered trades */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
             {[
-              { l: 'Win Rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b' },
+              { l: 'Journal win rate', v: `${kpis.wr}%`, c: kpis.wr >= 55 ? '#22c55e' : '#f59e0b' },
               { l: 'Profit Factor', v: kpis.pf.toFixed(2), c: kpis.pf >= 1.3 ? '#22c55e' : '#f59e0b' },
               { l: 'Avg Winner', v: fmt$(kpis.avgWin, 0), c: '#22c55e' },
               { l: 'Avg Loser', v: fmt$(-kpis.avgLoss, 0), c: '#ef4444' },

@@ -40,7 +40,7 @@ export default function StrategyHub({ onDrill }: Props) {
     }
   }
 
-  // Win rate bar chart data — only strategies with closed trades
+  // Paper-trade win rate bar chart — only strategies with closed trades
   const wrBars = topStrats
     .filter((s: any) => s.closed > 0)
     .map((s: any) => ({
@@ -121,7 +121,7 @@ export default function StrategyHub({ onDrill }: Props) {
       {tab === 'Analytics' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            {/* Win rate bar chart */}
+            {/* Paper-trade win rate bar chart */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Win Rate by Strategy</span>
@@ -136,7 +136,7 @@ export default function StrategyHub({ onDrill }: Props) {
                     <YAxis dataKey="strategy" type="category" width={130} tick={{ fontSize: 10, fill: 'var(--text2)' }} />
                     <ReferenceLine x={55} stroke="#60a5fa" strokeDasharray="4 4" strokeWidth={1.5} />
                     <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 11 }}
-                      formatter={(v: number) => [`${v}%`, 'Win Rate']} />
+                      formatter={(v: number) => [`${v}%`, 'Paper win rate']} />
                     <Bar dataKey="win_rate" radius={[0, 4, 4, 0]} barSize={20}
                       fill="#22c55e"
                       onClick={(d: any) => onDrill({

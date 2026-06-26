@@ -63,7 +63,7 @@ export default function MetricStrip({ onDrill }: Props) {
         ] : [] },
     },
     {
-      label: 'WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
+      label: 'JOURNAL WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
       drill: { title: 'Win Rate', subtitle: 'Journal (all closed) · paper-readiness shown separately', endpoint: '/api/v2/overview',
         rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },

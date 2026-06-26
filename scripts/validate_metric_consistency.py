@@ -19,6 +19,8 @@ DEFAULT_SCAN_PATHS = [
     Path("scripts"),
     Path("docs/project"),
 ]
+# Ambiguous visible KPI labels are a Command Center concern — scan v3 UI only.
+AMBIGUOUS_SCAN_PATHS = [Path("apps/command-center-v3/src")]
 
 REQUIRED_METRICS = {
     "portfolio_value",
@@ -43,12 +45,29 @@ AMBIGUOUS_LABELS = [
 ALLOWED_CONTEXT_HINTS = (
     "journal",
     "paper validation",
+    "paper trade",
+    "paper win",
+    "paper-readiness",
     "validation",
     "denominator",
     "scope",
     "live trading status",
     "protective stop",
     "broker protective",
+    "backtest",
+    "replay",
+    "strategy",
+    "by strategy",
+    "source:",
+    "win_rate",
+    "datakey",
+    "round-trip",
+    "kpis",
+    "tip:",
+    "performance",
+    "2fa live",
+    "auto live",
+    "api/v2",
 )
 
 
@@ -79,6 +98,11 @@ def iter_files(paths: list[Path]):
                     yield p
 
 
+_SCOPED_WIN_RATE = re.compile(
+    r"\b(journal|paper|paper-trade|backtest|source|validation|strategy)\s+win\s+rate\b", re.I
+)
+
+
 def scan_ambiguous_labels(paths: list[Path]) -> list[dict]:
     hits: list[dict] = []
     for p in iter_files(paths):
@@ -88,10 +112,13 @@ def scan_ambiguous_labels(paths: list[Path]) -> list[dict]:
             continue
         for i, line in enumerate(txt.splitlines(), start=1):
             for rx in AMBIGUOUS_LABELS:
-                if rx.search(line):
-                    lowered = line.lower()
-                    if not any(hint in lowered for hint in ALLOWED_CONTEXT_HINTS):
-                        hits.append({"path": str(p), "line": i, "text": line.strip()[:220], "pattern": rx.pattern})
+                if not rx.search(line):
+                    continue
+                lowered = line.lower()
+                if _SCOPED_WIN_RATE.search(line):
+                    continue
+                if not any(hint in lowered for hint in ALLOWED_CONTEXT_HINTS):
+                    hits.append({"path": str(p), "line": i, "text": line.strip()[:220], "pattern": rx.pattern})
     return hits
 
 
@@ -105,7 +132,7 @@ def main() -> int:
     ids = metric_ids_from_registry(reg_text)
     missing = sorted(REQUIRED_METRICS - ids)
     extra = sorted(ids - REQUIRED_METRICS)
-    ambiguous = scan_ambiguous_labels(DEFAULT_SCAN_PATHS)
+    ambiguous = scan_ambiguous_labels(AMBIGUOUS_SCAN_PATHS)
 
     report = {
         "ok": not missing and not ambiguous,

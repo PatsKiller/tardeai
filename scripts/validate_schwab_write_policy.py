@@ -8,8 +8,10 @@ deliberately created ONE — so this validator proves the new committed policy i
 
 Checks are STATE-INDEPENDENT where possible: green when the pilot is disarmed (resting state) AND
 when legitimately armed (system_controls + standing approval + api_write_enabled all set by
-schwab_pilot_arm.py). What can never be green: an IRA write flag, a gate module edited outside
-git, a write call that skips the guard, or a reachable replace path.
+schwab_pilot_arm.py). Post operator-unlock 2026-06-22 all three Schwab accounts may be in
+PILOT_ACCOUNT_ALLOWLIST with api_write_enabled=true when armed; per-order 2FA + readiness still
+gate every submit. What can never be green: a gate module edited outside git, a write call that
+skips the guard, or a reachable replace path.
 
 Exit 0 = all green. Non-zero = a policy regression.
 """
@@ -49,26 +51,33 @@ else:
 # 2. position sync unchanged (protected writes; fail-closed live fetch)
 psync = (SCRIPTS / "schwab_position_sync.py").read_text() if (SCRIPTS / "schwab_position_sync.py").exists() else ""
 ok("position sync routes writes through protected_holdings_write", "protected_holdings_write" in psync and "os.replace" in psync)
-ok("position sync live fetch is NOT_PROVEN (fail closed)", "NOT_PROVEN" in psync)
+ok("position sync live fetch is fail-closed (non-list → degraded_noop)",
+   "degraded_noop" in psync and "get_positions" in psync and "not isinstance(live, list)" in psync)
 
-# 3. api_write_enabled POLICY: IRAs false ALWAYS; taxable true only when the pilot is legitimately
-#    armed (db control row + unrevoked standing approval). Disarmed resting state = all false.
+# 3. api_write_enabled POLICY: pilot allowlist accounts true ONLY when legitimately armed
+#    (broker_live_enabled + standing approval); disarmed resting state = all false.
 try:
     sys.path.insert(0, str(SCRIPTS))
     from db_adapter import _get_conn
+    from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("SELECT account_key, api_write_enabled FROM broker_accounts WHERE broker ILIKE '%schwab%'")
     flags = dict(cur.fetchall())
-    ira_clean = not flags.get("schwab_roth_ira") and not flags.get("schwab_rollover_ira")
-    tax = bool(flags.get("schwab_taxable"))
-    armed_ok = True
-    if tax:
-        cur.execute("SELECT value FROM system_controls WHERE key='broker_live_enabled'")
-        r = cur.fetchone()
-        cur.execute("SELECT count(*) FROM broker_live_approvals WHERE revoked_at IS NULL")
-        armed_ok = bool(r and str(r[0]).lower() == "true") and (cur.fetchone()[0] or 0) > 0
-    ok("api_write_enabled policy: IRAs always false; taxable only-when-armed",
-       ira_clean and armed_ok, f"flags={flags} taxable_armed_consistent={armed_ok}")
+    cur.execute("SELECT value FROM system_controls WHERE key='broker_live_enabled'")
+    r = cur.fetchone()
+    cur.execute("SELECT count(*) FROM broker_live_approvals WHERE revoked_at IS NULL")
+    standing = int(cur.fetchone()[0] or 0)
+    pilot_armed = bool(r and str(r[0]).lower() == "true") and standing > 0
+    enabled = {k for k, v in flags.items() if v}
+    expected = set(PILOT_ACCOUNT_ALLOWLIST)
+    if pilot_armed:
+        policy_ok = expected.issubset(enabled)
+        policy_detail = f"armed pilot enabled={sorted(enabled)} expected={sorted(expected)}"
+    else:
+        policy_ok = not enabled
+        policy_detail = f"disarmed flags={flags}"
+    ok("api_write_enabled policy: pilot allowlist only-when-armed, all false when disarmed",
+       policy_ok, policy_detail)
     # interlock posture unchanged (paper master flag refuses Schwab live accounts)
     try:
         import live_trading_interlock as lti
@@ -143,10 +152,15 @@ try:
     _probe = OrderIntent(instrument=Instrument("ZGATE"), direction=Direction.LONG,
                          entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=3.0),
                          quantity=Quantity(qty=2), broker="schwab", account_key="schwab_roth_ira")
+    try:
+        from brokers.execution_guard import ExecutionBlocked as _ExecBlocked
+        _fail_closed = (_st.NotProvenWrite, _ExecBlocked)
+    except Exception:
+        _fail_closed = (_st.NotProvenWrite,)
     ira_raised = False
     try:
         _st.place_order("schwab_roth_ira", {}, _probe)
-    except _st.NotProvenWrite:
+    except _fail_closed:
         ira_raised = True
     except Exception:
         ira_raised = False
@@ -161,60 +175,70 @@ try:
 except Exception as e:
     ok("runtime transport check", False, str(e)[:60])
 
-# 9. canary gate: pure module + out-of-envelope deny IN FRONT of everything (unchanged from 2a)
-try:
-    gate_src = (SCRIPTS / "brokers" / "canary_gate.py").read_text()
-    pure = not re.search(r"^\s*(import os\b|from os\b)", gate_src, re.M) \
-        and not re.search(r"db_adapter|_get_conn|json\.load|yaml|configparser|open\(", gate_src)
-    from brokers.execution_guard import authorize as _auth
-    from brokers.order_intent import OrderIntent as _OI, Instrument as _In, Direction as _Dir, \
-        EntrySpec as _ES, EntryMethod as _EM, Quantity as _Q
-    _big = _OI(instrument=_In("AAPL"), direction=_Dir.LONG,
-               entry=_ES(method=_EM.LIMIT, limit_price=180.0), quantity=_Q(qty=100), broker="schwab")
-    d = _auth(_big, "submit")
-    ok("canary gate: pure module + out-of-envelope submit denied in front of guard",
-       pure and (not d.allowed) and d.reason.startswith("CANARY_GATE BLOCK"),
-       f"pure={pure} reason={d.reason[:60]}")
-except Exception as e:
-    ok("canary gate check", False, str(e)[:60])
-
-# 10. canary auto-expiry behavior (unchanged from 2a)
+# 9. canary gate: pure commit-only module; envelope enforced here OR via execution_guard when removed
 try:
     from unittest import mock as _mock
     import brokers.canary_gate as _cg
+    from brokers.execution_guard import authorize as _auth
+    from brokers.order_intent import OrderIntent as _OI, Instrument as _In, Direction as _Dir, \
+        EntrySpec as _ES, EntryMethod as _EM, Quantity as _Q
+    gate_src = (SCRIPTS / "brokers" / "canary_gate.py").read_text()
+    pure = not re.search(r"^\s*(import os\b|from os\b)", gate_src, re.M) \
+        and not re.search(r"db_adapter|_get_conn|json\.load|yaml|configparser|open\(", gate_src)
+    _big = _OI(instrument=_In("AAPL"), direction=_Dir.LONG,
+               entry=_ES(method=_EM.LIMIT, limit_price=180.0), quantity=_Q(qty=100), broker="schwab")
+    if getattr(_cg, "GATES_REMOVED", False):
+        d = _auth(_big, "submit")
+        ok("canary gate: GATES_REMOVED pass-through; execution_guard still denies unapproved submit",
+           pure and (not d.allowed),
+           f"pure={pure} GATES_REMOVED=True reason={d.reason[:60]}")
+    else:
+        d = _auth(_big, "submit")
+        ok("canary gate: pure module + out-of-envelope submit denied in front of guard",
+           pure and (not d.allowed) and d.reason.startswith("CANARY_GATE BLOCK"),
+           f"pure={pure} reason={d.reason[:60]}")
+except Exception as e:
+    ok("canary gate check", False, str(e)[:60])
+
+# 10. canary auto-expiry behavior (skipped while GATES_REMOVED=True — operator 2026-06-21)
+try:
+    import brokers.canary_gate as _cg
     _zp = _OI(instrument=_In("ZGATE"), direction=_Dir.LONG,
               entry=_ES(method=_EM.LIMIT, limit_price=3.0), quantity=_Q(qty=2), broker="schwab")
-    with _mock.patch.object(_cg, "CANARY_SYMBOL_ALLOWLIST", ("ZGATE",)), \
-         _mock.patch.object(_cg, "CANARY_SESSION_DATE", "2099-01-01"):
-        with _mock.patch.object(_cg, "_today", return_value="2099-01-01"):
-            on_ok = _cg.evaluate(_zp).allowed
-        with _mock.patch.object(_cg, "_today", return_value="2099-01-02"):
-            off_blocked = not _cg.evaluate(_zp).allowed
-    ok("canary gate auto-expiry: on-date passes, off-date fails closed", on_ok and off_blocked)
+    if getattr(_cg, "GATES_REMOVED", False):
+        ok("canary gate auto-expiry: bypassed while GATES_REMOVED=True (2FA locks apply)", True)
+    else:
+        with _mock.patch.object(_cg, "CANARY_SYMBOL_ALLOWLIST", ("ZGATE",)), \
+             _mock.patch.object(_cg, "CANARY_SESSION_DATE", "2099-01-01"):
+            with _mock.patch.object(_cg, "_today", return_value="2099-01-01"):
+                on_ok = _cg.evaluate(_zp).allowed
+            with _mock.patch.object(_cg, "_today", return_value="2099-01-02"):
+                off_blocked = not _cg.evaluate(_zp).allowed
+        ok("canary gate auto-expiry: on-date passes, off-date fails closed", on_ok and off_blocked)
 except Exception as e:
     ok("canary auto-expiry check", False, str(e)[:60])
 
-# 10b. BATTERY SHAPES envelope-bounded (Stage 2b 2026-06-15): every shape — incl SELL / STOP /
-#      TRAILING — must be capped by the ≤$4/≤$40 envelope; out-of-envelope prices must BLOCK.
+# 10b. BATTERY SHAPES envelope-bounded (skipped while GATES_REMOVED=True)
 try:
     import schwab_stage2b_canary_preflight as _pf
     from decimal import Decimal as _Dec
-    with _mock.patch.object(_cg, "_today", return_value=_cg.CANARY_SESSION_DATE):
-        in_env = [
-            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("1.70")),
-            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("3.00")),
-            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "trailing", trail_pct=_Dec("3"), reference_price=_Dec("3.30")),
-            _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "close", price=_Dec("3.30")),
-        ]
-        all_allow = all(_cg.evaluate(i).allowed for i in in_env)
-        # out-of-envelope must block on BUY and on SELL/STOP alike
-        over_buy = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("5.00"))).allowed
-        over_stop = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("4.50"))).allowed
-        # qty over cap blocks too
-        over_qty = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 11, "buy_cancel", price=_Dec("3.00"))).allowed
-    ok("battery shapes envelope-bounded (in-env allow; >$4 buy/stop + >10sh block)",
-       all_allow and over_buy and over_stop and over_qty,
-       f"allow={all_allow} overbuy={over_buy} overstop={over_stop} overqty={over_qty}")
+    if getattr(_cg, "GATES_REMOVED", False):
+        ok("battery shapes envelope-bounded: bypassed while GATES_REMOVED=True (2FA locks apply)", True)
+    else:
+        with _mock.patch.object(_cg, "_today", return_value=_cg.CANARY_SESSION_DATE):
+            in_env = [
+                _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("1.70")),
+                _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("3.00")),
+                _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "trailing", trail_pct=_Dec("3"), reference_price=_Dec("3.30")),
+                _pf.make_battery_intent("schwab_taxable", "GRAB", 10, "close", price=_Dec("3.30")),
+            ]
+            all_allow = all(_cg.evaluate(i).allowed for i in in_env)
+            over_buy = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "buy_cancel", price=_Dec("5.00"))).allowed
+            over_stop = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 10, "protective", stop_price=_Dec("4.50"))).allowed
+            over_qty = not _cg.evaluate(_pf.make_battery_intent("schwab_taxable", "GRAB", 11, "buy_cancel", price=_Dec("3.00"))).allowed
+        ok("battery shapes envelope-bounded (in-env allow; >$4 buy/stop + >10sh block)",
+           all_allow and over_buy and over_stop and over_qty,
+           f"allow={all_allow} overbuy={over_buy} overstop={over_stop} overqty={over_qty}")
 except Exception as e:
     ok("battery envelope check", False, str(e)[:80])
 

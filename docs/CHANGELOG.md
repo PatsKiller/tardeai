@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-26 - Release gates: Schwab validator 26/26 + metric consistency strict
+
+- `validate_schwab_write_policy.py` — aligned with post-unlock policy (all three Schwab accounts in
+  pilot allowlist when armed; IRA fail-closed via ExecutionBlocked/2FA; position sync degraded_noop;
+  GATES_REMOVED canary pass-through documented).
+- `validate_metric_consistency.py` — scoped win-rate labels; v3-only ambiguous scan; 0 strict hits.
+- CC v3 KPI labels scoped (Journal/Paper/Backtest win rate).
+- `RELEASE_MANIFEST_LATEST.md` regenerated — all checks PASS except repo hygiene WARN when runtime
+  cron artifacts are dirty.
+
 ## 2026-06-26 - Live messaging: `live_trading_allowed=False` ≠ operator live off
 
 - Split **Alpaca autonomous gate** (`paper_validation_policy.live_trading_allowed`) from **Schwab
