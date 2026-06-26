@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { GLOSSARY, strategyGuide } from '../lib/optionsNovice'
+import { NOVICE } from '../lib/optionsTooltips'
 
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 } as const
 const BLUE = '#60a5fa'
@@ -11,13 +12,13 @@ const STRATEGIES = ['covered_call', 'cash_secured_put', 'long_call', 'credit_spr
 
 export function Options101Banner({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   return (
-    <div style={{ ...panel, marginBottom: 14, borderLeft: '4px solid #a855f7' }}>
+    <div title={NOVICE.banner} style={{ ...panel, marginBottom: 14, borderLeft: '4px solid #a855f7', cursor: 'help' }}>
       <button
         type="button"
         onClick={onToggle}
-        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text0)' }}
+        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', cursor: 'help', padding: 0, color: 'var(--text0)' }}
       >
-        <span style={{ fontSize: 12, fontWeight: 800 }}>📘 Options 101 — plain-English guide</span>
+        <span style={{ fontSize: 12, fontWeight: 800 }}>📘 Options 101 — plain-English guide ⓘ</span>
         <span style={{ fontSize: 10, color: MUTED }}>{collapsed ? 'Show' : 'Hide'}</span>
       </button>
       {!collapsed && (
@@ -92,9 +93,9 @@ export function PreflightConfirmModal({
 
 export function NoviceToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: MUTED, cursor: 'pointer' }}>
+    <label title={NOVICE.toggle} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: MUTED, cursor: 'help' }}>
       <input type="checkbox" checked={on} onChange={e => onChange(e.target.checked)} />
-      <span>Beginner hints</span>
+      <span>Beginner hints ⓘ</span>
     </label>
   )
 }
@@ -144,8 +145,8 @@ export function WhatIfBox({ strategy, symbol }: { strategy: string; symbol: stri
   const g = strategyGuide(strategy)
   if (!open) {
     return (
-      <button type="button" onClick={e => { e.stopPropagation(); setOpen(true) }} style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 6 }}>
-        ▸ What if the stock moves?
+      <button type="button" title={NOVICE.whatIf} onClick={e => { e.stopPropagation(); setOpen(true) }} style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'help', padding: 0, marginTop: 6 }}>
+        ▸ What if the stock moves? ⓘ
       </button>
     )
   }

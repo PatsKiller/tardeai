@@ -12,6 +12,8 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import GreeksOverview from '../components/risk/GreeksOverview'
 import OptionsPnLProfile from '../components/risk/OptionsPnLProfile'
+import { Tip, TipChip, TipKpi, TipLabel, TipSection } from '../components/OptionsTip'
+import { HEADER, TABS as TAB_TIPS, FILTERS, OVERVIEW, POSITION } from '../lib/optionsTooltips'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -103,8 +105,16 @@ export default function OptionsHub({ onDrill }: Props) {
     setMinPop(0); setMinEdge(0)
   }
 
-  const facetChip = (label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') =>
-    chipBtn(count != null ? `${label} (${count})` : label, active, onClick, color)
+  const facetChip = (tip: string, label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') => (
+    <TipChip
+      key={label}
+      tip={tip}
+      label={count != null ? `${label} (${count})` : label}
+      active={active}
+      onClick={onClick}
+      color={color}
+    />
+  )
 
   const forceRefresh = async () => {
     try {
@@ -218,45 +228,48 @@ export default function OptionsHub({ onDrill }: Props) {
     }
   }
 
-  const chipBtn = (label: string, active: boolean, onClick: () => void, color = '#60a5fa') => (
-    <button key={label} onClick={onClick} style={{
-      padding: '4px 10px', fontSize: 10, borderRadius: 5, cursor: 'pointer',
-      border: `1px solid ${active ? color : 'var(--border)'}`,
-      background: active ? `${color}22` : 'var(--bg2)',
-      color: active ? color : 'var(--text3)', fontWeight: active ? 700 : 500,
-    }}>{label}</button>
-  )
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>Options Desk</div>
+          <Tip tip={HEADER.desk} style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', display: 'inline-block' }}>
+            Options Desk ⓘ
+          </Tip>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
             High-quality proposals only · {propCount} ideas · {posList.length} open legs
             {proposals?.quality_gate && (
-              <span title="Intent sleeve (V/SCHD/LMT) uses edge floor 52; others need 62"> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+</span>
+              <Tip tip={HEADER.qualityGate}> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+ ⓘ</Tip>
             )}
             {proposals?.generated_at && (
-              <span style={{ color: 'var(--text3)' }}> · updated {new Date(proposals.generated_at).toLocaleTimeString()}</span>
+              <Tip tip={HEADER.updated} style={{ color: 'var(--text3)' }}> · updated {new Date(proposals.generated_at).toLocaleTimeString()} ⓘ</Tip>
             )}
-            {alerts.length > 0 && <span style={{ color: '#f59e0b' }}> · {alerts.length} need action</span>}
+            {alerts.length > 0 && (
+              <Tip tip={HEADER.needAction} style={{ color: '#f59e0b' }}> · {alerts.length} need action ⓘ</Tip>
+            )}
             {execStatus && (
-              <span style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}>
-                {' '}· execution {execStatus.armed_for_execution ? 'ARMED' : 'advisory'}
-              </span>
+              <Tip
+                tip={execStatus.armed_for_execution ? HEADER.executionArmed : HEADER.executionAdvisory}
+                style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}
+              >
+                {' '}· execution {execStatus.armed_for_execution ? 'ARMED' : 'advisory'} ⓘ
+              </Tip>
             )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <NoviceToggle on={novice} onChange={setNovice} />
+          <Tip tip={HEADER.novice}><NoviceToggle on={novice} onChange={setNovice} /></Tip>
           <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => selectTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button
+              key={t}
+              title={t === 'Proposals' ? TAB_TIPS.proposals : t === 'Open Positions' ? TAB_TIPS.positions : TAB_TIPS.overview}
+              onClick={() => selectTab(t)}
+              style={{
+                padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'help',
+                background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+                color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
+              }}
+            >{t}</button>
           ))}
           </div>
         </div>
@@ -294,11 +307,12 @@ export default function OptionsHub({ onDrill }: Props) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
               <input
                 placeholder="Ticker"
+                title={FILTERS.ticker}
                 value={symbolFilter}
                 onChange={e => setSymbolFilter(e.target.value)}
-                style={{ ...SEL, width: 72 }}
+                style={{ ...SEL, width: 72, cursor: 'help' }}
               />
-              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+              <TipLabel tip={FILTERS.strategy}>
                 Strategy
                 <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={{ ...SEL, marginLeft: 4 }}>
                   <option value="">All</option>
@@ -308,8 +322,8 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value="long_call">Long Call</option>
                   <option value="credit_spread">Credit Spread</option>
                 </select>
-              </label>
-              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+              </TipLabel>
+              <TipLabel tip={FILTERS.pop}>
                 POP ≥
                 <select value={minPop} onChange={e => setMinPop(Number(e.target.value))} style={{ ...SEL, marginLeft: 4 }}>
                   <option value={0}>Any</option>
@@ -317,8 +331,8 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value={60}>60</option>
                   <option value={65}>65</option>
                 </select>
-              </label>
-              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+              </TipLabel>
+              <TipLabel tip={FILTERS.edge}>
                 Edge ≥
                 <select value={minEdge} onChange={e => setMinEdge(Number(e.target.value))} style={{ ...SEL, marginLeft: 4 }}>
                   <option value={0}>Any</option>
@@ -326,44 +340,44 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value={70}>70</option>
                   <option value={75}>75</option>
                 </select>
-              </label>
-              <button onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
-              <button onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'pointer', color: '#60a5fa' }}>Force scan</button>
-              <button onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'pointer', color: '#a855f7' }}>
+              </TipLabel>
+              <button title={FILTERS.refresh} onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'help' }}>Refresh</button>
+              <button title={FILTERS.forceScan} onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'help', color: '#60a5fa' }}>Force scan</button>
+              <button title={FILTERS.validateAll} onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'help', color: '#a855f7' }}>
                 {ensembleBusy ? 'Queuing…' : 'Validate all'}
               </button>
-              <button onClick={clearPropFilters} style={{ ...SEL, cursor: 'pointer', color: 'var(--text3)' }}>Clear filters</button>
+              <button title={FILTERS.clear} onClick={clearPropFilters} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear filters</button>
               {ensembleMsg && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{ensembleMsg}</span>}
               {propLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
               {propStale && <span style={{ fontSize: 10, color: '#f59e0b' }}>Reconnecting…</span>}
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: '.06em' }}>TYPE &amp; PAIRS</div>
+            <TipSection tip="Filter by strategy group, call/put, buy/sell side, and single-leg vs spread pairs.">TYPE &amp; PAIRS</TipSection>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {facetChip('All', propFacets.total, !groupFilter && !optionTypeFilter && !sideFilter && !legStyleFilter, () => {
+              {facetChip(FILTERS.all, 'All', propFacets.total, !groupFilter && !optionTypeFilter && !sideFilter && !legStyleFilter, () => {
                 setGroupFilter(''); setOptionTypeFilter(''); setSideFilter(''); setLegStyleFilter('')
               })}
-              {facetChip('Income', propFacets.by_group?.income, groupFilter === 'income', () => setGroupFilter(g => g === 'income' ? '' : 'income'), '#f59e0b')}
-              {facetChip('Hedge', propFacets.by_group?.hedge, groupFilter === 'hedge', () => setGroupFilter(g => g === 'hedge' ? '' : 'hedge'), PURPLE)}
-              {facetChip('Directional', propFacets.by_group?.directional, groupFilter === 'directional', () => setGroupFilter(g => g === 'directional' ? '' : 'directional'), '#22c55e')}
-              {facetChip('Spreads', propFacets.by_group?.spread, groupFilter === 'spread', () => setGroupFilter(g => g === 'spread' ? '' : 'spread'), '#ef4444')}
-              {facetChip('Calls', propFacets.by_option_type?.call, optionTypeFilter === 'call', () => setOptionTypeFilter(t => t === 'call' ? '' : 'call'))}
-              {facetChip('Puts', propFacets.by_option_type?.put, optionTypeFilter === 'put', () => setOptionTypeFilter(t => t === 'put' ? '' : 'put'))}
-              {facetChip('Sell', propFacets.by_side?.SELL, sideFilter === 'SELL', () => setSideFilter(s => s === 'SELL' ? '' : 'SELL'), '#f59e0b')}
-              {facetChip('Buy', propFacets.by_side?.BUY, sideFilter === 'BUY', () => setSideFilter(s => s === 'BUY' ? '' : 'BUY'), '#22c55e')}
-              {facetChip('Single leg', propFacets.single_leg, legStyleFilter === 'single', () => setLegStyleFilter(l => l === 'single' ? '' : 'single'))}
-              {facetChip('Spread pairs', propFacets.spread_pairs, legStyleFilter === 'spread', () => setLegStyleFilter(l => l === 'spread' ? '' : 'spread'), '#ef4444')}
+              {facetChip(FILTERS.income, 'Income', propFacets.by_group?.income, groupFilter === 'income', () => setGroupFilter(g => g === 'income' ? '' : 'income'), '#f59e0b')}
+              {facetChip(FILTERS.hedge, 'Hedge', propFacets.by_group?.hedge, groupFilter === 'hedge', () => setGroupFilter(g => g === 'hedge' ? '' : 'hedge'), PURPLE)}
+              {facetChip(FILTERS.directional, 'Directional', propFacets.by_group?.directional, groupFilter === 'directional', () => setGroupFilter(g => g === 'directional' ? '' : 'directional'), '#22c55e')}
+              {facetChip(FILTERS.spreads, 'Spreads', propFacets.by_group?.spread, groupFilter === 'spread', () => setGroupFilter(g => g === 'spread' ? '' : 'spread'), '#ef4444')}
+              {facetChip(FILTERS.calls, 'Calls', propFacets.by_option_type?.call, optionTypeFilter === 'call', () => setOptionTypeFilter(t => t === 'call' ? '' : 'call'))}
+              {facetChip(FILTERS.puts, 'Puts', propFacets.by_option_type?.put, optionTypeFilter === 'put', () => setOptionTypeFilter(t => t === 'put' ? '' : 'put'))}
+              {facetChip(FILTERS.sell, 'Sell', propFacets.by_side?.SELL, sideFilter === 'SELL', () => setSideFilter(s => s === 'SELL' ? '' : 'SELL'), '#f59e0b')}
+              {facetChip(FILTERS.buy, 'Buy', propFacets.by_side?.BUY, sideFilter === 'BUY', () => setSideFilter(s => s === 'BUY' ? '' : 'BUY'), '#22c55e')}
+              {facetChip(FILTERS.singleLeg, 'Single leg', propFacets.single_leg, legStyleFilter === 'single', () => setLegStyleFilter(l => l === 'single' ? '' : 'single'))}
+              {facetChip(FILTERS.spreadPairs, 'Spread pairs', propFacets.spread_pairs, legStyleFilter === 'spread', () => setLegStyleFilter(l => l === 'spread' ? '' : 'spread'), '#ef4444')}
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: '.06em' }}>SLEEVE &amp; DESK</div>
+            <TipSection tip="Portfolio sleeve = holdings-based. Conviction = watchlist names. Tiers from enterprise desk scoring.">SLEEVE &amp; DESK</TipSection>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {facetChip('Portfolio', propFacets.by_sleeve?.portfolio, sleeveFilter === 'portfolio', () => setSleeveFilter(s => s === 'portfolio' ? '' : 'portfolio'))}
-              {facetChip('Conviction', propFacets.by_sleeve?.conviction, sleeveFilter === 'conviction', () => setSleeveFilter(s => s === 'conviction' ? '' : 'conviction'), PURPLE)}
-              {facetChip('Tier A', propFacets.by_tier?.A, tierFilter === 'A', () => setTierFilter(t => t === 'A' ? '' : 'A'), '#22c55e')}
-              {facetChip('Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
-              {facetChip('Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
-              {facetChip('Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
-                Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''}
-              </span>
+              {facetChip(FILTERS.portfolio, 'Portfolio', propFacets.by_sleeve?.portfolio, sleeveFilter === 'portfolio', () => setSleeveFilter(s => s === 'portfolio' ? '' : 'portfolio'))}
+              {facetChip(FILTERS.conviction, 'Conviction', propFacets.by_sleeve?.conviction, sleeveFilter === 'conviction', () => setSleeveFilter(s => s === 'conviction' ? '' : 'conviction'), PURPLE)}
+              {facetChip(FILTERS.tierA, 'Tier A', propFacets.by_tier?.A, tierFilter === 'A', () => setTierFilter(t => t === 'A' ? '' : 'A'), '#22c55e')}
+              {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
+              {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
+              {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
+              <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
+                Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
+              </Tip>
             </div>
           </div>
 
@@ -409,24 +423,24 @@ export default function OptionsHub({ onDrill }: Props) {
         <>
           <div style={{ ...panel, marginBottom: 14 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <input placeholder="Underlying" value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80 }} />
-              <button onClick={() => { setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter(''); setPosWorkingOnly(false) }} style={{ ...SEL, cursor: 'pointer', color: 'var(--text3)' }}>Clear</button>
+              <input placeholder="Underlying" title={FILTERS.posTicker} value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80, cursor: 'help' }} />
+              <button title={FILTERS.clear} onClick={() => { setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter(''); setPosWorkingOnly(false) }} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear</button>
               {monLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
               <span style={{ fontSize: 10, color: 'var(--text3)' }}>
                 {posList.length}{posFacets.total != null && posList.length !== posFacets.total ? ` of ${posFacets.total}` : ''} legs
               </span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {facetChip('Calls', posFacets.by_option_type?.call, posTypeFilter === 'call', () => setPosTypeFilter(t => t === 'call' ? '' : 'call'))}
-              {facetChip('Puts', posFacets.by_option_type?.put, posTypeFilter === 'put', () => setPosTypeFilter(t => t === 'put' ? '' : 'put'))}
-              {facetChip('Short / Sell', posFacets.by_side?.sell, posSideFilter === 'sell', () => setPosSideFilter(s => s === 'sell' ? '' : 'sell'), '#f59e0b')}
-              {facetChip('Long / Buy', posFacets.by_side?.buy, posSideFilter === 'buy', () => setPosSideFilter(s => s === 'buy' ? '' : 'buy'), '#22c55e')}
-              {facetChip('Working', posFacets.working, posWorkingOnly, () => setPosWorkingOnly(w => !w), '#22c55e')}
+              {facetChip(FILTERS.posCalls, 'Calls', posFacets.by_option_type?.call, posTypeFilter === 'call', () => setPosTypeFilter(t => t === 'call' ? '' : 'call'))}
+              {facetChip(FILTERS.posPuts, 'Puts', posFacets.by_option_type?.put, posTypeFilter === 'put', () => setPosTypeFilter(t => t === 'put' ? '' : 'put'))}
+              {facetChip(FILTERS.posShort, 'Short / Sell', posFacets.by_side?.sell, posSideFilter === 'sell', () => setPosSideFilter(s => s === 'sell' ? '' : 'sell'), '#f59e0b')}
+              {facetChip(FILTERS.posLong, 'Long / Buy', posFacets.by_side?.buy, posSideFilter === 'buy', () => setPosSideFilter(s => s === 'buy' ? '' : 'buy'), '#22c55e')}
+              {facetChip(FILTERS.posWorking, 'Working', posFacets.working, posWorkingOnly, () => setPosWorkingOnly(w => !w), '#22c55e')}
             </div>
           </div>
           {alerts.length > 0 && (
-            <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #f59e0b' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Action Required</div>
+            <div title={POSITION.actionRequired} style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #f59e0b', cursor: 'help' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Action Required ⓘ</div>
               {alerts.map((a: any) => (
                 <div key={a.id} style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>
                   <b style={{ color: '#60a5fa' }}>{a.underlying}</b> — {a.message} → <span style={{ color: '#f59e0b' }}>{a.action}</span>
@@ -435,7 +449,7 @@ export default function OptionsHub({ onDrill }: Props) {
             </div>
           )}
           {posList.length > 0 && (
-            <div style={{ ...panel, marginBottom: 14, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)', gap: 16 }}>
+            <div title={POSITION.greeksPanel} style={{ ...panel, marginBottom: 14, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)', gap: 16, cursor: 'help' }}>
               <GreeksOverview positions={posList} />
               {posList[0] && (
                 <OptionsPnLProfile
@@ -484,20 +498,17 @@ export default function OptionsHub({ onDrill }: Props) {
       {tab === 'Strategy Overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
           {[
-            { label: 'Proposal Count', value: overview?.proposal_count ?? propList.length, color: '#60a5fa' },
-            { label: 'Avg Edge Score', value: overview?.proposals?.total_edge_avg ?? '—', color: '#22c55e' },
-            { label: 'Avg POP', value: overview?.proposals?.avg_pop != null ? `${overview.proposals.avg_pop}%` : '—', color: '#a855f7' },
-            { label: 'Income (CC)', value: overview?.proposals?.income_opportunities ?? 0, color: '#f59e0b' },
-            { label: 'Put plays', value: overview?.proposals?.put_plays ?? proposals?.puts ?? 0, color: PURPLE },
-            { label: 'Open Positions', value: overview?.open_positions ?? posList.length, color: '#60a5fa' },
-            { label: 'Needs Action', value: overview?.needs_action ?? alerts.length, color: '#ef4444' },
-            { label: 'Unrealized P/L', value: fmt$(overview?.monitor?.total_unrealized_pnl), color: '#22c55e' },
-            { label: 'ITM / OTM', value: `${overview?.monitor?.itm_count ?? 0} / ${overview?.monitor?.otm_count ?? 0}`, color: 'var(--text2)' },
+            { label: 'Proposal Count', tip: OVERVIEW.proposalCount, value: overview?.proposal_count ?? propList.length, color: '#60a5fa' },
+            { label: 'Avg Edge Score', tip: OVERVIEW.avgEdge, value: overview?.proposals?.total_edge_avg ?? '—', color: '#22c55e' },
+            { label: 'Avg POP', tip: OVERVIEW.avgPop, value: overview?.proposals?.avg_pop != null ? `${overview.proposals.avg_pop}%` : '—', color: '#a855f7' },
+            { label: 'Income (CC)', tip: OVERVIEW.incomeCc, value: overview?.proposals?.income_opportunities ?? 0, color: '#f59e0b' },
+            { label: 'Put plays', tip: OVERVIEW.putPlays, value: overview?.proposals?.put_plays ?? proposals?.puts ?? 0, color: PURPLE },
+            { label: 'Open Positions', tip: OVERVIEW.openPositions, value: overview?.open_positions ?? posList.length, color: '#60a5fa' },
+            { label: 'Needs Action', tip: OVERVIEW.needsAction, value: overview?.needs_action ?? alerts.length, color: '#ef4444' },
+            { label: 'Unrealized P/L', tip: OVERVIEW.unrealizedPnl, value: fmt$(overview?.monitor?.total_unrealized_pnl), color: '#22c55e' },
+            { label: 'ITM / OTM', tip: OVERVIEW.itmOtm, value: `${overview?.monitor?.itm_count ?? 0} / ${overview?.monitor?.otm_count ?? 0}`, color: 'var(--text2)' },
           ].map(k => (
-            <div key={k.label} style={{ ...panel, textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>{k.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
-            </div>
+            <TipKpi key={k.label} tip={k.tip} label={k.label} value={k.value} color={k.color} />
           ))}
           {novice && (
             <div style={{ ...panel, gridColumn: '1 / -1' }}>
@@ -515,8 +526,8 @@ export default function OptionsHub({ onDrill }: Props) {
               </div>
             </div>
           )}
-          <div style={{ ...panel, gridColumn: '1 / -1' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Quality Philosophy</div>
+          <div title={OVERVIEW.philosophy} style={{ ...panel, gridColumn: '1 / -1', cursor: 'help' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Quality Philosophy ⓘ</div>
             <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>
               Proposals below edge {proposals?.quality_gate?.min_edge_score ?? 62}, POP {proposals?.quality_gate?.min_pop_pct ?? 52}%,
               or IV rank {proposals?.quality_gate?.min_iv_rank ?? 20}% are excluded (fallback floor {proposals?.quality_gate?.relaxed_edge_floor ?? 52}).
