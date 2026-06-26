@@ -153,6 +153,8 @@ export default function ATMControlPanel() {
   const policy = policyResp?.policy ?? {}
   const readiness = readyResp
   const gate = gateResp?.gate
+  const operatorPath = gateResp?.operator_path
+  const operatorLive = !!operatorPath?.operator_live_via_2fa_allowed
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [showApi, setShowApi] = useState<any>(null) // null=closed, {}=add, {...}=edit
   const [showAuto, setShowAuto] = useState(false)
@@ -163,10 +165,12 @@ export default function ATMControlPanel() {
     <div>
       <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Automation Control Center</span>
-        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>PAPER-ONLY</span>
-        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>🔒 LIVE TRADING PROHIBITED</span>
-        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 PROHIBITED</span>
-        <span style={badge('rgba(96,165,250,.12)', '#60a5fa')}>gate {gate?.passed ? 'PASSED' : 'BLOCKED'}</span>
+        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>ALPACA PAPER</span>
+        {operatorLive
+          ? <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>✓ LIVE VIA 2FA</span>
+          : <span style={badge('rgba(245,158,11,.15)', '#f59e0b')}>🔒 OPERATOR LIVE LOCKED</span>}
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 / AUTO OFF</span>
+        <span style={badge('rgba(96,165,250,.12)', '#60a5fa')}>auto gate {gate?.passed ? 'PASSED' : 'BLOCKED'}</span>
         <button onClick={() => setShowApi({})} disabled={!tokenSet} style={{ ...btn(false, !tokenSet), marginLeft: 'auto' }}>+ Manage APIs</button>
       </div>
       {!tokenSet && <div style={{ ...card, borderColor: '#f59e0b', color: '#f59e0b', fontSize: 11 }}>⚠ Admin token not set — writes disabled (read-only inspection).</div>}

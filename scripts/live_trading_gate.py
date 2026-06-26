@@ -135,13 +135,29 @@ def evaluate():
     except Exception as e:
         result["blocked_reasons"].append(f"db_error: {str(e)[:100]}")
 
-    # Final determination
+    # Final determination — autonomous Alpaca path only (Schwab operator+2FA is separate)
     if not result["blocked_reasons"]:
         result["allowed"] = True
         result["mode"] = "LIVE_ELIGIBLE"
     else:
         result["allowed"] = False
         result["mode"] = "PAPER"
+
+    try:
+        import execution_state as es
+        labels = es.live_trading_labels()
+        result["autonomous_live_trading_allowed"] = labels.get("autonomous_live_trading_allowed")
+        result["operator_live_via_2fa_allowed"] = labels.get("operator_live_via_2fa_allowed")
+        result["operator_approved_live_submit_possible"] = labels.get("operator_approved_live_submit_possible")
+        result["operator_status_label"] = labels.get("operator_status_label")
+        result["autonomous_status_label"] = labels.get("autonomous_status_label")
+        result["per_order_2fa_required"] = True
+        result["note"] = (
+            "Autonomous Alpaca live requires all gates above. "
+            "Schwab operator live via standing unlock + per-order 2FA is a separate path."
+        )
+    except Exception as e:
+        result["operator_path_inspect_error"] = str(e)[:120]
 
     return result
 

@@ -43,6 +43,7 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: tab === 'Proposals' || tab === 'Trade AI' })
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
+  const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
   const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
   const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
@@ -100,7 +101,12 @@ export default function TradingHub({ onDrill }: Props) {
           <div style={{ flex: 1, height: 4, background: 'var(--bg2)', borderRadius: 2 }}>
             <div style={{ width: `${Math.min(100, readiness.pct_to_2000 ?? 0)}%`, height: '100%', background: '#f59e0b', borderRadius: 2, minWidth: 2 }} />
           </div>
-          <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 9 }}>LIVE BLOCKED</span>
+          <span
+            title={execState?.operator_status_label || ''}
+            style={{ color: execState?.operator_live_via_2fa_allowed ? '#22c55e' : '#f59e0b', fontWeight: 700, fontSize: 9 }}
+          >
+            {execState?.operator_live_via_2fa_allowed ? '2FA LIVE ON' : 'AUTO LIVE BLOCKED'}
+          </span>
         </div>
       )}
       {tab === 'Proposals' && (

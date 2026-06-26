@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-26 - Live messaging: `live_trading_allowed=False` ≠ operator live off
+
+- Split **Alpaca autonomous gate** (`paper_validation_policy.live_trading_allowed`) from **Schwab
+  operator+2FA path** (standing unlock + per-order 2FA). `False` on the policy flag blocks auto
+  live only — it does not prohibit operator-approved Schwab submit when standing unlock is active.
+- `execution_state.live_trading_labels()` — canonical labels for both paths; surfaced on
+  `/api/v2/live-trading-gate`, `/api/v2/atm/gate-status`, and `live_trading_gate.py --json`.
+- `generate_state_of_repo_snapshot.py` — safety section no longer prints `PROHIBITED / OFF` for the
+  policy flag when operator 2FA path is on.
+- CC v3 badges (`ATMControlPanel`, `PipelineControlTower`, `MetricStrip`, `TradingHub`) — show
+  **LIVE VIA 2FA** vs **AUTO LIVE BLOCKED** instead of blanket "LIVE TRADING PROHIBITED".
+
 ## 2026-06-26 - Institutional hardening: operator-approved automated trading 4.5/5
 
 - `scripts/execution_state.py` + `docs/CURRENT_EXECUTION_STATE.md` — fail-closed execution state

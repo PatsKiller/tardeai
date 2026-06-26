@@ -57,6 +57,14 @@ def test_standing_unlock_not_blocked_when_live():
           not any("BROKER_LIVE_ENABLED" in b for b in blockers))
 
 
+def test_live_trading_labels_split():
+    import execution_state as es
+    labels = es.live_trading_labels()
+    check("labels has autonomous key", "autonomous_live_trading_allowed" in labels)
+    check("labels has operator 2fa key", "operator_live_via_2fa_allowed" in labels)
+    check("labels has operator status", bool(labels.get("operator_status_label")))
+
+
 def test_cli_json():
     import subprocess
     proc = subprocess.run([sys.executable, "scripts/execution_state.py", "--json"],
@@ -72,6 +80,7 @@ if __name__ == "__main__":
     test_fail_closed_no_db()
     test_markdown_output()
     test_standing_unlock_not_blocked_when_live()
+    test_live_trading_labels_split()
     test_cli_json()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

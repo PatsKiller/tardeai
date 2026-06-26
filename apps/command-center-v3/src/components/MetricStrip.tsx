@@ -26,8 +26,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const goCount = tradeAi?.go_count ?? 0
   const waitCount = tradeAi?.wait_count ?? 0
   const avoidCount = tradeAi?.avoid_count ?? 0
-  const liveStatus = gate?.status ?? 'PAPER_ONLY'
-  const isBlocked = liveStatus !== 'LIVE'
+  const operatorLive = !!gate?.operator_live_via_2fa_allowed
+  const autoLive = gate?.status === 'AUTHORIZED'
+  const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
+  const liveBadgeBlocked = !operatorLive && !autoLive
   // v2-parity header fields
   const todayChange = overview?.today_change
   const todayPct = overview?.today_pct
@@ -129,12 +131,14 @@ export default function MetricStrip({ onDrill }: Props) {
           ⚑ {approvals} APPROVALS →
         </div>
       )}
-      <div style={{
+      <div
+        title={gate?.operator_status_label || (operatorLive ? 'Schwab operator live via standing unlock + per-order 2FA' : 'Autonomous Alpaca live gate not passed')}
+        style={{
         marginLeft: approvals != null && approvals > 0 ? 0 : 'auto', padding: '4px 14px', borderRadius: 6, fontSize: 10, fontWeight: 700,
-        background: isBlocked ? 'rgba(239,68,68,.15)' : 'rgba(34,197,94,.15)',
-        color: isBlocked ? '#ef4444' : '#22c55e',
+        background: operatorLive ? 'rgba(34,197,94,.15)' : liveBadgeBlocked ? 'rgba(245,158,11,.15)' : 'rgba(34,197,94,.15)',
+        color: operatorLive ? '#22c55e' : liveBadgeBlocked ? '#f59e0b' : '#22c55e',
       }}>
-        {isBlocked ? 'LIVE BLOCKED' : 'LIVE ENABLED'}
+        {liveBadge}
       </div>
     </div>
     </div>
