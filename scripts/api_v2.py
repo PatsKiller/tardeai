@@ -21366,9 +21366,97 @@ def _options_desk_vol(query=None):
     chain = oe._schwab_chain(sym, strikes=16)
     und = oe._f(chain.get("underlying_price")) or oe._f((oe._load_technicals().get(sym) or {}).get("price"))
     vol = ent.vol_analytics_from_chain(chain, und)
+    surface = ent.build_iv_surface_grid(chain, und) if und > 0 else {"ok": False}
     if vol.get("ok"):
         ent.persist_chain_snapshot(sym, chain, vol)
-    return _json_clean({"symbol": sym, **vol})
+    return _json_clean({"symbol": sym, **vol, "surface": surface})
+
+
+def _options_vol_history(query=None):
+    """GET /api/v2/options/desk/vol-history — IV term-structure snapshots over time."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    sym = (g("symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    import options_desk_enterprise as ent
+    limit = int(g("limit", 48) or 48)
+    history = ent.fetch_vol_history(sym, limit=limit)
+    return _json_clean({"ok": True, "symbol": sym, "history": history, "count": len(history)})
+
+
+def _options_desk_trends(query=None):
+    """GET /api/v2/options/desk/trends — desk symbols + cached vol from proposals + research."""
+    oe = _get_options_engine()
+    import options_desk_enterprise as ent
+    props_data = oe._load_json(oe.PROPOSALS_CACHE) or {}
+    proposals = props_data.get("proposals") or []
+    desk_runtime = oe._load_json(oe.OPTIONS_DESK_RUNTIME) or {}
+    holdings, _ = oe._load_holdings()
+    positions = oe._fetch_schwab_option_positions()
+
+    sym_meta = {}
+
+    def _touch(sym, source, extra=None):
+        s = (sym or "").upper().strip()
+        if not s or len(s) > 6 or s.isdigit() or not all(c.isalpha() or c == "." for c in s):
+            return
+        row = sym_meta.setdefault(s, {"symbol": s, "sources": set(), "proposal_count": 0, "has_position": False, "held_shares": 0})
+        row["sources"].add(source)
+        if extra:
+            for k, v in extra.items():
+                if v is not None:
+                    row[k] = v
+
+    best_by_sym = {}
+    for p in proposals:
+        sym = (p.get("symbol") or "").upper()
+        if not sym:
+            continue
+        ent_vol = (p.get("enterprise") or {}).get("vol_analytics")
+        edge = oe._f(p.get("edge_score"))
+        prev = best_by_sym.get(sym)
+        if not prev or edge > oe._f(prev.get("edge_score")):
+            best_by_sym[sym] = p
+        _touch(sym, "proposal")
+
+    for sym, p in best_by_sym.items():
+        ent_vol = (p.get("enterprise") or {}).get("vol_analytics")
+        if sym in sym_meta:
+            sym_meta[sym].update({
+                "desk_tier": p.get("desk_tier"),
+                "edge_score": p.get("edge_score"),
+                "iv_rank": p.get("iv_rank"),
+                "cached_vol": ent_vol if (ent_vol or {}).get("ok") else None,
+            })
+
+    for sym in sym_meta:
+        sym_meta[sym]["proposal_count"] = sum(1 for x in proposals if (x.get("symbol") or "").upper() == sym)
+
+    for h in holdings:
+        sym = h.get("symbol") or ""
+        sh = oe._f(h.get("shares"))
+        if sh >= 100 or oe._f(h.get("market_value")) >= 15000:
+            _touch(sym, "holding", {"held_shares": int(sh)})
+
+    for pos in positions:
+        _touch(pos.get("underlying") or pos.get("symbol") or "", "position", {"has_position": True})
+
+    symbols = []
+    for sym, row in sorted(sym_meta.items()):
+        sources = sorted(row.pop("sources", []))
+        symbols.append({**row, "sources": sources, "research": (desk_runtime.get("by_symbol") or {}).get(sym)})
+
+    return _json_clean({
+        "ok": True,
+        "generated_at": props_data.get("generated_at") or desk_runtime.get("generated_at"),
+        "proposal_count": len(proposals),
+        "symbols": symbols,
+        "desk_summary": {
+            "strategy_counts": desk_runtime.get("strategy_counts") or {},
+            "top_proposals": (desk_runtime.get("top_proposals") or [])[:8],
+        },
+    })
 
 
 def _options_approval_queue(query=None):
@@ -23074,6 +23162,8 @@ ROUTES = {
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/options/desk/risk": _options_desk_risk,
     "/api/v2/options/desk/vol-analytics": _options_desk_vol,
+    "/api/v2/options/desk/vol-history": _options_vol_history,
+    "/api/v2/options/desk/trends": _options_desk_trends,
     "/api/v2/options/approval-queue": _options_approval_queue,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
