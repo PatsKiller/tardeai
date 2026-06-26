@@ -21146,12 +21146,34 @@ def _schwab_option_chain(query=None):
     return _json_clean(schwab_transport.get_option_chain(sym, strike_count=min(int(g("strikes", 8) or 8), 20)))
 
 
+_OPTIONS_ENGINE_MTIME = [0.0]
+
+
+def _get_options_engine():
+    """Return options_engine, reloading when its source changes.
+
+    portfolio_server hot-reloads api_v2 but not its dependencies — without this,
+    filter_proposals() can lag behind api_v2 keyword args and return HTTP 500.
+    """
+    import importlib
+    import sys
+    import options_engine as oe
+    try:
+        m = os.path.getmtime(oe.__file__)
+    except Exception:
+        m = 0.0
+    if m != _OPTIONS_ENGINE_MTIME[0]:
+        oe = importlib.reload(sys.modules.get("options_engine") or oe)
+        _OPTIONS_ENGINE_MTIME[0] = m
+    return oe
+
+
 def _options_proposals(query=None):
     """GET /api/v2/options/proposals — high-quality options proposals (covered calls + defined risk)."""
     q = query or {}
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
-    import options_engine as oe
+    oe = _get_options_engine()
     data = oe.generate_proposals(force=force)
     proposals = data.get("proposals") or []
     live_raw = g("live_eligible", "")
@@ -21204,7 +21226,7 @@ def _options_positions(query=None):
     q = query or {}
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
-    import options_engine as oe
+    oe = _get_options_engine()
     data = oe.monitor_positions(force=force)
     positions = data.get("positions") or []
     working_raw = g("working_only", "")
@@ -21234,8 +21256,7 @@ def _options_monitor(query=None):
 
 def _options_overview(query=None):
     """GET /api/v2/options/overview — strategy edge summary + open position stats."""
-    import options_engine as oe
-    return _json_clean(oe.get_overview())
+    return _json_clean(_get_options_engine().get_overview())
 
 
 def _proposals_execution_readiness(query=None):
@@ -21253,7 +21274,7 @@ def _proposals_execution_readiness(query=None):
 
 def _health_proposals(query=None):
     """GET /api/v2/health/proposals — cross-module proposal maturity metrics."""
-    import options_engine as oe
+    oe = _get_options_engine()
     base = oe.get_proposal_health_metrics()
     try:
         from proposal_execution_readiness import collect_execution_readiness
@@ -21322,7 +21343,7 @@ def _options_execution_status(query=None):
 
 def _options_desk_risk(query=None):
     """GET /api/v2/options/desk/risk — enterprise book greeks + concentration preflight."""
-    import options_engine as oe
+    oe = _get_options_engine()
     import options_desk_enterprise as ent
     props = oe._load_json(oe.PROPOSALS_CACHE) or oe.generate_proposals()
     holdings, _ = oe._load_holdings()
@@ -21337,7 +21358,7 @@ def _options_desk_vol(query=None):
     sym = (g("symbol") or "").upper()
     if not sym:
         return {"ok": False, "error": "symbol required"}
-    import options_engine as oe
+    oe = _get_options_engine()
     import options_desk_enterprise as ent
     chain = oe._schwab_chain(sym, strikes=16)
     und = oe._f(chain.get("underlying_price")) or oe._f((oe._load_technicals().get(sym) or {}).get("price"))
