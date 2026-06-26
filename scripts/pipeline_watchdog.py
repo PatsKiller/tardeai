@@ -117,6 +117,16 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
                         if not was_alerted_recently(conn, script):
                             send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
                             log_action(conn, 'alert', script, 'max_retries', True, '')
+            except subprocess.TimeoutExpired:
+                # A timed-out retry is a failure, not an unexpected crash: record it like a
+                # nonzero return so the run isn't left stuck in 'running' and the max-retries
+                # escalation still fires (otherwise it silently drops work and floods ERRORs).
+                run_fail(rid, 'timed out after 300s')
+                log_action(conn, 'retry', script, issue['issue'], False, 'timeout after 300s')
+                if retries_today + 1 >= MAX_RETRIES and not no_telegram:
+                    if not was_alerted_recently(conn, script):
+                        send_telegram(f"CRITICAL: {script} timed out {MAX_RETRIES}x. Manual check needed.", urgent=True)
+                        log_action(conn, 'alert', script, 'max_retries', True, '')
             except Exception as e:
                 log.error(f"[watchdog] Retry failed for {script}: {e}")
 
