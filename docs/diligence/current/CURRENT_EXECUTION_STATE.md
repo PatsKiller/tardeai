@@ -1,16 +1,23 @@
 # Current Execution State
 
-Generated: 2026-06-26T15:32:28.722896+00:00
+Generated: 2026-06-26T23:30:51.030731+00:00
 
 ## Summary
 
 - **Live architecture built:** True
-- **Live trading globally allowed:** False
-- **Paper mode:** True
+- **Live trading globally allowed:** True
+- **Paper mode:** False
+- **Autonomous live (Alpaca gate):** BLOCKED — paper validation gate not passed
 - **Autonomous live submit allowed:** False
-- **Operator-approved live submit possible:** False
+- **Operator live via 2FA:** ENABLED via standing_db_unlock — per-order 2FA required; not autonomous
+- **Operator-approved live submit possible:** True
+- **Per-order 2FA required:** True
 
-Live architecture is built; live global state remains **off** until the operator explicitly enables all gates. LLMs are advisory only.
+Live Schwab submit is ENABLED via standing operator unlock — every order still requires desk approval (where applicable) and per-trade 2FA. Not autonomous.
+
+Unlock via: `standing_db_unlock`
+
+LLMs are advisory only — they never replace operator 2FA or desk approval.
 
 ## Required live gates
 
@@ -31,13 +38,12 @@ Live architecture is built; live global state remains **off** until the operator
 
 ## Current blockers
 
-- BROKER_LIVE_ENABLED not true — live global prohibited
-- live-adjacent dirty files: 6
+- None detected (operator approval + 2FA still required per order)
 
 ## Repo hygiene
 
-- Dirty file count: 56
-- Live-adjacent dirty count: 6
+- Dirty file count: 8
+- Live-adjacent dirty count: 0
 
 ## Operator flow
 
