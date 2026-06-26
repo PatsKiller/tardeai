@@ -64,6 +64,13 @@
     "check_after_hour": 18,
     "min_universe": 400
   },
+  "proposal_oversight_load": {
+    "_comment": "Catch bursts of new PENDING proposals that each trigger LLM oversight (load guard).",
+    "enabled": true,
+    "burst_window_min": 20,
+    "burst_warn": 15,
+    "burst_critical": 30
+  },
   "portfolio_price_freshness": {
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",
     "enabled": true,

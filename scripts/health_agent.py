@@ -891,6 +891,7 @@ WHY = {
     "options_snapshot_table_bloat": "options_chain_snapshots row count is high — confirm the daily retention sweep is running.",
     "options_approval_backlog": "Desk approval queue is backing up — pending options proposals aren't being reviewed/approved, blocking the live path.",
     "options_approval_blocked_pileup": "Many options proposals are auto-blocked (illiquid/gated) — not an operator-review lag, but the desk universe or liquidity gates may need a look.",
+    "proposal_creation_burst": "A burst of new proposals each trigger local+cloud LLM oversight — bulk creation can overload the single-threaded server (the 2026-06-26 load incident). Throttle the producing screener/bridge.",
     "pullback_macd_scan_stale": "The daily S&P 500 pullback/MACD screener hasn't run recently — the dip-buy candidate list is going stale.",
     "pullback_macd_no_runs": "The pullback/MACD screener has never recorded a run — cron may not be installed yet.",
     "pullback_macd_universe_thin": "The S&P 500 constituent table is under-populated — the weekly universe refresh may be failing, shrinking screener coverage.",
@@ -1192,6 +1193,36 @@ def collect_execution_hardening_health() -> list[dict]:
     return out
 
 
+def collect_proposal_oversight_load() -> list[dict]:
+    """Detect a BURST of newly-created PENDING proposals. Each PENDING broker-route proposal is
+    picked up by broker_promote_oversight for per-proposal local + cloud LLM review; a bulk insert
+    (e.g. a screener emitting 22 at once on 2026-06-26) spikes machine load and starves the
+    single-threaded API server. This is the guardrail so that can't recur unnoticed."""
+    out = []
+    cfg = (_POLICY.get("proposal_oversight_load") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        win = int(cfg.get("burst_window_min", 20))
+        burst_warn = int(cfg.get("burst_warn", 15))
+        burst_crit = int(cfg.get("burst_critical", 30))
+        row = _db(f"""SELECT count(*) AS n, string_agg(DISTINCT COALESCE(discovery_source,'?'), ',') AS srcs
+                      FROM paper_trade_proposals
+                      WHERE status='PENDING' AND created_at > NOW() - INTERVAL '{win} minutes'""",
+                  fetch="one")
+        n = int((row or {}).get("n") or 0)
+        if n >= burst_warn:
+            sev = "critical" if n >= burst_crit else "warning"
+            out.append(_f("execution_health", "proposal_creation_burst", sev,
+                          f"{n} proposals created in {win}m (src: {(row or {}).get('srcs')}) — each triggers "
+                          f"local+cloud LLM oversight; bulk creation can overload the single-threaded server",
+                          count=n, window_min=win))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"proposal_oversight_load check error: {e}"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_execution_health,
@@ -1206,6 +1237,7 @@ COLLECTORS = [
     collect_proposal_integrity,
     collect_options_desk_health,
     collect_pullback_macd_screener,
+    collect_proposal_oversight_load,
 ]
 
 

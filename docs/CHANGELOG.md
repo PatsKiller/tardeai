@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-26 - Watchlist bridge revived (ranked + capped) + proposal-burst health guard
+
+- **Watchlist→proposal bridge** was dormant (orphaned script, nothing scheduled it — last proposal
+  2026-06-23). Revived: now ranks eligible promotions by **R:R then setup (Hermes) score** and creates
+  only the top `--max-new` per run (best-first), instead of Hermes-order-then-cut. Scheduled on cron
+  `*/30 10-15 * * 1-5 --max-new 5` so it drip-feeds (each new PENDING proposal triggers LLM oversight;
+  the full 40-candidate run at once would re-cause the load incident).
+- **Health guard** `collect_proposal_oversight_load` — flags a burst of newly-created PENDING proposals
+  (`proposal_creation_burst`, warn ≥15 / critical ≥30 in 20m), the exact condition that overloaded the
+  single-threaded server on 2026-06-26. So a bulk-emit can't recur unnoticed.
+
 ## 2026-06-26 - Release gates: Schwab validator 26/26 + metric consistency strict
 
 - `validate_schwab_write_policy.py` — aligned with post-unlock policy (all three Schwab accounts in
