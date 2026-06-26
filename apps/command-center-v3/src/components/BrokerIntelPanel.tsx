@@ -375,7 +375,8 @@ export default function BrokerIntelPanel({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr', gap: 8 }}>
+      {/* Detail sections tile into the free width (auto-fit) instead of stacking in one tall column. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8, alignItems: 'start' }}>
         {(cat.text || cat.critic_verdict || cat.critic_reasoning) && (
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)' }}>
             {(() => {
@@ -409,7 +410,6 @@ export default function BrokerIntelPanel({
             </div>
           </div>
         )}
-      </div>
 
       {an && (
         <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.15)' }}>
@@ -480,6 +480,7 @@ export default function BrokerIntelPanel({
           )}
         </div>
       )}
+      </div>
 
       {news.length > 0 && (
         <div>
