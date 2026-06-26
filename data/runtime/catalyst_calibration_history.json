@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-22T09:40:01.387338+00:00",
+  "updated_at": "2026-06-26T09:40:01.396788+00:00",
   "snapshots": [
     {
       "date": "2026-06-08",
@@ -2322,6 +2322,666 @@
       "notes": [
         "1 multiplier shift(s): offering_dilution 1.25\u21921.143"
       ]
+    },
+    {
+      "date": "2026-06-23",
+      "ts": "2026-06-23T09:40:01.620825+00:00",
+      "total_settled": 6784,
+      "credible_samples": 6540,
+      "trusted_type_count": 12,
+      "type_count": 24,
+      "types": {
+        "other": {
+          "samples": 5519,
+          "hit_rate": 0.269,
+          "weight_multiplier": 0.769,
+          "trusted": true
+        },
+        "analyst_upgrade": {
+          "samples": 287,
+          "hit_rate": 0.303,
+          "weight_multiplier": 0.803,
+          "trusted": true
+        },
+        "news_momentum": {
+          "samples": 200,
+          "hit_rate": 0.33,
+          "weight_multiplier": 0.83,
+          "trusted": true
+        },
+        "merger_acquisition": {
+          "samples": 140,
+          "hit_rate": 0.343,
+          "weight_multiplier": 0.843,
+          "trusted": true
+        },
+        "geopolitical": {
+          "samples": 103,
+          "hit_rate": 0.311,
+          "weight_multiplier": 0.811,
+          "trusted": true
+        },
+        "earnings_beat": {
+          "samples": 77,
+          "hit_rate": 0.377,
+          "weight_multiplier": 0.877,
+          "trusted": true
+        },
+        "contract_win": {
+          "samples": 44,
+          "hit_rate": 0.295,
+          "weight_multiplier": 0.795,
+          "trusted": true
+        },
+        "analyst_downgrade": {
+          "samples": 35,
+          "hit_rate": 0.743,
+          "weight_multiplier": 1.243,
+          "trusted": true
+        },
+        "earnings_miss": {
+          "samples": 29,
+          "hit_rate": 0.517,
+          "weight_multiplier": 1.017,
+          "trusted": true
+        },
+        "offering_dilution": {
+          "samples": 28,
+          "hit_rate": 0.643,
+          "weight_multiplier": 1.143,
+          "trusted": true
+        },
+        "buyback": {
+          "samples": 16,
+          "hit_rate": 0.25,
+          "weight_multiplier": 0.75,
+          "trusted": true
+        },
+        "ceo_change": {
+          "samples": 13,
+          "hit_rate": 0.0,
+          "weight_multiplier": 0.5,
+          "trusted": true
+        },
+        "insider_buy": {
+          "samples": 9,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_increase": {
+          "samples": 9,
+          "hit_rate": 0.667,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "fda_approval": {
+          "samples": 7,
+          "hit_rate": 0.143,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_raise": {
+          "samples": 6,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "short_squeeze": {
+          "samples": 4,
+          "hit_rate": 0.25,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "bearish": {
+          "samples": 4,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_split": {
+          "samples": 3,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "sector_rotation": {
+          "samples": 2,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "neutral": {
+          "samples": 2,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_cut": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_price_movement": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_lower": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        }
+      },
+      "delta": {
+        "credible_samples": 71,
+        "trusted_type_count": 0
+      },
+      "newly_trusted": [],
+      "lost_trust": [],
+      "multiplier_shifts": [],
+      "status": "SHARPENING",
+      "notes": []
+    },
+    {
+      "date": "2026-06-24",
+      "ts": "2026-06-24T09:40:01.662687+00:00",
+      "total_settled": 6824,
+      "credible_samples": 6580,
+      "trusted_type_count": 12,
+      "type_count": 24,
+      "types": {
+        "other": {
+          "samples": 5539,
+          "hit_rate": 0.271,
+          "weight_multiplier": 0.771,
+          "trusted": true
+        },
+        "analyst_upgrade": {
+          "samples": 292,
+          "hit_rate": 0.298,
+          "weight_multiplier": 0.798,
+          "trusted": true
+        },
+        "news_momentum": {
+          "samples": 209,
+          "hit_rate": 0.316,
+          "weight_multiplier": 0.816,
+          "trusted": true
+        },
+        "merger_acquisition": {
+          "samples": 140,
+          "hit_rate": 0.343,
+          "weight_multiplier": 0.843,
+          "trusted": true
+        },
+        "geopolitical": {
+          "samples": 106,
+          "hit_rate": 0.311,
+          "weight_multiplier": 0.811,
+          "trusted": true
+        },
+        "earnings_beat": {
+          "samples": 77,
+          "hit_rate": 0.377,
+          "weight_multiplier": 0.877,
+          "trusted": true
+        },
+        "contract_win": {
+          "samples": 44,
+          "hit_rate": 0.295,
+          "weight_multiplier": 0.795,
+          "trusted": true
+        },
+        "analyst_downgrade": {
+          "samples": 36,
+          "hit_rate": 0.75,
+          "weight_multiplier": 1.25,
+          "trusted": true
+        },
+        "earnings_miss": {
+          "samples": 29,
+          "hit_rate": 0.517,
+          "weight_multiplier": 1.017,
+          "trusted": true
+        },
+        "offering_dilution": {
+          "samples": 29,
+          "hit_rate": 0.621,
+          "weight_multiplier": 1.121,
+          "trusted": true
+        },
+        "buyback": {
+          "samples": 17,
+          "hit_rate": 0.235,
+          "weight_multiplier": 0.735,
+          "trusted": true
+        },
+        "ceo_change": {
+          "samples": 13,
+          "hit_rate": 0.0,
+          "weight_multiplier": 0.5,
+          "trusted": true
+        },
+        "insider_buy": {
+          "samples": 9,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_increase": {
+          "samples": 9,
+          "hit_rate": 0.667,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "fda_approval": {
+          "samples": 7,
+          "hit_rate": 0.143,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_raise": {
+          "samples": 6,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "short_squeeze": {
+          "samples": 4,
+          "hit_rate": 0.25,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "bearish": {
+          "samples": 4,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_split": {
+          "samples": 3,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "sector_rotation": {
+          "samples": 2,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "neutral": {
+          "samples": 2,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_cut": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_price_movement": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_lower": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        }
+      },
+      "delta": {
+        "credible_samples": 40,
+        "trusted_type_count": 0
+      },
+      "newly_trusted": [],
+      "lost_trust": [],
+      "multiplier_shifts": [],
+      "status": "SHARPENING",
+      "notes": []
+    },
+    {
+      "date": "2026-06-25",
+      "ts": "2026-06-25T09:40:01.181148+00:00",
+      "total_settled": 6925,
+      "credible_samples": 6681,
+      "trusted_type_count": 13,
+      "type_count": 24,
+      "types": {
+        "other": {
+          "samples": 5602,
+          "hit_rate": 0.272,
+          "weight_multiplier": 0.772,
+          "trusted": true
+        },
+        "analyst_upgrade": {
+          "samples": 300,
+          "hit_rate": 0.303,
+          "weight_multiplier": 0.803,
+          "trusted": true
+        },
+        "news_momentum": {
+          "samples": 214,
+          "hit_rate": 0.313,
+          "weight_multiplier": 0.813,
+          "trusted": true
+        },
+        "merger_acquisition": {
+          "samples": 146,
+          "hit_rate": 0.336,
+          "weight_multiplier": 0.836,
+          "trusted": true
+        },
+        "geopolitical": {
+          "samples": 111,
+          "hit_rate": 0.324,
+          "weight_multiplier": 0.824,
+          "trusted": true
+        },
+        "earnings_beat": {
+          "samples": 77,
+          "hit_rate": 0.377,
+          "weight_multiplier": 0.877,
+          "trusted": true
+        },
+        "contract_win": {
+          "samples": 49,
+          "hit_rate": 0.265,
+          "weight_multiplier": 0.765,
+          "trusted": true
+        },
+        "analyst_downgrade": {
+          "samples": 40,
+          "hit_rate": 0.75,
+          "weight_multiplier": 1.25,
+          "trusted": true
+        },
+        "earnings_miss": {
+          "samples": 30,
+          "hit_rate": 0.533,
+          "weight_multiplier": 1.033,
+          "trusted": true
+        },
+        "offering_dilution": {
+          "samples": 30,
+          "hit_rate": 0.633,
+          "weight_multiplier": 1.133,
+          "trusted": true
+        },
+        "buyback": {
+          "samples": 17,
+          "hit_rate": 0.235,
+          "weight_multiplier": 0.735,
+          "trusted": true
+        },
+        "ceo_change": {
+          "samples": 14,
+          "hit_rate": 0.0,
+          "weight_multiplier": 0.5,
+          "trusted": true
+        },
+        "insider_buy": {
+          "samples": 10,
+          "hit_rate": 0.4,
+          "weight_multiplier": 0.9,
+          "trusted": true
+        },
+        "dividend_increase": {
+          "samples": 9,
+          "hit_rate": 0.667,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "fda_approval": {
+          "samples": 7,
+          "hit_rate": 0.143,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_raise": {
+          "samples": 6,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "bearish": {
+          "samples": 5,
+          "hit_rate": 0.4,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "short_squeeze": {
+          "samples": 4,
+          "hit_rate": 0.25,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_split": {
+          "samples": 3,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "sector_rotation": {
+          "samples": 2,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "neutral": {
+          "samples": 2,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_cut": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_price_movement": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_lower": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        }
+      },
+      "delta": {
+        "credible_samples": 101,
+        "trusted_type_count": 1
+      },
+      "newly_trusted": [
+        {
+          "type": "insider_buy",
+          "samples": 10,
+          "multiplier": 0.9
+        }
+      ],
+      "lost_trust": [],
+      "multiplier_shifts": [],
+      "status": "SHARPENING",
+      "notes": [
+        "1 type(s) newly trusted: insider_buy"
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "ts": "2026-06-26T09:40:01.396788+00:00",
+      "total_settled": 6965,
+      "credible_samples": 6721,
+      "trusted_type_count": 13,
+      "type_count": 24,
+      "types": {
+        "other": {
+          "samples": 5637,
+          "hit_rate": 0.271,
+          "weight_multiplier": 0.771,
+          "trusted": true
+        },
+        "analyst_upgrade": {
+          "samples": 301,
+          "hit_rate": 0.306,
+          "weight_multiplier": 0.806,
+          "trusted": true
+        },
+        "news_momentum": {
+          "samples": 216,
+          "hit_rate": 0.31,
+          "weight_multiplier": 0.81,
+          "trusted": true
+        },
+        "merger_acquisition": {
+          "samples": 147,
+          "hit_rate": 0.333,
+          "weight_multiplier": 0.833,
+          "trusted": true
+        },
+        "geopolitical": {
+          "samples": 112,
+          "hit_rate": 0.33,
+          "weight_multiplier": 0.83,
+          "trusted": true
+        },
+        "earnings_beat": {
+          "samples": 77,
+          "hit_rate": 0.377,
+          "weight_multiplier": 0.877,
+          "trusted": true
+        },
+        "contract_win": {
+          "samples": 49,
+          "hit_rate": 0.265,
+          "weight_multiplier": 0.765,
+          "trusted": true
+        },
+        "analyst_downgrade": {
+          "samples": 40,
+          "hit_rate": 0.75,
+          "weight_multiplier": 1.25,
+          "trusted": true
+        },
+        "earnings_miss": {
+          "samples": 30,
+          "hit_rate": 0.533,
+          "weight_multiplier": 1.033,
+          "trusted": true
+        },
+        "offering_dilution": {
+          "samples": 30,
+          "hit_rate": 0.633,
+          "weight_multiplier": 1.133,
+          "trusted": true
+        },
+        "buyback": {
+          "samples": 17,
+          "hit_rate": 0.235,
+          "weight_multiplier": 0.735,
+          "trusted": true
+        },
+        "ceo_change": {
+          "samples": 14,
+          "hit_rate": 0.0,
+          "weight_multiplier": 0.5,
+          "trusted": true
+        },
+        "insider_buy": {
+          "samples": 10,
+          "hit_rate": 0.4,
+          "weight_multiplier": 0.9,
+          "trusted": true
+        },
+        "dividend_increase": {
+          "samples": 9,
+          "hit_rate": 0.667,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "fda_approval": {
+          "samples": 7,
+          "hit_rate": 0.143,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_raise": {
+          "samples": 6,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "bearish": {
+          "samples": 5,
+          "hit_rate": 0.4,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "short_squeeze": {
+          "samples": 4,
+          "hit_rate": 0.25,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_split": {
+          "samples": 3,
+          "hit_rate": 0.333,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "sector_rotation": {
+          "samples": 2,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "neutral": {
+          "samples": 2,
+          "hit_rate": 0.5,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "dividend_cut": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "stock_price_movement": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        },
+        "guidance_lower": {
+          "samples": 1,
+          "hit_rate": 0.0,
+          "weight_multiplier": 1.0,
+          "trusted": false
+        }
+      },
+      "delta": {
+        "credible_samples": 40,
+        "trusted_type_count": 0
+      },
+      "newly_trusted": [],
+      "lost_trust": [],
+      "multiplier_shifts": [],
+      "status": "SHARPENING",
+      "notes": []
     }
   ]
 }

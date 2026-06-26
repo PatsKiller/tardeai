@@ -99,9 +99,29 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     import json as _json
     from brokers.execution_guard import require           # raises ExecutionBlocked when denied
     from brokers import approval_service
+    from brokers.execution_readiness import evaluate_execution_readiness, require_ready
     conn = _pilot_preconditions(account_key, kind)
     if (intent.account_key or "") != account_key:
         raise NotProvenWrite(f"intent.account_key {intent.account_key!r} != {account_key!r} — refusing")
+    asset_class = "option" if kind == "options" else "equity"
+    ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+    readiness = evaluate_execution_readiness(
+        {"intent_id": intent.intent_id, "correlation_id": intent.correlation_id,
+         "account_key": account_key, "signal_evidence": ev},
+        asset_class=asset_class, broker="schwab", account_key=account_key, mode="live",
+    )
+    if not readiness.get("ok"):
+        from brokers.execution_guard import ExecutionBlocked
+        blocks = "; ".join(b.get("reason", "") for b in readiness.get("hard_blocks", [])[:3])
+        raise ExecutionBlocked(f"EXECUTION_READINESS BLOCK: {blocks}")
+    try:
+        from brokers.evidence_approval import revalidate_before_submit
+        rev = revalidate_before_submit(intent.intent_id, current_readiness=readiness)
+        if not rev.get("ok"):
+            from brokers.execution_guard import ExecutionBlocked
+            raise ExecutionBlocked(f"EVIDENCE_REVALIDATION BLOCK: {rev.get('reason')}")
+    except ImportError:
+        pass
     require(intent, "submit")
     cur = conn.cursor()
     _pilot_ensure_table(cur)

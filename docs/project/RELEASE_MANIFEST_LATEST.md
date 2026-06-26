@@ -1,57 +1,16 @@
-# Release Manifest — Latest
+# Release Manifest (auto-generated)
 
-**Status:** Template / next-run target  
-**Created:** 2026-06-16  
-**Owner:** Release readiness / Command Center v3 governance
+Status: FAIL
 
-## Purpose
+- [FAIL] repo_hygiene_report: 6 live-broker/execution-adjacent dirty files; dirty_count=57
+- [FAIL] python3 scripts/validate_metric_consistency.py --strict: WARN apps/command-center-v3/src/pages/StrategyHub.tsx:139: formatter={(v: number) => [`${v}%`, 'Win Rate']} />
+- [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
+- [FAIL] python3 scripts/validate_schwab_write_policy.py:   20/26 guards green
+- [WARN] command_center_v3_build: skipped or package.json missing
+- [PASS] python3 scripts/execution_state.py --json: }
+- [PASS] execution_readiness: central readiness resolver present
+- [PASS] python3 scripts/brokers/kill_switches.py --status: }
+- [FAIL] python3 tests/test_no_broker_write_bypass.py: 5 passed, 1 failed
+- [PASS] export_diligence_evidence: diligence export script present
 
-This manifest captures the evidence required before tagging a Command Center v3 or broker-adjacent release. It should be regenerated or updated after running the release readiness gate.
-
-## Required commands
-
-```bash
-python3 scripts/repo_hygiene_report.py --markdown --out docs/project/repo_hygiene_latest.md
-python3 scripts/validate_metric_consistency.py --strict
-python3 scripts/validate_release_readiness.py --json
-python3 scripts/rotation_intelligence_engine.py --input data/portfolios/state/holdings.json > docs/project/rotation_intelligence_latest.json
-```
-
-If symbol cards are exported:
-
-```bash
-curl -s http://localhost:7777/api/v2/symbol-cards > data/runtime/symbol_cards_latest.json
-python3 scripts/validate_symbol_card_quality.py --input data/runtime/symbol_cards_latest.json --json
-```
-
-## Manifest fields
-
-| Field | Value |
-|---|---|
-| Git SHA | TO BE FILLED BY RELEASE RUN |
-| Dirty count | TO BE FILLED BY `repo_hygiene_report.py` |
-| Live-adjacent dirty files | MUST BE 0 FOR RELEASE |
-| Secrets/config dirty files | MUST BE 0 FOR RELEASE |
-| Metric consistency | PASS REQUIRED |
-| Command Center v3 build | PASS REQUIRED when UI changed |
-| Schwab write-policy validator | PASS REQUIRED when present |
-| A1A docs updated | REQUIRED when behavior/docs/schema/frontend changed |
-| Rollback command | `git reset --hard <known-good-sha>` plus service restart |
-
-## Current hardening baseline commits
-
-The v3 trust-hardening baseline started with these additive commits:
-
-- metric registry: `config/metric_registry.yaml`
-- repo hygiene classifier: `scripts/repo_hygiene_report.py`
-- metric consistency validator: `scripts/validate_metric_consistency.py`
-- symbol-card quality validator: `scripts/validate_symbol_card_quality.py`
-- release readiness gate: `scripts/validate_release_readiness.py`
-- rotation advisory schema: `migrations/20260616_rotation_intelligence.sql`
-- rotation advisory engine: `scripts/rotation_intelligence_engine.py`
-- docs: `docs/project/METRIC_DEFINITIONS.md`
-- docs: `docs/project/V3_TRUST_HARDENING_AND_ROTATION_INTELLIGENCE.md`
-
-## Safety note
-
-This release discipline layer is advisory/control-plane only. It does not authorize live trading, does not modify protective-stop envelopes, and does not change broker approval requirements.
+*Does not authorize live trading. Operator-approved path only.*

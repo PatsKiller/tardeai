@@ -91,6 +91,17 @@ options_desk_settings:
   approval_required: true       # Operator must approve in desk queue before live submit
   desk_tier_edge_a: 72          # Tier A — priority desk routing
   desk_tier_edge_b: 62          # Tier B — standard desk
+  hard_risk_limits:
+    max_contracts_per_order: 5
+    max_daily_orders: 10
+    max_daily_notional: 50000
+    max_daily_loss: 5000
+    max_per_strategy_notional: 30000
+    max_per_account_notional: 75000
+    min_buying_power: 5000
+    quote_max_age_seconds: 120
+    chain_max_age_seconds: 300
+    quote_move_tolerance_pct: 2.0
 
 # Stop suggestion settings
 stop_settings:

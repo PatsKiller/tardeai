@@ -343,9 +343,11 @@ python scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTI
 
 1. **Approval queue UI tab** in OptionsHub (API ready; wire `GET /api/v2/options/approval-queue`)
 2. **Fidelity option legs** — extend `monitor_positions()` beyond Schwab-only
-3. **Hard portfolio risk block** — promote `portfolio_risk_preflight` warnings to preflight rejects
-4. **Roll automation** — wire monitor `roll` action to preflight with new expiration
-5. **Edge calibration** — log closed proposal outcomes → edge model tuning
+3. **Roll automation** — wire monitor `roll` action to preflight with new expiration
+4. **Edge calibration** — log closed proposal outcomes → edge model tuning
+
+Hard portfolio risk blocks are implemented in `evaluate_hard_risk_blocks()` — live path only.
+Central readiness: `scripts/brokers/execution_readiness.py`. State: `scripts/execution_state.py`.
 
 ---
 
@@ -361,4 +363,6 @@ python scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTI
 | Book greeks | ✗ | ✓ (Δ, Θ, ν) | ✓ (streaming) |
 | Vol surface | ✗ | term structure + skew + strike×DTE heatmap (Options Trends tab) | full 3D surface |
 | Multi-broker book | ✗ | Schwab only | all brokers |
-| Auto-execution | ✗ | gated (arm + queue + 2FA) | policy-driven |
+| Auto-execution | ✗ | operator-approved path (readiness + evidence + 2FA) | policy-driven |
+| Execution readiness | ✗ | central resolver + audit ledger | streaming |
+| Kill switches | ✗ | multi-level + circuit breakers | automated |

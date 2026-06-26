@@ -17,6 +17,7 @@ import HermesPanel from '../components/HermesPanel'
 import OpenClawPanel from '../components/OpenClawPanel'
 import TradeAIPanel from '../components/TradeAIPanel'
 import DataSourceHealth from '../components/DataSourceHealth'
+import ExecutionStatePanel from '../components/ExecutionStatePanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
@@ -174,7 +175,12 @@ export default function SystemHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Control Plane' && <PipelineControlTower />}
+      {tab === 'Control Plane' && (
+        <>
+          <div style={{ marginBottom: 14 }}><ExecutionStatePanel /></div>
+          <PipelineControlTower />
+        </>
+      )}
 
       {tab === 'Data Sources' && <DataSourceHealth />}
 

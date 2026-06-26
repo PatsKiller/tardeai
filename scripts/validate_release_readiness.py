@@ -81,12 +81,48 @@ def main() -> int:
     else:
         checks.append(Check("command_center_v3_build", "WARN", "skipped or package.json missing"))
 
+    if Path("scripts/execution_state.py").exists():
+        checks.append(run(["python3", "scripts/execution_state.py", "--json"], timeout=60))
+    else:
+        checks.append(Check("execution_state", "FAIL", "scripts/execution_state.py missing"))
+
+    if Path("scripts/brokers/execution_readiness.py").exists():
+        checks.append(Check("execution_readiness", "PASS", "central readiness resolver present"))
+    else:
+        checks.append(Check("execution_readiness", "FAIL", "scripts/brokers/execution_readiness.py missing"))
+
+    if Path("scripts/brokers/kill_switches.py").exists():
+        checks.append(run(["python3", "scripts/brokers/kill_switches.py", "--status"], timeout=30))
+    else:
+        checks.append(Check("kill_switches", "FAIL", "kill_switches.py missing"))
+
+    if Path("tests/test_no_broker_write_bypass.py").exists():
+        checks.append(run(["python3", "tests/test_no_broker_write_bypass.py"], timeout=120))
+    else:
+        checks.append(Check("no_broker_write_bypass_test", "FAIL", "test missing"))
+
+    if Path("scripts/export_diligence_evidence.py").exists():
+        checks.append(Check("export_diligence_evidence", "PASS", "diligence export script present"))
+    else:
+        checks.append(Check("export_diligence_evidence", "FAIL", "export script missing"))
+
+    blockers = [c for c in checks if c.status == "FAIL"]
     fail = any(c.status == "FAIL" for c in checks)
     warn = any(c.status == "WARN" for c in checks)
+    manifest_path = Path("docs/project/RELEASE_MANIFEST_LATEST.md")
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        f"# Release Manifest (auto-generated)\n\nStatus: {'FAIL' if fail else 'WARN' if warn else 'PASS'}\n\n"
+        + "\n".join(f"- [{c.status}] {c.name}: {c.detail}" for c in checks)
+        + "\n\n*Does not authorize live trading. Operator-approved path only.*\n",
+        encoding="utf-8",
+    )
     report = {
         "ok": not fail,
         "status": "FAIL" if fail else "WARN" if warn else "PASS",
+        "blockers": [asdict(c) for c in blockers],
         "checks": [asdict(c) for c in checks],
+        "manifest_path": str(manifest_path),
         "notes": [
             "This gate is read-only.",
             "It does not authorize broker execution.",

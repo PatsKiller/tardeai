@@ -1129,9 +1129,73 @@ def collect_pullback_macd_screener() -> list[dict]:
     return out
 
 
+def collect_execution_hardening_health() -> list[dict]:
+    """Institutional hardening signals: readiness, kill switches, stale orders, audit ledger."""
+    out = []
+    cfg = (_POLICY.get("execution_hardening") or {})
+    if cfg.get("enabled", True) is False:
+        return out
+    try:
+        from brokers.kill_switches import list_active
+        active = list_active()
+        for row in active:
+            if row.get("level") in ("global", "live_submit") or row.get("fail_closed"):
+                out.append(_f("execution_health", "kill_switch_active", "critical",
+                              f"Kill switch {row.get('level')}: {row.get('reason')}",
+                              route="/v3/system?tab=Control+Plane",
+                              recommended_action="Review kill switch status before any live submit"))
+    except Exception as e:
+        out.append(_f("execution_health", "readiness_resolver_error", "warning",
+                      f"kill_switch inspect failed: {e}", route="/v3/system"))
+    try:
+        from brokers.reconcile_orders import find_stale_internal_orders
+        stale = find_stale_internal_orders(max_age_minutes=int(cfg.get("stale_order_minutes", 30)))
+        if stale:
+            out.append(_f("execution_health", "broker_reconciliation_stale", "warning",
+                          f"{len(stale)} stale SUBMIT_REQUESTED/OPERATOR_APPROVED orders",
+                          count=len(stale), route="/v3/trading?tab=Broker+Orders",
+                          recommended_action="Run reconcile_orders.py --dry-run"))
+    except Exception as e:
+        out.append(_f("execution_health", "reconcile_inspect_error", "info", str(e)[:120]))
+    try:
+        import execution_state as es
+        state = es.build_state()
+        if state.get("live_adjacent_dirty_count", 0) > 0:
+            out.append(_f("execution_health", "live_adjacent_dirty", "warning",
+                          f"{state['live_adjacent_dirty_count']} live-adjacent dirty files",
+                          route="/v3/system"))
+        for blocker in (state.get("current_blockers") or [])[:3]:
+            if "kill_switch" in blocker or "cannot inspect" in blocker:
+                out.append(_f("execution_health", "execution_state_conflict", "warning",
+                              blocker, route="/v3/system"))
+    except Exception as e:
+        out.append(_f("execution_health", "execution_state_missing", "warning",
+                      f"execution_state unavailable: {e}", route="/v3/system"))
+    try:
+        from audit_ledger import verify_chain
+        chain = verify_chain(100)
+        if not chain.get("ok"):
+            out.append(_f("execution_health", "audit_ledger_chain_break", "critical",
+                          f"audit ledger chain break: {chain.get('error')}",
+                          recommended_action="Inspect data/runtime/audit_ledger/events.jsonl"))
+    except Exception as e:
+        out.append(_f("execution_health", "audit_ledger_inspect_error", "info", str(e)[:120]))
+    try:
+        exp = _db("""SELECT COUNT(*) AS c FROM options_approval_queue
+                     WHERE status='pending' AND expires_at < NOW()""", fetch="one")
+        if exp and int(exp.get("c") or 0) >= int(cfg.get("expired_pending_warn", 1)):
+            out.append(_f("execution_health", "approval_queue_expired_pending", "warning",
+                          f"{exp['c']} expired pending desk approvals", count=int(exp["c"]),
+                          route="/v3/trading?tab=Options"))
+    except Exception:
+        pass
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_execution_health,
+    collect_execution_hardening_health,
     collect_intelligence_quality,
     collect_risk_protection,
     collect_retirement_planning,

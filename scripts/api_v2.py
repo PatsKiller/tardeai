@@ -21344,6 +21344,40 @@ def _options_execution_status(query=None):
     return _json_clean(opa.status())
 
 
+def _execution_current_state(query=None):
+    """GET /api/v2/execution/current-state — fail-closed execution state aggregate."""
+    import execution_state as es
+    return _json_clean(es.build_state())
+
+
+def _execution_readiness(query=None):
+    """GET /api/v2/execution/readiness — evaluate readiness for optional proposal/intent params."""
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    from brokers.execution_readiness import evaluate_execution_readiness
+    proposal = {
+        "id": g("proposal_id"),
+        "intent_id": g("intent_id"),
+        "symbol": g("symbol"),
+        "strategy": g("strategy"),
+        "account_key": g("account_key"),
+        "quote_age_seconds": g("quote_age_seconds"),
+        "chain_age_seconds": g("chain_age_seconds"),
+        "data_source": g("data_source"),
+        "market_session": g("market_session"),
+    }
+    return _json_clean(evaluate_execution_readiness(
+        proposal, asset_class=g("asset_class", "option"), broker=g("broker", "schwab"),
+        account_key=g("account_key"), mode=g("mode", "live"),
+    ))
+
+
+def _kill_switches_status(query=None):
+    """GET /api/v2/execution/kill-switches — active kill switches and audit tail."""
+    from brokers.kill_switches import status as ks_status
+    return _json_clean(ks_status())
+
+
 def _options_desk_risk(query=None):
     """GET /api/v2/options/desk/risk — enterprise book greeks + concentration preflight."""
     oe = _get_options_engine()
@@ -23237,6 +23271,9 @@ ROUTES = {
     "/api/v2/options/monitor": _options_monitor,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
+    "/api/v2/execution/current-state": _execution_current_state,
+    "/api/v2/execution/readiness": _execution_readiness,
+    "/api/v2/execution/kill-switches": _kill_switches_status,
     "/api/v2/options/desk/risk": _options_desk_risk,
     "/api/v2/options/desk/vol-analytics": _options_desk_vol,
     "/api/v2/options/desk/vol-history": _options_vol_history,
