@@ -31,8 +31,19 @@ export default function OptionsHub({ onDrill }: Props) {
 
   const [symbolFilter, setSymbolFilter] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
+  const [groupFilter, setGroupFilter] = useState('')
+  const [optionTypeFilter, setOptionTypeFilter] = useState('')
+  const [sideFilter, setSideFilter] = useState('')
+  const [sleeveFilter, setSleeveFilter] = useState('')
+  const [legStyleFilter, setLegStyleFilter] = useState('')
+  const [tierFilter, setTierFilter] = useState('')
+  const [liveOnly, setLiveOnly] = useState(false)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
+  const [posSymbolFilter, setPosSymbolFilter] = useState('')
+  const [posTypeFilter, setPosTypeFilter] = useState('')
+  const [posSideFilter, setPosSideFilter] = useState('')
+  const [posWorkingOnly, setPosWorkingOnly] = useState(false)
   const [ensembleBusy, setEnsembleBusy] = useState(false)
   const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
@@ -48,23 +59,52 @@ export default function OptionsHub({ onDrill }: Props) {
     const p = new URLSearchParams()
     if (symbolFilter) p.set('symbol', symbolFilter.toUpperCase())
     if (strategyFilter) p.set('strategy', strategyFilter)
+    if (groupFilter) p.set('group', groupFilter)
+    if (optionTypeFilter) p.set('option_type', optionTypeFilter)
+    if (sideFilter) p.set('side', sideFilter)
+    if (sleeveFilter) p.set('sleeve', sleeveFilter)
+    if (legStyleFilter) p.set('leg_style', legStyleFilter)
+    if (tierFilter) p.set('desk_tier', tierFilter)
+    if (liveOnly) p.set('live_eligible', '1')
     if (minPop > 0) p.set('min_pop', String(minPop))
     if (minEdge > 0) p.set('min_edge', String(minEdge))
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [symbolFilter, strategyFilter, minPop, minEdge])
+  }, [symbolFilter, strategyFilter, groupFilter, optionTypeFilter, sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge])
+
+  const posQ = useMemo(() => {
+    const p = new URLSearchParams()
+    if (posSymbolFilter) p.set('symbol', posSymbolFilter.toUpperCase())
+    if (posTypeFilter) p.set('option_type', posTypeFilter)
+    if (posSideFilter) p.set('side', posSideFilter)
+    if (posWorkingOnly) p.set('working_only', '1')
+    const s = p.toString()
+    return s ? `?${s}` : ''
+  }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly])
 
   const { data: proposals, loading: propLoading, error: propError, stale: propStale, refetch: refetchProps } =
     useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
   const { data: monitor, loading: monLoading, error: monError, refetch: refetchMon } =
-    useApi<any>('/api/v2/options/positions', 300_000)
+    useApi<any>(`/api/v2/options/positions${posQ}`, 300_000)
   const { data: overview, refetch: refetchOverview } = useApi<any>('/api/v2/options/overview', 300_000)
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
 
   const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
-  const propCount = proposals?.count ?? propList.length
+  const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
+  const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
+  const posFacets = monitor?.filter_facets ?? {}
   const alerts = monitor?.alerts ?? []
+
+  const clearPropFilters = () => {
+    setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
+    setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
+    setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false)
+    setMinPop(0); setMinEdge(0)
+  }
+
+  const facetChip = (label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') =>
+    chipBtn(count != null ? `${label} (${count})` : label, active, onClick, color)
 
   const forceRefresh = async () => {
     try {
@@ -250,50 +290,81 @@ export default function OptionsHub({ onDrill }: Props) {
           <div style={{ marginBottom: 14 }}>
             <ManualExecutionLog mode="option" borderColor="#a855f7" />
           </div>
-          <div style={{ ...panel, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-            <input
-              placeholder="Ticker filter"
-              value={symbolFilter}
-              onChange={e => setSymbolFilter(e.target.value)}
-              style={{ ...SEL, width: 90 }}
-            />
-            <label style={{ fontSize: 10, color: 'var(--text3)' }}>
-              Strategy
-              <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={{ ...SEL, marginLeft: 6 }}>
-                <option value="">All</option>
-                <option value="covered_call">Covered Call</option>
-                <option value="cash_secured_put">Cash-Secured Put</option>
-                <option value="protective_put">Protective Put</option>
-                <option value="long_call">Long Call</option>
-                <option value="credit_spread">Credit Spread</option>
-              </select>
-            </label>
-            <label style={{ fontSize: 10, color: 'var(--text3)' }}>
-              Min POP %
-              <select value={minPop} onChange={e => setMinPop(Number(e.target.value))} style={{ ...SEL, marginLeft: 6 }}>
-                <option value={0}>Any</option>
-                <option value={55}>55+</option>
-                <option value={60}>60+</option>
-                <option value={65}>65+</option>
-              </select>
-            </label>
-            <label style={{ fontSize: 10, color: 'var(--text3)' }}>
-              Min Edge
-              <select value={minEdge} onChange={e => setMinEdge(Number(e.target.value))} style={{ ...SEL, marginLeft: 6 }}>
-                <option value={0}>Any</option>
-                <option value={65}>65+</option>
-                <option value={70}>70+</option>
-                <option value={75}>75+</option>
-              </select>
-            </label>
-            <button onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
-            <button onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'pointer', color: '#60a5fa' }}>Force scan</button>
-            <button onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'pointer', color: '#a855f7' }} title="Enqueue Grok + ChatGPT OAuth + local Gemma for every proposal">
-              {ensembleBusy ? 'Queuing…' : 'Validate all (Grok+GPT)'}
-            </button>
-            {ensembleMsg && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{ensembleMsg}</span>}
-            {propLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
-            {propStale && <span style={{ fontSize: 10, color: '#f59e0b' }}>Reconnecting…</span>}
+          <div style={{ ...panel, marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+              <input
+                placeholder="Ticker"
+                value={symbolFilter}
+                onChange={e => setSymbolFilter(e.target.value)}
+                style={{ ...SEL, width: 72 }}
+              />
+              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+                Strategy
+                <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={{ ...SEL, marginLeft: 4 }}>
+                  <option value="">All</option>
+                  <option value="covered_call">Covered Call</option>
+                  <option value="cash_secured_put">Cash-Secured Put</option>
+                  <option value="protective_put">Protective Put</option>
+                  <option value="long_call">Long Call</option>
+                  <option value="credit_spread">Credit Spread</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+                POP ≥
+                <select value={minPop} onChange={e => setMinPop(Number(e.target.value))} style={{ ...SEL, marginLeft: 4 }}>
+                  <option value={0}>Any</option>
+                  <option value={55}>55</option>
+                  <option value={60}>60</option>
+                  <option value={65}>65</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 10, color: 'var(--text3)' }}>
+                Edge ≥
+                <select value={minEdge} onChange={e => setMinEdge(Number(e.target.value))} style={{ ...SEL, marginLeft: 4 }}>
+                  <option value={0}>Any</option>
+                  <option value={65}>65</option>
+                  <option value={70}>70</option>
+                  <option value={75}>75</option>
+                </select>
+              </label>
+              <button onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'pointer' }}>Refresh</button>
+              <button onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'pointer', color: '#60a5fa' }}>Force scan</button>
+              <button onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'pointer', color: '#a855f7' }}>
+                {ensembleBusy ? 'Queuing…' : 'Validate all'}
+              </button>
+              <button onClick={clearPropFilters} style={{ ...SEL, cursor: 'pointer', color: 'var(--text3)' }}>Clear filters</button>
+              {ensembleMsg && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{ensembleMsg}</span>}
+              {propLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
+              {propStale && <span style={{ fontSize: 10, color: '#f59e0b' }}>Reconnecting…</span>}
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: '.06em' }}>TYPE &amp; PAIRS</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {facetChip('All', propFacets.total, !groupFilter && !optionTypeFilter && !sideFilter && !legStyleFilter, () => {
+                setGroupFilter(''); setOptionTypeFilter(''); setSideFilter(''); setLegStyleFilter('')
+              })}
+              {facetChip('Income', propFacets.by_group?.income, groupFilter === 'income', () => setGroupFilter(g => g === 'income' ? '' : 'income'), '#f59e0b')}
+              {facetChip('Hedge', propFacets.by_group?.hedge, groupFilter === 'hedge', () => setGroupFilter(g => g === 'hedge' ? '' : 'hedge'), PURPLE)}
+              {facetChip('Directional', propFacets.by_group?.directional, groupFilter === 'directional', () => setGroupFilter(g => g === 'directional' ? '' : 'directional'), '#22c55e')}
+              {facetChip('Spreads', propFacets.by_group?.spread, groupFilter === 'spread', () => setGroupFilter(g => g === 'spread' ? '' : 'spread'), '#ef4444')}
+              {facetChip('Calls', propFacets.by_option_type?.call, optionTypeFilter === 'call', () => setOptionTypeFilter(t => t === 'call' ? '' : 'call'))}
+              {facetChip('Puts', propFacets.by_option_type?.put, optionTypeFilter === 'put', () => setOptionTypeFilter(t => t === 'put' ? '' : 'put'))}
+              {facetChip('Sell', propFacets.by_side?.SELL, sideFilter === 'SELL', () => setSideFilter(s => s === 'SELL' ? '' : 'SELL'), '#f59e0b')}
+              {facetChip('Buy', propFacets.by_side?.BUY, sideFilter === 'BUY', () => setSideFilter(s => s === 'BUY' ? '' : 'BUY'), '#22c55e')}
+              {facetChip('Single leg', propFacets.single_leg, legStyleFilter === 'single', () => setLegStyleFilter(l => l === 'single' ? '' : 'single'))}
+              {facetChip('Spread pairs', propFacets.spread_pairs, legStyleFilter === 'spread', () => setLegStyleFilter(l => l === 'spread' ? '' : 'spread'), '#ef4444')}
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: '.06em' }}>SLEEVE &amp; DESK</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {facetChip('Portfolio', propFacets.by_sleeve?.portfolio, sleeveFilter === 'portfolio', () => setSleeveFilter(s => s === 'portfolio' ? '' : 'portfolio'))}
+              {facetChip('Conviction', propFacets.by_sleeve?.conviction, sleeveFilter === 'conviction', () => setSleeveFilter(s => s === 'conviction' ? '' : 'conviction'), PURPLE)}
+              {facetChip('Tier A', propFacets.by_tier?.A, tierFilter === 'A', () => setTierFilter(t => t === 'A' ? '' : 'A'), '#22c55e')}
+              {facetChip('Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
+              {facetChip('Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
+              {facetChip('Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
+              <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
+                Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''}
+              </span>
+            </div>
           </div>
 
           {propError && (
@@ -336,6 +407,23 @@ export default function OptionsHub({ onDrill }: Props) {
 
       {tab === 'Open Positions' && (
         <>
+          <div style={{ ...panel, marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <input placeholder="Underlying" value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80 }} />
+              <button onClick={() => { setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter(''); setPosWorkingOnly(false) }} style={{ ...SEL, cursor: 'pointer', color: 'var(--text3)' }}>Clear</button>
+              {monLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
+              <span style={{ fontSize: 10, color: 'var(--text3)' }}>
+                {posList.length}{posFacets.total != null && posList.length !== posFacets.total ? ` of ${posFacets.total}` : ''} legs
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {facetChip('Calls', posFacets.by_option_type?.call, posTypeFilter === 'call', () => setPosTypeFilter(t => t === 'call' ? '' : 'call'))}
+              {facetChip('Puts', posFacets.by_option_type?.put, posTypeFilter === 'put', () => setPosTypeFilter(t => t === 'put' ? '' : 'put'))}
+              {facetChip('Short / Sell', posFacets.by_side?.sell, posSideFilter === 'sell', () => setPosSideFilter(s => s === 'sell' ? '' : 'sell'), '#f59e0b')}
+              {facetChip('Long / Buy', posFacets.by_side?.buy, posSideFilter === 'buy', () => setPosSideFilter(s => s === 'buy' ? '' : 'buy'), '#22c55e')}
+              {facetChip('Working', posFacets.working, posWorkingOnly, () => setPosWorkingOnly(w => !w), '#22c55e')}
+            </div>
+          </div>
           {alerts.length > 0 && (
             <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #f59e0b' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Action Required</div>

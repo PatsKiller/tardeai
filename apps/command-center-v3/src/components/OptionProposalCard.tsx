@@ -123,6 +123,11 @@ export type OptionProposal = {
   delta?: number
   oi?: number
   side?: string
+  option_type?: string
+  short_strike?: number
+  long_strike?: number
+  desk_tier?: string
+  enterprise?: { live_eligible?: boolean; blocks?: string[]; tier?: string }
 }
 
 const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
@@ -197,7 +202,12 @@ export default function OptionProposalCard({
             )}
           </div>
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>
-            {p.symbol} ${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} · {p.dte ?? '—'} DTE
+            {p.symbol}{' '}
+            {p.short_strike && p.long_strike
+              ? `$${fmtNum(p.short_strike, 0)}/$${fmtNum(p.long_strike, 0)} spread`
+              : `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`}{' '}
+            · {p.dte ?? '—'} DTE
+            {p.desk_tier && <span style={{ marginLeft: 6, fontSize: 9, color: p.desk_tier === 'A' ? GREEN : p.desk_tier === 'B' ? BLUE : MUTED }}>Tier {p.desk_tier}</span>}
             <span style={{ fontSize: 11, fontWeight: 500, color: MUTED, marginLeft: 8 }}>{fmtExpiry(p.expiration)}</span>
           </div>
         </div>

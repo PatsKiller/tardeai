@@ -21154,16 +21154,49 @@ def _options_proposals(query=None):
     import options_engine as oe
     data = oe.generate_proposals(force=force)
     proposals = data.get("proposals") or []
+    live_raw = g("live_eligible", "")
+    live_eligible = None
+    if str(live_raw).lower() in ("1", "true", "yes"):
+        live_eligible = True
+    elif str(live_raw).lower() in ("0", "false", "no"):
+        live_eligible = False
     filtered = oe.filter_proposals(
         proposals,
         symbol=(g("symbol") or "").upper(),
         strategy=g("strategy") or "",
+        strategy_group=(g("group") or g("strategy_group") or ""),
+        option_type=(g("option_type") or g("type") or ""),
+        side=(g("side") or ""),
+        sleeve=(g("sleeve") or ""),
+        desk_tier=(g("desk_tier") or g("tier") or ""),
+        leg_style=(g("leg_style") or g("pairs") or ""),
+        live_eligible=live_eligible,
         min_dte=int(g("min_dte", 0) or 0),
         max_dte=int(g("max_dte", 999) or 999),
         min_pop=float(g("min_pop", 0) or 0),
         min_edge=float(g("min_edge", 0) or 0),
     )
-    return _json_clean({**data, "proposals": filtered, "filtered_count": len(filtered)})
+    return _json_clean({
+        **data,
+        "proposals": filtered,
+        "filtered_count": len(filtered),
+        "filter_facets": oe.proposal_filter_facets(proposals),
+        "filters_applied": {
+            k: v for k, v in {
+                "symbol": g("symbol"),
+                "strategy": g("strategy"),
+                "group": g("group") or g("strategy_group"),
+                "option_type": g("option_type") or g("type"),
+                "side": g("side"),
+                "sleeve": g("sleeve"),
+                "desk_tier": g("desk_tier") or g("tier"),
+                "leg_style": g("leg_style") or g("pairs"),
+                "live_eligible": live_eligible,
+                "min_pop": float(g("min_pop", 0) or 0) or None,
+                "min_edge": float(g("min_edge", 0) or 0) or None,
+            }.items() if v not in (None, "", 0)
+        },
+    })
 
 
 def _options_positions(query=None):
@@ -21172,7 +21205,26 @@ def _options_positions(query=None):
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
     import options_engine as oe
-    return _json_clean(oe.monitor_positions(force=force))
+    data = oe.monitor_positions(force=force)
+    positions = data.get("positions") or []
+    working_raw = g("working_only", "")
+    working_only = None
+    if str(working_raw).lower() in ("1", "true", "yes"):
+        working_only = True
+    filtered = oe.filter_positions(
+        positions,
+        symbol=(g("symbol") or "").upper(),
+        option_type=(g("option_type") or g("type") or ""),
+        side=(g("side") or ""),
+        leg_style=(g("leg_style") or ""),
+        working_only=working_only,
+    )
+    return _json_clean({
+        **data,
+        "positions": filtered,
+        "filtered_count": len(filtered),
+        "filter_facets": oe.position_filter_facets(positions),
+    })
 
 
 def _options_monitor(query=None):
