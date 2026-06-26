@@ -3,7 +3,7 @@
 **Location:** Trading hub → **Options** tab (`/v3/trading?tab=Options`)  
 **Status:** **Enterprise trade desk** — systematic proposals, enterprise risk gates, operator approval queue, position monitor, Hermes/TradeAI research bridge. Live execution is operator-approved (`options_pilot_arm` + desk queue + per-order 2FA).
 
-**Latest commits:** `5645e068` (audit fixes + Hermes/TradeAI bridge), `4d7b9c38` (enterprise desk layer).
+**Latest commits:** `5645e068` (audit fixes + Hermes/TradeAI bridge) → `4d7b9c38` (enterprise desk) → `e5d2f9b4` (docs) → `84ccc696` (filters) → `11bb3932` (live R:R + lifecycle) → `606761c5` (UI tooltips).
 
 ---
 
@@ -144,10 +144,6 @@ Wired into:
 |----------|---------|
 | `GET /api/v2/options/proposals` | Filtered proposals — see query params below |
 | `GET /api/v2/options/positions` | Open legs + monitoring + book greeks (filterable) |
-
-**Proposal filter query params:** `symbol`, `strategy`, `group` (income\|hedge\|directional\|spread), `option_type` (call\|put), `side` (BUY\|SELL), `sleeve` (portfolio\|conviction), `leg_style` (single\|spread), `desk_tier` (A\|B\|C), `live_eligible` (1\|0), `min_pop`, `min_edge`, `min_dte`, `max_dte`, `force=1`. Response includes `filter_facets` with counts per chip.
-
-**Position filter query params:** `symbol`, `option_type`, `side` (buy\|sell), `working_only`, `force=1`.
 | `GET /api/v2/options/monitor` | Alias for positions |
 | `GET /api/v2/options/overview` | Strategy summary + enterprise risk |
 | `GET /api/v2/options/desk/risk` | Book greeks, concentration, live-eligible count |
@@ -160,6 +156,10 @@ Wired into:
 | `POST /api/v2/options/ensemble/enqueue` | Batch LLM review |
 | `GET /api/v2/schwab/option-chain` | Chain drill-down |
 
+**Proposal filter query params:** `symbol`, `strategy`, `group` (income\|hedge\|directional\|spread), `option_type` (call\|put), `side` (BUY\|SELL), `sleeve` (portfolio\|conviction), `leg_style` (single\|spread), `desk_tier` (A\|B\|C), `live_eligible` (1\|0), `min_pop`, `min_edge`, `min_dte`, `max_dte`, `force=1`. Response includes `filter_facets` with counts per chip.
+
+**Position filter query params:** `symbol`, `option_type`, `side` (buy\|sell), `working_only`, `force=1`.
+
 TradeAI: `GET /api/v2/trade-ai` includes `options_desk` block (top-level + per-ticker).
 
 ---
@@ -168,7 +168,13 @@ TradeAI: `GET /api/v2/trade-ai` includes `options_desk` block (top-level + per-t
 
 Tabs: **Proposals**, **Open Positions**, **Strategy Overview**
 
-Components: `OptionProposalCard`, `OptionPositionCard`, `OptionChainPanel`, `OptionReviewBar` (ensemble), `GreeksOverview`, `OptionsPnLProfile`.
+Components: `OptionProposalCard`, `OptionPositionCard`, `OptionChainPanel`, `OptionReviewBar` (ensemble), `GreeksOverview`, `OptionsPnLProfile`, `OptionsNovicePanel`.
+
+**Filter chips (Proposals):** income / hedge / directional / spreads, calls / puts, sell / buy, single-leg / spread pairs, portfolio / conviction sleeve, desk tiers A–C, live-eligible. Counts from `filter_facets`.
+
+**Position cards:** lifecycle badges (`LET MATURE` / `HARVEST` / `DEFEND`), dynamic R:R, `% captured`, maturity note, expiry P/L profile toggle.
+
+**Tooltips:** centralized in `src/lib/optionsTooltips.ts`; rendered via `OptionsTip.tsx` (`Tip`, `TipChip`, `TipKpi`, `TipLabel`, `TipSection`). Hover ⓘ markers on header, filters, KPIs, greeks chart, proposal/position badges, review bar, and beginner-hints panel.
 
 Wired into `TradingHub.tsx` as the **Options** tab.
 

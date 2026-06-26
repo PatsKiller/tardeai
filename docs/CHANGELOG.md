@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-25 - Options Desk enterprise sprint (audit → enterprise layer → filters → lifecycle → tooltips)
+
+Six-commit stack on `main` (`5645e068` … `606761c5`):
+
+1. **Audit fixes 1–4 + research bridge** — conviction price resolution; per-strategy desk slots; separate debit/wheel edge models; CSP on non-owned names; BS fallback for thin spreads; `options_research_bridge.py` → Hermes + TradeAI runtime (`research_type=options_desk`).
+2. **Enterprise trade desk** — `options_desk_enterprise.py`: FMP earnings blackout, OI/vol/spread liquidity gates, vol term structure + skew, book greeks, portfolio risk preflight, DB-backed approval queue; API `/options/desk/risk`, `/desk/vol-analytics`, `/approval-queue`.
+3. **Docs** — full `docs/options-module.md` rewrite for enterprise workflow.
+4. **UI filters** — proposal chips (group, call/put, side, spread pairs, sleeve, tier, live-eligible) + position filters; `filter_facets` counts; spread strike pairs on cards.
+5. **In-trade monitoring** — dynamic R:R, premium captured %, `lifecycle_phase`, `maturity_note` on open legs; LET MATURE / HARVEST / DEFEND badges.
+6. **UI tooltips** — `optionsTooltips.ts` + `OptionsTip.tsx` across OptionsHub, proposal/position cards, greeks chart, review bar, novice panel.
+
+Doc: `docs/options-module.md`. Build: `apps/command-center-v3` `tsc && vite build` green.
+
 ## 2026-06-24 - Social/meme momentum: early discovery + proposals-channel alerts + meme banner wiring
 
 **Root-cause fix (WEN case).** WEN's social pump (Reddit/StockTwits, RVOL 33×, +25% gap, "Heavily
