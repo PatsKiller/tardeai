@@ -159,14 +159,22 @@ and orphaning the child on timeout → pile-up starved the deliberately single-t
   speculation, taxable-only, manual-review-required, multi-day hold w/ aggressive trailing. Validates
   clean; synced to `strategy_config_versions`. The large-float gate is the explicit separator from
   micro-cap `momentum_scalp`.
-- **`scripts/reclassify_squeeze_proposals.py` (NEW)** — corrects clearly-wrong mean-reversion labels on
-  squeeze setups → `meme_squeeze_momentum`. Conservative: **requires explicit squeeze language**
-  (heavily-shorted / meme / short-interest / short-squeeze) so a generic large-cap momentum gap
-  (e.g. TECH, "Tech Bulls Whistle Past Micron") is **not** mislabeled a squeeze. Micro-cap squeezes
-  left to `momentum_scalp`. dry-run default, `--apply` writes. Cron `*/30 9-16 * * 1-5` (flock).
-- **Applied to WEN #602**: `fib_retracement_bounce` → `meme_squeeze_momentum`; resolver confirms it
-  resolves (`resolve_source=proposal_strategy_id`, explicit wins) with the squeeze exit plan
-  (level_based stop / trailing target / 5d hold). Card shows "Meme / Squeeze Momentum".
+- **`scripts/reclassify_momentum_proposals.py` (NEW)** — corrects clearly-wrong mean-reversion labels on
+  ANY momentum/gap setup. A high-RVOL gap-up labeled `fib_retracement_bounce` is **dangerous**, not just
+  wrong: fib is a mean-reversion *pullback* (buy weakness, target prior swing high), so its exit plan
+  **inverts** vs a momentum gap. Routes by driver (rvol≥8, gap≥5%, catalyst present, currently on a
+  mean-reversion/income/core tag):
+  - explicit squeeze language (heavily-shorted / meme / short-interest) + large float → `meme_squeeze_momentum`
+  - micro-cap (<50M) → left alone (`momentum_scalp`'s strict gate owns these)
+  - generic large-cap momentum gap (sympathy/news/breakout) → `swing_breakout` (SHORT_SWING, trailing
+    exit, ≤500M float — fixes the inverted exit plan; best-fit momentum home)
+  - Conservative: never re-labels an already-correct momentum tag. dry-run default, `--apply` writes.
+    Cron `*/30 9-16 * * 1-5` (flock). (Renamed from `reclassify_squeeze_proposals.py` as scope broadened.)
+- **Applied**: WEN #602 `fib_retracement_bounce` → `meme_squeeze_momentum` (squeeze: "Heavily Shorted …
+  Meme Traders Pounce", 169M float); TECH #608 `fib_retracement_bounce` → `swing_breakout` (RVOL 21.6×,
+  gap +19%, 156M float, Micron-**sympathy** — momentum but NOT a squeeze, so correctly NOT meme_squeeze).
+  Resolver confirms both (`resolve_source=proposal_strategy_id`, explicit wins) with momentum exits
+  (level_based stop / trailing target), no restart. Cards show "Meme / Squeeze Momentum" / "Swing Breakout".
 
 ---
 
