@@ -6,7 +6,7 @@ Status: PASS
 - [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
 - [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
 - [PASS] python3 scripts/validate_schwab_write_policy.py:   26/26 guards green
-- [PASS] npm --prefix apps/command-center-v3 run build: ✓ built in 18.49s
+- [PASS] npm --prefix apps/command-center-v3 run build: ✓ built in 18.00s
 - [PASS] python3 scripts/execution_state.py --json: }
 - [PASS] execution_readiness: central readiness resolver present
 - [PASS] python3 scripts/brokers/kill_switches.py --status: }
