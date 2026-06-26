@@ -251,9 +251,12 @@ def _fetch_all(syms: list[str]) -> dict:
     data = yf.download(syms, period="2y", interval="1d", group_by="ticker",
                        threads=True, progress=False, auto_adjust=True)
     out = {}
+    multi = isinstance(data.columns, pd.MultiIndex)
     for s in syms:
         try:
-            out[s] = data[s] if len(syms) > 1 else data
+            # group_by="ticker" yields MultiIndex columns even for a single-symbol list — select the
+            # ticker level so callers always get flat OHLCV columns.
+            out[s] = data[s] if multi and s in data.columns.get_level_values(0) else data
         except Exception:
             pass
     return out
@@ -444,6 +447,87 @@ def _f(v, default=0.0) -> float:
         return default
 
 
+def _adjust_open_trades(cfg: dict) -> dict:
+    """While in a trade: produce ADVISORY adjustment guidance for OPEN pullback positions each monitor
+    pass — trail the stop up as price advances, flag take-profit at target, flag exit when the thesis
+    breaks (lost VWAP or MACD rolling back down). Advisory only: it never modifies a live stop (that
+    stays with the operator / ATM stop manager); it writes guidance to pullback_trade_adjustments and
+    alerts on actionable changes."""
+    strat = cfg.get("default_strategy_id", "pullback_macd_reversal")
+    trades = _db("""SELECT pt.id, pt.symbol, pt.entry_price, pt.shares,
+                           tp.stop_loss AS plan_stop, tp.target_1 AS plan_target
+                    FROM paper_trades pt
+                    LEFT JOIN LATERAL (
+                      SELECT stop_loss, target_1 FROM trade_plans
+                      WHERE symbol = pt.symbol AND generated_by='pullback_macd_screener'
+                      ORDER BY generated_at DESC LIMIT 1
+                    ) tp ON TRUE
+                    WHERE pt.status='open' AND pt.strategy_id=%s""", (strat,), fetch="all") or []
+    if not trades:
+        return {"open": 0, "actionable": 0}
+    syms = sorted({t["symbol"] for t in trades})
+    bars = _fetch_all(syms)
+    vwap_map = _session_vwap(syms)
+    vwap_buf = float(cfg.get("trail_vwap_buffer_pct", 0.5)) / 100.0
+    actionable = 0
+    for t in trades:
+        sym = t["symbol"]
+        df = bars.get(sym)
+        if df is None or df.dropna().empty:
+            continue
+        df = df.dropna()
+        close = df["Close"].astype(float)
+        px = round(float(close.iloc[-1]), 2)
+        entry = _f(t["entry_price"])
+        plan_stop = _f(t["plan_stop"])
+        target = _f(t["plan_target"])
+        vw = vwap_map.get(sym) or {}
+        vwap = _f(vw.get("vwap")) or None
+        above_vwap = vw.get("above_vwap")
+        line, signal, hist = _macd(close, int(cfg["macd_fast"]), int(cfg["macd_slow"]), int(cfg["macd_signal"]))
+        h = hist.dropna()
+        macd_falling = len(h) >= 2 and float(h.iloc[-1]) < float(h.iloc[-2])
+        swing_low = float(df["Low"].tail(int(cfg.get("swing_low_lookback", 10))).min())
+        in_profit = px > entry
+
+        # Trail the stop UP only: max of plan stop, recent swing low, breakeven (once green),
+        # just under VWAP (once green). Never lower an existing stop.
+        cands_stop = [plan_stop, round(swing_low * 0.999, 2)]
+        if in_profit:
+            cands_stop.append(round(entry, 2))                      # breakeven
+            if vwap:
+                cands_stop.append(round(vwap * (1 - vwap_buf), 2))  # under VWAP
+        suggested_stop = round(max([s for s in cands_stop if s > 0] or [plan_stop]), 2)
+
+        unreal = round((px / entry - 1) * 100, 2) if entry else 0.0
+        if target and px >= target:
+            action, why = "take_profit", f"price {px} at/above target {target} — take profit"
+        elif (above_vwap is False) or macd_falling:
+            action = "exit_thesis_break"
+            why = "lost VWAP" if above_vwap is False else "MACD histogram rolling back down"
+            why += f" — defend/exit (live {px}, {unreal:+.1f}%)"
+        elif suggested_stop > plan_stop + 0.01:
+            action, why = "trail_stop", f"raise stop {plan_stop} → {suggested_stop} (price {px}, {unreal:+.1f}%)"
+        else:
+            action, why = "hold", f"thesis intact (live {px}, {unreal:+.1f}%, stop {plan_stop}, target {target})"
+        is_actionable = action != "hold"
+        if is_actionable:
+            actionable += 1
+        _db("""INSERT INTO pullback_trade_adjustments
+                 (trade_id, symbol, entry, current_stop, suggested_stop, target, live_price, vwap,
+                  above_vwap, macd_falling, unrealized_pct, action, rationale, actionable, updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+               ON CONFLICT (trade_id) DO UPDATE SET
+                 current_stop=EXCLUDED.current_stop, suggested_stop=EXCLUDED.suggested_stop,
+                 target=EXCLUDED.target, live_price=EXCLUDED.live_price, vwap=EXCLUDED.vwap,
+                 above_vwap=EXCLUDED.above_vwap, macd_falling=EXCLUDED.macd_falling,
+                 unrealized_pct=EXCLUDED.unrealized_pct, action=EXCLUDED.action,
+                 rationale=EXCLUDED.rationale, actionable=EXCLUDED.actionable, updated_at=NOW()""",
+            (t["id"], sym, entry, plan_stop, suggested_stop, target or None, px, vwap,
+             above_vwap, macd_falling, unreal, action, why, is_actionable))
+    return {"open": len(trades), "actionable": actionable}
+
+
 # ── main ────────────────────────────────────────────────────────────────────────────────
 def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool = False) -> dict:
     t0 = time.time()
@@ -512,6 +596,7 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
     scan_d = date.today()
 
     emitted = retired = 0
+    adjust = {"open": 0, "actionable": 0}
     if not dry:
         _persist_candidates(cands, scan_d)
         if cfg.get("emit_proposals", True):
@@ -520,6 +605,9 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         # (done inside _emit_proposals), expire those that no longer fit the plan.
         if cfg.get("reconcile_proposals", True):
             retired = _reconcile_proposals(cands)
+        # While IN a trade: advisory adjustment guidance for open pullback positions (trail / TP / exit).
+        if cfg.get("adjust_open_trades", True):
+            adjust = _adjust_open_trades(cfg)
         if cfg.get("feed_candidate_pipeline", True) and not monitor:
             _feed_pipeline(cands, cfg)
         if cfg.get("telegram_alerts", True):
@@ -535,7 +623,8 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         "ok": True, "dry_run": dry, "monitor": monitor, "universe": len(syms),
         "in_pullback_uptrend": funnel["uptrend_pullback"],
         "triggers": len(triggers), "watch": len(watch),
-        "proposals_emitted": emitted, "proposals_retired": retired, "data_errors": errors,
+        "proposals_emitted": emitted, "proposals_retired": retired,
+        "open_trades": adjust["open"], "trade_adjustments": adjust["actionable"], "data_errors": errors,
         "duration_s": round(time.time() - t0, 1),
         "top_triggers": sorted(triggers, key=lambda x: -x["score"])[:15],
         "top_watch": sorted(watch, key=lambda x: x["macd_prox_pct"])[:15],
@@ -546,7 +635,8 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         print(f"\n{'MONITOR ' if monitor else ''}universe={summary['universe']} errors={errors} | "
               f"uptrend+pullback={summary['in_pullback_uptrend']} → "
               f"TRIGGER={summary['triggers']} WATCH={summary['watch']} | "
-              f"proposals +{emitted}/-{retired} ({'DRY' if dry else 'written'})")
+              f"proposals +{emitted}/-{retired} | open trades {adjust['open']} "
+              f"(adjustments {adjust['actionable']}) ({'DRY' if dry else 'written'})")
         print(f"\n{'TIER':<8}{'SYM':<7}{'PULL%':>7}{'PROX%':>7}{'VWAP':>9}{'>VWAP':>6}{'ENTRY':>9}{'STOP':>9}{'TGT':>9}{'R:R':>6}{'SCORE':>7}")
         for c in summary["top_triggers"] + summary["top_watch"][:8]:
             av = "yes" if c.get("above_vwap") else ("no" if c.get("above_vwap") is False else "—")
