@@ -21164,6 +21164,9 @@ def _get_options_engine():
         m = 0.0
     if m != _OPTIONS_ENGINE_MTIME[0]:
         oe = importlib.reload(sys.modules.get("options_engine") or oe)
+        for dep in ("options_desk_enterprise", "options_research_bridge"):
+            if dep in sys.modules:
+                importlib.reload(sys.modules[dep])
         _OPTIONS_ENGINE_MTIME[0] = m
     return oe
 
