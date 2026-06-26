@@ -142,8 +142,12 @@ Wired into:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/v2/options/proposals` | Filtered proposals (`symbol`, `strategy`, `min_pop`, `min_edge`, `force=1`) |
-| `GET /api/v2/options/positions` | Open legs + monitoring + book greeks |
+| `GET /api/v2/options/proposals` | Filtered proposals — see query params below |
+| `GET /api/v2/options/positions` | Open legs + monitoring + book greeks (filterable) |
+
+**Proposal filter query params:** `symbol`, `strategy`, `group` (income\|hedge\|directional\|spread), `option_type` (call\|put), `side` (BUY\|SELL), `sleeve` (portfolio\|conviction), `leg_style` (single\|spread), `desk_tier` (A\|B\|C), `live_eligible` (1\|0), `min_pop`, `min_edge`, `min_dte`, `max_dte`, `force=1`. Response includes `filter_facets` with counts per chip.
+
+**Position filter query params:** `symbol`, `option_type`, `side` (buy\|sell), `working_only`, `force=1`.
 | `GET /api/v2/options/monitor` | Alias for positions |
 | `GET /api/v2/options/overview` | Strategy summary + enterprise risk |
 | `GET /api/v2/options/desk/risk` | Book greeks, concentration, live-eligible count |

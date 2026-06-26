@@ -1766,24 +1766,81 @@ def get_overview() -> dict:
     }
 
 
+STRATEGY_GROUPS: Dict[str, frozenset] = {
+    "income": frozenset({"covered_call", "cash_secured_put", "credit_spread"}),
+    "hedge": frozenset({"protective_put"}),
+    "directional": frozenset({"long_call", "long_put"}),
+    "spread": frozenset({"credit_spread"}),
+}
+PORTFOLIO_STRATEGIES = frozenset({"covered_call", "protective_put"})
+CONVICTION_STRATEGIES = frozenset({"cash_secured_put", "long_call", "credit_spread", "long_put"})
+
+
+def _proposal_sleeve(p: dict) -> str:
+    strat = p.get("strategy") or ""
+    if strat in PORTFOLIO_STRATEGIES:
+        return "portfolio"
+    if strat in CONVICTION_STRATEGIES:
+        return "conviction"
+    return "other"
+
+
+def _is_spread_pair(p: dict) -> bool:
+    return (p.get("strategy") == "credit_spread"
+            and _f(p.get("short_strike")) > 0
+            and _f(p.get("long_strike")) > 0)
+
+
 def filter_proposals(
     proposals: List[dict],
     *,
     symbol: str = "",
     sector: str = "",
     strategy: str = "",
+    strategy_group: str = "",
+    option_type: str = "",
+    side: str = "",
+    sleeve: str = "",
+    desk_tier: str = "",
+    leg_style: str = "",
+    live_eligible: Optional[bool] = None,
     min_dte: int = 0,
     max_dte: int = 999,
     min_pop: float = 0,
     min_edge: float = 0,
 ) -> List[dict]:
     sym_u = symbol.upper()
+    strat_g = (strategy_group or "").lower()
+    opt_t = (option_type or "").lower()
+    side_u = (side or "").upper()
+    sleeve_l = (sleeve or "").lower()
+    tier_u = (desk_tier or "").upper()
+    leg = (leg_style or "").lower()
+    group_set = STRATEGY_GROUPS.get(strat_g)
     out = []
     for p in proposals:
         if sym_u and sym_u not in (p.get("symbol") or "").upper():
             continue
         if strategy and p.get("strategy") != strategy:
             continue
+        if group_set and (p.get("strategy") or "") not in group_set:
+            continue
+        if opt_t and (p.get("option_type") or "").lower() != opt_t:
+            continue
+        if side_u and (p.get("side") or "").upper() != side_u:
+            continue
+        if sleeve_l and _proposal_sleeve(p) != sleeve_l:
+            continue
+        if tier_u and (p.get("desk_tier") or "").upper() != tier_u:
+            continue
+        if leg == "single" and _is_spread_pair(p):
+            continue
+        if leg in ("spread", "pair", "pairs") and not _is_spread_pair(p):
+            continue
+        if live_eligible is not None:
+            eligible = bool((p.get("enterprise") or {}).get("live_eligible"))
+            if eligible != live_eligible:
+                continue
         dte = int(p.get("dte") or 0)
         if dte < min_dte or dte > max_dte:
             continue
@@ -1792,10 +1849,105 @@ def filter_proposals(
         if _f(p.get("edge_score")) < min_edge:
             continue
         if sector:
-            # sector filter optional — enrichment not always on proposal row
             pass
         out.append(p)
     return out
+
+
+def proposal_filter_facets(proposals: List[dict]) -> dict:
+    """Counts for desk filter chips (strategy, type, side, sleeve, pairs)."""
+    by_strategy: Dict[str, int] = {}
+    by_group: Dict[str, int] = {k: 0 for k in STRATEGY_GROUPS}
+    by_option_type: Dict[str, int] = {}
+    by_side: Dict[str, int] = {}
+    by_sleeve: Dict[str, int] = {}
+    by_tier: Dict[str, int] = {}
+    spread_pairs = 0
+    live_eligible = 0
+    for p in proposals:
+        strat = p.get("strategy") or "other"
+        by_strategy[strat] = by_strategy.get(strat, 0) + 1
+        for grp, members in STRATEGY_GROUPS.items():
+            if strat in members:
+                by_group[grp] += 1
+        ot = (p.get("option_type") or "unknown").lower()
+        by_option_type[ot] = by_option_type.get(ot, 0) + 1
+        sd = (p.get("side") or "—").upper()
+        by_side[sd] = by_side.get(sd, 0) + 1
+        sl = _proposal_sleeve(p)
+        by_sleeve[sl] = by_sleeve.get(sl, 0) + 1
+        tier = (p.get("desk_tier") or "C").upper()
+        by_tier[tier] = by_tier.get(tier, 0) + 1
+        if _is_spread_pair(p):
+            spread_pairs += 1
+        if (p.get("enterprise") or {}).get("live_eligible"):
+            live_eligible += 1
+    return {
+        "total": len(proposals),
+        "by_strategy": by_strategy,
+        "by_group": by_group,
+        "by_option_type": by_option_type,
+        "by_side": by_side,
+        "by_sleeve": by_sleeve,
+        "by_tier": by_tier,
+        "spread_pairs": spread_pairs,
+        "single_leg": len(proposals) - spread_pairs,
+        "live_eligible": live_eligible,
+    }
+
+
+def filter_positions(
+    positions: List[dict],
+    *,
+    symbol: str = "",
+    option_type: str = "",
+    side: str = "",
+    leg_style: str = "",
+    working_only: Optional[bool] = None,
+) -> List[dict]:
+    sym_u = symbol.upper()
+    opt_t = (option_type or "").lower()
+    side_f = (side or "").lower()
+    leg = (leg_style or "").lower()
+    out = []
+    for p in positions:
+        und = (p.get("underlying") or "").upper()
+        if sym_u and sym_u not in und:
+            continue
+        if opt_t and (p.get("option_type") or "").lower() != opt_t:
+            continue
+        if side_f:
+            ps = (p.get("side") or "").lower()
+            strat = (p.get("strategy") or "").lower()
+            is_short = ps == "short" or strat.startswith("short_")
+            if side_f == "sell" and not is_short:
+                continue
+            if side_f == "buy" and is_short:
+                continue
+        if leg in ("spread", "pair", "pairs"):
+            continue  # open monitor is single-leg OCC rows today
+        if leg == "spread" and "spread" not in (p.get("strategy") or ""):
+            continue
+        if working_only is not None and bool(p.get("still_working")) != working_only:
+            continue
+        out.append(p)
+    return out
+
+
+def position_filter_facets(positions: List[dict]) -> dict:
+    by_type: Dict[str, int] = {}
+    by_side: Dict[str, int] = {"buy": 0, "sell": 0}
+    working = 0
+    for p in positions:
+        ot = (p.get("option_type") or "unknown").lower()
+        by_type[ot] = by_type.get(ot, 0) + 1
+        ps = (p.get("side") or "").lower()
+        strat = (p.get("strategy") or "").lower()
+        is_short = ps == "short" or strat.startswith("short_")
+        by_side["sell" if is_short else "buy"] += 1
+        if p.get("still_working"):
+            working += 1
+    return {"total": len(positions), "by_option_type": by_type, "by_side": by_side, "working": working}
 
 
 OPTIONS_DESK_RUNTIME = PROJECT_ROOT / "data" / "runtime" / "options_desk_latest.json"
