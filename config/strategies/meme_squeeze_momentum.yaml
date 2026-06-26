@@ -1,0 +1,209 @@
+strategy_id: meme_squeeze_momentum
+display_name: Meme / Squeeze Momentum
+version: 1.0.0
+status: TESTING
+purpose: "Large-cap meme / short-squeeze momentum — high RVOL + gap + elevated short interest driven by a social/news catalyst. Distinct from micro-cap momentum_scalp: LARGE float, squeeze mechanics, multi-day hold possible. High-risk speculation."
+eligible_accounts:
+  - taxable
+forbidden_accounts:
+  - rollover_ira
+  - roth_ira
+  - fidelity_rollover_ira
+timeframe: short_swing
+timeframe_class: SHORT_SWING
+universe: large_cap_squeeze
+primary_data_sources:
+  - finviz_screener
+  - trade_ai_scans
+  - social_posts
+  - news_articles
+  - short_interest
+# Screen filters — the squeeze signature: high RVOL + gap on a LARGE float with elevated short interest.
+# The large float (min 50M) is the explicit separator from momentum_scalp (max 100M, micro-cap).
+screen_filters:
+  min_price: 2.0
+  max_price: 500.0
+  min_rvol: 8.0
+  premium_rvol: 15.0
+  min_float_m: 50
+  preferred_min_float_m: 100
+  min_gap_pct: 5.0
+  min_short_interest_pct: 10.0
+  preferred_short_interest_pct: 20.0
+  min_days_to_cover: 2.0
+  min_score: 42
+  aplus_score: 50
+setup_qualification:
+  catalyst_present: required
+  catalyst_verified_for_aplus: true
+  catalyst_verified_for_live: true
+  social_only_max_grade: WATCH
+  price_data_max_age_minutes: 15
+  rvol_data_required: true
+  short_interest_data_preferred: true
+auto_disqualifiers:
+  - id: FLOAT_UNDER_50M
+    condition: float_m < 50
+  - id: RVOL_UNDER_8
+    condition: rvol < 8
+  - id: NO_CATALYST
+    condition: not catalyst_present
+  - id: STOP_OVER_20_PCT
+    condition: stop_pct > 0.20
+  - id: POSITION_OVER_2500
+    condition: dollar_size > 2500
+  - id: TRADING_HALTED
+    condition: trading_halt_active
+  - id: WIDE_SPREAD
+    condition: spread_pct > 3
+  - id: RETIREMENT_ACCOUNT
+    condition: account_class in [rollover_ira, roth_ira, fidelity_rollover_ira]
+scoring_weights:
+  catalyst: 14
+  rvol: 14
+  short_interest: 12
+  price_action: 10
+  gap: 6
+  sector_momentum: 4
+grade_thresholds:
+  aplus: 50
+  a: 44
+  b: 36
+  c: 28
+minimum_evidence:
+  required:
+    - price_data
+    - rvol_data
+    - trade_plan
+    - stop_defined
+  preferred:
+    - catalyst_verified
+    - short_interest_data
+    - intel_readiness_score
+recommendation_rules:
+  social_only_catalyst: WATCH
+  unverified_catalyst_max: WAIT
+  verified_catalyst_high_rvol: CAUTION
+  all_evidence_present_aplus: PAPER_ONLY
+agent_responsibilities:
+  maria: Verify the squeeze catalyst (short-interest data, borrow rate, social surge). Flag if purely social/unverified.
+  risk: Verify entry zone vs squeeze extension, wide stop placement, position size. Squeezes mean-revert violently — confirm R:R survives a 20% adverse move.
+  steph: Confirm taxable-only routing and speculative sizing cap. No retirement accounts.
+paper_trade_rules:
+  use_same_plan_as_live: true
+  log_entry_slippage: true
+  log_max_adverse_excursion: true
+  overnight_allowed: true
+live_trade_rules:
+  max_position_size: 2500
+  max_dollar_risk: 250
+  require_risk_gate_approved: true
+  high_risk_speculation: true
+outcome_learning_fields:
+  - entry_slippage
+  - stop_hit_before_target
+  - target_hit_time
+  - max_adverse_excursion
+  - catalyst_type
+  - rvol_at_entry
+  - float_at_entry
+  - short_interest_at_entry
+  - days_to_cover_at_entry
+  - vix_at_entry
+entry_criteria:
+  - id: RVOL_SURGE
+    description: Relative volume at least 8x 20-day average (squeeze needs sustained volume)
+    metric: rvol
+    operator: gte
+    value: 8.0
+  - id: GAP_OR_MOMENTUM
+    description: Gap up at least 5% (or strong intraday momentum)
+    metric: gap_pct
+    operator: gte
+    value: 5.0
+  - id: LARGE_FLOAT
+    description: Float at least 50M shares — large-cap squeeze, NOT a micro-cap scalp
+    metric: float_m
+    operator: gte
+    value: 50
+  - id: ELEVATED_SHORT_INTEREST
+    description: Short interest at least 10% of float (the squeeze fuel)
+    metric: short_interest_pct
+    operator: gte
+    value: 10.0
+  - id: CATALYST_PRESENT
+    description: A social/news/short-squeeze catalyst is present
+    metric: catalyst_present
+    operator: eq
+    value: true
+exit_rules:
+  stop_method: level_based
+  stop_max_pct: 0.20
+  target_method: trailing
+  intraday_exit_required: false
+  no_overnight_hold: false
+  notes: "Squeezes reverse violently — trail aggressively once extended, never add to a fading squeeze."
+lifecycle:
+  proposal_expiry_hours: 8
+  overnight_allowed: true
+  max_hold_days: 5
+risk:
+  risk_per_trade_pct: 0.0025
+  max_position_size: 2500
+  max_daily_trades: 2
+  target_rr: 2.0
+execution:
+  routing: manual_review_required
+  auto_execute: false
+  account_class: taxable
+co_enables:
+  promotes_to:
+    - swing_breakout
+  strengthens:
+    - momentum_scalp
+  notes: A held squeeze that consolidates into a base can graduate to swing_breakout; shares the momentum data pipeline with momentum_scalp.
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.45
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Large-cap meme / short-squeeze momentum. High RVOL + gap + elevated short interest on a large float, driven by a social/news catalyst. High-risk speculation, taxable-only, manual review required, multi-day hold with aggressive trailing.
+  key_questions:
+    - Is there real squeeze fuel (short interest, days-to-cover, borrow rate) or is it purely social hype?
+    - Is the move already extended (chasing a parabolic top) or early?
+    - Does the stop survive a 20% violent mean-reversion?
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band:
+    - 25
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 0.5
+    require_aplus_grade: true
+  extreme_vix_threshold: 40
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix: 45
+  notes: "Squeezes can run in high-VIX panic, but reversion risk explodes — halve size in elevated bands."
+technical_indicators_required:
+  gates:
+    - id: ABOVE_VWAP
+      condition: price > vwap (intraday)
+      metric: price_vs_vwap
+      operator: gt
+      value: 0
+  preferred:
+    - rvol
+    - short_interest_pct
+    - days_to_cover
+    - atr_pct
+    - rsi_14
+  irrelevant:
+    - fib_618_distance
+    - dividend_yield
+freshness:
+  bucket: SAME_DAY
+  ttl_hours: 8
+  eval_cadence: intraday
+  watchpool: true
