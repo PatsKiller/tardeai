@@ -64,6 +64,74 @@ def _db(sql, params=None, fetch="one"):
         return None if fetch == "one" else []
 
 
+def _load_holdings_rows() -> List[dict]:
+    try:
+        data = json.loads((STATE_DIR / "holdings.json").read_text(encoding="utf-8"))
+        return data.get("holdings") or []
+    except Exception:
+        return []
+
+
+def _normalize_account_key(raw: str, holdings: Optional[List[dict]] = None) -> str:
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if "_" in s and s.lower() == s:
+        return s
+    rows = holdings if holdings is not None else _load_holdings_rows()
+    for h in rows:
+        disp = (h.get("account_display") or "").strip()
+        key = (h.get("account") or h.get("account_id") or "").strip()
+        if s.lower() == disp.lower():
+            return key
+        if s.lower().replace(" ", "_") == key.lower():
+            return key
+    return s.lower().replace(" ", "_") if " " in s else s
+
+
+def _auto_resolve_account(
+    symbol: str,
+    account: str = "",
+    *,
+    options_proposal_id: Optional[str] = None,
+    proposal_id: Optional[int] = None,
+) -> str:
+    """Auto-select canonical account: explicit > proposal > symbol lot > Schwab default."""
+    acct = _normalize_account_key(account)
+    if acct:
+        return acct
+    if options_proposal_id:
+        op = _load_options_proposal(options_proposal_id)
+        if op:
+            acct = _normalize_account_key(op.get("account") or "")
+            if acct:
+                return acct
+    if proposal_id:
+        row = _db(
+            """SELECT COALESCE(target_account, proposed_account) AS account
+               FROM paper_trade_proposals WHERE id=%s""",
+            (proposal_id,),
+            fetch="one",
+        )
+        if row and row.get("account"):
+            acct = _normalize_account_key(row["account"])
+            if acct:
+                return acct
+    holdings = _load_holdings_rows()
+    sym = (symbol or "").upper()
+    lots = [
+        h for h in holdings
+        if (h.get("symbol") or "").upper() == sym and not h.get("is_cash")
+    ]
+    if lots:
+        lots.sort(key=lambda h: (-float(h.get("shares") or 0), -float(h.get("market_value") or 0)))
+        return _normalize_account_key(lots[0].get("account") or "")
+    for key in ("schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"):
+        if any((h.get("account") or "") == key for h in holdings):
+            return key
+    return "schwab_taxable"
+
+
 def _account_broker(account: str) -> tuple:
     if not account:
         return None, None
@@ -251,17 +319,44 @@ def prepare_manual_execution(
 ) -> dict:
     """Build pre-filled manual execution payload for the adjustment modal."""
     sym = symbol.upper().strip()
-    acct = (account or "").strip()
+    acct = _auto_resolve_account(
+        sym, account or "",
+        options_proposal_id=options_proposal_id,
+        proposal_id=proposal_id,
+    )
     broker, _ = _account_broker(acct)
-    prof = {"broker": broker, "auto_eligible": broker == "schwab", "execution_mode": "manual" if broker == "fidelity" else "auto_or_manual"}
+    is_fidelity = broker == "fidelity" or "fidelity" in (acct or "").lower()
+    is_schwab = broker == "schwab" or "schwab" in (acct or "").lower()
+    prof = {
+        "broker": broker or ("fidelity" if is_fidelity else "schwab" if is_schwab else "other"),
+        "auto_eligible": is_schwab and not is_fidelity,
+        "execution_mode": "manual" if is_fidelity else "auto_or_manual",
+    }
+
+    account_options = []
+    try:
+        rows = _db(
+            """SELECT account_key, display_name, broker FROM broker_accounts ORDER BY account_key""",
+            fetch="all",
+        ) or []
+        for r in rows:
+            b = (r.get("broker") or "").lower()
+            key = r.get("account_key") or ""
+            label = r.get("display_name") or key.replace("_", " ").title()
+            mode = "Manual" if "fidelity" in b or "fidelity" in key else "Auto · 2FA"
+            account_options.append({"account_key": key, "label": label, "broker": b, "mode": mode})
+    except Exception:
+        pass
 
     base: Dict[str, Any] = {
         "symbol": sym,
         "account": acct,
-        "broker": broker,
-        "execution_mode": "manual" if broker == "fidelity" else prof["execution_mode"],
-        "execution_label": "Manual · Fidelity" if broker == "fidelity" else "Schwab · auto or manual",
+        "account_auto_selected": not bool((account or "").strip()),
+        "broker": prof["broker"],
+        "execution_mode": prof["execution_mode"],
+        "execution_label": "Manual · Fidelity" if is_fidelity else "Schwab · auto + 2FA",
         "auto_eligible": prof["auto_eligible"],
+        "account_options": account_options,
         "origins": find_origins(sym, account=acct),
         "recommended": {},
     }
@@ -269,6 +364,9 @@ def prepare_manual_execution(
     if options_proposal_id:
         op = _load_options_proposal(options_proposal_id)
         if op:
+            if not (account or "").strip() and op.get("account"):
+                base["account"] = _normalize_account_key(op.get("account") or "")
+                base["account_auto_selected"] = True
             base["execution_type"] = "option"
             base["recommended"] = {
                 "options_proposal_id": options_proposal_id,
