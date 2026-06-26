@@ -308,6 +308,11 @@ OPTIONS_MAX_NET_DELTA_PCT=35.0
 OPTIONS_SNAPSHOT_RETENTION_DAYS=45   # prune options_chain_snapshots older than N days
 ```
 
+`options_chain_snapshots` retention runs two ways: a cheap per-symbol prune on each
+`persist_chain_snapshot` insert (active desk names), plus a global sweep
+(`prune_chain_snapshots()`) from the daily IV-snapshot cron (`scripts/options_iv_snapshot.py`,
+`20 16 * * 1-5`) that catches the tails of symbols that have gone quiet.
+
 ---
 
 ## CLI

@@ -91,11 +91,20 @@ def main():
         except Exception:
             pass
     n = persist(rows)
+    # Global retention sweep for vol-surface snapshots (per-insert prune only
+    # touches active symbols; this catches tails of names that went quiet).
+    prune = {}
+    try:
+        import options_desk_enterprise as ent
+        prune = ent.prune_chain_snapshots()
+    except Exception as e:
+        prune = {"ok": False, "error": str(e)[:160]}
     print(json.dumps({
         "ok": True,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "symbols_scanned": len(_symbols()),
         "rows_written": n,
+        "snapshot_prune": prune,
     }))
 
 
