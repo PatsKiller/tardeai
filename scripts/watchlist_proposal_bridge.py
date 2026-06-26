@@ -309,6 +309,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         except Exception:
             pass
 
+    new_eligible: list[dict] = []  # collected, then ranked by R:R + setup before the cap
     for c in candidates:
         sym = str(c["symbol"]).upper()
         existing = _active_proposal(cur, sym)
@@ -373,14 +374,26 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             )
             continue
 
-        if created >= cap:
-            skipped += 1
-            continue
+        # NEW promotion — collect; ranked + capped after the loop (best R:R / setup first).
+        new_eligible.append({
+            "sym": sym, "strat": strat, "entry": entry, "stop": stop, "target": target,
+            "shares": shares, "dollar_size": dollar_size, "dollar_risk": dollar_risk,
+            "rr": rr, "basis": basis, "expires": expires, "c": c,
+        })
 
+    # Rank new promotions: highest R:R first, then best setup (Hermes composite score). Only the
+    # top `cap` get created this run — the rest stay on the watchlist for a later run. This bounds
+    # per-run volume (each new PENDING proposal triggers LLM oversight) and promotes the best first.
+    new_eligible.sort(key=lambda x: (-(x["rr"] or 0), -(_f(x["c"].get("hermes_composite_score")) or 0)))
+    skipped += max(0, len(new_eligible) - cap)
+    for item in new_eligible[:cap]:
         created += 1
         if dry_run:
             continue
-
+        c = item["c"]; sym = item["sym"]
+        entry, stop, target, strat = item["entry"], item["stop"], item["target"], item["strat"]
+        shares, dollar_size, dollar_risk, rr = item["shares"], item["dollar_size"], item["dollar_risk"], item["rr"]
+        basis, expires = item["basis"], item["expires"]
         cur.execute(
             """INSERT INTO paper_trade_proposals
                    (symbol, strategy_id, status, origin, discovery_source,
@@ -398,11 +411,11 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
              entry, stop, target, shares, dollar_size, dollar_risk, rr,
              round(abs(entry - stop) / entry, 4) if entry else 0,
              c["watchlist_rating"].upper(),
-             f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — Hermes #{c.get('hermes_rank') or '—'}",
+             f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — RR {rr} · Hermes #{c.get('hermes_rank') or '—'}",
              expires, expires, expires, json.dumps(basis)),
         )
         pid = cur.fetchone()[0]
-        log.info(f"created watchlist proposal #{pid} {sym} {c['watchlist_rating']} @ ${entry}")
+        log.info(f"created watchlist proposal #{pid} {sym} {c['watchlist_rating']} RR {rr} @ ${entry}")
 
     if not dry_run:
         conn.commit()
