@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-26 - Institutional hardening: operator-approved automated trading 4.5/5
+
+- `scripts/execution_state.py` + `docs/CURRENT_EXECUTION_STATE.md` — fail-closed execution state
+- `scripts/brokers/execution_readiness.py` — central readiness resolver (all submit paths)
+- `scripts/brokers/kill_switches.py`, `order_lifecycle.py`, `reconcile_orders.py`
+- `scripts/brokers/evidence_approval.py` — evidence-hash-bound single-use approvals
+- `scripts/audit_ledger.py`, `scripts/export_diligence_evidence.py`
+- Hard risk blocks in `options_desk_enterprise.evaluate_hard_risk_blocks()`
+- API: `/api/v2/execution/current-state`, `/readiness`, `/kill-switches`
+- CC v3 `ExecutionStatePanel` on System → Control Plane
+- 10 test modules under `tests/test_execution_*.py` etc.
+
+Maturity targets: Proposal desk 4.5/5, Options desk 4.5/5, Execution safety 4.6/5.
+
 ## 2026-06-26 - Pullback/MACD: authoritative trade plans + proposal cap
 
 - **Authoritative levels** — the screener now derives technical entry/stop/target (stop = recent

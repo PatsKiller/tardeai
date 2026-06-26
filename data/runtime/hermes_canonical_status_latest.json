@@ -1,5 +1,5 @@
 {
-  "portal_snapshot_timestamp": "2026-06-07T18:06:14.590864",
+  "portal_snapshot_timestamp": "2026-06-26T10:15:25.080347",
   "hermes_version": "v0.16.0",
   "timers_count": 38,
   "crons_count": 209,
@@ -19,31 +19,31 @@
       "profile": "default",
       "model": "gemma3:4b",
       "tools": "disabled",
-      "soul_hash": "7a3aa0e6b3d18ac1"
+      "soul_hash": "419aef2268121df8"
     },
     {
       "profile": "tradeai",
       "model": "gemma3:4b",
       "tools": "disabled",
-      "soul_hash": "fc060ad139e96d48"
+      "soul_hash": "4c6dfa8688619f7d"
     },
     {
       "profile": "tradeai12b",
       "model": "gemma3:12b-ctx4k",
       "tools": "disabled",
-      "soul_hash": "9ed7b8a993469452"
+      "soul_hash": "dde193f4cf7e884a"
     },
     {
       "profile": "dev",
-      "model": "gpt-5-codex",
+      "model": "grok-4",
       "tools": "14 enabled: web, browser, file, vision, image_gen, tts, skills, todo, memory, session_search, clarify, delegation, cronjob, messaging",
-      "soul_hash": "8df596720c9103a3"
+      "soul_hash": "7d215a381387bfd3"
     },
     {
       "profile": "serverops",
       "model": "unset",
       "tools": "18 enabled: web, browser, terminal, file, code_execution, vision, image_gen, x_search, tts, skills, todo, memory, session_search, clarify, delegation, cronjob, messaging, computer_use",
-      "soul_hash": "aebf7b52c57e8bba"
+      "soul_hash": "c7ac16ed7f76b07a"
     }
   ],
   "llm_lanes": [
@@ -52,7 +52,7 @@
       "provider": "openai-codex",
       "authed": true,
       "usable": true,
-      "headless_status": "unavailable",
+      "headless_status": "ready",
       "reason_code": "hermes_headless_limit"
     },
     {
@@ -101,7 +101,7 @@
     "loops": [
       {
         "loop": "closed_trade_outcomes",
-        "rows": 169,
+        "rows": 357,
         "feeds_prompts": true,
         "mutates_scoring": false
       },
@@ -119,7 +119,7 @@
       },
       {
         "loop": "shadow_candidate_scoring",
-        "rows": 57,
+        "rows": 944,
         "feeds_prompts": true,
         "mutates_scoring": false
       },
@@ -131,19 +131,19 @@
       },
       {
         "loop": "research_intelligence",
-        "rows": 2050,
+        "rows": 5045,
         "feeds_prompts": true,
         "mutates_scoring": false
       },
       {
         "loop": "promotion_audit",
-        "rows": 2050,
+        "rows": 5045,
         "feeds_prompts": true,
         "mutates_scoring": false
       },
       {
         "loop": "coordination_memory",
-        "rows": 457,
+        "rows": 2082,
         "feeds_prompts": false,
         "mutates_scoring": false
       },
@@ -155,13 +155,13 @@
       },
       {
         "loop": "rag_embeddings",
-        "rows": 39955,
+        "rows": 138578,
         "feeds_prompts": true,
         "mutates_scoring": false
       },
       {
         "loop": "external_researcher_feedback",
-        "rows": 2,
+        "rows": 3145,
         "feeds_prompts": true,
         "mutates_scoring": false
       }
@@ -234,7 +234,7 @@
   "codex_lane": {
     "auth_ready": true,
     "interactive_ready": true,
-    "headless_available": false,
+    "headless_available": true,
     "headless_reason": "hermes_headless_limit",
     "runtime_enabled": false,
     "usage": "hermes -p dev chat (interactive only on Hermes 0.16.0)"

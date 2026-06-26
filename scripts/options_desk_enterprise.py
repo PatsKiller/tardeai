@@ -76,7 +76,138 @@ def load_desk_config() -> dict:
     cfg.setdefault("approval_required", os.getenv("OPTIONS_APPROVAL_REQUIRED", "1") == "1")
     cfg.setdefault("desk_tier_edge_a", float(os.getenv("OPTIONS_DESK_TIER_A_EDGE", "72")))
     cfg.setdefault("desk_tier_edge_b", float(os.getenv("OPTIONS_DESK_TIER_B_EDGE", "62")))
+    # Hard preflight limits (live path only — advisory desk may warn)
+    hr = cfg.get("hard_risk_limits") or {}
+    cfg.setdefault("hard_max_contracts_per_order", int(hr.get("max_contracts_per_order", 5)))
+    cfg.setdefault("hard_max_daily_orders", int(hr.get("max_daily_orders", 10)))
+    cfg.setdefault("hard_max_daily_notional", float(hr.get("max_daily_notional", 50_000)))
+    cfg.setdefault("hard_max_daily_loss", float(hr.get("max_daily_loss", 5_000)))
+    cfg.setdefault("hard_max_per_strategy_notional", float(hr.get("max_per_strategy_notional", 30_000)))
+    cfg.setdefault("hard_max_per_account_notional", float(hr.get("max_per_account_notional", 75_000)))
+    cfg.setdefault("hard_min_buying_power", float(hr.get("min_buying_power", 5_000)))
+    cfg.setdefault("hard_quote_max_age_seconds", int(hr.get("quote_max_age_seconds", 120)))
+    cfg.setdefault("hard_chain_max_age_seconds", int(hr.get("chain_max_age_seconds", 300)))
+    cfg.setdefault("hard_quote_move_tolerance_pct", float(hr.get("quote_move_tolerance_pct", 2.0)))
     return cfg
+
+
+def _hard_block(
+    code: str,
+    reason: str,
+    *,
+    severity: str = "hard",
+    source: str = "options_desk_enterprise",
+    snapshot: Optional[dict] = None,
+) -> dict:
+    return {
+        "code": code,
+        "reason": reason,
+        "severity": severity,
+        "source": source,
+        "function": "evaluate_hard_risk_blocks",
+        "snapshot": snapshot or {},
+    }
+
+
+def is_desk_queue_approved(proposal_id: str) -> bool:
+    ok, _ = check_preflight_approval(proposal_id)
+    return ok
+
+
+def evaluate_hard_risk_blocks(
+    proposal: dict,
+    *,
+    mode: str = "live",
+    holdings: Optional[List[dict]] = None,
+    positions: Optional[List[dict]] = None,
+    cfg: Optional[dict] = None,
+) -> List[dict]:
+    """Configurable hard preflight rejects for live paths. Each block is machine-coded."""
+    if mode not in ("live", "operator_required"):
+        return []
+    cfg = cfg or load_desk_config()
+    blocks: List[dict] = []
+    sym = (proposal.get("symbol") or proposal.get("underlying") or "").upper()
+    strat = proposal.get("strategy") or ""
+    dte = int(proposal.get("dte") or 30)
+    contracts = int(proposal.get("contracts") or 1)
+    ent = proposal.get("enterprise") or {}
+    liq = ent.get("liquidity") or proposal.get("liquidity") or {}
+
+    # Earnings blackout
+    blackout = ent.get("earnings") or earnings_blackout_check(sym, dte=dte, strategy=strat)
+    if blackout.get("in_blackout"):
+        blocks.append(_hard_block("earnings_blackout", blackout.get("reason") or "earnings window",
+                                  snapshot=blackout))
+
+    # Ex-dividend risk for covered calls
+    if strat == "covered_call" and proposal.get("ex_div_within_dte"):
+        blocks.append(_hard_block("ex_dividend_cc_risk", "ex-dividend within DTE for covered call",
+                                  snapshot={"ex_div": proposal.get("ex_div_date")}))
+
+    # Liquidity / chain
+    if proposal.get("data_source") == "bs_estimate" and cfg.get("require_chain_for_live"):
+        blocks.append(_hard_block("bs_estimate_only", "Black-Scholes-only estimate — live chain required",
+                                  snapshot={"data_source": "bs_estimate"}))
+    if proposal.get("occ_symbol") is None and proposal.get("contract") is None and cfg.get("require_chain_for_live"):
+        blocks.append(_hard_block("no_resolved_occ", "no resolved OCC contract on proposal"))
+    if not liq.get("pass", True):
+        for issue in liq.get("issues") or []:
+            code = "liquidity_gate"
+            if "OI" in str(issue):
+                code = "oi_below_threshold"
+            elif "volume" in str(issue).lower():
+                code = "volume_below_threshold"
+            elif "spread" in str(issue).lower():
+                code = "spread_too_wide"
+            blocks.append(_hard_block(code, str(issue), snapshot=liq))
+
+    # Quote / chain staleness
+    q_age = proposal.get("quote_age_seconds")
+    if q_age is not None and float(q_age) > cfg.get("hard_quote_max_age_seconds", 120):
+        blocks.append(_hard_block("quote_stale", f"quote age {q_age}s exceeds cap",
+                                  snapshot={"quote_age_seconds": q_age}))
+    c_age = proposal.get("chain_age_seconds")
+    if c_age is not None and float(c_age) > cfg.get("hard_chain_max_age_seconds", 300):
+        blocks.append(_hard_block("option_chain_stale", f"chain age {c_age}s exceeds cap",
+                                  snapshot={"chain_age_seconds": c_age}))
+    if proposal.get("market_session") in ("closed", "unsupported"):
+        blocks.append(_hard_block("market_closed", f"session={proposal.get('market_session')}"))
+
+    # Contract caps
+    if contracts > cfg.get("hard_max_contracts_per_order", 5):
+        blocks.append(_hard_block("max_contracts_per_order",
+                                  f"{contracts} > {cfg['hard_max_contracts_per_order']}",
+                                  snapshot={"contracts": contracts}))
+
+    notional = _f(proposal.get("premium_total")) or _f(proposal.get("max_loss")) or _f(proposal.get("underlying_price")) * 100 * contracts
+    if notional > cfg.get("hard_max_per_strategy_notional", 30_000):
+        blocks.append(_hard_block("max_per_strategy_notional",
+                                  f"notional ${notional:,.0f} exceeds strategy cap",
+                                  snapshot={"notional": notional, "strategy": strat}))
+
+    # Assignment risk flag
+    if proposal.get("assignment_risk") or proposal.get("deep_itm_short"):
+        blocks.append(_hard_block("assignment_exercise_risk", "assignment/exercise risk flagged",
+                                  snapshot={"assignment_risk": True}))
+
+    # Portfolio-level when context provided
+    if holdings is not None and positions is not None:
+        book = portfolio_risk_preflight([proposal], holdings, positions, cfg=cfg)
+        for w in book.get("hard_blocks") or []:
+            if isinstance(w, dict):
+                blocks.append(w)
+            else:
+                blocks.append(_hard_block("portfolio_risk", str(w), snapshot=book.get("limits")))
+
+    # Enterprise blocks from enrich
+    for b in ent.get("blocks") or proposal.get("enterprise_blocks") or []:
+        if isinstance(b, str):
+            blocks.append(_hard_block("enterprise_block", b))
+        elif isinstance(b, dict):
+            blocks.append(b)
+
+    return blocks
 
 
 _EARNINGS_CACHE: Dict[str, str] = {}
@@ -512,10 +643,19 @@ def portfolio_risk_preflight(
     )
     top_sym_pct = concentration[0]["pct"] if concentration else 0.0
     warnings = []
+    hard_blocks: List[dict] = []
     if net_delta_pct > _f(cfg.get("max_net_delta_pct"), 35):
-        warnings.append(f"Net delta exposure ~{net_delta_pct:.1f}% exceeds cap")
+        msg = f"Net delta exposure ~{net_delta_pct:.1f}% exceeds cap"
+        warnings.append(msg)
+        hard_blocks.append(_hard_block("max_net_delta_pct", msg,
+                                      snapshot={"net_delta_pct": net_delta_pct,
+                                                "cap": cfg.get("max_net_delta_pct")}))
     if top_sym_pct > _f(cfg.get("max_symbol_notional_pct"), 25):
-        warnings.append(f"Top symbol concentration {top_sym_pct:.1f}% exceeds cap")
+        msg = f"Top symbol concentration {top_sym_pct:.1f}% exceeds cap"
+        warnings.append(msg)
+        hard_blocks.append(_hard_block("max_symbol_notional_pct", msg,
+                                      snapshot={"top_sym_pct": top_sym_pct,
+                                                "cap": cfg.get("max_symbol_notional_pct")}))
 
     blocked_count = sum(1 for p in proposals if p.get("enterprise_blocked"))
     live_count = sum(1 for p in proposals if (p.get("enterprise") or {}).get("live_eligible"))
@@ -530,6 +670,7 @@ def portfolio_risk_preflight(
         "net_delta_pct_proxy": round(net_delta_pct, 2),
         "concentration": concentration[:8],
         "warnings": warnings,
+        "hard_blocks": hard_blocks,
         "limits": {
             "max_net_delta_pct": cfg.get("max_net_delta_pct"),
             "max_symbol_notional_pct": cfg.get("max_symbol_notional_pct"),
