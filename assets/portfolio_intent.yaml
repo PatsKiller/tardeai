@@ -79,6 +79,19 @@ covered_call_settings:
   min_shares_for_call: 100      # Minimum lot size to write 1 contract
   iv_rank_minimum: 25           # Don't write calls when IV rank < 25 (cheap premium)
 
+# Enterprise options desk controls (options_desk_enterprise.py)
+options_desk_settings:
+  earnings_blackout_days: 14    # Block new short-premium through earnings window
+  min_open_interest: 50         # Min OI per leg for live-eligible proposals
+  min_volume: 5                 # Min daily volume (relaxed when OI is deep)
+  max_bid_ask_spread_pct: 12.0  # Max bid-ask as % of mid
+  require_chain_for_live: true  # BS estimates advisory-only until chain confirms
+  max_net_delta_pct: 35.0       # Portfolio net-delta exposure warning threshold
+  max_symbol_notional_pct: 25.0 # Single-name options notional concentration cap
+  approval_required: true       # Operator must approve in desk queue before live submit
+  desk_tier_edge_a: 72          # Tier A — priority desk routing
+  desk_tier_edge_b: 62          # Tier B — standard desk
+
 # Stop suggestion settings
 stop_settings:
   covered_call_candidate_multiplier: 1.0   # SMA200 - 1.0xATR

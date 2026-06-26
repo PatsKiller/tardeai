@@ -1495,6 +1495,33 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     }
 
 
+def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
+    """Attach enterprise desk metadata: earnings blackout, liquidity, vol, tiers."""
+    try:
+        import options_desk_enterprise as ent
+    except Exception:
+        return proposals
+    chain_cache: Dict[str, dict] = {}
+    enriched: List[dict] = []
+    for p in proposals:
+        sym = (p.get("symbol") or "").upper()
+        if sym and sym not in chain_cache:
+            chain_cache[sym] = _schwab_chain(sym, strikes=12)
+        chain = chain_cache.get(sym) or {}
+        contract = None
+        if p.get("data_source") != "bs_estimate":
+            side = "call" if (p.get("option_type") or "").lower() == "call" else "put"
+            contract = _pick_chain_contract(chain, side, _f(p.get("strike")), int(p.get("dte") or 30))
+        row = ent.enterprise_enrich_proposal(dict(p), contract=contract, chain=chain)
+        und = _f(row.get("underlying_price"))
+        if sym and und > 0:
+            vol = ent.vol_analytics_from_chain(chain, und)
+            if vol.get("ok"):
+                ent.persist_chain_snapshot(sym, chain, vol)
+        enriched.append(row)
+    return enriched
+
+
 def generate_proposals(force: bool = False) -> dict:
     """Full proposal pass with quality filter."""
     cached = _load_json(PROPOSALS_CACHE)
@@ -1562,7 +1589,19 @@ def generate_proposals(force: bool = False) -> dict:
         if fallback_used:
             _audit("fallback_tier", count=len(strict), symbols=[p.get("symbol") for p in strict])
 
+    strict = _apply_enterprise_layer(strict)
     all_p = _allocate_strategy_slots(strict)
+
+    enterprise_summary = {}
+    approval_sync = {}
+    try:
+        import options_desk_enterprise as ent
+        raw_positions = _fetch_schwab_option_positions()
+        enterprise_summary = ent.build_enterprise_summary(all_p, holdings, raw_positions)
+        approval_sync = ent.sync_approval_queue(all_p)
+    except Exception as e:
+        enterprise_summary = {"ok": False, "error": str(e)[:120]}
+        approval_sync = {"ok": False, "error": str(e)[:120]}
 
     out = {
         "generated_at": _iso(),
@@ -1581,6 +1620,9 @@ def generate_proposals(force: bool = False) -> dict:
             "relaxed_edge_floor": MIN_EDGE_CC_INTENT,
         },
         "proposals": all_p,
+        "desk_level": "enterprise",
+        "enterprise": enterprise_summary,
+        "approval_queue": approval_sync,
         "strategy_overview": {
             "total_edge_avg": round(sum(p["edge_score"] for p in all_p) / max(len(all_p), 1), 1),
             "avg_pop": round(sum(p.get("pop_pct", 50) for p in all_p) / max(len(all_p), 1), 1),
@@ -1671,11 +1713,19 @@ def monitor_positions(force: bool = False) -> dict:
     working = sum(1 for m in monitored if m.get("still_working"))
     needs_action = [m for m in monitored if m.get("action") not in ("hold",)]
 
+    book_greeks = {}
+    try:
+        import options_desk_enterprise as ent
+        book_greeks = ent.aggregate_book_greeks(monitored, tech_map)
+    except Exception:
+        book_greeks = {}
+
     out = {
         "monitored_at": _iso(),
         "position_count": len(monitored),
         "still_working": working,
         "needs_action_count": len(needs_action),
+        "book_greeks": book_greeks,
         "positions": monitored,
         "alerts": [
             {
@@ -1704,8 +1754,11 @@ def get_overview() -> dict:
     mon = _load_json(MONITOR_CACHE) or monitor_positions()
     return {
         "generated_at": _iso(),
+        "desk_level": props.get("desk_level") or "enterprise",
         "proposals": props.get("strategy_overview") or {},
+        "enterprise": props.get("enterprise") or {},
         "monitor": mon.get("summary") or {},
+        "book_greeks": mon.get("book_greeks") or {},
         "proposal_count": props.get("count", 0),
         "open_positions": mon.get("position_count", 0),
         "needs_action": mon.get("needs_action_count", 0),
@@ -1776,10 +1829,15 @@ def build_options_desk_summary(props: Optional[dict] = None) -> dict:
     for sym in by_sym:
         by_sym[sym].sort(key=lambda x: -_f(x.get("edge_score")))
     top = sorted(proposals, key=lambda x: -_f(x.get("edge_score")))[:12]
+    ent = props.get("enterprise") or {}
     return {
         "generated_at": props.get("generated_at") or _iso(),
+        "desk_level": props.get("desk_level") or "enterprise",
         "proposal_count": len(proposals),
         "strategy_counts": by_strat,
+        "tier_counts": ent.get("tier_counts") or {},
+        "live_eligible_count": (ent.get("risk") or {}).get("live_eligible_count"),
+        "enterprise_blocked_count": (ent.get("risk") or {}).get("enterprise_blocked_count"),
         "strategy_slots": props.get("strategy_overview", {}).get("strategy_slots") or STRATEGY_SLOTS,
         "raw_pool": {
             "covered_calls": props.get("covered_calls", 0),
