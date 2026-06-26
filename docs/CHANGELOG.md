@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-26 - Pullback/MACD screener: follow-ups (Telegram env + trigger-only proposals)
+
+- **Telegram under cron** — the screener now loads the full `.env` (`_load_env`) before alerting.
+  `db_adapter` only loads `DB_*` keys, so `TELEGRAM_BOT_TOKEN`/`CHAT_ID` were absent under cron
+  (no shell profile) and alerts silently skipped. Verified the token loads under a bare `env -i`.
+- **Trigger-only proposals** — `proposal_tiers` narrowed to `[trigger]`. The first run emitted 22
+  proposals (21 watch + 1 trigger); `broker_promote_oversight` then ran per-proposal local+cloud LLM
+  review on all 22, spiking machine load (~11) and starving the single-threaded API server (dashboard
+  timeouts). Cancelled the 21 watch proposals (kept the AES trigger); watch-tier still shows on the
+  tab and feeds the pipeline. Doc updated.
+
 ## 2026-06-26 - Pullback / MACD screener (new tool)
 
 New daily S&P 500 screener: **uptrend names ~20% off their 52-week high with MACD approaching a

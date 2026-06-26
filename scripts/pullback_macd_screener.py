@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -31,6 +32,25 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+# ── env ───────────────────────────────────────────────────────────────────────────────
+def _load_env() -> None:
+    """Load the full .env into os.environ. db_adapter only loads DB_* keys, so without this
+    TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are absent under cron (no shell profile) and alerts
+    silently skip. Mirrors alert_dispatcher_unified._load_env."""
+    p = PROJECT_ROOT / ".env"
+    if not p.exists():
+        return
+    try:
+        for line in p.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"'))
+    except Exception:
+        pass
 
 
 # ── config ────────────────────────────────────────────────────────────────────────────
@@ -308,6 +328,7 @@ def _alert_new_triggers(cands: list[dict]) -> None:
 # ── main ────────────────────────────────────────────────────────────────────────────────
 def run(dry: bool = False, limit: int = 0, as_json: bool = False) -> dict:
     t0 = time.time()
+    _load_env()
     cfg = load_cfg()
     if not cfg.get("enabled", True):
         return {"ok": False, "reason": "disabled"}

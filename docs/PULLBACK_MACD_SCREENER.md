@@ -45,7 +45,13 @@ A single scan fans out to four channels:
 2. **Candidate/incubator pipeline** — `ticker_strategy_classifications` + `watchlist_items` (source `pullback_macd`)
 3. **Telegram** — alert on **new** triggers only (tier flipped to trigger since last scan)
 4. **Approval queue** — advisory proposals into `paper_trade_proposals` for the configured tiers
-   (`proposal_tiers: [trigger, watch]`), `status=PENDING`, `auto_execution_label=manual` — operator approves
+   (`proposal_tiers: [trigger]` by default), `status=PENDING`, `auto_execution_label=manual` — operator approves
+
+> **Why trigger-only:** every PENDING broker-route proposal is picked up by `broker_promote_oversight`
+> for per-proposal local + cloud LLM review. Emitting watch-tier proposals too (21 in the first run)
+> spawned 22 concurrent oversight reviews and spiked machine load, starving the single-threaded API
+> server. Watch-tier names still appear on the tab and feed the pipeline — they just don't create
+> queue proposals. Set `proposal_tiers: [trigger, watch]` to re-enable (not recommended).
 
 ## Usage
 
