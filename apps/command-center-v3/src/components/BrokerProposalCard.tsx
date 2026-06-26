@@ -19,6 +19,20 @@ const TEAL = '#2dd4bf'
 
 const gateColor = (s: string) => s === 'PASS' ? GREEN : s === 'WARN' ? AMBER : s === 'BLOCK' ? RED : MUTED
 
+// Accurate, plain-language status labels. The raw enum APPROVED_FOR_PAPER_TEST is misleading — these
+// proposals are NOT paper-only; they're eligible for live Path-B broker routing to a real Schwab
+// account (2FA). Show what the status actually means to the operator.
+const STATUS_LABELS: Record<string, { label: string; title: string; color: string }> = {
+  APPROVED_FOR_PAPER_TEST: { label: 'Approved · route-eligible', color: GREEN,
+    title: 'Passed approval. Paper-testable AND eligible for LIVE Path-B broker routing to a real Schwab account (2FA required). "Paper test" alone is misleading — this is not paper-only.' },
+  PENDING: { label: 'Pending review', color: AMBER,
+    title: 'Awaiting agent + oversight review before it can route' },
+  APPROVED: { label: 'Approved · route-eligible', color: GREEN, title: 'Approved and eligible for Path-B broker routing (2FA)' },
+  EXPIRED: { label: 'Expired', color: MUTED, title: 'No longer routable — passed its expiry' },
+  REJECTED: { label: 'Rejected', color: RED, title: 'Rejected in review' },
+}
+const statusMeta = (s: any) => STATUS_LABELS[String(s || '').toUpperCase()] || null
+
 type Props = {
   proposal: any
   accounts: BrokerAccount[]
@@ -128,6 +142,22 @@ export default function BrokerProposalCard({
   )
   const gateBlocked = !operatorRoute && (gate === 'BLOCK' || ovStatus === 'BLOCK')
   const routeBlocked = hardGateViolations.length > 0 || savedShares < 1 || tradePlanBlocked
+  // Plain-language reason the Auto-route button is disabled — shown ON the card (not just a tooltip).
+  const routeBlockReason: string | null = (!routeBlocked && !gateBlocked) ? null
+    : tradePlanBlocked ? 'No authoritative trade plan — auto-route needs a real plan (target is R:R math only / gambling-blocked)'
+    : hardGateViolations.length ? String(hardGateViolations[0])
+    : (ovStatus === 'BLOCK' || gate === 'BLOCK') ? 'Oversight / gate BLOCK — resolve reviews before auto-route'
+    : savedShares < 1 ? 'No routable size on this proposal'
+    : 'Auto-route blocked — resolve hard gates first'
+  // Time until this proposal expires (how long it stays in this state).
+  const _expMs = p.expires_at ? (new Date(p.expires_at).getTime() - Date.now()) : null
+  const _expHrs = _expMs != null && !Number.isNaN(_expMs) ? _expMs / 3_600_000 : null
+  const expLabel = _expHrs == null ? null
+    : _expHrs <= 0 ? 'expired'
+    : _expHrs < 1 ? `${Math.round(_expHrs * 60)}m`
+    : _expHrs < 48 ? `${_expHrs.toFixed(_expHrs < 10 ? 1 : 0)}h`
+    : `${Math.floor(_expHrs / 24)}d ${Math.round(_expHrs % 24)}h`
+  const expColor = _expHrs == null ? MUTED : _expHrs <= 0 ? RED : _expHrs < 24 ? RED : _expHrs < 48 ? AMBER : TEAL
   // The card's left-section blocker box renders the consolidated ⛔ list. When it does, suppress
   // the duplicate ⛔/⚠ list inside BrokerIntelPanel's AI-oversight block so blockers show once.
   const cardShowsBlockers = gateBlocked || (!operatorRoute && oversized) || hardGateViolations.length > 0
@@ -217,13 +247,25 @@ export default function BrokerProposalCard({
         }}>{p.symbol}</span>
         {p.source_kind === 'proposal' && (
           <span
-            title={`Paper-source proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — not yet broker-routed`}
+            title={`Paper-source proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — eligible for Path-B broker routing (2FA), not auto-executed`}
             style={{
               fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
               background: 'rgba(45,212,191,.14)', color: TEAL, border: `1px solid ${TEAL}55`, textTransform: 'uppercase',
             }}
           >
             PROPOSAL{p.proposal_origin ? ` · ${p.proposal_origin}` : ''}
+          </span>
+        )}
+        {statusMeta(p.status) && (
+          <span
+            title={statusMeta(p.status)!.title}
+            style={{
+              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.2px',
+              background: `${statusMeta(p.status)!.color}1e`, color: statusMeta(p.status)!.color,
+              border: `1px solid ${statusMeta(p.status)!.color}55`,
+            }}
+          >
+            {statusMeta(p.status)!.label}
           </span>
         )}
         {liveQ.price != null ? (
@@ -412,6 +454,7 @@ export default function BrokerProposalCard({
               return chip('Backtest', parts.join(' · '), qc)
             })()}
             {chip('Journals', journalLabel, TEAL)}
+            {expLabel && chip('Expires', expLabel === 'expired' ? 'expired' : `in ${expLabel}`, expColor)}
           </div>
         )
       })()}
@@ -818,6 +861,15 @@ export default function BrokerProposalCard({
               style={{ fontSize: 11, fontWeight: 800, padding: '4px 8px', borderRadius: 5, cursor: routeBusy ? 'not-allowed' : 'pointer', border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.12)', color: BLUE }}
             >Code ✓</button>
             </div>
+          </div>
+        )}
+        {routeBlockReason && !fid && (
+          <div style={{ flex: '1 1 100%', display: 'flex', alignItems: 'flex-start', gap: 6, padding: '7px 10px', borderRadius: 7, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)' }}>
+            <span style={{ fontSize: 12, lineHeight: 1.2 }}>⛔</span>
+            <span style={{ fontSize: 11, color: '#fca5a5', fontWeight: 600, lineHeight: 1.4 }}>
+              <b style={{ color: RED }}>Auto-route blocked:</b> {routeBlockReason}
+              {expLabel && expLabel !== 'expired' && <span style={{ color: MUTED, fontWeight: 500 }}> · stays in this state until it expires in {expLabel}</span>}
+            </span>
           </div>
         )}
         <ActionButton variant="secondary" size="md" onClick={onManual}
