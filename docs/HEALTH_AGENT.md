@@ -147,9 +147,11 @@ cheap DB-aggregate checks:
 1. **Snapshot retention** — `options_chain_snapshots` oldest-row age vs
    `OPTIONS_SNAPSHOT_RETENTION_DAYS` (45) + `snapshot_grace_days` (7) → `options_snapshot_retention_stale`;
    row count vs `snapshot_row_warn` (50k) → `options_snapshot_table_bloat`.
-2. **Approval queue** — pending+blocked count vs `approval_backlog_warn` (20) →
-   `options_approval_backlog`; pending proposals past their 24h `expires_at` →
-   `options_approval_expired_pending`.
+2. **Approval queue** — **pending** count vs `approval_backlog_warn` (15) →
+   `options_approval_backlog` (a genuine operator-review lag). Auto-gated **blocked** items
+   (illiquid/earnings) aren't operator-actionable, so they get a separate softer info signal,
+   `options_approval_blocked_pileup`, at `blocked_pileup_warn` (30) — not the warning. Pending
+   past 24h `expires_at` → `options_approval_expired_pending`.
 
 Thresholds live under the `options_desk` policy block. Findings carry `WHY` hints and route as
 `refresh` (retention) / `review` (queue).

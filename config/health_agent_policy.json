@@ -46,9 +46,17 @@
     "_comment": "Enterprise options desk infra: chain-snapshot retention + approval-queue backlog.",
     "enabled": true,
     "approval_backlog_warn": 15,
+    "blocked_pileup_warn": 30,
     "expired_pending_warn": 1,
     "snapshot_grace_days": 7,
     "snapshot_row_warn": 50000
+  },
+  "pullback_macd_screener": {
+    "_comment": "Freshness of the daily S&P 500 pullback/approaching-MACD-cross screener.",
+    "enabled": true,
+    "scan_stale_hours": 30,
+    "check_after_hour": 18,
+    "min_universe": 400
   },
   "portfolio_price_freshness": {
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",

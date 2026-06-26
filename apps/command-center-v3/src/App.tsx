@@ -16,6 +16,7 @@ import RetirementHub from './pages/RetirementHub'
 import JournalHub from './pages/JournalHub'
 import WatchlistHub from './pages/WatchlistHub'
 import WatchpoolHub from './pages/WatchpoolHub'
+import PullbackMacdHub from './pages/PullbackMacdHub'
 import SectorsHub from './pages/SectorsHub'
 import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
@@ -59,6 +60,7 @@ function Shell() {
             <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
             <Route path="watchlist" element={<WatchlistHub onDrill={setDrill} />} />
             <Route path="watchpool" element={<WatchpoolHub onDrill={setDrill} />} />
+            <Route path="pullback-macd" element={<PullbackMacdHub onDrill={setDrill} />} />
             <Route path="sectors" element={<SectorsHub onDrill={setDrill} />} />
             <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
             <Route path="rotation" element={<RotationIntelligence />} />

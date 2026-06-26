@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-06-26 - Pullback / MACD screener (new tool)
+
+New daily S&P 500 screener: **uptrend names ~20% off their 52-week high with MACD approaching a
+bullish cross** — a counter-trend dip-buy discovery tool. Dry-tested on the full S&P 500
+before build (500 screened → ~208 uptrend → ~22 pullback → ~1 trigger; the setup is intentionally
+rare). Advisory only — proposals require operator approval, nothing auto-executes.
+
+- Engine `scripts/pullback_macd_screener.py` (pandas-native MACD/SMA, yfinance data, `--dry-run`)
+- Tables `migrations/2026_06_26_pullback_macd_screener.sql`; config `config/pullback_macd_screener.yaml`
+- Two tiers (trigger / watch); fans out to: candidates table + `GET /api/v2/pullback-macd/candidates`
+  + Command Center **Pullback/MACD** screen (amber pullback banner), candidate/incubator pipeline,
+  Telegram (new triggers), and advisory proposals into the approval queue (trigger + watch).
+- Cron `40 16 * * 1-5`; health collector `collect_pullback_macd_screener` (freshness + universe size).
+- Doc: `docs/PULLBACK_MACD_SCREENER.md`.
+
+## 2026-06-26 - Options approval-queue backlog triage
+
+Investigating the 19-item options approval-queue "backlog" (surfaced by the new health
+check) showed all 19 were auto-**blocked** by liquidity gates (illiquid OI/volume/spread),
+none operator-approvable. Three fixes:
+
+1. **CASH data bug** (`options_engine.py`) — the covered-call generator iterated holdings
+   without an `is_cash` guard (the protective-put generator already had one), producing
+   nonsensical covered calls on `CASH` sweep lines. Added the guard; regeneration confirmed
+   zero CASH proposals.
+2. **Metric semantics** (`health_agent.py`) — `options_approval_backlog` now counts only
+   **pending** (a real operator-review lag, `approval_backlog_warn` 15); auto-gated **blocked**
+   items get a separate softer info signal `options_approval_blocked_pileup`
+   (`blocked_pileup_warn` 30) instead of tripping the warning.
+3. **Queue cleanup** — bulk-rejected the 19 blocked items (content-stable IDs → sticks).
+   Combined with (2), the warning clears and stays clear as new blocked contracts churn in.
+
 ## 2026-06-26 - Options Desk: global snapshot retention sweep
 
 Added `prune_chain_snapshots()` (global, all-symbol retention) to

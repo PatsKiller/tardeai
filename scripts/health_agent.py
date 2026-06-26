@@ -889,7 +889,11 @@ WHY = {
     "options_proposals_stale": "Options proposal cache is stale — UI may show outdated or empty ideas.",
     "options_snapshot_retention_stale": "options_chain_snapshots isn't being pruned — the vol-surface table grows unbounded (retention regression).",
     "options_snapshot_table_bloat": "options_chain_snapshots row count is high — confirm the daily retention sweep is running.",
-    "options_approval_backlog": "Desk approval queue is backing up — options proposals aren't being reviewed/approved, blocking the live path.",
+    "options_approval_backlog": "Desk approval queue is backing up — pending options proposals aren't being reviewed/approved, blocking the live path.",
+    "options_approval_blocked_pileup": "Many options proposals are auto-blocked (illiquid/gated) — not an operator-review lag, but the desk universe or liquidity gates may need a look.",
+    "pullback_macd_scan_stale": "The daily S&P 500 pullback/MACD screener hasn't run recently — the dip-buy candidate list is going stale.",
+    "pullback_macd_no_runs": "The pullback/MACD screener has never recorded a run — cron may not be installed yet.",
+    "pullback_macd_universe_thin": "The S&P 500 constituent table is under-populated — the weekly universe refresh may be failing, shrinking screener coverage.",
     "options_approval_expired_pending": "Pending options approvals have passed their 24h expiry without review — the queue isn't being cleaned.",
     "trade_proposals_backlog": "Many trade proposals are pending — approval queue may be clogged.",
     "watchlist_stale": "Watchlist items haven't been refreshed — rotation/options synergy may be weak.",
@@ -1051,21 +1055,31 @@ def collect_options_desk_health() -> list[dict]:
                               f"options_chain_snapshots has {n:,} rows (>{row_warn:,}) — verify retention sweep",
                               rows=n))
 
-        # (2) Approval queue: backlog of unreviewed proposals + expired-but-still-pending.
+        # (2) Approval queue. Backlog warning counts only PENDING (a genuine operator-review
+        # lag); BLOCKED items are auto-gated (illiquid/earnings/etc.), not actionable by an
+        # operator, so they get a separate softer info signal rather than tripping the warning.
         q = _db("""SELECT
-                     count(*) FILTER (WHERE status IN ('pending','blocked')) AS open_items,
+                     count(*) FILTER (WHERE status='pending') AS pending,
+                     count(*) FILTER (WHERE status='blocked') AS blocked,
                      count(*) FILTER (WHERE status='pending'
                                       AND expires_at IS NOT NULL AND expires_at < NOW()) AS expired_pending
                    FROM options_approval_queue""", fetch="one")
         if q:
-            open_items = int(q.get("open_items") or 0)
+            pending = int(q.get("pending") or 0)
+            blocked = int(q.get("blocked") or 0)
             expired_pending = int(q.get("expired_pending") or 0)
-            backlog_warn = int(cfg.get("approval_backlog_warn", 20))
-            if open_items >= backlog_warn:
+            backlog_warn = int(cfg.get("approval_backlog_warn", 15))
+            blocked_warn = int(cfg.get("blocked_pileup_warn", 30))
+            if pending >= backlog_warn:
                 out.append(_f("execution_health", "options_approval_backlog", "warning",
-                              f"{open_items} options proposals pending/blocked in desk approval queue "
+                              f"{pending} options proposals pending in desk approval queue "
                               f"(>{backlog_warn}) — operator review lagging",
-                              count=open_items))
+                              count=pending, blocked=blocked))
+            if blocked >= blocked_warn:
+                out.append(_f("execution_health", "options_approval_blocked_pileup", "info",
+                              f"{blocked} options proposals auto-blocked (illiquid/gated) in queue "
+                              f"(>{blocked_warn}) — review desk universe or liquidity gates",
+                              count=blocked))
             if expired_pending >= int(cfg.get("expired_pending_warn", 1)):
                 out.append(_f("execution_health", "options_approval_expired_pending",
                               "warning" if expired_pending >= 5 else "info",
@@ -1075,6 +1089,43 @@ def collect_options_desk_health() -> list[dict]:
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info",
                       f"options_desk health check error: {e}"))
+    return out
+
+
+def collect_pullback_macd_screener() -> list[dict]:
+    """Freshness of the S&P 500 pullback/MACD screener — did the daily scan run, and is the
+    universe populated. Advisory; cheap DB reads."""
+    out = []
+    cfg = (_POLICY.get("pullback_macd_screener") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        run = _db("SELECT scan_date, screened, trigger_count, watch_count, created_at "
+                  "FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
+        try:
+            from market_session import is_trading_day
+            trading = is_trading_day()
+        except Exception:
+            trading = datetime.now().weekday() < 5
+        stale_h = float(cfg.get("scan_stale_hours", 30))
+        if run is None:
+            if trading and datetime.now().hour >= int(cfg.get("check_after_hour", 18)):
+                out.append(_f("execution_health", "pullback_macd_no_runs", "info",
+                              "Pullback/MACD screener has no recorded runs yet", kind="code"))
+        else:
+            age_h = _db_age_h("SELECT created_at FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1")
+            if age_h is not None and age_h > stale_h:
+                out.append(_f("execution_health", "pullback_macd_scan_stale", "warning",
+                              f"Pullback/MACD scan {age_h:.0f}h old (>{stale_h:.0f}h) — daily cron may be down",
+                              age_h=age_h, last_scan=str(run.get("scan_date"))))
+        uni = _db("SELECT count(*) AS n FROM sp500_constituents WHERE active", fetch="one")
+        if uni and int(uni.get("n") or 0) < int(cfg.get("min_universe", 400)):
+            out.append(_f("execution_health", "pullback_macd_universe_thin", "warning",
+                          f"S&P 500 universe table has {uni['n']} active names (<{cfg.get('min_universe',400)}) "
+                          f"— constituent refresh may be failing", count=int(uni["n"])))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"pullback_macd screener check error: {e}"))
     return out
 
 
@@ -1090,6 +1141,7 @@ COLLECTORS = [
     collect_pipeline_freshness,
     collect_proposal_integrity,
     collect_options_desk_health,
+    collect_pullback_macd_screener,
 ]
 
 

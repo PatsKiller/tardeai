@@ -1,0 +1,41 @@
+# Pullback + approaching-MACD-cross screener — all thresholds config-driven (no hardcoded values).
+pullback_macd_screener:
+  enabled: true
+  universe: sp500
+
+  # --- signal thresholds (approved: 12-28% pullback band) ---
+  pullback_min_pct: 12.0
+  pullback_max_pct: 28.0
+  pullback_target_pct: 20.0
+  lookback_high_days: 252        # 52-week high window
+  min_bars: 205
+
+  sma_fast: 50
+  sma_slow: 200
+  require_sma50_rising: true
+  sma50_rising_lookback: 5
+
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  hist_rising_bars: 2            # histogram must rise this many consecutive bars
+  macd_proximity_pct: 0.6       # |MACD-signal| / price (%) — distance that counts as "approaching"
+
+  # --- optional confirmations ---
+  rsi_confirm: false
+  rsi_period: 14
+  rsi_max: 50                    # only when rsi_confirm true: require RSI below this (room to run)
+
+  # --- proposal sizing / risk (advisory) ---
+  atr_period: 14
+  stop_atr_mult: 1.5            # stop = entry - stop_atr_mult * ATR
+  rr_target: 2.0               # target1 = entry + rr_target * (entry - stop)
+  proposal_notional_usd: 5000   # advisory size; operator re-sizes at approval
+
+  # --- outputs (approved: all three; proposals for trigger + watch) ---
+  emit_proposals: true
+  proposal_tiers: [trigger, watch]
+  proposal_expiry_hours: 48
+  default_strategy_id: pullback_macd_reversal
+  telegram_alerts: true
+  feed_candidate_pipeline: true
