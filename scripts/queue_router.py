@@ -82,6 +82,12 @@ def route_proposal(pid: int, *, actor: str = "system", trade: dict | None = None
             from proposal_paper_submitter import submit_paper
             res = submit_paper(pid)
             ok = bool(res and (res.get("ok") or res.get("success")))
+            if ok:
+                try:
+                    import proposal_live_submit_tag as _tag
+                    _tag.tag_proposal_live_submit(pid, live_submit_path="paper_auto")
+                except Exception:
+                    pass
             _set_routing_state(pid, "routed" if ok else "rejected")
             _audit({"broker": broker, "ok": ok}, "alpaca paper submit")
             return {"ok": ok, "broker": broker, "symbol": symbol, "detail": res}
@@ -132,6 +138,11 @@ def route_proposal(pid: int, *, actor: str = "system", trade: dict | None = None
     # ── Fidelity — no trading API; the proposal IS the record (operator executes at Fidelity) ──
     if broker.startswith("fidelity"):
         _set_routing_state(pid, "routed")   # recorded as a manual trade to place at Fidelity
+        try:
+            import proposal_live_submit_tag as _tag
+            _tag.tag_proposal_live_submit(pid, live_submit_path="record_only")
+        except Exception:
+            pass
         _audit({"broker": broker, "record_only": True}, "fidelity record-only (no API)")
         return {"ok": True, "broker": broker, "symbol": symbol, "record_only": True,
                 "detail": "Fidelity has no trading API — recorded as a manual trade; execute it at Fidelity."}

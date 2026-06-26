@@ -689,9 +689,13 @@ def evaluate_oversight(proposal_id: int, *, cloud: dict | None = None) -> dict:
         violations.append("Grok/ChatGPT cloud review DISAGREE with local thesis")
     elif cloud_status == "caution" and lanes_ok >= 1:
         warnings.append("Grok/ChatGPT cloud review CAUTION — review concerns before sending")
-    elif cloud_status in ("disagree", "caution") and lanes_ok < 1:
-        # Fail-closed (visible): a verdict with 0 usable lanes is inconclusive, not a silent pass.
-        warnings.append("Cloud oversight INCONCLUSIVE — 0 lanes returned a usable verdict; re-run Grok+ChatGPT before sending")
+    elif cloud_status in ("disagree", "caution", "error") and lanes_ok < 1:
+        # Fail-closed: 0 usable lanes means inconclusive — BLOCK promote, not silent pass.
+        violations.append(
+            "Cloud oversight INCONCLUSIVE — 0 lanes returned a usable verdict; re-run Grok+ChatGPT before promote"
+        )
+    elif cloud_status == "agree" and lanes_ok < 1:
+        violations.append("Cloud oversight AGREE claimed but 0 lanes OK — re-run Grok+ChatGPT before promote")
     elif cloud_status == "running":
         warnings.append("Cloud oversight running (Grok+ChatGPT) — refresh in a minute")
     elif cloud_status in ("not_run", "unknown", ""):
@@ -838,10 +842,15 @@ def build_promote_diligence_stages(
         research = _stage("PASS", f"Critic {critic or '—'}")
 
     # 5 Cloud oversight
-    if cloud_st == "disagree":
+    lanes_ok = int((cloud.get("consensus") or {}).get("lanes_ok") or 0)
+    if cloud_st in ("disagree", "caution", "error") and lanes_ok < 1:
+        cloud_stage = _stage("BLOCK", "Cloud INCONCLUSIVE (0 lanes)", "Re-run Grok+ChatGPT review")
+    elif cloud_st == "disagree":
         cloud_stage = _stage("BLOCK", "Grok+ChatGPT DISAGREE", "Reconcile thesis or reject")
     elif cloud_st == "caution":
         cloud_stage = _stage("WARN", "Cloud CAUTION", "Read cloud concerns")
+    elif cloud_st == "agree" and lanes_ok < 1:
+        cloud_stage = _stage("BLOCK", "Cloud AGREE but 0 lanes", "Re-run Grok+ChatGPT review")
     elif cloud_st == "agree":
         cloud_stage = _stage("PASS", "Cloud AGREE")
     elif cloud_st == "running":

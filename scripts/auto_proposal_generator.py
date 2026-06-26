@@ -40,6 +40,39 @@ BASE = str(PROJECT_ROOT)
 PYTHON = str(PROJECT_ROOT / ".venv" / "bin" / "python")
 
 
+def _unified_edge_for_signal(signal: dict, sizing: dict | None = None) -> float:
+    """Shared 0–100 edge composite for candidate ranking (see unified_edge_score.py)."""
+    try:
+        from unified_edge_score import edge_from_trade_context
+    except ImportError:
+        return float(signal.get("signal_score") or 0)
+    entry = float(signal.get("entry_high") or 0)
+    stop = float(signal.get("stop_loss") or 0)
+    target = float(signal.get("target_1") or 0)
+    rr = None
+    if sizing:
+        rr = sizing.get("rr")
+    if rr is None and entry > stop > 0 and target > entry:
+        rr = (target - entry) / (entry - stop)
+    intel = signal.get("intel_readiness")
+    catalyst_strength = 0.85 if signal.get("catalyst_verified") else 0.45
+    if intel is not None:
+        try:
+            catalyst_strength = max(catalyst_strength, float(intel) / 100.0)
+        except (TypeError, ValueError):
+            pass
+    score = float(signal.get("signal_score") or 0)
+    return edge_from_trade_context({
+        "risk_reward": rr or signal.get("rr") or 0.5,
+        "catalyst_strength": catalyst_strength,
+        "confidence": score / 100.0 if score else 0.5,
+        "technical_score": signal.get("confluence_score") or score or 50,
+        "regime_alignment": 50,
+        "pop_pct": 55,
+        "iv_rank": 25,
+    })
+
+
 def _enrich_proposal_async(proposal_id: int, symbol: str):
     """Kick off enrichment pipeline for a new proposal in a background thread.
 
@@ -445,6 +478,20 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
             rows.sort(key=lambda r: r.get("_effective_score", 0), reverse=True)
     except Exception:
         pass
+    # Unified edge ranker (L10 maturity): final sort key blends tilt/source weighting with the
+    # shared 0–100 composite so high-edge candidates surface first across strategies.
+    try:
+        for r in rows:
+            edge = _unified_edge_for_signal(r)
+            r["_unified_edge"] = edge
+            base = float(r.get("_effective_score", r.get("signal_score") or 0))
+            r["_effective_score"] = base + edge * 0.15
+        rows.sort(
+            key=lambda r: (r.get("_effective_score", 0), r.get("_unified_edge", 0)),
+            reverse=True,
+        )
+    except Exception:
+        pass
     return rows
 
 
@@ -558,13 +605,27 @@ def rank_proposals_for_symbol(conn, symbol: str, window_hours: int = 24):
     cur = conn.cursor()
     # Get all proposals for this symbol in the time window
     cur.execute("""
-        SELECT id, strategy_id, signal_score, confidence_score
+        SELECT id, strategy_id, signal_score, confidence_score,
+               proposed_rr, catalyst_verified, intel_readiness, rvol
         FROM paper_trade_proposals
         WHERE symbol = %s
           AND created_at > NOW() - (%s || ' hours')::interval
           AND status NOT IN ('REJECTED', 'RISK_BLOCKED')
-        ORDER BY COALESCE(signal_score, 0) DESC, COALESCE(confidence_score, 0) DESC
     """, [symbol, str(window_hours)])
+    raw_rows = cur.fetchall()
+    ranked_rows = []
+    for pid, strat, score, conf, rr, cat_ver, intel, rvol in raw_rows:
+        edge = _unified_edge_for_signal({
+            "signal_score": score,
+            "strategy_id": strat,
+            "rr": rr,
+            "catalyst_verified": cat_ver,
+            "intel_readiness": intel,
+            "rvol": rvol,
+        })
+        ranked_rows.append((edge, float(score or 0), float(conf or 0), pid, strat, score, conf))
+    ranked_rows.sort(key=lambda x: (-x[0], -x[1], -x[2]))
+    rows = [(r[3], r[4], r[5], r[6]) for r in ranked_rows]
     rows = cur.fetchall()
     if len(rows) <= 1:
         # Single proposal or none — mark it as top pick if it exists
@@ -976,7 +1037,10 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "origin": "auto",
         "routing_state": "unassigned",
         "equity_at_proposal": (sizing.get("sizing_basis") or {}).get("equity"),
-        "sizing_basis": json.dumps(sizing.get("sizing_basis") or {}),
+        "sizing_basis": json.dumps({
+            **(sizing.get("sizing_basis") or {}),
+            "unified_edge": _unified_edge_for_signal(signal, sizing),
+        }),
     }
 
     # Filter to existing columns
@@ -1101,7 +1165,8 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
             score = 0.0
         tilt = float(_tilt_map.get(sid, 1.0))
         prio = STRATEGY_PRIORITY.index(sid) if sid in STRATEGY_PRIORITY else 99
-        return (-(score * tilt), prio)   # highest tilt-weighted score first; priority breaks ties
+        edge = _unified_edge_for_signal(s)
+        return (-(score * tilt + edge * 0.15), prio)   # tilt-weighted score + unified edge; priority breaks ties
     by_symbol = {}
     for sig in signals:
         by_symbol.setdefault(sig["symbol"], []).append(sig)
@@ -1116,7 +1181,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     chosen = cand
                     break
         deduped.append(chosen)
-    deduped.sort(key=lambda s: -(s.get("signal_score") or 0))
+    deduped.sort(key=lambda s: -(_unified_edge_for_signal(s) * 0.15 + float(s.get("signal_score") or 0)))
     if limit:
         deduped = deduped[:limit]
 

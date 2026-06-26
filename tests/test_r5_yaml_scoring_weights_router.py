@@ -36,10 +36,10 @@ class TestWeightedScoring(unittest.TestCase):
     def test_04_fallback_when_no_weights(self):
         from multi_setup_router import evaluate_strategy_match
         from strategy_config_loader import load_strategy_config
-        cfg = load_strategy_config("recovery_watch")
+        cfg = load_strategy_config("core_index")
         signal = {"symbol": "T", "price": 10.0, "rvol": 2.0}
         r = evaluate_strategy_match(cfg, signal)
-        self.assertFalse(r["scoring_weights_used"])  # recovery_watch has no scoring_weights
+        self.assertFalse(r["scoring_weights_used"])  # core_index has no scoring_weights
 
     def test_05_weighted_score_has_raw_and_normalized(self):
         from multi_setup_router import evaluate_strategy_match
@@ -103,8 +103,7 @@ class TestSafety(unittest.TestCase):
     def test_14_sp2c_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_sp2c_route_audit_pipeline_wiring.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2c_route_audit_pipeline_wiring.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"SP-2C tests failed:\n{r.stderr}")
@@ -112,8 +111,7 @@ class TestSafety(unittest.TestCase):
     def test_15_sp2b_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_sp2b_route_audit_repair.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2b_route_audit_repair.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"SP-2B tests failed:\n{r.stderr}")

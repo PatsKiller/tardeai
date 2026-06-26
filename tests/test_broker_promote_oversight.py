@@ -63,7 +63,11 @@ class TestBrokerPromoteOversight(unittest.TestCase):
             "cloud_review": {"status": "not_run"},
             "lanes_available": {"grok": True, "chatgpt": False},
         }
-        with patch.object(bpo, "get_oversight_snapshot", return_value=snap):
+        intel_dd = {"ok": True, "violations": [], "warnings": []}
+        tp_gate = {"status": "PASS", "violations": [], "warnings": []}
+        with patch.object(bpo, "get_oversight_snapshot", return_value=snap), \
+             patch.object(bpo, "evaluate_intel_diligence", return_value=intel_dd), \
+             patch("broker_trade_plan_gate.assess_proposal_trade_plan", return_value=tp_gate):
             ev = bpo.evaluate_oversight(1)
         self.assertEqual(ev["status"], "WARN")
         self.assertTrue(ev["allowed"])
@@ -97,10 +101,10 @@ class TestBrokerPromoteOversight(unittest.TestCase):
         stages = bpo.build_promote_diligence_stages(
             1, snap=snap, intel_row=intel_row, intel_dd=intel_dd, oversight=oversight,
         )
-        self.assertEqual(len(stages), 6)
+        self.assertEqual(len(stages), 7)
         self.assertEqual(stages[0]["id"], "enrich")
         self.assertEqual(stages[1]["status"], "PENDING")
-        self.assertEqual(stages[5]["id"], "broker")
+        self.assertEqual(stages[6]["id"], "broker")
 
     def test_next_action_from_stages(self):
         stages = [
@@ -116,10 +120,31 @@ class TestBrokerPromoteOversight(unittest.TestCase):
             "cloud_review": {"status": "running", "auto_queued": True},
             "lanes_available": {"grok": True, "chatgpt": True},
         }
-        with patch.object(bpo, "get_oversight_snapshot", return_value=snap):
+        intel_dd = {"ok": True, "violations": [], "warnings": []}
+        tp_gate = {"status": "PASS", "violations": [], "warnings": []}
+        with patch.object(bpo, "get_oversight_snapshot", return_value=snap), \
+             patch.object(bpo, "evaluate_intel_diligence", return_value=intel_dd), \
+             patch("broker_trade_plan_gate.assess_proposal_trade_plan", return_value=tp_gate):
             ev = bpo.evaluate_oversight(1)
         self.assertEqual(ev["status"], "WARN")
         self.assertTrue(any("running" in w.lower() for w in ev["warnings"]))
+
+    def test_blocks_cloud_disagree_zero_lanes(self):
+        snap = {
+            "agents": {"required": list(bpo.REQUIRED_AGENTS), "pending": [], "reviews": []},
+            "local_llm": {"status": "complete"},
+            "cloud_review": {"status": "disagree", "consensus": {"verdict": "DISAGREE", "lanes_ok": 0}},
+            "lanes_available": {},
+        }
+        intel_dd = {"ok": True, "violations": [], "warnings": []}
+        tp_gate = {"status": "PASS", "violations": [], "warnings": []}
+        with patch.object(bpo, "get_oversight_snapshot", return_value=snap), \
+             patch.object(bpo, "evaluate_intel_diligence", return_value=intel_dd), \
+             patch("broker_trade_plan_gate.assess_proposal_trade_plan", return_value=tp_gate):
+            ev = bpo.evaluate_oversight(1)
+        self.assertEqual(ev["status"], "BLOCK")
+        self.assertFalse(ev["allowed"])
+        self.assertTrue(any("INCONCLUSIVE" in v for v in ev["violations"]))
 
     def test_needs_cloud_when_thesis_ready(self):
         with patch.object(bpo, "AUTO_CLOUD_OVERSIGHT", True), \

@@ -101,8 +101,7 @@ class TestReportScripts(unittest.TestCase):
     def test_16_existing_sp1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_sp1_strategy_proof_governance.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp1_strategy_proof_governance.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=60
         )
         self.assertEqual(r.returncode, 0, f"SP-1 tests failed:\n{r.stderr}")

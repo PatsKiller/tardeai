@@ -95,6 +95,7 @@ def main():
             END,
             updated_at = NOW()
         WHERE status IN ('PENDING', 'APPROVED', 'APPROVED_FOR_PAPER_TEST')
+          AND paper_trade_id IS NULL
           AND (
             created_at < NOW() - INTERVAL '24 hours'
             OR (action_state = 'BLOCKED' AND created_at < NOW() - INTERVAL '4 hours')

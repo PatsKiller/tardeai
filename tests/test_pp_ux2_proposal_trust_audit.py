@@ -150,8 +150,7 @@ class TestSafety(unittest.TestCase):
     def test_21_existing_ppux1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_pp_ux1_paper_proposals_decision_packet.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_pp_ux1_paper_proposals_decision_packet.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"PP-UX-1 tests failed:\n{r.stderr}")

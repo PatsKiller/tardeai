@@ -38,12 +38,13 @@ _TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
 _TELEM_KEY="proactive_quote_refresh"
 
 set +e
-$PY "$PROJ/scripts/run_proactive_quote_refresh.py" \
-  --mode "$MODE_VAL" \
-  --limit "$LIMIT_VAL" \
-  --apply \
-  2>&1 | while IFS= read -r line; do log "$line"; done
-_EXIT=$?
+flock -n "$LOCK" -c "
+  $PY \"$PROJ/scripts/run_proactive_quote_refresh.py\" \
+    --mode \"$MODE_VAL\" \
+    --limit \"$LIMIT_VAL\" \
+    --apply
+" 2>&1 | while IFS= read -r line; do log "$line"; done
+_EXIT=${PIPESTATUS[0]}
 set -e
 
 _TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"

@@ -617,7 +617,7 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
                 cur.execute("""
                     UPDATE paper_trade_proposals
                     SET current_price=%s, price_drift_pct=%s, entry_zone_status=%s,
-                        lifecycle_status='EXPIRED', status='expired',
+                        lifecycle_status='EXPIRED', status='EXPIRED',
                         lifecycle_message='Entry missed — price drifted >15%%',
                         last_price_checked_at=NOW(), last_price_source=%s, updated_at=NOW()
                     WHERE id=%s

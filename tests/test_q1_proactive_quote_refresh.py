@@ -108,8 +108,7 @@ class TestSafety(unittest.TestCase):
     def test_20_r2_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
-             "tests/test_r2_family_liquidity_gating.py"],
+            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_r2_family_liquidity_gating.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"R-2 tests failed:\n{r.stderr}")

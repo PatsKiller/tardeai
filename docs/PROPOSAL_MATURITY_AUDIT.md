@@ -78,5 +78,5 @@ Policy: `config/health_agent_policy.json` → `proposal_maturity` section.
 - [x] Health agent cross-module monitoring
 - [x] Command Center UI (OptionsHub + Health panel)
 - [x] Audit trail (`options_engine.jsonl`)
-- [ ] Unified edge in trade proposal ranker (next PR)
+- [x] Unified edge in trade proposal ranker (`auto_proposal_generator.py` + `sizing_basis.unified_edge`)
 - [ ] Home dashboard proposal health chip (optional)

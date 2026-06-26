@@ -323,6 +323,16 @@ def persist_route_result(proposal_id: int, submit_res: dict, intent) -> None:
            WHERE id=%s""",
         (broker_oid, json.dumps(route_meta), proposal_id),
     )
+    try:
+        import proposal_live_submit_tag as _tag
+        _tag.tag_proposal_live_submit(
+            proposal_id,
+            live_submit_path="queue_route_2fa",
+            correlation_id=str(getattr(intent, "correlation_id", "") or "") or None,
+            intent_id=str(getattr(intent, "intent_id", "") or "") or None,
+        )
+    except Exception:
+        pass
 
     cur.execute(
         """SELECT id FROM paper_trades

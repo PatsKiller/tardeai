@@ -152,6 +152,20 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     approval_service.consume(intent.intent_id)              # single-use: burn the 2FA set NOW
     cur.execute("UPDATE schwab_pilot_orders SET status='submitted', broker_order_id=%s, updated_at=NOW() "
                 "WHERE id=%s", (order_id, row_id)); conn.commit()
+    if kind == "canary":
+        try:
+            ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+            pid = ev.get("proposal_id")
+            if pid:
+                import proposal_live_submit_tag as _tag
+                _tag.tag_proposal_live_submit(
+                    int(pid),
+                    live_submit_path="canary_pilot",
+                    correlation_id=str(getattr(intent, "correlation_id", "") or "") or None,
+                    intent_id=str(getattr(intent, "intent_id", "") or "") or None,
+                )
+        except Exception:
+            pass
     readback = None
     try:
         _rate_acquire()
