@@ -887,6 +887,10 @@ WHY = {
     "hermes_coordinator_stale": "Hermes coordinator hasn't ticked — auto-promote and fleet agents may be stalled.",
     "options_zero_proposals": "Options desk produced zero proposals — income/CC opportunities may be invisible in Command Center.",
     "options_proposals_stale": "Options proposal cache is stale — UI may show outdated or empty ideas.",
+    "options_snapshot_retention_stale": "options_chain_snapshots isn't being pruned — the vol-surface table grows unbounded (retention regression).",
+    "options_snapshot_table_bloat": "options_chain_snapshots row count is high — confirm the daily retention sweep is running.",
+    "options_approval_backlog": "Desk approval queue is backing up — options proposals aren't being reviewed/approved, blocking the live path.",
+    "options_approval_expired_pending": "Pending options approvals have passed their 24h expiry without review — the queue isn't being cleaned.",
     "trade_proposals_backlog": "Many trade proposals are pending — approval queue may be clogged.",
     "watchlist_stale": "Watchlist items haven't been refreshed — rotation/options synergy may be weak.",
     "rotation_empty": "No rotation recommendations staged — capital redeployment signals may be missing.",
@@ -1014,6 +1018,66 @@ def collect_proposal_integrity() -> list[dict]:
     return out
 
 
+def collect_options_desk_health() -> list[dict]:
+    """Enterprise options desk infra health — covers the layer the proposal-output checks
+    (collect_proposal_maturity) don't: (1) vol-surface snapshot retention actually keeping
+    options_chain_snapshots bounded, and (2) the operator approval queue not backing up or
+    sitting on expired-but-unreviewed proposals. Both are cheap DB aggregates; advisory only."""
+    out = []
+    cfg = (_POLICY.get("options_desk") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        import os as _os
+        retention_days = int(_os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
+        grace_days = int(cfg.get("snapshot_grace_days", 7))
+        row_warn = int(cfg.get("snapshot_row_warn", 50000))
+
+        # (1) Retention: oldest snapshot should never exceed retention window + grace.
+        snap = _db("""SELECT count(*) AS n,
+                             EXTRACT(DAY FROM NOW() - MIN(captured_at))::int AS oldest_days
+                      FROM options_chain_snapshots""", fetch="one")
+        if snap:
+            n = int(snap.get("n") or 0)
+            oldest = snap.get("oldest_days")
+            oldest = int(oldest) if oldest is not None else None
+            if oldest is not None and oldest > retention_days + grace_days:
+                out.append(_f("execution_health", "options_snapshot_retention_stale", "warning",
+                              f"Oldest options_chain_snapshots row is {oldest}d old "
+                              f"(> {retention_days}d retention + {grace_days}d grace) — prune not running",
+                              oldest_days=oldest, retention_days=retention_days, rows=n))
+            if n >= row_warn:
+                out.append(_f("execution_health", "options_snapshot_table_bloat", "info",
+                              f"options_chain_snapshots has {n:,} rows (>{row_warn:,}) — verify retention sweep",
+                              rows=n))
+
+        # (2) Approval queue: backlog of unreviewed proposals + expired-but-still-pending.
+        q = _db("""SELECT
+                     count(*) FILTER (WHERE status IN ('pending','blocked')) AS open_items,
+                     count(*) FILTER (WHERE status='pending'
+                                      AND expires_at IS NOT NULL AND expires_at < NOW()) AS expired_pending
+                   FROM options_approval_queue""", fetch="one")
+        if q:
+            open_items = int(q.get("open_items") or 0)
+            expired_pending = int(q.get("expired_pending") or 0)
+            backlog_warn = int(cfg.get("approval_backlog_warn", 20))
+            if open_items >= backlog_warn:
+                out.append(_f("execution_health", "options_approval_backlog", "warning",
+                              f"{open_items} options proposals pending/blocked in desk approval queue "
+                              f"(>{backlog_warn}) — operator review lagging",
+                              count=open_items))
+            if expired_pending >= int(cfg.get("expired_pending_warn", 1)):
+                out.append(_f("execution_health", "options_approval_expired_pending",
+                              "warning" if expired_pending >= 5 else "info",
+                              f"{expired_pending} pending options approval(s) past their 24h expiry — "
+                              f"queue not being cleaned",
+                              count=expired_pending))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"options_desk health check error: {e}"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_execution_health,
@@ -1025,6 +1089,7 @@ COLLECTORS = [
     collect_log_errors,
     collect_pipeline_freshness,
     collect_proposal_integrity,
+    collect_options_desk_health,
 ]
 
 
