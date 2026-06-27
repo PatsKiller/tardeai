@@ -605,6 +605,37 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             marker_warnings.append(f"{m['type']} {p} above session high {max_high}")
 
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
+
+    def _bar_et_label(tkey):
+        """Bar unix key -> ET wall-clock label (matches chart axis)."""
+        if tkey is None:
+            return None
+        d = dt.datetime.fromtimestamp(int(tkey), tz=dt.timezone.utc)
+        return d.strftime("%H:%M:%S ET")
+
+    # Time integrity: fill timestamp vs snapped marker bar (catches midnight-date regressions).
+    time_warnings = []
+    time_integrity = {"fill_source": fill_source, "entry_fill_et": et(ent), "exit_fill_et": et(ext)}
+    hold_sec = int((ext - ent).total_seconds()) if ext and ent else None
+    time_integrity["hold_seconds"] = hold_sec
+    max_bar_delta = 90 if timeframe != "1Day" else 86400
+    for m in markers:
+        label = _bar_et_label(m["time"])
+        fill_ts = ent if m["type"] == "entry" else ext
+        time_integrity[f"{m['type']}_marker_et"] = label
+        if fill_ts:
+            fill_key = _et_ts(fill_ts.astimezone(dt.timezone.utc).isoformat())
+            delta = abs(int(m["time"]) - fill_key)
+            time_integrity[f"{m['type']}_delta_sec"] = delta
+            if delta > max_bar_delta:
+                time_warnings.append(
+                    f"{m['type']} fill {et(fill_ts)} vs marker bar {label} (Δ{delta}s)")
+
+    if same_day and fill_source == "caller" and not (_has_clock(entry_time) or _has_clock(exit_time)):
+        time_warnings.append("fill times not resolved — pass trade_key or entry_time")
+
+    times_valid = not time_warnings
+
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
             "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
@@ -613,7 +644,9 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             "fill_times": {"entry": ent.isoformat(), "exit": ext.isoformat(), "source": fill_source},
             "price_bounds": {"min_low": round(min_low, 6), "max_high": round(max_high, 6)},
             "integrity": {"marker_in_range": marker_in_range, "marker_aligned": marker_aligned,
-                            "marker_warnings": marker_warnings, "marker_meta": marker_meta}}
+                            "marker_warnings": marker_warnings, "marker_meta": marker_meta,
+                            "time_integrity": time_integrity, "time_warnings": time_warnings,
+                            "times_valid": times_valid}}
 
 
 if __name__ == "__main__":
