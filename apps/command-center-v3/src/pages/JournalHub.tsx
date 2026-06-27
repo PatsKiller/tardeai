@@ -21,6 +21,7 @@ import ManualEntryPanel from '../components/tradeinview/ManualEntryPanel'
 import OptionsJournalPanel from '../components/tradeinview/OptionsJournalPanel'
 import SessionRecapPanel from '../components/tradeinview/SessionRecapPanel'
 import AdvancedReportsPanel from '../components/tradeinview/AdvancedReportsPanel'
+import MonteCarloPanel from '../components/tradeinview/MonteCarloPanel'
 import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
@@ -731,6 +732,9 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Analytics' && (
         <>
           <div style={{ marginBottom: 14 }}><ZellaScoreCard account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} /></div>
+          <div style={{ marginBottom: 14 }}>
+            <MonteCarloPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />
+          </div>
           {/* Performance KPIs — computed from filtered trades */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
             {[

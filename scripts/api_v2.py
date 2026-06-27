@@ -20622,7 +20622,9 @@ def _journal_monte_carlo(query=None):
     q = query or {}
     g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
     import journal_trade_in_view as tiv
-    return tiv.monte_carlo(g("account"), int(g("days") or 365), int(g("sims") or 500), int(g("path") or 30))
+    path_raw = g("path")
+    path = int(path_raw) if path_raw not in (None, "", "auto") else 0
+    return tiv.monte_carlo(g("account"), int(g("days") or 365), int(g("sims") or 500), path)
 
 
 def _journal_pivot(query=None):
