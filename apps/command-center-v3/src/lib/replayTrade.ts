@@ -38,6 +38,10 @@ export function buildReplayTrade(row: ReplayTradeInput) {
     || (symbol && account && (row.close_date || exit_date)
       ? `${symbol}:${account}:${String(row.close_date || exit_date).slice(0, 10)}`
       : undefined)
+  const ex = row.exec as { entry_time?: string; exit_time?: string } | undefined
+  // Prefer journal/EQ fill clocks — never replay at midnight when only a date was passed.
+  const entry_time = row.entry_time || row.entryTimeFull || ex?.entry_time || null
+  const exit_time = row.exit_time || row.exitTimeFull || ex?.exit_time || null
   return {
     symbol,
     trade_key,
@@ -46,8 +50,8 @@ export function buildReplayTrade(row: ReplayTradeInput) {
     exit_date,
     entry_price: row.entry_price ?? row.ep ?? row.buy_price,
     exit_price: row.exit_price ?? row.xp ?? row.sell_price,
-    entry_time: row.entry_time || row.entryTimeFull,
-    exit_time: row.exit_time || row.exitTimeFull,
+    entry_time,
+    exit_time,
     stop: row.stop ?? row.stop_loss ?? row.planned_stop,
     target: row.target ?? row.target_1 ?? row.target_price,
     exec: row.exec,

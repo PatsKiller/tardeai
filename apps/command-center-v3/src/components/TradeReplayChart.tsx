@@ -231,7 +231,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     const markerWarn = (data.integrity?.marker_aligned === false || data.integrity?.marker_in_range === false)
       ? (data.integrity.marker_warnings || []).join('; ')
       : ''
-    const warn = [integrity, markerWarn].filter(Boolean).join(' · ')
+    const timeWarn = (data.integrity?.time_warnings || []).join('; ')
+    const warn = [integrity, markerWarn, timeWarn].filter(Boolean).join(' · ')
     setScaleWarn(warn)
     if (DEV && ohlcBounds) {
       console.debug(`[replay-scale] ${trade.symbol} bars=${visBars.length}/${integrityBars.length}`, {
@@ -259,6 +260,13 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   }, [playing, data, speed])
 
   const pnl = data?.markers?.length === 2 ? (Number(data.markers[1].price) - Number(data.markers[0].price)) : null
+  const ti = data?.integrity?.time_integrity
+  const holdSec = ti?.hold_seconds
+  const holdLabel = holdSec != null
+    ? (holdSec < 60 ? `${holdSec}s` : holdSec < 3600 ? `${Math.round(holdSec / 60)}m` : `${(holdSec / 3600).toFixed(1)}h`)
+    : null
+  const fillSrc = ti?.fill_source || data?.fill_times?.source
+  const timeWarn = (data?.integrity?.time_warnings || []).join('; ')
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 50, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '4vh 2vw', overflow: 'auto' }} onClick={onClose}>
@@ -266,6 +274,12 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{trade.symbol} <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{String(trade.entry_date).slice(0, 10)} → {String(trade.exit_date || '').slice(0, 10)}</span></div>
           {data && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{data.timeframe} · {data.bar_count} bars · src:{data.source}</span>}
+          {data?.entry_et && data?.exit_et && (
+            <span style={{ fontSize: 10, color: data?.integrity?.times_valid === false ? '#f59e0b' : 'var(--text2)', fontFamily: 'monospace' }}
+              title={[ti?.entry_marker_et && `Entry bar: ${ti.entry_marker_et}`, ti?.exit_marker_et && `Exit bar: ${ti.exit_marker_et}`, fillSrc && `Fill source: ${fillSrc}`, timeWarn].filter(Boolean).join('\n')}>
+              {data.entry_et} → {data.exit_et}{holdLabel ? ` · ${holdLabel}` : ''}{fillSrc ? ` · ${fillSrc}` : ''}
+            </span>
+          )}
           {data?.price_bounds && DEV && (
             <span style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }} title="Loaded OHLC bounds">
               ${data.price_bounds.min_low}–${data.price_bounds.max_high}
