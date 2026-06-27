@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Phase 192I/J — Guarded operator-approved paper protection adjustment (execution engine).
+"""Phase 192I/J — Guarded paper protection adjustment (execution engine).
 
-Applies a single approved adjustment to an Alpaca **PAPER** stop order. Hard-guarded:
-PAPER ONLY, live endpoint refused, quote must be fresh, proposal must be live, broker
-stop must match expected state, the move must NOT increase risk (stop up only), and an
-explicit --confirm is required to touch the broker. Default is DRY-RUN (preview only).
+Applies a single approved adjustment on Alpaca **PAPER** only. Hard-guarded: paper endpoint,
+fresh quote, live proposal, explicit confirm for broker writes.
 
-Every call writes an audit record (before + after) to
-  data/atm/protection_adjustment_audit/<date>_actions.jsonl
+Actions:
+  MOVE_STOP_TO_PROFIT_LOCK / MOVE_STOP_TO_BREAKEVEN — PATCH stop (replace; stop never absent)
+  ADD_FIXED_TAKE_PROFIT — POST sell limit at proposed_take_profit (keeps existing stop)
+  CONVERT_TO_TRAILING_STOP — cancel fixed stop + POST native trailing_stop (trail % from env)
 
-Allowed actions this phase: MOVE_STOP_TO_PROFIT_LOCK, MOVE_STOP_TO_BREAKEVEN (stop-up only,
-via Alpaca order REPLACE so the stop is never absent). Others are preview/blocked.
+Audit: data/atm/protection_adjustment_audit/<date>_actions.jsonl
 """
 import os, sys, json, argparse
 from datetime import datetime, timezone
@@ -18,7 +17,8 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAPER_BASE = "https://paper-api.alpaca.markets"
 QUOTE_FRESH_MIN = 30
-ALLOWED_EXEC_ACTIONS = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+STOP_UP_ACTIONS = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+ALLOWED_EXEC_ACTIONS = STOP_UP_ACTIONS | {"ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP"}
 AUDIT_DIR = os.path.join(ROOT, "data/atm/protection_adjustment_audit")
 
 
@@ -64,13 +64,13 @@ def fresh_quote_age(sym):
         return None, q
 
 
-def apply(proposal_id, operator, reason, confirm=False, action_date="latest"):
+def _common_proposal_context(proposal_id, operator, reason, confirm, action_date):
     load_env()
     assert os.environ.get("ALPACA_MODE") == "paper", "GUARD: ALPACA_MODE must be paper"
     assert PAPER_BASE.startswith("https://paper-api."), "GUARD: paper endpoint only"
-    import requests
     import psycopg2.extras
-    conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    conn = db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("select * from paper_protection_adjustment_proposals where id=%s", (proposal_id,))
     p = cur.fetchone()
     result = {"date": action_date, "action_id": f"ppa-{proposal_id}-{action_date}",
@@ -81,82 +81,134 @@ def apply(proposal_id, operator, reason, confirm=False, action_date="latest"):
 
     def fail(reason_code, **extra):
         result.update({"status": "BLOCKED", "block_reason": reason_code, **extra})
-        audit(result); conn.close()
-        print(json.dumps(result, indent=2, default=str)); return result
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result, None, None, None, None
 
     if not p:
         return fail("proposal_not_found")
     result.update({"trade_id": p["trade_id"], "symbol": p["symbol"], "action": p["action"],
-                   "current_stop": p["current_stop"], "proposed_stop": p["proposed_stop"]})
+                   "current_stop": p["current_stop"], "proposed_stop": p["proposed_stop"],
+                   "proposed_take_profit": p.get("proposed_take_profit")})
     if p["status"] != "PROPOSED":
         return fail("proposal_not_live", proposal_status=p["status"])
     if p["action"] not in ALLOWED_EXEC_ACTIONS:
         return fail("action_not_executable_this_phase", action=p["action"])
 
-    # trade still open?
-    cur.execute("select status, stop_order_id, entry_price, shares from paper_trades where id=%s", (p["trade_id"],))
+    cur.execute("""select status, stop_order_id, take_profit_order_id, take_profit_price,
+                          entry_price, shares, current_stop
+                     from paper_trades where id=%s""", (p["trade_id"],))
     t = cur.fetchone()
     if not t or t["status"] != "open":
         return fail("trade_not_open")
-    stop_oid = t["stop_order_id"]
-    if not stop_oid:
-        return fail("no_tracked_broker_stop")
 
-    # quote fresh?
     age, q = fresh_quote_age(p["symbol"])
-    result["quote_age_min"] = age; result["quote_price"] = q.get("last_price")
+    result["quote_age_min"] = age
+    result["quote_price"] = q.get("last_price")
     if age is None or age > QUOTE_FRESH_MIN:
         return fail("quote_stale", quote_age_min=age)
 
-    # broker stop matches expected state?
+    result.update({
+        "profit_locked_before": p["profit_locked_before"],
+        "profit_locked_after": p["profit_locked_after"],
+        "giveback_before": p["giveback_before"],
+        "giveback_after": p["giveback_after"],
+        "tradeai_recommendation": p["tradeai_reason"],
+        "hermes_recommendation": p["hermes_reason"],
+        "advisory_refs": p["evidence_refs"],
+    })
+    return result, conn, p, t, q
+
+
+def _apply_stop_up(result, conn, p, t, q, proposal_id, confirm):
+    import requests
+    stop_oid = t["stop_order_id"]
+    if not stop_oid:
+        result.update({"status": "BLOCKED", "block_reason": "no_tracked_broker_stop"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
     r = requests.get(f"{PAPER_BASE}/v2/orders/{stop_oid}", headers=_headers(), timeout=15)
     if r.status_code != 200:
-        return fail("broker_stop_fetch_failed", http=r.status_code)
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_fetch_failed", "http": r.status_code})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     broker = r.json()
     result["broker_order_before"] = {"id": broker.get("id"), "stop_price": broker.get("stop_price"),
                                      "status": broker.get("status"), "qty": broker.get("qty")}
     if broker.get("status") not in ("new", "held", "accepted"):
-        return fail("broker_stop_not_active", broker_status=broker.get("status"))
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_not_active",
+                       "broker_status": broker.get("status")})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     try:
         broker_stop = float(broker.get("stop_price"))
     except Exception:
-        return fail("broker_stop_price_unreadable")
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_price_unreadable"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     if abs(broker_stop - float(p["current_stop"])) > 0.01:
-        return fail("broker_stop_state_mismatch", broker_stop=broker_stop, expected=float(p["current_stop"]))
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_state_mismatch",
+                       "broker_stop": broker_stop, "expected": float(p["current_stop"])})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
 
-    # risk guard: move stop UP only (never increase risk)
     new_stop = float(p["proposed_stop"]) if p["proposed_stop"] is not None else None
     if new_stop is None:
-        return fail("no_proposed_stop")
+        result.update({"status": "BLOCKED", "block_reason": "no_proposed_stop"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     if new_stop <= broker_stop:
-        return fail("would_not_raise_stop", new_stop=new_stop, broker_stop=broker_stop)
+        result.update({"status": "BLOCKED", "block_reason": "would_not_raise_stop",
+                       "new_stop": new_stop, "broker_stop": broker_stop})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     if new_stop >= float(q.get("last_price", 1e18)):
-        return fail("proposed_stop_above_price", new_stop=new_stop, price=q.get("last_price"))
+        result.update({"status": "BLOCKED", "block_reason": "proposed_stop_above_price",
+                       "new_stop": new_stop, "price": q.get("last_price")})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
 
-    result.update({"proposed_stop_final": new_stop,
-                   "profit_locked_before": p["profit_locked_before"],
-                   "profit_locked_after": p["profit_locked_after"],
-                   "giveback_before": p["giveback_before"], "giveback_after": p["giveback_after"],
-                   "tradeai_recommendation": p["tradeai_reason"], "hermes_recommendation": p["hermes_reason"],
-                   "advisory_refs": p["evidence_refs"]})
-
+    result["proposed_stop_final"] = new_stop
     if not confirm:
         result.update({"status": "DRY_RUN_PREVIEW",
                        "note": "All guards PASSED. Re-run with --confirm to modify the paper stop order."})
-        audit(result); conn.close()
-        print(json.dumps(result, indent=2, default=str)); return result
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
 
-    # ---- CONFIRMED: replace the paper stop order (stop never absent) ----
     patch = requests.patch(f"{PAPER_BASE}/v2/orders/{stop_oid}",
                            headers=_headers(), json={"stop_price": str(round(new_stop, 2))}, timeout=20)
     if patch.status_code not in (200, 201):
-        return fail("broker_replace_failed", http=patch.status_code, body=patch.text[:200])
+        result.update({"status": "BLOCKED", "block_reason": "broker_replace_failed",
+                       "http": patch.status_code, "body": patch.text[:200]})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     after = patch.json()
     new_oid = after.get("id", stop_oid)
     result["broker_order_after"] = {"id": new_oid, "stop_price": after.get("stop_price"),
                                     "status": after.get("status")}
     result["alpaca_response_id"] = new_oid
-    # persist new stop metadata (paper_trades) + proposal status
     wc = conn.cursor()
     wc.execute("""update paper_trades set stop_order_id=%s, current_stop=%s, stop_loss=%s,
                   planned_stop=coalesce(planned_stop,%s), stop_verified_at=now(),
@@ -166,8 +218,198 @@ def apply(proposal_id, operator, reason, confirm=False, action_date="latest"):
     wc.execute("update paper_protection_adjustment_proposals set status='APPLIED' where id=%s", (proposal_id,))
     conn.commit()
     result.update({"status": "APPLIED", "new_stop": round(new_stop, 2)})
-    audit(result); conn.close()
-    print(json.dumps(result, indent=2, default=str)); return result
+    audit(result)
+    conn.close()
+    print(json.dumps(result, indent=2, default=str))
+    return result
+
+
+def _apply_take_profit(result, conn, p, t, q, proposal_id, confirm):
+    import requests
+    if t.get("take_profit_order_id") or t.get("take_profit_price"):
+        result.update({"status": "BLOCKED", "block_reason": "take_profit_already_present"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    tp = p.get("proposed_take_profit")
+    if tp is None:
+        result.update({"status": "BLOCKED", "block_reason": "no_proposed_take_profit"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    tp_px = round(float(tp), 2)
+    last = float(q.get("last_price") or 0)
+    if last <= 0 or tp_px <= last:
+        result.update({"status": "BLOCKED", "block_reason": "take_profit_not_above_price",
+                       "proposed_take_profit": tp_px, "price": last})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    shares = int(t.get("shares") or 0)
+    if shares <= 0:
+        result.update({"status": "BLOCKED", "block_reason": "invalid_share_qty"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    result["proposed_take_profit_final"] = tp_px
+    if not confirm:
+        result.update({"status": "DRY_RUN_PREVIEW",
+                       "note": "All guards PASSED. Re-run with --confirm to place take-profit limit."})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    post = requests.post(f"{PAPER_BASE}/v2/orders", headers=_headers(), timeout=20, json={
+        "symbol": p["symbol"], "qty": str(shares), "side": "sell",
+        "type": "limit", "limit_price": str(tp_px), "time_in_force": "gtc",
+    })
+    if post.status_code not in (200, 201):
+        result.update({"status": "BLOCKED", "block_reason": "broker_take_profit_failed",
+                       "http": post.status_code, "body": post.text[:200]})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    order = post.json()
+    tp_oid = order.get("id")
+    result["broker_order_after"] = {"id": tp_oid, "limit_price": order.get("limit_price"),
+                                    "status": order.get("status"), "type": order.get("type")}
+    wc = conn.cursor()
+    wc.execute("""update paper_trades set take_profit_order_id=%s, take_profit_price=%s,
+                  profit_protection_status='has_take_profit', protection_status='PROTECTED_TRACKED'
+                  where id=%s""", (tp_oid, tp_px, p["trade_id"]))
+    wc.execute("update paper_protection_adjustment_proposals set status='APPLIED' where id=%s", (proposal_id,))
+    conn.commit()
+    result.update({"status": "APPLIED", "take_profit_price": tp_px, "take_profit_order_id": tp_oid})
+    audit(result)
+    conn.close()
+    print(json.dumps(result, indent=2, default=str))
+    return result
+
+
+def _apply_trailing(result, conn, p, t, q, proposal_id, confirm):
+    import requests
+    stop_oid = t["stop_order_id"]
+    if not stop_oid:
+        result.update({"status": "BLOCKED", "block_reason": "no_tracked_broker_stop"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    try:
+        trail_pct = float(os.getenv("PROTECTION_TRAIL_PERCENT", "5"))
+    except Exception:
+        trail_pct = 5.0
+    if trail_pct <= 0 or trail_pct > 25:
+        result.update({"status": "BLOCKED", "block_reason": "invalid_trail_percent", "trail_percent": trail_pct})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    shares = int(t.get("shares") or 0)
+    if shares <= 0:
+        result.update({"status": "BLOCKED", "block_reason": "invalid_share_qty"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    r = requests.get(f"{PAPER_BASE}/v2/orders/{stop_oid}", headers=_headers(), timeout=15)
+    if r.status_code != 200:
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_fetch_failed", "http": r.status_code})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    broker = r.json()
+    result["broker_order_before"] = {"id": broker.get("id"), "stop_price": broker.get("stop_price"),
+                                     "status": broker.get("status"), "type": broker.get("type")}
+    if broker.get("status") not in ("new", "held", "accepted"):
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_not_active",
+                       "broker_status": broker.get("status")})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    if broker.get("type") == "trailing_stop":
+        result.update({"status": "BLOCKED", "block_reason": "already_trailing_stop"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    result["trail_percent"] = trail_pct
+    if not confirm:
+        result.update({"status": "DRY_RUN_PREVIEW",
+                       "note": "All guards PASSED. Re-run with --confirm to convert to trailing stop."})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    cancel = requests.delete(f"{PAPER_BASE}/v2/orders/{stop_oid}", headers=_headers(), timeout=20)
+    if cancel.status_code not in (200, 204):
+        result.update({"status": "BLOCKED", "block_reason": "broker_stop_cancel_failed",
+                       "http": cancel.status_code, "body": (cancel.text or "")[:200]})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
+    post = requests.post(f"{PAPER_BASE}/v2/orders", headers=_headers(), timeout=20, json={
+        "symbol": p["symbol"], "qty": str(shares), "side": "sell",
+        "type": "trailing_stop", "trail_percent": str(trail_pct), "time_in_force": "gtc",
+    })
+    if post.status_code not in (200, 201):
+        result.update({"status": "BLOCKED", "block_reason": "broker_trailing_post_failed",
+                       "http": post.status_code, "body": post.text[:200],
+                       "critical": "fixed_stop_cancelled_trailing_failed"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    order = post.json()
+    new_oid = order.get("id")
+    result["broker_order_after"] = {"id": new_oid, "type": order.get("type"),
+                                    "trail_percent": order.get("trail_percent"),
+                                    "status": order.get("status")}
+    wc = conn.cursor()
+    wc.execute("""update paper_trades set stop_order_id=%s, decision_state='TRAILING_STOP_ACTIVE',
+                  stop_verified_at=now(), stop_verified_source='operator_approved_adjustment',
+                  protection_status='PROTECTED_TRACKED' where id=%s""",
+               (new_oid, p["trade_id"]))
+    wc.execute("update paper_protection_adjustment_proposals set status='APPLIED' where id=%s", (proposal_id,))
+    conn.commit()
+    result.update({"status": "APPLIED", "trailing_order_id": new_oid, "trail_percent": trail_pct})
+    audit(result)
+    conn.close()
+    print(json.dumps(result, indent=2, default=str))
+    return result
+
+
+def apply(proposal_id, operator, reason, confirm=False, action_date="latest"):
+    ctx = _common_proposal_context(proposal_id, operator, reason, confirm, action_date)
+    if ctx[1] is None:
+        return ctx[0]
+    result, conn, p, t, q = ctx
+    action = (p["action"] or "").upper()
+    if action in STOP_UP_ACTIONS:
+        return _apply_stop_up(result, conn, p, t, q, proposal_id, confirm)
+    if action == "ADD_FIXED_TAKE_PROFIT":
+        return _apply_take_profit(result, conn, p, t, q, proposal_id, confirm)
+    if action == "CONVERT_TO_TRAILING_STOP":
+        return _apply_trailing(result, conn, p, t, q, proposal_id, confirm)
+    result.update({"status": "BLOCKED", "block_reason": "unknown_action", "action": action})
+    audit(result)
+    conn.close()
+    print(json.dumps(result, indent=2, default=str))
+    return result
 
 
 if __name__ == "__main__":
@@ -175,7 +417,7 @@ if __name__ == "__main__":
     ap.add_argument("--proposal-id", type=int, required=True)
     ap.add_argument("--operator", default="operator")
     ap.add_argument("--reason", default="")
-    ap.add_argument("--confirm", action="store_true", help="actually modify the paper stop order")
+    ap.add_argument("--confirm", action="store_true", help="actually modify broker orders")
     ap.add_argument("--date", default="latest")
     a = ap.parse_args()
     apply(a.proposal_id, a.operator, a.reason, confirm=a.confirm, action_date=a.date)

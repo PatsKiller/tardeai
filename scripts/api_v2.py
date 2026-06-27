@@ -13763,7 +13763,10 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
         is_automated_account,
         normalize_account_key,
     )
-    AUTO = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+    AUTO = {
+        "MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN",
+        "ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP",
+    }
     where = ["a.status = 'PROPOSED'", "t.status = 'open'"]
     params: list = []
     if symbol_f:
@@ -21674,7 +21677,10 @@ def _protection_proposals(query=None):
         JOIN paper_trades t ON t.id = a.trade_id
         WHERE a.status='PROPOSED' AND t.status='open'
         ORDER BY t.account, a.symbol, a.id""", fetch="all") or []
-    AUTO = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+    AUTO = {
+        "MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN",
+        "ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP",
+    }
     for r in rows:
         acct_raw = str(r.get("account") or "")
         r["account"] = normalize_account_key(acct_raw)
