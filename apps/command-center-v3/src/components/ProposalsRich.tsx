@@ -9,6 +9,7 @@ import BrokerDiligenceStrip from './BrokerDiligenceStrip'
 import { isBrokerRouted, routingColor, routingLabel } from '../lib/proposalRouting'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import ProposalSourceBadges from './ProposalSourceBadges'
+import ProposalStrategyBadge from './ProposalStrategyBadge'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
 
 // Full v2-parity proposal review surface, ported into v3 (canonical).
@@ -382,7 +383,8 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
               background: `${routingColor(p)}22`, color: routingColor(p), border: `1px solid ${routingColor(p)}44` }}>
             {routingLabel(p)}
           </span>
-          <ProposalSourceBadges proposal={p} size="sm" />
+          <ProposalSourceBadges proposal={p} size="sm" showRoutingLane />
+          <ProposalStrategyBadge proposal={p} size="sm" />
           {p.signal_evidence?.screener && (
             <span title={`Why this signal won (arbitration evidence)\nlist: ${p.signal_evidence.screener}${p.signal_evidence.source_weight ? ` · source weight ${p.signal_evidence.source_weight}` : ''}${p.signal_evidence.source_hit_rate ? ` · hit ${(p.signal_evidence.source_hit_rate * 100).toFixed(0)}%` : ''}\ntop pillars: ${(p.signal_evidence.top_pillars || []).map((t: any) => `${t.pillar} ${t.pts}`).join(', ') || '—'}${p.signal_evidence.outcome_scar && p.signal_evidence.outcome_scar !== 1 ? `\noutcome scar ${p.signal_evidence.outcome_scar}` : ''}`}
               style={{ fontSize: 8, fontWeight: 600, padding: '1px 5px', borderRadius: 3, cursor: 'help', background: 'var(--bg2)', color: 'var(--text2)' }}>
@@ -398,7 +400,7 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
             </span>
           )}
           {extOpinions.map((e: any, i: number) => <span key={i} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ fontSize: 9, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>)}
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
+
           {(p.strategy_type_label || p.strategy_type || p.strategy_timeframe_class) && (
             <span title={[p.strategy_type_label || p.strategy_type, p.strategy_timeframe_display].filter(Boolean).join(' · ')}
               style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
