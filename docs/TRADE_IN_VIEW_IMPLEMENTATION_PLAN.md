@@ -2,7 +2,7 @@
 
 **Module:** TradeInView — trading journal, performance analytics, self-improvement  
 **Route:** `/v3/journal` (alias `/v3/trade-in-view`)  
-**Status:** P0–P4 shipped 2026-06-27; P5–P6 partial
+**Status:** P0–P6 shipped 2026-06-28
 
 ## Architecture
 
@@ -30,6 +30,8 @@ Paper ATM ─────────► paper_trades ──► automated-trade-
 | Analytics | Zella score, edge analytics, ask journal |
 | Exit Intel | MAE/MFE, capture, EOD vs intraday, exit timing |
 | Behavioral | Tilt, revenge, mistake $, streak impact |
+| Session | Pre-market plan vs EOD reflection (daily recap) |
+| Advanced | Monte Carlo bootstrap, pivot grid, tax CSV export |
 | Lessons | Closed-trade lessons feed |
 | Protection | Protection outcomes |
 | Backtesting | Hypotheses + backtest panel |
@@ -50,10 +52,16 @@ Paper ATM ─────────► paper_trades ──► automated-trade-
 | `/api/v2/journal/tag-groups` | GET | Editable tag definitions |
 | `/api/v2/journal/manual-entry` | POST | Manual trade row |
 | `/api/v2/journal/import-csv` | POST | Schwab history CSV |
+| `/api/v2/journal/monte-carlo` | GET | Bootstrap equity paths |
+| `/api/v2/journal/pivot` | GET | Cross-tab from reviews |
+| `/api/v2/journal/session-recap` | GET/POST | Daily session recap |
+| `/api/v2/journal/attachments` | GET/POST | Screenshot attachments |
+| `/api/v2/journal/export?tax=1` | GET | Tax lots CSV (wash-sale flags) |
 
 ## DB migration
 
-`migrations/2026_06_27_trade_in_view.sql` — `journal_saved_filters`, `journal_manual_entries`, `journal_tag_groups`
+`migrations/2026_06_27_trade_in_view.sql` — `journal_saved_filters`, `journal_manual_entries`, `journal_tag_groups`  
+`migrations/2026_06_28_trade_in_view_p5_p6.sql` — `journal_attachments`, `journal_session_recaps`, `journal_options_groups`
 
 ## Ops
 
@@ -68,9 +76,19 @@ psql -f migrations/2026_06_27_trade_in_view.sql
 .venv/bin/python scripts/journal_trade_in_view.py --exit --zella --behavioral
 ```
 
+## Ops (P5–P6)
+
+```bash
+# Apply P5–P6 migration
+psql -f migrations/2026_06_28_trade_in_view_p5_p6.sql
+
+# Install weekday annotation + tilt hooks
+bash scripts/install_journal_annotation_cron.sh
+```
+
 ## Priority backlog (next sprints)
 
-1. **P5 Options** — multi-leg ingest, greeks attribution in journal
-2. **P6 Polish** — attachments, session recaps, Morning Brief tilt hook
-3. **Annotation campaign** — 80% review coverage
-4. **v2 deprecation** — redirect `/v2/journal*` → v3 TradeInView
+1. **Annotation campaign** — 80% review coverage (cron nudge + bulk-suggest in UI)
+2. **Tick replay** — sub-bar execution replay
+3. **Voice memos** — audio attachment kind
+4. **Per-leg greeks attribution** — options P&L decomposition

@@ -47,7 +47,7 @@ const CIODashboard = lazy(() => import('./pages/CIODashboard'))
 const StoppedOutWatch = lazy(() => import('./pages/StoppedOutWatch'))
 
 // ── Journal (consolidated: Entries + Analytics + Reports + Paper) ──
-const JournalHub = lazy(() => import('./pages/JournalHub'))
+const RedirectToV3Journal = lazy(() => import('./components/RedirectToV3Journal'))
 
 // ── Intelligence (consolidated: Sources + Entities + Whiteboard + Content Health) ──
 const OvernightDashboard = lazy(() => import('./pages/OvernightDashboard'))
@@ -167,8 +167,8 @@ export default function App() {
           <Route path="recovery" element={<SafePage><StoppedOutWatch /></SafePage>} />
 
           {/* ── Journal (consolidated) ── */}
-          <Route path="journal" element={<SafePage><JournalHub /></SafePage>} />
-          <Route path="automated-journal" element={<Navigate to="/journal?tab=automated-journal" replace />} />
+          <Route path="journal" element={<SafePage><RedirectToV3Journal /></SafePage>} />
+          <Route path="automated-journal" element={<SafePage><RedirectToV3Journal /></SafePage>} />
 
           {/* ── Intelligence (consolidated) ── */}
           <Route path="overnight" element={<SafePage><OvernightDashboard /></SafePage>} />
@@ -218,9 +218,9 @@ export default function App() {
           {/* ── Legacy redirects (old routes → consolidated pages) ── */}
           <Route path="portfolio-monitor" element={<SafePage><PortfolioCommand /></SafePage>} />
           <Route path="portfolio-intelligence" element={<SafePage><PortfolioCommand /></SafePage>} />
-          <Route path="journal-analytics" element={<Navigate to="/journal?tab=analytics" replace />} />
-          <Route path="journal-reports" element={<Navigate to="/journal?tab=reports" replace />} />
-          <Route path="paper-journal" element={<Navigate to="../journal" replace />} />
+          <Route path="journal-analytics" element={<SafePage><RedirectToV3Journal /></SafePage>} />
+          <Route path="journal-reports" element={<SafePage><RedirectToV3Journal /></SafePage>} />
+          <Route path="paper-journal" element={<SafePage><RedirectToV3Journal /></SafePage>} />
           <Route path="paper-outcomes" element={<Navigate to="../paper-review" replace />} />
           <Route path="paper-trade-intelligence" element={<SafePage><PaperReview /></SafePage>} />
           <Route path="pipeline-health-master" element={<SafePage><PipelineHub /></SafePage>} />

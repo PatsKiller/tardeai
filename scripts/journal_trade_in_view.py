@@ -316,23 +316,238 @@ def sector_breakdown(account=None, days=365):
     return {"ok": True, "sectors": out}
 
 
+def _is_option_symbol(sym: str) -> bool:
+    import re
+    return bool(re.search(r"[0-9]{6}[CP][0-9]", sym or ""))
+
+
+def _parse_occ(sym: str) -> dict:
+    import re
+    m = re.match(r"^([A-Z]+)(\d{6})([CP])(\d+)$", (sym or "").replace(" ", "").upper())
+    if not m:
+        return {}
+    und, yymmdd, cp, strike = m.groups()
+    return {"underlying": und, "option_type": "call" if cp == "C" else "put", "strike": float(strike) / 1000.0}
+
+
 def options_journal_summary(account=None, days=365):
+    """P5: closed option trades + open legs + book greeks."""
     params: list[Any] = [int(days)]
     acct = ""
     if account:
         acct = " AND account = %s"
         params.append(account)
     rows = _q(f"""
-        SELECT symbol, trade_type, pnl, close_date::text
+        SELECT symbol, trade_type, pnl, close_date::text, account, shares, buy_price, sell_price
         FROM trade_closed
         WHERE close_date > now() - (%s || ' days')::interval {acct}
           AND (trade_type ILIKE '%%option%%' OR symbol ~ '[0-9]{{6}}[CP][0-9]')
         ORDER BY close_date DESC LIMIT 200
     """, params)
-    return {"ok": True, "options_trades": len(rows), "trades": rows, **_agg(rows)}
+
+    groups: dict[str, dict] = {}
+    for r in rows:
+        parsed = _parse_occ(r.get("symbol") or "")
+        und = parsed.get("underlying") or (r.get("symbol") or "")[:6]
+        gk = f"{und}:{r.get('close_date')}:{r.get('account')}"
+        g = groups.setdefault(gk, {"underlying": und, "close_date": r.get("close_date"),
+                                   "account": r.get("account"), "legs": [], "net_pnl": 0.0})
+        g["legs"].append({**r, **parsed})
+        g["net_pnl"] += float(r.get("pnl") or 0)
+
+    open_legs = []
+    book_greeks = {}
+    try:
+        import options_engine as oe
+        open_legs = oe._fetch_schwab_option_positions()
+        if account:
+            open_legs = [p for p in open_legs if p.get("account_key") == account]
+        try:
+            import options_desk_enterprise as ode
+            book_greeks = ode.aggregate_book_greeks(open_legs, {}) or {}
+        except Exception:
+            book_greeks = {}
+    except Exception:
+        pass
+
+    by_moneyness: dict[str, list] = defaultdict(list)
+    for p in open_legs:
+        und = p.get("underlying") or ""
+        spot = p.get("strike") or 0
+        m = "ATM"
+        if p.get("option_type") == "call":
+            m = "ITM" if (p.get("side") == "long" and spot) else "OTM"
+        by_moneyness[m].append(p)
+
+    return {
+        "ok": True,
+        "options_trades": len(rows),
+        "trades": rows,
+        "multileg_groups": list(groups.values())[:50],
+        "open_legs": open_legs[:40],
+        "book_greeks": book_greeks,
+        "by_moneyness_open": {k: len(v) for k, v in by_moneyness.items()},
+        **_agg(rows),
+    }
 
 
-def export_csv(account=None, date_from=None, date_to=None):
+def monte_carlo(account=None, days=365, simulations=500, trades_per_path=30):
+    """Bootstrap equity paths from historical trade P&L."""
+    import random
+    params: list[Any] = [int(days)]
+    acct = ""
+    if account:
+        acct = " AND account = %s"
+        params.append(account)
+    pnls = [float(r["pnl"]) for r in _q(f"""
+        SELECT pnl FROM trade_closed
+        WHERE close_date > now() - (%s || ' days')::interval {acct}
+          AND pnl IS NOT NULL
+    """, params)]
+    if len(pnls) < 5:
+        return {"ok": False, "error": "need at least 5 trades"}
+    sims = []
+    for _ in range(int(simulations)):
+        path = random.choices(pnls, k=min(int(trades_per_path), len(pnls)))
+        cum = 0.0
+        curve = []
+        for p in path:
+            cum += p
+            curve.append(round(cum, 2))
+        sims.append(cum)
+    sims.sort()
+    n = len(sims)
+    return {
+        "ok": True,
+        "simulations": n,
+        "trades_per_path": trades_per_path,
+        "median_pnl": round(sims[n // 2], 2),
+        "p10": round(sims[int(n * 0.1)], 2),
+        "p90": round(sims[int(n * 0.9)], 2),
+        "prob_profit": round(sum(1 for s in sims if s > 0) / n * 100, 1),
+        "sample_size": len(pnls),
+    }
+
+
+def pivot_report(account=None, days=365, row_dim="setup_family", col_dim="market_regime"):
+    """Cross-tab from journal reviews."""
+    allowed = {"setup_family", "market_regime", "timeframe", "direction", "emotion_before"}
+    if row_dim not in allowed:
+        row_dim = "setup_family"
+    if col_dim not in allowed:
+        col_dim = "market_regime"
+    params: list[Any] = [int(days)]
+    acct = ""
+    if account:
+        acct = " AND tc.account = %s"
+        params.append(account)
+    rows = _q(f"""
+        SELECT r.{row_dim} AS row_val, r.{col_dim} AS col_val, tc.pnl
+        FROM journal_trade_reviews r
+        JOIN trade_closed tc ON r.trade_key = (tc.symbol || ':' || tc.account || ':' || tc.close_date::text)
+        WHERE tc.close_date > now() - (%s || ' days')::interval {acct}
+    """, params)
+    grid: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        rv = r.get("row_val") or "—"
+        cv = r.get("col_val") or "—"
+        grid[str(rv)][str(cv)].append(r)
+    cells = []
+    for rv, cols in grid.items():
+        for cv, items in cols.items():
+            cells.append({"row": rv, "col": cv, **_agg(items, "pnl")})
+    return {"ok": True, "row_dim": row_dim, "col_dim": col_dim, "cells": cells}
+
+
+def export_tax_csv(account=None, date_from=None, date_to=None):
+    """Realized gains with wash-sale flags from schwab_cost_basis_lots."""
+    where, params = ["kind = 'realized'"], []
+    if account:
+        where.append("account = %s")
+        params.append(account)
+    if date_from:
+        where.append("closed_date >= %s::date")
+        params.append(date_from)
+    if date_to:
+        where.append("closed_date <= %s::date")
+        params.append(date_to)
+    rows = _q(f"""
+        SELECT account, symbol, closed_date::text, quantity, cost_basis, proceeds,
+               realized_gain, term, wash_sale
+        FROM schwab_cost_basis_lots
+        WHERE {' AND '.join(where)}
+        ORDER BY closed_date DESC
+    """, params)
+    buf = io.StringIO()
+    if not rows:
+        return ""
+    fields = ["account", "symbol", "closed_date", "quantity", "cost_basis", "proceeds",
+              "realized_gain", "term", "wash_sale"]
+    w = csv.DictWriter(buf, fieldnames=fields)
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: r.get(k) for k in fields})
+    return buf.getvalue()
+
+
+def session_recap_get(session_date=None):
+    sd = session_date or str(__import__("datetime").date.today())
+    row = _q("SELECT * FROM journal_session_recaps WHERE session_date = %s::date", [sd], fetch="one")
+    return {"ok": True, "recap": row}
+
+
+def session_recap_save(body: dict):
+    sd = body.get("session_date") or str(__import__("datetime").date.today())
+    row = _q("""
+        INSERT INTO journal_session_recaps
+          (session_date, account, pre_market_plan, eod_reflection, planned_trades, actual_pnl, trades_count, tilt_detected, payload)
+        VALUES (%s::date, %s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (session_date) DO UPDATE SET
+          account=EXCLUDED.account, pre_market_plan=EXCLUDED.pre_market_plan,
+          eod_reflection=EXCLUDED.eod_reflection, planned_trades=EXCLUDED.planned_trades,
+          actual_pnl=EXCLUDED.actual_pnl, trades_count=EXCLUDED.trades_count,
+          tilt_detected=EXCLUDED.tilt_detected, payload=EXCLUDED.payload, updated_at=NOW()
+        RETURNING id
+    """, [
+        sd, body.get("account"), body.get("pre_market_plan"), body.get("eod_reflection"),
+        json.dumps(body.get("planned_trades") or []),
+        body.get("actual_pnl"), body.get("trades_count"), bool(body.get("tilt_detected")),
+        json.dumps(body.get("payload") or {}),
+    ], fetch="one")
+    return int(row["id"]) if row else None
+
+
+def attachment_save(trade_key: str | None, session_date: str | None, filename: str,
+                    content_b64: str, kind: str = "screenshot", mime: str = "image/png", notes: str = ""):
+    import base64
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / "data" / "journal_attachments"
+    root.mkdir(parents=True, exist_ok=True)
+    safe = "".join(c if c.isalnum() or c in ".-_" else "_" for c in filename)[:120]
+    path = root / safe
+    raw = base64.b64decode(content_b64.split(",")[-1] if "," in content_b64 else content_b64)
+    path.write_bytes(raw)
+    row = _q("""
+        INSERT INTO journal_attachments (trade_key, session_date, kind, filename, mime_type, storage_path, notes)
+        VALUES (%s, %s::date, %s, %s, %s, %s, %s) RETURNING id
+    """, [trade_key, session_date, kind, safe, mime, str(path), notes], fetch="one")
+    return int(row["id"]) if row else None
+
+
+def attachments_list(trade_key: str | None = None, session_date: str | None = None):
+    parts, params = ["1=1"], []
+    if trade_key:
+        parts.append("trade_key = %s")
+        params.append(trade_key)
+    if session_date:
+        parts.append("session_date = %s::date")
+        params.append(session_date)
+    return _q(f"SELECT id, trade_key, session_date::text, kind, filename, mime_type, notes, created_at::text FROM journal_attachments WHERE {' AND '.join(parts)} ORDER BY created_at DESC", params)
+
+
+def export_csv(account=None, date_from=None, date_to=None, tax=False):
+    if tax:
+        return export_tax_csv(account, date_from, date_to)
     trades = fetch_closed_trades(account, date_from, date_to)
     buf = io.StringIO()
     if not trades:
