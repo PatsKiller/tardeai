@@ -1,0 +1,60 @@
+strategy_id: pullback_macd_reversal
+display_name: Pullback MACD Reversal
+version: 1.0.0
+status: TESTING
+purpose: >-
+  S&P 500 uptrend names in a 12–28% pullback off the 52-week high with MACD histogram
+  rising toward a bullish cross (trigger or watch tier). Entry/stop/target come from the
+  pullback_macd_screener authoritative trade plan — not generic R:R geometry.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+forbidden_accounts:
+  - fidelity_rollover_ira
+timeframe: swing_3_to_21d
+timeframe_class: SHORT_SWING
+universe: sp500_constituents
+primary_data_sources:
+  - pullback_macd_screener
+  - indicator_engine
+entry_criteria:
+  - id: UPTREND_STRUCTURE
+    description: Price above SMA200, SMA50 above SMA200 and rising
+    metric: trend_state
+    operator: eq
+    value: confirmed_uptrend
+  - id: PULLBACK_BAND
+    description: Price 12–28% below 52-week high (config-driven in screener)
+    metric: pullback_pct
+    operator: between
+    value: [12, 28]
+  - id: MACD_INFLECTION
+    description: MACD histogram negative but rising (trigger or watch tier)
+    metric: macd_hist_rising
+    operator: eq
+    value: true
+  - id: AUTHORITATIVE_PLAN
+    description: trade_plans row from pullback_macd_screener with entry/stop/target
+    metric: plan_source
+    operator: eq
+    value: pullback_macd_screener
+auto_disqualifiers:
+  - id: NO_TRADE_PLAN
+    condition: missing authoritative trade_plans row
+  - id: STALE_CANDIDATE
+    condition: pullback_macd_candidates.status != active
+  - id: RR_BELOW_MIN
+    condition: proposed_rr < 1.2
+agent_responsibilities:
+  maria: Confirm sector/macro context for large-cap pullback.
+  risk: Validate swing-low stop and retrace target vs 52w high.
+  steph: Size for multi-day hold; respect dual-lane routing (paper ATM vs live 2FA).
+paper_trade_rules:
+  max_hold_days: 21
+  auto_exit_at_max_hold: true
+live_trade_rules:
+  max_dollar_risk: 200
+  max_hold_days: 21
+discovery_source: pullback_macd
+screener_config: config/pullback_macd_screener.yaml

@@ -30,30 +30,69 @@ def _get_conn():
     return get_connection()
 
 
+def _routing_lane(proposal: dict) -> str:
+    basis = proposal.get("sizing_basis")
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    if isinstance(basis, dict) and basis.get("routing_lane"):
+        return str(basis["routing_lane"])
+    acct = str(proposal.get("target_account") or proposal.get("proposed_account") or "")
+    try:
+        from automated_account import is_automated_account
+        return "paper_atm" if is_automated_account(acct) else "live_2fa"
+    except Exception:
+        return ""
+
+
+def _curated_light_eligible(proposal: dict) -> bool:
+    """Paper ATM curated rows with complete levels — skip heavy technical/LLM steps."""
+    from atm_proposal_source_policy import is_curated_proposal
+    lane = _routing_lane(proposal)
+    if lane != "paper_atm":
+        return False
+    if not is_curated_proposal(proposal):
+        return False
+    try:
+        entry = float(proposal.get("proposed_entry") or 0)
+        stop = float(proposal.get("proposed_stop") or 0)
+        target = float(proposal.get("proposed_target1") or 0)
+    except (TypeError, ValueError):
+        return False
+    return entry > 0 and stop > 0 and target > 0 and entry > stop and target > entry
+
+
 def _fetch_proposals(conn, force_all=False):
-    """Return PENDING proposals needing enrichment."""
+    """Return PENDING proposals needing enrichment (live 2FA lane first)."""
     cur = conn.cursor()
+    base_cols = """
+            SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
+                   proposed_target1, proposed_shares, risk_gate_result,
+                   enrichment_failures, enrichment_status,
+                   discovery_source, origin, sizing_basis,
+                   target_account, proposed_account
+    """
+    order = """
+            ORDER BY
+                CASE WHEN COALESCE(sizing_basis->>'routing_lane','') = 'live_2fa' THEN 0
+                     WHEN COALESCE(target_account, proposed_account,'') LIKE 'schwab%' THEN 0
+                     ELSE 1 END,
+                created_at ASC
+    """
     if force_all:
-        cur.execute("""
-            SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
-                   proposed_target1, proposed_shares, risk_gate_result,
-                   enrichment_failures, enrichment_status
-            FROM paper_trade_proposals
-            WHERE status = 'PENDING'
-            ORDER BY created_at ASC
-        """)
+        cur.execute(f"{base_cols} FROM paper_trade_proposals WHERE status = 'PENDING' {order}")
     else:
-        cur.execute("""
-            SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
-                   proposed_target1, proposed_shares, risk_gate_result,
-                   enrichment_failures, enrichment_status
+        cur.execute(f"""
+            {base_cols}
             FROM paper_trade_proposals
             WHERE status = 'PENDING'
               AND COALESCE(enrichment_status, 'PENDING') != 'FAILED'
               AND (enrichment_status IS NULL
                    OR enrichment_status != 'COMPLETE'
                    OR enrichment_last_attempt_at < NOW() - INTERVAL '10 minutes')
-            ORDER BY created_at ASC
+            {order}
         """)
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
@@ -248,8 +287,48 @@ def _step_execution_readiness(conn, proposal):
         return False
 
 
+def enrich_proposal_light(proposal, force_all=False):
+    """Curated paper-ATM fast path: price + readiness (+ risk if missing)."""
+    pid = proposal["id"]
+    symbol = proposal["symbol"]
+    conn = _get_conn()
+    if not conn:
+        return {"id": pid, "symbol": symbol, "success": False, "error": "no_db"}
+    _update_enrichment_status(conn, pid, "IN_PROGRESS")
+    steps_ok = steps_total = 0
+    first_error = None
+    steps_total += 1
+    if _step_refresh_price(conn, proposal):
+        steps_ok += 1
+    else:
+        first_error = "refresh_price"
+    if not proposal.get("risk_gate_result") or force_all:
+        steps_total += 1
+        if _step_risk_gate(conn, proposal):
+            steps_ok += 1
+        else:
+            first_error = first_error or "risk_gate"
+    steps_total += 1
+    if _step_execution_readiness(conn, proposal):
+        steps_ok += 1
+    else:
+        first_error = first_error or "readiness"
+    if steps_ok == steps_total:
+        _update_enrichment_status(conn, pid, "COMPLETE")
+        log.info(f"  #{pid} {symbol}: COMPLETE (curated_light {steps_ok}/{steps_total})")
+        return {"id": pid, "symbol": symbol, "success": True, "steps": f"light:{steps_ok}/{steps_total}"}
+    failures = int(proposal.get("enrichment_failures") or 0) + 1
+    if failures >= MAX_FAILURES:
+        _update_enrichment_status(conn, pid, "FAILED", error=first_error)
+    else:
+        _update_enrichment_status(conn, pid, "PENDING", error=first_error)
+    return {"id": pid, "symbol": symbol, "success": False, "error": first_error}
+
+
 def enrich_proposal(proposal, force_all=False):
     """Run full enrichment pipeline for one proposal. Thread-safe (own connection)."""
+    if _curated_light_eligible(proposal) and not force_all:
+        return enrich_proposal_light(proposal, force_all=force_all)
     pid = proposal["id"]
     symbol = proposal["symbol"]
     conn = _get_conn()
@@ -317,7 +396,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--force-all", action="store_true", help="Override freshness checks, enrich everything")
-    ap.add_argument("--limit", type=int, default=20)
+    ap.add_argument("--limit", type=int, default=40)
     args = ap.parse_args()
 
     conn = _get_conn()

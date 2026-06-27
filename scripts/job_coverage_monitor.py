@@ -64,6 +64,20 @@ REGISTRY = [
      "signal": ("log", "options_monitor.log")},
     {"name": "options_iv_snapshot", "schedule_match": "options_iv_snapshot.py", "cadence_h": 30,
      "signal": ("db", "SELECT MAX(captured_at) FROM options_iv_history")},
+    {"name": "atm_auto_approver", "schedule_match": "atm_auto_approver.py", "cadence_h": 1,
+     "signal": ("log", "atm.log")},
+    {"name": "protection_pipeline", "schedule_match": "run_protection_pipeline.sh", "cadence_h": 2,
+     "signal": ("log", "protection_pipeline_cron.log")},
+    {"name": "watchlist_proposal_bridge", "schedule_match": "watchlist_proposal_bridge.py", "cadence_h": 1,
+     "signal": ("log", "watchlist_proposal_bridge.log")},
+    {"name": "pullback_macd_screener", "schedule_match": "run_pullback_macd_screener.sh", "cadence_h": 30,
+     "signal": ("log", "pullback_macd_screener.log")},
+    {"name": "auto_proposal_generator", "schedule_match": "auto_proposal_generator.py", "cadence_h": 2,
+     "signal": ("log", "auto_proposal.log")},
+    {"name": "proposal_enrichment", "schedule_match": "proposal_enrichment_loop.py", "cadence_h": 1,
+     "signal": ("log", "proposal_enrichment.log")},
+    {"name": "strategy_audits", "schedule_match": "run_scheduled_strategy_audits.sh", "cadence_h": 30,
+     "signal": ("log", "strategy_audits.log")},
 ]
 
 

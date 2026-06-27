@@ -16289,7 +16289,65 @@ def _strategy_intelligence():
         except Exception:
             continue
 
-    unvalidated = sum(1 for s in strategies if s['governance_state'] == 'UNVALIDATED')
+    seen = {s['strategy_id'] for s in strategies}
+    extra_rows = _db_query("""
+        WITH ids AS (
+            SELECT DISTINCT strategy_id FROM paper_trade_proposals
+            WHERE strategy_id IS NOT NULL AND strategy_id <> ''
+            UNION
+            SELECT DISTINCT strategy_id FROM paper_trades
+            WHERE strategy_id IS NOT NULL AND strategy_id <> ''
+        )
+        SELECT i.strategy_id,
+               COALESCE(p.n, 0) AS active_proposals,
+               COALESCE(o.n, 0) AS open_trades,
+               COALESCE(c.n, 0) AS closed_90d
+        FROM ids i
+        LEFT JOIN (
+            SELECT strategy_id, count(*) AS n FROM paper_trade_proposals
+            WHERE status = 'PENDING' AND COALESCE(proposal_kind, 'entry') = 'entry'
+            GROUP BY strategy_id
+        ) p ON p.strategy_id = i.strategy_id
+        LEFT JOIN (
+            SELECT strategy_id, count(*) AS n FROM paper_trades WHERE status = 'open'
+            GROUP BY strategy_id
+        ) o ON o.strategy_id = i.strategy_id
+        LEFT JOIN (
+            SELECT strategy_id, count(*) AS n FROM paper_trades
+            WHERE status = 'closed' AND closed_at > NOW() - INTERVAL '90 days'
+            GROUP BY strategy_id
+        ) c ON c.strategy_id = i.strategy_id
+    """) or []
+    for r in extra_rows:
+        sid = str(r.get('strategy_id') or '')
+        if not sid or sid in seen:
+            continue
+        sm = _broker_strategy_meta(sid)
+        strategies.append({
+            'strategy_id': sid,
+            'display_name': sm.get('display_name') or sid.replace('_', ' ').title(),
+            'governance_state': 'DB_ACTIVE_NO_YAML',
+            'trade_count': int(r.get('closed_90d') or 0),
+            'win_rate': None,
+            'profit_factor': None,
+            'avg_r': None,
+            'expectancy': None,
+            'trades_to_validation': max(0, 30 - int(r.get('closed_90d') or 0)),
+            'active_proposals': int(r.get('active_proposals') or 0),
+            'open_trades': int(r.get('open_trades') or 0),
+            'yaml_version': None,
+            'has_entry_criteria': False,
+            'has_auto_disqualifiers': False,
+            'has_agent_responsibilities': False,
+            'has_vix_rules': False,
+            'has_technical_indicators': False,
+            'co_enables': [],
+            'performance_verdict': 'NO_YAML',
+            'source': 'db_active',
+        })
+        seen.add(sid)
+
+    unvalidated = sum(1 for s in strategies if s['governance_state'] in ('UNVALIDATED', 'DB_ACTIVE_NO_YAML', 'PAPER_ONLY'))
     with_proposals = sum(1 for s in strategies if s['active_proposals'] > 0)
     return {
         'strategies': strategies,
@@ -16299,6 +16357,7 @@ def _strategy_intelligence():
             'with_proposals': with_proposals,
             'without_proposals': len(strategies) - with_proposals,
             'total_closed_trades': sum(s['trade_count'] or 0 for s in strategies),
+            'db_active_no_yaml': sum(1 for s in strategies if s.get('source') == 'db_active'),
         },
     }
 

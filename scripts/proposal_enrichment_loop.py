@@ -40,7 +40,7 @@ from pipeline_registry import PipelineRun
 log = logging.getLogger("proposal_enrichment")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
-BATCH_SIZE = 20
+BATCH_SIZE = 15
 
 # Entry zone thresholds
 ZONE_TIGHT = {'valid': 3.0, 'marginal': 7.0}   # intraday, short_swing
@@ -546,6 +546,9 @@ def fetch_pending_proposals(conn, limit=BATCH_SIZE, proposal_id=None, symbol=Non
             WHERE status = 'PENDING'
               AND proposed_entry IS NOT NULL AND proposed_entry > 0
             ORDER BY
+                CASE WHEN COALESCE(sizing_basis->>'routing_lane','') = 'live_2fa' THEN 0
+                     WHEN COALESCE(target_account, proposed_account,'') LIKE 'schwab%%' THEN 0
+                     ELSE 1 END,
                 CASE lifecycle_status
                     WHEN 'ENTRY_ZONE_VALID' THEN 1 WHEN 'ACTIVE' THEN 2
                     WHEN 'NEEDS_REVIEW' THEN 3 WHEN 'ENTRY_MISSED' THEN 4 ELSE 5
