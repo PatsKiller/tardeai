@@ -21522,6 +21522,36 @@ def _options_approval_queue(query=None):
     return _json_clean({"ok": True, "queue": ent.fetch_approval_queue(status=status, limit=limit)})
 
 
+def _protection_proposals(query=None):
+    """GET /api/v2/protection-proposals — protection adjustments unified into the proposals view,
+    each tagged with its ATM disposition (paper auto-applies guarded stop-ups; real → operator)."""
+    from db_adapter import _execute
+    rows = _execute("""
+        SELECT a.id, a.symbol, a.action, a.current_stop, a.proposed_stop, a.status,
+               a.requires_operator_approval, a.no_live_execution, a.created_at,
+               t.account, t.entry_price, t.shares
+        FROM paper_protection_adjustment_proposals a
+        JOIN paper_trades t ON t.id = a.trade_id
+        WHERE a.status='PROPOSED' AND t.status='open'
+        ORDER BY t.account, a.symbol, a.id""", fetch="all") or []
+    AUTO = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+    PAPER = {"alpaca_paper", "ALPACA_PAPER", "paper", "PAPER"}
+    for r in rows:
+        acct = str(r.get("account") or "")
+        act = (r.get("action") or "").upper()
+        if acct in PAPER and act in AUTO:
+            r["atm_disposition"] = "paper_auto_apply"
+        elif acct in PAPER:
+            r["atm_disposition"] = "advisory"          # action not in the auto-apply allowlist
+        else:
+            r["atm_disposition"] = "operator_approval"  # real account → operator + 2FA
+    return _json_clean({
+        "ok": True, "proposals": rows, "count": len(rows),
+        "paper_auto_apply": sum(1 for r in rows if r["atm_disposition"] == "paper_auto_apply"),
+        "operator_approval": sum(1 for r in rows if r["atm_disposition"] == "operator_approval"),
+    })
+
+
 def _pullback_macd_adjustments(query=None):
     """GET /api/v2/pullback-macd/adjustments — in-trade adjustment guidance for OPEN pullback
     positions (trail stop / take-profit / exit). Advisory; refreshed each intraday monitor pass."""
@@ -23317,6 +23347,7 @@ ROUTES = {
     "/api/v2/options/approval-queue": _options_approval_queue,
     "/api/v2/pullback-macd/candidates": _pullback_macd_candidates,
     "/api/v2/pullback-macd/adjustments": _pullback_macd_adjustments,
+    "/api/v2/protection-proposals": _protection_proposals,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
     "/api/v2/schwab/stream/status": _schwab_stream_status,
