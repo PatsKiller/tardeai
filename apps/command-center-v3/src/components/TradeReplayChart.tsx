@@ -273,7 +273,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, width: 'min(900px, 96vw)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{trade.symbol} <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{String(trade.entry_date).slice(0, 10)} → {String(trade.exit_date || '').slice(0, 10)}</span></div>
-          {data && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{data.timeframe} · {data.bar_count} bars · src:{data.source}</span>}
+          {data && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{data.timeframe}{(data as any).hold_days > 0 ? ` · ${(data as any).hold_days}d hold` : ''} · {data.bar_count} bars · src:{data.source}</span>}
           {data?.entry_et && data?.exit_et && (
             <span style={{ fontSize: 10, color: data?.integrity?.times_valid === false ? '#f59e0b' : 'var(--text2)', fontFamily: 'monospace' }}
               title={[ti?.entry_marker_et && `Entry bar: ${ti.entry_marker_et}`, ti?.exit_marker_et && `Exit bar: ${ti.exit_marker_et}`, fillSrc && `Fill source: ${fillSrc}`, timeWarn].filter(Boolean).join('\n')}>

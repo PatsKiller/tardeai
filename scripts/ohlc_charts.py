@@ -353,6 +353,30 @@ def _infer_bar_by_price(price, bars, prefer_after=None):
     return scored[0][2] if scored else None
 
 
+_CALENDAR_TFS = frozenset({"1Day", "1Week", "1Month"})
+
+
+def _pick_timeframe(same_day: bool, hold_days: int) -> str:
+    """Intraday scalps -> 1Min; swings -> 1Day; long positions -> monthly bars."""
+    if same_day:
+        return "1Min"
+    if hold_days >= 45:
+        return "1Month"
+    if hold_days >= 10:
+        return "1Week"
+    return "1Day"
+
+
+def _finviz_period(timeframe: str, same_day: bool) -> str:
+    if same_day:
+        return "i5"
+    if timeframe == "1Month":
+        return "m"
+    if timeframe == "1Week":
+        return "w"
+    return "d"
+
+
 def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None,
                 entry_time=None, exit_time=None, trade_key=None, account=None):
     """OHLCV + VWAP/MACD/RSI + entry/exit markers. Same-day -> 1-min bars in a TIGHT window around the
@@ -371,7 +395,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
 
     # Tagging-queue replays often pass dates only → midnight UTC snaps markers to premarket (~$3 on GOVX
     # while journal fill is $4.08 @ 09:57 ET). Resolve real fills from execution-quality table first.
-    if same_day and not has_time:
+    if not has_time:
         lt_ent, lt_ext, lt_src = _lookup_fill_times(symbol, ed, entry_price, exit_price, trade_key, account)
         if lt_ent:
             ent = lt_ent
@@ -379,7 +403,10 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         if lt_ext:
             ext = lt_ext
         has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
+        ed, xd = ent.date(), ext.date()
+        same_day = ed == xd
 
+    hold_days = max(0, (ext.date() - ent.date()).days)
     win = None
 
     def _sess(d, h, m):
@@ -422,10 +449,23 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         e_dt = sess_close + dt.timedelta(minutes=30)
         start, end, win = (sess_open - dt.timedelta(hours=5, minutes=30)).isoformat(), e_dt.isoformat(), (s_dt, e_dt)
     else:
-        timeframe = "1Day"
-        pad = max(5, (xd - ed).days // 5)
-        start = (ed - dt.timedelta(days=pad)).isoformat()
-        end = (xd + dt.timedelta(days=pad)).isoformat()
+        timeframe = _pick_timeframe(False, hold_days)
+        if timeframe == "1Month":
+            # Long holds (e.g. V 231d): monthly candles + markers on entry/exit months.
+            start = dt.datetime.combine(ed.replace(day=1), dt.time.min, tzinfo=dt.timezone.utc)
+            start = (start - dt.timedelta(days=75)).isoformat()
+            end = (ext + dt.timedelta(days=45)).isoformat()
+            win = None
+        elif timeframe == "1Week":
+            pad = max(28, hold_days // 3)
+            start = (ed - dt.timedelta(days=pad)).isoformat()
+            end = (xd + dt.timedelta(days=max(14, pad // 3))).isoformat()
+            win = None
+        else:
+            pad = max(5, hold_days // 5)
+            start = (ed - dt.timedelta(days=pad)).isoformat()
+            end = (xd + dt.timedelta(days=pad)).isoformat()
+            win = None
 
     bars, err = _fetch(symbol, start, end, timeframe)
     source = "alpaca"
@@ -438,7 +478,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         # TIER 3 FALLBACK: static Finviz Elite chart image
         # (served via the /api/v2/finviz-chart proxy which attaches the Elite cookie).
         return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
-                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
+                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={_finviz_period(timeframe, same_day)}",
                 "reason": err or "no Alpaca bars for this symbol/window"}
 
     # Indicators + VWAP accumulate over the FULL fetch (intraday: from the 9:30 session open) so VWAP is a
@@ -458,7 +498,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             cum_pv += tp * (b.get("v") or 0); cum_v += (b.get("v") or 0)
         if win is not None and not (s_dt <= bt <= e_dt):     # only DISPLAY bars inside the window
             continue
-        tkey = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
+        tkey = b["t"][:10] if timeframe in _CALENDAR_TFS else _et_ts(b["t"])
         if (sess_open is not None and session_open_time is None and bt >= sess_open
                 and (bt - sess_open) < dt.timedelta(minutes=2)):   # only the actual 9:30 bar
             session_open_time = tkey
@@ -476,26 +516,35 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             out_rsi.append({"time": tkey, "value": rsi[i]})
     if not out_bars:
         return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
-                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={'i5' if same_day else 'd'}",
+                "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={_finviz_period(timeframe, same_day)}",
                 "reason": "no bars in trade window"}
 
     def _mark_time(ts, default_idx):
-        """bar 'time' nearest the real fill timestamp (daily: by date; intraday: nearest ET-bar)."""
-        if timeframe == "1Day":
+        """bar 'time' nearest the real fill timestamp (calendar TF: by date; intraday: nearest ET-bar)."""
+        if timeframe in _CALENDAR_TFS:
             td = ts.date().isoformat()
-            cands = [b["time"] for b in out_bars if b["time"] <= td]
-            return cands[-1] if cands else out_bars[default_idx]["time"]
+            cands = [b["time"] for b in out_bars if str(b["time"])[:10] <= td]
+            if cands:
+                return cands[-1]
+            # Entry predates vendor history (e.g. V 2007, Alpaca monthly from 2016) — clamp to first bar.
+            if out_bars and str(out_bars[0]["time"])[:10] > td:
+                return out_bars[0]["time"]
+            return out_bars[default_idx]["time"]
         tgt = _et_ts(ts.astimezone(dt.timezone.utc).isoformat())
         return min(out_bars, key=lambda b: abs(b["time"] - tgt))["time"]
 
     def _mark_time_price_aware(ts, price, default_idx, snap_method="time"):
-        """Snap marker to bar time; if journal price doesn't fit that bar's OHLC, re-snap by price."""
+        """Snap marker to fill time. Price re-snap only for 1Min and within 2 bars of fill."""
         tkey = _mark_time(ts, default_idx)
+        if timeframe != "1Min":
+            return tkey, "time"
         bar = _bar_by_time(out_bars, tkey)
         if price is not None and bar and not _price_in_bar(price, bar):
+            tgt = _et_ts(ts.astimezone(dt.timezone.utc).isoformat())
+            near = [b for b in out_bars if abs(int(b["time"]) - tgt) <= 120]
             prefer = _session_open(ed) if same_day and sess_open else None
-            alt = _infer_bar_by_price(price, out_bars, prefer_after=prefer)
-            if alt:
+            alt = _infer_bar_by_price(price, near or out_bars, prefer_after=prefer)
+            if alt and abs(int(alt["time"]) - tgt) <= 120:
                 tkey = alt["time"]
                 snap_method = "price_inferred"
         return tkey, snap_method
@@ -504,6 +553,8 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     marker_meta = []
     if entry_price:
         tkey, snap = _mark_time_price_aware(ent, entry_price, 0)
+        if timeframe in _CALENDAR_TFS and out_bars and str(out_bars[0]["time"])[:10] > ent.date().isoformat():
+            snap = "clamped_pre"
         markers.append({"time": tkey, "price": float(entry_price), "type": "entry", "label": f"BUY {entry_price}"})
         marker_meta.append({"type": "entry", "snap": snap})
     if exit_price:
@@ -511,9 +562,16 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         markers.append({"time": tkey, "price": float(exit_price), "type": "exit", "label": f"SELL {exit_price}"})
         marker_meta.append({"type": "exit", "snap": snap})
 
+    # Intraday: never collapse entry+exit to one bar when fills are >60s apart.
+    if timeframe == "1Min" and len(markers) == 2 and markers[0]["time"] == markers[1]["time"]:
+        if (ext - ent).total_seconds() > 60:
+            markers[0]["time"] = _mark_time(ent, 0)
+            markers[1]["time"] = _mark_time(ext, -1)
+            marker_meta[0]["snap"] = marker_meta[1]["snap"] = "time_forced"
+
     # ── Replay backlog (2026-06-11): news pins + L2 pressure strip + SPY overlay ───────────────────────────
     def _bar_time_for(ts_dt):
-        if timeframe == "1Day":
+        if timeframe in _CALENDAR_TFS:
             td = ts_dt.date().isoformat()
             cands = [b["time"] for b in out_bars if b["time"] <= td]
             return cands[-1] if cands else None
@@ -573,7 +631,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         if sbars and out_bars:
             _smap = {}
             for b in sbars:
-                k = b["t"][:10] if timeframe == "1Day" else _et_ts(b["t"])
+                k = b["t"][:10] if timeframe in _CALENDAR_TFS else _et_ts(b["t"])
                 _smap[k] = b["c"]
             _base_sym = out_bars[0]["close"]
             _base_spy = next((_smap[b["time"]] for b in out_bars if b["time"] in _smap), None)
@@ -607,7 +665,12 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             marker_in_range = False
             marker_warnings.append(f"{m['type']} {p} above session high {max_high}")
 
-    et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
+    def _fill_label(d):
+        if timeframe in _CALENDAR_TFS:
+            return d.date().isoformat()
+        return d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC")
+
+    et = _fill_label
 
     def _bar_et_label(tkey):
         """Bar time key -> display label (intraday: ET wall-clock; daily: date)."""
@@ -626,18 +689,39 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     time_integrity = {"fill_source": fill_source, "entry_fill_et": et(ent), "exit_fill_et": et(ext)}
     hold_sec = int((ext - ent).total_seconds()) if ext and ent else None
     time_integrity["hold_seconds"] = hold_sec
-    max_bar_delta = 90 if timeframe != "1Day" else 86400
+    max_bar_delta = 120 if timeframe == "1Min" else (7 * 86400 if timeframe == "1Week" else 35 * 86400)
     for m in markers:
         label = _bar_et_label(m["time"])
         fill_ts = ent if m["type"] == "entry" else ext
         time_integrity[f"{m['type']}_marker_et"] = label
         if fill_ts:
-            if timeframe == "1Day":
+            if timeframe in _CALENDAR_TFS:
                 fill_day = fill_ts.date().isoformat()
                 bar_day = str(m["time"])[:10]
-                time_integrity[f"{m['type']}_delta_sec"] = 0 if fill_day == bar_day else 86400
-                if fill_day != bar_day:
-                    time_warnings.append(f"{m['type']} fill {fill_day} vs marker bar {bar_day}")
+                if timeframe == "1Month":
+                    ok_month = str(bar_day)[:7] == fill_day[:7]
+                    first_m = str(out_bars[0]["time"])[:7] if out_bars else bar_day[:7]
+                    if m["type"] == "entry" and fill_day[:7] < first_m:
+                        time_integrity[f"{m['type']}_delta_sec"] = 0
+                        time_integrity["entry_clamped_pre_data"] = True
+                        time_warnings.append(
+                            f"entry {fill_day[:7]} predates available bars (from {first_m}) — marker at chart start")
+                    elif not ok_month:
+                        time_integrity[f"{m['type']}_delta_sec"] = 35 * 86400
+                        time_warnings.append(
+                            f"{m['type']} fill {fill_day[:7]} vs marker month {str(bar_day)[:7]}")
+                    else:
+                        time_integrity[f"{m['type']}_delta_sec"] = 0
+                else:
+                    time_integrity[f"{m['type']}_delta_sec"] = 0 if fill_day == bar_day else 86400
+                    if fill_day != bar_day and timeframe == "1Day":
+                        time_warnings.append(f"{m['type']} fill {fill_day} vs marker bar {bar_day}")
+                    elif fill_day != bar_day and timeframe == "1Week":
+                        delta_d = abs((dt.date.fromisoformat(fill_day) - dt.date.fromisoformat(bar_day)).days)
+                        time_integrity[f"{m['type']}_delta_sec"] = delta_d * 86400
+                        if delta_d > 7:
+                            time_warnings.append(
+                                f"{m['type']} fill {fill_day} vs marker week {bar_day} ({delta_d}d)")
             else:
                 fill_key = _et_ts(fill_ts.astimezone(dt.timezone.utc).isoformat())
                 delta = abs(int(m["time"]) - fill_key)
@@ -649,10 +733,12 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     if same_day and not (_has_clock(entry_time) or _has_clock(exit_time)) and fill_source == "caller":
         time_warnings.append("fill times not resolved — pass trade_key or entry_time")
 
-    times_valid = not time_warnings
+    # Data-vendor clamp notes (e.g. 2007 entry, Alpaca monthly from 2016) are informational only.
+    hard_time_warnings = [w for w in time_warnings if "predates available bars" not in w]
+    times_valid = not hard_time_warnings
 
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
-            "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
+            "hold_days": hold_days, "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
             "session_open_time": session_open_time, "session_close_time": session_close_time,
             "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay,
