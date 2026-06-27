@@ -264,7 +264,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── EOD open trade report (after market close) ──
 5 16 * * 1-5 cd $PROJ && set -a && . .env && set +a && bash scripts/market_day_gate.sh .venv/bin/python scripts/eod_open_trade_alert.py >> logs/eod_alert.log 2>&1
 # ── Auto-enrichment runner (every 10 min, 4 AM - 7:30 PM trading days) ──
-*/10 4-19 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/auto_enrichment_runner.py >> logs/auto_enrichment.log 2>&1
+*/10 4-19 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/auto_enrichment_runner.py --limit 40 >> logs/auto_enrichment.log 2>&1
 # ── ATM auto-approver (every 15 min during market hours) ──
 */15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts/atm_auto_approver.py >> logs/atm.log 2>&1
 */3 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/unified_stop_supervisor.lock bash scripts/market_day_gate.sh $PY scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1
@@ -290,7 +290,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Incubator rolloff (daily 10 AM)
 0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1
 # Proposal enrichment loop (every 15 min market hours)
-*/10 4-19 * * 1-5 cd $PROJ && timeout 10m $PY scripts/proposal_enrichment_loop.py --run --limit 5 >> logs/proposal_enrichment.log 2>&1
+*/10 4-19 * * 1-5 cd $PROJ && timeout 10m $PY scripts/proposal_enrichment_loop.py --run --limit 15 >> logs/proposal_enrichment.log 2>&1
 # Proposal lifecycle (every 30 min market hours)
 */30 9-16 * * 1-5 cd $PROJ && $PY scripts/proposal_lifecycle.py >> logs/proposal_lifecycle.log 2>&1
 # Risk gate (on-demand, but check every hour during market)
@@ -376,6 +376,13 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Weekly system version check — Sundays 06:00
 0 6 * * 0 /bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_system_versions.sh >> /home/johnclaw/logs/version_check.log 2>&1
 30 9 2 6 * cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/atm_market_open_watch.py >> logs/atm_market_open_watch.log 2>&1  # atm-market-open-watch-0930 (Phase189A one-shot)
+# BEGIN strategy-monitoring-cron
+30 16 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
+0 18 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
+0 6 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
+30 6 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
+5 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scheduled_strategy_audits.sh
+# END strategy-monitoring-cron
 */30 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection-learning pipeline
 30 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection after-close reconcile
 
