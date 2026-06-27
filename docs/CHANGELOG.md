@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-26 - Strategy monitoring remediation + source/strategy badges
+
+Audit follow-up — see `docs/STRATEGY_MONITORING_20260626.md`.
+- **`pullback_macd_reversal.yaml`** — strategy playbook for screener `default_strategy_id`; appears in
+  `/api/v2/strategy-intelligence`.
+- **Dual-lane entry parity** — watchlist bridge + pullback screener emit `tradeai_automated` (ATM) and
+  `schwab_taxable` (2FA) per symbol via `scripts/proposal_routing_lanes.py`; `audit_proposal_source_parity.py`
+  verifies coverage.
+- **Broker-proposals sort** — neutral priority (Hermes + newest; no watchlist-first boost).
+- **Source + strategy badges** — `ProposalSourceBadges.tsx` (watchlist, Pullback MACD, Protection, ATM test /
+  2FA live lanes) + `ProposalStrategyBadge.tsx` on Broker Proposals, Proposals, Protection panels.
+- **Enrichment throughput** — `auto_enrichment_runner.py` prioritizes `live_2fa` lane; curated light path for
+  paper ATM; limits 40 / 15 (cron). `proposal_enrichment_loop.py` broker-first queue.
+- **Cron restored** — `proposal_monitor.py` 4×/day (16:30, 18:00, 06:00, 06:30 ET);
+  `run_scheduled_strategy_audits.sh` 17:05 weekdays. Install: `scripts/install_strategy_monitoring_cron.sh`.
+- **`job_coverage_monitor.py`** — registry extended for ATM, protection pipeline, watchlist bridge, pullback,
+  auto_proposal, enrichment, strategy audits.
+
 ## 2026-06-26 - Protection adjustments coupled to ATM (paper auto-apply, real operator)
 
 Protection (stop-curation) recommendations were in a separate advisory table, not in the proposals

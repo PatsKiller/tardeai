@@ -12,16 +12,27 @@ Closes the gap where **watchlist BUY / STRONG_BUY** ratings lived in research ta
 
 ## Solution
 
-`scripts/watchlist_proposal_bridge.py` upserts tagged broker-queue rows:
+`scripts/watchlist_proposal_bridge.py` upserts **dual-lane** rows per BUY+ symbol (shared routing via
+`scripts/proposal_routing_lanes.py`):
+
+| Lane | Account | `risk_gate_result` | Purpose |
+|------|---------|-------------------|---------|
+| `paper_atm` | `tradeai_automated` (`WATCHLIST_PAPER_ACCOUNT`) | `APPROVED` | ATM auto-test |
+| `live_2fa` | `schwab_taxable` (`WATCHLIST_BROKER_ACCOUNT`) | `ADVISORY` | Broker Proposals + 2FA |
+
+Per-lane fields:
 
 | Field | Value |
 |-------|--------|
 | `origin` | `watchlist` |
 | `discovery_source` | `watchlist` |
-| `intended_broker` | `schwab_taxable` (env: `WATCHLIST_BROKER_ACCOUNT`) |
+| `intended_broker` / `target_account` | Lane account (see table) |
 | `status` | `PENDING` |
 | `cio_view` | BUY / STRONG_BUY / ADD / ADD_ON_PULLBACK |
+| `sizing_basis.routing_lane` | `paper_atm` or `live_2fa` |
 | `sizing_basis.watchlist_rating` | Same rating + Hermes score for sort |
+
+Max **2 pending rows per symbol** (DB cap) — dual lane uses both slots.
 
 ### Persistence rules
 
@@ -100,11 +111,13 @@ Every proposal card shows **where the signal came from**:
 |-------|-------|------|
 | **◆ Watchlist BUY** | Green | `origin=watchlist` or symbol has active BUY+ watchlist rating |
 | **◆ Screener / Incubator / Proposal** | Blue | Auto-proposal pipeline (`origin=auto`, screener/incubator signal) |
+| **◆ ATM test** | Teal | `sizing_basis.routing_lane=paper_atm` |
+| **◆ 2FA live** | Amber | `sizing_basis.routing_lane=live_2fa` |
 | **Both** | Green + Blue | Symbol on watchlist **and** has screener/proposal signal |
 
-API field: `source_attribution` — `{ watchlist, proposal, watchlist_rating, proposal_channel, label }`.
+API field: `source_attribution` — `{ watchlist, proposal, watchlist_rating, proposal_channel, label, routing_lane }`.
 
-UI: `ProposalSourceBadges.tsx` on **Broker Proposals** and **Proposals** tabs.
+UI: `ProposalSourceBadges.tsx` + `ProposalStrategyBadge.tsx` on **Broker Proposals**, **Proposals**, and **Protection** panels.
 
 ## Broker queue hygiene
 

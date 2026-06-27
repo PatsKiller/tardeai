@@ -8,7 +8,8 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 ## Operator workflow
 
 1. **Arrive** via **Promote to Broker** (screener/incubator) **or** watchlist bridge (BUY+ names auto-synced — see `docs/WATCHLIST_PROPOSAL_BRIDGE.md`).
-2. **Read source badges** — green **◆ Watchlist**, blue **◆ Screener/Proposal**, or both when dual-attributed.
+2. **Read source + strategy badges** — green **◆ Watchlist**, blue **◆ Pullback MACD / Screener / Proposal**,
+   purple **◆ Protection**, plus **◆ ATM test** / **◆ 2FA live** routing lanes; orange strategy pill on every card.
 3. **Pick destination account** — Schwab (auto+2FA or manual) or Fidelity (FA manual only).
 4. **Refresh prices** — live quote + thesis validity band + sizing recalc.
 5. **Oversight** — local agents (Maria/Risk/Steph) + **Grok+ChatGPT** cloud review. Cloud auto-queues on detail load when thesis + lanes are ready (`api_v2._broker_oversight_for_proposal` → `maybe_queue_cloud_oversight`).
@@ -19,10 +20,17 @@ See `docs/PROPOSAL_EXECUTION_PATHS.md` for the two-path model (Path A paper vs P
 | Badge | Meaning |
 |-------|---------|
 | **◆ Watchlist BUY** (green) | Synced from watchlist bridge; persists while BUY/STRONG_BUY rating holds |
+| **◆ Pullback MACD** (blue) | `discovery_source=pullback_macd` from post-close / intraday screener |
 | **◆ Screener / Incubator** (blue) | Auto-proposal from scan/incubator pipeline |
+| **◆ Protection** (purple) | Stop/take-profit adjustment for an open position (not a new entry) |
+| **◆ ATM test** (teal) | `routing_lane=paper_atm` → `tradeai_automated` automated testing |
+| **◆ 2FA live** (amber) | `routing_lane=live_2fa` → broker queue for operator 2FA |
 | **Both** | Symbol on watchlist **and** has screener signal on the same card |
+| **Strategy pill** (orange) | `ProposalStrategyBadge.tsx` — `strategy_display_name` from YAML / resolver |
 
-Hover for full `source_attribution` (API-computed on each row). Component: `ProposalSourceBadges.tsx`.
+Hover for full `source_attribution` (API-computed on each row). Components: `ProposalSourceBadges.tsx`, `ProposalStrategyBadge.tsx`.
+
+Priority sort: **Hermes score + newest** (no watchlist-first boost).
 
 ## Risk visualizations (v1)
 
