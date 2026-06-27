@@ -605,6 +605,326 @@ def tag_groups():
     return _q("SELECT group_key, label, tags, parent_group FROM journal_tag_groups ORDER BY group_key")
 
 
+def _load_tagging_policy() -> dict:
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    try:
+        from config_db_loader import get_config
+        cfg = get_config("trade_in_view_tagging_policy", fallback_path="config/trade_in_view_tagging_policy.json")
+        if cfg:
+            return cfg
+    except Exception:
+        pass
+    try:
+        return json.loads((root / "config/trade_in_view_tagging_policy.json").read_text())
+    except Exception:
+        return {"min_total_tags": 3, "required_categories": ["strategy", "setup"], "queue_page_size": 50}
+
+
+def _review_payload(review: dict | None) -> dict:
+    if not review:
+        return {}
+    p = review.get("payload") or {}
+    if isinstance(p, str):
+        try:
+            p = json.loads(p)
+        except Exception:
+            p = {}
+    return p if isinstance(p, dict) else {}
+
+
+def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
+    """Return tagging completeness for one journal_trade_reviews row (or None)."""
+    policy = policy or _load_tagging_policy()
+    if not review:
+        return {"complete": False, "tag_count": 0, "missing": ["review"], "score": 0, "summary": "—"}
+
+    payload = _review_payload(review)
+    if payload.get("operator_reviewed_skip") or payload.get("tagging_complete"):
+        return {"complete": True, "tag_count": 99, "missing": [], "score": 100, "summary": "reviewed", "skipped": True}
+
+    missing: list[str] = []
+    setup_family = (review.get("setup_family") or "").strip()
+    setup_types = review.get("setup_types") or []
+    if isinstance(setup_types, str):
+        setup_types = [setup_types] if setup_types else []
+    setup_name = (review.get("setup_name") or "").strip()
+
+    if not setup_family:
+        missing.append("strategy")
+    if not setup_types and not setup_name:
+        missing.append("setup")
+    if policy.get("require_market_regime") and not (review.get("market_regime") or "").strip():
+        missing.append("market_regime")
+    if policy.get("require_psychology") and not (review.get("emotion_before") or "").strip():
+        missing.append("psychology")
+
+    for cat in policy.get("high_priority_categories") or []:
+        if cat == "market_regime" and not (review.get("market_regime") or "").strip():
+            if "market_regime" not in missing:
+                missing.append("market_regime")
+        if cat == "psychology" and not (review.get("emotion_before") or "").strip():
+            if "psychology" not in missing:
+                missing.append("psychology")
+
+    tag_count = 0
+    if setup_family:
+        tag_count += 1
+    tag_count += len(setup_types)
+    if setup_name and not setup_types:
+        tag_count += 1
+    if (review.get("market_regime") or "").strip():
+        tag_count += 1
+    if (review.get("emotion_before") or "").strip():
+        tag_count += 1
+    tag_count += len(review.get("mistake_tags") or [])
+    tag_count += len(review.get("strength_tags") or [])
+
+    auto_stub = False
+    if policy.get("flag_auto_classified_stubs", True):
+        lesson = review.get("lesson_learned") or ""
+        notes = review.get("review_notes") or ""
+        auto_stub = "Auto-classified" in lesson or "AI suggested" in notes
+        if auto_stub and (not setup_types or tag_count < int(policy.get("min_total_tags", 3))):
+            if "operator_review" not in missing:
+                missing.append("operator_review")
+
+    min_tags = int(policy.get("min_total_tags", 3))
+    incomplete = bool(missing) or tag_count < min_tags
+    score = 0 if incomplete else min(100, 40 + tag_count * 8)
+    if not incomplete and tag_count >= min_tags:
+        score = max(score, 75)
+    if not missing and tag_count >= min_tags + 2:
+        score = 100
+
+    parts = []
+    if setup_family:
+        parts.append(setup_family)
+    if setup_types:
+        parts.extend(setup_types[:2])
+    summary = ", ".join(parts)[:60] if parts else "—"
+
+    return {
+        "complete": not incomplete,
+        "tag_count": tag_count,
+        "missing": missing,
+        "score": score,
+        "summary": summary,
+        "auto_stub": auto_stub,
+    }
+
+
+def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
+                  page=1, limit=50, include_complete=False):
+    """Trades needing operator tagging, oldest first."""
+    policy = _load_tagging_policy()
+    limit = min(int(limit or policy.get("queue_page_size", 50)), 200)
+    page = max(1, int(page or 1))
+    offset = (page - 1) * limit
+
+    params: list[Any] = [int(days)]
+    acct = ""
+    if account:
+        acct = " AND tc.account = %s"
+        params.append(account)
+    min_pnl_sql = ""
+    if min_pnl is not None:
+        min_pnl_sql = " AND ABS(tc.pnl) >= %s"
+        params.append(abs(float(min_pnl)))
+
+    rows = _q(f"""
+        SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
+               tc.shares, tc.buy_price, tc.sell_price, tc.pnl, tc.pnl_pct, tc.hold_days,
+               (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key,
+               r.id AS review_id, r.setup_family, r.setup_name, r.setup_types, r.market_regime,
+               r.emotion_before, r.mistake_tags, r.strength_tags, r.lesson_learned,
+               r.review_notes, r.payload, r.updated_at::text
+        FROM trade_closed tc
+        LEFT JOIN journal_trade_reviews r
+          ON r.trade_key = (tc.symbol || ':' || tc.account || ':' || tc.close_date::text)
+        WHERE (tc.buy_price > 0 OR tc.pnl != 0)
+          AND tc.close_date > now() - (%s || ' days')::interval {acct} {min_pnl_sql}
+        ORDER BY tc.close_date ASC, tc.open_date ASC NULLS LAST, tc.symbol
+    """, params)
+
+    queue = []
+    complete_n = 0
+    for row in rows:
+        rev = {k: row[k] for k in (
+            "setup_family", "setup_name", "setup_types", "market_regime", "emotion_before",
+            "mistake_tags", "strength_tags", "lesson_learned", "review_notes", "payload",
+        )} if row.get("review_id") else None
+        score = score_trade_tags(rev, policy)
+        if score.get("complete"):
+            complete_n += 1
+            if not include_complete:
+                continue
+        if missing_category and missing_category not in score.get("missing", []):
+            continue
+        direction = "short" if (row.get("trade_type") or "").upper() == "SHORT" else "long"
+        queue.append({
+            "trade_key": row["trade_key"],
+            "symbol": row["symbol"],
+            "account": row["account"],
+            "open_date": row["open_date"],
+            "close_date": row["close_date"],
+            "execution_date": row["close_date"],
+            "direction": direction,
+            "shares": row.get("shares"),
+            "buy_price": row.get("buy_price"),
+            "sell_price": row.get("sell_price"),
+            "gross_pnl": row.get("pnl"),
+            "net_pnl": row.get("pnl"),
+            "pnl_pct": row.get("pnl_pct"),
+            "tag_count": score["tag_count"],
+            "tag_summary": score["summary"],
+            "missing": score["missing"],
+            "tagging_score": score["score"],
+            "has_review": bool(row.get("review_id")),
+            "auto_stub": score.get("auto_stub", False),
+        })
+
+    total_in_range = len(rows)
+    need_tagging = len(queue) if not include_complete else total_in_range - complete_n
+    page_rows = queue[offset:offset + limit]
+    oldest = queue[0]["execution_date"] if queue else None
+    health = round(complete_n / total_in_range * 100, 1) if total_in_range else 100.0
+
+    return {
+        "ok": True,
+        "items": page_rows,
+        "page": page,
+        "limit": limit,
+        "total_queue": len(queue),
+        "total_in_range": total_in_range,
+        "complete_in_range": complete_n,
+        "queue_health_pct": health,
+        "need_tagging": len(queue),
+        "need_tagging_pct": round(len(queue) / total_in_range * 100, 1) if total_in_range else 0,
+        "oldest_trade_date": oldest,
+        "policy": {k: policy.get(k) for k in ("min_total_tags", "required_categories", "high_priority_categories")},
+    }
+
+
+def tagging_queue_skip(trade_key: str, reason: str = ""):
+    """Mark trade as operator-reviewed without full tags."""
+    existing = _q("SELECT id, payload FROM journal_trade_reviews WHERE trade_key = %s", [trade_key], fetch="one")
+    payload = _review_payload(existing) if existing else {}
+    payload["operator_reviewed_skip"] = True
+    payload["skip_reason"] = (reason or "no tags needed")[:200]
+    if existing:
+        _q("UPDATE journal_trade_reviews SET payload = %s::jsonb, coach_notes = %s, updated_at = NOW() WHERE trade_key = %s",
+           [json.dumps(payload), f"[tagging_skip] {reason}"[:300], trade_key], fetch="none")
+    else:
+        parts = trade_key.split(":")
+        sym, acct, cd = parts[0], parts[1] if len(parts) > 2 else "", parts[-1]
+        _q("""
+            INSERT INTO journal_trade_reviews (trade_key, symbol, account, closed_date, payload, coach_notes, lesson_learned)
+            VALUES (%s, %s, %s, %s::date, %s::jsonb, %s, %s)
+        """, [trade_key, sym, acct, cd, json.dumps(payload), f"[tagging_skip] {reason}"[:300],
+              "Operator marked reviewed — no tags needed."], fetch="none")
+    return {"ok": True, "trade_key": trade_key}
+
+
+def tagging_queue_bulk_tag(trade_keys: list, tags: dict):
+    """Apply shared tags to multiple trades."""
+    applied = 0
+    for tk in trade_keys[:100]:
+        existing = _q("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", [tk], fetch="one")
+        parts = tk.split(":")
+        sym, acct, cd = parts[0], parts[1] if len(parts) > 2 else "", parts[-1]
+        payload = _review_payload(existing) if existing else {}
+        payload["tagging_complete"] = True
+        fields = {
+            "setup_family": tags.get("setup_family"),
+            "setup_types": tags.get("setup_types"),
+            "market_regime": tags.get("market_regime"),
+            "emotion_before": tags.get("emotion_before"),
+            "mistake_tags": tags.get("mistake_tags"),
+            "strength_tags": tags.get("strength_tags"),
+        }
+        if existing:
+            sets, vals = ["payload = %s::jsonb", "updated_at = NOW()"], [json.dumps(payload)]
+            for k, v in fields.items():
+                if v is not None:
+                    sets.append(f"{k} = %s")
+                    vals.append(v)
+            vals.append(tk)
+            _q(f"UPDATE journal_trade_reviews SET {', '.join(sets)} WHERE trade_key = %s", vals, fetch="none")
+        else:
+            _q("""
+                INSERT INTO journal_trade_reviews
+                  (trade_key, symbol, account, closed_date, setup_family, setup_types, market_regime,
+                   emotion_before, mistake_tags, strength_tags, payload, lesson_learned)
+                VALUES (%s,%s,%s,%s::date,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)
+            """, [tk, sym, acct, cd,
+                  fields.get("setup_family"), fields.get("setup_types"), fields.get("market_regime"),
+                  fields.get("emotion_before"), fields.get("mistake_tags"), fields.get("strength_tags"),
+                  json.dumps(payload), "Bulk tagged from Tagging Queue."], fetch="none")
+        applied += 1
+    return {"ok": True, "applied": applied}
+
+
+def reporting_audit(days=365):
+    """Self-audit: TradeInView report coverage vs spec + tagging impact."""
+    policy = _load_tagging_policy()
+    q = tagging_queue(days=days, limit=10000, include_complete=True)
+    total = q.get("total_in_range") or 0
+    health = q.get("queue_health_pct") or 0
+    need = q.get("need_tagging") or 0
+
+    def _status(impl: str, degraded: str = "") -> str:
+        if degraded and need > total * 0.2:
+            return "degraded"
+        return impl
+
+    reports = [
+        {"id": "trade_log", "name": "Trade Log + KPIs", "status": "implemented", "tab": "Trades"},
+        {"id": "equity_curve", "name": "Equity curve & daily P&L", "status": "implemented", "tab": "Trades"},
+        {"id": "zella_score", "name": "Zella composite score", "status": _status("implemented", "tagging"), "tab": "Analytics", "note": "Discipline/psychology need tags"},
+        {"id": "monte_carlo", "name": "Monte Carlo bootstrap", "status": "implemented", "tab": "Analytics"},
+        {"id": "exit_intel", "name": "MAE/MFE + exit intelligence", "status": "implemented", "tab": "Exit Intel"},
+        {"id": "behavioral", "name": "Behavioral / tilt / mistakes $", "status": _status("implemented", "tagging"), "tab": "Behavioral"},
+        {"id": "pivot_grid", "name": "Pivot grid cross-tabs", "status": _status("partial", "tagging"), "tab": "Advanced", "note": "Needs setup_family × market_regime tags"},
+        {"id": "session_recap", "name": "Session recap", "status": "implemented", "tab": "Session"},
+        {"id": "options_summary", "name": "Options multi-leg summary", "status": "partial", "tab": "Import", "note": "Limited option trade history"},
+        {"id": "compare_replay", "name": "Win/loss compare replay", "status": "implemented", "tab": "Trades"},
+        {"id": "tagging_queue", "name": "Tagging Queue", "status": "implemented", "tab": "Tagging Queue"},
+        {"id": "calendar_heatmap", "name": "Calendar heatmap", "status": "partial", "tab": "Trades", "note": "Daily P&L bars, not full calendar"},
+        {"id": "tick_replay", "name": "Tick-by-tick replay", "status": "missing", "tab": "—"},
+        {"id": "voice_attachments", "name": "Voice memo attachments", "status": "missing", "tab": "—"},
+        {"id": "per_leg_greeks", "name": "Per-leg greeks P&L attribution", "status": "missing", "tab": "Import"},
+        {"id": "prop_drawdown", "name": "Prop firm drawdown tracking", "status": "missing", "tab": "—"},
+    ]
+    impl = sum(1 for r in reports if r["status"] == "implemented")
+    partial = sum(1 for r in reports if r["status"] in ("partial", "degraded"))
+    missing = sum(1 for r in reports if r["status"] == "missing")
+
+    recs = []
+    if need > 0:
+        recs.append(f"Clear {need} trades in Tagging Queue ({100 - health:.0f}% incomplete) — unlocks pivot, behavioral, Zella.")
+    if partial > 0:
+        recs.append("Fill market_regime + psychology tags on reviewed trades to improve pivot grid depth.")
+    recs.append("Run bulk-suggest then operator-review auto-classified stubs.")
+
+    return {
+        "ok": True,
+        "summary": {
+            "implemented": impl,
+            "partial_or_degraded": partial,
+            "missing": missing,
+            "coverage_pct": round(impl / len(reports) * 100, 1),
+            "tagging_health_pct": health,
+            "trades_need_tagging": need,
+            "trades_in_range": total,
+        },
+        "reports": reports,
+        "recommendations": recs,
+        "vs_tradezella": "On par for MAE/MFE, tagging, multi-account; ahead on AI agents + portfolio integration.",
+        "vs_tradesviz": "Pivot/Monte Carlo partial; tagging completeness is primary gap.",
+    }
+
+
 def manual_entry_create(body: dict):
     cols = ["symbol", "account", "open_date", "close_date", "trade_type", "shares",
             "buy_price", "sell_price", "pnl", "pnl_pct", "notes", "template_id"]

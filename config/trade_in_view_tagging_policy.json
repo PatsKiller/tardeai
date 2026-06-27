@@ -1,0 +1,11 @@
+{
+  "_comment": "Tagging Queue completeness rules. DB-overridable via config_documents key trade_in_view_tagging_policy.",
+  "min_total_tags": 3,
+  "required_categories": ["strategy", "setup"],
+  "high_priority_categories": ["market_regime", "psychology"],
+  "require_market_regime": false,
+  "require_psychology": false,
+  "flag_auto_classified_stubs": true,
+  "queue_default_days": 365,
+  "queue_page_size": 50
+}
