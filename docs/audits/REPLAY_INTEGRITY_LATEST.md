@@ -1,15 +1,15 @@
 # Replay chart integrity audit — 2026-06-27
 
-**Audited:** 2026-06-27T21:57:48.635548+00:00  
-**Trades:** 90 · OK 66 · WARN 24 · FAIL 0  
+**Audited:** 2026-06-27T22:37:38.459644+00:00  
+**Trades:** 63 · OK 44 · WARN 19 · FAIL 0  
 **Scale fix:** `volume_isolated_overlay_v3.4` (volume on isolated overlay scale; candle autoscale from OHLC only)
 
 ## Summary
 
 | Status | Count | Meaning |
 |--------|------:|---------|
-| ok | 66 | Bars loaded; markers in range |
-| warn | 24 | Finviz fallback or marker outside bar range |
+| ok | 44 | Bars loaded; markers in range |
+| warn | 19 | Finviz fallback or marker outside bar range |
 | fail | 0 | No chart data / API error |
 
 ## Per-trade
@@ -24,12 +24,12 @@
 | KBR | 2026-06-22 | 0 | finviz | — | fallback |
 | AVAV | 2026-06-18 | 0 | finviz | — | fallback |
 | IRDM | 2026-06-16 | 0 | finviz | — | fallback |
-| CAST | 2026-06-15 | 33 | alpaca | $4.29–$5.2 | ok |
-| RGNT | 2026-06-09 | 21 | alpaca | $3.05–$3.64 | ok |
+| CAST | 2026-06-15 | 53 | alpaca | $4.15–$5.2 | ok |
+| RGNT | 2026-06-09 | 46 | alpaca | $2.78–$3.78 | ok |
 | GOVX | 2026-05-18 | 65 | alpaca | $2.83–$4.39 | ok |
-| PRSO | 2026-05-11 | 48 | alpaca | $1.1–$1.29 | ok |
-| FATN | 2026-04-30 | 22 | alpaca | $3.41–$3.73 | ok |
-| DFSC | 2026-04-30 | 23 | alpaca | $2.65–$3.09 | ok |
+| PRSO | 2026-05-11 | 50 | alpaca | $1.1–$1.29 | ok |
+| FATN | 2026-04-30 | 47 | alpaca | $3.35–$3.73 | ok |
+| DFSC | 2026-04-30 | 43 | alpaca | $2.65–$3.17 | ok |
 | PFE | 2026-04-21 | 46 | alpaca | $26.2–$28.745 | ok |
 | V | 2026-04-21 | 223 | alpaca | $293.89–$358.62 | ok |
 | V | 2026-04-06 | 0 | finviz | — | fallback |
@@ -40,72 +40,45 @@
 | CSWC | 2026-02-12 | 25 | alpaca | $22.6–$23.84 | ok |
 | PFLT | 2026-02-11 | 24 | alpaca | $8.63–$9.75 | ok |
 | 73017P409 | 2026-02-11 | 0 | finviz | — | fallback |
-| PHIO | 2026-02-10 | 66 | alpaca | $1.24–$1.58 | ok |
+| PHIO | 2026-02-10 | 66 | alpaca | $1.24–$1.48 | ok |
 | DHX | 2026-02-05 | 59 | alpaca | $1.98–$2.2 | ok |
-| FUSE | 2026-02-03 | 43 | alpaca | $2.6–$3.24 | ok |
-| FUSE | 2026-02-02 | 46 | alpaca | $2.26–$3.56 | ok |
+| FUSE | 2026-02-03 | 47 | alpaca | $2.62–$3.24 | ok |
+| FUSE | 2026-02-02 | 48 | alpaca | $2.26–$3.67 | ok |
 | ARKG | 2026-01-30 | 17 | alpaca | $28.455–$34.39 | ok |
 | ZSL | 2026-01-30 | 70 | alpaca | $20.1–$21.3 | marker_warn |
 | WRD | 2026-01-30 | 18 | alpaca | $6.88–$10.015 | ok |
-| ALXO | 2026-01-30 | 82 | alpaca | $1.64–$1.93 | ok |
-| TRX | 2026-01-29 | 21 | alpaca | $2.135–$2.32 | ok |
-| GCTS | 2026-01-29 | 37 | alpaca | $1.53–$1.84 | ok |
-| NUWE | 2026-01-27 | 46 | alpaca | $142.1–$172.9 | marker_warn |
+| ALXO | 2026-01-30 | 85 | alpaca | $1.64–$1.93 | ok |
+| TRX | 2026-01-29 | 46 | alpaca | $2.09–$2.32 | ok |
+| GCTS | 2026-01-29 | 57 | alpaca | $1.47–$1.84 | ok |
+| NUWE | 2026-01-27 | 48 | alpaca | $142.1–$172.9 | marker_warn |
 | 44984F807 | 2026-01-27 | 0 | finviz | — | fallback |
-| GXAI | 2026-01-26 | 49 | alpaca | $1.68–$2.18 | ok |
+| GXAI | 2026-01-26 | 49 | alpaca | $1.57–$2.16 | ok |
 | AXTI | 2026-01-22 | 76 | alpaca | $4.81–$26.66 | ok |
 | APAM | 2026-01-20 | 142 | alpaca | $39.94–$48.46 | ok |
-| SHPH | 2026-01-20 | 43 | alpaca | $35.1–$44.4 | marker_warn |
+| SHPH | 2026-01-20 | 46 | alpaca | $35.1–$44.4 | marker_warn |
 | 44984F807 | 2026-01-20 | 0 | finviz | — | fallback |
 | SIBN | 2026-01-15 | 7 | alpaca | $16.66–$21.28 | ok |
 | AXTI | 2026-01-08 | 131 | alpaca | $1.85–$26.66 | ok |
 | AXTI | 2026-01-08 | 128 | alpaca | $1.85–$26.66 | ok |
-| BNAI | 2026-01-02 | 21 | alpaca | $3.88–$4.09 | ok |
+| BNAI | 2026-01-02 | 46 | alpaca | $3.81–$4.15 | ok |
 | APAM | 2025-12-31 | 29 | alpaca | $39.94–$43.5999 | ok |
-| EKSO | 2025-12-30 | 59 | alpaca | $7.8001–$9.04 | ok |
+| EKSO | 2025-12-30 | 59 | alpaca | $7.8001–$9.1199 | ok |
 | SOPAQ | 2025-12-29 | 0 | finviz | — | fallback |
-| OLOX | 2025-11-13 | 43 | alpaca | $29.8–$37.4 | marker_warn |
-| MSGM | 2025-11-07 | 21 | alpaca | $4.75–$5.46 | ok |
+| OLOX | 2025-11-13 | 46 | alpaca | $30.3–$39.8 | marker_warn |
+| MSGM | 2025-11-07 | 46 | alpaca | $4.11–$5.8 | ok |
 | VIVS | 2025-10-30 | 57 | alpaca | $2.63–$3.2 | ok |
-| IBIO | 2025-10-23 | 22 | alpaca | $1.69–$2.05 | ok |
+| IBIO | 2025-10-23 | 47 | alpaca | $1.61–$2.05 | ok |
 | AIRE | 2025-10-22 | 53 | alpaca | $25–$32.5 | marker_warn |
 | NERV | 2025-10-21 | 68 | alpaca | $6.61–$12.46 | ok |
-| IBIO | 2025-10-21 | 48 | alpaca | $1.03–$1.47 | ok |
-| BOF | 2025-10-21 | 74 | alpaca | $2.52–$2.85 | ok |
-| GSIT | 2025-10-20 | 46 | alpaca | $5.15–$14.8 | ok |
-| GSIT | 2025-10-20 | 45 | alpaca | $5.15–$13.43 | ok |
-| RANI | 2025-10-17 | 54 | alpaca | $1.2–$1.55 | ok |
-| ACHV | 2025-10-17 | 30 | alpaca | $3.71–$4.15 | ok |
-| CTXR | 2025-10-16 | 70 | alpaca | $1.39–$1.94 | ok |
-| AUUD | 2025-10-16 | 66 | alpaca | $16.79–$19.4 | marker_warn |
-| ZNB | 2025-10-15 | 109 | alpaca | $190–$219 | marker_warn |
-| MNTS | 2025-10-14 | 216 | alpaca | $27.85–$38.02 | marker_warn |
-| STI | 2025-10-13 | 20 | alpaca | $7.94–$13.5 | ok |
-| ELBM | 2025-10-13 | 31 | alpaca | $1.95–$5.24 | ok |
-| GWH | 2025-10-10 | 21 | alpaca | $3.24–$4.06 | ok |
-| TELO | 2025-10-09 | 27 | alpaca | $1.91–$2.14 | ok |
-| SPRC | 2025-09-30 | 43 | alpaca | $52.38–$60.3 | marker_warn |
-| AMD | 2025-09-30 | 257 | alpaca | $159.33–$162.28 | ok |
-| RDHL | 2025-09-29 | 20 | alpaca | $2.55–$3.3599 | ok |
-| NUAI | 2025-09-26 | 249 | alpaca | $1.42–$2.55 | ok |
-| LAC | 2025-09-25 | 33 | alpaca | $6.74–$7.53 | ok |
-| SHFS | 2025-09-25 | 8 | alpaca | $3.07–$9.19 | ok |
-| PEPG | 2025-09-25 | 56 | alpaca | $5.15–$6.15 | ok |
-| SHFS | 2025-09-24 | 27 | alpaca | $8.29–$9.74 | ok |
-| SSKN | 2025-09-23 | 286 | alpaca | $2.05–$4.18 | ok |
-| SLNH | 2025-09-23 | 35 | alpaca | $2.6–$3.58 | ok |
-| BOXL | 2025-09-22 | 80 | alpaca | $119.52–$312.12 | marker_warn |
-| AGMH | 2025-09-19 | 142 | alpaca | $6.23–$12.8999 | ok |
-| LASE | 2025-09-18 | 333 | alpaca | $3.35–$5.88 | ok |
-| SPRC | 2025-09-17 | 52 | alpaca | $32.85–$57.24 | marker_warn |
-| IHT | 2025-09-15 | 24 | alpaca | $3.05–$4.24 | ok |
-| MOGU | 2025-09-11 | 62 | alpaca | $5.35–$8.52 | ok |
-| WLDS | 2025-09-10 | 28 | alpaca | $44.91–$65.79 | marker_warn |
-| AXTI | 2025-08-20 | 112 | alpaca | $2.2–$2.65 | ok |
-| XMTR | 2025-08-19 | 17 | alpaca | $30.63–$49.5 | ok |
-| SLDP | 2025-08-08 | 9 | alpaca | $2.9–$4.83 | ok |
-| BRO | 2025-07-29 | 15 | alpaca | $90.55–$108.23 | ok |
-| BRO | 2025-07-29 | 15 | alpaca | $90.55–$108.23 | ok |
+| IBIO | 2025-10-21 | 67 | alpaca | $1.03–$1.47 | ok |
+| BOF | 2025-10-21 | 74 | alpaca | $2.45–$2.85 | ok |
+| GSIT | 2025-10-20 | 34 | alpaca | $6.77–$17.49 | ok |
+| GSIT | 2025-10-20 | 30 | alpaca | $6.77–$17.49 | ok |
+| RANI | 2025-10-17 | 54 | alpaca | $1.13–$1.52 | ok |
+| ACHV | 2025-10-17 | 50 | alpaca | $3.71–$4.15 | ok |
+| CTXR | 2025-10-16 | 76 | alpaca | $1.39–$1.94 | ok |
+| AUUD | 2025-10-16 | 66 | alpaca | $16.79–$18.71 | marker_warn |
+| ZNB | 2025-10-15 | 103 | alpaca | $190–$217 | marker_warn |
 
 ## Issues
 
@@ -128,8 +101,3 @@
 - **AIRE** (2025-10-22): entry $1.29 misaligned at bar O=27.75 H=28 L=25 C=25.5; exit $1.15 misaligned at bar O=27.75 H=28 L=25 C=25.5
 - **AUUD** (2025-10-16): entry $2.42 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86; exit $2.3043 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86
 - **ZNB** (2025-10-15): entry $2.1349 misaligned at bar O=193 H=193 L=190 C=190; exit $2.035 misaligned at bar O=193 H=193 L=190 C=190
-- **MNTS** (2025-10-14): entry $1.66 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95; exit $1.8743 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95
-- **SPRC** (2025-09-30): entry $6.38 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82; exit $6.1701 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82
-- **BOXL** (2025-09-22): entry $5.24 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04; exit $6.4713 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04
-- **SPRC** (2025-09-17): entry $4.51 misaligned at bar O=33.66 H=36 L=32.85 C=35.54; exit $5.16 misaligned at bar O=33.66 H=36 L=32.85 C=35.54
-- **WLDS** (2025-09-10): entry $5.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43; exit $6.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43
