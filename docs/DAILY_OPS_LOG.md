@@ -1,4 +1,10 @@
 
+## 2026-06-27 — Replay marker fix (GOVX) + AI Trade Critique (UI 3.5)
+
+Final replay alignment: fill times from `trade_execution_quality` when queue passes dates only;
+price-aware marker snap. Re-audit: **65 ok / 25 warn / 0 fail** (marker warns −3). Added **AI Trade
+Critique** (`journal_ai_critique.py`, `/api/v2/journal/ai-critique`, TradeInView Overview tab).
+
 ## 2026-06-27 — Replay price-scale fix + 90-trade integrity audit
 
 Fixed systemic replay Y-axis misalignment (volume polluted candle price scale). UI **3.4**:

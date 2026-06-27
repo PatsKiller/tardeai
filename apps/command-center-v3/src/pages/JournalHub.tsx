@@ -699,7 +699,7 @@ export default function JournalHub({ onDrill }: Props) {
                     {eq?.grok_what_to_do_next_time && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{eq.grok_what_to_do_next_time}</div>}
                     {/* action buttons */}
                     <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
-                      <button onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entryDate, exit_date: t.exitDate, entry_time: t.entryTimeFull, exit_time: (t as any).exitTimeFull, stop: (t as any).stop, target: (t as any).target, entry_price: t.ep, exit_price: t.xp, exec: eq } as any)}
+                      <button onClick={() => setChartTrade({ symbol: t.symbol, trade_key: (t as any).trade_key ?? (t as any).tradeKey, entry_date: t.entryDate, exit_date: t.exitDate, entry_time: t.entryTimeFull, exit_time: (t as any).exitTimeFull, stop: (t as any).stop, target: (t as any).target, entry_price: t.ep, exit_price: t.xp, exec: eq } as any)}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
                       <button onClick={() => setDetailTrade({ ...t, trade_key: `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` })}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
@@ -735,7 +735,7 @@ export default function JournalHub({ onDrill }: Props) {
       {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
       {detailTrade && (
         <TradeInViewDetail trade={detailTrade} onClose={() => setDetailTrade(null)}
-          onReplay={() => { setChartTrade({ symbol: detailTrade.symbol, entry_date: detailTrade.entryDate, exit_date: detailTrade.exitDate, entry_time: detailTrade.entryTimeFull, entry_price: detailTrade.ep, exit_price: detailTrade.xp }); setDetailTrade(null) }} />
+          onReplay={() => { setChartTrade({ symbol: detailTrade.symbol, trade_key: detailTrade.trade_key, entry_date: detailTrade.entryDate, exit_date: detailTrade.exitDate, entry_time: detailTrade.entryTimeFull, exit_time: detailTrade.exitTimeFull, entry_price: detailTrade.ep, exit_price: detailTrade.xp }); setDetailTrade(null) }} />
       )}
 
       {/* ════════ ANALYTICS TAB ════════ */}

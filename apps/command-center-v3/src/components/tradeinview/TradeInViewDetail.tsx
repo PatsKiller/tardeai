@@ -4,6 +4,7 @@ import SetupFamilyPicker from './SetupFamilyPicker'
 import PsychologyBeforePicker from './PsychologyBeforePicker'
 import MarketRegimePicker from './MarketRegimePicker'
 import TradeReportReadiness from './TradeReportReadiness'
+import AiTradeCritique from './AiTradeCritique'
 import IndustryPicker from './IndustryPicker'
 import TradePlanPicker from './TradePlanPicker'
 import TagChipGrid from './TagChipGrid'
@@ -141,6 +142,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
           {tab === 'Overview' && (
             <>
             <TradeReportReadiness score={tagScore} />
+            <AiTradeCritique tradeKey={tradeKey} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, fontSize: 10 }}>
               {[['Entry', trade.ep ?? trade.buy_price], ['Exit', trade.xp ?? trade.sell_price], ['Shares', trade.shares], ['Strategy', trade.strat], ['Entry grade', trade.eg], ['Exit grade', trade.xg], ['Hold', trade.holdDays != null ? `${trade.holdDays}d` : trade.holdMin], ['Source', trade.source]].map(([l, v]) => (
                 <div key={String(l)} style={{ background: 'var(--bg1)', padding: 8, borderRadius: 6 }}>
