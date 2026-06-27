@@ -1,4 +1,12 @@
 
+## 2026-06-27 — Universal replay backfill (all past + future trades)
+
+`replay_backfill.py` pipeline deployed: `build_trade_execution_quality` → `replay_chart_audit`.
+`buildReplayTrade()` unified all replay entry points. Fill-time resolution: EQ → srt dedupe → schwab
+match → symbol/date. Chained after Schwab journal ingest (health agent); cron installer:
+`scripts/install_replay_backfill_cron.sh`. Full backfill: **66 ok / 24 warn / 0 fail** (90 trades).
+Drive sync + commit `35986713`.
+
 ## 2026-06-27 — Replay marker fix (GOVX) + AI Trade Critique (UI 3.5)
 
 Final replay alignment: fill times from `trade_execution_quality` when queue passes dates only;
