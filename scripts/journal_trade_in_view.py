@@ -59,8 +59,23 @@ def fetch_closed_trades(account=None, date_from=None, date_to=None, limit=2000):
     return _q(f"""
         SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
                tc.shares, tc.buy_price, tc.sell_price, tc.pnl, tc.pnl_pct, tc.hold_days,
-               (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key
+               (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key,
+               COALESCE(eq.entry_time, srt.entry_time)::text AS entry_time,
+               COALESCE(eq.exit_time, srt.exit_time)::text AS exit_time
         FROM trade_closed tc
+        LEFT JOIN LATERAL (
+            SELECT entry_time, exit_time FROM schwab_round_trips s
+            WHERE UPPER(s.symbol) = UPPER(tc.symbol) AND s.account = tc.account
+              AND s.exit_time::date = tc.close_date
+              AND ABS(s.entry_price - tc.buy_price) < 0.08 AND s.entry_time IS NOT NULL
+            ORDER BY ABS(s.entry_price - tc.buy_price), s.exit_time DESC LIMIT 1
+        ) srt ON true
+        LEFT JOIN LATERAL (
+            SELECT entry_time, exit_time FROM trade_execution_quality eq
+            WHERE UPPER(eq.symbol) = UPPER(tc.symbol) AND eq.entry_time::date = tc.close_date
+              AND ABS(eq.entry_price - tc.buy_price) < 0.08
+            ORDER BY ABS(eq.entry_price - tc.buy_price), eq.exit_time DESC LIMIT 1
+        ) eq ON true
         WHERE {where}
         ORDER BY tc.close_date DESC
         LIMIT %s

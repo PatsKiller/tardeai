@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import TradeReplayChart from './TradeReplayChart'
+import { buildReplayTrade } from '../lib/replayTrade'
 
 // Real-account (Schwab) round-trips — API-authoritative ledger, 5-min fill aggregation, FIFO pairing,
 // LLM strategy/grade/lesson. Separate from paper trades (the live-trading gate stays paper-only).
@@ -108,7 +109,7 @@ export default function SchwabJournal() {
             <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               title={eq?.grok_what_to_do_next_time ? `Execution coach: ${eq.grok_what_to_do_next_time}${t.lesson ? `\n\nEntry/exit lesson: ${t.lesson}` : ''}` : t.lesson}>
               {eq?.grok_what_to_do_next_time || t.lesson || ''}</span>
-            <button title="Replay chart with entry/exit" onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entry_time, exit_date: t.exit_time, entry_price: t.entry_price, exit_price: t.exit_price, exec: eq })}
+            <button title="Replay chart with entry/exit" onClick={() => setChartTrade(buildReplayTrade({ ...t, entry_time: t.entry_time, exit_time: t.exit_time, entry_price: t.entry_price, exit_price: t.exit_price, account: t.account, exec: eq }))}
               style={{ flex: '0 0 auto', fontSize: 11, padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈</button>
           </div>
         ) })}

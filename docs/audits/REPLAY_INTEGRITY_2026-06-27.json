@@ -1,8 +1,8 @@
 {
-  "audited_at": "2026-06-27T21:50:48.191618+00:00",
+  "audited_at": "2026-06-27T21:57:48.635548+00:00",
   "total": 90,
-  "ok": 65,
-  "warn": 25,
+  "ok": 66,
+  "warn": 24,
   "fail": 0,
   "dry_run": false,
   "scale_fix": "volume_isolated_overlay_v3.4",
@@ -15,7 +15,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:49.293508+00:00",
+        "audited_at": "2026-06-27T21:56:51.000111+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -24,8 +24,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -39,46 +41,24 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:49.985986+00:00",
+        "audited_at": "2026-06-27T21:56:51.675770+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 396,
+        "bar_count": 50,
         "fallback": null,
         "price_bounds": {
           "min_low": 0.92,
-          "max_high": 1.25
+          "max_high": 1.08
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "LHX:schwab_taxable:2026-06-23",
-      "symbol": "LHX",
-      "open_date": "2026-03-03",
-      "close_date": "2026-06-23",
-      "status": "fallback",
-      "reason": "alpaca 403",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:49:50.318625+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": null,
-        "bar_count": 0,
-        "fallback": "finviz",
-        "price_bounds": {},
-        "integrity": {
-          "marker_in_range": null,
-          "marker_warnings": []
-        },
-        "entry_et": null,
-        "exit_et": null,
+        "fill_source": "caller",
+        "entry_et": "09:38:15 ET",
+        "exit_et": "09:39:47 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -90,7 +70,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:51.348386+00:00",
+        "audited_at": "2026-06-27T21:56:51.999592+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -99,22 +79,24 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
-      "trade_key": "KBR:schwab_taxable:2026-06-22",
-      "symbol": "KBR",
-      "open_date": "2026-03-03",
-      "close_date": "2026-06-22",
+      "trade_key": "LHX:schwab_taxable:2026-06-23",
+      "symbol": "LHX",
+      "open_date": "2026-03-20",
+      "close_date": "2026-06-23",
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:51.700897+00:00",
+        "audited_at": "2026-06-27T21:56:52.349829+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -123,8 +105,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -138,7 +122,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:52.050215+00:00",
+        "audited_at": "2026-06-27T21:56:52.699654+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -147,8 +131,36 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "KBR:schwab_taxable:2026-06-22",
+      "symbol": "KBR",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-22",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:56:53.029675+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_aligned": null,
+          "marker_warnings": []
+        },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -162,7 +174,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:52.417819+00:00",
+        "audited_at": "2026-06-27T21:56:53.382360+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -171,8 +183,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -186,7 +200,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:52.770598+00:00",
+        "audited_at": "2026-06-27T21:56:53.745550+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -195,8 +209,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -207,27 +223,27 @@
       "symbol": "CAST",
       "open_date": "2026-06-15",
       "close_date": "2026-06-15",
-      "status": "marker_warn",
-      "reason": "exit $5.1305 misaligned at bar O=4.8501 H=4.95 L=4.55 C=4.7096",
+      "status": "ok",
+      "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:53.518911+00:00",
+        "audited_at": "2026-06-27T21:56:54.485209+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 33,
         "fallback": null,
         "price_bounds": {
-          "min_low": 3.26,
+          "min_low": 4.29,
           "max_high": 5.2
         },
         "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "exit $5.1305 misaligned at bar O=4.8501 H=4.95 L=4.55 C=4.7096"
-          ]
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "09:21:02 ET",
+        "exit_et": "09:22:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -239,7 +255,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:54.207239+00:00",
+        "audited_at": "2026-06-27T21:56:55.194291+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -251,8 +267,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "11:16:14 ET",
         "exit_et": "11:17:48 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -266,7 +284,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:54.901818+00:00",
+        "audited_at": "2026-06-27T21:56:55.878870+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -278,8 +296,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:57:22 ET",
         "exit_et": "09:58:11 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -293,7 +313,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:55.597172+00:00",
+        "audited_at": "2026-06-27T21:56:56.580732+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -305,8 +325,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:32:07 ET",
         "exit_et": "09:37:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -320,7 +342,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:56.308116+00:00",
+        "audited_at": "2026-06-27T21:56:57.284155+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -332,8 +354,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "08:58:16 ET",
         "exit_et": "09:00:18 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -347,7 +371,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:57.007025+00:00",
+        "audited_at": "2026-06-27T21:56:57.987165+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -359,10 +383,41 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:38:33 ET",
         "exit_et": "09:40:52 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "PFE:schwab_rollover_ira:2026-04-21",
+      "symbol": "PFE",
+      "open_date": "2026-03-06",
+      "close_date": "2026-04-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:56:58.648754+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 46,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 26.2,
+          "max_high": 28.745
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "16:38:01 ET",
+        "exit_et": "11:13:34 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -374,7 +429,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:57.675930+00:00",
+        "audited_at": "2026-06-27T21:56:59.385058+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -386,37 +441,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "PFE:schwab_rollover_ira:2026-04-21",
-      "symbol": "PFE",
-      "open_date": "2025-08-22",
-      "close_date": "2026-04-21",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:49:58.397491+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": "alpaca",
-        "bar_count": 233,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 23.11,
-          "max_high": 28.745
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "17:44:01 ET",
+        "exit_et": "10:45:41 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -428,7 +458,7 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:58.722697+00:00",
+        "audited_at": "2026-06-27T21:56:59.723091+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
@@ -437,8 +467,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -452,7 +484,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:59.416324+00:00",
+        "audited_at": "2026-06-27T21:57:00.414301+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -464,10 +496,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "13:44:00 ET",
+        "exit_et": "09:56:28 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -479,7 +513,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:49:59.628482+00:00",
+        "audited_at": "2026-06-27T21:57:00.638704+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -491,10 +525,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "13:44:00 ET",
+        "exit_et": "09:53:52 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -506,11 +542,11 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:00.267861+00:00",
+        "audited_at": "2026-06-27T21:57:01.313665+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
-        "bar_count": 435,
+        "bar_count": 434,
         "fallback": null,
         "price_bounds": {
           "min_low": 224.13,
@@ -518,10 +554,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "exit_et": "09:54:05 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -533,11 +571,11 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:01.115710+00:00",
+        "audited_at": "2026-06-27T21:57:01.960942+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
-        "bar_count": 424,
+        "bar_count": 423,
         "fallback": null,
         "price_bounds": {
           "min_low": 224.13,
@@ -545,10 +583,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "exit_et": "09:30:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -560,7 +600,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:01.866787+00:00",
+        "audited_at": "2026-06-27T21:57:02.635623+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -572,10 +612,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "09:30:01 ET",
+        "exit_et": "12:05:53 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -587,7 +629,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:02.598340+00:00",
+        "audited_at": "2026-06-27T21:57:03.355352+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -599,10 +641,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "09:30:02 ET",
+        "exit_et": "10:40:27 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -614,7 +658,7 @@
       "status": "fallback",
       "reason": "alpaca 400",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:02.964006+00:00",
+        "audited_at": "2026-06-27T21:57:03.689790+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
@@ -623,8 +667,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -638,7 +684,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:03.722930+00:00",
+        "audited_at": "2026-06-27T21:57:04.445930+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -650,8 +696,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:52:37 ET",
         "exit_et": "09:55:35 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -665,7 +713,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:04.496996+00:00",
+        "audited_at": "2026-06-27T21:57:05.120635+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -677,8 +725,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:47:01 ET",
         "exit_et": "09:48:15 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -692,7 +742,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:05.224798+00:00",
+        "audited_at": "2026-06-27T21:57:05.823749+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -704,8 +754,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:30:52 ET",
         "exit_et": "09:33:42 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -719,7 +771,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:05.908081+00:00",
+        "audited_at": "2026-06-27T21:57:06.542924+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -731,94 +783,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:32:31 ET",
         "exit_et": "09:35:02 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "ZSL:schwab_taxable:2026-01-30",
-      "symbol": "ZSL",
-      "open_date": "2026-01-30",
-      "close_date": "2026-01-30",
-      "status": "marker_warn",
-      "reason": "entry $2.11 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8; exit $2.14 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:06.665921+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 26,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 20.7,
-          "max_high": 21.6
-        },
-        "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "entry $2.11 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8",
-            "exit $2.14 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8"
-          ]
-        },
-        "entry_et": "08:45:28 ET",
-        "exit_et": "08:51:04 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "ALXO:schwab_taxable:2026-01-30",
-      "symbol": "ALXO",
-      "open_date": "2026-01-30",
-      "close_date": "2026-01-30",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:07.475405+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 82,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 1.64,
-          "max_high": 1.93
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "10:04:18 ET",
-        "exit_et": "10:14:37 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "WRD:schwab_taxable:2026-01-30",
-      "symbol": "WRD",
-      "open_date": "2026-01-14",
-      "close_date": "2026-01-30",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:08.196821+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": "alpaca",
-        "bar_count": 18,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 6.88,
-          "max_high": 10.015
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -830,7 +800,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:08.907982+00:00",
+        "audited_at": "2026-06-27T21:57:07.194304+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -842,10 +812,102 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "09:30:00 ET",
+        "exit_et": "09:56:08 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "ZSL:schwab_taxable:2026-01-30",
+      "symbol": "ZSL",
+      "open_date": "2026-01-30",
+      "close_date": "2026-01-30",
+      "status": "marker_warn",
+      "reason": "entry $2.06 misaligned at bar O=20.3 H=20.3 L=20.1 C=20.15; exit $2.08 misaligned at bar O=20.3 H=20.3 L=20.1 C=20.15",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:07.941684+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 70,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 20.1,
+          "max_high": 21.3
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_aligned": false,
+          "marker_warnings": [
+            "entry $2.06 misaligned at bar O=20.3 H=20.3 L=20.1 C=20.15",
+            "exit $2.08 misaligned at bar O=20.3 H=20.3 L=20.1 C=20.15"
+          ]
+        },
+        "fill_source": "caller",
+        "entry_et": "09:55:36 ET",
+        "exit_et": "09:59:31 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "WRD:schwab_taxable:2026-01-30",
+      "symbol": "WRD",
+      "open_date": "2026-01-14",
+      "close_date": "2026-01-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:08.597785+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 18,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 6.88,
+          "max_high": 10.015
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "14:09:14 ET",
+        "exit_et": "11:14:57 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "ALXO:schwab_taxable:2026-01-30",
+      "symbol": "ALXO",
+      "open_date": "2026-01-30",
+      "close_date": "2026-01-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:09.334827+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 82,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.64,
+          "max_high": 1.93
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "10:04:18 ET",
+        "exit_et": "10:14:37 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -857,22 +919,24 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:09.701598+00:00",
+        "audited_at": "2026-06-27T21:57:10.036500+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 27,
+        "bar_count": 21,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.06,
-          "max_high": 2.1516
+          "min_low": 2.135,
+          "max_high": 2.32
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "12:06:03 ET",
-        "exit_et": "12:13:01 ET",
+        "fill_source": "caller",
+        "entry_et": "11:31:04 ET",
+        "exit_et": "11:32:33 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -884,22 +948,24 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:10.333468+00:00",
+        "audited_at": "2026-06-27T21:57:10.747781+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 63,
+        "bar_count": 37,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.11,
-          "max_high": 1.25
+          "min_low": 1.53,
+          "max_high": 1.84
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "09:46:37 ET",
-        "exit_et": "09:52:45 ET",
+        "fill_source": "caller",
+        "entry_et": "11:36:05 ET",
+        "exit_et": "11:48:12 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -909,27 +975,29 @@
       "open_date": "2026-01-27",
       "close_date": "2026-01-27",
       "status": "marker_warn",
-      "reason": "entry $4.8 misaligned at bar O=159.6 H=161 L=158.2 C=161; exit $4.83 misaligned at bar O=159.6 H=161 L=158.2 C=161",
+      "reason": "entry $4.575 misaligned at bar O=143.5 H=148.05 L=142.1 C=146.65; exit $4.6132 misaligned at bar O=143.5 H=148.05 L=142.1 C=146.65",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:11.030198+00:00",
+        "audited_at": "2026-06-27T21:57:11.438865+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 23,
+        "bar_count": 46,
         "fallback": null,
         "price_bounds": {
-          "min_low": 158.2,
+          "min_low": 142.1,
           "max_high": 172.9
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
-            "entry $4.8 misaligned at bar O=159.6 H=161 L=158.2 C=161",
-            "exit $4.83 misaligned at bar O=159.6 H=161 L=158.2 C=161"
+            "entry $4.575 misaligned at bar O=143.5 H=148.05 L=142.1 C=146.65",
+            "exit $4.6132 misaligned at bar O=143.5 H=148.05 L=142.1 C=146.65"
           ]
         },
-        "entry_et": "08:19:39 ET",
-        "exit_et": "08:22:04 ET",
+        "fill_source": "caller",
+        "entry_et": "09:32:05 ET",
+        "exit_et": "09:35:19 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -941,7 +1009,7 @@
       "status": "fallback",
       "reason": "alpaca 400",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:11.376617+00:00",
+        "audited_at": "2026-06-27T21:57:11.753705+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
@@ -950,8 +1018,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -965,7 +1035,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:12.091685+00:00",
+        "audited_at": "2026-06-27T21:57:12.494955+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -977,8 +1047,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:36:06 ET",
         "exit_et": "09:38:22 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -992,7 +1064,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:12.802757+00:00",
+        "audited_at": "2026-06-27T21:57:13.160602+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -1004,34 +1076,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "44984F807:schwab_taxable:2026-01-20",
-      "symbol": "44984F807",
-      "open_date": "2026-01-20",
-      "close_date": "2026-01-20",
-      "status": "fallback",
-      "reason": "alpaca 400",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:13.143273+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": null,
-        "bar_count": 0,
-        "fallback": "finviz",
-        "price_bounds": {},
-        "integrity": {
-          "marker_in_range": null,
-          "marker_warnings": []
-        },
-        "entry_et": null,
-        "exit_et": null,
+        "fill_source": "caller",
+        "entry_et": "08:10:36 ET",
+        "exit_et": "15:50:54 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1043,7 +1093,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:13.823333+00:00",
+        "audited_at": "2026-06-27T21:57:13.882729+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -1055,10 +1105,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "12:42:16 ET",
+        "exit_et": "13:43:22 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1070,7 +1122,7 @@
       "status": "marker_warn",
       "reason": "entry $4.29 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4; exit $4.0301 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:14.550009+00:00",
+        "audited_at": "2026-06-27T21:57:14.601615+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1082,13 +1134,41 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $4.29 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4",
             "exit $4.0301 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:31:12 ET",
         "exit_et": "09:32:26 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "44984F807:schwab_taxable:2026-01-20",
+      "symbol": "44984F807",
+      "open_date": "2026-01-20",
+      "close_date": "2026-01-20",
+      "status": "fallback",
+      "reason": "alpaca 400",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:14.932413+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_aligned": null,
+          "marker_warnings": []
+        },
+        "fill_source": null,
+        "entry_et": null,
+        "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1100,7 +1180,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:15.208972+00:00",
+        "audited_at": "2026-06-27T21:57:15.644028+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -1112,64 +1192,70 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "AXTI:schwab_taxable:2026-01-08",
-      "symbol": "AXTI",
-      "open_date": "2025-11-05",
-      "close_date": "2026-01-08",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:15.922432+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": "alpaca",
-        "bar_count": 59,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 5.4,
-          "max_high": 26.66
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "15:58:54 ET",
+        "exit_et": "09:30:04 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
       "trade_key": "AXTI:schwab_rollover_ira:2026-01-08",
       "symbol": "AXTI",
-      "open_date": "2025-11-03",
+      "open_date": "2025-08-26",
       "close_date": "2026-01-08",
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:16.622234+00:00",
+        "audited_at": "2026-06-27T21:57:16.342471+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
-        "bar_count": 63,
+        "bar_count": 131,
         "fallback": null,
         "price_bounds": {
-          "min_low": 4.81,
+          "min_low": 1.85,
           "max_high": 26.66
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "12:37:14 ET",
+        "exit_et": "16:20:51 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "AXTI:schwab_taxable:2026-01-08",
+      "symbol": "AXTI",
+      "open_date": "2025-08-27",
+      "close_date": "2026-01-08",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:17.035246+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 128,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.85,
+          "max_high": 26.66
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "11:21:40 ET",
+        "exit_et": "16:18:37 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1181,7 +1267,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:17.370210+00:00",
+        "audited_at": "2026-06-27T21:57:17.771264+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1193,8 +1279,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "13:47:15 ET",
         "exit_et": "13:48:47 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1203,27 +1291,29 @@
     {
       "trade_key": "APAM:schwab_taxable:2025-12-31",
       "symbol": "APAM",
-      "open_date": "2025-08-26",
+      "open_date": "2025-11-28",
       "close_date": "2025-12-31",
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:18.027736+00:00",
+        "audited_at": "2026-06-27T21:57:18.416498+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
-        "bar_count": 121,
+        "bar_count": 29,
         "fallback": null,
         "price_bounds": {
           "min_low": 39.94,
-          "max_high": 48.46
+          "max_high": 43.5999
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "19:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "16:41:27 ET",
+        "exit_et": "14:58:46 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1235,7 +1325,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:18.731162+00:00",
+        "audited_at": "2026-06-27T21:57:19.150424+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1247,8 +1337,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:47:18 ET",
         "exit_et": "09:48:24 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1262,7 +1354,7 @@
       "status": "fallback",
       "reason": "no Alpaca bars for this symbol/window",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:19.096099+00:00",
+        "audited_at": "2026-06-27T21:57:19.474809+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
@@ -1271,8 +1363,10 @@
         "price_bounds": {},
         "integrity": {
           "marker_in_range": null,
+          "marker_aligned": null,
           "marker_warnings": []
         },
+        "fill_source": null,
         "entry_et": null,
         "exit_et": null,
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1286,7 +1380,7 @@
       "status": "marker_warn",
       "reason": "entry $3.47 misaligned at bar O=33.4 H=33.51 L=30.3 C=31; exit $3.3701 misaligned at bar O=33.4 H=33.51 L=30.3 C=31",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:19.782022+00:00",
+        "audited_at": "2026-06-27T21:57:20.210795+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1298,11 +1392,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $3.47 misaligned at bar O=33.4 H=33.51 L=30.3 C=31",
             "exit $3.3701 misaligned at bar O=33.4 H=33.51 L=30.3 C=31"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:31:32 ET",
         "exit_et": "09:32:27 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1316,22 +1412,24 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:20.502021+00:00",
+        "audited_at": "2026-06-27T21:57:20.910529+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 25,
+        "bar_count": 21,
         "fallback": null,
         "price_bounds": {
-          "min_low": 4.56,
+          "min_low": 4.75,
           "max_high": 5.46
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "07:30:32 ET",
-        "exit_et": "07:35:35 ET",
+        "fill_source": "caller",
+        "entry_et": "07:39:36 ET",
+        "exit_et": "07:40:58 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1343,7 +1441,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:21.197190+00:00",
+        "audited_at": "2026-06-27T21:57:21.618789+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1355,8 +1453,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:44:11 ET",
         "exit_et": "09:46:34 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1370,7 +1470,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:21.892312+00:00",
+        "audited_at": "2026-06-27T21:57:22.315814+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1382,8 +1482,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:01:06 ET",
         "exit_et": "09:03:30 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1397,7 +1499,7 @@
       "status": "marker_warn",
       "reason": "entry $1.29 misaligned at bar O=27.75 H=28 L=25 C=25.5; exit $1.15 misaligned at bar O=27.75 H=28 L=25 C=25.5",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:22.608630+00:00",
+        "audited_at": "2026-06-27T21:57:23.023491+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1409,67 +1511,15 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $1.29 misaligned at bar O=27.75 H=28 L=25 C=25.5",
             "exit $1.15 misaligned at bar O=27.75 H=28 L=25 C=25.5"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:38:26 ET",
         "exit_et": "09:42:42 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "BOF:schwab_taxable:2025-10-21",
-      "symbol": "BOF",
-      "open_date": "2025-10-21",
-      "close_date": "2025-10-21",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:23.373502+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 74,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 2.52,
-          "max_high": 2.85
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "09:59:56 ET",
-        "exit_et": "10:03:20 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "IBIO:schwab_taxable:2025-10-21",
-      "symbol": "IBIO",
-      "open_date": "2025-10-21",
-      "close_date": "2025-10-21",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:24.034056+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 48,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 1.03,
-          "max_high": 1.47
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "09:25:01 ET",
-        "exit_et": "09:36:24 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1481,7 +1531,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:24.722589+00:00",
+        "audited_at": "2026-06-27T21:57:23.775379+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1493,37 +1543,70 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:56:39 ET",
         "exit_et": "09:57:49 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
-      "trade_key": "GSIT:schwab_rollover_ira:2025-10-20",
-      "symbol": "GSIT",
-      "open_date": "2025-10-20",
-      "close_date": "2025-10-20",
+      "trade_key": "IBIO:schwab_taxable:2025-10-21",
+      "symbol": "IBIO",
+      "open_date": "2025-10-21",
+      "close_date": "2025-10-21",
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:25.461469+00:00",
+        "audited_at": "2026-06-27T21:57:24.408625+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 45,
+        "bar_count": 48,
         "fallback": null,
         "price_bounds": {
-          "min_low": 5.15,
-          "max_high": 13.43
+          "min_low": 1.03,
+          "max_high": 1.47
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "09:47:28 ET",
-        "exit_et": "09:48:24 ET",
+        "fill_source": "caller",
+        "entry_et": "09:25:01 ET",
+        "exit_et": "09:36:24 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "BOF:schwab_taxable:2025-10-21",
+      "symbol": "BOF",
+      "open_date": "2025-10-21",
+      "close_date": "2025-10-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:25.112436+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 74,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.52,
+          "max_high": 2.85
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "09:59:56 ET",
+        "exit_et": "10:03:20 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1535,7 +1618,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:26.093026+00:00",
+        "audited_at": "2026-06-27T21:57:25.803773+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1547,10 +1630,41 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:56:38 ET",
         "exit_et": "09:56:47 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "GSIT:schwab_rollover_ira:2025-10-20",
+      "symbol": "GSIT",
+      "open_date": "2025-10-20",
+      "close_date": "2025-10-20",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:26.512746+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 45,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.15,
+          "max_high": 13.43
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "09:47:28 ET",
+        "exit_et": "09:48:24 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1562,7 +1676,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:26.830099+00:00",
+        "audited_at": "2026-06-27T21:57:27.226783+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1574,8 +1688,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:37:50 ET",
         "exit_et": "09:43:42 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1589,7 +1705,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:27.527216+00:00",
+        "audited_at": "2026-06-27T21:57:27.913848+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1601,8 +1717,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:14:47 ET",
         "exit_et": "09:23:03 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1616,7 +1734,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:28.271747+00:00",
+        "audited_at": "2026-06-27T21:57:28.622082+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1628,8 +1746,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:09:34 ET",
         "exit_et": "09:32:47 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1643,7 +1763,7 @@
       "status": "marker_warn",
       "reason": "entry $2.42 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86; exit $2.3043 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:28.923376+00:00",
+        "audited_at": "2026-06-27T21:57:29.320712+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1655,11 +1775,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $2.42 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86",
             "exit $2.3043 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:52:17 ET",
         "exit_et": "09:55:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1673,7 +1795,7 @@
       "status": "marker_warn",
       "reason": "entry $2.1349 misaligned at bar O=193 H=193 L=190 C=190; exit $2.035 misaligned at bar O=193 H=193 L=190 C=190",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:29.626814+00:00",
+        "audited_at": "2026-06-27T21:57:30.068523+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1685,11 +1807,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $2.1349 misaligned at bar O=193 H=193 L=190 C=190",
             "exit $2.035 misaligned at bar O=193 H=193 L=190 C=190"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "08:54:54 ET",
         "exit_et": "09:31:24 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1703,7 +1827,7 @@
       "status": "marker_warn",
       "reason": "entry $1.66 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95; exit $1.8743 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:30.315811+00:00",
+        "audited_at": "2026-06-27T21:57:30.722674+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1715,11 +1839,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $1.66 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95",
             "exit $1.8743 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "08:27:08 ET",
         "exit_et": "10:03:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1733,7 +1859,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:31.019949+00:00",
+        "audited_at": "2026-06-27T21:57:31.418175+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1745,8 +1871,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "07:09:40 ET",
         "exit_et": "07:09:53 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1760,7 +1888,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:31.708370+00:00",
+        "audited_at": "2026-06-27T21:57:32.132862+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1772,8 +1900,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "08:09:46 ET",
         "exit_et": "08:20:21 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1787,7 +1917,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:32.401836+00:00",
+        "audited_at": "2026-06-27T21:57:32.819503+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1799,8 +1929,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "07:31:31 ET",
         "exit_et": "07:32:57 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1814,7 +1946,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:33.108406+00:00",
+        "audited_at": "2026-06-27T21:57:33.512483+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1826,37 +1958,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "07:34:54 ET",
         "exit_et": "07:41:47 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "AMD:schwab_taxable:2025-09-30",
-      "symbol": "AMD",
-      "open_date": "2025-09-30",
-      "close_date": "2025-09-30",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:33.843250+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 257,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 159.33,
-          "max_high": 162.28
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "08:25:21 ET",
-        "exit_et": "11:10:43 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1868,7 +1975,7 @@
       "status": "marker_warn",
       "reason": "entry $6.38 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82; exit $6.1701 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:34.520707+00:00",
+        "audited_at": "2026-06-27T21:57:34.254566+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1880,13 +1987,44 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $6.38 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82",
             "exit $6.1701 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:32:20 ET",
         "exit_et": "09:33:42 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "AMD:schwab_taxable:2025-09-30",
+      "symbol": "AMD",
+      "open_date": "2025-09-30",
+      "close_date": "2025-09-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:34.928518+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 257,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 159.33,
+          "max_high": 162.28
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "08:25:21 ET",
+        "exit_et": "11:10:43 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -1898,7 +2036,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:35.258287+00:00",
+        "audited_at": "2026-06-27T21:57:35.635741+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1910,8 +2048,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "08:18:20 ET",
         "exit_et": "08:18:53 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -1925,7 +2065,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:35.921108+00:00",
+        "audited_at": "2026-06-27T21:57:36.332223+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -1937,64 +2077,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "08:18:41 ET",
         "exit_et": "10:27:29 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "PEPG:schwab_taxable:2025-09-25",
-      "symbol": "PEPG",
-      "open_date": "2025-09-25",
-      "close_date": "2025-09-25",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:36.595727+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Min",
-        "source": "alpaca",
-        "bar_count": 28,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 6.28,
-          "max_high": 6.93
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "07:22:23 ET",
-        "exit_et": "07:30:23 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "SHFS:schwab_rollover_ira:2025-09-25",
-      "symbol": "SHFS",
-      "open_date": "2025-09-24",
-      "close_date": "2025-09-25",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:37.301609+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": "alpaca",
-        "bar_count": 8,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 3.07,
-          "max_high": 9.19
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -2006,7 +2094,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:38.050286+00:00",
+        "audited_at": "2026-06-27T21:57:37.042330+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2018,10 +2106,70 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "11:00:49 ET",
         "exit_et": "11:11:41 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "SHFS:schwab_rollover_ira:2025-09-25",
+      "symbol": "SHFS",
+      "open_date": "2025-09-24",
+      "close_date": "2025-09-25",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:37.718654+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 8,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.07,
+          "max_high": 9.19
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "19:24:27 ET",
+        "exit_et": "07:00:08 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "PEPG:schwab_taxable:2025-09-25",
+      "symbol": "PEPG",
+      "open_date": "2025-09-25",
+      "close_date": "2025-09-25",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:38.447397+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 56,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.15,
+          "max_high": 6.15
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "09:22:27 ET",
+        "exit_et": "09:39:07 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -2033,7 +2181,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:38.722653+00:00",
+        "audited_at": "2026-06-27T21:57:39.143164+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2045,8 +2193,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:07:59 ET",
         "exit_et": "09:14:34 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2060,7 +2210,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:39.412505+00:00",
+        "audited_at": "2026-06-27T21:57:39.855480+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2072,8 +2222,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "07:45:49 ET",
         "exit_et": "10:31:14 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2087,7 +2239,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:40.122959+00:00",
+        "audited_at": "2026-06-27T21:57:40.535845+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2099,8 +2251,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "07:31:17 ET",
         "exit_et": "07:42:45 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2112,26 +2266,28 @@
       "open_date": "2025-09-22",
       "close_date": "2025-09-22",
       "status": "marker_warn",
-      "reason": "entry $5.6767 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6; exit $6.4713 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6",
+      "reason": "entry $5.24 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04; exit $6.4713 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:40.834936+00:00",
+        "audited_at": "2026-06-27T21:57:41.245723+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 106,
+        "bar_count": 80,
         "fallback": null,
         "price_bounds": {
-          "min_low": 108.72,
+          "min_low": 119.52,
           "max_high": 312.12
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
-            "entry $5.6767 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6",
-            "exit $6.4713 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6"
+            "entry $5.24 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04",
+            "exit $6.4713 misaligned at bar O=125.64 H=127.08 L=119.52 C=122.04"
           ]
         },
-        "entry_et": "07:56:48 ET",
+        "fill_source": "caller",
+        "entry_et": "08:05:26 ET",
         "exit_et": "08:32:06 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
@@ -2144,22 +2300,24 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:41.532167+00:00",
+        "audited_at": "2026-06-27T21:57:41.965439+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 98,
+        "bar_count": 142,
         "fallback": null,
         "price_bounds": {
-          "min_low": 4.47,
-          "max_high": 8.67
+          "min_low": 6.23,
+          "max_high": 12.8999
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "07:29:23 ET",
-        "exit_et": "08:01:50 ET",
+        "fill_source": "caller",
+        "entry_et": "09:09:17 ET",
+        "exit_et": "09:57:48 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -2171,7 +2329,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:42.254690+00:00",
+        "audited_at": "2026-06-27T21:57:42.675351+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2183,8 +2341,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:30:40 ET",
         "exit_et": "13:03:44 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2198,7 +2358,7 @@
       "status": "marker_warn",
       "reason": "entry $4.51 misaligned at bar O=33.66 H=36 L=32.85 C=35.54; exit $5.16 misaligned at bar O=33.66 H=36 L=32.85 C=35.54",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:42.932876+00:00",
+        "audited_at": "2026-06-27T21:57:43.390075+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2210,11 +2370,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $4.51 misaligned at bar O=33.66 H=36 L=32.85 C=35.54",
             "exit $5.16 misaligned at bar O=33.66 H=36 L=32.85 C=35.54"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "09:37:19 ET",
         "exit_et": "09:41:20 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2228,7 +2390,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:43.630812+00:00",
+        "audited_at": "2026-06-27T21:57:44.068348+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2240,8 +2402,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "11:42:47 ET",
         "exit_et": "11:46:10 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2255,7 +2419,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:44.322593+00:00",
+        "audited_at": "2026-06-27T21:57:44.773126+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2267,8 +2431,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:47:22 ET",
         "exit_et": "09:55:16 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2282,7 +2448,7 @@
       "status": "marker_warn",
       "reason": "entry $5.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43; exit $6.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:45.037187+00:00",
+        "audited_at": "2026-06-27T21:57:45.467145+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2294,11 +2460,13 @@
         },
         "integrity": {
           "marker_in_range": false,
+          "marker_aligned": false,
           "marker_warnings": [
             "entry $5.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43",
             "exit $6.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43"
           ]
         },
+        "fill_source": "caller",
         "entry_et": "11:07:54 ET",
         "exit_et": "11:15:36 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2312,7 +2480,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:45.743086+00:00",
+        "audited_at": "2026-06-27T21:57:46.168988+00:00",
         "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
@@ -2324,8 +2492,10 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "09:53:01 ET",
         "exit_et": "10:37:14 ET",
         "scale_fix": "fill_time_resolution_v3.5"
@@ -2339,7 +2509,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:46.400742+00:00",
+        "audited_at": "2026-06-27T21:57:46.840692+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -2351,10 +2521,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "15:31:56 ET",
+        "exit_et": "15:20:48 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -2366,7 +2538,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:47.107588+00:00",
+        "audited_at": "2026-06-27T21:57:47.532685+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -2378,37 +2550,12 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "fill_time_resolution_v3.5"
-      }
-    },
-    {
-      "trade_key": "BRO:schwab_taxable:2025-07-29",
-      "symbol": "BRO",
-      "open_date": "2025-07-17",
-      "close_date": "2025-07-29",
-      "status": "ok",
-      "reason": "",
-      "replay_chart": {
-        "audited_at": "2026-06-27T21:50:47.813703+00:00",
-        "ui_version": "3.5",
-        "timeframe": "1Day",
-        "source": "alpaca",
-        "bar_count": 15,
-        "fallback": null,
-        "price_bounds": {
-          "min_low": 90.55,
-          "max_high": 108.23
-        },
-        "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
-        },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
+        "fill_source": "caller",
+        "entry_et": "09:30:01 ET",
+        "exit_et": "12:51:21 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     },
@@ -2420,7 +2567,7 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:50:48.026263+00:00",
+        "audited_at": "2026-06-27T21:57:48.238709+00:00",
         "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
@@ -2432,10 +2579,41 @@
         },
         "integrity": {
           "marker_in_range": true,
+          "marker_aligned": true,
           "marker_warnings": []
         },
+        "fill_source": "caller",
         "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
+        "exit_et": "09:30:14 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
+      }
+    },
+    {
+      "trade_key": "BRO:schwab_taxable:2025-07-29",
+      "symbol": "BRO",
+      "open_date": "2025-07-17",
+      "close_date": "2025-07-29",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:57:48.469810+00:00",
+        "ui_version": "3.5",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 15,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 90.55,
+          "max_high": 108.23
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_aligned": true,
+          "marker_warnings": []
+        },
+        "fill_source": "caller",
+        "entry_et": "20:00:00 ET",
+        "exit_et": "09:30:14 ET",
         "scale_fix": "fill_time_resolution_v3.5"
       }
     }

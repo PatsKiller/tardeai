@@ -3411,14 +3411,24 @@ def journal():
             """SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
                       tc.shares, tc.buy_price, tc.sell_price, tc.cost_basis, tc.proceeds,
                       tc.pnl, tc.pnl_pct, tc.hold_days,
-                      srt.strategy_tag, srt.classification
+                      srt.strategy_tag, srt.classification,
+                      COALESCE(eq.entry_time, srt.entry_time)::text AS entry_time,
+                      COALESCE(eq.exit_time, srt.exit_time)::text AS exit_time
                FROM trade_closed tc
                LEFT JOIN LATERAL (
-                   SELECT s.strategy_tag, s.classification FROM schwab_round_trips s
-                   WHERE s.symbol = tc.symbol AND s.account = tc.account
+                   SELECT s.strategy_tag, s.classification, s.entry_time, s.exit_time
+                   FROM schwab_round_trips s
+                   WHERE UPPER(s.symbol) = UPPER(tc.symbol) AND s.account = tc.account
                      AND s.exit_time::date = tc.close_date::date
-                   LIMIT 1
+                     AND ABS(s.entry_price - tc.buy_price) < 0.08
+                   ORDER BY ABS(s.entry_price - tc.buy_price), s.exit_time DESC LIMIT 1
                ) srt ON true
+               LEFT JOIN LATERAL (
+                   SELECT entry_time, exit_time FROM trade_execution_quality eq
+                   WHERE UPPER(eq.symbol) = UPPER(tc.symbol) AND eq.entry_time::date = tc.close_date
+                     AND ABS(eq.entry_price - tc.buy_price) < 0.08
+                   ORDER BY ABS(eq.entry_price - tc.buy_price), eq.exit_time DESC LIMIT 1
+               ) eq ON true
                WHERE tc.buy_price > 0 OR tc.pnl != 0
                ORDER BY tc.close_date DESC, tc.symbol
                LIMIT 2000""",
@@ -20518,7 +20528,7 @@ def _trade_chart(query=None):
         g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
         return ohlc_charts.trade_chart(g("symbol"), g("entry_date"), g("exit_date"),
                                        g("entry_price"), g("exit_price"), g("entry_time"), g("exit_time"),
-                                       g("trade_key"))
+                                       g("trade_key"), g("account"))
     except Exception as e:
         return {"error": str(e)[:160]}
 

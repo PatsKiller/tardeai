@@ -53,8 +53,10 @@ def _replay_snapshot(chart: dict) -> dict:
         "price_bounds": pb,
         "integrity": {
             "marker_in_range": integrity.get("marker_in_range"),
+            "marker_aligned": integrity.get("marker_aligned"),
             "marker_warnings": integrity.get("marker_warnings") or [],
         },
+        "fill_source": (chart.get("fill_times") or {}).get("source"),
         "entry_et": chart.get("entry_et"),
         "exit_et": chart.get("exit_et"),
         "scale_fix": "fill_time_resolution_v3.5",
@@ -96,7 +98,10 @@ def run_audit(*, limit: int | None = None, dry_run: bool = False, throttle: floa
         xp = row.get("sell_price")
         tk = row["trade_key"]
 
-        chart = ohlc_charts.trade_chart(sym, ed, xd, entry_price=ep, exit_price=xp, trade_key=tk)
+        chart = ohlc_charts.trade_chart(sym, ed, xd, entry_price=ep, exit_price=xp, trade_key=tk,
+                                        account=row.get("account"),
+                                        entry_time=row.get("entry_time"),
+                                        exit_time=row.get("exit_time"))
         snap = _replay_snapshot(chart)
 
         status = "ok"
