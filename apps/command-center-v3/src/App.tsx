@@ -58,6 +58,7 @@ function Shell() {
             <Route path="hermes" element={<HermesHub onDrill={setDrill} />} />
             <Route path="retirement" element={<RetirementHub onDrill={setDrill} />} />
             <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
+            <Route path="trade-in-view" element={<JournalHub onDrill={setDrill} />} />
             <Route path="watchlist" element={<WatchlistHub onDrill={setDrill} />} />
             <Route path="watchpool" element={<WatchpoolHub onDrill={setDrill} />} />
             <Route path="pullback-macd" element={<PullbackMacdHub onDrill={setDrill} />} />

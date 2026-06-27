@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-27 - TradeInView module (journal → performance analytics)
+
+- **Branding:** `/v3/journal` → **TradeInView** (alias `/v3/trade-in-view`); nav label updated.
+- **New tabs:** Exit Intel, Behavioral, Import (CSV + manual entry + options summary).
+- **Unified detail:** `TradeInViewDetail` drawer (setup/review, reflection, trade rating, replay).
+- **Trade log:** Cards ↔ sortable table; saved filter groups; CSV export; bulk-classify + review reminder.
+- **Analytics:** Zella-like composite score on Analytics tab.
+- **APIs:** `exit-intelligence`, `zella-score`, `behavioral`, `export`, `saved-filters`, `import-csv`, `manual-entry`.
+- **Backend:** `journal_trade_in_view.py`, `migrations/2026_06_27_trade_in_view.sql`, `backfill_trade_in_view_mfe.py`.
+- **Docs:** `TRADE_IN_VIEW_IMPLEMENTATION_PLAN.md`, `TRADE_IN_VIEW_GAP_AUDIT.md`.
+
 ## 2026-06-26 - Strategy monitoring remediation + source/strategy badges
 
 Audit follow-up — see `docs/STRATEGY_MONITORING_20260626.md`.

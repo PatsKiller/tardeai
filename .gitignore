@@ -157,3 +157,4 @@ docs/project/*.docx.bak_*
 data/runtime/*_latest.json
 data/runtime/*_history.json
 data/runtime/catalyst_calibration.json
+state/trade_in_view_profit_capture.json
