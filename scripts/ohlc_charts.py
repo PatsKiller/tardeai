@@ -607,11 +607,16 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
 
     def _bar_et_label(tkey):
-        """Bar unix key -> ET wall-clock label (matches chart axis)."""
+        """Bar time key -> display label (intraday: ET wall-clock; daily: date)."""
         if tkey is None:
             return None
-        d = dt.datetime.fromtimestamp(int(tkey), tz=dt.timezone.utc)
-        return d.strftime("%H:%M:%S ET")
+        if isinstance(tkey, str) and "-" in tkey and not tkey.isdigit():
+            return tkey[:10]
+        try:
+            d = dt.datetime.fromtimestamp(int(tkey), tz=dt.timezone.utc)
+            return d.strftime("%H:%M:%S ET")
+        except (TypeError, ValueError):
+            return str(tkey)
 
     # Time integrity: fill timestamp vs snapped marker bar (catches midnight-date regressions).
     time_warnings = []
@@ -624,12 +629,19 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         fill_ts = ent if m["type"] == "entry" else ext
         time_integrity[f"{m['type']}_marker_et"] = label
         if fill_ts:
-            fill_key = _et_ts(fill_ts.astimezone(dt.timezone.utc).isoformat())
-            delta = abs(int(m["time"]) - fill_key)
-            time_integrity[f"{m['type']}_delta_sec"] = delta
-            if delta > max_bar_delta:
-                time_warnings.append(
-                    f"{m['type']} fill {et(fill_ts)} vs marker bar {label} (Δ{delta}s)")
+            if timeframe == "1Day":
+                fill_day = fill_ts.date().isoformat()
+                bar_day = str(m["time"])[:10]
+                time_integrity[f"{m['type']}_delta_sec"] = 0 if fill_day == bar_day else 86400
+                if fill_day != bar_day:
+                    time_warnings.append(f"{m['type']} fill {fill_day} vs marker bar {bar_day}")
+            else:
+                fill_key = _et_ts(fill_ts.astimezone(dt.timezone.utc).isoformat())
+                delta = abs(int(m["time"]) - fill_key)
+                time_integrity[f"{m['type']}_delta_sec"] = delta
+                if delta > max_bar_delta:
+                    time_warnings.append(
+                        f"{m['type']} fill {et(fill_ts)} vs marker bar {label} (Δ{delta}s)")
 
     if same_day and fill_source == "caller" and not (_has_clock(entry_time) or _has_clock(exit_time)):
         time_warnings.append("fill times not resolved — pass trade_key or entry_time")
