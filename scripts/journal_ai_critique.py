@@ -253,6 +253,102 @@ Return STRICT JSON only:
 "what_if_scenarios": [{{"scenario": "...", "outcome": "..."}}]}}"""
 
 
+def _deterministic_narrative(ctx: dict, sections: dict) -> dict:
+    """Useful critique when LLM is unavailable or returns empty."""
+    trade = ctx["trade"]
+    eq = ctx["eq"]
+    review = ctx["review"]
+    cls = sections.get("trade_classification") or {}
+    ex = sections.get("execution_quality") or {}
+    risk = sections.get("risk_sizing") or {}
+    opp = sections.get("opportunity_cost") or {}
+    tip = ctx.get("time_in_trade") or {}
+    sym = trade.get("symbol", "?")
+    pnl = float(trade.get("pnl") or 0)
+    ep = ex.get("entry_price")
+    xp = ex.get("exit_price")
+    outcome = ex.get("outcome_grade") or "?"
+    execution = ex.get("execution_grade") or "?"
+    capture = ex.get("capture_ratio")
+    cap_pct = f"{int((capture or 0) * 100)}%" if capture is not None else "—"
+    setup = cls.get("setup_family") or review.get("setup_family") or "untagged"
+    regime = cls.get("market_regime") or review.get("market_regime") or "unknown"
+    mistakes = ctx.get("mistake_tags") or []
+    strengths = ctx.get("strength_tags") or []
+
+    summary = (
+        f"{sym} {cls.get('type', 'day_trade')} ({setup}, {regime}): "
+        f"${pnl:+.2f} P&L at {ep}→{xp}. Grades {outcome}/{execution}, capture {cap_pct}."
+    )
+    if tip.get("pct_in_profit") is not None:
+        summary += (
+            f" Held {tip.get('minutes_in_profit', 0)}m in profit vs "
+            f"{tip.get('minutes_underwater', 0)}m underwater ({tip['pct_in_profit']}% green)."
+        )
+
+    str_list = []
+    if pnl > 0:
+        str_list.append(f"Closed green (${pnl:+.2f}) with {cap_pct} of available move captured.")
+    if tip.get("pct_in_profit", 0) >= 50:
+        str_list.append(f"Trade spent {tip['pct_in_profit']}% of hold time in profit.")
+    if eq.get("entry_above_vwap"):
+        str_list.append("Entry was above VWAP — aligned with intraday strength.")
+    if strengths:
+        str_list.append(f"Tagged strengths: {', '.join(strengths[:3])}.")
+    if not str_list:
+        str_list.append("Review execution flags and journal tags for repeatable lessons.")
+
+    imp_list = []
+    for flag, label in (
+        ("no_volume_entry_flag", "Entry lacked volume confirmation — wait for RVOL spike."),
+        ("premature_exit_flag", "Exit may have been early vs post-exit continuation."),
+        ("early_entry_flag", "Entry was early relative to setup confirmation."),
+        ("late_entry_flag", "Entry chased — consider limit orders at planned levels."),
+    ):
+        if eq.get(flag):
+            imp_list.append(label)
+    if mistakes:
+        imp_list.append(f"Mistake tags to address: {', '.join(mistakes[:4])}.")
+    if opp.get("mfe_after_exit_pct") and float(opp["mfe_after_exit_pct"] or 0) > 5:
+        imp_list.append(
+            f"Stock moved +{opp['mfe_after_exit_pct']}% after exit — review scale-out / runner rules."
+        )
+    if not imp_list:
+        imp_list.append("Log planned stop/target and regime next time for sharper post-trade review.")
+
+    takeaways = []
+    if eq.get("grok_what_to_do_next_time"):
+        takeaways.append(str(eq["grok_what_to_do_next_time"])[:200])
+    takeaways.append(f"Repeat: {setup} only when regime is {regime} and RVOL confirms.")
+    if risk.get("realized_r") is not None and risk.get("planned_r") is not None:
+        takeaways.append(f"Risk: planned {risk['planned_r']}R → realized {risk['realized_r']}R.")
+    takeaways.append("Screenshot the entry bar and tag psychology within 24h while memory is fresh.")
+
+    what_ifs = []
+    alt = opp.get("alternative_exit") or {}
+    if alt.get("additional_pnl") and float(alt["additional_pnl"]) > 0:
+        what_ifs.append({
+            "scenario": f"Hold to post-exit high ${alt.get('price')}",
+            "outcome": f"+${alt['additional_pnl']} additional ({alt.get('runner_type', 'continuation')})",
+        })
+    mfe = opp.get("what_if_hold_to_mfe") or {}
+    if mfe.get("extra_per_share") and ep:
+        what_ifs.append({
+            "scenario": f"Hold to in-trade MFE ${mfe.get('price')}",
+            "outcome": f"+${float(mfe['extra_per_share']):.2f}/sh vs actual exit",
+        })
+
+    return {
+        "summary": summary,
+        "strengths": str_list[:4],
+        "improvements": imp_list[:4],
+        "takeaways": takeaways[:4],
+        "suggested_tags": mistakes[:2] if mistakes else [],
+        "what_if_scenarios": what_ifs[:3],
+        "deterministic": True,
+    }
+
+
 def _parse_llm(text: str) -> dict | None:
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
@@ -269,7 +365,18 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
     existing = tiv._q("SELECT payload FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
     payload = tiv._review_payload(existing)
     if not force and payload.get("ai_critique", {}).get("version") == PROMPT_VERSION:
-        return {"ok": True, "cached": True, "critique": payload["ai_critique"]}
+        cached = payload["ai_critique"]
+        nar = (cached.get("narrative") or {})
+        if nar.get("summary"):
+            return {"ok": True, "cached": True, "critique": cached}
+        # Backfill empty narrative from stored sections (older --no-llm runs).
+        ctx = build_context(trade_key)
+        if ctx:
+            sections = {k: cached.get(k) for k in (
+                "trade_classification", "execution_quality", "risk_sizing", "opportunity_cost")}
+            cached = {**cached, "narrative": _deterministic_narrative(ctx, sections)}
+            save_critique(trade_key, cached)
+            return {"ok": True, "cached": True, "critique": cached, "backfilled": True}
 
     ctx = build_context(trade_key)
     if not ctx:
@@ -279,7 +386,7 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
     trade = ctx["trade"]
     eq = ctx["eq"]
     review = ctx["review"]
-    narrative = {}
+    narrative = _deterministic_narrative(ctx, sections)
 
     if use_llm:
         import llm_lane
@@ -314,9 +421,13 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
         )
         try:
             text = llm_lane.generate(prompt, lane=lane, timeout=90)
-            narrative = _parse_llm(text) or {"summary": (text or "")[:600], "parse_failed": True}
+            parsed = _parse_llm(text)
+            if parsed and parsed.get("summary"):
+                narrative = {**parsed, "llm_enhanced": True}
+            elif text:
+                narrative = {**narrative, "summary": (text or "")[:600], "parse_failed": True}
         except Exception as e:
-            narrative = {"summary": f"LLM unavailable ({str(e)[:80]}). See deterministic sections.", "llm_error": True}
+            narrative = {**narrative, "llm_error": str(e)[:120]}
 
     critique = {
         "version": PROMPT_VERSION,
