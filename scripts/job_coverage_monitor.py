@@ -78,6 +78,14 @@ REGISTRY = [
      "signal": ("log", "proposal_enrichment.log")},
     {"name": "strategy_audits", "schedule_match": "run_scheduled_strategy_audits.sh", "cadence_h": 30,
      "signal": ("log", "strategy_audits.log")},
+    {"name": "schwab_journal_ingest", "schedule_match": "schwab_journal_builder.py", "cadence_h": 1,
+     "signal": ("log", "schwab_ingest.log")},
+    {"name": "journal_review_builder", "schedule_match": "journal_review_builder.py", "cadence_h": 30,
+     "signal": ("log", "journal_review.log")},
+    {"name": "journal_annotation_reminder", "schedule_match": "journal_annotation_reminder.py", "cadence_h": 30,
+     "signal": ("log", "journal_annotation_reminder.log")},
+    {"name": "journal_tilt_morning_hook", "schedule_match": "journal_tilt_morning_hook.py", "cadence_h": 30,
+     "signal": ("log", "journal_tilt_hook.log")},
 ]
 
 
