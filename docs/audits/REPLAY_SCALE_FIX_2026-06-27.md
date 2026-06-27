@@ -38,8 +38,9 @@ match journal fill price.
 ## Integrity audit job
 
 ```bash
-python scripts/replay_chart_audit.py          # all trades → DB + docs
-python scripts/replay_chart_audit.py --dry-run
+python scripts/replay_backfill.py --apply     # EQ build + audit (recommended)
+python scripts/replay_chart_audit.py          # audit only → DB + docs
+bash scripts/install_replay_backfill_cron.sh  # weekday 22:15 ET cron
 ```
 
 For each `trade_closed` row (deduped by `trade_key`):
@@ -48,14 +49,13 @@ For each `trade_closed` row (deduped by `trade_key`):
 2. Writes compact snapshot to `journal_trade_reviews.payload.replay_chart`
 3. Emits `docs/audits/REPLAY_INTEGRITY_YYYY-MM-DD.{md,json}` + `*_LATEST.*`
 
-### 2026-06-27 run
+### 2026-06-27 runs
 
-| Metric | Value |
-|--------|------:|
-| Trades audited | 90 |
-| OK | 62 |
-| WARN | 28 |
-| FAIL | 0 |
+| Run | OK | WARN | FAIL | Notes |
+|-----|---:|-----:|-----:|-------|
+| v3.4 volume fix | 62 | 28 | 0 | Volume isolated from price scale |
+| v3.5 marker fix | 65 | 25 | 0 | Fill-time resolution from EQ |
+| **Universal backfill** | **66** | **24** | **0** | `replay_backfill.py` + 4-tier lookup |
 
 **WARN** = Finviz image fallback (no Alpaca/Schwab bars) or journal fill price outside ±5% of
 split-adjusted OHLC range (expected for some scalps / options).
