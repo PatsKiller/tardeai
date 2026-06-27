@@ -13754,6 +13754,81 @@ def _broker_parse_rr_filters(query: dict | None) -> dict:
     }
 
 
+def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> list:
+    """Protection adjustments shaped for the broker-proposals queue (negative ids avoid collisions)."""
+    from automated_account import (
+        AUTOMATED_ACCOUNT_KEY,
+        LEGACY_AUTOMATED_KEYS,
+        display_account_label,
+        is_automated_account,
+        normalize_account_key,
+    )
+    AUTO = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+    where = ["a.status = 'PROPOSED'", "t.status = 'open'"]
+    params: list = []
+    if symbol_f:
+        where.append("UPPER(a.symbol) LIKE %s")
+        params.append(f"%{symbol_f}%")
+    if account_f:
+        if is_automated_account(account_f):
+            keys = sorted(LEGACY_AUTOMATED_KEYS)
+            where.append(f"t.account IN ({','.join(['%s'] * len(keys))})")
+            params.extend(keys)
+        else:
+            where.append("t.account = %s")
+            params.append(account_f)
+    rows = _db_query(
+        f"""SELECT a.id, a.symbol, a.action, a.current_stop, a.proposed_stop, a.status,
+                   a.requires_operator_approval, a.no_live_execution, a.created_at,
+                   t.account, t.entry_price, t.shares
+              FROM paper_protection_adjustment_proposals a
+              JOIN paper_trades t ON t.id = a.trade_id
+             WHERE {' AND '.join(where)}
+             ORDER BY a.created_at DESC, a.id DESC""",
+        tuple(params) if params else None,
+    ) or []
+    out = []
+    for r in rows:
+        acct_raw = str(r.get("account") or "")
+        acct = normalize_account_key(acct_raw)
+        act = (r.get("action") or "").upper()
+        if is_automated_account(acct_raw) and act in AUTO:
+            atm_disp = "paper_auto_apply"
+        elif is_automated_account(acct_raw):
+            atm_disp = "advisory"
+        else:
+            atm_disp = "operator_approval"
+        pid = int(r["id"])
+        out.append({
+            "id": -pid,
+            "protection_id": pid,
+            "queue_kind": "protection",
+            "proposal_kind": "protection",
+            "symbol": r.get("symbol"),
+            "account": acct,
+            "action": act,
+            "proposed_stop": r.get("proposed_stop"),
+            "current_stop": r.get("current_stop"),
+            "entry_price": r.get("entry_price"),
+            "shares": r.get("shares"),
+            "status": r.get("status") or "PROPOSED",
+            "origin": "protection",
+            "routing_state": "protection",
+            "atm_disposition": atm_disp,
+            "created_at": r.get("created_at"),
+            "account_display": display_account_label(acct_raw),
+            "account_broker": "alpaca" if is_automated_account(acct_raw) else None,
+            "detail_pending": False,
+            "activity": None,
+            "activity_pending": False,
+            "intel": {"ok": False, "lazy": True, "skip": True},
+            "oversight": {"status": None, "lazy": True, "skip": True},
+            "source_attribution": {"label": "protection", "origin": "protection"},
+            "no_broker_actions": True,
+        })
+    return out
+
+
 def _broker_proposals(query=None):
     """GET /api/v2/broker-proposals — fast list; per-card detail via POST /broker-proposals/detail.
 
@@ -13799,6 +13874,48 @@ def _broker_proposals(query=None):
         # status view: default = active queue; status=EXPIRED → the Expired tab (chronological, newest
         # first, paginated). Account-agnostic — any account's expired proposals.
         status_view = str(_broker_qp(query, "status", "") or "").upper().strip()
+        protection_only = kind_f == "protection" and status_view != "EXPIRED"
+        if protection_only:
+            prot_rows = _fetch_protection_union_rows(symbol_f, account_f)
+            total = len(prot_rows)
+            start = (page - 1) * page_size
+            page_rows = prot_rows[start:start + page_size]
+            total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+            accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
+                WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
+            sd = PROJECT_ROOT / "config" / "strategies"
+            strategies = sorted([f.stem for f in sd.glob("*.yaml")
+                                 if f.stem not in ("shared_risk_rules", "strategy_schema", "recommendation_schema")])
+            acct_rows = []
+            for a in accounts:
+                row = {k: _json_clean(v) for k, v in a.items()}
+                ak = row.get("account_key") or ""
+                row.update(_broker_account_label_meta(ak))
+                row["activity"] = None
+                row["activity_pending"] = True
+                acct_rows.append(row)
+            return {
+                "proposals": page_rows,
+                "quotes_live": False,
+                "autocal": autocal_meta or None,
+                "curator": None,
+                "accounts": acct_rows,
+                "strategies": strategies,
+                "list_mode": "fast",
+                "cached": False,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": total_pages,
+                },
+                "filters": {
+                    "sort": sort,
+                    "kind": kind_f,
+                    "symbol": symbol_f or None,
+                    "account": account_f or None,
+                },
+            }
         if status_view == "EXPIRED":
             where = ["status = 'EXPIRED'"]
             sort = "created"   # chronological, newest first
@@ -13808,7 +13925,7 @@ def _broker_proposals(query=None):
             where.append(broker_routed)
         elif kind_f == "proposal":
             where.append("NOT " + broker_routed)
-        # kind=all → no routing restriction (paper proposals included, source-tagged in the row)
+        # kind=all → no routing restriction (paper proposals + protection union on page 1)
         params: list = []
         if account_f:
             where.append("COALESCE(target_account, proposed_account) = %s")
@@ -13848,6 +13965,12 @@ def _broker_proposals(query=None):
             "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
         ))
 
+        protection_rows: list = []
+        prot_count = 0
+        if kind_f == "all" and status_view != "EXPIRED":
+            protection_rows = _fetch_protection_union_rows(symbol_f, account_f)
+            prot_count = len(protection_rows)
+
         # Zone, R:R filters, live-rr sort, and source=both need post-row filtering before pagination.
         needs_post = (
             bool(zone_f)
@@ -13857,8 +13980,15 @@ def _broker_proposals(query=None):
             or rr_f.get("min_planned_rr") is not None
             or rr_f.get("actionable")
         )
-        fetch_limit = min(1000, db_total) if needs_post else page_size
-        fetch_offset = 0 if needs_post else (page - 1) * page_size
+        if needs_post:
+            fetch_limit = min(1000, db_total)
+            fetch_offset = 0
+        elif prot_count and kind_f == "all":
+            fetch_limit = page_size if page > 1 else max(0, page_size - prot_count)
+            fetch_offset = max(0, (page - 1) * page_size - prot_count)
+        else:
+            fetch_limit = page_size
+            fetch_offset = (page - 1) * page_size
 
         proposals = _db_query(
             f"""SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
@@ -13956,15 +14086,23 @@ def _broker_proposals(query=None):
             )
 
         if needs_post:
-            total = len(prop_rows)
+            combined = (protection_rows + prop_rows) if prot_count else prop_rows
+            total = len(combined)
             start = (page - 1) * page_size
-            prop_rows = prop_rows[start:start + page_size]
+            prop_rows = combined[start:start + page_size]
         else:
-            total = db_total
+            total = db_total + prot_count
+            if prot_count and page == 1:
+                prop_rows = protection_rows + prop_rows
 
         total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
 
-        prop_rows = _broker_reprice_proposal_rows(prop_rows)
+        entry_rows = [r for r in prop_rows if r.get("queue_kind") != "protection"]
+        if entry_rows:
+            repriced = {r["id"]: r for r in _broker_reprice_proposal_rows(entry_rows)}
+            prop_rows = [repriced.get(r["id"], r) if r.get("queue_kind") != "protection" else r for r in prop_rows]
+        else:
+            prop_rows = list(prop_rows)
 
         acct_rows = []
         for a in accounts:
@@ -13998,6 +14136,7 @@ def _broker_proposals(query=None):
             },
             "filters": {
                 "sort": sort,
+                "kind": kind_f or None,
                 "source": source_f or None,
                 "zone": zone_f or None,
                 "symbol": symbol_f or None,
@@ -21525,6 +21664,7 @@ def _options_approval_queue(query=None):
 def _protection_proposals(query=None):
     """GET /api/v2/protection-proposals — protection adjustments unified into the proposals view,
     each tagged with its ATM disposition (paper auto-applies guarded stop-ups; real → operator)."""
+    from automated_account import is_automated_account, normalize_account_key
     from db_adapter import _execute
     rows = _execute("""
         SELECT a.id, a.symbol, a.action, a.current_stop, a.proposed_stop, a.status,
@@ -21535,13 +21675,13 @@ def _protection_proposals(query=None):
         WHERE a.status='PROPOSED' AND t.status='open'
         ORDER BY t.account, a.symbol, a.id""", fetch="all") or []
     AUTO = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
-    PAPER = {"alpaca_paper", "ALPACA_PAPER", "paper", "PAPER"}
     for r in rows:
-        acct = str(r.get("account") or "")
+        acct_raw = str(r.get("account") or "")
+        r["account"] = normalize_account_key(acct_raw)
         act = (r.get("action") or "").upper()
-        if acct in PAPER and act in AUTO:
+        if is_automated_account(acct_raw) and act in AUTO:
             r["atm_disposition"] = "paper_auto_apply"
-        elif acct in PAPER:
+        elif is_automated_account(acct_raw):
             r["atm_disposition"] = "advisory"          # action not in the auto-apply allowlist
         else:
             r["atm_disposition"] = "operator_approval"  # real account → operator + 2FA

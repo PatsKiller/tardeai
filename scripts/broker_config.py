@@ -5,7 +5,7 @@ The source of truth is the `accounts` DB table + ATM config YAML.
 
 Usage:
     from broker_config import get_default_paper_account, get_account_display_name
-    account = get_default_paper_account()  # e.g. 'alpaca_paper'
+    account = get_default_paper_account()  # e.g. 'tradeai_automated'
 """
 import os
 import logging
@@ -91,6 +91,9 @@ def get_account_display_name(account_label: str) -> str:
             broker = (a.get("broker") or "").title()
             mode = (a.get("mode") or "").title()
             return f"{broker} {mode}".strip()
+    from automated_account import display_account_label, is_automated_account
+    if is_automated_account(account_label):
+        return display_account_label(account_label)
     return account_label.replace("_", " ").title()
 
 

@@ -56,7 +56,8 @@ def default_paper_account() -> str:
             return acct
     except Exception:
         pass
-    return os.getenv("DEFAULT_PAPER_ACCOUNT", "alpaca_paper")  # hardcode-ok: env-backed last-resort default
+    from automated_account import AUTOMATED_ACCOUNT_KEY
+    return os.getenv("DEFAULT_PAPER_ACCOUNT", AUTOMATED_ACCOUNT_KEY)
 
 
 def load_policy(account_key: str) -> dict:

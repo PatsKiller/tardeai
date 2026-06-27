@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import os
 
-PAPER_ACCOUNTS = {"alpaca_paper", "ALPACA_PAPER", "paper", "PAPER"}
+def _is_paper_account(acct: str) -> bool:
+    from automated_account import is_automated_account
+    return is_automated_account(acct)
 # apply_paper_protection_adjustment only executes these (stop-up); others stay advisory/operator.
 AUTO_APPLY_ACTIONS = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
 
@@ -64,7 +66,7 @@ def run_protection_pass(conn=None, *, mode: str = "active", dry_run: bool = Fals
 
     for r in rows:
         acct = str(r.get("acct") or "")
-        is_paper = acct in PAPER_ACCOUNTS
+        is_paper = _is_paper_account(acct)
         action = (r.get("action") or "").upper()
         # REAL accounts: never auto-apply — leave for operator (+2FA).
         if not is_paper:

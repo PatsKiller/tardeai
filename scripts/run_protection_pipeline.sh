@@ -20,4 +20,5 @@ run hermes_profit_protection_check.py                 # Hermes second opinion (1
 run generate_paper_protection_adjustment_proposals.py # adjustment proposals (192D)
 run reconcile_protection_advisory_outcomes.py         # close-loop outcomes (193/194)
 run tune_advisory_thresholds.py                       # threshold tuning backtest (198)
+run prune_protection_proposals_retention.py           # prune old SUPERSEDED rows (bounded retention)
 echo "[$(ts)] === protection pipeline done ===" >> "$LOG"

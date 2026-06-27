@@ -44,7 +44,7 @@ same_day_skip_strategies:
 
 # Per-account overrides. account_label must exist in accounts table.
 accounts:
-  alpaca_paper:
+  tradeai_automated:
     enabled: true
     position_limits:
       max_concurrent: 10         # Stage 1: was 6
