@@ -4,6 +4,7 @@ type CritiqueMeta = {
   status?: string
   generated_at?: string
   stale?: boolean
+  stale_fields?: string[]
   tag_fingerprint?: string
   history_count?: number
   llm_enhanced?: boolean
@@ -63,6 +64,7 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [stale, setStale] = useState(false)
+  const [staleFields, setStaleFields] = useState<string[]>([])
   const [cached, setCached] = useState(false)
 
   const load = useCallback(async (force = false) => {
@@ -81,6 +83,7 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
       const m = payload?.meta ?? null
       setMeta(m)
       setStale(Boolean(payload?.stale ?? m?.stale))
+      setStaleFields(payload?.stale_fields ?? m?.stale_fields ?? [])
       setCached(Boolean(payload?.cached))
       if (c && (c.narrative?.summary || c.trade_classification || c.execution_quality)) {
         setCritique(c)
@@ -130,6 +133,11 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
           {stale && (
             <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
               Tags changed since this critique was generated — regenerate for an updated review.
+              {staleFields.length > 0 && (
+                <div style={{ fontSize: 10, marginTop: 4, color: 'var(--text2)' }}>
+                  Changed: {staleFields.join(', ')}
+                </div>
+              )}
             </div>
           )}
           {meta && (
