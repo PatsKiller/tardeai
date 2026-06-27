@@ -395,12 +395,12 @@ def stale_tag_diff(review: dict, meta: dict, critique: dict | None = None) -> li
     old = meta.get("tags_at_generation") or {}
     if not old and critique:
         cls = critique.get("trade_classification") or {}
-        old = {
+        old = _tag_snapshot({
             "setup_family": cls.get("setup_family"),
             "market_regime": cls.get("market_regime"),
-            "setup_types": sorted(cls.get("setup_types") or []),
+            "setup_types": cls.get("setup_types"),
             "emotion_before": cls.get("psychology"),
-        }
+        })
     if not old:
         return []
     cur = _tag_snapshot(review)
@@ -493,9 +493,26 @@ def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", e
     }
 
 
-def _stale_from_tags(review: dict, meta: dict) -> tuple[bool, str]:
-    """Stale only when a stored fingerprint exists and differs from current tags."""
+def _critique_tag_snapshot(critique: dict | None) -> dict:
+    """Tags embedded in the stored critique (generation-time context)."""
+    if not critique:
+        return {}
+    cls = critique.get("trade_classification") or {}
+    return _tag_snapshot({
+        "setup_family": cls.get("setup_family"),
+        "market_regime": cls.get("market_regime"),
+        "setup_types": cls.get("setup_types"),
+        "emotion_before": cls.get("psychology"),
+    })
+
+
+def _stale_from_tags(review: dict, meta: dict, critique: dict | None = None) -> tuple[bool, str]:
+    """Stale when current tags differ from generation-time tags."""
     cur_fp = tag_fingerprint(review)
+    cur_snap = _tag_snapshot(review)
+    crit_snap = _critique_tag_snapshot(critique)
+    if crit_snap and cur_snap == crit_snap:
+        return False, cur_fp
     stored_fp = meta.get("tag_fingerprint")
     if not stored_fp:
         return False, cur_fp
@@ -533,7 +550,7 @@ def mark_stale_on_tag_change(trade_key: str) -> bool:
     meta = payload.get("ai_critique_meta") or {}
     if not payload.get("ai_critique"):
         return False
-    stale, cur_fp = _stale_from_tags(row, meta)
+    stale, cur_fp = _stale_from_tags(row, meta, payload.get("ai_critique"))
     prev_stale = bool(meta.get("stale"))
     if not meta.get("tag_fingerprint"):
         meta["tag_fingerprint"] = cur_fp
@@ -602,7 +619,7 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
             nar = stored.get("narrative") or {}
             sm = meta.get("status", "ok")
             if sm == "ok" and (nar.get("summary") or stored.get("trade_classification")):
-                stale, cur_fp = _stale_from_tags(review_row, meta)
+                stale, cur_fp = _stale_from_tags(review_row, meta, stored)
                 if not meta.get("tag_fingerprint"):
                     meta = {**meta, "tag_fingerprint": cur_fp, "stale": False}
                     _persist_meta(trade_key, payload, meta, stale=False)
@@ -889,7 +906,7 @@ def reconcile_stale_flags(limit: int = 500) -> dict:
     for row in rows:
         payload = tiv._review_payload(row)
         meta = payload.get("ai_critique_meta") or {}
-        stale, cur_fp = _stale_from_tags(row, meta)
+        stale, cur_fp = _stale_from_tags(row, meta, payload.get("ai_critique"))
         if not meta.get("tag_fingerprint"):
             meta["tag_fingerprint"] = cur_fp
             _persist_meta(row["trade_key"], payload, meta, stale=False)
@@ -919,7 +936,7 @@ def backfill_index_from_payloads(limit: int = 500) -> dict:
         if not c:
             continue
         meta = payload.get("ai_critique_meta") or _critique_meta(row, c)
-        stale, _ = _stale_from_tags(row, meta)
+        stale, _ = _stale_from_tags(row, meta, c)
         meta["stale"] = stale
         try:
             _upsert_index(row["trade_key"], c, row, meta)
