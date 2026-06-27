@@ -461,8 +461,39 @@ def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", e
     }
 
 
+def _stale_from_tags(review: dict, meta: dict) -> tuple[bool, str]:
+    """Stale only when a stored fingerprint exists and differs from current tags."""
+    cur_fp = tag_fingerprint(review)
+    stored_fp = meta.get("tag_fingerprint")
+    if not stored_fp:
+        return False, cur_fp
+    return stored_fp != cur_fp, cur_fp
+
+
+def _persist_meta(trade_key: str, payload: dict, meta: dict, *, stale: bool) -> None:
+    """Write ai_critique_meta + mirror stale flag to journal_ai_critiques."""
+    meta = dict(meta)
+    meta["stale"] = stale
+    if stale:
+        meta.setdefault("stale_reason", "tags_changed")
+        meta.setdefault("stale_at", datetime.now(timezone.utc).isoformat())
+    else:
+        meta.pop("stale_reason", None)
+        meta.pop("stale_at", None)
+        meta.pop("current_tag_fingerprint", None)
+    payload["ai_critique_meta"] = meta
+    tiv._q("UPDATE journal_trade_reviews SET payload=%s::jsonb, updated_at=NOW() WHERE trade_key=%s",
+           [json.dumps(_json_clean(payload), default=str), trade_key], fetch="none")
+    try:
+        ensure_critique_schema()
+        tiv._q("UPDATE journal_ai_critiques SET stale=%s, updated_at=NOW() WHERE trade_key=%s",
+               [stale, trade_key], fetch="none")
+    except Exception:
+        pass
+
+
 def mark_stale_on_tag_change(trade_key: str) -> bool:
-    """Flag critique stale when journal tags change after last generation."""
+    """Flag critique stale when journal tags change; clear stale when tags match again."""
     row = tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
     if not row:
         return False
@@ -470,23 +501,17 @@ def mark_stale_on_tag_change(trade_key: str) -> bool:
     meta = payload.get("ai_critique_meta") or {}
     if not payload.get("ai_critique"):
         return False
-    cur_fp = tag_fingerprint(row)
-    if meta.get("tag_fingerprint") == cur_fp:
+    stale, cur_fp = _stale_from_tags(row, meta)
+    prev_stale = bool(meta.get("stale"))
+    if not meta.get("tag_fingerprint"):
+        meta["tag_fingerprint"] = cur_fp
+        _persist_meta(trade_key, payload, meta, stale=False)
         return False
-    meta["stale"] = True
-    meta["stale_reason"] = "tags_changed"
-    meta["stale_at"] = datetime.now(timezone.utc).isoformat()
+    if stale == prev_stale and (not stale or meta.get("current_tag_fingerprint") == cur_fp):
+        return stale
     meta["current_tag_fingerprint"] = cur_fp
-    payload["ai_critique_meta"] = meta
-    tiv._q("UPDATE journal_trade_reviews SET payload=%s::jsonb, updated_at=NOW() WHERE trade_key=%s",
-           [json.dumps(_json_clean(payload), default=str), trade_key], fetch="none")
-    try:
-        ensure_critique_schema()
-        tiv._q("UPDATE journal_ai_critiques SET stale=TRUE, updated_at=NOW() WHERE trade_key=%s",
-               [trade_key], fetch="none")
-    except Exception:
-        pass
-    return True
+    _persist_meta(trade_key, payload, meta, stale=stale)
+    return stale
 
 
 def _upsert_index(trade_key: str, critique: dict, review: dict, meta: dict) -> None:
@@ -545,15 +570,19 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
             nar = stored.get("narrative") or {}
             sm = meta.get("status", "ok")
             if sm == "ok" and (nar.get("summary") or stored.get("trade_classification")):
-                stale = bool(meta.get("stale")) or (meta.get("tag_fingerprint") and meta.get("tag_fingerprint") != cur_fp)
-                if stale and meta.get("tag_fingerprint") != cur_fp:
-                    meta = {**meta, "stale": True, "current_tag_fingerprint": cur_fp}
+                stale, cur_fp = _stale_from_tags(review_row, meta)
+                if not meta.get("tag_fingerprint"):
+                    meta = {**meta, "tag_fingerprint": cur_fp, "stale": False}
+                    _persist_meta(trade_key, payload, meta, stale=False)
+                elif bool(meta.get("stale")) != stale:
+                    meta = {**meta, "current_tag_fingerprint": cur_fp}
+                    _persist_meta(trade_key, payload, meta, stale=stale)
                 clean = {k: v for k, v in stored.items() if not k.startswith("_")}
                 return {
                     "ok": True, "cached": True, "persisted": True, "critique": clean,
                     "meta": {**meta, "tag_fingerprint": meta.get("tag_fingerprint") or cur_fp,
                              "current_tag_fingerprint": cur_fp,
-                             "history_count": stored.get("_history_count", 0)},
+                             "history_count": stored.get("_history_count", 0), "stale": stale},
                     "stale": stale,
                 }
             if sm == "error":
@@ -814,9 +843,33 @@ def coaching_insights(days: int = 30) -> dict:
     }
 
 
+def reconcile_stale_flags(limit: int = 500) -> dict:
+    """Re-derive stale from tag fingerprints (fixes stuck stale after tag revert)."""
+    rows = tiv._q("""
+        SELECT trade_key, payload FROM journal_trade_reviews
+        WHERE payload ? 'ai_critique'
+        ORDER BY updated_at DESC NULLS LAST LIMIT %s
+    """, [int(limit)])
+    fixed = 0
+    for row in rows:
+        payload = tiv._review_payload(row)
+        meta = payload.get("ai_critique_meta") or {}
+        stale, cur_fp = _stale_from_tags(row, meta)
+        if not meta.get("tag_fingerprint"):
+            meta["tag_fingerprint"] = cur_fp
+            _persist_meta(row["trade_key"], payload, meta, stale=False)
+            fixed += 1
+        elif bool(meta.get("stale")) != stale:
+            meta["current_tag_fingerprint"] = cur_fp
+            _persist_meta(row["trade_key"], payload, meta, stale=stale)
+            fixed += 1
+    return {"ok": True, "scanned": len(rows), "reconciled": fixed}
+
+
 def backfill_index_from_payloads(limit: int = 500) -> dict:
     """Sync journal_ai_critiques from existing payload.ai_critique rows."""
     ensure_critique_schema()
+    recon = reconcile_stale_flags(limit=limit)
     rows = tiv._q("""
         SELECT trade_key, payload, setup_family, market_regime
         FROM journal_trade_reviews
@@ -831,12 +884,14 @@ def backfill_index_from_payloads(limit: int = 500) -> dict:
         if not c:
             continue
         meta = payload.get("ai_critique_meta") or _critique_meta(row, c)
+        stale, _ = _stale_from_tags(row, meta)
+        meta["stale"] = stale
         try:
             _upsert_index(row["trade_key"], c, row, meta)
             n += 1
         except Exception:
             pass
-    return {"ok": True, "synced": n, "scanned": len(rows)}
+    return {"ok": True, "synced": n, "scanned": len(rows), "reconcile": recon}
 
 
 def main():
@@ -847,7 +902,12 @@ def main():
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--backfill-index", action="store_true", help="Sync journal_ai_critiques from payload rows")
+    ap.add_argument("--reconcile-stale", action="store_true", help="Re-derive stale flags from tag fingerprints")
     args = ap.parse_args()
+
+    if args.reconcile_stale:
+        print(json.dumps(reconcile_stale_flags(limit=args.limit), indent=2))
+        return 0
 
     if args.backfill_index:
         print(json.dumps(backfill_index_from_payloads(limit=args.limit), indent=2))
