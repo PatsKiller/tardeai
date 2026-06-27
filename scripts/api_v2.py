@@ -8409,6 +8409,16 @@ def _journal_review_get(trade_key_encoded):
     return {"exists": bool(row), "review": {k: _json_clean(v) for k, v in row.items()} if row else {}}
 
 
+def _journal_timeframe_hint(t):
+    days = int(t.get("hold_days") or 0)
+    tt = (t.get("trade_type") or "").upper()
+    if tt == "DAY" or days == 0:
+        return "intraday"
+    if days <= 30:
+        return "swing"
+    return "position"
+
+
 def _journal_bulk_suggest():
     """POST /api/v2/journal/bulk-suggest — auto-classify all unannotated trades."""
     rows = _db_query("""
@@ -8422,18 +8432,26 @@ def _journal_bulk_suggest():
     created = 0
     for t in rows:
         item = {k: _json_clean(v) for k, v in t.items()}
-        setup, family, timeframe = _suggest_setup(item)
-        _db_write("""
+        setup, family, rationale, tags = _suggest_setup(item)
+        timeframe = _journal_timeframe_hint(item)
+        direction = "short" if (item.get("trade_type") or "").upper() == "SHORT" else "long"
+        result = _db_write("""
             INSERT INTO journal_trade_reviews
-                (trade_key, setup_type, setup_family, timeframe,
-                 entry_reason, execution_score, sizing_score,
-                 followed_plan, well_executed, lessons, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                (trade_key, symbol, account, closed_date, setup_name, setup_family, timeframe,
+                 direction, setup_types, execution_quality_score, sizing_quality_score,
+                 followed_plan, well_executed, lesson_learned, review_notes, created_at)
+            VALUES (%s, %s, %s, %s::date, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (trade_key) DO NOTHING
-        """, [item.get("trade_key"), setup, family, timeframe,
-              "AI suggested: " + setup, 3, 3, False, False,
-              "Auto-classified. Please review and update."])
-        created += 1
+            RETURNING id
+        """, [
+            item.get("trade_key"), item.get("symbol"), item.get("account"), item.get("close_date"),
+            setup, family, timeframe, direction, tags,
+            3, 3, False, False,
+            "Auto-classified. Please review and update.",
+            f"AI suggested: {setup} — {rationale}",
+        ])
+        if result:
+            created += 1
 
     return {"created": created, "total": len(rows)}
 
