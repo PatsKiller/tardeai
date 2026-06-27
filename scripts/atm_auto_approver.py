@@ -286,7 +286,14 @@ def run_cycle():
     proposals = [dict(zip(cols, r)) for r in cur.fetchall()]
 
     if not proposals:
-        log.info(f"ATM cycle: 0 pending proposals (mode={mode})")
+        log.info(f"ATM cycle: 0 pending entry proposals (mode={mode}) — skipping entry path")
+        try:
+            from protection_atm_pass import run_protection_pass
+            pr = run_protection_pass(conn, mode=mode)
+            log.info(f"ATM protection pass (entry-idle): auto_applied={pr['auto_applied']} "
+                     f"operator_pending={pr['operator_pending']} advisory={pr['skipped_action']} failed={pr['failed']}")
+        except Exception as e:
+            log.warning(f"ATM protection pass error: {e}")
         return
 
     log.info(f"ATM cycle: {len(proposals)} pending proposals (mode={mode})")
