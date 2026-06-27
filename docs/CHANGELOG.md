@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-26 - Protection adjustments coupled to ATM (paper auto-apply, real operator)
+
+Protection (stop-curation) recommendations were in a separate advisory table, not in the proposals
+system and not governed by the ATM. Now coupled — see `docs/PROTECTION_ATM_COUPLING.md` (handoff).
+- `proposal_kind` discriminator + ATM entry-path guard (`proposal_kind='entry'`) so a protection
+  row can never reach the bracket-entry submitter.
+- `protection_atm_pass`: PAPER positions auto-apply only the hard-guarded stop-UP actions
+  (MOVE_STOP_TO_PROFIT_LOCK/BREAKEVEN via apply_paper_protection_adjustment — paper-only, REPLACE,
+  risk-down-only); REAL stays operator (+2FA); other actions advisory. Wired into the ATM cycle +
+  cron `*/15 9-16`. Flag `PROTECTION_ATM_AUTO_APPLY_PAPER` (default on).
+- `GET /api/v2/protection-proposals` unifies them into the proposals view (API-layer union, not a
+  physical row mirror — avoids re-triggering the LLM-oversight load fleet). Display rename
+  paper→automated (TradingHub); `alpaca_paper` identifier left unchanged (high-risk to migrate).
+- **Handed off** for review: union-vs-mirror, identifier migration, first-apply observation,
+  Proposals-tab UI, protection-table retention. See the handoff doc.
+
 ## 2026-06-26 - Pullback/MACD: in-trade adjustment process (hourly, trading-days)
 
 The intraday monitor is now a proper **in-trade adjustment** process — managing OPEN pullback
