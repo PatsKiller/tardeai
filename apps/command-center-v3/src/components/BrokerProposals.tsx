@@ -909,7 +909,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
             Sort
             <select style={sel} value={listFilters.sort} onChange={e => patchFilters({ sort: e.target.value })}>
-              <option value="priority">Priority (watchlist · Hermes)</option>
+              <option value="priority">Priority (Hermes · newest)</option>
               <option value="zone">Thesis zone</option>
               <option value="rr_live">Live R:R</option>
               <option value="rr">Planned R:R</option>

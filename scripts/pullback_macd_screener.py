@@ -313,14 +313,15 @@ def _write_trade_plan(c: dict, strat: str, shares: int, dollar_size: float, doll
 
 
 def _emit_proposals(cands: list[dict], cfg: dict) -> int:
+    from proposal_routing_lanes import entry_routing_lanes, risk_gate_for_lane
+
     tiers = set(cfg.get("proposal_tiers") or ["trigger"])
     notional = float(cfg.get("proposal_notional_usd", 5000))
     strat = cfg.get("default_strategy_id", "pullback_macd_reversal")
     exp_h = int(cfg.get("proposal_expiry_hours", 48))
     cap = int(cfg.get("max_proposals_per_scan", 5))
-    # Tier-eligible, highest-score first, hard-capped. Each PENDING proposal spawns local+cloud LLM
-    # oversight, so the cap bounds load when many names trigger at once. Dropped names still appear
-    # on the tab + feed the pipeline.
+    lanes = entry_routing_lanes()
+    # Tier-eligible, highest-score first, hard-capped per symbol (both lanes share levels).
     eligible = sorted([c for c in cands if c["tier"] in tiers], key=lambda x: -x.get("score", 0))
     if len(eligible) > cap:
         print(f"  [proposals] capping {len(eligible)} eligible → {cap} (max_proposals_per_scan); "
@@ -330,54 +331,71 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
                   WHERE table_name='paper_trade_proposals'""", fetch="all") or []
     avail = {r["column_name"] for r in cols}
     n = 0
+    expires = (datetime.now(timezone.utc) + timedelta(hours=exp_h)).isoformat()
     for c in eligible:
         shares = max(1, int(notional / max(c["entry"], 0.01)))
         risk = round(shares * (c["entry"] - c["stop"]), 2)
         dollar_size = round(shares * c["entry"], 2)
-        # Authoritative plan first, so the gate sees real technical levels for this symbol.
         _write_trade_plan(c, strat, shares, dollar_size, risk)
-        # If an active proposal already exists, refresh its levels to match the authoritative plan
-        # instead of creating a duplicate.
-        dup0 = _db("""SELECT id FROM paper_trade_proposals
-                      WHERE symbol=%s AND status='PENDING'
-                        AND COALESCE(discovery_source,'')='pullback_macd'""", (c["sym"],), fetch="one")
-        if dup0:
-            _db("""UPDATE paper_trade_proposals
-                   SET proposed_entry=%s, proposed_stop=%s, proposed_target1=%s, proposed_rr=%s,
-                       updated_at=NOW()
-                   WHERE id=%s""", (c["entry"], c["stop"], c["target1"], c["rr"], dup0["id"]))
-            c["proposal_id"] = dup0["id"]
-            _db("UPDATE pullback_macd_candidates SET proposal_id=%s WHERE symbol=%s", (dup0["id"], c["sym"]))
-            continue
-        try:
-            from broker_config import get_default_paper_account
-            _target_acct = get_default_paper_account()
-        except Exception:
-            _target_acct = "tradeai_automated"
-        data = {
-            "symbol": c["sym"], "strategy_id": strat,
-            "setup_type": f"Pullback {c['pullback_pct']}% + MACD {c['tier']}",
-            "signal_score": int(min(99, max(1, c["score"]))), "signal_grade": "B",
-            "proposed_entry": c["entry"], "proposed_stop": c["stop"],
-            "proposed_target1": c["target1"], "proposed_shares": shares,
-            "proposed_dollar_size": round(shares * c["entry"], 2), "proposed_dollar_risk": risk,
-            "proposed_rr": c["rr"], "proposed_by": "pullback_macd_screener",
-            "status": "PENDING", "discovery_source": "pullback_macd", "origin": "auto",
-            "target_account": _target_acct,
-            "auto_execution_label": "manual", "auto_created": True,
-            "risk_gate_result": "ADVISORY",
-            "catalyst": f"Uptrend dip-buy: {c['pullback_pct']}% off 52w high, MACD {c['tier']}",
-            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=exp_h)).isoformat(),
-        }
-        ins = {k: v for k, v in data.items() if k in avail and v is not None}
-        cols_str = ", ".join(ins)
-        ph = ", ".join(["%s"] * len(ins))
-        row = _db(f"INSERT INTO paper_trade_proposals ({cols_str}) VALUES ({ph}) RETURNING id",
-                  list(ins.values()), fetch="one")
-        if row:
-            c["proposal_id"] = row["id"]
-            _db("UPDATE pullback_macd_candidates SET proposal_id=%s WHERE symbol=%s", (row["id"], c["sym"]))
-            n += 1
+        first_pid = None
+        for lane_id, target_acct, intended, routing_lane in lanes:
+            dup0 = _db("""SELECT id FROM paper_trade_proposals
+                          WHERE symbol=%s AND status='PENDING'
+                            AND COALESCE(discovery_source,'')='pullback_macd'
+                            AND COALESCE(target_account, proposed_account)=%s""",
+                       (c["sym"], target_acct), fetch="one")
+            if dup0:
+                _db("""UPDATE paper_trade_proposals
+                       SET proposed_entry=%s, proposed_stop=%s, proposed_target1=%s, proposed_rr=%s,
+                           updated_at=NOW()
+                       WHERE id=%s""",
+                    (c["entry"], c["stop"], c["target1"], c["rr"], dup0["id"]))
+                first_pid = first_pid or dup0["id"]
+                continue
+            pending_n = _db("""SELECT count(*) AS n FROM paper_trade_proposals
+                               WHERE symbol=%s AND status='PENDING'""", (c["sym"],), fetch="one")
+            if int((pending_n or {}).get("n") or 0) >= 2:
+                print(f"  [proposals] skip {c['sym']} lane={routing_lane}: 2-pending cap")
+                continue
+            risk_gate = risk_gate_for_lane(routing_lane)
+            desc_suffix = " · ATM auto-test" if routing_lane == "paper_atm" else " · live 2FA"
+            basis = {
+                "engine": "pullback_macd_screener",
+                "routing_lane": routing_lane,
+                "routing_lane_id": lane_id,
+                "macd_tier": c["tier"],
+                "pullback_pct": c["pullback_pct"],
+            }
+            data = {
+                "symbol": c["sym"], "strategy_id": strat,
+                "setup_type": f"Pullback {c['pullback_pct']}% + MACD {c['tier']}",
+                "signal_score": int(min(99, max(1, c["score"]))), "signal_grade": "B",
+                "proposed_entry": c["entry"], "proposed_stop": c["stop"],
+                "proposed_target1": c["target1"], "proposed_shares": shares,
+                "proposed_dollar_size": dollar_size, "proposed_dollar_risk": risk,
+                "proposed_rr": c["rr"], "proposed_by": "pullback_macd_screener",
+                "status": "PENDING", "discovery_source": "pullback_macd", "origin": "auto",
+                "intended_broker": intended, "target_account": target_acct,
+                "proposed_account": target_acct,
+                "auto_execution_label": "manual", "auto_created": True,
+                "risk_gate_result": risk_gate,
+                "catalyst": f"Uptrend dip-buy: {c['pullback_pct']}% off 52w high, MACD {c['tier']}",
+                "setup_description": f"Pullback MACD {c['tier']} — RR {c['rr']}{desc_suffix}",
+                "expires_at": expires,
+                "sizing_basis": json.dumps(basis),
+            }
+            ins = {k: v for k, v in data.items() if k in avail and v is not None}
+            cols_str = ", ".join(ins)
+            ph = ", ".join(["%s"] * len(ins))
+            row = _db(f"INSERT INTO paper_trade_proposals ({cols_str}) VALUES ({ph}) RETURNING id",
+                      list(ins.values()), fetch="one")
+            if row:
+                first_pid = first_pid or row["id"]
+                n += 1
+        if first_pid:
+            c["proposal_id"] = first_pid
+            _db("UPDATE pullback_macd_candidates SET proposal_id=%s WHERE symbol=%s",
+                (first_pid, c["sym"]))
     return n
 
 

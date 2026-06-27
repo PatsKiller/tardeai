@@ -63,12 +63,9 @@ def audit() -> dict:
                 pass
         acct = p.get("target_account") or p.get("proposed_account") or ""
         try:
-            from db_adapter import _get_conn as _gc
-            c2 = _gc().cursor()
-            c2.execute("SELECT mode FROM accounts WHERE account_label = %s", (acct,))
-            row = c2.fetchone()
+            cur.execute("SELECT mode FROM accounts WHERE account_label = %s", (acct,))
+            row = cur.fetchone()
             acct_mode = row[0] if row else "unknown"
-            c2.connection.close()
         except Exception:
             acct_mode = "paper" if is_automated_account(acct) else "unknown"
 
@@ -88,6 +85,54 @@ def audit() -> dict:
             "in_broker_proposals_queue": True,
         })
 
+    from proposal_routing_lanes import paper_account, broker_account
+
+    paper_acct = paper_account()
+    broker_acct = broker_account()
+
+    def _dual_lane_ok(ds: str, origin: str | None = None) -> dict:
+        clause = "COALESCE(discovery_source,'')=%s"
+        params: list = [ds]
+        if origin:
+            clause = f"({clause} OR COALESCE(origin,'')=%s)"
+            params.append(origin)
+        cur.execute(
+            f"""SELECT symbol,
+                       bool_or(COALESCE(target_account, proposed_account)=%s) AS has_paper,
+                       bool_or(COALESCE(target_account, proposed_account)=%s) AS has_broker
+                FROM paper_trade_proposals
+                WHERE status='PENDING' AND COALESCE(proposal_kind,'entry')='entry'
+                  AND {clause}
+                GROUP BY symbol""",
+            [paper_acct, broker_acct, *params],
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return {"symbols": 0, "both_lanes": 0, "ok": True, "gaps": []}
+        gaps = [r[0] for r in rows if not (r[1] and r[2])]
+        both = sum(1 for r in rows if r[1] and r[2])
+        return {
+            "symbols": len(rows),
+            "both_lanes": both,
+            "ok": len(gaps) == 0,
+            "gaps": gaps[:20],
+        }
+
+    wl_lane = _dual_lane_ok("watchlist", "watchlist")
+    pb_lane = _dual_lane_ok("pullback_macd")
+
+    cur.execute(
+        """SELECT count(*) FROM pullback_macd_candidates
+           WHERE tier='watch' AND status='active' AND proposal_id IS NOT NULL"""
+    )
+    watch_tier_queued = int(cur.fetchone()[0])
+
+    api_src = (ROOT / "scripts" / "api_v2.py").read_text()
+    sort_neutral = (
+        "CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0" not in api_src
+        and "Hermes · newest" in (ROOT / "apps" / "command-center-v3" / "src" / "components" / "BrokerProposals.tsx").read_text()
+    )
+
     conn.close()
     return {
         "pending_entry_by_source": by_source,
@@ -96,11 +141,20 @@ def audit() -> dict:
         "open_trades_all_accounts": open_trades,
         "protection_covers_all_open_trades": True,
         "atm_select_has_no_origin_filter": True,
+        "routing": {"paper_account": paper_acct, "broker_account": broker_acct},
+        "dual_lane_watchlist": wl_lane,
+        "dual_lane_pullback": pb_lane,
+        "pullback_watch_tier_queued": watch_tier_queued,
+        "sort_neutral_priority": sort_neutral,
+        "all_biases_fixed": (
+            wl_lane["ok"] and pb_lane["ok"] and sort_neutral
+        ),
         "bias_notes": [
             "Entry SELECT: no origin/discovery filter — all PENDING entry rows reach ATM.",
+            "Watchlist + Pullback/MACD: dual lane per symbol (paper=ATM auto, broker=2FA).",
+            "Pullback/MACD: trigger + watch tiers emit proposals.",
             "Protection: all open paper_trades regardless of entry source.",
-            "Broker-proposals kind=all: entry rows + protection union (no source exclusion).",
-            "Curated fast-track: pullback_macd/watchlist on paper skip enrichment when levels complete.",
+            "Broker-proposals priority sort: Hermes + created (no watchlist boost).",
         ],
     }
 

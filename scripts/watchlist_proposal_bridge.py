@@ -6,8 +6,8 @@ STRONG_BUY, but nothing copied that into paper_trade_proposals — so Broker Pro
 while 500+ buy-rated watchlist names existed (origin=watchlist count was 0).
 
 Behavior:
-  • Upsert paper_trade_proposals with origin='watchlist', intended_broker=schwab (configurable)
-  • Tag discovery_source + sizing_basis.watchlist_rating for UI
+  • Dual-lane upsert per BUY+ symbol: tradeai_automated (ATM auto-test) AND broker account (2FA)
+  • Tag discovery_source + sizing_basis.watchlist_rating + routing_lane for UI
   • Refresh entry/stop/target from watchlist_entry_plans while rating stays buy+
   • Reject watchlist-origin rows when rating drops below BUY
   • Skip symbols that already have a non-watchlist active proposal (screener wins)
@@ -31,6 +31,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
+from proposal_routing_lanes import entry_routing_lanes, risk_gate_for_lane
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 log = logging.getLogger("watchlist_proposal_bridge")
@@ -41,6 +43,15 @@ DEFAULT_STRATEGY = "momentum_scalp"
 DEFAULT_BROKER = os.getenv("WATCHLIST_BROKER_ACCOUNT", "schwab_taxable")
 MAX_NEW_PER_RUN = int(os.getenv("WATCHLIST_PROPOSAL_MAX_NEW", "40"))
 ACTIVE_STATUSES = ("PENDING", "APPROVED", "MODIFIED", "APPROVED_FOR_PAPER_TEST", "BROKER_SUBMITTED")
+
+
+def _paper_account() -> str:
+    from proposal_routing_lanes import paper_account
+    return paper_account()
+
+
+def _routing_lanes() -> list[tuple[str, str, str, str]]:
+    return entry_routing_lanes()
 
 
 def _get_conn():
@@ -134,15 +145,29 @@ def _fetch_buy_candidates(cur) -> list[dict]:
     return out
 
 
-def _active_proposal(cur, symbol: str) -> dict | None:
+def _non_watchlist_blocks(cur, symbol: str) -> bool:
+    """Screener/incubator wins over watchlist for the symbol."""
+    cur.execute(
+        """SELECT 1 FROM paper_trade_proposals
+           WHERE symbol = %s AND status = ANY(%s)
+             AND COALESCE(origin, '') <> 'watchlist'
+           LIMIT 1""",
+        (symbol.upper(), list(ACTIVE_STATUSES)),
+    )
+    return cur.fetchone() is not None
+
+
+def _active_proposal(cur, symbol: str, target_account: str) -> dict | None:
     cur.execute(
         """SELECT id, origin, status, intended_broker, target_account, proposed_entry,
                   proposed_stop, proposed_target1, proposed_shares
            FROM paper_trade_proposals
            WHERE symbol = %s AND status = ANY(%s)
-           ORDER BY CASE WHEN origin = 'watchlist' THEN 0 ELSE 1 END, created_at DESC
+             AND COALESCE(target_account, proposed_account) = %s
+             AND origin = 'watchlist'
+           ORDER BY created_at DESC
            LIMIT 1""",
-        (symbol.upper(), list(ACTIVE_STATUSES)),
+        (symbol.upper(), list(ACTIVE_STATUSES), target_account),
     )
     row = cur.fetchone()
     if not row:
@@ -230,16 +255,18 @@ def _reconcile_sleeve_strategy_ids(cur, *, dry_run: bool) -> int:
 
 
 def _dedupe_watchlist_proposals(cur, *, dry_run: bool) -> int:
-    """Reject older duplicate watchlist PENDING rows for the same symbol."""
+    """Reject older duplicate watchlist rows per (symbol, target_account)."""
     cur.execute(
-        """SELECT symbol, array_agg(id ORDER BY created_at DESC) AS ids
+        """SELECT symbol, COALESCE(target_account, proposed_account) AS acct,
+                  array_agg(id ORDER BY created_at DESC) AS ids
            FROM paper_trade_proposals
            WHERE origin = 'watchlist' AND status = ANY(%s)
-           GROUP BY symbol HAVING count(*) > 1""",
+           GROUP BY symbol, COALESCE(target_account, proposed_account)
+           HAVING count(*) > 1""",
         (list(ACTIVE_STATUSES),),
     )
     n = 0
-    for sym, ids in cur.fetchall():
+    for sym, _acct, ids in cur.fetchall():
         keep_id = int(ids[0])
         for dup_id in ids[1:]:
             n += 1
@@ -290,7 +317,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
 
     created = refreshed = skipped = 0
     cap = max_new if max_new is not None else MAX_NEW_PER_RUN
-    broker = DEFAULT_BROKER
+    lanes = _routing_lanes()
 
     # Batch quotes only for top-ranked names missing entry plans (avoid 500+ sequential quote calls).
     quote_cache: dict[str, float] = {}
@@ -309,17 +336,98 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         except Exception:
             pass
 
-    new_eligible: list[dict] = []  # collected, then ranked by R:R + setup before the cap
+    new_eligible: list[dict] = []
+
+    def _upsert_lane(
+        *,
+        sym: str,
+        strat: str,
+        entry: float,
+        stop: float,
+        target: float,
+        shares: int,
+        dollar_size: float,
+        dollar_risk: float,
+        rr: float,
+        basis: dict,
+        expires,
+        c: dict,
+        lane_id: str,
+        target_acct: str,
+        intended: str,
+        routing_lane: str,
+        existing: dict | None,
+    ) -> str:
+        nonlocal created, refreshed
+        lane_basis = {**basis, "routing_lane": routing_lane, "routing_lane_id": lane_id}
+        risk_gate = risk_gate_for_lane(routing_lane)
+        desc_suffix = " · ATM auto-test" if routing_lane == "paper_atm" else " · live 2FA"
+        if existing:
+            refreshed += 1
+            if dry_run:
+                return "refresh"
+            cur.execute(
+                """UPDATE paper_trade_proposals SET
+                       strategy_id=%s,
+                       proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
+                       proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
+                       proposed_rr=%s, cio_view=%s, discovery_source='watchlist',
+                       intended_broker=%s, target_account=%s, proposed_account=%s,
+                       risk_gate_result=%s,
+                       expires_at=%s, max_expires_at=%s, lifecycle_status='ACTIVE',
+                       sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
+                       updated_at=NOW()
+                   WHERE id=%s""",
+                (strat, entry, stop, target, shares, dollar_size, dollar_risk, rr,
+                 c["watchlist_rating"].upper(), intended, target_acct, target_acct,
+                 risk_gate, expires, expires, json.dumps(lane_basis), existing["id"]),
+            )
+            return "refresh"
+        cur.execute(
+            """SELECT count(*) FROM paper_trade_proposals
+               WHERE symbol = %s AND status = 'PENDING'""",
+            (sym,),
+        )
+        if int(cur.fetchone()[0] or 0) >= 2:
+            log.warning(f"skip create {sym} lane={routing_lane}: symbol at 2-pending cap")
+            return "skip_cap"
+        created += 1
+        if dry_run:
+            return "create"
+        cur.execute(
+            """INSERT INTO paper_trade_proposals
+                   (symbol, strategy_id, status, origin, discovery_source,
+                    intended_broker, target_account, proposed_account,
+                    routing_state, proposed_entry, proposed_stop, proposed_target1,
+                    proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                    proposed_stop_pct, cio_view, setup_description, risk_gate_result,
+                    auto_created, proposed_by, expires_at, base_expires_at, max_expires_at,
+                    lifecycle_status, proposal_timeframe_class, sizing_basis)
+               VALUES (%s,%s,'PENDING','watchlist','watchlist',
+                       %s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                       true,'watchlist_proposal_bridge',%s,%s,%s,'ACTIVE','swing',%s::jsonb)
+               RETURNING id""",
+            (sym, strat, intended, target_acct, target_acct,
+             entry, stop, target, shares, dollar_size, dollar_risk, rr,
+             round(abs(entry - stop) / entry, 4) if entry else 0,
+             c["watchlist_rating"].upper(),
+             f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — RR {rr} · Hermes #{c.get('hermes_rank') or '—'}{desc_suffix}",
+             risk_gate,
+             expires, expires, expires, json.dumps(lane_basis)),
+        )
+        pid = cur.fetchone()[0]
+        log.info(f"created watchlist #{pid} {sym} lane={routing_lane} RR {rr} @ ${entry}")
+        return "create"
+
     for c in candidates:
         sym = str(c["symbol"]).upper()
-        existing = _active_proposal(cur, sym)
-        if existing and existing.get("origin") != "watchlist":
-            skipped += 1
+        if _non_watchlist_blocks(cur, sym):
+            skipped += len(lanes)
             continue
 
         levels = _derive_levels(c, quote_cache)
         if not levels:
-            skipped += 1
+            skipped += len(lanes)
             continue
         entry, stop, target, exit_rationale, plan_source = levels
         import broker_strategy_resolver as bsr
@@ -329,7 +437,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             strat = resolved["strategy_id"]
         shares = _size_shares(entry, stop)
         if shares <= 0:
-            skipped += 1
+            skipped += len(lanes)
             continue
 
         dollar_size = round(shares * entry, 2)
@@ -355,67 +463,35 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             "synced_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        if existing:
-            refreshed += 1
-            if dry_run:
-                continue
-            cur.execute(
-                """UPDATE paper_trade_proposals SET
-                       strategy_id=%s,
-                       proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
-                       proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
-                       proposed_rr=%s, cio_view=%s, discovery_source='watchlist',
-                       expires_at=%s, max_expires_at=%s, lifecycle_status='ACTIVE',
-                       sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
-                       updated_at=NOW()
-                   WHERE id=%s""",
-                (strat, entry, stop, target, shares, dollar_size, dollar_risk, rr,
-                 c["watchlist_rating"].upper(), expires, expires, json.dumps(basis), existing["id"]),
-            )
+        if any(_active_proposal(cur, sym, acct) for _, acct, _, _ in lanes):
+            for lane_id, target_acct, intended, routing_lane in lanes:
+                _upsert_lane(
+                    sym=sym, strat=strat, entry=entry, stop=stop, target=target,
+                    shares=shares, dollar_size=dollar_size, dollar_risk=dollar_risk, rr=rr,
+                    basis=basis, expires=expires, c=c, lane_id=lane_id, target_acct=target_acct,
+                    intended=intended, routing_lane=routing_lane,
+                    existing=_active_proposal(cur, sym, target_acct),
+                )
             continue
 
-        # NEW promotion — collect; ranked + capped after the loop (best R:R / setup first).
         new_eligible.append({
             "sym": sym, "strat": strat, "entry": entry, "stop": stop, "target": target,
             "shares": shares, "dollar_size": dollar_size, "dollar_risk": dollar_risk,
             "rr": rr, "basis": basis, "expires": expires, "c": c,
         })
 
-    # Rank new promotions: highest R:R first, then best setup (Hermes composite score). Only the
-    # top `cap` get created this run — the rest stay on the watchlist for a later run. This bounds
-    # per-run volume (each new PENDING proposal triggers LLM oversight) and promotes the best first.
     new_eligible.sort(key=lambda x: (-(x["rr"] or 0), -(_f(x["c"].get("hermes_composite_score")) or 0)))
-    skipped += max(0, len(new_eligible) - cap)
+    skipped += max(0, len(new_eligible) - cap) * len(lanes)
     for item in new_eligible[:cap]:
-        created += 1
-        if dry_run:
-            continue
-        c = item["c"]; sym = item["sym"]
-        entry, stop, target, strat = item["entry"], item["stop"], item["target"], item["strat"]
-        shares, dollar_size, dollar_risk, rr = item["shares"], item["dollar_size"], item["dollar_risk"], item["rr"]
-        basis, expires = item["basis"], item["expires"]
-        cur.execute(
-            """INSERT INTO paper_trade_proposals
-                   (symbol, strategy_id, status, origin, discovery_source,
-                    intended_broker, target_account, proposed_account,
-                    routing_state, proposed_entry, proposed_stop, proposed_target1,
-                    proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                    proposed_stop_pct, cio_view, setup_description,
-                    auto_created, proposed_by, expires_at, base_expires_at, max_expires_at,
-                    lifecycle_status, proposal_timeframe_class, sizing_basis)
-               VALUES (%s,%s,'PENDING','watchlist','watchlist',
-                       %s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                       true,'watchlist_proposal_bridge',%s,%s,%s,'ACTIVE','swing',%s::jsonb)
-               RETURNING id""",
-            (sym, strat, broker, broker, broker,
-             entry, stop, target, shares, dollar_size, dollar_risk, rr,
-             round(abs(entry - stop) / entry, 4) if entry else 0,
-             c["watchlist_rating"].upper(),
-             f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — RR {rr} · Hermes #{c.get('hermes_rank') or '—'}",
-             expires, expires, expires, json.dumps(basis)),
-        )
-        pid = cur.fetchone()[0]
-        log.info(f"created watchlist proposal #{pid} {sym} {c['watchlist_rating']} RR {rr} @ ${entry}")
+        c = item["c"]
+        for lane_id, target_acct, intended, routing_lane in lanes:
+            _upsert_lane(
+                sym=item["sym"], strat=item["strat"], entry=item["entry"], stop=item["stop"],
+                target=item["target"], shares=item["shares"], dollar_size=item["dollar_size"],
+                dollar_risk=item["dollar_risk"], rr=item["rr"], basis=item["basis"],
+                expires=item["expires"], c=c, lane_id=lane_id, target_acct=target_acct,
+                intended=intended, routing_lane=routing_lane, existing=None,
+            )
 
     if not dry_run:
         conn.commit()
@@ -430,7 +506,9 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         "deduped": deduped,
         "expired_not_buy": expired,
         "dry_run": dry_run,
-        "broker_account": broker,
+        "routing_lanes": [{"lane": lid, "account": acct} for lid, acct, _, _ in lanes],
+        "paper_account": _paper_account(),
+        "broker_account": DEFAULT_BROKER,
     }
     log.info(f"sync done: {stats}")
     return stats
