@@ -561,9 +561,17 @@ curl -s -X POST http://localhost:7777/api/v2/executions/log-manual \
 # Source attribution audit
 .venv/bin/python scripts/report_proposal_source_attribution.py --verbose --since-days 30
 
-# Watchlist BUY+ → broker proposals bridge
+# Watchlist BUY+ → broker proposals bridge (dual lane: paper ATM + live 2FA)
 .venv/bin/python scripts/watchlist_proposal_bridge.py --dry-run
 .venv/bin/python scripts/watchlist_proposal_bridge.py --apply --max-new 40
+
+# Source parity + automated-trade audits (also cron 17:05 ET weekdays)
+.venv/bin/python scripts/audit_proposal_source_parity.py
+.venv/bin/python scripts/audit_automated_open_trades.py
+bash scripts/run_scheduled_strategy_audits.sh
+
+# Install proposal_monitor + daily audit cron
+bash scripts/install_strategy_monitoring_cron.sh
 
 # Broker queue hygiene (stale Schwab/Fidelity rows)
 .venv/bin/python scripts/broker_queue_hygiene.py --audit --days 7

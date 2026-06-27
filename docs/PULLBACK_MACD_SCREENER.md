@@ -51,14 +51,13 @@ A single scan fans out to four channels:
 1. **`pullback_macd_candidates`** table → API → Command Center **Pullback/MACD** screen (with banner)
 2. **Candidate/incubator pipeline** — `ticker_strategy_classifications` + `watchlist_items` (source `pullback_macd`)
 3. **Telegram** — alert on **new** triggers only (tier flipped to trigger since last scan)
-4. **Approval queue** — advisory proposals into `paper_trade_proposals` for the configured tiers
-   (`proposal_tiers: [trigger]` by default), `status=PENDING`, `auto_execution_label=manual` — operator approves
+4. **Approval queue** — dual-lane proposals into `paper_trade_proposals` for configured tiers
+   (`proposal_tiers: [trigger, watch]`), `discovery_source=pullback_macd`, `strategy_id=pullback_macd_reversal`,
+   `status=PENDING` — **paper ATM** + **live 2FA** per symbol (same routing as watchlist bridge).
 
-> **Why trigger-only:** every PENDING broker-route proposal is picked up by `broker_promote_oversight`
-> for per-proposal local + cloud LLM review. Emitting watch-tier proposals too (21 in the first run)
-> spawned 22 concurrent oversight reviews and spiked machine load, starving the single-threaded API
-> server. Watch-tier names still appear on the tab and feed the pipeline — they just don't create
-> queue proposals. Set `proposal_tiers: [trigger, watch]` to re-enable (not recommended).
+Strategy playbook: `config/strategies/pullback_macd_reversal.yaml` (governance + `/api/v2/strategy-intelligence`).
+
+Source badge in UI: **◆ Pullback MACD** (`ProposalSourceBadges.tsx`).
 
 ## Usage
 
@@ -80,7 +79,5 @@ A single scan fans out to four channels:
 
 - Data source is yfinance (the same library `indicator_engine` uses), batch-downloaded for the full
   universe. Indicators are pandas-native so there's no `pandas_ta` runtime dependency.
-- `proposal_tiers` includes both `trigger` and `watch` per operator choice — watch-tier proposals are
-  lower-conviction; narrow to `[trigger]` if the approval queue gets noisy.
-- Possible enhancement: render the pullback banner on `BrokerProposalCard` in the proposal queue too
-  (detect `discovery_source='pullback_macd'`), so the banner follows the proposal downstream.
+- `proposal_tiers` includes both `trigger` and `watch` — capped by `max_proposals_per_scan` (default 5).
+- Pullback proposals show **◆ Pullback MACD** + strategy badge on Broker Proposals / Proposals tabs.
