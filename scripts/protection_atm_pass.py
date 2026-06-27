@@ -18,8 +18,11 @@ import os
 def _is_paper_account(acct: str) -> bool:
     from automated_account import is_automated_account
     return is_automated_account(acct)
-# apply_paper_protection_adjustment only executes these (stop-up); others stay advisory/operator.
-AUTO_APPLY_ACTIONS = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
+# apply_paper_protection_adjustment executes these on the automated account; KEEP_CURRENT_STOP stays advisory.
+AUTO_APPLY_ACTIONS = {
+    "MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN",
+    "ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP",
+}
 
 
 def _auto_apply_enabled() -> bool:
