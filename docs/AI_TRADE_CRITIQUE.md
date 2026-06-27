@@ -41,6 +41,8 @@ Indexes: `setup_family`, `closed_date`, `status`.
 | GET | `/api/v2/journal/ai-critique/search?q=&setup_family=&days=` | Full-text search across critiques |
 | GET | `/api/v2/journal/ai-critique/insights?days=` | Coaching patterns (top improvements/strengths) |
 | GET | `/api/v2/journal/ai-critique/setups?days=` | Aggregate improvements by setup_family |
+| GET | `/api/v2/journal/ai-critique/summaries?days=&account=` | Bulk summaries for trade log cards |
+| POST | `/api/v2/journal/ai-critique/batch` | Batch generate (`date_from`, `account`, `use_llm`, `skip_existing`) |
 
 GET responses are wrapped: `{ ok: true, data: { critique, meta, stale, persisted, cached } }`.
 
@@ -72,7 +74,14 @@ python3 scripts/journal_ai_critique.py --backfill-index --limit 500
 
 # Batch (no LLM for speed)
 python3 scripts/journal_ai_critique.py --limit 20 --no-llm --apply
+
+# Batch via API (UI: "Generate AI critiques" on Trades tab)
+curl -X POST http://127.0.0.1:7777/api/v2/journal/ai-critique/batch \
+  -H 'Content-Type: application/json' \
+  -d '{"date_from":"2025-12-31","limit":200,"skip_existing":true,"use_llm":false}'
 ```
+
+Report readiness (`score_trade_tags`) treats `ai_critique` and `ai_critique_stale` as missing criteria alongside tagging.
 
 ## Test Plan
 

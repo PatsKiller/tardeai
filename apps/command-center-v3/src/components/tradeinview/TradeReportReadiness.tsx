@@ -5,6 +5,8 @@ const MISSING_LABEL: Record<string, string> = {
   psychology: 'Psychology (before)',
   operator_review: 'Operator sign-off (AI stub)',
   review: 'Review row',
+  ai_critique: 'AI trade critique (generate in Trade Detail)',
+  ai_critique_stale: 'AI critique refresh (tags changed — regenerate)',
 }
 
 const REPORT_LINKS: Record<string, { name: string; tab: string }[]> = {
@@ -14,6 +16,8 @@ const REPORT_LINKS: Record<string, { name: string; tab: string }[]> = {
   psychology: [{ name: 'Zella discipline score', tab: 'Analytics' }, { name: 'Behavioral / tilt', tab: 'Behavioral' }],
   operator_review: [{ name: 'Tagging queue clearance', tab: 'Tagging Queue' }],
   review: [{ name: 'All tagged reports', tab: 'Analytics' }],
+  ai_critique: [{ name: 'AI Trade Critique', tab: 'Overview' }],
+  ai_critique_stale: [{ name: 'Regenerate AI critique', tab: 'Overview' }],
 }
 
 export default function TradeReportReadiness({ score }: {
@@ -23,6 +27,12 @@ export default function TradeReportReadiness({ score }: {
     missing?: string[]
     summary?: string
     auto_stub?: boolean
+    ai_critique?: {
+      has_critique?: boolean
+      stale?: boolean
+      summary?: string
+      takeaway?: string
+    }
   } | null
 }) {
   if (!score) {
@@ -38,6 +48,8 @@ export default function TradeReportReadiness({ score }: {
   const complete = score.complete
   const pct = score.score ?? 0
 
+  const ac = score.ai_critique
+
   if (complete) {
     return (
       <div style={{ background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.35)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
@@ -45,6 +57,11 @@ export default function TradeReportReadiness({ score }: {
         <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
           Tagging score {pct}% · {score.summary || 'tagged'}
         </div>
+        {ac?.has_critique && ac.takeaway && (
+          <div style={{ fontSize: 11, color: '#c4b5fd', marginTop: 6, lineHeight: 1.45 }}>
+            🤖 {ac.takeaway}
+          </div>
+        )}
       </div>
     )
   }
@@ -75,6 +92,11 @@ export default function TradeReportReadiness({ score }: {
             {[...blocked.values()].map(b => <div key={b}>• {b}</div>)}
           </div>
         </>
+      )}
+      {ac?.has_critique && !ac.stale && ac.takeaway && (
+        <div style={{ fontSize: 11, color: '#c4b5fd', marginTop: 8, lineHeight: 1.45 }}>
+          🤖 Critique saved: {ac.takeaway}
+        </div>
       )}
       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
         System-wide audit: Tagging Queue → <strong>Run reporting audit</strong>

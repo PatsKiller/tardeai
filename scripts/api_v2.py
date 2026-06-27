@@ -20842,6 +20842,33 @@ def _journal_ai_critique_setups(query=None):
     return tiv.ai_critique_setups(days=int(g("days") or 365), limit=int(g("limit") or 15))
 
 
+def _journal_ai_critique_summaries(query=None):
+    """GET /api/v2/journal/ai-critique/summaries?days=&account= — bulk summaries for trade log."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.ai_critique_summaries(
+        account=g("account") or None,
+        days=int(g("days") or 365),
+        limit=int(g("limit") or 500),
+    )
+
+
+def _journal_ai_critique_batch(body=None):
+    """POST /api/v2/journal/ai-critique/batch — generate critiques for trades in range."""
+    b = body or {}
+    import journal_trade_in_view as tiv
+    return tiv.ai_critique_batch(
+        account=b.get("account") or None,
+        date_from=b.get("date_from") or None,
+        days=int(b.get("days") or 365),
+        limit=int(b.get("limit") or 200),
+        force=bool(b.get("force")),
+        use_llm=bool(b.get("use_llm")),
+        skip_existing=b.get("skip_existing", True) is not False,
+    )
+
+
 def _journal_tagging_skip(body):
     import journal_trade_in_view as tiv
     b = body or {}
@@ -24010,6 +24037,7 @@ ROUTES = {
     "/api/v2/journal/ai-critique/search": _journal_ai_critique_search,
     "/api/v2/journal/ai-critique/insights": _journal_ai_critique_insights,
     "/api/v2/journal/ai-critique/setups": _journal_ai_critique_setups,
+    "/api/v2/journal/ai-critique/summaries": _journal_ai_critique_summaries,
     "/api/v2/journal/reporting-audit": _journal_reporting_audit,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
@@ -25037,6 +25065,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/ai-critique":
             try:
                 return 200, _journal_ai_critique(body=body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/ai-critique/batch":
+            try:
+                return 200, _journal_ai_critique_batch(body=body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/tagging-queue/skip":

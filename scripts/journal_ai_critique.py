@@ -918,6 +918,92 @@ def reconcile_stale_flags(limit: int = 500) -> dict:
     return {"ok": True, "scanned": len(rows), "reconciled": fixed}
 
 
+def critique_summaries_bulk(account: str | None = None, days: int = 365, limit: int = 500) -> dict:
+    """Lightweight critique summaries keyed by trade_key for trade log cards."""
+    ensure_critique_schema()
+    params: list = [int(days)]
+    where = ["status = 'ok'", "closed_date > now() - (%s || ' days')::interval"]
+    if account:
+        where.append("account = %s")
+        params.append(account)
+    params.append(int(limit))
+    rows = tiv._q(f"""
+        SELECT trade_key, symbol, summary, takeaways, stale, generated_at::text
+        FROM journal_ai_critiques
+        WHERE {' AND '.join(where)}
+        ORDER BY generated_at DESC NULLS LAST
+        LIMIT %s
+    """, params)
+    by_key: dict[str, dict] = {}
+    for r in rows:
+        tk = r["trade_key"]
+        takeaway = ""
+        tips = r.get("takeaways") or []
+        if isinstance(tips, list) and tips:
+            takeaway = str(tips[0])
+        by_key[tk] = {
+            "trade_key": tk,
+            "symbol": r.get("symbol"),
+            "summary": (r.get("summary") or "")[:160],
+            "takeaway": takeaway[:100],
+            "stale": bool(r.get("stale")),
+            "has_critique": True,
+            "generated_at": r.get("generated_at"),
+        }
+    return {"ok": True, "count": len(by_key), "by_trade_key": by_key}
+
+
+def batch_generate_critiques(
+    *,
+    account: str | None = None,
+    date_from: str | None = None,
+    days: int = 365,
+    limit: int = 200,
+    force: bool = False,
+    use_llm: bool = False,
+    skip_existing: bool = True,
+) -> dict:
+    """Generate persisted critiques for closed trades in range (deterministic by default)."""
+    from datetime import date, timedelta
+
+    ensure_critique_schema()
+    if date_from:
+        df = date_from
+    else:
+        df = (date.today() - timedelta(days=int(days))).isoformat()
+    rows = tiv.fetch_closed_trades(account=account, date_from=df, limit=int(limit))
+    out = {
+        "ok": True,
+        "total": len(rows),
+        "generated": 0,
+        "cached": 0,
+        "skipped": 0,
+        "errors": 0,
+        "use_llm": use_llm,
+        "date_from": df,
+    }
+    for row in rows:
+        tk = row["trade_key"]
+        if skip_existing and not force:
+            stored = load_stored_critique(tk)
+            nar = (stored or {}).get("narrative") or {}
+            if stored and (nar.get("summary") or stored.get("trade_classification")):
+                out["cached"] += 1
+                continue
+        try:
+            res = generate_critique(tk, force=force, use_llm=use_llm)
+            if res.get("ok"):
+                if res.get("generated"):
+                    out["generated"] += 1
+                elif res.get("cached"):
+                    out["cached"] += 1
+            else:
+                out["errors"] += 1
+        except Exception:
+            out["errors"] += 1
+    return out
+
+
 def backfill_index_from_payloads(limit: int = 500) -> dict:
     """Sync journal_ai_critiques from existing payload.ai_critique rows."""
     ensure_critique_schema()
