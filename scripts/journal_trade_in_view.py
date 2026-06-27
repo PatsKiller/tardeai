@@ -746,12 +746,20 @@ def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
         SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
                tc.shares, tc.buy_price, tc.sell_price, tc.pnl, tc.pnl_pct, tc.hold_days,
                (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key,
+               eq.entry_time::text AS entry_time, eq.exit_time::text AS exit_time,
                r.id AS review_id, r.setup_family, r.setup_name, r.setup_types, r.market_regime,
                r.emotion_before, r.mistake_tags, r.strength_tags, r.lesson_learned,
                r.review_notes, r.payload, r.updated_at::text
         FROM trade_closed tc
         LEFT JOIN journal_trade_reviews r
           ON r.trade_key = (tc.symbol || ':' || tc.account || ':' || tc.close_date::text)
+        LEFT JOIN LATERAL (
+            SELECT entry_time, exit_time FROM trade_execution_quality
+            WHERE UPPER(symbol) = UPPER(tc.symbol)
+              AND entry_time::date = tc.close_date
+              AND ABS(entry_price - tc.buy_price) < 0.08
+            ORDER BY ABS(entry_price - tc.buy_price), exit_time DESC LIMIT 1
+        ) eq ON true
         WHERE (tc.buy_price > 0 OR tc.pnl != 0)
           AND tc.close_date > now() - (%s || ' days')::interval {acct} {min_pnl_sql}
         ORDER BY tc.close_date ASC, tc.open_date ASC NULLS LAST, tc.symbol
@@ -792,6 +800,8 @@ def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
             "account": row["account"],
             "open_date": row["open_date"],
             "close_date": row["close_date"],
+            "entry_time": row.get("entry_time"),
+            "exit_time": row.get("exit_time"),
             "execution_date": row["close_date"],
             "direction": direction,
             "shares": sh,
@@ -901,6 +911,12 @@ def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
         },
         "policy": {k: policy.get(k) for k in ("min_total_tags", "required_categories", "high_priority_categories")},
     }
+
+
+def ai_critique(trade_key: str, force: bool = False) -> dict:
+    """Generate + persist AI trade critique in journal_trade_reviews.payload.ai_critique."""
+    import journal_ai_critique as jac
+    return jac.ai_critique_for_trade(trade_key, force=force, apply=True)
 
 
 def tagging_queue_skip(trade_key: str, reason: str = ""):

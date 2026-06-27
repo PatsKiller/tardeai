@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-27 - Replay marker alignment (GOVX) + AI Trade Critique (UI 3.5)
+
+**Remaining scale bug (root cause):** Tagging-queue replays passed dates only → markers snapped to midnight
+UTC / first premarket bar (~$3) while journal fills were $4.08 @ 09:57 ET. Price lines floated above candles.
+
+**Fix:**
+- `ohlc_charts.py` — resolve fill times from `trade_execution_quality`; price-aware marker snap;
+  per-marker `marker_aligned` integrity checks.
+- `TradeReplayChart` — auto/lock scale toggle; VWAP/SPY excluded from Y autoscale; linked MACD/RSI time axes.
+- Tagging queue + JournalHub pass `entry_time` / `trade_key` to replay API.
+
+**Audit re-run:** 90 trades · **65 ok** (+3) · **25 warn** (−3 marker) · 0 fail. GOVX marker_aligned ✓
+
+**AI Trade Critique:** `journal_ai_critique.py` + `GET/POST /api/v2/journal/ai-critique` + `AiTradeCritique`
+panel in TradeInView detail (classification, execution, risk, opportunity cost, Grok narrative).
+Persisted in `journal_trade_reviews.payload.ai_critique`.
+
 ## 2026-06-27 - Replay price-scale fix + full-trade integrity audit
 
 **Root cause:** volume histogram shared the candlestick right price scale (`priceScaleId: ''`), so

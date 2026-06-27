@@ -103,10 +103,13 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
   const openReplay = (row: any) => {
     setChartTrade({
       symbol: row.symbol,
+      trade_key: row.trade_key,
       entry_date: row.open_date || row.close_date,
       exit_date: row.close_date,
       entry_price: row.buy_price,
       exit_price: row.sell_price,
+      entry_time: row.entry_time,
+      exit_time: row.exit_time,
     })
   }
 

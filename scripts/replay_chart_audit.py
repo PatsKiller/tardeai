@@ -45,7 +45,7 @@ def _replay_snapshot(chart: dict) -> dict:
     integrity = chart.get("integrity") or {}
     return {
         "audited_at": datetime.now(timezone.utc).isoformat(),
-        "ui_version": "3.4",
+        "ui_version": "3.5",
         "timeframe": chart.get("timeframe"),
         "source": chart.get("source"),
         "bar_count": chart.get("bar_count", 0),
@@ -57,7 +57,7 @@ def _replay_snapshot(chart: dict) -> dict:
         },
         "entry_et": chart.get("entry_et"),
         "exit_et": chart.get("exit_et"),
-        "scale_fix": "volume_isolated_overlay_v3.4",
+        "scale_fix": "fill_time_resolution_v3.5",
     }
 
 
@@ -96,7 +96,7 @@ def run_audit(*, limit: int | None = None, dry_run: bool = False, throttle: floa
         xp = row.get("sell_price")
         tk = row["trade_key"]
 
-        chart = ohlc_charts.trade_chart(sym, ed, xd, entry_price=ep, exit_price=xp)
+        chart = ohlc_charts.trade_chart(sym, ed, xd, entry_price=ep, exit_price=xp, trade_key=tk)
         snap = _replay_snapshot(chart)
 
         status = "ok"
@@ -107,7 +107,7 @@ def run_audit(*, limit: int | None = None, dry_run: bool = False, throttle: floa
         elif chart.get("fallback") == "finviz" or not chart.get("bars"):
             status, warn = "fallback", warn + 1
             reason = chart.get("reason") or "finviz fallback"
-        elif chart.get("integrity", {}).get("marker_in_range") is False:
+        elif chart.get("integrity", {}).get("marker_aligned") is False or chart.get("integrity", {}).get("marker_in_range") is False:
             status, warn = "marker_warn", warn + 1
             reason = "; ".join(chart["integrity"].get("marker_warnings") or [])
         else:

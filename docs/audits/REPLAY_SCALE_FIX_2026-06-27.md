@@ -7,7 +7,9 @@ bottom of the pane while the right-hand price axis displayed values that did not
 horizontal levels and entry/exit markers appeared misaligned. Reproduced on GOVX 1-min 2026-05-18 and
 across other symbols.
 
-## Root cause
+## Root cause (two bugs)
+
+### A — Volume polluted price scale (fixed v3.4)
 
 `TradeReplayChart.tsx` attached the volume histogram to the **same** right price scale as candlesticks
 (`priceScaleId: ''`). Lightweight Charts autoscales from all series on that scale. Volume is in share
@@ -16,7 +18,16 @@ volume, not price.
 
 Secondary: scale was only refreshed on window resize, not after each replay `paint(n)` step.
 
-## Fix (Command Center v3.4)
+### B — Markers snapped to wrong bar (fixed v3.5)
+
+Tagging-queue replays passed **dates only** (no `entry_time`). Backend treated same-day trades as
+`has_time=false` → full-session window + `_mark_time(midnight UTC)` → first premarket bar (~$3 on GOVX)
+while journal fills were **$4.08 @ 09:57 ET**. BUY/SELL price lines drew at $4+ but candles at $3.
+
+**Fix:** lookup `trade_execution_quality` fill timestamps; price-aware marker re-snap when OHLC doesn't
+match journal fill price.
+
+## Fix (Command Center v3.5)
 
 | Layer | Change |
 |-------|--------|

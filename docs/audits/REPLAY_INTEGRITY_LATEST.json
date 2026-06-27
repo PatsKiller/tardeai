@@ -1,8 +1,8 @@
 {
-  "audited_at": "2026-06-27T21:17:11.234472+00:00",
+  "audited_at": "2026-06-27T21:50:48.191618+00:00",
   "total": 90,
-  "ok": 62,
-  "warn": 28,
+  "ok": 65,
+  "warn": 25,
   "fail": 0,
   "dry_run": false,
   "scale_fix": "volume_isolated_overlay_v3.4",
@@ -15,8 +15,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:18.047338+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:49.293508+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -28,7 +28,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -39,8 +39,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:18.737250+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:49.985986+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
         "bar_count": 396,
@@ -55,7 +55,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -66,8 +66,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:19.023891+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:50.318625+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -79,7 +79,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -90,8 +90,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:19.365683+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:51.348386+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -103,7 +103,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -114,8 +114,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:19.721024+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:51.700897+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -127,7 +127,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -138,8 +138,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:20.068484+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:52.050215+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -151,7 +151,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -162,8 +162,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:20.433760+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:52.417819+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -175,7 +175,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -186,8 +186,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:20.766654+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:52.770598+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -199,7 +199,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -207,11 +207,11 @@
       "symbol": "CAST",
       "open_date": "2026-06-15",
       "close_date": "2026-06-15",
-      "status": "ok",
-      "reason": "",
+      "status": "marker_warn",
+      "reason": "exit $5.1305 misaligned at bar O=4.8501 H=4.95 L=4.55 C=4.7096",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:21.523154+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:53.518911+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
         "bar_count": 451,
@@ -221,12 +221,14 @@
           "max_high": 5.2
         },
         "integrity": {
-          "marker_in_range": true,
-          "marker_warnings": []
+          "marker_in_range": false,
+          "marker_warnings": [
+            "exit $5.1305 misaligned at bar O=4.8501 H=4.95 L=4.55 C=4.7096"
+          ]
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -237,23 +239,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:22.280377+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:54.207239+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 424,
+        "bar_count": 21,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.13,
-          "max_high": 6.55
+          "min_low": 3.05,
+          "max_high": 3.64
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "11:16:14 ET",
+        "exit_et": "11:17:48 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -264,23 +266,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:22.949298+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:54.901818+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 65,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.7801,
+          "min_low": 2.83,
           "max_high": 4.39
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:57:22 ET",
+        "exit_et": "09:58:11 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -291,23 +293,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:23.629987+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:55.597172+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 48,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.05,
-          "max_high": 1.59
+          "min_low": 1.1,
+          "max_high": 1.29
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:32:07 ET",
+        "exit_et": "09:37:00 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -318,23 +320,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:24.320791+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:56.308116+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 22,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.82,
+          "min_low": 3.41,
           "max_high": 3.73
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:58:16 ET",
+        "exit_et": "09:00:18 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -345,23 +347,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:24.712371+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:57.007025+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 178,
+        "bar_count": 23,
         "fallback": null,
         "price_bounds": {
           "min_low": 2.65,
-          "max_high": 3.17
+          "max_high": 3.09
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:38:33 ET",
+        "exit_et": "09:40:52 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -372,8 +374,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:25.354673+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:57.675930+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 223,
@@ -388,7 +390,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -399,8 +401,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:26.051253+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:58.397491+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 233,
@@ -415,7 +417,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -426,8 +428,8 @@
       "status": "fallback",
       "reason": "alpaca 403",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:26.386363+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:58.722697+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": null,
         "bar_count": 0,
@@ -439,7 +441,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -450,8 +452,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:27.088306+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:59.416324+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 42,
@@ -466,7 +468,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -477,8 +479,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:27.294378+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:49:59.628482+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 42,
@@ -493,7 +495,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -504,8 +506,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:27.984130+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:00.267861+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 435,
@@ -520,7 +522,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -531,8 +533,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:28.613668+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:01.115710+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 424,
@@ -547,7 +549,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -558,8 +560,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:29.289263+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:01.866787+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 25,
@@ -574,7 +576,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -585,8 +587,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:29.979384+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:02.598340+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 24,
@@ -601,7 +603,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -612,8 +614,8 @@
       "status": "fallback",
       "reason": "alpaca 400",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:30.335773+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:02.964006+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
         "bar_count": 0,
@@ -625,7 +627,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -636,23 +638,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:31.089471+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:03.722930+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 66,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.12,
+          "min_low": 1.24,
           "max_high": 1.58
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:52:37 ET",
+        "exit_et": "09:55:35 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -663,23 +665,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:31.794935+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:04.496996+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 427,
+        "bar_count": 59,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.81,
+          "min_low": 1.98,
           "max_high": 2.2
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:47:01 ET",
+        "exit_et": "09:48:15 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -690,23 +692,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:32.499459+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:05.224798+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 429,
+        "bar_count": 43,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2,
+          "min_low": 2.6,
           "max_high": 3.24
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:30:52 ET",
+        "exit_et": "09:33:42 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -717,23 +719,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:33.189848+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:05.908081+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 46,
         "fallback": null,
         "price_bounds": {
           "min_low": 2.26,
-          "max_high": 3.67
+          "max_high": 3.56
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:32:31 ET",
+        "exit_et": "09:35:02 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -742,28 +744,28 @@
       "open_date": "2026-01-30",
       "close_date": "2026-01-30",
       "status": "marker_warn",
-      "reason": "entry 2.11 below bar low 20.1; exit 2.14 below bar low 20.1",
+      "reason": "entry $2.11 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8; exit $2.14 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:33.909952+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:06.665921+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 26,
         "fallback": null,
         "price_bounds": {
-          "min_low": 20.1,
-          "max_high": 28
+          "min_low": 20.7,
+          "max_high": 21.6
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 2.11 below bar low 20.1",
-            "exit 2.14 below bar low 20.1"
+            "entry $2.11 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8",
+            "exit $2.14 misaligned at bar O=20.7 H=20.9 L=20.7 C=20.8"
           ]
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:45:28 ET",
+        "exit_et": "08:51:04 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -774,23 +776,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:34.265400+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:07.475405+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 314,
+        "bar_count": 82,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.63,
+          "min_low": 1.64,
           "max_high": 1.93
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "10:04:18 ET",
+        "exit_et": "10:14:37 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -801,8 +803,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:34.884907+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:08.196821+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 18,
@@ -817,7 +819,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -828,8 +830,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:35.601906+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:08.907982+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 17,
@@ -844,7 +846,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -855,23 +857,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:36.351333+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:09.701598+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 27,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.965,
-          "max_high": 2.8
+          "min_low": 2.06,
+          "max_high": 2.1516
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "12:06:03 ET",
+        "exit_et": "12:13:01 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -882,23 +884,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:36.739977+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:10.333468+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 63,
         "fallback": null,
         "price_bounds": {
           "min_low": 1.11,
-          "max_high": 1.84
+          "max_high": 1.25
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:46:37 ET",
+        "exit_et": "09:52:45 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -907,28 +909,28 @@
       "open_date": "2026-01-27",
       "close_date": "2026-01-27",
       "status": "marker_warn",
-      "reason": "entry 4.8 below bar low 122.85; exit 4.83 below bar low 122.85",
+      "reason": "entry $4.8 misaligned at bar O=159.6 H=161 L=158.2 C=161; exit $4.83 misaligned at bar O=159.6 H=161 L=158.2 C=161",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:37.416164+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:11.030198+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 23,
         "fallback": null,
         "price_bounds": {
-          "min_low": 122.85,
+          "min_low": 158.2,
           "max_high": 172.9
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 4.8 below bar low 122.85",
-            "exit 4.83 below bar low 122.85"
+            "entry $4.8 misaligned at bar O=159.6 H=161 L=158.2 C=161",
+            "exit $4.83 misaligned at bar O=159.6 H=161 L=158.2 C=161"
           ]
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:19:39 ET",
+        "exit_et": "08:22:04 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -939,8 +941,8 @@
       "status": "fallback",
       "reason": "alpaca 400",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:37.692296+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:11.376617+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
         "bar_count": 0,
@@ -952,7 +954,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -963,23 +965,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:38.453836+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:12.091685+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 49,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.36,
+          "min_low": 1.68,
           "max_high": 2.18
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:36:06 ET",
+        "exit_et": "09:38:22 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -990,8 +992,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:39.094373+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:12.802757+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 76,
@@ -1006,7 +1008,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1017,8 +1019,8 @@
       "status": "fallback",
       "reason": "alpaca 400",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:39.451697+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:13.143273+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
         "bar_count": 0,
@@ -1030,7 +1032,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1041,8 +1043,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:40.166638+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:13.823333+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 142,
@@ -1057,7 +1059,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1066,28 +1068,28 @@
       "open_date": "2026-01-20",
       "close_date": "2026-01-20",
       "status": "marker_warn",
-      "reason": "entry 4.29 below bar low 20.8; exit 4.0301 below bar low 20.8",
+      "reason": "entry $4.29 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4; exit $4.0301 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:40.909328+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:14.550009+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 43,
         "fallback": null,
         "price_bounds": {
-          "min_low": 20.8,
+          "min_low": 35.1,
           "max_high": 44.4
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 4.29 below bar low 20.8",
-            "exit 4.0301 below bar low 20.8"
+            "entry $4.29 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4",
+            "exit $4.0301 misaligned at bar O=39.5 H=39.5 L=35.1 C=36.4"
           ]
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:31:12 ET",
+        "exit_et": "09:32:26 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1098,8 +1100,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:41.567125+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:15.208972+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 7,
@@ -1114,7 +1116,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1125,8 +1127,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:42.265668+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:15.922432+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 59,
@@ -1141,7 +1143,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1152,8 +1154,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:42.967031+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:16.622234+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 63,
@@ -1168,7 +1170,7 @@
         },
         "entry_et": "19:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1179,23 +1181,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:43.717261+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:17.370210+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 430,
+        "bar_count": 21,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.43,
-          "max_high": 4.25
+          "min_low": 3.88,
+          "max_high": 4.09
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "13:47:15 ET",
+        "exit_et": "13:48:47 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1206,8 +1208,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:44.369053+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:18.027736+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 121,
@@ -1222,7 +1224,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1233,23 +1235,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:45.123230+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:18.731162+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 59,
         "fallback": null,
         "price_bounds": {
           "min_low": 7.8001,
-          "max_high": 12.7
+          "max_high": 9.04
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:47:18 ET",
+        "exit_et": "09:48:24 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1260,8 +1262,8 @@
       "status": "fallback",
       "reason": "no Alpaca bars for this symbol/window",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:45.433429+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:19.096099+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": null,
         "bar_count": 0,
@@ -1273,7 +1275,7 @@
         },
         "entry_et": null,
         "exit_et": null,
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1282,28 +1284,28 @@
       "open_date": "2025-11-13",
       "close_date": "2025-11-13",
       "status": "marker_warn",
-      "reason": "entry 3.47 below bar low 27.4; exit 3.3701 below bar low 27.4",
+      "reason": "entry $3.47 misaligned at bar O=33.4 H=33.51 L=30.3 C=31; exit $3.3701 misaligned at bar O=33.4 H=33.51 L=30.3 C=31",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:46.163877+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:19.782022+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 450,
+        "bar_count": 43,
         "fallback": null,
         "price_bounds": {
-          "min_low": 27.4,
-          "max_high": 39.8
+          "min_low": 29.8,
+          "max_high": 37.4
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 3.47 below bar low 27.4",
-            "exit 3.3701 below bar low 27.4"
+            "entry $3.47 misaligned at bar O=33.4 H=33.51 L=30.3 C=31",
+            "exit $3.3701 misaligned at bar O=33.4 H=33.51 L=30.3 C=31"
           ]
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:31:32 ET",
+        "exit_et": "09:32:27 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1314,23 +1316,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:46.872023+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:20.502021+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 25,
         "fallback": null,
         "price_bounds": {
-          "min_low": 3.1601,
-          "max_high": 4.89
+          "min_low": 4.56,
+          "max_high": 5.46
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "19:00:00 ET",
-        "exit_et": "19:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:30:32 ET",
+        "exit_et": "07:35:35 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1341,23 +1343,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:47.562682+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:21.197190+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 441,
+        "bar_count": 57,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.37,
+          "min_low": 2.63,
           "max_high": 3.2
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:44:11 ET",
+        "exit_et": "09:46:34 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1368,23 +1370,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:48.258354+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:21.892312+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 449,
+        "bar_count": 22,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.18,
+          "min_low": 1.69,
           "max_high": 2.05
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:01:06 ET",
+        "exit_et": "09:03:30 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1393,28 +1395,28 @@
       "open_date": "2025-10-22",
       "close_date": "2025-10-22",
       "status": "marker_warn",
-      "reason": "entry 1.29 below bar low 14.44; exit 1.15 below bar low 14.44",
+      "reason": "entry $1.29 misaligned at bar O=27.75 H=28 L=25 C=25.5; exit $1.15 misaligned at bar O=27.75 H=28 L=25 C=25.5",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:48.971536+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:22.608630+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 53,
         "fallback": null,
         "price_bounds": {
-          "min_low": 14.44,
+          "min_low": 25,
           "max_high": 32.5
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 1.29 below bar low 14.44",
-            "exit 1.15 below bar low 14.44"
+            "entry $1.29 misaligned at bar O=27.75 H=28 L=25 C=25.5",
+            "exit $1.15 misaligned at bar O=27.75 H=28 L=25 C=25.5"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:38:26 ET",
+        "exit_et": "09:42:42 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1425,23 +1427,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:49.691853+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:23.373502+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 449,
+        "bar_count": 74,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.44,
-          "max_high": 3.02
+          "min_low": 2.52,
+          "max_high": 2.85
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:59:56 ET",
+        "exit_et": "10:03:20 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1452,11 +1454,11 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:50.096440+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:24.034056+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 48,
         "fallback": null,
         "price_bounds": {
           "min_low": 1.03,
@@ -1466,9 +1468,9 @@
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:25:01 ET",
+        "exit_et": "09:36:24 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1479,23 +1481,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:50.437240+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:24.722589+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 68,
         "fallback": null,
         "price_bounds": {
-          "min_low": 5.98,
+          "min_low": 6.61,
           "max_high": 12.46
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:56:39 ET",
+        "exit_et": "09:57:49 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1506,23 +1508,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:51.079242+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:25.461469+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 409,
+        "bar_count": 45,
         "fallback": null,
         "price_bounds": {
           "min_low": 5.15,
-          "max_high": 18.15
+          "max_high": 13.43
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:47:28 ET",
+        "exit_et": "09:48:24 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1533,23 +1535,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:51.307741+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:26.093026+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 409,
+        "bar_count": 46,
         "fallback": null,
         "price_bounds": {
           "min_low": 5.15,
-          "max_high": 18.15
+          "max_high": 14.8
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:56:38 ET",
+        "exit_et": "09:56:47 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1560,23 +1562,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:51.940311+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:26.830099+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 415,
+        "bar_count": 54,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.13,
-          "max_high": 2.39
+          "min_low": 1.2,
+          "max_high": 1.55
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:37:50 ET",
+        "exit_et": "09:43:42 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1587,23 +1589,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:52.350209+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:27.527216+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 436,
+        "bar_count": 30,
         "fallback": null,
         "price_bounds": {
           "min_low": 3.71,
-          "max_high": 4.4399
+          "max_high": 4.15
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:14:47 ET",
+        "exit_et": "09:23:03 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1614,11 +1616,11 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:53.020630+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:28.271747+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 429,
+        "bar_count": 70,
         "fallback": null,
         "price_bounds": {
           "min_low": 1.39,
@@ -1628,9 +1630,9 @@
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:09:34 ET",
+        "exit_et": "09:32:47 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1639,28 +1641,28 @@
       "open_date": "2025-10-16",
       "close_date": "2025-10-16",
       "status": "marker_warn",
-      "reason": "entry 2.42 below bar low 15.32; exit 2.3043 below bar low 15.32",
+      "reason": "entry $2.42 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86; exit $2.3043 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:53.391548+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:28.923376+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 446,
+        "bar_count": 66,
         "fallback": null,
         "price_bounds": {
-          "min_low": 15.32,
+          "min_low": 16.79,
           "max_high": 19.4
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 2.42 below bar low 15.32",
-            "exit 2.3043 below bar low 15.32"
+            "entry $2.42 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86",
+            "exit $2.3043 misaligned at bar O=17.21 H=17.25 L=16.79 C=16.86"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:52:17 ET",
+        "exit_et": "09:55:00 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1669,28 +1671,28 @@
       "open_date": "2025-10-15",
       "close_date": "2025-10-15",
       "status": "marker_warn",
-      "reason": "entry 2.1349 below bar low 180.01; exit 2.035 below bar low 180.01",
+      "reason": "entry $2.1349 misaligned at bar O=193 H=193 L=190 C=190; exit $2.035 misaligned at bar O=193 H=193 L=190 C=190",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:54.039542+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:29.626814+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 436,
+        "bar_count": 109,
         "fallback": null,
         "price_bounds": {
-          "min_low": 180.01,
-          "max_high": 215
+          "min_low": 190,
+          "max_high": 219
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 2.1349 below bar low 180.01",
-            "exit 2.035 below bar low 180.01"
+            "entry $2.1349 misaligned at bar O=193 H=193 L=190 C=190",
+            "exit $2.035 misaligned at bar O=193 H=193 L=190 C=190"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:54:54 ET",
+        "exit_et": "09:31:24 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1699,28 +1701,28 @@
       "open_date": "2025-10-14",
       "close_date": "2025-10-14",
       "status": "marker_warn",
-      "reason": "entry 1.66 below bar low 27.85; exit 1.8743 below bar low 27.85",
+      "reason": "entry $1.66 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95; exit $1.8743 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:54.752197+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:30.315811+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 450,
+        "bar_count": 216,
         "fallback": null,
         "price_bounds": {
           "min_low": 27.85,
-          "max_high": 34.45
+          "max_high": 38.02
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 1.66 below bar low 27.85",
-            "exit 1.8743 below bar low 27.85"
+            "entry $1.66 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95",
+            "exit $1.8743 misaligned at bar O=28.74 H=28.92 L=27.85 C=27.95"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:27:08 ET",
+        "exit_et": "10:03:00 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1731,23 +1733,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:55.449335+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:31.019949+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 398,
+        "bar_count": 20,
         "fallback": null,
         "price_bounds": {
-          "min_low": 9.3,
-          "max_high": 27.698
+          "min_low": 7.94,
+          "max_high": 13.5
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:09:40 ET",
+        "exit_et": "07:09:53 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1755,28 +1757,26 @@
       "symbol": "ELBM",
       "open_date": "2025-10-13",
       "close_date": "2025-10-13",
-      "status": "marker_warn",
-      "reason": "exit 2.9305 below bar low 3.22",
+      "status": "ok",
+      "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:55.871961+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:31.708370+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 31,
         "fallback": null,
         "price_bounds": {
-          "min_low": 3.22,
-          "max_high": 8.7
+          "min_low": 1.95,
+          "max_high": 5.24
         },
         "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "exit 2.9305 below bar low 3.22"
-          ]
+          "marker_in_range": true,
+          "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:09:46 ET",
+        "exit_et": "08:20:21 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1787,23 +1787,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:56.526014+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:32.401836+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 21,
         "fallback": null,
         "price_bounds": {
-          "min_low": 3.04,
-          "max_high": 5.33
+          "min_low": 3.24,
+          "max_high": 4.06
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:31:31 ET",
+        "exit_et": "07:32:57 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1814,23 +1814,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:57.212127+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:33.108406+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 446,
+        "bar_count": 27,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.86,
-          "max_high": 2.091
+          "min_low": 1.91,
+          "max_high": 2.14
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:34:54 ET",
+        "exit_et": "07:41:47 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1841,11 +1841,11 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:57.923886+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:33.843250+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 446,
+        "bar_count": 257,
         "fallback": null,
         "price_bounds": {
           "min_low": 159.33,
@@ -1855,9 +1855,9 @@
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:25:21 ET",
+        "exit_et": "11:10:43 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1866,28 +1866,28 @@
       "open_date": "2025-09-30",
       "close_date": "2025-09-30",
       "status": "marker_warn",
-      "reason": "entry 6.38 below bar low 51.3; exit 6.1701 below bar low 51.3",
+      "reason": "entry $6.38 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82; exit $6.1701 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:58.327164+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:34.520707+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 443,
+        "bar_count": 43,
         "fallback": null,
         "price_bounds": {
-          "min_low": 51.3,
-          "max_high": 63.9
+          "min_low": 52.38,
+          "max_high": 60.3
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 6.38 below bar low 51.3",
-            "exit 6.1701 below bar low 51.3"
+            "entry $6.38 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82",
+            "exit $6.1701 misaligned at bar O=52.92 H=54.54 L=52.47 C=53.82"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:32:20 ET",
+        "exit_et": "09:33:42 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1895,29 +1895,26 @@
       "symbol": "RDHL",
       "open_date": "2025-09-29",
       "close_date": "2025-09-29",
-      "status": "marker_warn",
-      "reason": "entry 2.97 above bar high 2.79; exit 3.3308 above bar high 2.79",
+      "status": "ok",
+      "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:58.982881+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:35.258287+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 450,
+        "bar_count": 20,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.01,
-          "max_high": 2.79
+          "min_low": 2.55,
+          "max_high": 3.3599
         },
         "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "entry 2.97 above bar high 2.79",
-            "exit 3.3308 above bar high 2.79"
-          ]
+          "marker_in_range": true,
+          "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:18:20 ET",
+        "exit_et": "08:18:53 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1928,23 +1925,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:16:59.660571+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:35.921108+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 249,
         "fallback": null,
         "price_bounds": {
-          "min_low": 1.63,
+          "min_low": 1.42,
           "max_high": 2.55
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "08:18:41 ET",
+        "exit_et": "10:27:29 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1952,28 +1949,26 @@
       "symbol": "PEPG",
       "open_date": "2025-09-25",
       "close_date": "2025-09-25",
-      "status": "marker_warn",
-      "reason": "entry 6.91 above bar high 6.34",
+      "status": "ok",
+      "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:00.369947+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:36.595727+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 28,
         "fallback": null,
         "price_bounds": {
-          "min_low": 4.9,
-          "max_high": 6.34
+          "min_low": 6.28,
+          "max_high": 6.93
         },
         "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "entry 6.91 above bar high 6.34"
-          ]
+          "marker_in_range": true,
+          "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:22:23 ET",
+        "exit_et": "07:30:23 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -1984,8 +1979,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:01.034171+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:37.301609+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 8,
@@ -2000,7 +1995,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2011,23 +2006,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:01.484544+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:38.050286+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 33,
         "fallback": null,
         "price_bounds": {
-          "min_low": 6.37,
+          "min_low": 6.74,
           "max_high": 7.53
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "11:00:49 ET",
+        "exit_et": "11:11:41 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2038,23 +2033,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:02.142810+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:38.722653+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 27,
         "fallback": null,
         "price_bounds": {
-          "min_low": 6.4101,
+          "min_low": 8.29,
           "max_high": 9.74
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:07:59 ET",
+        "exit_et": "09:14:34 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2062,28 +2057,26 @@
       "symbol": "SSKN",
       "open_date": "2025-09-23",
       "close_date": "2025-09-23",
-      "status": "marker_warn",
-      "reason": "entry 3.29 above bar high 3.04",
+      "status": "ok",
+      "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:02.849147+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:39.412505+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 286,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.23,
-          "max_high": 3.04
+          "min_low": 2.05,
+          "max_high": 4.18
         },
         "integrity": {
-          "marker_in_range": false,
-          "marker_warnings": [
-            "entry 3.29 above bar high 3.04"
-          ]
+          "marker_in_range": true,
+          "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:45:49 ET",
+        "exit_et": "10:31:14 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2094,23 +2087,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:03.250861+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:40.122959+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 35,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.21,
-          "max_high": 3.06
+          "min_low": 2.6,
+          "max_high": 3.58
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:31:17 ET",
+        "exit_et": "07:42:45 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2119,28 +2112,28 @@
       "open_date": "2025-09-22",
       "close_date": "2025-09-22",
       "status": "marker_warn",
-      "reason": "entry 5.6767 below bar low 154.8; exit 6.4713 below bar low 154.8",
+      "reason": "entry $5.6767 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6; exit $6.4713 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:03.916471+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:40.834936+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 106,
         "fallback": null,
         "price_bounds": {
-          "min_low": 154.8,
-          "max_high": 365.4
+          "min_low": 108.72,
+          "max_high": 312.12
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 5.6767 below bar low 154.8",
-            "exit 6.4713 below bar low 154.8"
+            "entry $5.6767 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6",
+            "exit $6.4713 misaligned at bar O=114.12 H=114.12 L=108.72 C=111.6"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:56:48 ET",
+        "exit_et": "08:32:06 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2151,23 +2144,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:04.599652+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:41.532167+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 447,
+        "bar_count": 98,
         "fallback": null,
         "price_bounds": {
-          "min_low": 6.23,
-          "max_high": 18.1
+          "min_low": 4.47,
+          "max_high": 8.67
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "07:29:23 ET",
+        "exit_et": "08:01:50 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2178,23 +2171,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:05.300806+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:42.254690+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 333,
         "fallback": null,
         "price_bounds": {
-          "min_low": 3.45,
+          "min_low": 3.35,
           "max_high": 5.88
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:30:40 ET",
+        "exit_et": "13:03:44 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2203,13 +2196,13 @@
       "open_date": "2025-09-17",
       "close_date": "2025-09-17",
       "status": "marker_warn",
-      "reason": "entry 4.51 below bar low 32.85; exit 5.16 below bar low 32.85",
+      "reason": "entry $4.51 misaligned at bar O=33.66 H=36 L=32.85 C=35.54; exit $5.16 misaligned at bar O=33.66 H=36 L=32.85 C=35.54",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:06.015229+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:42.932876+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 451,
+        "bar_count": 52,
         "fallback": null,
         "price_bounds": {
           "min_low": 32.85,
@@ -2218,13 +2211,13 @@
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 4.51 below bar low 32.85",
-            "exit 5.16 below bar low 32.85"
+            "entry $4.51 misaligned at bar O=33.66 H=36 L=32.85 C=35.54",
+            "exit $5.16 misaligned at bar O=33.66 H=36 L=32.85 C=35.54"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:37:19 ET",
+        "exit_et": "09:41:20 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2235,23 +2228,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:06.686418+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:43.630812+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 448,
+        "bar_count": 24,
         "fallback": null,
         "price_bounds": {
-          "min_low": 2.39,
+          "min_low": 3.05,
           "max_high": 4.24
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "11:42:47 ET",
+        "exit_et": "11:46:10 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2262,23 +2255,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:07.394376+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:44.322593+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 446,
+        "bar_count": 62,
         "fallback": null,
         "price_bounds": {
-          "min_low": 4.21,
+          "min_low": 5.35,
           "max_high": 8.52
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:47:22 ET",
+        "exit_et": "09:55:16 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2287,28 +2280,28 @@
       "open_date": "2025-09-10",
       "close_date": "2025-09-10",
       "status": "marker_warn",
-      "reason": "entry 5.7 below bar low 22.32; exit 6.7 below bar low 22.32",
+      "reason": "entry $5.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43; exit $6.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:08.111109+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:45.037187+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 435,
+        "bar_count": 28,
         "fallback": null,
         "price_bounds": {
-          "min_low": 22.32,
-          "max_high": 98.19
+          "min_low": 44.91,
+          "max_high": 65.79
         },
         "integrity": {
           "marker_in_range": false,
           "marker_warnings": [
-            "entry 5.7 below bar low 22.32",
-            "exit 6.7 below bar low 22.32"
+            "entry $5.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43",
+            "exit $6.7 misaligned at bar O=46.17 H=47.43 L=44.91 C=47.43"
           ]
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "11:07:54 ET",
+        "exit_et": "11:15:36 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2319,23 +2312,23 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:08.802338+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:45.743086+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Min",
         "source": "alpaca",
-        "bar_count": 368,
+        "bar_count": 112,
         "fallback": null,
         "price_bounds": {
           "min_low": 2.2,
-          "max_high": 2.6791
+          "max_high": 2.65
         },
         "integrity": {
           "marker_in_range": true,
           "marker_warnings": []
         },
-        "entry_et": "20:00:00 ET",
-        "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "entry_et": "09:53:01 ET",
+        "exit_et": "10:37:14 ET",
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2346,8 +2339,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:09.446420+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:46.400742+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 17,
@@ -2362,7 +2355,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2373,8 +2366,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:10.155670+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:47.107588+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 9,
@@ -2389,7 +2382,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2400,8 +2393,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:10.854881+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:47.813703+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 15,
@@ -2416,7 +2409,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     },
     {
@@ -2427,8 +2420,8 @@
       "status": "ok",
       "reason": "",
       "replay_chart": {
-        "audited_at": "2026-06-27T21:17:11.067673+00:00",
-        "ui_version": "3.4",
+        "audited_at": "2026-06-27T21:50:48.026263+00:00",
+        "ui_version": "3.5",
         "timeframe": "1Day",
         "source": "alpaca",
         "bar_count": 15,
@@ -2443,7 +2436,7 @@
         },
         "entry_et": "20:00:00 ET",
         "exit_et": "20:00:00 ET",
-        "scale_fix": "volume_isolated_overlay_v3.4"
+        "scale_fix": "fill_time_resolution_v3.5"
       }
     }
   ]

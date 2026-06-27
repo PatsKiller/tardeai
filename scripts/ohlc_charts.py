@@ -206,11 +206,93 @@ def _parse_ts(s):
             return None
 
 
+def _has_clock(ts_raw):
+    """True when the caller passed an actual clock time (not a bare date)."""
+    if not ts_raw:
+        return False
+    s = str(ts_raw).strip()
+    return "T" in s and (":" in s.split("T", 1)[-1])
+
+
+def _lookup_fill_times(symbol, close_date, entry_price=None, exit_price=None):
+    """Resolve real fill timestamps from trade_execution_quality (Schwab-sourced fills)."""
+    try:
+        from db_adapter import _get_conn
+        c = _get_conn(); cur = c.cursor()
+        sym = (symbol or "").upper().strip()
+        cd = str(close_date)[:10]
+        ep = float(entry_price) if entry_price not in (None, "") else None
+        if ep is not None:
+            cur.execute("""
+                SELECT entry_time, exit_time FROM trade_execution_quality
+                WHERE UPPER(symbol)=%s AND entry_time::date=%s::date
+                  AND ABS(entry_price - %s) < 0.08
+                ORDER BY ABS(entry_price - %s), exit_time DESC LIMIT 1
+            """, (sym, cd, ep, ep))
+        else:
+            cur.execute("""
+                SELECT entry_time, exit_time FROM trade_execution_quality
+                WHERE UPPER(symbol)=%s AND entry_time::date=%s::date
+                ORDER BY exit_time DESC LIMIT 1
+            """, (sym, cd))
+        row = cur.fetchone()
+        c.close()
+        if row:
+            ent, ext = row[0], row[1]
+            if ent and not getattr(ent, "tzinfo", None):
+                ent = ent.replace(tzinfo=dt.timezone.utc)
+            if ext and not getattr(ext, "tzinfo", None):
+                ext = ext.replace(tzinfo=dt.timezone.utc)
+            return ent, ext
+    except Exception:
+        pass
+    return None, None
+
+
+def _bar_by_time(out_bars, tkey):
+    for b in out_bars:
+        if b["time"] == tkey:
+            return b
+    return None
+
+
+def _price_in_bar(price, bar, slack=0.06):
+    if not bar or price is None:
+        return False
+    p = float(price)
+    span = float(bar["high"]) - float(bar["low"])
+    pad = max(span * slack, abs(p) * 0.015, 0.02)
+    return float(bar["low"]) - pad <= p <= float(bar["high"]) + pad
+
+
+def _infer_bar_by_price(price, bars, prefer_after=None):
+    """When fill time is unknown, snap marker to the bar whose OHLC best matches journal fill price."""
+    if not bars or price is None:
+        return None
+    p = float(price)
+    cands = bars
+    if prefer_after is not None:
+        pa = prefer_after
+        if hasattr(pa, "isoformat"):
+            pa = _et_ts(pa.astimezone(dt.timezone.utc).isoformat())
+        cands = [b for b in bars if b["time"] >= pa] or bars
+    scored = []
+    for b in cands:
+        if float(b["low"]) <= p <= float(b["high"]):
+            scored.append((0, abs(float(b["close"]) - p), b))
+        else:
+            dist = min(abs(p - float(b["low"])), abs(p - float(b["high"])), abs(p - float(b["close"])))
+            scored.append((1, dist, b))
+    scored.sort(key=lambda x: (x[0], x[1]))
+    return scored[0][2] if scored else None
+
+
 def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None,
-                entry_time=None, exit_time=None):
+                entry_time=None, exit_time=None, trade_key=None):
     """OHLCV + VWAP/MACD/RSI + entry/exit markers. Same-day -> 1-min bars in a TIGHT window around the
     actual fill times (NOT the whole session); multi-day -> daily. Times shown in US/Eastern."""
     symbol = (symbol or "").upper().strip()
+    fill_source = "caller"
     ent = _parse_ts(entry_time or entry_date)
     ext = _parse_ts(exit_time or exit_date) or ent
     if not ent:
@@ -219,7 +301,19 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         ext = ent
     ed, xd = ent.date(), ext.date()
     same_day = ed == xd
-    has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
+    has_time = _has_clock(entry_time) or _has_clock(exit_time) or bool(ent.hour or ent.minute or ext.hour or ext.minute)
+
+    # Tagging-queue replays often pass dates only → midnight UTC snaps markers to premarket (~$3 on GOVX
+    # while journal fill is $4.08 @ 09:57 ET). Resolve real fills from execution-quality table first.
+    if same_day and not has_time:
+        lt_ent, lt_ext = _lookup_fill_times(symbol, ed, entry_price, exit_price)
+        if lt_ent:
+            ent = lt_ent.astimezone(dt.timezone.utc)
+            fill_source = "execution_quality"
+        if lt_ext:
+            ext = lt_ext.astimezone(dt.timezone.utc)
+        has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
+
     win = None
 
     def _sess(d, h, m):
@@ -324,11 +418,28 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         tgt = _et_ts(ts.astimezone(dt.timezone.utc).isoformat())
         return min(out_bars, key=lambda b: abs(b["time"] - tgt))["time"]
 
+    def _mark_time_price_aware(ts, price, default_idx, snap_method="time"):
+        """Snap marker to bar time; if journal price doesn't fit that bar's OHLC, re-snap by price."""
+        tkey = _mark_time(ts, default_idx)
+        bar = _bar_by_time(out_bars, tkey)
+        if price is not None and bar and not _price_in_bar(price, bar):
+            prefer = _session_open(ed) if same_day and sess_open else None
+            alt = _infer_bar_by_price(price, out_bars, prefer_after=prefer)
+            if alt:
+                tkey = alt["time"]
+                snap_method = "price_inferred"
+        return tkey, snap_method
+
     markers = []
+    marker_meta = []
     if entry_price:
-        markers.append({"time": _mark_time(ent, 0), "price": float(entry_price), "type": "entry", "label": f"BUY {entry_price}"})
+        tkey, snap = _mark_time_price_aware(ent, entry_price, 0)
+        markers.append({"time": tkey, "price": float(entry_price), "type": "entry", "label": f"BUY {entry_price}"})
+        marker_meta.append({"type": "entry", "snap": snap})
     if exit_price:
-        markers.append({"time": _mark_time(ext, -1), "price": float(exit_price), "type": "exit", "label": f"SELL {exit_price}"})
+        tkey, snap = _mark_time_price_aware(ext, exit_price, -1)
+        markers.append({"time": tkey, "price": float(exit_price), "type": "exit", "label": f"SELL {exit_price}"})
+        marker_meta.append({"type": "exit", "snap": snap})
 
     # ── Replay backlog (2026-06-11): news pins + L2 pressure strip + SPY overlay ───────────────────────────
     def _bar_time_for(ts_dt):
@@ -405,20 +516,26 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     except Exception:
         pass
 
-    # Price integrity metadata for replay chart scale validation (client compares axis vs OHLC).
+    # Price integrity: global bounds + per-marker alignment (price must fit snapped bar OHLC).
     min_low = min(b["low"] for b in out_bars)
     max_high = max(b["high"] for b in out_bars)
     marker_in_range = True
     marker_warnings = []
+    marker_aligned = True
     for m in markers:
         p = float(m["price"])
-        # 5% slack: fills can sit between 1-min bars or differ slightly from split-adjusted OHLC.
-        if p < min_low * 0.95:
+        bar = _bar_by_time(out_bars, m["time"])
+        if bar and not _price_in_bar(p, bar):
+            marker_aligned = False
             marker_in_range = False
-            marker_warnings.append(f"{m['type']} {p} below bar low {min_low}")
+            marker_warnings.append(
+                f"{m['type']} ${p} misaligned at bar O={bar['open']} H={bar['high']} L={bar['low']} C={bar['close']}")
+        elif p < min_low * 0.95:
+            marker_in_range = False
+            marker_warnings.append(f"{m['type']} {p} below session low {min_low}")
         elif p > max_high * 1.05:
             marker_in_range = False
-            marker_warnings.append(f"{m['type']} {p} above bar high {max_high}")
+            marker_warnings.append(f"{m['type']} {p} above session high {max_high}")
 
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
@@ -426,8 +543,10 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
             "session_open_time": session_open_time, "session_close_time": session_close_time,
             "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay,
+            "fill_times": {"entry": ent.isoformat(), "exit": ext.isoformat(), "source": fill_source},
             "price_bounds": {"min_low": round(min_low, 6), "max_high": round(max_high, 6)},
-            "integrity": {"marker_in_range": marker_in_range, "marker_warnings": marker_warnings}}
+            "integrity": {"marker_in_range": marker_in_range, "marker_aligned": marker_aligned,
+                            "marker_warnings": marker_warnings, "marker_meta": marker_meta}}
 
 
 if __name__ == "__main__":

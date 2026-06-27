@@ -20517,7 +20517,8 @@ def _trade_chart(query=None):
         q = query or {}
         g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
         return ohlc_charts.trade_chart(g("symbol"), g("entry_date"), g("exit_date"),
-                                       g("entry_price"), g("exit_price"), g("entry_time"), g("exit_time"))
+                                       g("entry_price"), g("exit_price"), g("entry_time"), g("exit_time"),
+                                       g("trade_key"))
     except Exception as e:
         return {"error": str(e)[:160]}
 
@@ -20771,6 +20772,18 @@ def _journal_reporting_audit(query=None):
     g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
     import journal_trade_in_view as tiv
     return tiv.reporting_audit(int(g("days") or 365))
+
+
+def _journal_ai_critique(query=None, body=None):
+    """GET/POST /api/v2/journal/ai-critique?trade_key= — automated post-trade critique."""
+    import journal_trade_in_view as tiv
+    src = body or query or {}
+    g = (lambda k: (src.get(k) or [None])[0] if isinstance(src.get(k), list) else src.get(k))
+    tk = g("trade_key")
+    if not tk:
+        return {"ok": False, "error": "trade_key required"}
+    force = str(g("force") or "").lower() in ("1", "true", "yes")
+    return tiv.ai_critique(tk, force=force)
 
 
 def _journal_tagging_skip(body):
@@ -23937,6 +23950,7 @@ ROUTES = {
     "/api/v2/journal/session-recap": _journal_session_recap,
     "/api/v2/journal/attachments": _journal_attachments,
     "/api/v2/journal/tagging-queue": _journal_tagging_queue,
+    "/api/v2/journal/ai-critique": _journal_ai_critique,
     "/api/v2/journal/reporting-audit": _journal_reporting_audit,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
@@ -24959,6 +24973,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/session-recap":
             try:
                 return 200, _journal_session_recap_write(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/ai-critique":
+            try:
+                return 200, _journal_ai_critique(body=body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/tagging-queue/skip":

@@ -1,4 +1,4 @@
-import type { AutoscaleInfo, IChartApi } from 'lightweight-charts'
+import type { AutoscaleInfo, IChartApi, ISeriesApi } from 'lightweight-charts'
 
 /** OHLC bar shape from /api/v2/trade-chart */
 export type ReplayOhlcBar = { time: number | string; open: number; high: number; low: number; close: number }
@@ -34,15 +34,18 @@ export function computeBarBounds(bars: ReplayOhlcBar[], levels: number[] = []): 
 }
 
 /**
- * Candle-only autoscale — never let volume/L2 histogram values pollute the right price axis.
- * Root cause of GOVX-style misalignment: volume shared priceScaleId '' with candles.
+ * Candle-only autoscale — volume/L2/VWAP/SPY must not pollute the right price axis.
  */
 export function makeCandleAutoscaleProvider(
   getBars: () => ReplayOhlcBar[],
   getLevels: () => number[],
+  getAllBars?: () => ReplayOhlcBar[],
+  lockToFull?: () => boolean,
 ): () => AutoscaleInfo | null {
   return () => {
-    const bounds = computeBarBounds(getBars(), getLevels())
+    const useAll = lockToFull?.()
+    const bars = (useAll && getAllBars ? getAllBars() : getBars()) || getBars()
+    const bounds = computeBarBounds(bars, getLevels())
     if (!bounds) return null
     return {
       priceRange: { minValue: bounds.min, maxValue: bounds.max },
@@ -51,7 +54,12 @@ export function makeCandleAutoscaleProvider(
   }
 }
 
-/** Right axis: candles, VWAP, SPY overlay, BUY/SELL price lines. */
+/** Exclude overlay line series from price autoscale (VWAP, SPY). */
+export const NO_PRICE_AUTOSCALE = {
+  autoscaleInfoProvider: () => null,
+} as const
+
+/** Right axis: candles + journal price lines only. */
 export function configurePriceScale(chart: IChartApi) {
   chart.priceScale('right').applyOptions({
     autoScale: true,
@@ -59,7 +67,6 @@ export function configurePriceScale(chart: IChartApi) {
   })
 }
 
-/** Volume histogram on an isolated overlay scale (axis hidden). */
 export function configureVolumeScale(chart: IChartApi) {
   chart.priceScale('volume').applyOptions({
     autoScale: true,
@@ -68,7 +75,6 @@ export function configureVolumeScale(chart: IChartApi) {
   })
 }
 
-/** L2 imbalance strip — separate scale, hidden axis. */
 export function configureL2Scale(chart: IChartApi) {
   chart.priceScale('l2').applyOptions({
     autoScale: true,
@@ -77,8 +83,27 @@ export function configureL2Scale(chart: IChartApi) {
   })
 }
 
-/** Fit time axis + refresh autoscale on main and sub-panels after each replay paint step. */
-export function syncReplayCharts(charts: IChartApi[], mainChart?: IChartApi | null) {
+/** Link time axes across main + MACD + RSI panes. */
+export function linkTimeScales(charts: IChartApi[]) {
+  if (charts.length < 2) return () => {}
+  const [main, ...subs] = charts
+  let syncing = false
+  const handler = (range: any) => {
+    if (syncing || !range) return
+    syncing = true
+    for (const c of subs) {
+      try { c.timeScale().setVisibleLogicalRange(range) } catch { /* noop */ }
+    }
+    syncing = false
+  }
+  main.timeScale().subscribeVisibleLogicalRangeChange(handler)
+  return () => {
+    try { main.timeScale().unsubscribeVisibleLogicalRangeChange(handler) } catch { /* noop */ }
+  }
+}
+
+/** Fit time axis + refresh candle autoscale after each replay paint step. */
+export function syncReplayCharts(charts: IChartApi[], mainChart?: IChartApi | null, candle?: ISeriesApi<any> | null) {
   for (const c of charts) {
     try {
       c.timeScale().fitContent()
@@ -88,21 +113,23 @@ export function syncReplayCharts(charts: IChartApi[], mainChart?: IChartApi | nu
   if (mainChart) {
     try {
       mainChart.priceScale('right').applyOptions({ autoScale: true })
+      // Force candle series to re-run autoscaleInfoProvider after setData.
+      candle?.applyOptions({})
     } catch { /* noop */ }
   }
 }
 
 const DEV = typeof import.meta !== 'undefined' && !!(import.meta as any).env?.DEV
 
-/** Dev-only: compare client bounds vs server price_bounds; returns warning text or null. */
 export function checkPriceIntegrity(
   bounds: BarBounds | null,
   label: string,
   backend?: BackendPriceBounds,
+  markerAligned?: boolean,
 ): string | null {
-  if (!bounds) return null
   const issues: string[] = []
-  if (backend?.min_low != null && backend?.max_high != null) {
+  if (markerAligned === false) issues.push('marker price misaligned with bar OHLC')
+  if (bounds && backend?.min_low != null && backend?.max_high != null) {
     const tol = Math.max(0.01, bounds.rawMax * 0.001)
     if (Math.abs(bounds.rawMin - backend.min_low) > tol) {
       issues.push(`low: client=${bounds.rawMin.toFixed(4)} api=${backend.min_low}`)
