@@ -17,6 +17,7 @@ export default function ReportingAuditPanel({ days }: { days: number }) {
   if (!d?.ok) return null
 
   const s = d.summary || {}
+  const tagLow = (s.tagging_health_pct ?? 100) < 50 || (s.trades_need_tagging ?? 0) > 0
   return (
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
@@ -25,6 +26,11 @@ export default function ReportingAuditPanel({ days }: { days: number }) {
           {s.implemented} implemented · {s.partial_or_degraded} partial · {s.missing} missing
         </div>
       </div>
+      {tagLow && (
+        <div style={{ fontSize: 11, color: '#fcd34d', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, lineHeight: 1.45 }}>
+          <strong>{s.trades_need_tagging}</strong> of <strong>{s.trades_in_range}</strong> trades lack full tags — pivot columns show "—", Zella/behavioral scores are degraded until psychology + market regime are filled.
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>
         {[
           { l: 'Coverage', v: `${s.coverage_pct}%`, c: '#60a5fa' },

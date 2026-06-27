@@ -11,6 +11,12 @@ mkdir -p "$LOG_DIR"
 cd "$PROJECT_ROOT"
 source .venv/bin/activate
 
+V3_DIR="$PROJECT_ROOT/apps/command-center-v3"
+if [ ! -f "$V3_DIR/dist/index.html" ] || [ "$(find "$V3_DIR/src" -newer "$V3_DIR/dist/index.html" -print -quit 2>/dev/null)" ]; then
+  echo "Building Command Center v3 (stale or missing dist)..."
+  (cd "$V3_DIR" && npm run build) 2>&1
+fi
+
 {
   echo "Stopping portfolio server on port 7777..."
 

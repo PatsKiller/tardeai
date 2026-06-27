@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-27 - Replay price-scale fix + full-trade integrity audit
+
+**Root cause:** volume histogram shared the candlestick right price scale (`priceScaleId: ''`), so
+share-count values (hundreds of thousands) stretched the Y-axis while $3–4 candles sat at the bottom.
+BUY/SELL lines looked misaligned across all replays.
+
+**Fix (UI 3.4):**
+- `replayChartScale.ts` — centralized candle autoscale from OHLC + annotation levels only; volume/L2 on
+  isolated hidden overlay scales.
+- `TradeReplayChart.tsx` — sync scale after every replay paint step; **↻ Re-sync scale** button; dev
+  integrity overlay.
+- `ohlc_charts.py` — returns `price_bounds` + `integrity.marker_in_range` for client validation.
+
+**Batch job:** `scripts/replay_chart_audit.py` — validates every closed trade, writes
+`journal_trade_reviews.payload.replay_chart`, emits `docs/audits/REPLAY_INTEGRITY_*.md|.json`.
+Run 2026-06-27: **90 trades · 62 ok · 28 warn (Finviz fallback or marker vs split-adjusted OHLC) · 0 fail**.
+GOVX 2026-05-18 confirmed ok ($1.78–$4.39, 447 bars, Alpaca).
+
 ## 2026-06-26 - momentum_scalp: tightened criteria + intraday fast-path
 
 Audit found momentum_scalp generated 104 proposals → 0 conversions: a 9h TTL (extended to 16:00 ET)

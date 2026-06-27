@@ -1,11 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { fmt$ } from '../../lib/format'
+import SetupFamilyPicker from './SetupFamilyPicker'
+import PsychologyBeforePicker from './PsychologyBeforePicker'
+import MarketRegimePicker from './MarketRegimePicker'
+import TradeReportReadiness from './TradeReportReadiness'
+import IndustryPicker from './IndustryPicker'
+import TradePlanPicker from './TradePlanPicker'
+import TagChipGrid from './TagChipGrid'
+import {
+  SETUP_TYPE_GROUPS, SETUP_TYPE_CONFIG, MISTAKE_CONFIG, STRENGTH_CONFIG,
+  MISTAKE_DEFAULTS, STRENGTH_DEFAULTS, planImpliesFollowed,
+} from '../../lib/journalTagVocab'
 
 type Tab = 'Overview' | 'Review' | 'Reflection'
 
-const SETUPS = ['Breakout', 'Pullback', 'Trend Follow', 'Mean Reversion', 'Momentum', 'Earnings Play', 'Swing', 'Scalp']
-const MISTAKES = ['FOMO', 'Revenge', 'Oversize', 'Chased', 'Moved Stop', 'Early Exit (fear)', 'No Stop', 'Overtrading']
-const STRENGTHS = ['Patient Entry', 'Good Size', 'Let Winner Run', 'Cut Loss Fast', 'Followed Plan']
+const LABEL: CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--text1)', marginBottom: 6, letterSpacing: '0.02em' }
+const INPUT: CSSProperties = { width: '100%', marginBottom: 12, fontSize: 14, padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }
+const NUM_INPUT: CSSProperties = { width: 72, marginLeft: 6, fontSize: 14, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }
 
 export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, initialTab, focusTagging }: {
   trade: any
@@ -20,6 +31,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [attachments, setAttachments] = useState<any[]>([])
+  const [tagScore, setTagScore] = useState<any>(null)
 
   const tradeKey = trade.trade_key || `${trade.symbol}:${trade.account ?? trade.na}:${trade.exitDate ?? trade.close_date}`
 
@@ -28,10 +40,13 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
     const enc = tradeKey.replace(/:/g, '__')
     fetch(`/api/v2/journal/review/${enc}`).then(r => r.json()).then(d => {
       const r = d?.data?.review || d?.review || {}
+      setTagScore(d?.data?.tagging_score ?? d?.tagging_score ?? null)
       setForm({
         trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na,
         closed_date: trade.exitDate ?? trade.close_date,
         setup_types: r.setup_types || [], setup_family: r.setup_family || '',
+        industry: r.payload?.industry || r.catalyst_type || '',
+        trade_plan: r.payload?.trade_plan || '',
         market_regime: r.market_regime || '', planned_r: r.planned_r, realized_r: r.realized_r,
         emotion_before: r.emotion_before || '', emotion_during: r.emotion_during || '', emotion_after: r.emotion_after || '',
         followed_plan: r.followed_plan, lesson_learned: r.lesson_learned || '', review_notes: r.review_notes || '',
@@ -39,7 +54,10 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
         trade_rating: r.payload?.trade_rating || null,
         mistake_tags: r.mistake_tags || [], strength_tags: r.strength_tags || [],
       })
-    }).catch(() => setForm({ trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na, closed_date: trade.exitDate, mistake_tags: [], strength_tags: [], setup_types: [] }))
+    }).catch(() => {
+      setTagScore(null)
+      setForm({ trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na, closed_date: trade.exitDate, mistake_tags: [], strength_tags: [], setup_types: [] })
+    })
     fetch(`/api/v2/journal/attachments?trade_key=${encodeURIComponent(tradeKey)}`).then(r => r.json())
       .then(d => setAttachments(d?.attachments || []))
   }, [trade, tradeKey])
@@ -66,29 +84,29 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
     setSaving(true)
     const payload = {
       ...form,
+      catalyst_type: form.industry || undefined,
+      followed_plan: planImpliesFollowed(form.trade_plan) ?? form.followed_plan,
       payload: {
         what_went_well: form.what_went_well,
         what_to_improve: form.what_to_improve,
         trade_rating: form.trade_rating,
-        tagging_complete: Boolean(
-          (form.setup_family || '').trim() &&
-          ((form.setup_types || []).length > 0) &&
-          ((form.mistake_tags || []).length + (form.strength_tags || []).length + (form.market_regime ? 1 : 0) >= 1)
-        ),
+        industry: form.industry || undefined,
+        trade_plan: form.trade_plan || undefined,
+        operator_reviewed: true,
+        operator_confirmed: true,
       },
     }
     const r = await fetch('/api/v2/journal/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(x => x.json())
     setSaving(false)
     if (r.ok) {
-      setMsg(r.tagging_complete ? '✓ saved — tagging complete' : '✓ saved')
+      const enc = tradeKey.replace(/:/g, '__')
+      fetch(`/api/v2/journal/review/${enc}`).then(x => x.json()).then(d => {
+        setTagScore(d?.data?.tagging_score ?? d?.tagging_score ?? null)
+      }).catch(() => {})
+      setMsg(r.tagging_complete ? '✓ saved — reports unlocked for this trade' : '✓ saved — finish missing tags to unlock reports')
       onSaved?.()
     } else setMsg('⛔ failed')
   }
-
-  const tog = (arr: string[], v: string) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
-  const Chip = ({ label, on, color, click }: any) => (
-    <button onClick={click} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 10, border: `1px solid ${on ? color : 'var(--border)'}`, background: on ? color + '22' : 'var(--bg2)', color: on ? color : 'var(--text3)', cursor: 'pointer' }}>{label}</button>
-  )
 
   if (!trade) return null
 
@@ -100,20 +118,29 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
           <div>
             <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace' }}>{trade.symbol}</span>
             <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 700, color: (trade.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(trade.pnl, 2)}</span>
-            <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--text3)' }}>{trade.na ?? trade.account} · {trade.exitDate ?? 'open'}</span>
+            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{trade.na ?? trade.account} · {trade.exitDate ?? 'open'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {onReplay && <button onClick={onReplay} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', cursor: 'pointer' }}>📈 Replay</button>}
+            {onReplay && (
+              <button
+                onClick={onReplay}
+                style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(34,197,94,.5)', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}
+              >
+                📈 Replay
+              </button>
+            )}
             <button onClick={onClose} style={{ fontSize: 16, background: 'none', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text3)', cursor: 'pointer', width: 28, height: 28 }}>×</button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4, padding: '8px 18px', borderBottom: '1px solid var(--border)' }}>
           {(['Overview', 'Review', 'Reflection'] as Tab[]).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ fontSize: 10, padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: tab === t ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400 }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={{ fontSize: 13, padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', background: tab === t ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: tab === t ? '#60a5fa' : 'var(--text1)', fontWeight: tab === t ? 700 : 500 }}>{t}</button>
           ))}
         </div>
         <div style={{ padding: 18 }}>
           {tab === 'Overview' && (
+            <>
+            <TradeReportReadiness score={tagScore} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, fontSize: 10 }}>
               {[['Entry', trade.ep ?? trade.buy_price], ['Exit', trade.xp ?? trade.sell_price], ['Shares', trade.shares], ['Strategy', trade.strat], ['Entry grade', trade.eg], ['Exit grade', trade.xg], ['Hold', trade.holdDays != null ? `${trade.holdDays}d` : trade.holdMin], ['Source', trade.source]].map(([l, v]) => (
                 <div key={String(l)} style={{ background: 'var(--bg1)', padding: 8, borderRadius: 6 }}>
@@ -122,25 +149,65 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
                 </div>
               ))}
             </div>
+            </>
           )}
           {tab === 'Review' && (
-            <div style={focusTagging ? { border: '2px solid rgba(96,165,250,.4)', borderRadius: 8, padding: 10, background: 'rgba(96,165,250,.04)' } : undefined}>
-              {focusTagging && <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 8 }}>Complete tagging — required for report accuracy</div>}
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>STRATEGY / SETUP FAMILY</div>
-              <input value={form.setup_family || ''} onChange={e => setForm((f: any) => ({ ...f, setup_family: e.target.value }))} placeholder="e.g. Momentum, Scalp, Core Position" style={{ width: '100%', marginBottom: 8, fontSize: 10, padding: 6, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>SETUP TYPES</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>{SETUPS.map(s => <Chip key={s} label={s} on={(form.setup_types || []).includes(s)} color="#60a5fa" click={() => setForm((f: any) => ({ ...f, setup_types: tog(f.setup_types || [], s) }))} />)}</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>PSYCHOLOGY (before)</div>
-              <input value={form.emotion_before || ''} onChange={e => setForm((f: any) => ({ ...f, emotion_before: e.target.value }))} placeholder="e.g. calm, confident, FOMO" style={{ width: '100%', marginBottom: 8, fontSize: 10, padding: 6, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
-              <input value={form.market_regime || ''} onChange={e => setForm((f: any) => ({ ...f, market_regime: e.target.value }))} placeholder="Market regime (trending, choppy, news catalyst…)" style={{ width: '100%', marginBottom: 8, fontSize: 10, padding: 6, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
-              <div style={{ fontSize: 9, color: '#ef4444', marginBottom: 4 }}>MISTAKES</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>{MISTAKES.map(m => <Chip key={m} label={m} on={(form.mistake_tags || []).includes(m)} color="#ef4444" click={() => setForm((f: any) => ({ ...f, mistake_tags: tog(f.mistake_tags || [], m) }))} />)}</div>
-              <div style={{ fontSize: 9, color: '#22c55e', marginBottom: 4 }}>STRENGTHS</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>{STRENGTHS.map(s => <Chip key={s} label={s} on={(form.strength_tags || []).includes(s)} color="#22c55e" click={() => setForm((f: any) => ({ ...f, strength_tags: tog(f.strength_tags || [], s) }))} />)}</div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <label style={{ fontSize: 10 }}>Planned R <input type="number" step="0.1" value={form.planned_r ?? ''} onChange={e => setForm((f: any) => ({ ...f, planned_r: e.target.value ? Number(e.target.value) : null }))} style={{ width: 60, marginLeft: 4 }} /></label>
-                <label style={{ fontSize: 10 }}>Realized R <input type="number" step="0.1" value={form.realized_r ?? ''} onChange={e => setForm((f: any) => ({ ...f, realized_r: e.target.value ? Number(e.target.value) : null }))} style={{ width: 60, marginLeft: 4 }} /></label>
-                <label style={{ fontSize: 10 }}>Rating (1-5) <input type="number" min={1} max={5} value={form.trade_rating ?? ''} onChange={e => setForm((f: any) => ({ ...f, trade_rating: e.target.value ? Number(e.target.value) : null }))} style={{ width: 40, marginLeft: 4 }} /></label>
+            <div style={focusTagging ? { border: '2px solid rgba(96,165,250,.5)', borderRadius: 10, padding: 14, background: 'rgba(96,165,250,.06)' } : undefined}>
+              <TradeReportReadiness score={tagScore} />
+              {focusTagging && <div style={{ fontSize: 15, fontWeight: 800, color: '#93c5fd', marginBottom: 14, lineHeight: 1.4 }}>Complete tagging — required for report accuracy</div>}
+              <div style={LABEL}>Strategy / setup family</div>
+              <SetupFamilyPicker
+                value={form.setup_family || ''}
+                onChange={v => setForm((f: any) => ({ ...f, setup_family: v }))}
+              />
+              <div style={LABEL}>Industry / sector</div>
+              <IndustryPicker
+                value={form.industry || ''}
+                onChange={v => setForm((f: any) => ({ ...f, industry: v }))}
+              />
+              <TagChipGrid
+                label="Setup types (tap all that apply)"
+                groups={SETUP_TYPE_GROUPS}
+                config={SETUP_TYPE_CONFIG}
+                selected={form.setup_types || []}
+                onChange={tags => setForm((f: any) => ({ ...f, setup_types: tags }))}
+                color="#60a5fa"
+              />
+              <div style={LABEL}>Trade plan</div>
+              <TradePlanPicker
+                value={form.trade_plan || ''}
+                onChange={v => setForm((f: any) => ({ ...f, trade_plan: v, followed_plan: planImpliesFollowed(v) ?? f.followed_plan }))}
+              />
+              <div style={LABEL}>Psychology (before entry)</div>
+              <PsychologyBeforePicker
+                value={form.emotion_before || ''}
+                onChange={v => setForm((f: any) => ({ ...f, emotion_before: v }))}
+              />
+              <div style={LABEL}>Market regime</div>
+              <MarketRegimePicker
+                value={form.market_regime || ''}
+                onChange={v => setForm((f: any) => ({ ...f, market_regime: v }))}
+              />
+              <TagChipGrid
+                label="Mistakes"
+                flat={[...MISTAKE_DEFAULTS]}
+                config={MISTAKE_CONFIG}
+                selected={form.mistake_tags || []}
+                onChange={tags => setForm((f: any) => ({ ...f, mistake_tags: tags }))}
+                color="#ef4444"
+              />
+              <TagChipGrid
+                label="Strengths"
+                flat={[...STRENGTH_DEFAULTS]}
+                config={STRENGTH_CONFIG}
+                selected={form.strength_tags || []}
+                onChange={tags => setForm((f: any) => ({ ...f, strength_tags: tags }))}
+                color="#22c55e"
+              />
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>Planned R <input type="number" step="0.1" value={form.planned_r ?? ''} onChange={e => setForm((f: any) => ({ ...f, planned_r: e.target.value ? Number(e.target.value) : null }))} style={NUM_INPUT} /></label>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>Realized R <input type="number" step="0.1" value={form.realized_r ?? ''} onChange={e => setForm((f: any) => ({ ...f, realized_r: e.target.value ? Number(e.target.value) : null }))} style={NUM_INPUT} /></label>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>Rating (1–5) <input type="number" min={1} max={5} value={form.trade_rating ?? ''} onChange={e => setForm((f: any) => ({ ...f, trade_rating: e.target.value ? Number(e.target.value) : null }))} style={{ ...NUM_INPUT, width: 56 }} /></label>
               </div>
             </div>
           )}
@@ -151,14 +218,14 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
               <textarea value={form.lesson_learned || ''} onChange={e => setForm((f: any) => ({ ...f, lesson_learned: e.target.value }))} placeholder="Lesson learned…" style={{ width: '100%', minHeight: 50, fontSize: 11, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
             </div>
           )}
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>Attachments (screenshot / file)</div>
-            <input type="file" accept="image/*,.pdf,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f) }} style={{ fontSize: 9 }} />
-            {attachments.length > 0 && <div style={{ fontSize: 9, marginTop: 4, color: 'var(--text2)' }}>{attachments.map((a: any) => a.filename).join(', ')}</div>}
+          <div style={{ marginTop: 16 }}>
+            <div style={LABEL}>Attachments (screenshot / file)</div>
+            <input type="file" accept="image/*,.pdf,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f) }} style={{ fontSize: 13, color: 'var(--text1)' }} />
+            {attachments.length > 0 && <div style={{ fontSize: 12, marginTop: 6, color: 'var(--text1)' }}>{attachments.map((a: any) => a.filename).join(', ')}</div>}
           </div>
-          <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button disabled={saving} onClick={save} style={{ fontSize: 11, fontWeight: 700, padding: '6px 16px', borderRadius: 6, border: 'none', background: '#60a5fa', color: '#fff', cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save review'}</button>
-            {msg && <span style={{ fontSize: 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444' }}>{msg}</span>}
+          <div style={{ marginTop: 18, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button disabled={saving} onClick={save} style={{ fontSize: 15, fontWeight: 800, padding: '10px 22px', borderRadius: 8, border: 'none', background: '#60a5fa', color: '#fff', cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save review'}</button>
+            {msg && <span style={{ fontSize: 13, fontWeight: 600, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444' }}>{msg}</span>}
           </div>
         </div>
       </div>

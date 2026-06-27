@@ -132,7 +132,7 @@ technical_indicators_required:
     - ema_9
   note: "Technicals largely irrelevant for entry — premium and assignment math drive decision."
 performance_context:
-  last_updated: '2026-06-26T06:30:02+00:00'
+  last_updated: '2026-06-27T06:30:01+00:00'
   closed_paper_trades: 0
   win_rate:
   avg_r_realized:

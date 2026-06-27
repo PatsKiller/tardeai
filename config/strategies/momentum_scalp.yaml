@@ -35,7 +35,7 @@ screen_filters:
 # Intraday scalp execution (operator 2026-06-26): the strategy was generating 104 proposals → 0
 # conversions because the 9h TTL + slow approval cadence outran the scalp window. Fast-path fixes it.
 intraday_execution:
-  trading_window_et: { start: "06:00", end: "12:00" }   # 6am-noon ET, trading days only
+  trading_window_et: {start: "06:00", end: "12:00"}     # 6am-noon ET, trading days only
   proposal_ttl_minutes: 30        # short TTL — a scalp setup is valid for minutes, not 9h
   fast_path_auto_approve: true    # gated auto-approve within window (paper account) so it converts
   fast_path_account: alpaca_paper # build the sample on paper before promoting off TESTING
@@ -252,7 +252,7 @@ technical_indicators_required:
     - fib_618_distance
     - bollinger_squeeze
 performance_context:
-  last_updated: '2026-06-26T06:30:03+00:00'
+  last_updated: '2026-06-27T06:30:02+00:00'
   closed_paper_trades: 3
   win_rate: 0.3333
   avg_r_realized: 1.0167

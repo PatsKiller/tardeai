@@ -1269,7 +1269,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
                 _body = _v3_file.read_bytes()
-                if _v3_sub.endswith("index.html") or _v3_sub == "/index.html":
+                # SPA routes (/v3/journal, etc.) fall back to index.html — still inject boot + cache bust.
+                if _v3_file.name == "index.html":
                     _build_ver = "1.5"
                     _meta_path = _v3_dist / "build-meta.json"
                     if _meta_path.exists():

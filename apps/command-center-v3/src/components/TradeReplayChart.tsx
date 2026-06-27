@@ -1,5 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import { createChart, IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts'
+import {
+  checkPriceIntegrity,
+  computeBarBounds,
+  configureL2Scale,
+  configurePriceScale,
+  configureVolumeScale,
+  makeCandleAutoscaleProvider,
+  syncReplayCharts,
+} from '../lib/replayChartScale'
 
 // Per-trade replay chart (TradingView Lightweight Charts, MIT). Candles + volume + VWAP + MACD + RSI panes,
 // entry ↑ / exit ↓ markers + price lines, and a ▶ replay scrubber. Data: /api/v2/trade-chart (Alpaca ->
@@ -13,6 +22,8 @@ const DARK = {
   rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
 }
 
+const DEV = typeof import.meta !== 'undefined' && !!(import.meta as any).env?.DEV
+
 export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onClose: () => void }) {
   const [data, setData] = useState<any>(null)
   const [err, setErr] = useState('')
@@ -21,11 +32,17 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)    // replay speed multiplier
   const [fvImg, setFvImg] = useState('')   // Finviz fallback image (base64 data URI)
+  const [scaleWarn, setScaleWarn] = useState('')  // dev integrity warning
   const priceRef = useRef<HTMLDivElement>(null)
   const macdRef = useRef<HTMLDivElement>(null)
   const rsiRef = useRef<HTMLDivElement>(null)
   const charts = useRef<IChartApi[]>([])
+  const priceChart = useRef<IChartApi | null>(null)
   const series = useRef<Record<string, ISeriesApi<any>>>({})
+  const visibleBarsRef = useRef<any[]>([])
+  const levelPricesRef = useRef<number[]>([])
+  const replayCursorRef = useRef(0)
+  replayCursorRef.current = n
 
   useEffect(() => {
     const qs = new URLSearchParams({ symbol: trade.symbol, entry_date: String(trade.entry_date).slice(0, 10),
@@ -48,34 +65,67 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   useEffect(() => {
     if (!data?.bars?.length || !priceRef.current) return
     charts.current.forEach(c => c.remove()); charts.current = []; series.current = {}
+    priceChart.current = null
+    visibleBarsRef.current = []
+    levelPricesRef.current = []
+
     const mk = (el: HTMLDivElement, h: number) => { const c = createChart(el, { ...DARK, width: el.clientWidth, height: h, autoSize: true } as any); charts.current.push(c); return c }
 
     const pc = mk(priceRef.current, 300)
-    const candle = pc.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444' })
+    priceChart.current = pc
+    configurePriceScale(pc)
+
+    const candle = pc.addCandlestickSeries({
+      upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      autoscaleInfoProvider: makeCandleAutoscaleProvider(
+        () => visibleBarsRef.current,
+        () => levelPricesRef.current,
+      ),
+    })
     series.current.candle = candle
-    if (show.vol) { const v = pc.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' }); ;(v as any).priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } }); series.current.vol = v }
+
+    // Volume MUST use its own overlay scale — sharing '' with candles made the Y-axis show share counts (e.g. 500k)
+    // while $3–4 candles sat at the bottom (GOVX replay bug).
+    if (show.vol) {
+      configureVolumeScale(pc)
+      const v = pc.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'volume' })
+      series.current.vol = v
+    }
     if (show.vwap) series.current.vwap = pc.addLineSeries({ color: '#eab308', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
     if (show.spy && data.spy_overlay?.length) series.current.spy = pc.addLineSeries({ color: 'rgba(148,163,184,.8)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: true, title: 'SPY (rebased)' })
-    if (show.l2 && data.l2_strip?.length) { const l2 = pc.addHistogramSeries({ priceScaleId: 'l2' }); pc.priceScale('l2').applyOptions({ scaleMargins: { top: 0.9, bottom: 0 } }); series.current.l2 = l2 }
+    if (show.l2 && data.l2_strip?.length) {
+      configureL2Scale(pc)
+      series.current.l2 = pc.addHistogramSeries({ priceScaleId: 'l2' })
+    }
     if (show.macd && macdRef.current) { const mc = mk(macdRef.current, 110); series.current.macd = mc.addLineSeries({ color: '#60a5fa', lineWidth: 1 }); series.current.signal = mc.addLineSeries({ color: '#f97316', lineWidth: 1 }); series.current.hist = mc.addHistogramSeries({}) }
     if (show.rsi && rsiRef.current) { const rc = mk(rsiRef.current, 90); series.current.rsi = rc.addLineSeries({ color: '#a855f7', lineWidth: 1 }); ;[30, 70].forEach(lv => series.current.rsi.createPriceLine({ price: lv, color: 'rgba(168,85,247,.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false })) }
 
-    // entry/exit price lines on the candle series
-    for (const m of data.markers || []) candle.createPriceLine({ price: m.price, color: m.type === 'entry' ? '#22c55e' : '#ef4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: m.type === 'entry' ? 'BUY' : 'SELL' })
-    // planned STOP/TARGET lines (replay audit #1): did price stop you out or did you hit plan?
+    // Collect annotation prices for deterministic candle autoscale (BUY/SELL + plan + exec overlays).
+    const levels: number[] = []
+    for (const m of data.markers || []) levels.push(Number(m.price))
     const t0: any = trade as any
     const plannedStop = Number(t0.stop ?? t0.stop_loss ?? t0.planned_stop) || null
     const plannedTgt = Number(t0.target ?? t0.target_1 ?? t0.target_price) || null
+    if (plannedStop) levels.push(plannedStop)
+    if (plannedTgt) levels.push(plannedTgt)
+    const ex: any = (trade as any).exec
+    if (ex) {
+      const ep = Number(ex.entry_price) || 0
+      if (ex.mfe_after_entry != null && ep) levels.push(ep + Number(ex.mfe_after_entry))
+      if (ex.mae_after_entry != null && ep) levels.push(ep - Number(ex.mae_after_entry))
+      if (ex.post_exit_high != null) levels.push(Number(ex.post_exit_high))
+    }
+    levelPricesRef.current = levels.filter(p => Number.isFinite(p) && p > 0)
+
+    // entry/exit price lines on the candle series
+    for (const m of data.markers || []) candle.createPriceLine({ price: m.price, color: m.type === 'entry' ? '#22c55e' : '#ef4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: m.type === 'entry' ? 'BUY' : 'SELL' })
     if (plannedStop) candle.createPriceLine({ price: plannedStop, color: '#ef4444', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'STOP (plan)' })
     if (plannedTgt) candle.createPriceLine({ price: plannedTgt, color: '#22c55e', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'TARGET (plan)' })
-    // execution overlay: MFE (max opportunity), MAE, post-exit high — with % badges (audit #3)
-    const ex: any = (trade as any).exec
     if (ex) {
       const ep = Number(ex.entry_price) || 0
       if (ex.mfe_after_entry != null && ep) candle.createPriceLine({ price: ep + Number(ex.mfe_after_entry), color: '#3b82f6', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `MFE +${(100 * Number(ex.mfe_after_entry) / ep).toFixed(1)}%` })
       if (ex.mae_after_entry != null && ep) candle.createPriceLine({ price: ep - Number(ex.mae_after_entry), color: '#9333ea', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `MAE -${(100 * Number(ex.mae_after_entry) / ep).toFixed(1)}%` })
       if (ex.post_exit_high != null) {
-        // runner annotation (audit #2): name the post-exit move so the lesson is on the chart
         const rt = ex.runner_type as string | undefined
         const gb = ex.post_exit_gave_back_ratio != null ? ` · gave back ${Math.round(100 * Number(ex.post_exit_gave_back_ratio))}%` : ''
         const rtLabel = rt === 'parabolic_pump' ? `⚡ pump — exit was right${gb}`
@@ -86,20 +136,25 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         candle.createPriceLine({ price: Number(ex.post_exit_high), color: rt === 'sustained_trend' ? '#22c55e' : '#f59e0b', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: rtLabel })
       }
     }
-    paint(data.bars.length)
-    const onResize = () => charts.current.forEach(c => c.timeScale().fitContent())
+
+    const cur = replayCursorRef.current
+    paint(cur <= 0 ? data.bars.length : cur)
+    const onResize = () => syncReplayCharts(charts.current, priceChart.current)
     window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('resize', onResize); charts.current.forEach(c => c.remove()); charts.current = [] }
+    return () => { window.removeEventListener('resize', onResize); charts.current.forEach(c => c.remove()); charts.current = []; priceChart.current = null }
   }, [data, show.vol, show.vwap, show.macd, show.rsi, show.spy, show.l2])
 
   // replay paint: reveal the first `count` bars (0 => all)
-  const paint = (count: number) => {
+  const paint = useCallback((count: number) => {
     if (!data?.bars) return
     const k = count <= 0 ? data.bars.length : count
     const cut = (arr: any[]) => (arr || []).filter((_: any, i: number) => i < k)
     const shown = new Set(cut(data.bars).map((b: any) => String(b.time)))
     const shownTime = (t: any) => shown.has(String(t))
-    series.current.candle?.setData(cut(data.bars))
+    const visBars = cut(data.bars)
+    visibleBarsRef.current = visBars
+
+    series.current.candle?.setData(visBars)
     series.current.vol?.setData(cut(data.volume))
     series.current.vwap?.setData(cut(data.vwap))
     series.current.macd?.setData(cut(data.macd).map((x: any) => ({ time: x.time, value: x.macd })))
@@ -108,7 +163,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.rsi?.setData(cut(data.rsi))
     series.current.spy?.setData((data.spy_overlay || []).filter((x: any) => shownTime(x.time)))
     series.current.l2?.setData((data.l2_strip || []).filter((x: any) => shownTime(x.time)).map((x: any) => ({ time: x.time, value: x.value, color: x.value >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' })))
-    // markers only show once their bar is revealed; include the 9:30 session-open marker
+
     const mks = (data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
       color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
@@ -120,8 +175,37 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       if (shown.has(String(ne.time))) mks.push({ time: ne.time, position: 'aboveBar', color: '#22d3ee', shape: 'circle', text: '📰' })
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
     series.current.candle?.setMarkers(mks)
+
+    // Re-sync price + time scales after every replay step (was only on window resize).
+    syncReplayCharts(charts.current, priceChart.current)
+
+    const bounds = computeBarBounds(visBars, levelPricesRef.current)
+    const integrity = checkPriceIntegrity(bounds, trade.symbol, data.price_bounds)
+    const markerWarn = data.integrity?.marker_in_range === false
+      ? (data.integrity.marker_warnings || []).join('; ')
+      : ''
+    const warn = [integrity, markerWarn].filter(Boolean).join(' · ')
+    setScaleWarn(warn)
+    if (DEV && bounds) {
+      console.debug(`[replay-scale] ${trade.symbol} bars=${visBars.length}`, {
+        bounds,
+        api: data.price_bounds,
+        integrity: data.integrity,
+      })
+    }
+  }, [data, trade.symbol])
+
+  useEffect(() => { paint(n) }, [n, paint])
+
+  const resyncScale = () => {
+    syncReplayCharts(charts.current, priceChart.current)
+    if (data?.bars) {
+      const k = n <= 0 ? data.bars.length : n
+      const visBars = data.bars.slice(0, k)
+      const warn = checkPriceIntegrity(computeBarBounds(visBars, levelPricesRef.current), trade.symbol, data.price_bounds)
+      setScaleWarn(warn || '')
+    }
   }
-  useEffect(() => { paint(n) }, [n])
 
   // play animation — interval scales with speed (0.5x..8x)
   useEffect(() => {
@@ -140,6 +224,11 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{trade.symbol} <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{String(trade.entry_date).slice(0, 10)} → {String(trade.exit_date || '').slice(0, 10)}</span></div>
           {data && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{data.timeframe} · {data.bar_count} bars · src:{data.source}</span>}
+          {data?.price_bounds && DEV && (
+            <span style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }} title="Loaded OHLC bounds">
+              ${data.price_bounds.min_low}–${data.price_bounds.max_high}
+            </span>
+          )}
           {pnl != null && <span style={{ fontSize: 12, fontWeight: 700, color: pnl >= 0 ? '#22c55e' : '#ef4444' }}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}/sh</span>}
           {(trade as any).exec && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: ((trade as any).exec.execution_grade === 'poor' ? '#ef4444' : (trade as any).exec.execution_grade === 'weak' ? '#f59e0b' : '#22c55e') + '22', color: (trade as any).exec.execution_grade === 'poor' ? '#ef4444' : (trade as any).exec.execution_grade === 'weak' ? '#f59e0b' : '#22c55e' }}
             title={[
@@ -154,6 +243,11 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         </div>
 
         {err && <div style={{ fontSize: 12, color: '#ef4444', padding: 20 }}>Chart unavailable: {err}</div>}
+        {scaleWarn && DEV && (
+          <div style={{ fontSize: 10, color: '#f59e0b', padding: '4px 8px', marginBottom: 6, borderRadius: 6, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.25)' }}>
+            Scale integrity: {scaleWarn}
+          </div>
+        )}
         {data?.fallback === 'finviz' && fvImg && <div style={{ padding: 8 }}><div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>No Alpaca/Schwab bars — Finviz Elite chart image:</div><img src={fvImg} alt={trade.symbol} style={{ width: '100%', borderRadius: 6 }} /></div>}
         {!err && data?.bars?.length > 0 && <>
           <div ref={priceRef} style={{ width: '100%' }} />
@@ -174,6 +268,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
             <button onClick={() => setPlaying(p => !p)} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: playing ? '#ef4444' : '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{playing ? '❚❚ pause' : '▶ replay'}</button>
+            <button onClick={resyncScale} title="Re-fit price and time axes to current visible bars" style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>↻ Re-sync scale</button>
             <div style={{ display: 'flex', gap: 2 }} title="Replay speed">
               {[0.5, 1, 2, 4, 8].map(s => <button key={s} onClick={() => setSpeed(s)} style={{ fontSize: 9, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', background: speed === s ? '#1d4ed8' : 'var(--bg2)', color: speed === s ? '#fff' : 'var(--text3)', cursor: 'pointer' }}>{s}×</button>)}
             </div>

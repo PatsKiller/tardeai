@@ -8297,10 +8297,25 @@ def journal_review_write(body: dict):
         try:
             import journal_trade_in_view as _tiv
             rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
-            tag_ok = _tiv.score_trade_tags(rev).get("complete")
+            tag_score = _tiv.score_trade_tags(rev)
+            tag_ok = tag_score.get("complete")
+            if tag_ok and rev:
+                _p = rev.get("payload") or {}
+                if isinstance(_p, str):
+                    try:
+                        _p = json.loads(_p)
+                    except Exception:
+                        _p = {}
+                if not isinstance(_p, dict):
+                    _p = {}
+                _p["tagging_complete"] = True
+                _db_write("UPDATE journal_trade_reviews SET payload = %s::jsonb WHERE trade_key = %s",
+                          (json.dumps(_p), trade_key))
         except Exception:
             tag_ok = None
-        return 200, {"ok": True, "action": "updated", "id": result["id"], "tagging_complete": tag_ok, "refresh_reports": True}
+            tag_score = {}
+        return 200, {"ok": True, "action": "updated", "id": result["id"], "tagging_complete": tag_ok,
+                      "tagging_score": tag_score, "refresh_reports": True}
     else:
         # INSERT
         fields["trade_key"] = trade_key
@@ -8337,10 +8352,25 @@ def journal_review_write(body: dict):
         try:
             import journal_trade_in_view as _tiv
             rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
-            tag_ok = _tiv.score_trade_tags(rev).get("complete")
+            tag_score = _tiv.score_trade_tags(rev)
+            tag_ok = tag_score.get("complete")
+            if tag_ok and rev:
+                _p = rev.get("payload") or {}
+                if isinstance(_p, str):
+                    try:
+                        _p = json.loads(_p)
+                    except Exception:
+                        _p = {}
+                if not isinstance(_p, dict):
+                    _p = {}
+                _p["tagging_complete"] = True
+                _db_write("UPDATE journal_trade_reviews SET payload = %s::jsonb WHERE trade_key = %s",
+                          (json.dumps(_p), trade_key))
         except Exception:
             tag_ok = None
-        return 200, {"ok": True, "action": "created", "id": result["id"], "tagging_complete": tag_ok, "refresh_reports": True}
+            tag_score = {}
+        return 200, {"ok": True, "action": "created", "id": result["id"], "tagging_complete": tag_ok,
+                      "tagging_score": tag_score, "refresh_reports": True}
 
 
 # ── Journal Annotation Helpers ─────────────────────────────────────────────
@@ -8434,7 +8464,15 @@ def _journal_review_get(trade_key_encoded):
         "SELECT * FROM journal_trade_reviews WHERE trade_key = %s ORDER BY created_at DESC LIMIT 1",
         (trade_key,), fetch="one"
     )
-    return {"exists": bool(row), "review": {k: _json_clean(v) for k, v in row.items()} if row else {}}
+    review = {k: _json_clean(v) for k, v in row.items()} if row else {}
+    tagging_score = None
+    if row:
+        try:
+            import journal_trade_in_view as _tiv
+            tagging_score = _tiv.score_trade_tags(row)
+        except Exception:
+            tagging_score = None
+    return {"exists": bool(row), "review": review, "tagging_score": tagging_score}
 
 
 def _journal_timeframe_hint(t):
@@ -20724,6 +20762,7 @@ def _journal_tagging_queue(query=None):
         g("account"), int(g("days") or 365), g("missing"),
         float(min_pnl) if min_pnl not in (None, "") else None,
         int(g("page") or 1), int(g("limit") or 50),
+        symbol=g("symbol"),
     )
 
 
@@ -20745,10 +20784,49 @@ def _journal_tagging_skip(body):
 def _journal_tagging_bulk_tag(body):
     import journal_trade_in_view as tiv
     b = body or {}
-    keys = b.get("trade_keys") or []
+    keys = list(b.get("trade_keys") or [])
+    if not keys and b.get("symbol"):
+        q = tiv.tagging_queue(
+            b.get("account"), int(b.get("days") or 365), None, None, 1, 10000,
+            symbol=b.get("symbol"),
+        )
+        keys = q.get("filter_symbol_trade_keys") or []
     if not keys:
-        return {"ok": False, "error": "trade_keys required"}
+        return {"ok": False, "error": "trade_keys or symbol required"}
     return tiv.tagging_queue_bulk_tag(keys, b.get("tags") or {})
+
+
+def _journal_tagging_auto_tag(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    return tiv.tagging_queue_auto_tag(
+        int(b.get("days") or 365),
+        b.get("account"),
+        b.get("trade_keys"),
+        b.get("defaults"),
+    )
+
+
+def _journal_tagging_backfill_industry(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    return tiv.tagging_queue_backfill_industry(
+        int(b.get("days") or 365),
+        b.get("account"),
+        b.get("trade_keys"),
+        bool(b.get("overwrite")),
+        b.get("industry"),
+    )
+
+
+def _journal_tagging_confirm_auto_tagged(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    return tiv.tagging_queue_confirm_auto_tagged(
+        int(b.get("days") or 365),
+        b.get("account"),
+        b.get("trade_keys"),
+    )
 
 
 def _journal_manual_entry(body):
@@ -24891,6 +24969,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/tagging-queue/bulk-tag":
             try:
                 return 200, _journal_tagging_bulk_tag(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/auto-tag":
+            try:
+                return 200, _journal_tagging_auto_tag(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/backfill-industry":
+            try:
+                return 200, _journal_tagging_backfill_industry(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/confirm-auto-tagged":
+            try:
+                return 200, _journal_tagging_confirm_auto_tagged(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/attachments":

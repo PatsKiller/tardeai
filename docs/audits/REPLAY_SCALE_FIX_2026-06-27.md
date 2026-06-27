@@ -1,0 +1,58 @@
+# Replay price-scale fix — 2026-06-27
+
+## Problem
+
+Per-trade replay charts (Journal / TradeInView / Tagging Queue) showed candlesticks clustered at the
+bottom of the pane while the right-hand price axis displayed values that did not match OHLC. BUY/SELL
+horizontal levels and entry/exit markers appeared misaligned. Reproduced on GOVX 1-min 2026-05-18 and
+across other symbols.
+
+## Root cause
+
+`TradeReplayChart.tsx` attached the volume histogram to the **same** right price scale as candlesticks
+(`priceScaleId: ''`). Lightweight Charts autoscales from all series on that scale. Volume is in share
+counts (e.g. 200,000–500,000) while equity prices are dollars (e.g. $3–4). The axis expanded to fit
+volume, not price.
+
+Secondary: scale was only refreshed on window resize, not after each replay `paint(n)` step.
+
+## Fix (Command Center v3.4)
+
+| Layer | Change |
+|-------|--------|
+| `src/lib/replayChartScale.ts` | Centralized `configurePriceScale`, `configureVolumeScale`, `makeCandleAutoscaleProvider`, `syncReplayCharts`, `checkPriceIntegrity` |
+| `TradeReplayChart.tsx` | Volume → `priceScaleId: 'volume'` (hidden axis); candle autoscale from OHLC + markers; sync after every paint; **↻ Re-sync scale** button |
+| `scripts/ohlc_charts.py` | `price_bounds` + `integrity` in API response |
+
+## Integrity audit job
+
+```bash
+python scripts/replay_chart_audit.py          # all trades → DB + docs
+python scripts/replay_chart_audit.py --dry-run
+```
+
+For each `trade_closed` row (deduped by `trade_key`):
+
+1. Calls `ohlc_charts.trade_chart()`
+2. Writes compact snapshot to `journal_trade_reviews.payload.replay_chart`
+3. Emits `docs/audits/REPLAY_INTEGRITY_YYYY-MM-DD.{md,json}` + `*_LATEST.*`
+
+### 2026-06-27 run
+
+| Metric | Value |
+|--------|------:|
+| Trades audited | 90 |
+| OK | 62 |
+| WARN | 28 |
+| FAIL | 0 |
+
+**WARN** = Finviz image fallback (no Alpaca/Schwab bars) or journal fill price outside ±5% of
+split-adjusted OHLC range (expected for some scalps / options).
+
+**GOVX 2026-05-18:** 447 bars, Alpaca, $1.78–$4.39, markers in range — **ok**.
+
+## Permanent data-integrity check (recommended)
+
+1. Nightly cron: `replay_chart_audit.py` → Telegram summary if `fail > 0`
+2. Replay modal: amber banner when `integrity.marker_in_range === false`
+3. Reporting Audit panel: link to `REPLAY_INTEGRITY_LATEST.md`
