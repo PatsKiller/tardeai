@@ -20,6 +20,7 @@ export default function ExecutionCoachPanel({ onReplay, onDrill }: { onReplay?: 
   const { data } = useApi<any>('/api/v2/journal/daily-execution-coaching/latest', 120_000)
   const d = data?.data ?? data
   const run = d?.run, items: any[] = d?.items ?? [], dg = d?.digest?.digest_json
+  const aiCrit = d?.ai_critique_insights
   if (!run) return null
   const coaching = items.filter(i => i.item_type !== 'hypothesis_candidate').slice(0, 6)
   const hyps = items.filter(i => i.item_type === 'hypothesis_candidate')
@@ -50,6 +51,15 @@ export default function ExecutionCoachPanel({ onReplay, onDrill }: { onReplay?: 
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)' }}>{dg.daily_headline}</div>
           {dg.top_behavior_to_fix && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 3 }}>Top behavior to fix: {dg.top_behavior_to_fix}</div>}
           {dg.do_not_overfit_warning && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3, fontStyle: 'italic' }}>⚠ {dg.do_not_overfit_warning}</div>}
+        </div>
+      )}
+
+      {(aiCrit?.coaching_bullets?.length > 0) && (
+        <div style={{ background: 'rgba(167,139,250,.06)', border: '1px solid rgba(167,139,250,.3)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>From AI trade critiques ({aiCrit.critique_count ?? 0})</div>
+          {(aiCrit.coaching_bullets ?? []).slice(0, 3).map((b: string, i: number) => (
+            <div key={i} style={{ fontSize: 9, color: 'var(--text2)', padding: '2px 0' }}>• {b}</div>
+          ))}
         </div>
       )}
 

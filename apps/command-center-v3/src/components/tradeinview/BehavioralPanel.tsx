@@ -21,6 +21,22 @@ export default function BehavioralPanel({ account, days }: { account?: string; d
         <div style={{ fontSize: 10, padding: '4px 0' }}>After winning day: {d.after_winning_day?.trades ?? 0}t · {d.after_winning_day?.win_rate ?? 0}% · {fmt$(d.after_winning_day?.net_pnl, 0)}</div>
         <div style={{ fontSize: 10, padding: '4px 0' }}>After losing day: {d.after_losing_day?.trades ?? 0}t · {d.after_losing_day?.win_rate ?? 0}% · {fmt$(d.after_losing_day?.net_pnl, 0)}</div>
       </div>
+      {(d.ai_critique?.coaching_bullets?.length > 0 || d.ai_critique?.top_improvements?.length > 0) && (
+        <div style={{ gridColumn: '1 / -1', background: 'rgba(167,139,250,.06)', border: '1px solid rgba(167,139,250,.35)', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#c4b5fd', marginBottom: 8 }}>
+            AI critique patterns ({d.ai_critique?.critique_count ?? 0} trades)
+          </div>
+          {(d.ai_critique?.coaching_bullets ?? []).map((b: string, i: number) => (
+            <div key={i} style={{ fontSize: 10, color: 'var(--text2)', padding: '2px 0' }}>• {b}</div>
+          ))}
+          {(d.ai_critique?.top_improvements ?? []).slice(0, 5).map((m: any) => (
+            <div key={m.text} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: '#fca5a5' }}>{m.text.slice(0, 80)}</span>
+              <span style={{ color: 'var(--text3)' }}>{m.count}×</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ gridColumn: '1 / -1', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Mistake frequency & $ impact</div>
         {(d.mistake_cost || []).slice(0, 12).map((m: any) => (

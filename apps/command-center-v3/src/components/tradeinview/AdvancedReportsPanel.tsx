@@ -2,8 +2,19 @@ import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import MonteCarloPanel from './MonteCarloPanel'
 import ReportingAuditPanel from './ReportingAuditPanel'
+import AiCritiqueInsightsPanel from './AiCritiqueInsightsPanel'
 
-export default function AdvancedReportsPanel({ account, days }: { account?: string; days: number }) {
+export default function AdvancedReportsPanel({
+  account,
+  days,
+  initialCritiqueQuery = '',
+  onOpenTrade,
+}: {
+  account?: string
+  days: number
+  initialCritiqueQuery?: string
+  onOpenTrade?: (tradeKey: string) => void
+}) {
   const [rowDim, setRowDim] = useState('setup_family')
   const [colDim, setColDim] = useState('market_regime')
   const pvQ = `/api/v2/journal/pivot?days=${days}&row=${rowDim}&col=${colDim}${account ? `&account=${account}` : ''}`
@@ -22,6 +33,7 @@ export default function AdvancedReportsPanel({ account, days }: { account?: stri
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      <AiCritiqueInsightsPanel days={days} initialQuery={initialCritiqueQuery} onOpenTrade={onOpenTrade} />
       <ReportingAuditPanel days={days} />
       <MonteCarloPanel account={account} days={days} />
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>

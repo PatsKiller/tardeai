@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 
+type CritiqueMeta = {
+  status?: string
+  generated_at?: string
+  stale?: boolean
+  tag_fingerprint?: string
+  history_count?: number
+  llm_enhanced?: boolean
+  deterministic?: boolean
+  error_message?: string
+}
+
 type Critique = {
   generated_at?: string
   trade_classification?: any
@@ -13,6 +24,8 @@ type Critique = {
     takeaways?: string[]
     suggested_tags?: string[]
     what_if_scenarios?: { scenario: string; outcome: string }[]
+    llm_enhanced?: boolean
+    deterministic?: boolean
   }
 }
 
@@ -30,11 +43,27 @@ function Bullets({ items, color }: { items?: string[]; color?: string }) {
   )
 }
 
-export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
+function fmtTs(iso?: string) {
+  if (!iso) return ''
+  return iso.slice(0, 16).replace('T', ' ')
+}
+
+function goToJournalTab(tab: string, critiqueQ?: string) {
+  try {
+    sessionStorage.setItem('journal_tab', tab)
+    if (critiqueQ) sessionStorage.setItem('journal_critique_q', critiqueQ)
+  } catch { /* */ }
+  window.location.href = '/v3/journal'
+}
+
+export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string; symbol?: string }) {
   const [open, setOpen] = useState(true)
   const [critique, setCritique] = useState<Critique | null>(null)
+  const [meta, setMeta] = useState<CritiqueMeta | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [stale, setStale] = useState(false)
+  const [cached, setCached] = useState(false)
 
   const load = useCallback(async (force = false) => {
     if (!tradeKey) return
@@ -49,11 +78,17 @@ export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
       const j = await r.json()
       const payload = j?.data ?? j
       const c = payload?.critique
+      const m = payload?.meta ?? null
+      setMeta(m)
+      setStale(Boolean(payload?.stale ?? m?.stale))
+      setCached(Boolean(payload?.cached))
       if (c && (c.narrative?.summary || c.trade_classification || c.execution_quality)) {
         setCritique(c)
+        setErr('')
       } else if (payload?.ok === false || j?.ok === false) {
-        setErr(payload?.error || j?.error || 'Failed')
-      } else {
+        setErr(payload?.error || m?.error_message || j?.error || 'Generation failed')
+        if (!c) setCritique(null)
+      } else if (!force) {
         setErr('No critique returned')
       }
     } catch (e: any) {
@@ -71,6 +106,8 @@ export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
   const risk = critique?.risk_sizing || {}
   const opp = critique?.opportunity_cost || {}
   const sq = cls.setup_quality || {}
+  const generatedAt = critique?.generated_at || meta?.generated_at
+  const searchHint = nar.improvements?.[0]?.split(' ').slice(0, 3).join(' ') || symbol || ''
 
   return (
     <div style={{ marginTop: 16, border: '1px solid rgba(167,139,250,.35)', borderRadius: 10, background: 'rgba(167,139,250,.06)', overflow: 'hidden' }}>
@@ -81,13 +118,28 @@ export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
       >
         <span style={{ fontSize: 16 }}>🤖</span>
         <span style={{ fontSize: 14, fontWeight: 800, color: '#c4b5fd' }}>AI Trade Critique</span>
-        <span style={{ fontSize: 10, color: 'var(--text3)' }}>automated review · replay + tags + execution data</span>
+        <span style={{ fontSize: 10, color: 'var(--text3)' }}>persisted · replay + tags + execution</span>
         <span style={{ flex: 1 }} />
-        {critique?.generated_at && <span style={{ fontSize: 9, color: 'var(--text3)' }}>{critique.generated_at.slice(0, 16).replace('T', ' ')}</span>}
+        {stale && <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 700 }}>STALE</span>}
+        {generatedAt && <span style={{ fontSize: 9, color: 'var(--text3)' }}>{fmtTs(generatedAt)}</span>}
+        {cached && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>cached</span>}
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && (
         <div style={{ padding: '0 14px 14px' }}>
+          {stale && (
+            <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
+              Tags changed since this critique was generated — regenerate for an updated review.
+            </div>
+          )}
+          {meta && (
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <span>Status: {meta.status ?? 'ok'}</span>
+              {meta.history_count != null && meta.history_count > 0 && <span>{meta.history_count} prior version(s)</span>}
+              {nar.llm_enhanced && <span>Grok-enhanced</span>}
+              {nar.deterministic && !nar.llm_enhanced && <span>deterministic fallback</span>}
+            </div>
+          )}
           {busy && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Analyzing trade…</div>}
           {err && !critique && <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 8 }}>{err}</div>}
           {nar.summary && (
@@ -171,14 +223,30 @@ export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
               ) : null}
             </>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => load(true)}
-            style={{ marginTop: 10, fontSize: 11, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}
-          >
-            {busy ? '…' : '↻ Regenerate critique'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => load(true)}
+              style={{ fontSize: 11, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}
+            >
+              {busy ? '…' : '↻ Regenerate critique'}
+            </button>
+            <button
+              type="button"
+              onClick={() => goToJournalTab('Advanced', searchHint)}
+              style={{ fontSize: 11, padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.1)', color: '#c4b5fd', cursor: 'pointer' }}
+            >
+              View in Reports
+            </button>
+            <button
+              type="button"
+              onClick={() => goToJournalTab('Behavioral')}
+              style={{ fontSize: 11, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}
+            >
+              Use in Coaching
+            </button>
+          </div>
         </div>
       )}
     </div>
