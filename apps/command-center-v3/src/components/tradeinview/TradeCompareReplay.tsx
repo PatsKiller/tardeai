@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import TradeReplayChart from '../TradeReplayChart'
+import { buildReplayTrade } from '../../lib/replayTrade'
 
 /** Side-by-side win vs loss replay for same setup (P6). */
 export default function TradeCompareReplay({ trades, onClose }: { trades: any[]; onClose: () => void }) {
@@ -32,8 +33,8 @@ export default function TradeCompareReplay({ trades, onClose }: { trades: any[];
           ))}
         </div>
       </div>
-      {showA && a && <TradeReplayChart trade={{ symbol: a.symbol, entry_date: a.entryDate, exit_date: a.exitDate, entry_price: a.ep, exit_price: a.xp }} onClose={() => setShowA(false)} />}
-      {showB && b && <TradeReplayChart trade={{ symbol: b.symbol, entry_date: b.entryDate, exit_date: b.exitDate, entry_price: b.ep, exit_price: b.xp }} onClose={() => setShowB(false)} />}
+      {showA && a && <TradeReplayChart trade={buildReplayTrade(a)} onClose={() => setShowA(false)} />}
+      {showB && b && <TradeReplayChart trade={buildReplayTrade(b)} onClose={() => setShowB(false)} />}
     </>
   )
 }

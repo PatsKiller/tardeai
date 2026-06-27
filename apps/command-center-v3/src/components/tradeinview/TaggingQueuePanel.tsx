@@ -3,6 +3,7 @@ import { useApi } from '../../hooks/useApi'
 import { fmt$ } from '../../lib/format'
 import TradeInViewDetail from './TradeInViewDetail'
 import TradeReplayChart from '../TradeReplayChart'
+import { buildReplayTrade } from '../../lib/replayTrade'
 import ReportingAuditPanel from './ReportingAuditPanel'
 import IndustryPicker from './IndustryPicker'
 import BulkTagModal from './BulkTagModal'
@@ -100,18 +101,7 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
 
   const openDetail = (row: any) => setDetailTrade(rowToDetail(row))
 
-  const openReplay = (row: any) => {
-    setChartTrade({
-      symbol: row.symbol,
-      trade_key: row.trade_key,
-      entry_date: row.open_date || row.close_date,
-      exit_date: row.close_date,
-      entry_price: row.buy_price,
-      exit_price: row.sell_price,
-      entry_time: row.entry_time,
-      exit_time: row.exit_time,
-    })
-  }
+  const openReplay = (row: any) => setChartTrade(buildReplayTrade(row))
 
   const skipReview = async (tradeKey: string) => {
     await fetch('/api/v2/journal/tagging-queue/skip', {

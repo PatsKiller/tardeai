@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-27 - Universal replay backfill (all past + future trades)
+
+- **`replay_backfill.py`** — pipeline: `build_trade_execution_quality` → `replay_chart_audit` for every trade.
+- **`install_replay_backfill_cron.sh`** — weekday 22:15 ET cron; chained after Schwab journal ingest in health agent.
+- **`buildReplayTrade()`** — single frontend helper; all replay entry points use it (Journal, Tagging Queue, Compare, Schwab).
+- **`ohlc_charts._lookup_fill_times`** — 4-tier resolution: execution_quality → dedupe_key/srt → schwab match → symbol/date.
+- **`/api/v2/journal`** + `fetch_closed_trades` — include `entry_time`/`exit_time` on every trade row.
+- Full backfill run: **66 ok / 24 warn / 0 fail** (90 deduped trades).
+
 ## 2026-06-27 - Replay marker alignment (GOVX) + AI Trade Critique (UI 3.5)
 
 **Remaining scale bug (root cause):** Tagging-queue replays passed dates only → markers snapped to midnight

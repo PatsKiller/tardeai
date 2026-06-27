@@ -214,14 +214,35 @@ def _has_clock(ts_raw):
     return "T" in s and (":" in s.split("T", 1)[-1])
 
 
-def _lookup_fill_times(symbol, close_date, entry_price=None, exit_price=None):
-    """Resolve real fill timestamps from trade_execution_quality (Schwab-sourced fills)."""
+def _aware_utc(ts):
+    if not ts:
+        return None
+    return ts.astimezone(dt.timezone.utc) if getattr(ts, "tzinfo", None) else ts.replace(tzinfo=dt.timezone.utc)
+
+
+def _lookup_fill_times(symbol, close_date, entry_price=None, exit_price=None,
+                       trade_key=None, account=None):
+    """Resolve real fill timestamps — works for ALL past/future trades.
+
+    Priority: trade_execution_quality → trade_closed.dedupe_key/srt → schwab_round_trips match.
+    """
+    sym = (symbol or "").upper().strip()
+    cd = str(close_date)[:10]
+    ep = float(entry_price) if entry_price not in (None, "") else None
+    acct = (account or "").strip() or None
+    if trade_key and not acct and ":" in trade_key:
+        parts = trade_key.split(":")
+        if len(parts) >= 3:
+            acct = parts[1]
+
+    def _from_row(ent, ext, source):
+        return _aware_utc(ent), _aware_utc(ext), source
+
     try:
         from db_adapter import _get_conn
         c = _get_conn(); cur = c.cursor()
-        sym = (symbol or "").upper().strip()
-        cd = str(close_date)[:10]
-        ep = float(entry_price) if entry_price not in (None, "") else None
+
+        # 1) execution quality (computed metrics table)
         if ep is not None:
             cur.execute("""
                 SELECT entry_time, exit_time FROM trade_execution_quality
@@ -236,17 +257,59 @@ def _lookup_fill_times(symbol, close_date, entry_price=None, exit_price=None):
                 ORDER BY exit_time DESC LIMIT 1
             """, (sym, cd))
         row = cur.fetchone()
+        if row and row[0]:
+            c.close()
+            return _from_row(row[0], row[1], "execution_quality")
+
+        # 2) trade_closed.dedupe_key → schwab_round_trips (authoritative broker fills)
+        if trade_key:
+            cur.execute("""
+                SELECT dedupe_key FROM trade_closed
+                WHERE (symbol || ':' || account || ':' || close_date::text) = %s
+                ORDER BY id DESC LIMIT 1
+            """, (trade_key,))
+            dk = cur.fetchone()
+            if dk and dk[0] and str(dk[0]).startswith("srt:"):
+                srt_id = str(dk[0]).split(":", 1)[1]
+                cur.execute("""
+                    SELECT entry_time, exit_time FROM schwab_round_trips
+                    WHERE id=%s AND entry_time IS NOT NULL LIMIT 1
+                """, (srt_id,))
+                row = cur.fetchone()
+                if row and row[0]:
+                    c.close()
+                    return _from_row(row[0], row[1], "schwab_round_trip")
+
+        # 3) direct schwab_round_trips match (symbol + account + date + price)
+        if acct and ep is not None:
+            cur.execute("""
+                SELECT entry_time, exit_time FROM schwab_round_trips
+                WHERE UPPER(symbol)=%s AND account=%s AND exit_time::date=%s::date
+                  AND ABS(entry_price - %s) < 0.08 AND entry_time IS NOT NULL
+                ORDER BY ABS(entry_price - %s), exit_time DESC LIMIT 1
+            """, (sym, acct, cd, ep, ep))
+            row = cur.fetchone()
+            if row and row[0]:
+                c.close()
+                return _from_row(row[0], row[1], "schwab_round_trip")
+
+        # 4) symbol + date only (last resort for same-day scalps)
+        if ep is not None:
+            cur.execute("""
+                SELECT entry_time, exit_time FROM schwab_round_trips
+                WHERE UPPER(symbol)=%s AND exit_time::date=%s::date
+                  AND ABS(entry_price - %s) < 0.08 AND entry_time IS NOT NULL
+                ORDER BY ABS(entry_price - %s), exit_time DESC LIMIT 1
+            """, (sym, cd, ep, ep))
+            row = cur.fetchone()
+            if row and row[0]:
+                c.close()
+                return _from_row(row[0], row[1], "schwab_round_trip")
+
         c.close()
-        if row:
-            ent, ext = row[0], row[1]
-            if ent and not getattr(ent, "tzinfo", None):
-                ent = ent.replace(tzinfo=dt.timezone.utc)
-            if ext and not getattr(ext, "tzinfo", None):
-                ext = ext.replace(tzinfo=dt.timezone.utc)
-            return ent, ext
     except Exception:
         pass
-    return None, None
+    return None, None, None
 
 
 def _bar_by_time(out_bars, tkey):
@@ -288,7 +351,7 @@ def _infer_bar_by_price(price, bars, prefer_after=None):
 
 
 def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None,
-                entry_time=None, exit_time=None, trade_key=None):
+                entry_time=None, exit_time=None, trade_key=None, account=None):
     """OHLCV + VWAP/MACD/RSI + entry/exit markers. Same-day -> 1-min bars in a TIGHT window around the
     actual fill times (NOT the whole session); multi-day -> daily. Times shown in US/Eastern."""
     symbol = (symbol or "").upper().strip()
@@ -306,12 +369,12 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     # Tagging-queue replays often pass dates only → midnight UTC snaps markers to premarket (~$3 on GOVX
     # while journal fill is $4.08 @ 09:57 ET). Resolve real fills from execution-quality table first.
     if same_day and not has_time:
-        lt_ent, lt_ext = _lookup_fill_times(symbol, ed, entry_price, exit_price)
+        lt_ent, lt_ext, lt_src = _lookup_fill_times(symbol, ed, entry_price, exit_price, trade_key, account)
         if lt_ent:
-            ent = lt_ent.astimezone(dt.timezone.utc)
-            fill_source = "execution_quality"
+            ent = lt_ent
+            fill_source = lt_src or "resolved"
         if lt_ext:
-            ext = lt_ext.astimezone(dt.timezone.utc)
+            ext = lt_ext
         has_time = bool(ent.hour or ent.minute or ext.hour or ext.minute)
 
     win = None

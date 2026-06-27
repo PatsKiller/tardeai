@@ -125,7 +125,7 @@
     "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
     "stale_strategy_backtest_results": "flock -n /tmp/bt_aggregator.lock .venv/bin/python scripts/backtest_results_aggregator.py",
     "stale_proposal_backtest_snapshots": "flock -n /tmp/proposal_backtest.lock .venv/bin/python scripts/proposal_backtest_engine.py --all-pending --apply",
-    "schwab_journal_ingest_stale": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply'",
+    "schwab_journal_ingest_stale": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply && .venv/bin/python scripts/replay_backfill.py --apply'",
     "journal_review_stale": "flock -n /tmp/journal_review.lock .venv/bin/python scripts/journal_review_builder.py"
   },
   "log_errors": {

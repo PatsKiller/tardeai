@@ -15,7 +15,7 @@ import {
 // Per-trade replay chart (TradingView Lightweight Charts, MIT). Candles + volume + VWAP + MACD + RSI panes,
 // entry ↑ / exit ↓ markers + price lines, and a ▶ replay scrubber. Data: /api/v2/trade-chart (Alpaca ->
 // Schwab -> Finviz image fallback). No TradingView account, no metered API.
-type Trade = { symbol: string; entry_date: string; exit_date?: string; entry_price?: number | string; exit_price?: number | string; entry_time?: string; exit_time?: string }
+type Trade = { symbol: string; entry_date: string; exit_date?: string; entry_price?: number | string | null; exit_price?: number | string | null; entry_time?: string | null; exit_time?: string | null; trade_key?: string; account?: string }
 
 const DARK = {
   layout: { background: { color: 'transparent' }, textColor: '#9ca3af' },
@@ -56,6 +56,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       ...(trade.entry_price ? { entry_price: String(trade.entry_price) } : {}),
       ...(trade.exit_price ? { exit_price: String(trade.exit_price) } : {}),
       ...((trade as any).trade_key ? { trade_key: String((trade as any).trade_key) } : {}),
+      ...((trade as any).account ? { account: String((trade as any).account) } : {}),
       ...((trade as any).entry_time || (trade as any).entryTimeFull ? { entry_time: String((trade as any).entry_time || (trade as any).entryTimeFull) } : {}),
       ...((trade as any).exit_time || (trade as any).exitTimeFull ? { exit_time: String((trade as any).exitTimeFull || (trade as any).exit_time) } : {}) })
     fetch(`/api/v2/trade-chart?${qs}`).then(r => r.json()).then(j => {

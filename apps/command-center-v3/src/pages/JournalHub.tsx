@@ -4,6 +4,7 @@ import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import TradeReplayChart from '../components/TradeReplayChart'
+import { buildReplayTrade } from '../lib/replayTrade'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 import BacktestPanel from '../components/BacktestPanel'
 import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
@@ -242,14 +243,16 @@ export default function JournalHub({ onDrill }: Props) {
       result.push({
         id: `sw-${t.trade_key ?? t.symbol}-${t.open_date}`, symbol: t.symbol,
         account: t.account, na: normalizeAcct(t.account),
+        trade_key: t.trade_key,
         ep: t.buy_price, xp: t.sell_price, shares: t.shares ?? 0,
         pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: t.hold_days,
-        // honest manual-trading labels from Schwab round-trip classification (never fake strategy attribution)
         holdMin: null, exitReason: null, strat: (t.strategy_tag || t.classification) ? `manual_${t.strategy_tag ?? t.classification}` : null,
         status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
-        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null, entryTimeFull: t.open_date ?? null,
-        r: null,   // schwab: no planned stop — proxy R computed from MAE at render time
-      })
+        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
+        entryTimeFull: t.entry_time ?? null,
+        exitTimeFull: t.exit_time ?? null,
+        r: null,
+      } as any)
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
   }, [journal, schwabJournal])
@@ -631,7 +634,7 @@ export default function JournalHub({ onDrill }: Props) {
           </div>
 
           {/* Daily Execution Coaching Queue (advisory) */}
-          <ExecutionCoachPanel onDrill={onDrill} onReplay={(sym) => { const t = closed.find(x => x.symbol === sym); if (t) setChartTrade({ symbol: t.symbol, entry_date: t.entryTimeFull ?? t.entryDate, exit_date: t.exitDate, entry_price: t.ep, exit_price: t.xp, exec: eqMap[tk(t.symbol, t.entryTimeFull ?? '')] }) }} />
+          <ExecutionCoachPanel onDrill={onDrill} onReplay={(sym) => { const t = closed.find(x => x.symbol === sym); if (t) setChartTrade(buildReplayTrade({ ...t, exec: eqMap[tk(t.symbol, t.entryTimeFull ?? '')] })) }} />
 
           {/* Trade Log — actionable cards, filterable + paginated */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
@@ -699,7 +702,7 @@ export default function JournalHub({ onDrill }: Props) {
                     {eq?.grok_what_to_do_next_time && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{eq.grok_what_to_do_next_time}</div>}
                     {/* action buttons */}
                     <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
-                      <button onClick={() => setChartTrade({ symbol: t.symbol, trade_key: (t as any).trade_key ?? (t as any).tradeKey, entry_date: t.entryDate, exit_date: t.exitDate, entry_time: t.entryTimeFull, exit_time: (t as any).exitTimeFull, stop: (t as any).stop, target: (t as any).target, entry_price: t.ep, exit_price: t.xp, exec: eq } as any)}
+                      <button onClick={() => setChartTrade(buildReplayTrade({ ...t, exec: eq }))}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
                       <button onClick={() => setDetailTrade({ ...t, trade_key: `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` })}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
@@ -735,7 +738,7 @@ export default function JournalHub({ onDrill }: Props) {
       {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
       {detailTrade && (
         <TradeInViewDetail trade={detailTrade} onClose={() => setDetailTrade(null)}
-          onReplay={() => { setChartTrade({ symbol: detailTrade.symbol, trade_key: detailTrade.trade_key, entry_date: detailTrade.entryDate, exit_date: detailTrade.exitDate, entry_time: detailTrade.entryTimeFull, exit_time: detailTrade.exitTimeFull, entry_price: detailTrade.ep, exit_price: detailTrade.xp }); setDetailTrade(null) }} />
+          onReplay={() => { setChartTrade(buildReplayTrade(detailTrade)); setDetailTrade(null) }} />
       )}
 
       {/* ════════ ANALYTICS TAB ════════ */}
