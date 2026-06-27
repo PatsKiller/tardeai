@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-28 - TradeInView P5–P6 (advanced reports, session recap, cron)
+
+- **Session tab:** Pre-market plan vs EOD reflection (`journal_session_recaps`, `/journal/session-recap`).
+- **Advanced tab:** Monte Carlo bootstrap, pivot grid (setup × regime), tax CSV export (`?tax=1` wash-sale flags).
+- **Attachments:** Screenshot upload on trade detail (`journal_attachments`, `/journal/attachments`).
+- **Options:** Multi-leg groups + book greeks in options summary lane.
+- **Compare:** Win/loss side-by-side replay modal (`TradeCompareReplay`).
+- **v2 redirects:** `/v2/journal*`, `/journal-analytics`, `/journal-reports`, `/paper-journal` → `/v3/trade-in-view`.
+- **Cron:** Weekday Telegram annotation nudge (`journal_annotation_reminder.py` 23:30 UTC) + tilt Morning Brief hook (`journal_tilt_morning_hook.py` 12:00 UTC).
+- **Migration:** `migrations/2026_06_28_trade_in_view_p5_p6.sql`.
+
 ## 2026-06-27 - TradeInView module (journal → performance analytics)
 
 - **Branding:** `/v3/journal` → **TradeInView** (alias `/v3/trade-in-view`); nav label updated.

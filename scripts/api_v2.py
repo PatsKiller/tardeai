@@ -8457,7 +8457,7 @@ def _journal_reminder():
             from telegram_alert import send_telegram
             send_telegram(
                 f"*Trade Journal Reminder*\n\n*{unannotated} trades* need annotation ({total} total).\n"
-                f"Coverage: {pct}%\n\nhttps://ms01-openclaw.tail163d14.ts.net/v3/journal"
+                f"Coverage: {pct}%\n\nhttps://ms01-openclaw.tail163d14.ts.net/v3/trade-in-view"
             )
         except Exception:
             pass
@@ -20587,7 +20587,7 @@ def _journal_options_summary(query=None):
 
 
 def _journal_export_csv(query=None):
-    """GET /api/v2/journal/export — CSV of closed trades (tax / external analysis)."""
+    """GET /api/v2/journal/export — CSV of closed trades or tax lots (?tax=1 wash-sale flags)."""
     q = query or {}
     g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
     import journal_trade_in_view as tiv
@@ -20595,8 +20595,53 @@ def _journal_export_csv(query=None):
     date_from, date_to = g("from"), g("to")
     if not date_from and g("days"):
         date_from = str((datetime.utcnow().date() - timedelta(days=int(g("days") or 365))))
-    csv_text = tiv.export_csv(g("account"), date_from, date_to)
-    return {"ok": True, "csv": csv_text, "rows": max(0, csv_text.count("\n") - 1) if csv_text else 0}
+    tax = str(g("tax") or "").lower() in ("1", "true", "yes")
+    csv_text = tiv.export_csv(g("account"), date_from, date_to, tax=tax)
+    return {"ok": True, "csv": csv_text, "tax": tax, "rows": max(0, csv_text.count("\n") - 1) if csv_text else 0}
+
+
+def _journal_monte_carlo(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.monte_carlo(g("account"), int(g("days") or 365), int(g("sims") or 500), int(g("path") or 30))
+
+
+def _journal_pivot(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.pivot_report(g("account"), int(g("days") or 365), g("row") or "setup_family", g("col") or "market_regime")
+
+
+def _journal_session_recap(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.session_recap_get(g("date"))
+
+
+def _journal_session_recap_write(body):
+    import journal_trade_in_view as tiv
+    rid = tiv.session_recap_save(body or {})
+    return {"ok": True, "id": rid}
+
+
+def _journal_attachments(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return {"ok": True, "attachments": tiv.attachments_list(g("trade_key"), g("session_date"))}
+
+
+def _journal_attachment_write(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    if not b.get("filename") or not b.get("content_b64"):
+        return {"ok": False, "error": "filename + content_b64 required"}
+    aid = tiv.attachment_save(b.get("trade_key"), b.get("session_date"), b["filename"],
+                              b["content_b64"], b.get("kind", "screenshot"), b.get("mime_type", "image/png"), b.get("notes", ""))
+    return {"ok": True, "id": aid}
 
 
 def _journal_saved_filters(query=None):
@@ -23725,6 +23770,10 @@ ROUTES = {
     "/api/v2/journal/export": _journal_export_csv,
     "/api/v2/journal/saved-filters": _journal_saved_filters,
     "/api/v2/journal/tag-groups": _journal_tag_groups,
+    "/api/v2/journal/monte-carlo": _journal_monte_carlo,
+    "/api/v2/journal/pivot": _journal_pivot,
+    "/api/v2/journal/session-recap": _journal_session_recap,
+    "/api/v2/journal/attachments": _journal_attachments,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
     "/api/v2/backtesting/execution-hypotheses": _execution_hypotheses,
@@ -24741,6 +24790,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/import-csv":
             try:
                 return 200, _journal_csv_import(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/session-recap":
+            try:
+                return 200, _journal_session_recap_write(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/attachments":
+            try:
+                return 200, _journal_attachment_write(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/alex-hygiene/classify":

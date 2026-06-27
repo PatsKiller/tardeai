@@ -19,9 +19,12 @@ import TradeInViewDetail from '../components/tradeinview/TradeInViewDetail'
 import CsvImportPanel from '../components/tradeinview/CsvImportPanel'
 import ManualEntryPanel from '../components/tradeinview/ManualEntryPanel'
 import OptionsJournalPanel from '../components/tradeinview/OptionsJournalPanel'
+import SessionRecapPanel from '../components/tradeinview/SessionRecapPanel'
+import AdvancedReportsPanel from '../components/tradeinview/AdvancedReportsPanel'
+import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Exit Intel', 'Behavioral', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
+const TABS = ['Trades', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -197,6 +200,7 @@ export default function JournalHub({ onDrill }: Props) {
   const [sortCol, setSortCol] = useState('exitDate')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [detailTrade, setDetailTrade] = useState<any>(null)
+  const [compareOpen, setCompareOpen] = useState(false)
   const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
   const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
   // R-multiple: paper = real (planned stop); schwab = PROXY (reward / max adverse excursion), flagged ~
@@ -453,6 +457,7 @@ export default function JournalHub({ onDrill }: Props) {
         <button onClick={exportCsv} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>⬇ Export CSV</button>
         <button onClick={() => fetch('/api/v2/journal/bulk-suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#f59e0b', cursor: 'pointer' }}>⚡ Auto-classify unannotated</button>
         <button onClick={() => fetch('/api/v2/journal/reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#c084fc', cursor: 'pointer' }}>📲 Review reminder</button>
+        <button onClick={() => setCompareOpen(true)} disabled={closed.length < 2} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#86efac', cursor: closed.length < 2 ? 'default' : 'pointer', opacity: closed.length < 2 ? 0.5 : 1 }}>⇄ Compare win/loss</button>
       </div>
 
       {warnings.length > 0 && (
@@ -915,6 +920,12 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Exit Intel' && <ExitIntelligencePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
 
       {tab === 'Behavioral' && <BehavioralPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
+
+      {tab === 'Session' && <SessionRecapPanel />}
+
+      {tab === 'Advanced' && <AdvancedReportsPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
+
+      {compareOpen && <TradeCompareReplay trades={closed} onClose={() => setCompareOpen(false)} />}
 
       {/* ════════ LESSONS TAB ════════ */}
       {tab === 'Lessons' && (() => {

@@ -19,15 +19,24 @@ Baseline audit vs TradeZella/TradesViz-style spec. See `TRADE_IN_VIEW_IMPLEMENTA
 | Options journal | Separate hub | **Options summary lane** + link to Options Hub |
 | MFE backfill | 40/132 | `backfill_trade_in_view_mfe.py` |
 
-## Still open (P5–P6)
+## Shipped (P5–P6, 2026-06-28)
 
-- Multi-leg options grouping + greeks P&L attribution in journal
-- Attachments (screenshots, voice)
-- Tick-by-tick replay
-- Monte Carlo / pivot-grid custom reports
-- Session recap templates (pre-market plan vs actual)
-- Morning Brief auto-task on tilt (hook stubbed via reminder API)
-- Tax wash-sale export (use Tax hub; journal CSV is realized P&L only)
+| Area | Delivery |
+|------|----------|
+| Multi-leg options | `options-summary` groups legs + book greeks; **OptionsJournalPanel** shows groups/open legs |
+| Attachments | `journal_attachments` table + upload in **TradeInViewDetail** (screenshots) |
+| Monte Carlo / pivot | **Advanced** tab + `/journal/monte-carlo`, `/journal/pivot` |
+| Session recap | **Session** tab + `journal_session_recaps` + daily save API |
+| Tilt Morning Brief hook | `journal_tilt_morning_hook.py` → `operator_review_queue` |
+| Tax export | `?tax=1` on `/journal/export` (wash-sale flags from `schwab_cost_basis_lots`) |
+| v2 deprecation | `/v2/journal*`, `/journal-analytics`, `/paper-journal` → `/v3/trade-in-view` |
+| Annotation nudge | Weekday cron `journal_annotation_reminder.py` → Telegram |
+
+## Still open (future)
+
+- Tick-by-tick replay (bar replay only today)
+- Voice memo attachments
+- Per-leg greeks P&L attribution (book-level greeks only)
 
 ## Data hygiene targets
 

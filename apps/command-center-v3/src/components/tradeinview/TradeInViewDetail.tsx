@@ -17,6 +17,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved }:
   const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [attachments, setAttachments] = useState<any[]>([])
 
   const tradeKey = trade.trade_key || `${trade.symbol}:${trade.account ?? trade.na}:${trade.exitDate ?? trade.close_date}`
 
@@ -37,7 +38,23 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved }:
         mistake_tags: r.mistake_tags || [], strength_tags: r.strength_tags || [],
       })
     }).catch(() => setForm({ trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na, closed_date: trade.exitDate, mistake_tags: [], strength_tags: [], setup_types: [] }))
+    fetch(`/api/v2/journal/attachments?trade_key=${encodeURIComponent(tradeKey)}`).then(r => r.json())
+      .then(d => setAttachments(d?.attachments || []))
   }, [trade, tradeKey])
+
+  const uploadAttachment = (file: File) => {
+    const r = new FileReader()
+    r.onload = async () => {
+      const b64 = String(r.result || '')
+      await fetch('/api/v2/journal/attachments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trade_key: tradeKey, filename: file.name, content_b64: b64, mime_type: file.type, kind: file.type.startsWith('image/') ? 'screenshot' : 'file' }),
+      })
+      const d = await fetch(`/api/v2/journal/attachments?trade_key=${encodeURIComponent(tradeKey)}`).then(x => x.json())
+      setAttachments(d?.attachments || [])
+    }
+    r.readAsDataURL(file)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -108,6 +125,11 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved }:
               <textarea value={form.lesson_learned || ''} onChange={e => setForm((f: any) => ({ ...f, lesson_learned: e.target.value }))} placeholder="Lesson learned…" style={{ width: '100%', minHeight: 50, fontSize: 11, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
             </div>
           )}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>Attachments (screenshot / file)</div>
+            <input type="file" accept="image/*,.pdf,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f) }} style={{ fontSize: 9 }} />
+            {attachments.length > 0 && <div style={{ fontSize: 9, marginTop: 4, color: 'var(--text2)' }}>{attachments.map((a: any) => a.filename).join(', ')}</div>}
+          </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button disabled={saving} onClick={save} style={{ fontSize: 11, fontWeight: 700, padding: '6px 16px', borderRadius: 6, border: 'none', background: '#60a5fa', color: '#fff', cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save review'}</button>
             {msg && <span style={{ fontSize: 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444' }}>{msg}</span>}
