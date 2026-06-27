@@ -10,9 +10,18 @@ import ExecutionHypothesesPanel from '../components/ExecutionHypothesesPanel'
 import SchwabJournal from '../components/SchwabJournal'
 import ExecutionCoachPanel from '../components/ExecutionCoachPanel'
 import DrawdownChart from '../components/risk/DrawdownChart'
+import ZellaScoreCard from '../components/tradeinview/ZellaScoreCard'
+import ExitIntelligencePanel from '../components/tradeinview/ExitIntelligencePanel'
+import BehavioralPanel from '../components/tradeinview/BehavioralPanel'
+import SavedFilterBar, { type FilterPayload } from '../components/tradeinview/SavedFilterBar'
+import TradeLogTable from '../components/tradeinview/TradeLogTable'
+import TradeInViewDetail from '../components/tradeinview/TradeInViewDetail'
+import CsvImportPanel from '../components/tradeinview/CsvImportPanel'
+import ManualEntryPanel from '../components/tradeinview/ManualEntryPanel'
+import OptionsJournalPanel from '../components/tradeinview/OptionsJournalPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts'] as const
+const TABS = ['Trades', 'Analytics', 'Exit Intel', 'Behavioral', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -184,6 +193,10 @@ export default function JournalHub({ onDrill }: Props) {
   const [jAns, setJAns] = useState<any>(null)
   const [jBusy, setJBusy] = useState(false)
   const [reviewOpen, setReviewOpen] = useState<string | null>(null)  // trade_key whose emotion form is open
+  const [logView, setLogView] = useState<'cards' | 'table'>('cards')
+  const [sortCol, setSortCol] = useState('exitDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [detailTrade, setDetailTrade] = useState<any>(null)
   const tk = (sym: string, t: any) => `${sym}|${String(t ?? '').slice(0, 19).replace('T', ' ')}`
   const eqMap = useMemo(() => { const m: Record<string, any> = {}; for (const e of (eqResp?.trades ?? [])) m[tk(e.symbol, e.entry_time)] = e; return m }, [eqResp])
   // R-multiple: paper = real (planned stop); schwab = PROXY (reward / max adverse excursion), flagged ~
@@ -265,7 +278,32 @@ export default function JournalHub({ onDrill }: Props) {
   }, [filtered, logSearch, logQuick, eqMap])
   const logPages = Math.max(1, Math.ceil(logFiltered.length / LOG_PAGE_SIZE))
   const logPageSafe = Math.min(logPage, logPages - 1)
-  const logPaged = logFiltered.slice(logPageSafe * LOG_PAGE_SIZE, (logPageSafe + 1) * LOG_PAGE_SIZE)
+  const logSorted = useMemo(() => {
+    const rows = [...logFiltered]
+    rows.sort((a, b) => {
+      let av: any = (a as any)[sortCol], bv: any = (b as any)[sortCol]
+      if (av == null) av = ''; if (bv == null) bv = ''
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av
+      return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+    })
+    return rows
+  }, [logFiltered, sortCol, sortDir])
+  const logPaged = logSorted.slice(logPageSafe * LOG_PAGE_SIZE, (logPageSafe + 1) * LOG_PAGE_SIZE)
+  const onSortCol = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('desc') } }
+  const exportCsv = async () => {
+    const q = `/api/v2/journal/export?days=${_edgeDays[timeRange] ?? 365}${acctFilter ? `&account=${acctFilter}` : ''}`
+    const r = await fetch(q).then(x => x.json())
+    if (r?.csv) {
+      const blob = new Blob([r.csv], { type: 'text/csv' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'trade_in_view_export.csv'; a.click()
+    }
+  }
+  const applySavedFilter = (p: FilterPayload) => {
+    if (p.account !== undefined) setAcctFilter(p.account)
+    if (p.timeRange) setTimeRange(p.timeRange as typeof TIME_RANGES[number])
+    if (p.logQuick) setLogQuick(p.logQuick)
+    if (p.logSearch !== undefined) setLogSearch(p.logSearch)
+  }
 
   // ── Account chips ──
   const accountCounts = useMemo(() => {
@@ -394,8 +432,8 @@ export default function JournalHub({ onDrill }: Props) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Journal</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} real accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>TradeInView</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Trading journal & performance analytics · {realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
@@ -409,7 +447,13 @@ export default function JournalHub({ onDrill }: Props) {
       </div>
 
       {/* Shared filters — persists across ALL tabs */}
+      <SavedFilterBar current={{ account: acctFilter, timeRange, logQuick, logSearch }} onApply={applySavedFilter} />
       {filterBar}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <button onClick={exportCsv} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>⬇ Export CSV</button>
+        <button onClick={() => fetch('/api/v2/journal/bulk-suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#f59e0b', cursor: 'pointer' }}>⚡ Auto-classify unannotated</button>
+        <button onClick={() => fetch('/api/v2/journal/reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#c084fc', cursor: 'pointer' }}>📲 Review reminder</button>
+      </div>
 
       {warnings.length > 0 && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 8 }}>
@@ -577,8 +621,12 @@ export default function JournalHub({ onDrill }: Props) {
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Trade Log ({logFiltered.length})</div>
-              <input value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(0) }} placeholder="search symbol…"
-                style={{ fontSize: 11, padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)', width: 140 }} />
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button onClick={() => setLogView('cards')} style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: logView === 'cards' ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: logView === 'cards' ? '#60a5fa' : 'var(--text3)', cursor: 'pointer' }}>Cards</button>
+                <button onClick={() => setLogView('table')} style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: logView === 'table' ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: logView === 'table' ? '#60a5fa' : 'var(--text3)', cursor: 'pointer' }}>Table</button>
+                <input value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(0) }} placeholder="search symbol…"
+                  style={{ fontSize: 11, padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)', width: 140 }} />
+              </div>
             </div>
             {/* quick filters */}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -587,7 +635,10 @@ export default function JournalHub({ onDrill }: Props) {
                   style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)', background: logQuick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: logQuick === k ? '#60a5fa' : 'var(--text3)', fontWeight: logQuick === k ? 700 : 400 }}>{lbl}</button>
               ))}
             </div>
-            {/* cards */}
+            {logView === 'table' ? (
+              <TradeLogTable trades={logPaged} sortCol={sortCol} sortDir={sortDir} onSort={onSortCol}
+                onRow={t => setDetailTrade({ ...t, trade_key: `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` })} />
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 10 }}>
               {logPaged.map((t, i) => {
                 const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
@@ -634,7 +685,7 @@ export default function JournalHub({ onDrill }: Props) {
                     <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
                       <button onClick={() => setChartTrade({ symbol: t.symbol, entry_date: t.entryDate, exit_date: t.exitDate, entry_time: t.entryTimeFull, exit_time: (t as any).exitTimeFull, stop: (t as any).stop, target: (t as any).target, entry_price: t.ep, exit_price: t.xp, exec: eq } as any)}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>📈 Replay</button>
-                      <button onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na] ?? t.account} · ${t.strat ?? t.source}`, endpoint: t.source === 'schwab' ? '/api/v2/journal' : '/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }], subjectType: 'closed_trade', subjectKey: t.symbol })}
+                      <button onClick={() => setDetailTrade({ ...t, trade_key: `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` })}
                         style={{ fontSize: 9, padding: '3px 9px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer' }}>Details</button>
                       {t.status !== 'open' && (() => { const trk = `${t.symbol}:${t.account ?? t.na}:${t.exitDate}`; return (
                         <button onClick={() => setReviewOpen(reviewOpen === trk ? null : trk)}
@@ -649,6 +700,7 @@ export default function JournalHub({ onDrill }: Props) {
                 )
               })}
             </div>
+            )}
             {logFiltered.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', padding: 20 }}>No trades match this filter.</div>}
             {/* pagination */}
             {logPages > 1 && (
@@ -660,15 +712,20 @@ export default function JournalHub({ onDrill }: Props) {
             )}
           </div>
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>
-            Sources: /api/v2/automated-trade-journal (paper) + /api/v2/journal (Schwab). Grade = entry/exit grade from backtest replay grading (trade_backtest_results), where available. /journal returns trades from 2024-11 onward; older Schwab history exists in DB (153 closed) but is not returned by this endpoint.
+            Sources: paper ATM + Schwab trade_closed (up to 2000 rows). Grades from backtest replay where available.
           </div>
         </>
       )}
       {chartTrade && <TradeReplayChart trade={chartTrade} onClose={() => setChartTrade(null)} />}
+      {detailTrade && (
+        <TradeInViewDetail trade={detailTrade} onClose={() => setDetailTrade(null)}
+          onReplay={() => { setChartTrade({ symbol: detailTrade.symbol, entry_date: detailTrade.entryDate, exit_date: detailTrade.exitDate, entry_time: detailTrade.entryTimeFull, entry_price: detailTrade.ep, exit_price: detailTrade.xp }); setDetailTrade(null) }} />
+      )}
 
       {/* ════════ ANALYTICS TAB ════════ */}
       {tab === 'Analytics' && (
         <>
+          <div style={{ marginBottom: 14 }}><ZellaScoreCard account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} /></div>
           {/* Performance KPIs — computed from filtered trades */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
             {[
@@ -855,6 +912,10 @@ export default function JournalHub({ onDrill }: Props) {
         </>
       )}
 
+      {tab === 'Exit Intel' && <ExitIntelligencePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
+
+      {tab === 'Behavioral' && <BehavioralPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
+
       {/* ════════ LESSONS TAB ════════ */}
       {tab === 'Lessons' && (() => {
         // Handle double-wrapped response: { ok, data: { lessons: [...] } }
@@ -908,6 +969,14 @@ export default function JournalHub({ onDrill }: Props) {
 
       {/* ════════ REAL ACCOUNTS (Schwab) — API-authoritative round-trips, separate from paper ════════ */}
       {tab === 'Real Accounts' && <SchwabJournal />}
+
+      {tab === 'Import' && (
+        <div style={{ display: 'grid', gap: 14 }}>
+          <CsvImportPanel />
+          <ManualEntryPanel />
+          <OptionsJournalPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />
+        </div>
+      )}
     </div>
   )
 }

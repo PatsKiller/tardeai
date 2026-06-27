@@ -3421,7 +3421,7 @@ def journal():
                ) srt ON true
                WHERE tc.buy_price > 0 OR tc.pnl != 0
                ORDER BY tc.close_date DESC, tc.symbol
-               LIMIT 500""",
+               LIMIT 2000""",
             fetch="all"
         )
         if rows:
@@ -20548,6 +20548,108 @@ def _daily_coaching(query=None):
             "digest": _json_clean(digest[0]) if digest else None, "advisory": True}
 
 
+def _journal_exit_intelligence(query=None):
+    """GET /api/v2/journal/exit-intelligence — MAE/MFE, capture, exit timing (TradeInView)."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.exit_intelligence(g("account"), int(g("days") or 365))
+
+
+def _journal_zella_score(query=None):
+    """GET /api/v2/journal/zella-score — composite 0-100 TradeInView score."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.zella_score(g("account"), int(g("days") or 365))
+
+
+def _journal_behavioral(query=None):
+    """GET /api/v2/journal/behavioral — tilt, revenge, streaks, mistake $ cost."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.behavioral_analytics(g("account"), int(g("days") or 365))
+
+
+def _journal_sector_breakdown(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.sector_breakdown(g("account"), int(g("days") or 365))
+
+
+def _journal_options_summary(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.options_journal_summary(g("account"), int(g("days") or 365))
+
+
+def _journal_export_csv(query=None):
+    """GET /api/v2/journal/export — CSV of closed trades (tax / external analysis)."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    from datetime import datetime, timedelta
+    date_from, date_to = g("from"), g("to")
+    if not date_from and g("days"):
+        date_from = str((datetime.utcnow().date() - timedelta(days=int(g("days") or 365))))
+    csv_text = tiv.export_csv(g("account"), date_from, date_to)
+    return {"ok": True, "csv": csv_text, "rows": max(0, csv_text.count("\n") - 1) if csv_text else 0}
+
+
+def _journal_saved_filters(query=None):
+    import journal_trade_in_view as tiv
+    return {"ok": True, "filters": tiv.saved_filters_list()}
+
+
+def _journal_saved_filters_write(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    if b.get("delete") and b.get("id"):
+        tiv.saved_filter_delete(int(b["id"]))
+        return {"ok": True, "deleted": int(b["id"])}
+    name, payload = b.get("name"), b.get("payload") or {}
+    if not name:
+        return {"ok": False, "error": "name required"}
+    fid = tiv.saved_filter_upsert(name, payload, b.get("id"))
+    return {"ok": True, "id": fid}
+
+
+def _journal_tag_groups():
+    import journal_trade_in_view as tiv
+    return {"ok": True, "groups": tiv.tag_groups()}
+
+
+def _journal_manual_entry(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    if not b.get("symbol"):
+        return {"ok": False, "error": "symbol required"}
+    eid = tiv.manual_entry_create(b)
+    return {"ok": True, "id": eid}
+
+
+def _journal_csv_import(body):
+    """POST /api/v2/journal/import-csv — Schwab transaction history CSV → holdings journal + round-trip rebuild."""
+    b = body or {}
+    csv_text = b.get("csv_text") or ""
+    if not csv_text.strip():
+        return {"ok": False, "error": "csv_text required"}
+    try:
+        from portfolio_server import _parse_txn_csv, handle_import_transactions
+        parsed = _parse_txn_csv({"csv_text": csv_text, "filename": b.get("filename", "schwab_taxable_history.csv")})
+        status, result = handle_import_transactions(parsed)
+        import subprocess
+        subprocess.run(
+            [str(PROJECT_ROOT / ".venv/bin/python3"), str(PROJECT_ROOT / "scripts/schwab_journal_builder.py"), "--apply"],
+            cwd=str(PROJECT_ROOT), timeout=120, check=False)
+        return {"ok": True, "import_status": status, **(result if isinstance(result, dict) else {"result": result})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _tos_watchlists_list(query=None):
     """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
     wls = _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
@@ -23615,6 +23717,14 @@ ROUTES = {
     "/api/v2/journal/schwab-round-trips": _schwab_round_trips,
     "/api/v2/tos-watchlists": _tos_watchlists_list,
     "/api/v2/journal/execution-quality": _execution_quality,
+    "/api/v2/journal/exit-intelligence": _journal_exit_intelligence,
+    "/api/v2/journal/zella-score": _journal_zella_score,
+    "/api/v2/journal/behavioral": _journal_behavioral,
+    "/api/v2/journal/sector-breakdown": _journal_sector_breakdown,
+    "/api/v2/journal/options-summary": _journal_options_summary,
+    "/api/v2/journal/export": _journal_export_csv,
+    "/api/v2/journal/saved-filters": _journal_saved_filters,
+    "/api/v2/journal/tag-groups": _journal_tag_groups,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
     "/api/v2/backtesting/execution-hypotheses": _execution_hypotheses,
@@ -24616,6 +24726,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/reminder":
             try:
                 return 200, {"ok": True, "data": _journal_reminder()}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/saved-filters":
+            try:
+                return 200, _journal_saved_filters_write(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/manual-entry":
+            try:
+                return 200, _journal_manual_entry(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/import-csv":
+            try:
+                return 200, _journal_csv_import(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/alex-hygiene/classify":

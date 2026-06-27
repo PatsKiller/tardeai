@@ -10,7 +10,7 @@ const HUBS = [
   { to: '/intelligence', label: 'Intelligence' },
   { to: '/hermes', label: 'Hermes' },
   { to: '/retirement', label: 'Retirement' },
-  { to: '/journal', label: 'Journal' },
+  { to: '/journal', label: 'TradeInView' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/watchpool', label: 'Watchpool' },
   { to: '/pullback-macd', label: 'Pullback/MACD' },
