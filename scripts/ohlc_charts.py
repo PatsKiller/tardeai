@@ -210,8 +210,11 @@ def _has_clock(ts_raw):
     """True when the caller passed an actual clock time (not a bare date)."""
     if not ts_raw:
         return False
-    s = str(ts_raw).strip()
-    return "T" in s and (":" in s.split("T", 1)[-1])
+    s = str(ts_raw).strip().replace(" ", "T")
+    if "T" not in s:
+        return False
+    clock = s.split("T", 1)[-1]
+    return ":" in clock and not clock.startswith("00:00:00")
 
 
 def _aware_utc(ts):
@@ -643,7 +646,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
                     time_warnings.append(
                         f"{m['type']} fill {et(fill_ts)} vs marker bar {label} (Δ{delta}s)")
 
-    if same_day and fill_source == "caller" and not (_has_clock(entry_time) or _has_clock(exit_time)):
+    if same_day and not (_has_clock(entry_time) or _has_clock(exit_time)) and fill_source == "caller":
         time_warnings.append("fill times not resolved — pass trade_key or entry_time")
 
     times_valid = not time_warnings
