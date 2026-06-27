@@ -674,8 +674,8 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
     pending_auto = bool(payload.get("auto_tagged") and not payload.get("operator_confirmed"))
     if payload.get("operator_reviewed_skip"):
         return {"complete": True, "tag_count": 99, "missing": [], "score": 100, "summary": "reviewed", "skipped": True}
-    if payload.get("tagging_complete") and not pending_auto:
-        return {"complete": True, "tag_count": 99, "missing": [], "score": 100, "summary": "reviewed", "skipped": True}
+
+    tagging_done = bool(payload.get("tagging_complete") and not pending_auto)
     operator_signed = bool(payload.get("operator_reviewed"))
 
     missing: list[str] = []
@@ -729,19 +729,52 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
             missing.append("operator_review")
 
     min_tags = int(policy.get("min_total_tags", 3))
-    incomplete = bool(missing) or tag_count < min_tags
-    score = 0 if incomplete else min(100, 40 + tag_count * 8)
-    if not incomplete and tag_count >= min_tags:
-        score = max(score, 75)
-    if not missing and tag_count >= min_tags + 2:
+    if tagging_done:
+        incomplete = False
         score = 100
+        tag_count = max(tag_count, 99)
+    else:
+        incomplete = bool(missing) or tag_count < min_tags
+        score = 0 if incomplete else min(100, 40 + tag_count * 8)
+        if not incomplete and tag_count >= min_tags:
+            score = max(score, 75)
+        if not missing and tag_count >= min_tags + 2:
+            score = 100
+
+    # AI trade critique readiness
+    critique = payload.get("ai_critique") if isinstance(payload.get("ai_critique"), dict) else None
+    crit_meta = payload.get("ai_critique_meta") or {}
+    nar = (critique or {}).get("narrative") or {}
+    has_critique = bool(critique) and crit_meta.get("status") != "error" and bool(
+        nar.get("summary") or critique.get("trade_classification"))
+    ai_stale = False
+    if has_critique:
+        try:
+            import journal_ai_critique as jac
+            ai_stale, _ = jac._stale_from_tags(review, crit_meta, critique)
+        except Exception:
+            ai_stale = bool(crit_meta.get("stale"))
+    if not has_critique:
+        if "ai_critique" not in missing:
+            missing.append("ai_critique")
+    elif ai_stale:
+        if "ai_critique_stale" not in missing:
+            missing.append("ai_critique_stale")
+
+    if missing:
+        incomplete = True
+        score = min(score, 99) if score else 0
 
     parts = []
     if setup_family:
         parts.append(setup_family)
     if setup_types:
         parts.extend(setup_types[:2])
-    summary = ", ".join(parts)[:60] if parts else "—"
+    summary = "reviewed" if tagging_done and not parts else (", ".join(parts)[:60] if parts else "—")
+
+    takeaway = ""
+    if has_critique and nar.get("takeaways"):
+        takeaway = str(nar["takeaways"][0])[:100]
 
     return {
         "complete": not incomplete,
@@ -752,6 +785,13 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
         "auto_stub": auto_stub,
         "auto_tagged": bool(payload.get("auto_tagged")),
         "auto_tagged_pending": bool(payload.get("auto_tagged") and not payload.get("operator_confirmed")),
+        "ai_critique": {
+            "has_critique": has_critique,
+            "stale": ai_stale,
+            "summary": (nar.get("summary") or "")[:160],
+            "takeaway": takeaway,
+            "generated_at": critique.get("generated_at") if critique else crit_meta.get("generated_at"),
+        },
     }
 
 
@@ -991,6 +1031,27 @@ def ai_critique_meta(trade_key: str) -> dict:
 def mark_ai_critique_stale(trade_key: str) -> bool:
     import journal_ai_critique as jac
     return jac.mark_stale_on_tag_change(trade_key)
+
+
+def ai_critique_summaries(account: str | None = None, days: int = 365, limit: int = 500) -> dict:
+    import journal_ai_critique as jac
+    return jac.critique_summaries_bulk(account=account, days=days, limit=limit)
+
+
+def ai_critique_batch(
+    account: str | None = None,
+    date_from: str | None = None,
+    days: int = 365,
+    limit: int = 200,
+    force: bool = False,
+    use_llm: bool = False,
+    skip_existing: bool = True,
+) -> dict:
+    import journal_ai_critique as jac
+    return jac.batch_generate_critiques(
+        account=account, date_from=date_from, days=days, limit=limit,
+        force=force, use_llm=use_llm, skip_existing=skip_existing,
+    )
 
 
 def tagging_queue_skip(trade_key: str, reason: str = ""):

@@ -207,6 +207,11 @@ export default function JournalHub({ onDrill }: Props) {
     `/api/v2/journal/edge-analytics?days=${_edgeDays[timeRange] ?? 365}${acctFilter ? '&account=' + acctFilter : ''}`, 120_000)
   const { data: tagQueueResp } = useApi<any>(
     `/api/v2/journal/tagging-queue?days=${_edgeDays[timeRange] ?? 365}&limit=1${acctFilter ? '&account=' + encodeURIComponent(acctFilter) : ''}`, 120_000)
+  const critiqueSummariesUrl = `/api/v2/journal/ai-critique/summaries?days=${_edgeDays[timeRange] ?? 365}&limit=500${acctFilter ? `&account=${encodeURIComponent(acctFilter)}` : ''}`
+  const { data: critiqueSummariesResp, refetch: refetchCritiqueSummaries } = useApi<any>(critiqueSummariesUrl, 120_000)
+  const critiqueByKey: Record<string, any> = (critiqueSummariesResp?.data ?? critiqueSummariesResp)?.by_trade_key ?? {}
+  const [batchCritBusy, setBatchCritBusy] = useState(false)
+  const [batchCritMsg, setBatchCritMsg] = useState('')
   const edge = ((edgeResp as any)?.data ?? edgeResp) || {}
   const tagQueueNeed = ((tagQueueResp as any)?.data ?? tagQueueResp)?.need_tagging ?? 0
   const [jq, setJq] = useState('')          // journal Ask box
@@ -267,6 +272,33 @@ export default function JournalHub({ onDrill }: Props) {
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
   }, [journal, schwabJournal])
+
+  const runBatchCritiques = async (useLlm = false) => {
+    setBatchCritBusy(true)
+    setBatchCritMsg('')
+    try {
+      const from = getTimeRangeCutoff(timeRange)
+      const r = await fetch('/api/v2/journal/ai-critique/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          days: _edgeDays[timeRange] ?? 365,
+          date_from: from,
+          account: acctFilter || undefined,
+          limit: 200,
+          skip_existing: true,
+          use_llm: useLlm,
+        }),
+      }).then(x => x.json())
+      const d = r?.data ?? r
+      setBatchCritMsg(`Critiques: ${d.generated ?? 0} new · ${d.cached ?? 0} existing · ${d.errors ?? 0} errors (${d.total ?? 0} scanned)`)
+      refetchCritiqueSummaries()
+    } catch (e: any) {
+      setBatchCritMsg(`Batch failed: ${e?.message || e}`)
+    } finally {
+      setBatchCritBusy(false)
+    }
+  }
 
   // ── Apply BOTH filters (account + time range) — shared across all tabs ──
   const cutoff = getTimeRangeCutoff(timeRange)
@@ -483,7 +515,18 @@ export default function JournalHub({ onDrill }: Props) {
         <button onClick={() => fetch('/api/v2/journal/bulk-suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#f59e0b', cursor: 'pointer' }}>⚡ Auto-classify unannotated</button>
         <button onClick={() => fetch('/api/v2/journal/reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#c084fc', cursor: 'pointer' }}>📲 Review reminder</button>
         <button onClick={() => setCompareOpen(true)} disabled={closed.length < 2} style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: '#86efac', cursor: closed.length < 2 ? 'default' : 'pointer', opacity: closed.length < 2 ? 0.5 : 1 }}>⇄ Compare win/loss</button>
+        <button disabled={batchCritBusy || closed.length === 0} onClick={() => runBatchCritiques(false)}
+          title="Generate deterministic AI critiques for closed trades in range (skips existing)"
+          style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.12)', color: '#c4b5fd', cursor: batchCritBusy ? 'wait' : 'pointer', opacity: batchCritBusy ? 0.6 : 1 }}>
+          {batchCritBusy ? '… generating critiques' : '🤖 Generate AI critiques'}
+        </button>
+        <button disabled={batchCritBusy} onClick={() => runBatchCritiques(true)}
+          title="Regenerate with Grok narrative (slower)"
+          style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text3)', cursor: batchCritBusy ? 'wait' : 'pointer' }}>
+          Grok batch
+        </button>
       </div>
+      {batchCritMsg && <div style={{ fontSize: 10, color: '#c4b5fd', marginBottom: 8 }}>{batchCritMsg}</div>}
 
       {warnings.length > 0 && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 8 }}>
@@ -667,10 +710,13 @@ export default function JournalHub({ onDrill }: Props) {
             </div>
             {logView === 'table' ? (
               <TradeLogTable trades={logPaged} sortCol={sortCol} sortDir={sortDir} onSort={onSortCol}
+                critiqueByKey={critiqueByKey}
                 onRow={t => setDetailTrade({ ...t, trade_key: `${t.symbol}:${t.account ?? t.na}:${t.exitDate}` })} />
             ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 10 }}>
               {logPaged.map((t, i) => {
+                const trk = `${t.symbol}:${t.account ?? t.na}:${t.exitDate}`
+                const crit = critiqueByKey[trk]
                 const eq = t.entryTimeFull ? eqMap[tk(t.symbol, t.entryTimeFull)] : null
                 const { r, proxy } = getR(t)
                 const won = t.status !== 'open' && t.pnl > 0, lost = t.status !== 'open' && t.pnl < 0
@@ -708,6 +754,11 @@ export default function JournalHub({ onDrill }: Props) {
                       <span style={{ fontSize: 8, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text2)' }}>{t.strat ?? 'unclassified'}</span>
                       {(t.eg || t.xg) && <span title={gradeExplain(t, eq)} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', cursor: 'help' }}><span style={{ color: 'var(--text3)' }}>E</span><span style={{ color: gradeColor(t.eg) }}>{t.eg ?? '·'}</span> <span style={{ color: 'var(--text3)' }}>X</span><span style={{ color: gradeColor(t.xg) }}>{t.xg ?? '·'}</span> ⓘ</span>}
                       {eq && <span title={eq.grok_what_to_do_next_time || eq.computed_summary || ''} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} cap{Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span>}
+                      {crit?.has_critique && (
+                        <span title={crit.summary || crit.takeaway} style={{ fontSize: 8, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: crit.stale ? 'rgba(245,158,11,.15)' : 'rgba(167,139,250,.15)', color: crit.stale ? '#f59e0b' : '#c4b5fd', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                          🤖 {crit.stale ? 'stale' : (crit.takeaway?.slice(0, 36) || 'critique')}
+                        </span>
+                      )}
                     </div>
                     {/* grok lesson */}
                     {eq?.grok_what_to_do_next_time && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{eq.grok_what_to_do_next_time}</div>}

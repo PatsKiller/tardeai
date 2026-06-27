@@ -14,14 +14,16 @@ const COLS = [
   { k: 'eg', l: 'E' },
   { k: 'xg', l: 'X' },
   { k: 'status', l: 'Status' },
+  { k: 'critique', l: 'AI' },
 ] as const
 
-export default function TradeLogTable({ trades, onRow, sortCol, sortDir, onSort }: {
+export default function TradeLogTable({ trades, onRow, sortCol, sortDir, onSort, critiqueByKey }: {
   trades: any[]
   onRow: (t: any) => void
   sortCol: string
   sortDir: 'asc' | 'desc'
   onSort: (col: string) => void
+  critiqueByKey?: Record<string, { has_critique?: boolean; takeaway?: string; stale?: boolean; summary?: string }>
 }) {
   return (
     <div style={{ overflowX: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>
@@ -41,6 +43,11 @@ export default function TradeLogTable({ trades, onRow, sortCol, sortDir, onSort 
             <tr key={i} onClick={() => onRow(t)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
               {COLS.map(c => {
                 let v: any = t[c.k]
+                if (c.k === 'critique') {
+                  const trk = `${t.symbol}:${t.account ?? t.na}:${t.exitDate}`
+                  const cr = critiqueByKey?.[trk]
+                  v = cr?.has_critique ? (cr.stale ? 'stale' : (cr.takeaway?.slice(0, 28) || '✓')) : '—'
+                }
                 if (c.k === 'pnl') v = fmt$(v, 2)
                 if (c.k === 'pnlPct' && v != null) v = `${Number(v).toFixed(1)}%`
                 if (c.k === 'ep' || c.k === 'xp') v = v != null ? `$${Number(v).toFixed(2)}` : '—'
