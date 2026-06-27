@@ -191,6 +191,43 @@ def _in_new_entry_window(hours_config: dict) -> bool:
     return start_dt <= now_et <= stop_dt
 
 
+_INTRADAY_WIN_CACHE: dict = {}
+
+
+def _intraday_window_for(strategy_id: str):
+    """Return {'start','end'} ET window for an intraday strategy, else None (non-intraday strategies
+    are unrestricted). Reads strategy YAML intraday_execution.trading_window_et."""
+    if strategy_id in _INTRADAY_WIN_CACHE:
+        return _INTRADAY_WIN_CACHE[strategy_id]
+    win = None
+    try:
+        from proposal_lifecycle import is_intraday
+        if is_intraday(strategy_id):
+            import os as _os, yaml as _yaml
+            p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                              "config", "strategies", f"{strategy_id}.yaml")
+            if _os.path.exists(p):
+                w = ((_yaml.safe_load(open(p)) or {}).get("intraday_execution") or {}).get("trading_window_et")
+                if w and w.get("start") and w.get("end"):
+                    win = {"start": str(w["start"]), "end": str(w["end"])}
+    except Exception:
+        win = None
+    _INTRADAY_WIN_CACHE[strategy_id] = win
+    return win
+
+
+def _now_in_window_et(win) -> bool:
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("America/New_York"))
+        sh, sm = map(int, win["start"].split(":"))
+        eh, em = map(int, win["end"].split(":"))
+        cur = now.hour * 60 + now.minute
+        return sh * 60 + sm <= cur <= eh * 60 + em
+    except Exception:
+        return True  # fail-open: don't block if window can't be parsed
+
+
 def run_cycle():
     """Main ATM evaluation cycle."""
     conn = get_connection()
@@ -491,6 +528,13 @@ def run_cycle():
             # all approved strategies. If timing is critical, the enrichment pipeline
             # should trigger ATM evaluation immediately on ENTRY_ZONE_VALID.
             log.info(f"  {sym}: same-day strategy {sid} — proceeding through normal ATM gates")
+
+        # ── 2d: Intraday trading window (scalp fast-path: only act inside the strategy's window,
+        # e.g. momentum_scalp 6am-noon ET). Outside the window the scalp must not auto-trade. ──
+        _win = _intraday_window_for(sid)
+        if _win and not _now_in_window_et(_win):
+            reasons.append({"gate": "outside_intraday_window",
+                            "detail": f"{sid} window {_win['start']}-{_win['end']} ET"})
 
         # ── 2e: ATM-specific gates (skipped for force_approve) ──
         if atm_action != "force_approve":

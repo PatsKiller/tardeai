@@ -139,9 +139,36 @@ def get_max_expiry_hours(strategy_id: str) -> int:
     return base * 2
 
 
+_INTRADAY_TTL_CACHE: dict = {}
+
+
+def _intraday_ttl_minutes(strategy_id: str, default: int = 30) -> int:
+    """Minutes-based TTL for intraday scalps, from the strategy's intraday_execution.proposal_ttl_minutes.
+    A scalp setup is valid for minutes, not hours — the old hours TTL (+ market-close extension) let
+    proposals sit ~9h and expire un-actioned. Cached per process."""
+    if strategy_id in _INTRADAY_TTL_CACHE:
+        return _INTRADAY_TTL_CACHE[strategy_id]
+    ttl = default
+    try:
+        import os, yaml
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "config", "strategies", f"{strategy_id}.yaml")
+        if os.path.exists(p):
+            cfg = yaml.safe_load(open(p)) or {}
+            ttl = int((cfg.get("intraday_execution") or {}).get("proposal_ttl_minutes") or default)
+    except Exception:
+        ttl = default
+    _INTRADAY_TTL_CACHE[strategy_id] = ttl
+    return ttl
+
+
 def get_expiry_datetime(strategy_id: str, created_at: datetime = None) -> datetime:
     if created_at is None:
         created_at = datetime.now(timezone.utc)
+    # INTRADAY scalp/momentum: short minutes-based TTL and NO market-close extension — a stale scalp
+    # proposal must die in minutes, not get pushed out to 16:00 ET.
+    if strategy_id in INTRADAY_STRATEGIES:
+        return created_at + timedelta(minutes=_intraday_ttl_minutes(strategy_id))
     hours = get_expiry_hours(strategy_id)
     raw_expiry = created_at + timedelta(hours=hours)
 
@@ -171,6 +198,9 @@ def get_expiry_datetime(strategy_id: str, created_at: datetime = None) -> dateti
 def get_max_expiry_datetime(strategy_id: str, created_at: datetime = None) -> datetime:
     if created_at is None:
         created_at = datetime.now(timezone.utc)
+    # Intraday scalps must not be re-extended past their minutes TTL by the staleness policy.
+    if strategy_id in INTRADAY_STRATEGIES:
+        return created_at + timedelta(minutes=_intraday_ttl_minutes(strategy_id))
     hours = get_max_expiry_hours(strategy_id)
     return created_at + timedelta(hours=hours)
 
