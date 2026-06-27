@@ -391,7 +391,7 @@ def options_journal_summary(account=None, days=365):
     }
 
 
-def monte_carlo(account=None, days=365, simulations=500, trades_per_path=30):
+def monte_carlo(account=None, days=365, simulations=500, trades_per_path=0, include_curves=True):
     """Bootstrap equity paths from historical trade P&L."""
     import random
     params: list[Any] = [int(days)]
@@ -405,28 +405,50 @@ def monte_carlo(account=None, days=365, simulations=500, trades_per_path=30):
           AND pnl IS NOT NULL
     """, params)]
     if len(pnls) < 5:
-        return {"ok": False, "error": "need at least 5 trades"}
-    sims = []
-    for _ in range(int(simulations)):
-        path = random.choices(pnls, k=min(int(trades_per_path), len(pnls)))
+        return {"ok": False, "error": "need at least 5 trades", "sample_size": len(pnls)}
+    n_hist = len(pnls)
+    path_len = int(trades_per_path) if int(trades_per_path or 0) > 0 else min(30, max(10, n_hist // 3))
+    path_len = min(path_len, n_hist)
+    n_sims = int(simulations)
+    curves: list[list[float]] = []
+    finals: list[float] = []
+    for _ in range(n_sims):
+        path = random.choices(pnls, k=path_len)
         cum = 0.0
-        curve = []
+        curve: list[float] = []
         for p in path:
             cum += p
             curve.append(round(cum, 2))
-        sims.append(cum)
-    sims.sort()
-    n = len(sims)
-    return {
+        curves.append(curve)
+        finals.append(cum)
+    finals.sort()
+    n = len(finals)
+    bands = []
+    for i in range(path_len):
+        step = sorted(c[i] for c in curves)
+        bands.append({
+            "trade": i + 1,
+            "p10": round(step[int(n * 0.1)], 2),
+            "p50": round(step[n // 2], 2),
+            "p90": round(step[int(n * 0.9)], 2),
+        })
+    out = {
         "ok": True,
-        "simulations": n,
-        "trades_per_path": trades_per_path,
-        "median_pnl": round(sims[n // 2], 2),
-        "p10": round(sims[int(n * 0.1)], 2),
-        "p90": round(sims[int(n * 0.9)], 2),
-        "prob_profit": round(sum(1 for s in sims if s > 0) / n * 100, 1),
-        "sample_size": len(pnls),
+        "simulations": n_sims,
+        "trades_per_path": path_len,
+        "path_auto": int(trades_per_path or 0) <= 0,
+        "median_pnl": round(finals[n // 2], 2),
+        "p10": round(finals[int(n * 0.1)], 2),
+        "p90": round(finals[int(n * 0.9)], 2),
+        "prob_profit": round(sum(1 for s in finals if s > 0) / n * 100, 1),
+        "sample_size": n_hist,
+        "bands": bands,
     }
+    if include_curves:
+        import random as _rnd
+        k = min(12, len(curves))
+        out["sample_paths"] = _rnd.sample(curves, k)
+    return out
 
 
 def pivot_report(account=None, days=365, row_dim="setup_family", col_dim="market_regime"):
