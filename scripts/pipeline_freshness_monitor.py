@@ -44,6 +44,8 @@ REGISTRY = [
     # Backtest field blank on cards). Now scheduled; watched here so a re-break auto-remediates.
     ("strategy_backtest_results", "table", ("strategy_backtest_results", "created_at", None), 3, "Strategy backtest evidence / leaderboard"),
     ("proposal_backtest_snapshots", "table", ("proposal_backtest_snapshots", "created_at", None), 3, "Proposal card Backtest field"),
+    ("trade_closed", "table", ("trade_closed", "close_date", None), 7, "TradeInView trade log / Schwab journal"),
+    ("journal_trade_reviews", "table", ("journal_trade_reviews", "updated_at", None), 14, "TradeInView annotations / behavioral analytics"),
 ]
 
 

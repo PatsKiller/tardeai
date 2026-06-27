@@ -64,6 +64,16 @@
     "check_after_hour": 18,
     "min_universe": 400
   },
+  "trade_in_view": {
+    "_comment": "TradeInView journal: Schwab ingest heartbeat, annotation coverage, MFE backfill.",
+    "enabled": true,
+    "schwab_ingest_stale_hours": 0.5,
+    "annotation_warn_pct": 40,
+    "annotation_critical_pct": 20,
+    "mfe_coverage_warn_pct": 50,
+    "trade_closed_stale_days": 7,
+    "check_after_hour_et": 19
+  },
   "proposal_oversight_load": {
     "_comment": "Catch bursts of new PENDING proposals that each trigger LLM oversight (load guard).",
     "enabled": true,
@@ -114,7 +124,9 @@
     "snaptrade_cash_stale": ".venv/bin/python scripts/snaptrade_sync.py --apply",
     "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
     "stale_strategy_backtest_results": "flock -n /tmp/bt_aggregator.lock .venv/bin/python scripts/backtest_results_aggregator.py",
-    "stale_proposal_backtest_snapshots": "flock -n /tmp/proposal_backtest.lock .venv/bin/python scripts/proposal_backtest_engine.py --all-pending --apply"
+    "stale_proposal_backtest_snapshots": "flock -n /tmp/proposal_backtest.lock .venv/bin/python scripts/proposal_backtest_engine.py --all-pending --apply",
+    "schwab_journal_ingest_stale": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply'",
+    "journal_review_stale": "flock -n /tmp/journal_review.lock .venv/bin/python scripts/journal_review_builder.py"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
@@ -126,7 +138,8 @@
       "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
       "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
       "data_gap_resolver.log", "rag_indexer.log", "hermes_coordinator.log", "health_agent_cron.log", "coder_dispatch_cron.log",
-      "portfolio_repricer_intraday.log", "portfolio_repricer_postclose.log", "snaptrade_sync.log"
+      "portfolio_repricer_intraday.log", "portfolio_repricer_postclose.log", "snaptrade_sync.log",
+      "schwab_ingest.log", "journal_review.log", "journal_annotation_reminder.log", "journal_tilt_hook.log"
     ]
   }
 }

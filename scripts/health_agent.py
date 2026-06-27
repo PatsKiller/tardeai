@@ -909,6 +909,11 @@ WHY = {
     "account_summary_drift": "An account_summary total is stale vs its holdings rows (common after SnapTrade sync without repricer).",
     "snaptrade_cash_stale": "Fidelity SPAXX cash is stale (SnapTrade position units); should use balances.buying_power (~Fidelity core MM).",
     "market_quotes_stale": "Alpaca market_quotes backup feed is stale — Fidelity fallback prices may be wrong.",
+    "schwab_journal_ingest_stale": "Schwab journal ingest hasn't run recently — TradeInView trade log and round-trips lag broker reality.",
+    "schwab_journal_ingest_missing": "Schwab journal ingest has no log — trade_closed may never have been populated from Schwab.",
+    "journal_annotation_low": "Most closed trades lack journal annotations — behavioral analytics, pivot grid, and lessons are unreliable.",
+    "journal_mfe_coverage_low": "MFE/profit-capture rows are sparse — Exit Intel and capture-ratio analytics are incomplete.",
+    "trade_closed_stale": "trade_closed has no recent closes — TradeInView may show an outdated trade history.",
 }
 
 
@@ -1093,6 +1098,97 @@ def collect_options_desk_health() -> list[dict]:
     return out
 
 
+def collect_trade_in_view_health() -> list[dict]:
+    """TradeInView journal: Schwab ingest heartbeat, annotation coverage, MFE backfill."""
+    out = []
+    cfg = (_POLICY.get("trade_in_view") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        # Schwab journal ingest — must tick every ~15m during market hours
+        if _is_portfolio_market_hours():
+            ingest_log = LOG_DIR / "schwab_ingest.log"
+            if ingest_log.exists():
+                age_h = round((datetime.now() - datetime.fromtimestamp(ingest_log.stat().st_mtime)).total_seconds() / 3600, 2)
+                max_h = float(cfg.get("schwab_ingest_stale_hours", 0.5))
+                if age_h > max_h:
+                    out.append(_f("data_quality", "schwab_journal_ingest_stale", "warning",
+                                  f"Schwab journal ingest log {age_h:.1f}h old (>{max_h:.1f}h) — "
+                                  f"trade_closed may lag during market hours",
+                                  age_hours=age_h, route="/v3/trade-in-view"))
+            else:
+                out.append(_f("data_quality", "schwab_journal_ingest_missing", "warning",
+                              "schwab_ingest.log missing — journal ingest never ran",
+                              route="/v3/trade-in-view"))
+
+        # Annotation coverage (same join as Telegram reminder)
+        cov = _db("""SELECT
+                         (SELECT COUNT(*) FROM trade_closed t
+                          WHERE t.buy_price > 0 OR t.pnl != 0) AS total,
+                         (SELECT COUNT(*) FROM trade_closed t
+                          JOIN journal_trade_reviews r
+                            ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
+                          WHERE t.buy_price > 0 OR t.pnl != 0) AS reviewed""",
+                  fetch="one")
+        total = int((cov or {}).get("total") or 0)
+        reviewed = int((cov or {}).get("reviewed") or 0)
+        if total > 0:
+            pct = round(reviewed / total * 100, 1)
+            warn_pct = float(cfg.get("annotation_warn_pct", 40))
+            crit_pct = float(cfg.get("annotation_critical_pct", 20))
+            if pct < crit_pct:
+                sev = "critical"
+            elif pct < warn_pct:
+                sev = "warning"
+            else:
+                sev = None
+            if sev:
+                out.append(_f("data_quality", "journal_annotation_low", sev,
+                              f"TradeInView annotation coverage {pct}% ({reviewed}/{total}) "
+                              f"(target ≥{warn_pct:.0f}%)",
+                              coverage_pct=pct, reviewed=reviewed, total=total,
+                              route="/v3/trade-in-view"))
+
+        # MFE / profit-capture backfill coverage
+        mfe = _db("""SELECT
+                         (SELECT COUNT(*) FROM trade_closed) AS trades,
+                         (SELECT COUNT(*) FROM trade_profit_capture_analysis) AS mfe_rows""",
+                  fetch="one")
+        trades_n = int((mfe or {}).get("trades") or 0)
+        mfe_n = int((mfe or {}).get("mfe_rows") or 0)
+        if trades_n > 0:
+            mfe_pct = round(mfe_n / trades_n * 100, 1)
+            mfe_warn = float(cfg.get("mfe_coverage_warn_pct", 50))
+            if mfe_pct < mfe_warn:
+                out.append(_f("data_quality", "journal_mfe_coverage_low", "info",
+                              f"TradeInView MFE backfill {mfe_pct}% ({mfe_n}/{trades_n}) "
+                              f"(target ≥{mfe_warn:.0f}%) — Exit Intel may be thin",
+                              mfe_pct=mfe_pct, mfe_rows=mfe_n, trades=trades_n,
+                              route="/v3/trade-in-view"))
+
+        # trade_closed output freshness (post-close on trading days)
+        try:
+            from zoneinfo import ZoneInfo
+            now_et = datetime.now(ZoneInfo("America/New_York"))
+            from market_session import is_trading_day
+            trading = is_trading_day(now_et.date())
+        except Exception:
+            now_et = datetime.now()
+            trading = now_et.weekday() < 5
+        if trading and now_et.hour >= int(cfg.get("check_after_hour_et", 19)):
+            age_d = _db_age_h("SELECT MAX(close_date)::timestamp FROM trade_closed")
+            max_d = float(cfg.get("trade_closed_stale_days", 7))
+            if age_d is not None and age_d > max_d * 24:
+                out.append(_f("data_quality", "trade_closed_stale", "warning",
+                              f"trade_closed newest close {age_d:.0f}h old (>{max_d}d) — "
+                              f"journal ingest may be broken",
+                              age_hours=age_d, route="/v3/trade-in-view"))
+    except Exception as e:
+        out.append(_f("data_quality", "collector_error", "info",
+                      f"trade_in_view check error: {e}"))
+    return out
+
+
 def collect_pullback_macd_screener() -> list[dict]:
     """Freshness of the S&P 500 pullback/MACD screener — did the daily scan run, and is the
     universe populated. Advisory; cheap DB reads."""
@@ -1225,6 +1321,7 @@ def collect_proposal_oversight_load() -> list[dict]:
 
 COLLECTORS = [
     collect_data_quality,
+    collect_trade_in_view_health,
     collect_execution_health,
     collect_execution_hardening_health,
     collect_intelligence_quality,
