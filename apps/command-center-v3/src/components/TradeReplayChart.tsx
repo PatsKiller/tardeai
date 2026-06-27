@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts'
 import {
   checkPriceIntegrity,
-  computeBarBounds,
   computeOhlcBounds,
+  computeTradeFocusRange,
   configureL2Scale,
   configurePriceScale,
   configureVolumeScale,
@@ -11,7 +11,11 @@ import {
   makeCandleAutoscaleProvider,
   NO_PRICE_AUTOSCALE,
   syncReplayCharts,
+  type TradeFocusRange,
 } from '../lib/replayChartScale'
+
+/** Exec/plan overlays — drawn as price lines but labeled in the HTML legend (not on the axis). */
+type OverlayLevel = { price: number; color: string; label: string; style?: string }
 
 // Per-trade replay chart (TradingView Lightweight Charts, MIT). Candles + volume + VWAP + MACD + RSI panes,
 // entry ↑ / exit ↓ markers + price lines, and a ▶ replay scrubber. Data: /api/v2/trade-chart (Alpaca ->
@@ -37,6 +41,8 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   const [fvImg, setFvImg] = useState('')   // Finviz fallback image (base64 data URI)
   const [scaleWarn, setScaleWarn] = useState('')
   const [autoSyncScale, setAutoSyncScale] = useState(true)  // off = lock Y-axis to full trade range
+  const [overlayLevels, setOverlayLevels] = useState<OverlayLevel[]>([])
+  const focusRangeRef = useRef<TradeFocusRange | null>(null)
   const priceRef = useRef<HTMLDivElement>(null)
   const macdRef = useRef<HTMLDivElement>(null)
   const rsiRef = useRef<HTMLDivElement>(null)
@@ -128,25 +134,42 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     }
     levelPricesRef.current = levels.filter(p => Number.isFinite(p) && p > 0)
 
-    // entry/exit price lines on the candle series
-    for (const m of data.markers || []) candle.createPriceLine({ price: m.price, color: m.type === 'entry' ? '#22c55e' : '#ef4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: m.type === 'entry' ? 'BUY' : 'SELL' })
-    if (plannedStop) candle.createPriceLine({ price: plannedStop, color: '#ef4444', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'STOP (plan)' })
-    if (plannedTgt) candle.createPriceLine({ price: plannedTgt, color: '#22c55e', lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'TARGET (plan)' })
+    // HTML legend for secondary overlays — keeps the right axis uncluttered so BUY/SELL stay visible.
+    const legend: OverlayLevel[] = []
+    const addLine = (price: number, color: string, label: string, lineStyle = 2, onAxis = false) => {
+      candle.createPriceLine({
+        price, color, lineWidth: 1, lineStyle,
+        axisLabelVisible: onAxis,
+        title: onAxis ? label : '',
+      })
+      if (!onAxis) legend.push({ price, color, label })
+    }
+
+    for (const m of data.markers || []) {
+      const isEntry = m.type === 'entry'
+      addLine(Number(m.price), isEntry ? '#22c55e' : '#ef4444', isEntry ? `BUY ${m.price}` : `SELL ${m.price}`, 2, true)
+    }
+    if (plannedStop) addLine(plannedStop, '#ef4444', `STOP ${plannedStop}`, 0)
+    if (plannedTgt) addLine(plannedTgt, '#22c55e', `TARGET ${plannedTgt}`, 0)
     if (ex) {
       const ep = Number(ex.entry_price) || 0
-      if (ex.mfe_after_entry != null && ep) candle.createPriceLine({ price: ep + Number(ex.mfe_after_entry), color: '#3b82f6', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `MFE +${(100 * Number(ex.mfe_after_entry) / ep).toFixed(1)}%` })
-      if (ex.mae_after_entry != null && ep) candle.createPriceLine({ price: ep - Number(ex.mae_after_entry), color: '#9333ea', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `MAE -${(100 * Number(ex.mae_after_entry) / ep).toFixed(1)}%` })
+      if (ex.mfe_after_entry != null && ep) addLine(ep + Number(ex.mfe_after_entry), '#3b82f6', `MFE +${(100 * Number(ex.mfe_after_entry) / ep).toFixed(1)}%`, 1)
+      if (ex.mae_after_entry != null && ep) addLine(ep - Number(ex.mae_after_entry), '#9333ea', `MAE -${(100 * Number(ex.mae_after_entry) / ep).toFixed(1)}%`, 3)
       if (ex.post_exit_high != null) {
         const rt = ex.runner_type as string | undefined
         const gb = ex.post_exit_gave_back_ratio != null ? ` · gave back ${Math.round(100 * Number(ex.post_exit_gave_back_ratio))}%` : ''
-        const rtLabel = rt === 'parabolic_pump' ? `⚡ pump — exit was right${gb}`
-          : rt === 'sustained_trend' ? '↗ real runner — scale-out lesson'
-          : rt === 'trend_top' ? '⛰ trend top after exit'
-          : rt === 'faded' ? 'faded after exit'
-          : 'max after exit'
-        candle.createPriceLine({ price: Number(ex.post_exit_high), color: rt === 'sustained_trend' ? '#22c55e' : '#f59e0b', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: rtLabel })
+        const rtLabel = rt === 'parabolic_pump' ? `Post-exit pump${gb}`
+          : rt === 'sustained_trend' ? 'Post-exit runner'
+          : rt === 'trend_top' ? 'Trend top after exit'
+          : rt === 'faded' ? 'Faded after exit'
+          : `Post-exit high $${Number(ex.post_exit_high).toFixed(2)}`
+        addLine(Number(ex.post_exit_high), rt === 'sustained_trend' ? '#22c55e' : '#f59e0b', rtLabel, 1)
       }
     }
+    setOverlayLevels(legend)
+
+    // Trade-centric time window: entry context + post-exit bars for opportunity-cost review.
+    focusRangeRef.current = computeTradeFocusRange(data.bars, data.markers || [], { preBars: 25, postBars: 30 })
 
     const cur = replayCursorRef.current
     paint(cur <= 0 ? data.bars.length : cur, { fitTime: true })
@@ -176,9 +199,12 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.spy?.setData((data.spy_overlay || []).filter((x: any) => shownTime(x.time)))
     series.current.l2?.setData((data.l2_strip || []).filter((x: any) => shownTime(x.time)).map((x: any) => ({ time: x.time, value: x.value, color: x.value >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' })))
 
+    // Trade markers always render (not gated by replay cursor) — size 2 for visibility.
     const tradeMarkers = (data.markers || []).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
-      color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label,
+      color: m.type === 'entry' ? '#22c55e' : '#ef4444',
+      shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown',
+      text: m.label, size: 2,
     }))
     const mks = [...tradeMarkers]
     if (data.session_open_time && shown.has(String(data.session_open_time)))
@@ -190,7 +216,14 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
     series.current.candle?.setMarkers(mks)
 
-    syncReplayCharts(charts.current, priceChart.current, series.current.candle, { fitTime: opts?.fitTime ?? false })
+    const fitTime = opts?.fitTime ?? false
+    // Full view: trade window + 30 post-exit bars. Replay scrub: expand focus with revealed bars.
+    const focus = fitTime
+      ? (count <= 0
+        ? focusRangeRef.current
+        : computeTradeFocusRange(visBars, data.markers || [], { preBars: 10, postBars: 20 }))
+      : null
+    syncReplayCharts(charts.current, priceChart.current, series.current.candle, { fitTime, focusRange: focus })
 
     const integrityBars = allBarsRef.current.length ? allBarsRef.current : visBars
     const ohlcBounds = computeOhlcBounds(integrityBars)
@@ -259,6 +292,16 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         )}
         {data?.fallback === 'finviz' && fvImg && <div style={{ padding: 8 }}><div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>No Alpaca/Schwab bars — Finviz Elite chart image:</div><img src={fvImg} alt={trade.symbol} style={{ width: '100%', borderRadius: 6 }} /></div>}
         {!err && data?.bars?.length > 0 && <>
+          {overlayLevels.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, padding: '6px 8px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: '1px solid rgba(148,163,184,.12)' }}>
+              <span style={{ fontSize: 9, color: 'var(--text3)', alignSelf: 'center', marginRight: 2 }}>Levels</span>
+              {overlayLevels.map((lv, i) => (
+                <span key={i} title={`$${lv.price.toFixed(2)}`} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, border: `1px solid ${lv.color}55`, color: lv.color, background: `${lv.color}18`, whiteSpace: 'nowrap' }}>
+                  {lv.label}
+                </span>
+              ))}
+            </div>
+          )}
           <div ref={priceRef} style={{ width: '100%' }} />
           {show.macd && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>MACD</div>}
           <div ref={macdRef} style={{ width: '100%', display: show.macd ? 'block' : 'none' }} />

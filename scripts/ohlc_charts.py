@@ -395,13 +395,17 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     if same_day and has_time:
         timeframe = "1Min"
         sess_open, sess_close = _session_open(ed), _session_close(ed)
-        # DISPLAY window: pad each side by max(10 min, the hold), capped 60 min.
+        # DISPLAY window: pre-context + post-exit padding for opportunity-cost review.
         hold = ext - ent
-        pad = max(dt.timedelta(minutes=10), min(hold, dt.timedelta(minutes=60)))
-        s_dt, e_dt = ent - pad, ext + pad
-        # morning trade (entry within 90 min of the open) -> show ~30 min PREMARKET + the open
+        pre_pad = max(dt.timedelta(minutes=15), min(hold, dt.timedelta(minutes=30)))
+        post_pad = max(dt.timedelta(minutes=30), min(hold, dt.timedelta(minutes=60)))
+        s_dt, e_dt = ent - pre_pad, ext + post_pad
+        # morning trade (entry within 90 min of the open) -> limited premarket context only
         if ent <= sess_open + dt.timedelta(minutes=90):
-            s_dt = min(s_dt, sess_open - dt.timedelta(minutes=30))
+            if ent < sess_open:
+                s_dt = min(s_dt, sess_open - dt.timedelta(minutes=30))
+            else:
+                s_dt = min(s_dt, sess_open - dt.timedelta(minutes=10))
         # afternoon trade (exit within 90 min of the close) -> show the close + ~30 min AFTER-HOURS
         if ext >= sess_close - dt.timedelta(minutes=90):
             e_dt = max(e_dt, sess_close + dt.timedelta(minutes=30))

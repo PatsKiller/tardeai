@@ -116,9 +116,60 @@ export function linkTimeScales(charts: IChartApi[]) {
   }
 }
 
-export type SyncReplayOptions = { fitTime?: boolean }
+export type TradeMarker = { time: number | string; type?: string }
 
-/** Refresh candle autoscale; optionally fit time axis (initial load / Re-sync only). */
+export type TradeFocusRange = { from: number; to: number }
+
+export type SyncReplayOptions = {
+  fitTime?: boolean
+  /** Trade-centric logical range — avoids fitContent squashing entry/exit to the far right. */
+  focusRange?: TradeFocusRange | null
+}
+
+/**
+ * Focus the visible window on the trade: context before entry + meaningful post-exit bars
+ * so opportunity cost (runner after exit) is visible without manual zoom.
+ */
+export function computeTradeFocusRange(
+  bars: ReplayOhlcBar[],
+  markers: TradeMarker[] = [],
+  opts?: { preBars?: number; postBars?: number },
+): TradeFocusRange | null {
+  if (!bars.length) return null
+  const preBars = opts?.preBars ?? 25
+  const postBars = opts?.postBars ?? 30
+  const entry = markers.find(m => m.type === 'entry')
+  const exit = markers.find(m => m.type === 'exit')
+
+  const idxOf = (t: number | string | undefined) => {
+    if (t == null) return -1
+    return bars.findIndex(b => String(b.time) === String(t))
+  }
+
+  let entryIdx = idxOf(entry?.time)
+  let exitIdx = idxOf(exit?.time)
+  if (entryIdx < 0 && exitIdx < 0) return null
+  if (entryIdx < 0) entryIdx = exitIdx
+  if (exitIdx < 0) exitIdx = entryIdx
+
+  const from = Math.max(0, Math.min(entryIdx, exitIdx) - preBars)
+  const to = Math.min(bars.length - 1, Math.max(entryIdx, exitIdx) + postBars)
+  return { from, to: to + 1 } // +1 logical slot = right breathing room after last bar
+}
+
+/** Apply trade-focused range (or fit all bars when no markers). */
+export function applyTradeTimeRange(chart: IChartApi, range: TradeFocusRange | null, fitAll = false) {
+  try {
+    chart.timeScale().applyOptions({ rightOffset: 8, barSpacing: 6, fixLeftEdge: false, fixRightEdge: false })
+    if (range && !fitAll) {
+      chart.timeScale().setVisibleLogicalRange(range)
+    } else {
+      chart.timeScale().fitContent()
+    }
+  } catch { /* chart may be mid-teardown */ }
+}
+
+/** Refresh candle autoscale; optionally set trade-focused time range (initial load / Re-sync). */
 export function syncReplayCharts(
   charts: IChartApi[],
   mainChart?: IChartApi | null,
@@ -126,9 +177,10 @@ export function syncReplayCharts(
   opts: SyncReplayOptions = {},
 ) {
   const fitTime = opts.fitTime ?? false
+  const focus = opts.focusRange
   for (const c of charts) {
     try {
-      if (fitTime) c.timeScale().fitContent()
+      if (fitTime) applyTradeTimeRange(c, focus ?? null, !focus)
       c.priceScale('right').applyOptions({ autoScale: true })
     } catch { /* chart may be mid-teardown */ }
   }
