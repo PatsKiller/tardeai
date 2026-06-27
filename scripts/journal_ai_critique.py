@@ -363,21 +363,52 @@ def _parse_llm(text: str) -> dict | None:
     return d if req.issubset(d.keys()) else None
 
 
+_TAG_FP_FIELDS = (
+    "setup_family", "market_regime", "setup_types", "mistake_tags",
+    "strength_tags", "emotion_before", "planned_r", "realized_r",
+)
+
+
+def _tag_snapshot(review: dict | None) -> dict:
+    if not review:
+        return {}
+    snap: dict = {}
+    for k in _TAG_FP_FIELDS:
+        v = review.get(k)
+        if k in ("setup_types", "mistake_tags", "strength_tags"):
+            snap[k] = sorted(v or [])
+        else:
+            snap[k] = v
+    return snap
+
+
 def tag_fingerprint(review: dict | None) -> str:
     """Hash of tag fields — stale when operator edits strategy/setup/mistakes after generation."""
     if not review:
         return ""
-    blob = json.dumps({
-        "setup_family": review.get("setup_family"),
-        "market_regime": review.get("market_regime"),
-        "setup_types": sorted(review.get("setup_types") or []),
-        "mistake_tags": sorted(review.get("mistake_tags") or []),
-        "strength_tags": sorted(review.get("strength_tags") or []),
-        "emotion_before": review.get("emotion_before"),
-        "planned_r": review.get("planned_r"),
-        "realized_r": review.get("realized_r"),
-    }, sort_keys=True, default=str)
+    blob = json.dumps(_tag_snapshot(review), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def stale_tag_diff(review: dict, meta: dict, critique: dict | None = None) -> list[str]:
+    """Human-readable fields that changed since critique generation."""
+    old = meta.get("tags_at_generation") or {}
+    if not old and critique:
+        cls = critique.get("trade_classification") or {}
+        old = {
+            "setup_family": cls.get("setup_family"),
+            "market_regime": cls.get("market_regime"),
+            "setup_types": sorted(cls.get("setup_types") or []),
+            "emotion_before": cls.get("psychology"),
+        }
+    if not old:
+        return []
+    cur = _tag_snapshot(review)
+    changed = []
+    for k in _TAG_FP_FIELDS:
+        if old.get(k) != cur.get(k):
+            changed.append(k.replace("_", " "))
+    return changed
 
 
 def ensure_critique_schema() -> None:
@@ -452,6 +483,7 @@ def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", e
         "status": status,
         "prompt_version": PROMPT_VERSION,
         "tag_fingerprint": fp,
+        "tags_at_generation": _tag_snapshot(review),
         "generated_at": (critique or {}).get("generated_at"),
         "stale": stale,
         "llm_enhanced": bool(nar.get("llm_enhanced")),
@@ -577,13 +609,16 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
                 elif bool(meta.get("stale")) != stale:
                     meta = {**meta, "current_tag_fingerprint": cur_fp}
                     _persist_meta(trade_key, payload, meta, stale=stale)
+                diff = stale_tag_diff(review_row, meta, stored) if stale else []
                 clean = {k: v for k, v in stored.items() if not k.startswith("_")}
                 return {
                     "ok": True, "cached": True, "persisted": True, "critique": clean,
                     "meta": {**meta, "tag_fingerprint": meta.get("tag_fingerprint") or cur_fp,
                              "current_tag_fingerprint": cur_fp,
-                             "history_count": stored.get("_history_count", 0), "stale": stale},
+                             "history_count": stored.get("_history_count", 0), "stale": stale,
+                             "stale_fields": diff},
                     "stale": stale,
+                    "stale_fields": diff,
                 }
             if sm == "error":
                 return {
