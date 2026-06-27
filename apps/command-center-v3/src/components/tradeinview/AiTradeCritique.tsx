@@ -42,12 +42,17 @@ export default function AiTradeCritique({ tradeKey }: { tradeKey: string }) {
     setErr('')
     try {
       const qs = `trade_key=${encodeURIComponent(tradeKey)}${force ? '&force=1' : ''}`
-      const r = await fetch(`/api/v2/journal/ai-critique?${qs}`)
+      const r = await fetch(force ? '/api/v2/journal/ai-critique' : `/api/v2/journal/ai-critique?${qs}`, {
+        method: force ? 'POST' : 'GET',
+        ...(force ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trade_key: tradeKey, force: true }) } : {}),
+      })
       const j = await r.json()
-      if (j?.critique) {
-        setCritique(j.critique)
-      } else if (j?.ok === false) {
-        setErr(j.error || 'Failed')
+      const payload = j?.data ?? j
+      const c = payload?.critique
+      if (c && (c.narrative?.summary || c.trade_classification || c.execution_quality)) {
+        setCritique(c)
+      } else if (payload?.ok === false || j?.ok === false) {
+        setErr(payload?.error || j?.error || 'Failed')
       } else {
         setErr('No critique returned')
       }

@@ -3,6 +3,7 @@ import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts'
 import {
   checkPriceIntegrity,
   computeBarBounds,
+  computeOhlcBounds,
   configureL2Scale,
   configurePriceScale,
   configureVolumeScale,
@@ -66,7 +67,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
         fetch(d.fallback_image).then(r => r.json()).then(jj => { const dd = jj?.data ?? jj; if (dd?.image) setFvImg(dd.image); else setErr((dd?.error || 'finviz image unavailable') + ' — if persistent, the Finviz Elite cookie may have expired (refresh FINVIZ_COOKIE)') })
       }
     }).catch(e => setErr(String(e)))
-  }, [trade.symbol, trade.entry_date])
+  }, [trade.symbol, trade.entry_date, trade.exit_date, (trade as any).trade_key, (trade as any).account])
 
   // build charts once data arrives
   useEffect(() => {
@@ -148,15 +149,15 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     }
 
     const cur = replayCursorRef.current
-    paint(cur <= 0 ? data.bars.length : cur)
+    paint(cur <= 0 ? data.bars.length : cur, { fitTime: true })
     const unlink = linkTimeScales(charts.current)
-    const onResize = () => syncReplayCharts(charts.current, priceChart.current, series.current.candle)
+    const onResize = () => syncReplayCharts(charts.current, priceChart.current, series.current.candle, { fitTime: true })
     window.addEventListener('resize', onResize)
     return () => { unlink(); window.removeEventListener('resize', onResize); charts.current.forEach(c => c.remove()); charts.current = []; priceChart.current = null }
   }, [data, show.vol, show.vwap, show.macd, show.rsi, show.spy, show.l2])
 
   // replay paint: reveal the first `count` bars (0 => all)
-  const paint = useCallback((count: number) => {
+  const paint = useCallback((count: number, opts?: { fitTime?: boolean }) => {
     if (!data?.bars) return
     const k = count <= 0 ? data.bars.length : count
     const cut = (arr: any[]) => (arr || []).filter((_: any, i: number) => i < k)
@@ -175,9 +176,11 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     series.current.spy?.setData((data.spy_overlay || []).filter((x: any) => shownTime(x.time)))
     series.current.l2?.setData((data.l2_strip || []).filter((x: any) => shownTime(x.time)).map((x: any) => ({ time: x.time, value: x.value, color: x.value >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' })))
 
-    const mks = (data.markers || []).filter((m: any) => shown.has(String(m.time))).map((m: any) => ({
+    const tradeMarkers = (data.markers || []).map((m: any) => ({
       time: m.time, position: m.type === 'entry' ? 'belowBar' : 'aboveBar',
-      color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label }))
+      color: m.type === 'entry' ? '#22c55e' : '#ef4444', shape: m.type === 'entry' ? 'arrowUp' : 'arrowDown', text: m.label,
+    }))
+    const mks = [...tradeMarkers]
     if (data.session_open_time && shown.has(String(data.session_open_time)))
       mks.push({ time: data.session_open_time, position: 'aboveBar', color: '#eab308', shape: 'circle', text: '9:30 open' })
     if (data.session_close_time && shown.has(String(data.session_close_time)))
@@ -187,19 +190,19 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
     series.current.candle?.setMarkers(mks)
 
-    syncReplayCharts(charts.current, priceChart.current, series.current.candle)
+    syncReplayCharts(charts.current, priceChart.current, series.current.candle, { fitTime: opts?.fitTime ?? false })
 
-    const scaleBars = autoSyncRef.current ? visBars : (allBarsRef.current.length ? allBarsRef.current : visBars)
-    const bounds = computeBarBounds(scaleBars, levelPricesRef.current)
-    const integrity = checkPriceIntegrity(bounds, trade.symbol, data.price_bounds, data.integrity?.marker_aligned)
+    const integrityBars = allBarsRef.current.length ? allBarsRef.current : visBars
+    const ohlcBounds = computeOhlcBounds(integrityBars)
+    const integrity = checkPriceIntegrity(ohlcBounds, trade.symbol, data.price_bounds, data.integrity?.marker_aligned)
     const markerWarn = (data.integrity?.marker_aligned === false || data.integrity?.marker_in_range === false)
       ? (data.integrity.marker_warnings || []).join('; ')
       : ''
     const warn = [integrity, markerWarn].filter(Boolean).join(' · ')
     setScaleWarn(warn)
-    if (DEV && bounds) {
-      console.debug(`[replay-scale] ${trade.symbol} bars=${visBars.length}`, {
-        bounds,
+    if (DEV && ohlcBounds) {
+      console.debug(`[replay-scale] ${trade.symbol} bars=${visBars.length}/${integrityBars.length}`, {
+        ohlcBounds,
         api: data.price_bounds,
         integrity: data.integrity,
       })
@@ -210,13 +213,7 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
   useEffect(() => { paint(n) }, [autoSyncScale])
 
   const resyncScale = () => {
-    syncReplayCharts(charts.current, priceChart.current, series.current.candle)
-    if (data?.bars) {
-      const k = n <= 0 ? data.bars.length : n
-      const visBars = data.bars.slice(0, k)
-      const warn = checkPriceIntegrity(computeBarBounds(visBars, levelPricesRef.current), trade.symbol, data.price_bounds)
-      setScaleWarn(warn || '')
-    }
+    paint(n <= 0 ? data?.bars?.length || 0 : n, { fitTime: true })
   }
 
   // play animation — interval scales with speed (0.5x..8x)
