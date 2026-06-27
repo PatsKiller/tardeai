@@ -10,6 +10,7 @@ Grok coaching narrative. Persisted in journal_trade_reviews.payload.ai_critique.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -22,7 +23,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import journal_trade_in_view as tiv
 import ohlc_charts
 
-PROMPT_VERSION = "ai_critique_v1"
+PROMPT_VERSION = "ai_critique_v2"
+_HISTORY_MAX = 10
 
 
 def _classify_trade(review: dict, trade: dict, hold_min: int | None) -> dict:
@@ -361,32 +363,217 @@ def _parse_llm(text: str) -> dict | None:
     return d if req.issubset(d.keys()) else None
 
 
+def tag_fingerprint(review: dict | None) -> str:
+    """Hash of tag fields — stale when operator edits strategy/setup/mistakes after generation."""
+    if not review:
+        return ""
+    blob = json.dumps({
+        "setup_family": review.get("setup_family"),
+        "market_regime": review.get("market_regime"),
+        "setup_types": sorted(review.get("setup_types") or []),
+        "mistake_tags": sorted(review.get("mistake_tags") or []),
+        "strength_tags": sorted(review.get("strength_tags") or []),
+        "emotion_before": review.get("emotion_before"),
+        "planned_r": review.get("planned_r"),
+        "realized_r": review.get("realized_r"),
+    }, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def ensure_critique_schema() -> None:
+    """Queryable index table — complements payload.ai_critique for search/aggregation."""
+    tiv._q("""
+        CREATE TABLE IF NOT EXISTS journal_ai_critiques (
+            trade_key TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            account TEXT,
+            closed_date DATE,
+            setup_family TEXT,
+            market_regime TEXT,
+            trade_type TEXT,
+            status TEXT NOT NULL DEFAULT 'ok',
+            prompt_version TEXT,
+            generated_at TIMESTAMPTZ,
+            tag_fingerprint TEXT,
+            summary TEXT,
+            takeaways JSONB DEFAULT '[]'::jsonb,
+            strengths JSONB DEFAULT '[]'::jsonb,
+            improvements JSONB DEFAULT '[]'::jsonb,
+            search_text TEXT,
+            structured JSONB NOT NULL DEFAULT '{}'::jsonb,
+            llm_enhanced BOOLEAN DEFAULT FALSE,
+            stale BOOLEAN DEFAULT FALSE,
+            error_message TEXT,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, fetch="none")
+    tiv._q("CREATE INDEX IF NOT EXISTS idx_jac_setup ON journal_ai_critiques(setup_family)", fetch="none")
+    tiv._q("CREATE INDEX IF NOT EXISTS idx_jac_closed ON journal_ai_critiques(closed_date DESC)", fetch="none")
+    tiv._q("CREATE INDEX IF NOT EXISTS idx_jac_status ON journal_ai_critiques(status)", fetch="none")
+
+
+def _search_text(critique: dict) -> str:
+    nar = critique.get("narrative") or {}
+    parts = [
+        critique.get("symbol", ""),
+        nar.get("summary", ""),
+        " ".join(nar.get("takeaways") or []),
+        " ".join(nar.get("strengths") or []),
+        " ".join(nar.get("improvements") or []),
+        " ".join(nar.get("suggested_tags") or []),
+    ]
+    cls = critique.get("trade_classification") or {}
+    parts.append(cls.get("setup_family") or "")
+    parts.append(cls.get("market_regime") or "")
+    return " ".join(p for p in parts if p).lower()[:8000]
+
+
+def load_stored_critique(trade_key: str) -> dict | None:
+    """Read persisted critique from journal_trade_reviews.payload (no generation)."""
+    row = tiv._q("SELECT payload FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
+    if not row:
+        return None
+    payload = tiv._review_payload(row)
+    c = payload.get("ai_critique")
+    if not c or not isinstance(c, dict):
+        return None
+    meta = payload.get("ai_critique_meta") or {}
+    c = dict(c)
+    c["_meta"] = meta
+    c["_history_count"] = len(payload.get("ai_critique_history") or [])
+    return c
+
+
+def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", error: str = "",
+                   stale: bool = False, llm_raw: str = "") -> dict:
+    fp = tag_fingerprint(review)
+    nar = (critique or {}).get("narrative") or {}
+    return {
+        "status": status,
+        "prompt_version": PROMPT_VERSION,
+        "tag_fingerprint": fp,
+        "generated_at": (critique or {}).get("generated_at"),
+        "stale": stale,
+        "llm_enhanced": bool(nar.get("llm_enhanced")),
+        "deterministic": bool(nar.get("deterministic")),
+        "error_message": error[:300] if error else None,
+        "llm_raw_preview": (llm_raw or "")[:500] if llm_raw else None,
+    }
+
+
+def mark_stale_on_tag_change(trade_key: str) -> bool:
+    """Flag critique stale when journal tags change after last generation."""
+    row = tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
+    if not row:
+        return False
+    payload = tiv._review_payload(row)
+    meta = payload.get("ai_critique_meta") or {}
+    if not payload.get("ai_critique"):
+        return False
+    cur_fp = tag_fingerprint(row)
+    if meta.get("tag_fingerprint") == cur_fp:
+        return False
+    meta["stale"] = True
+    meta["stale_reason"] = "tags_changed"
+    meta["stale_at"] = datetime.now(timezone.utc).isoformat()
+    meta["current_tag_fingerprint"] = cur_fp
+    payload["ai_critique_meta"] = meta
+    tiv._q("UPDATE journal_trade_reviews SET payload=%s::jsonb, updated_at=NOW() WHERE trade_key=%s",
+           [json.dumps(_json_clean(payload), default=str), trade_key], fetch="none")
+    try:
+        ensure_critique_schema()
+        tiv._q("UPDATE journal_ai_critiques SET stale=TRUE, updated_at=NOW() WHERE trade_key=%s",
+               [trade_key], fetch="none")
+    except Exception:
+        pass
+    return True
+
+
+def _upsert_index(trade_key: str, critique: dict, review: dict, meta: dict) -> None:
+    ensure_critique_schema()
+    parts = trade_key.split(":")
+    sym = parts[0] if parts else critique.get("symbol", "")
+    acct = parts[1] if len(parts) > 2 else ""
+    cd = parts[-1] if len(parts) > 2 else None
+    cls = critique.get("trade_classification") or {}
+    nar = critique.get("narrative") or {}
+    tiv._q("""
+        INSERT INTO journal_ai_critiques (
+            trade_key, symbol, account, closed_date, setup_family, market_regime, trade_type,
+            status, prompt_version, generated_at, tag_fingerprint, summary, takeaways, strengths,
+            improvements, search_text, structured, llm_enhanced, stale, error_message, updated_at
+        ) VALUES (%s,%s,%s,%s::date,%s,%s,%s,%s,%s,%s::timestamptz,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s::jsonb,%s,%s,%s,NOW())
+        ON CONFLICT (trade_key) DO UPDATE SET
+            symbol=EXCLUDED.symbol, account=EXCLUDED.account, closed_date=EXCLUDED.closed_date,
+            setup_family=EXCLUDED.setup_family, market_regime=EXCLUDED.market_regime,
+            trade_type=EXCLUDED.trade_type, status=EXCLUDED.status, prompt_version=EXCLUDED.prompt_version,
+            generated_at=EXCLUDED.generated_at, tag_fingerprint=EXCLUDED.tag_fingerprint,
+            summary=EXCLUDED.summary, takeaways=EXCLUDED.takeaways, strengths=EXCLUDED.strengths,
+            improvements=EXCLUDED.improvements, search_text=EXCLUDED.search_text,
+            structured=EXCLUDED.structured, llm_enhanced=EXCLUDED.llm_enhanced,
+            stale=EXCLUDED.stale, error_message=EXCLUDED.error_message, updated_at=NOW()
+    """, [
+        trade_key, sym, acct, cd,
+        cls.get("setup_family") or review.get("setup_family"),
+        cls.get("market_regime") or review.get("market_regime"),
+        cls.get("type"),
+        meta.get("status", "ok"),
+        meta.get("prompt_version", PROMPT_VERSION),
+        meta.get("generated_at") or critique.get("generated_at"),
+        meta.get("tag_fingerprint"),
+        nar.get("summary", "")[:2000],
+        json.dumps(nar.get("takeaways") or []),
+        json.dumps(nar.get("strengths") or []),
+        json.dumps(nar.get("improvements") or []),
+        _search_text(critique),
+        json.dumps(_json_clean(critique), default=str),
+        bool(nar.get("llm_enhanced")),
+        bool(meta.get("stale")),
+        meta.get("error_message"),
+    ], fetch="none")
+
+
 def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok", use_llm: bool = True) -> dict:
-    existing = tiv._q("SELECT payload FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
-    payload = tiv._review_payload(existing)
-    if not force and payload.get("ai_critique", {}).get("version") == PROMPT_VERSION:
-        cached = payload["ai_critique"]
-        nar = (cached.get("narrative") or {})
-        if nar.get("summary"):
-            return {"ok": True, "cached": True, "critique": cached}
-        # Backfill empty narrative from stored sections (older --no-llm runs).
-        ctx = build_context(trade_key)
-        if ctx:
-            sections = {k: cached.get(k) for k in (
-                "trade_classification", "execution_quality", "risk_sizing", "opportunity_cost")}
-            cached = {**cached, "narrative": _deterministic_narrative(ctx, sections)}
-            save_critique(trade_key, cached)
-            return {"ok": True, "cached": True, "critique": cached, "backfilled": True}
+    review_row = tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one") or {}
+    payload = tiv._review_payload(review_row)
+    cur_fp = tag_fingerprint(review_row)
+    meta = payload.get("ai_critique_meta") or {}
+
+    if not force:
+        stored = load_stored_critique(trade_key)
+        if stored:
+            nar = stored.get("narrative") or {}
+            sm = meta.get("status", "ok")
+            if sm == "ok" and (nar.get("summary") or stored.get("trade_classification")):
+                stale = bool(meta.get("stale")) or (meta.get("tag_fingerprint") and meta.get("tag_fingerprint") != cur_fp)
+                if stale and meta.get("tag_fingerprint") != cur_fp:
+                    meta = {**meta, "stale": True, "current_tag_fingerprint": cur_fp}
+                clean = {k: v for k, v in stored.items() if not k.startswith("_")}
+                return {
+                    "ok": True, "cached": True, "persisted": True, "critique": clean,
+                    "meta": {**meta, "tag_fingerprint": meta.get("tag_fingerprint") or cur_fp,
+                             "current_tag_fingerprint": cur_fp,
+                             "history_count": stored.get("_history_count", 0)},
+                    "stale": stale,
+                }
+            if sm == "error":
+                return {
+                    "ok": False, "persisted": True, "error": meta.get("error_message") or "prior generation failed",
+                    "meta": meta, "stale": True,
+                }
 
     ctx = build_context(trade_key)
     if not ctx:
-        return {"ok": False, "error": "trade not found"}
+        err = "trade not found"
+        _persist_error(trade_key, err, review_row)
+        return {"ok": False, "error": err, "persisted": True}
 
     sections = _deterministic_sections(ctx)
     trade = ctx["trade"]
     eq = ctx["eq"]
     review = ctx["review"]
     narrative = _deterministic_narrative(ctx, sections)
+    llm_raw = ""
 
     if use_llm:
         import llm_lane
@@ -420,12 +607,12 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
             realized_r=ctx.get("realized_r"),
         )
         try:
-            text = llm_lane.generate(prompt, lane=lane, timeout=90)
-            parsed = _parse_llm(text)
+            llm_raw = llm_lane.generate(prompt, lane=lane, timeout=90)
+            parsed = _parse_llm(llm_raw)
             if parsed and parsed.get("summary"):
-                narrative = {**parsed, "llm_enhanced": True}
-            elif text:
-                narrative = {**narrative, "summary": (text or "")[:600], "parse_failed": True}
+                narrative = {**parsed, "llm_enhanced": True, "llm_lane": lane}
+            elif llm_raw:
+                narrative = {**narrative, "summary": (llm_raw or "")[:600], "parse_failed": True}
         except Exception as e:
             narrative = {**narrative, "llm_error": str(e)[:120]}
 
@@ -437,8 +624,15 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
         **sections,
         "narrative": narrative,
         "chart_meta": ctx["chart_meta"],
+        "llm_raw": llm_raw[:4000] if llm_raw else None,
     }
-    return {"ok": True, "critique": critique}
+    meta = _critique_meta(review_row, critique, status="ok", llm_raw=llm_raw)
+    save_critique(trade_key, critique, meta=meta, review=review_row)
+    clean = dict(critique)
+    return {
+        "ok": True, "generated": True, "persisted": True, "critique": clean,
+        "meta": meta, "stale": False,
+    }
 
 
 def _json_clean(obj):
@@ -456,28 +650,193 @@ def _json_clean(obj):
     return obj
 
 
-def save_critique(trade_key: str, critique: dict) -> None:
+def save_critique(trade_key: str, critique: dict, *, meta: dict | None = None, review: dict | None = None) -> None:
     existing = tiv._q("SELECT id, payload FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
     payload = tiv._review_payload(existing) if existing else {}
+    old = payload.get("ai_critique")
+    if old and isinstance(old, dict):
+        hist = list(payload.get("ai_critique_history") or [])
+        hist.insert(0, {**_json_clean(old), "archived_at": datetime.now(timezone.utc).isoformat()})
+        payload["ai_critique_history"] = hist[:_HISTORY_MAX]
     payload["ai_critique"] = _json_clean(critique)
+    rev = review or tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one") or {}
+    payload["ai_critique_meta"] = meta or _critique_meta(rev, critique)
     parts = trade_key.split(":")
     sym, acct, cd = parts[0], parts[1] if len(parts) > 2 else "", parts[-1]
+    blob = json.dumps(_json_clean(payload), default=str)
     if existing:
         tiv._q("UPDATE journal_trade_reviews SET payload=%s::jsonb, updated_at=NOW() WHERE trade_key=%s",
-               [json.dumps(_json_clean(payload), default=str), trade_key], fetch="none")
+               [blob, trade_key], fetch="none")
     else:
         tiv._q("""
             INSERT INTO journal_trade_reviews (trade_key, symbol, account, closed_date, payload)
             VALUES (%s,%s,%s,%s::date,%s::jsonb)
             ON CONFLICT (trade_key) DO UPDATE SET payload=EXCLUDED.payload, updated_at=NOW()
-        """, [trade_key, sym, acct, cd, json.dumps(_json_clean(payload), default=str)], fetch="none")
+        """, [trade_key, sym, acct, cd, blob], fetch="none")
+    try:
+        _upsert_index(trade_key, critique, rev, payload["ai_critique_meta"])
+    except Exception:
+        pass
+
+
+def _persist_error(trade_key: str, error: str, review: dict | None = None) -> None:
+    rev = review or tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one") or {}
+    payload = tiv._review_payload(rev if rev else None)
+    meta = _critique_meta(rev, None, status="error", error=error, stale=True)
+    payload["ai_critique_meta"] = meta
+    parts = trade_key.split(":")
+    sym, acct, cd = parts[0], parts[1] if len(parts) > 2 else "", parts[-1]
+    blob = json.dumps(_json_clean(payload), default=str)
+    if rev and rev.get("id"):
+        tiv._q("UPDATE journal_trade_reviews SET payload=%s::jsonb, updated_at=NOW() WHERE trade_key=%s",
+               [blob, trade_key], fetch="none")
+    else:
+        tiv._q("""
+            INSERT INTO journal_trade_reviews (trade_key, symbol, account, closed_date, payload)
+            VALUES (%s,%s,%s,%s::date,%s::jsonb)
+            ON CONFLICT (trade_key) DO UPDATE SET payload=EXCLUDED.payload, updated_at=NOW()
+        """, [trade_key, sym, acct, cd, blob], fetch="none")
+    try:
+        ensure_critique_schema()
+        tiv._q("""
+            INSERT INTO journal_ai_critiques (trade_key, symbol, account, closed_date, status, error_message, search_text, structured, stale, updated_at)
+            VALUES (%s,%s,%s,%s::date,'error',%s,'', '{}'::jsonb, TRUE, NOW())
+            ON CONFLICT (trade_key) DO UPDATE SET status='error', error_message=EXCLUDED.error_message, stale=TRUE, updated_at=NOW()
+        """, [trade_key, sym, acct, cd, error[:300]], fetch="none")
+    except Exception:
+        pass
 
 
 def ai_critique_for_trade(trade_key: str, force: bool = False, apply: bool = True) -> dict:
-    res = generate_critique(trade_key, force=force)
-    if res.get("ok") and apply and res.get("critique") and not res.get("cached"):
-        save_critique(trade_key, res["critique"])
-    return res
+    """Unified entry: load persisted critique or generate + save."""
+    ensure_critique_schema()
+    return generate_critique(trade_key, force=force)
+
+
+def search_critiques(q: str = "", setup_family: str = "", days: int = 365, limit: int = 50) -> dict:
+    ensure_critique_schema()
+    params: list = [int(days)]
+    where = ["status = 'ok'", "closed_date > now() - (%s || ' days')::interval"]
+    if setup_family:
+        where.append("setup_family ILIKE %s")
+        params.append(f"%{setup_family}%")
+    if q:
+        where.append("search_text ILIKE %s")
+        params.append(f"%{q.lower()}%")
+    params.append(int(limit))
+    rows = tiv._q(f"""
+        SELECT trade_key, symbol, closed_date::text, setup_family, market_regime, trade_type,
+               summary, takeaways, generated_at::text, stale
+        FROM journal_ai_critiques
+        WHERE {' AND '.join(where)}
+        ORDER BY generated_at DESC NULLS LAST
+        LIMIT %s
+    """, params)
+    return {"ok": True, "count": len(rows), "items": rows}
+
+
+def aggregate_by_setup(days: int = 365, limit: int = 15) -> dict:
+    ensure_critique_schema()
+    rows = tiv._q("""
+        SELECT setup_family,
+               COUNT(*) AS n,
+               COUNT(*) FILTER (WHERE stale) AS stale_n,
+               jsonb_agg(DISTINCT imp) FILTER (WHERE imp IS NOT NULL) AS improvements
+        FROM journal_ai_critiques,
+             LATERAL jsonb_array_elements_text(improvements) AS imp
+        WHERE status = 'ok' AND setup_family IS NOT NULL AND setup_family != ''
+          AND closed_date > now() - (%s || ' days')::interval
+        GROUP BY setup_family
+        ORDER BY n DESC
+        LIMIT %s
+    """, [int(days), int(limit)])
+    out = []
+    for r in rows:
+        imps = r.get("improvements") or []
+        freq: dict[str, int] = {}
+        for t in imps:
+            freq[t] = freq.get(t, 0) + 1
+        top = sorted(freq.items(), key=lambda x: -x[1])[:5]
+        out.append({
+            "setup_family": r["setup_family"],
+            "trades": r["n"],
+            "stale": r.get("stale_n", 0),
+            "top_improvements": [{"text": t, "count": c} for t, c in top],
+        })
+    return {"ok": True, "setups": out}
+
+
+def coaching_insights(days: int = 30) -> dict:
+    """Patterns for daily coaching / morning brief / behavioral module."""
+    ensure_critique_schema()
+    rows = tiv._q("""
+        SELECT trade_key, symbol, setup_family, market_regime, summary, takeaways, improvements, strengths, stale
+        FROM journal_ai_critiques
+        WHERE status = 'ok' AND closed_date > now() - (%s || ' days')::interval
+        ORDER BY generated_at DESC NULLS LAST
+        LIMIT 200
+    """, [int(days)])
+    imp_freq: dict[str, int] = {}
+    str_freq: dict[str, int] = {}
+    stale_keys = []
+    highlights = []
+    for r in rows:
+        if r.get("stale"):
+            stale_keys.append(r["trade_key"])
+        for t in (r.get("improvements") or []):
+            imp_freq[t] = imp_freq.get(t, 0) + 1
+        for t in (r.get("strengths") or []):
+            str_freq[t] = str_freq.get(t, 0) + 1
+        if len(highlights) < 5 and r.get("summary"):
+            highlights.append({
+                "trade_key": r["trade_key"], "symbol": r["symbol"],
+                "setup_family": r.get("setup_family"), "summary": r["summary"][:200],
+                "takeaway": (r.get("takeaways") or [""])[0][:120] if r.get("takeaways") else "",
+            })
+    top_imp = sorted(imp_freq.items(), key=lambda x: -x[1])[:8]
+    top_str = sorted(str_freq.items(), key=lambda x: -x[1])[:6]
+    bullets = []
+    if top_str:
+        bullets.append(f"Strength pattern: {top_str[0][0]} ({top_str[0][1]} trades)")
+    if top_imp:
+        bullets.append(f"Recurring fix: {top_imp[0][0]} ({top_imp[0][1]} mentions)")
+    if stale_keys:
+        bullets.append(f"{len(stale_keys)} critiques stale after tag edits — regenerate in Trade Detail")
+    return {
+        "ok": True,
+        "days": days,
+        "critique_count": len(rows),
+        "stale_count": len(stale_keys),
+        "top_improvements": [{"text": t, "count": c} for t, c in top_imp],
+        "top_strengths": [{"text": t, "count": c} for t, c in top_str],
+        "highlights": highlights,
+        "coaching_bullets": bullets,
+    }
+
+
+def backfill_index_from_payloads(limit: int = 500) -> dict:
+    """Sync journal_ai_critiques from existing payload.ai_critique rows."""
+    ensure_critique_schema()
+    rows = tiv._q("""
+        SELECT trade_key, payload, setup_family, market_regime
+        FROM journal_trade_reviews
+        WHERE payload ? 'ai_critique'
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT %s
+    """, [int(limit)])
+    n = 0
+    for row in rows:
+        payload = tiv._review_payload(row)
+        c = payload.get("ai_critique")
+        if not c:
+            continue
+        meta = payload.get("ai_critique_meta") or _critique_meta(row, c)
+        try:
+            _upsert_index(row["trade_key"], c, row, meta)
+            n += 1
+        except Exception:
+            pass
+    return {"ok": True, "synced": n, "scanned": len(rows)}
 
 
 def main():
@@ -487,7 +846,12 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument("--backfill-index", action="store_true", help="Sync journal_ai_critiques from payload rows")
     args = ap.parse_args()
+
+    if args.backfill_index:
+        print(json.dumps(backfill_index_from_payloads(limit=args.limit), indent=2))
+        return 0
 
     keys = [args.trade_key] if args.trade_key else []
     if not keys:
@@ -502,9 +866,8 @@ def main():
     out = []
     for k in keys:
         res = generate_critique(k, force=args.force, use_llm=not args.no_llm)
-        if args.apply and res.get("critique"):
-            save_critique(k, res["critique"])
-        out.append({"trade_key": k, "ok": res.get("ok"), "cached": res.get("cached")})
+        out.append({"trade_key": k, "ok": res.get("ok"), "cached": res.get("cached"),
+                    "persisted": res.get("persisted")})
     print(json.dumps({"processed": len(out), "results": out}, indent=2))
     return 0
 

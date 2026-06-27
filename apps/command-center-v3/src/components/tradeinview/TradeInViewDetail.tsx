@@ -142,7 +142,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
           {tab === 'Overview' && (
             <>
             <TradeReportReadiness score={tagScore} />
-            <AiTradeCritique tradeKey={tradeKey} />
+            <AiTradeCritique tradeKey={tradeKey} symbol={trade.symbol} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, fontSize: 10 }}>
               {[['Entry', trade.ep ?? trade.buy_price], ['Exit', trade.xp ?? trade.sell_price], ['Shares', trade.shares], ['Strategy', trade.strat], ['Entry grade', trade.eg], ['Exit grade', trade.xg], ['Hold', trade.holdDays != null ? `${trade.holdDays}d` : trade.holdMin], ['Source', trade.source]].map(([l, v]) => (
                 <div key={String(l)} style={{ background: 'var(--bg1)', padding: 8, borderRadius: 6 }}>

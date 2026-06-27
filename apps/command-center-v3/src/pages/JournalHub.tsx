@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
@@ -177,6 +177,17 @@ function TradeReviewForm({ tradeKey, symbol, account, closedDate, onClose }: any
 export default function JournalHub({ onDrill }: Props) {
   const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
+  const [critiqueQuery, setCritiqueQuery] = useState('')
+  useEffect(() => {
+    try {
+      const storedTab = sessionStorage.getItem('journal_tab') as typeof TABS[number] | null
+      const storedQ = sessionStorage.getItem('journal_critique_q') || ''
+      if (storedTab && (TABS as readonly string[]).includes(storedTab)) setTab(storedTab)
+      if (storedQ) setCritiqueQuery(storedQ)
+      sessionStorage.removeItem('journal_tab')
+      sessionStorage.removeItem('journal_critique_q')
+    } catch { /* */ }
+  }, [])
   // Trade Log: search + quick filter + pagination
   const [logSearch, setLogSearch] = useState('')
   const [logQuick, setLogQuick] = useState('all')
@@ -944,7 +955,17 @@ export default function JournalHub({ onDrill }: Props) {
 
       {tab === 'Session' && <SessionRecapPanel />}
 
-      {tab === 'Advanced' && <AdvancedReportsPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
+      {tab === 'Advanced' && (
+        <AdvancedReportsPanel
+          account={acctFilter || undefined}
+          days={_edgeDays[timeRange] ?? 365}
+          initialCritiqueQuery={critiqueQuery}
+          onOpenTrade={(tk) => {
+            const hit = allTrades.find((t: any) => t.trade_key === tk || `${t.symbol}:${t.account}:${t.exitDate}` === tk)
+            if (hit) setDetailTrade(hit)
+          }}
+        />
+      )}
 
       {compareOpen && <TradeCompareReplay trades={closed} onClose={() => setCompareOpen(false)} />}
 

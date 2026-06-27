@@ -8324,8 +8324,15 @@ def journal_review_write(body: dict):
         except Exception:
             tag_ok = None
             tag_score = {}
+        critique_stale = False
+        try:
+            import journal_trade_in_view as _tiv2
+            critique_stale = _tiv2.mark_ai_critique_stale(trade_key)
+        except Exception:
+            pass
         return 200, {"ok": True, "action": "updated", "id": result["id"], "tagging_complete": tag_ok,
-                      "tagging_score": tag_score, "refresh_reports": True}
+                      "tagging_score": tag_score, "refresh_reports": True,
+                      "ai_critique_stale": critique_stale}
     else:
         # INSERT
         fields["trade_key"] = trade_key
@@ -8476,13 +8483,16 @@ def _journal_review_get(trade_key_encoded):
     )
     review = {k: _json_clean(v) for k, v in row.items()} if row else {}
     tagging_score = None
+    ai_critique_meta = None
     if row:
         try:
             import journal_trade_in_view as _tiv
             tagging_score = _tiv.score_trade_tags(row)
+            ai_critique_meta = _tiv.ai_critique_meta(trade_key)
         except Exception:
             tagging_score = None
-    return {"exists": bool(row), "review": review, "tagging_score": tagging_score}
+    return {"exists": bool(row), "review": review, "tagging_score": tagging_score,
+            "ai_critique_meta": ai_critique_meta}
 
 
 def _journal_timeframe_hint(t):
@@ -20639,8 +20649,15 @@ def _daily_coaching(query=None):
                       "FROM daily_execution_coaching_items WHERE run_id=%s ORDER BY rank", (run["id"],)) or []
     digest = _db_query("SELECT digest_json, review_status, created_at FROM daily_execution_grok_digests "
                        "WHERE run_id=%s ORDER BY id DESC LIMIT 1", (run["id"],))
+    ai_critique = None
+    try:
+        import journal_trade_in_view as tiv
+        ai_critique = tiv.ai_critique_insights(days=30)
+    except Exception:
+        pass
     return {"run": _json_clean(run), "items": [_json_clean(i) for i in items],
-            "digest": _json_clean(digest[0]) if digest else None, "advisory": True}
+            "digest": _json_clean(digest[0]) if digest else None, "advisory": True,
+            "ai_critique_insights": ai_critique}
 
 
 def _journal_exit_intelligence(query=None):
@@ -20794,6 +20811,35 @@ def _journal_ai_critique(query=None, body=None):
         return {"ok": False, "error": "trade_key required"}
     force = str(g("force") or "").lower() in ("1", "true", "yes")
     return tiv.ai_critique(tk, force=force)
+
+
+def _journal_ai_critique_search(query=None):
+    """GET /api/v2/journal/ai-critique/search?q=&setup_family=&days=&limit="""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.ai_critique_search(
+        q=str(g("q") or ""),
+        setup_family=str(g("setup_family") or ""),
+        days=int(g("days") or 365),
+        limit=int(g("limit") or 50),
+    )
+
+
+def _journal_ai_critique_insights(query=None):
+    """GET /api/v2/journal/ai-critique/insights?days= — coaching patterns from persisted critiques."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.ai_critique_insights(days=int(g("days") or 30))
+
+
+def _journal_ai_critique_setups(query=None):
+    """GET /api/v2/journal/ai-critique/setups?days= — aggregate improvements by setup_family."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.ai_critique_setups(days=int(g("days") or 365), limit=int(g("limit") or 15))
 
 
 def _journal_tagging_skip(body):
@@ -23961,6 +24007,9 @@ ROUTES = {
     "/api/v2/journal/attachments": _journal_attachments,
     "/api/v2/journal/tagging-queue": _journal_tagging_queue,
     "/api/v2/journal/ai-critique": _journal_ai_critique,
+    "/api/v2/journal/ai-critique/search": _journal_ai_critique_search,
+    "/api/v2/journal/ai-critique/insights": _journal_ai_critique_insights,
+    "/api/v2/journal/ai-critique/setups": _journal_ai_critique_setups,
     "/api/v2/journal/reporting-audit": _journal_reporting_audit,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
@@ -29956,6 +30005,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception:
                 pass
 
+            _ai_crit = None
+            try:
+                import journal_trade_in_view as _tiv_mb
+                _ai_crit = _tiv_mb.ai_critique_insights(days=14)
+                for _bul in (_ai_crit.get("coaching_bullets") or [])[:2]:
+                    _items.append({"severity": "info", "code": "AI_CRITIQUE_PATTERN",
+                                   "message": _bul})
+                if (_ai_crit.get("stale_count") or 0) > 0:
+                    _items.append({"severity": "warning", "code": "AI_CRITIQUE_STALE",
+                                   "message": f"{_ai_crit['stale_count']} trade critiques stale after tag edits — regenerate in Trade Detail"})
+            except Exception:
+                pass
+
             return 200, {"ok": True, "data": {
                 "generated_at": _now.isoformat(),
                 "holdings_guard": _hg,
@@ -29965,6 +30027,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "closed_trades_24h": _ct,
                 "alerts_24h": _al,
                 "action_items": _items,
+                "ai_critique_insights": _ai_crit,
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}

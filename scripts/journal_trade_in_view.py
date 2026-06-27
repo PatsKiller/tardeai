@@ -270,6 +270,21 @@ def behavioral_analytics(account=None, days=365):
         cur = {"pnl": float(daily[i].get("pnl") or 0), "date": daily[i]["d"]}
         (after_win if prev > 0 else after_loss if prev < 0 else []).append(cur)
 
+    critique_insights: dict = {}
+    try:
+        import journal_ai_critique as jac
+        ins = jac.coaching_insights(days=min(int(days), 90))
+        critique_insights = {
+            "critique_count": ins.get("critique_count", 0),
+            "stale_count": ins.get("stale_count", 0),
+            "top_improvements": (ins.get("top_improvements") or [])[:6],
+            "top_strengths": (ins.get("top_strengths") or [])[:4],
+            "coaching_bullets": (ins.get("coaching_bullets") or [])[:4],
+            "highlights": (ins.get("highlights") or [])[:3],
+        }
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "mistake_cost": sorted(
@@ -281,6 +296,7 @@ def behavioral_analytics(account=None, days=365):
         "after_losing_day": _agg(after_loss, "pnl"),
         "revenge_tags": sum(1 for r in reviews if "Revenge" in (r.get("mistake_tags") or [])
                             or "revenge" in (r.get("emotion_during") or "").lower()),
+        "ai_critique": critique_insights,
     }
 
 
@@ -932,6 +948,49 @@ def ai_critique(trade_key: str, force: bool = False) -> dict:
     """Generate + persist AI trade critique in journal_trade_reviews.payload.ai_critique."""
     import journal_ai_critique as jac
     return jac.ai_critique_for_trade(trade_key, force=force, apply=True)
+
+
+def ai_critique_search(q: str = "", setup_family: str = "", days: int = 365, limit: int = 50) -> dict:
+    import journal_ai_critique as jac
+    return jac.search_critiques(q=q, setup_family=setup_family, days=days, limit=limit)
+
+
+def ai_critique_insights(days: int = 30) -> dict:
+    import journal_ai_critique as jac
+    return jac.coaching_insights(days=days)
+
+
+def ai_critique_setups(days: int = 365, limit: int = 15) -> dict:
+    import journal_ai_critique as jac
+    return jac.aggregate_by_setup(days=days, limit=limit)
+
+
+def ai_critique_meta(trade_key: str) -> dict:
+    """Lightweight persisted critique summary for review/detail views."""
+    import journal_ai_critique as jac
+    jac.ensure_critique_schema()
+    stored = jac.load_stored_critique(trade_key)
+    if not stored:
+        return {"has_critique": False, "trade_key": trade_key}
+    meta = stored.get("_meta") or {}
+    nar = stored.get("narrative") or {}
+    return {
+        "has_critique": True,
+        "trade_key": trade_key,
+        "generated_at": stored.get("generated_at") or meta.get("generated_at"),
+        "stale": bool(meta.get("stale")),
+        "status": meta.get("status", "ok"),
+        "history_count": stored.get("_history_count", 0),
+        "tag_fingerprint": meta.get("tag_fingerprint"),
+        "summary": (nar.get("summary") or "")[:300],
+        "takeaways": nar.get("takeaways") or [],
+        "improvements": nar.get("improvements") or [],
+    }
+
+
+def mark_ai_critique_stale(trade_key: str) -> bool:
+    import journal_ai_critique as jac
+    return jac.mark_stale_on_tag_change(trade_key)
 
 
 def tagging_queue_skip(trade_key: str, reason: str = ""):
