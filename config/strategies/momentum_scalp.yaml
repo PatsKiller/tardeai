@@ -23,13 +23,27 @@ screen_filters:
   min_price: 1.0
   max_price: 25.0
   preferred_max_price: 10.0
-  min_rvol: 5.0
+  min_rvol: 5.0              # preferred RVOL > 5 (the setup: high RVOL on low float)
   premium_rvol: 8.0
-  max_float_m: 100
-  preferred_max_float_m: 20
+  max_float_m: 20            # float under 20M (was 100) — operator preference 2026-06-26
+  preferred_max_float_m: 10  # prime: under 10M
+  min_volume: 1000000       # absolute "high volume" liquidity floor (shares) — tradeable scalp
   min_gap_pct: 5.0
   min_score: 40
   aplus_score: 48
+
+# Intraday scalp execution (operator 2026-06-26): the strategy was generating 104 proposals → 0
+# conversions because the 9h TTL + slow approval cadence outran the scalp window. Fast-path fixes it.
+intraday_execution:
+  trading_window_et: { start: "06:00", end: "12:00" }   # 6am-noon ET, trading days only
+  proposal_ttl_minutes: 30        # short TTL — a scalp setup is valid for minutes, not 9h
+  fast_path_auto_approve: true    # gated auto-approve within window (paper account) so it converts
+  fast_path_account: alpaca_paper # build the sample on paper before promoting off TESTING
+  max_price_drift_pct: 3.0        # kill the proposal if price drifts past this before fill
+  social_momentum:
+    enabled: true                 # social-surge scalps are in scope
+    social_only_max_grade: WATCH  # social-ONLY stays advisory (no auto-trade without confirmation)
+    social_confirmed_tradeable: true  # social + Finviz/RVOL confirmation can reach GO
 setup_qualification:
   catalyst_present: required
   catalyst_verified_for_aplus: true
@@ -41,16 +55,16 @@ setup_qualification:
 auto_disqualifiers:
   - id: PRICE_OVER_25
     condition: price > 25
-  - id: FLOAT_OVER_100M
-    condition: float_m > 100
+  - id: FLOAT_OVER_20M
+    condition: float_m > 20
   - id: STOP_OVER_15_PCT
     condition: stop_pct > 0.15
   - id: POSITION_OVER_2000
     condition: dollar_size > 2000
   - id: SAME_SECTOR_OPEN
     condition: open_position_in_same_sector
-  - id: AFTER_130PM
-    condition: current_time > 13:30 ET
+  - id: OUTSIDE_TRADING_WINDOW
+    condition: current_time < 06:00 ET OR current_time > 12:00 ET   # 6am-noon window (operator 2026-06-26)
   - id: REVERSE_SPLIT_RECENT
     condition: reverse_split_within_90d
   - id: TRADING_HALTED

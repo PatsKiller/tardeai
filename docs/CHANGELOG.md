@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-26 - momentum_scalp: tightened criteria + intraday fast-path
+
+Audit found momentum_scalp generated 104 proposals → 0 conversions: a 9h TTL (extended to 16:00 ET)
+outran a minutes-long scalp window, so proposals expired/drifted before any fill. Fixed.
+- **Criteria** (`config/strategies/momentum_scalp.yaml`): float **< 20M** (prime <10M, was 100M),
+  RVOL **> 5**, `min_volume` 1M (high-volume floor), catalyst required, **6am–noon ET** window,
+  social-momentum enabled (social-confirmed tradeable, social-only stays WATCH).
+- **Fast-path mechanics:**
+  - `proposal_lifecycle.get_expiry_datetime`: INTRADAY strategies now use a minutes TTL from
+    `intraday_execution.proposal_ttl_minutes` (30m) with **no market-close extension** (was 8h→16:00).
+    Verified: momentum_scalp expiry 0:30:00; swing unchanged.
+  - `atm_auto_approver`: intraday trading-window gate — scalps only auto-trade inside their config
+    window (6am–noon ET); outside → `outside_intraday_window`. Validated (06:00/10:30/12:00 in, 14:00 out).
+  - Eligibility confirmed open: not blacklisted, ATM skip removed, alpaca_paper AUTO. So in-window
+    scalps now convert on paper to build the sample needed to graduate off TESTING.
+
 ## 2026-06-28 - TradeInView P5–P6 (advanced reports, session recap, cron)
 
 - **Session tab:** Pre-market plan vs EOD reflection (`journal_session_recaps`, `/journal/session-recap`).
