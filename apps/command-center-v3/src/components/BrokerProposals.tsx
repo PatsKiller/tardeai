@@ -6,6 +6,7 @@ import BrokerRouteConfirmModal from './BrokerRouteConfirmModal'
 import ManualExecutionLog from './ManualExecutionLog'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import BrokerProposalCard from './BrokerProposalCard'
+import ProtectionProposalCard from './ProtectionProposalCard'
 import QueueHealthPanel from './QueueHealthPanel'
 import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
 import type { BrokerAccount } from './BrokerAccountPicker'
@@ -61,6 +62,12 @@ const DEFAULT_FILTERS: ListFilters = {
   symbol: '',
   rrPreset: '',
 }
+
+const isProtectionProposal = (p: { queue_kind?: string; proposal_kind?: string; id?: number }) =>
+  p.queue_kind === 'protection' || p.proposal_kind === 'protection' || (typeof p.id === 'number' && p.id < 0)
+
+const entryProposalIds = (rows: { id?: number; queue_kind?: string; proposal_kind?: string }[]) =>
+  rows.filter(p => !isProtectionProposal(p)).map(p => p.id).filter((id): id is number => typeof id === 'number' && id > 0)
 
 const RR_PRESET_SORT: Record<string, string> = {
   best: 'rr_live',
@@ -218,6 +225,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
       await new Promise(r => setTimeout(r, 800))
       if (cancelled) return
       for (const p of proposals) {
+        if (isProtectionProposal(p)) continue
         if (!p.detail_pending && detailLoadedRef.current.has(p.id)) continue
         fetchProposalDetail(p.id)
         await new Promise(r => setTimeout(r, 250))
@@ -660,7 +668,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     }
   }
 
-  const refreshAllPrices = () => refreshPricesBatch(shown.map((p: any) => p.id))
+  const refreshAllPrices = () => refreshPricesBatch(entryProposalIds(shown))
 
   const queueCloudBatch = async (scope: 'page' | 'filtered' | 'selected', selectedList?: number[]) => {
     setBatchCloudBusy(true)
@@ -668,7 +676,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     try {
       const max = 30
       const body = (scope === 'page' || scope === 'selected')
-        ? { scope: 'ids', proposal_ids: scope === 'selected' ? (selectedList || []) : shown.map((p: any) => p.id), max }
+        ? { scope: 'ids', proposal_ids: scope === 'selected' ? (selectedList || []).filter(id => id > 0) : entryProposalIds(shown), max }
         : {
             scope: 'filtered',
             max,
@@ -715,7 +723,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }
 
   // #31 — bulk select helpers
-  const shownIds = shown.map((p: any) => p.id).filter(Boolean) as number[]
+  const shownIds = entryProposalIds(shown)
   const selectedShownIds = shownIds.filter(id => selectedIds.has(id))
   const allShownSelected = shownIds.length > 0 && selectedShownIds.length === shownIds.length
   const toggleSelected = (pid: number) => setSelectedIds(prev => {
@@ -916,6 +924,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               <option value="all">All</option>
               <option value="broker">Broker-routed</option>
               <option value="proposal">Proposals</option>
+              <option value="protection">Protection</option>
             </select>
           </label>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1090,6 +1099,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {shown.map(rawP => {
+            if (isProtectionProposal(rawP)) {
+              return <ProtectionProposalCard key={rawP.id} proposal={rawP} />
+            }
             const p = mergeProposal(rawP)
             const dest = destAccount[p.id] ?? p.account ?? ''
             return (

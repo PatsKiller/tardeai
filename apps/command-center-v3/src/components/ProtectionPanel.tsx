@@ -45,12 +45,12 @@ export default function ProtectionPanel({ onDrill }: Props) {
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
         <div>
-          <span title="Suggested stop/take-profit adjustments to protect open positions. Advisory only — nothing executes from here." style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', cursor: 'help' }}>Protection Advisory ⓘ</span>
-          <span title="Suggestions only — no orders are placed from this panel." style={{ marginLeft: 8, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', cursor: 'help' }}>
-            ADVISORY ONLY
+          <span title="Stop/take-profit adjustments for open positions. ATM-governed — guarded stop-ups on the automated account auto-apply on the ATM cycle." style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', cursor: 'help' }}>Protection Advisory ⓘ</span>
+          <span title="ATM governs disposition: auto-apply (guarded stop-ups), advisory, or operator approval for real accounts." style={{ marginLeft: 8, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(34,197,94,.1)', color: '#22c55e', cursor: 'help' }}>
+            ATM-GOVERNED
           </span>
-          <span title="Applies to paper positions only. Live trading is prohibited." style={{ marginLeft: 6, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(96,165,250,.1)', color: '#60a5fa', cursor: 'help' }}>
-            PAPER
+          <span title="Automated (Alpaca) account — not live Schwab/Fidelity. Real accounts require operator + 2FA." style={{ marginLeft: 6, fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(96,165,250,.1)', color: '#60a5fa', cursor: 'help' }}>
+            AUTOMATED
           </span>
         </div>
         <span title="Total adjustment options across the positions evaluated." style={{ fontSize: 9, color: 'var(--text3)', cursor: 'help' }}>{totalCandidates} proposals across {trades.length} positions ⓘ</span>
@@ -132,7 +132,7 @@ export default function ProtectionPanel({ onDrill }: Props) {
 
       <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
         <span>Source: /api/v2/atm/protection-adjustment-proposals + /protection-coverage</span>
-        <span>Read-only — no execution controls. Level 7 prohibited.</span>
+        <span>Read-only panel · execution via ATM cycle · auto-apply gated by PROTECTION_ATM_AUTO_APPLY_PAPER</span>
       </div>
     </div>
   )
