@@ -23,9 +23,10 @@ import SessionRecapPanel from '../components/tradeinview/SessionRecapPanel'
 import AdvancedReportsPanel from '../components/tradeinview/AdvancedReportsPanel'
 import MonteCarloPanel from '../components/tradeinview/MonteCarloPanel'
 import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
+import TaggingQueuePanel from '../components/tradeinview/TaggingQueuePanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
+const TABS = ['Trades', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -192,7 +193,10 @@ export default function JournalHub({ onDrill }: Props) {
   const _edgeDays: Record<string, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'YTD': 365, 'ALL': 1095 }
   const { data: edgeResp } = useApi<any>(
     `/api/v2/journal/edge-analytics?days=${_edgeDays[timeRange] ?? 365}${acctFilter ? '&account=' + acctFilter : ''}`, 120_000)
+  const { data: tagQueueResp } = useApi<any>(
+    `/api/v2/journal/tagging-queue?days=${_edgeDays[timeRange] ?? 365}&limit=1${acctFilter ? '&account=' + encodeURIComponent(acctFilter) : ''}`, 120_000)
   const edge = ((edgeResp as any)?.data ?? edgeResp) || {}
+  const tagQueueNeed = ((tagQueueResp as any)?.data ?? tagQueueResp)?.need_tagging ?? 0
   const [jq, setJq] = useState('')          // journal Ask box
   const [jAns, setJAns] = useState<any>(null)
   const [jBusy, setJBusy] = useState(false)
@@ -446,7 +450,13 @@ export default function JournalHub({ onDrill }: Props) {
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
               background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
               color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+              position: 'relative',
+            }}>
+              {t}
+              {t === 'Tagging Queue' && tagQueueNeed > 0 && (
+                <span style={{ marginLeft: 5, fontSize: 8, padding: '1px 5px', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700 }}>{tagQueueNeed}</span>
+              )}
+            </button>
           ))}
         </div>
       </div>
@@ -919,6 +929,10 @@ export default function JournalHub({ onDrill }: Props) {
             )}
           </div>
         </>
+      )}
+
+      {tab === 'Tagging Queue' && (
+        <TaggingQueuePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} acctLabel={ACCT_LABEL} />
       )}
 
       {tab === 'Exit Intel' && <ExitIntelligencePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}

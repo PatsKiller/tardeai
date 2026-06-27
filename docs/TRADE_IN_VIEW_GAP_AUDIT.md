@@ -32,6 +32,15 @@ Baseline audit vs TradeZella/TradesViz-style spec. See `TRADE_IN_VIEW_IMPLEMENTA
 | v2 deprecation | `/v2/journal*`, `/journal-analytics`, `/paper-journal` → `/v3/trade-in-view` |
 | Annotation nudge | Weekday cron `journal_annotation_reminder.py` → Telegram |
 
+## Shipped (Tagging Queue, 2026-06-28)
+
+| Area | Delivery |
+|------|----------|
+| Tagging Queue tab | **Tagging Queue** — incomplete trades, oldest-first, filters, keyboard nav |
+| Reporting audit | `/journal/reporting-audit` — coverage vs TradeZella/TradesViz spec |
+| Bulk tag / skip | `/journal/tagging-queue/bulk-tag`, `/skip` |
+| Config | `config/trade_in_view_tagging_policy.json` |
+
 ## Still open (future)
 
 - Tick-by-tick replay (bar replay only today)

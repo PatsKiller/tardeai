@@ -8279,11 +8279,28 @@ def journal_review_write(body: dict):
             (existing["id"], trade_key, json.dumps({k: str(v) for k, v in (old_row or {}).items()}), json.dumps({k: str(v) if v is not None else None for k, v in fields.items()}))
         )
 
+        if isinstance(body.get("payload"), dict):
+            old_p = _db_query("SELECT payload FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
+            merged = dict(old_p.get("payload") or {}) if old_p else {}
+            if isinstance(merged, str):
+                try:
+                    merged = json.loads(merged)
+                except Exception:
+                    merged = {}
+            merged.update(body["payload"])
+            set_parts.append("payload = %s::jsonb")
+            vals.insert(-1, json.dumps(merged))
         sql = f"UPDATE journal_trade_reviews SET {', '.join(set_parts)} WHERE trade_key = %s RETURNING id"
         result = _db_write(sql, vals)
         if not result:
             return 500, {"ok": False, "error": "review update rejected (check field ranges: confidence/stress are 1-5)"}
-        return 200, {"ok": True, "action": "updated", "id": result["id"]}
+        try:
+            import journal_trade_in_view as _tiv
+            rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
+            tag_ok = _tiv.score_trade_tags(rev).get("complete")
+        except Exception:
+            tag_ok = None
+        return 200, {"ok": True, "action": "updated", "id": result["id"], "tagging_complete": tag_ok, "refresh_reports": True}
     else:
         # INSERT
         fields["trade_key"] = trade_key
@@ -8306,13 +8323,24 @@ def journal_review_write(body: dict):
         placeholders = ["%s"] * len(cols)
         vals = [fields[c] for c in cols]
 
+        if isinstance(body.get("payload"), dict):
+            fields["payload"] = json.dumps(body["payload"])
+            cols = list(fields.keys())
+            placeholders = ["%s"] * len(cols)
+            vals = [fields[c] for c in cols]
         sql = f"INSERT INTO journal_trade_reviews ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
         result = _db_write(sql, vals)
         if not result:
             # was silently returning ok:true even when the insert was rejected (e.g. a check-constraint
             # violation like confidence_before out of 1-5). Surface the failure so the UI knows. 2026-06-15.
             return 500, {"ok": False, "error": "review insert rejected (check field ranges: confidence/stress are 1-5)"}
-        return 200, {"ok": True, "action": "created", "id": result["id"]}
+        try:
+            import journal_trade_in_view as _tiv
+            rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
+            tag_ok = _tiv.score_trade_tags(rev).get("complete")
+        except Exception:
+            tag_ok = None
+        return 200, {"ok": True, "action": "created", "id": result["id"], "tagging_complete": tag_ok, "refresh_reports": True}
 
 
 # ── Journal Annotation Helpers ─────────────────────────────────────────────
@@ -20687,6 +20715,42 @@ def _journal_tag_groups():
     return {"ok": True, "groups": tiv.tag_groups()}
 
 
+def _journal_tagging_queue(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    min_pnl = g("min_pnl")
+    return tiv.tagging_queue(
+        g("account"), int(g("days") or 365), g("missing"),
+        float(min_pnl) if min_pnl not in (None, "") else None,
+        int(g("page") or 1), int(g("limit") or 50),
+    )
+
+
+def _journal_reporting_audit(query=None):
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    import journal_trade_in_view as tiv
+    return tiv.reporting_audit(int(g("days") or 365))
+
+
+def _journal_tagging_skip(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    if not b.get("trade_key"):
+        return {"ok": False, "error": "trade_key required"}
+    return tiv.tagging_queue_skip(b["trade_key"], b.get("reason", ""))
+
+
+def _journal_tagging_bulk_tag(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    keys = b.get("trade_keys") or []
+    if not keys:
+        return {"ok": False, "error": "trade_keys required"}
+    return tiv.tagging_queue_bulk_tag(keys, b.get("tags") or {})
+
+
 def _journal_manual_entry(body):
     import journal_trade_in_view as tiv
     b = body or {}
@@ -23794,6 +23858,8 @@ ROUTES = {
     "/api/v2/journal/pivot": _journal_pivot,
     "/api/v2/journal/session-recap": _journal_session_recap,
     "/api/v2/journal/attachments": _journal_attachments,
+    "/api/v2/journal/tagging-queue": _journal_tagging_queue,
+    "/api/v2/journal/reporting-audit": _journal_reporting_audit,
     "/api/v2/journal/daily-execution-coaching": _daily_coaching,
     "/api/v2/journal/daily-execution-coaching/latest": _daily_coaching,
     "/api/v2/backtesting/execution-hypotheses": _execution_hypotheses,
@@ -24815,6 +24881,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/session-recap":
             try:
                 return 200, _journal_session_recap_write(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/skip":
+            try:
+                return 200, _journal_tagging_skip(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/bulk-tag":
+            try:
+                return 200, _journal_tagging_bulk_tag(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/attachments":
