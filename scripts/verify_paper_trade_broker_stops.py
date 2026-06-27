@@ -124,12 +124,13 @@ def run(dry_run=False):
                     stop_order_id=%s, stop_verified_at=%s,
                     stop_verified_source='alpaca_paper_order_book',
                     broker_stop_status=%s, current_stop=%s, stop_type='stop',
+                    planned_stop=coalesce(planned_stop, stop_loss, %s),
                     protection_status=%s, protection_defect_reason=%s,
                     profit_protection_status=case when take_profit_price is not null
                         then 'has_take_profit' else 'no_take_profit' end,
                     last_broker_protection_check_at=%s
                   where id=%s""",
-                (o["id"], now, o.get("status"), bstop, prot, defect, now, tid))
+                (o["id"], now, o.get("status"), bstop, bstop, prot, defect, now, tid))
 
     # broker stops with no matching open trade
     for sym, olist in stops.items():
