@@ -13963,12 +13963,12 @@ def _broker_proposals(query=None):
             "rr": "COALESCE(proposed_rr, 0) DESC NULLS LAST, created_at DESC",
             "hermes": "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, symbol ASC",
             "priority": (
-                "CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END, "
-                "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
+                "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, "
+                "created_at DESC, id DESC"
             ),
         }.get(sort, (
-            "CASE WHEN COALESCE(origin,'') = 'watchlist' THEN 0 ELSE 1 END, "
-            "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, created_at DESC"
+            "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, "
+            "created_at DESC, id DESC"
         ))
 
         protection_rows: list = []

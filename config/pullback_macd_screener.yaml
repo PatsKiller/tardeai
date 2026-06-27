@@ -45,10 +45,8 @@ pullback_macd_screener:
   # LLM oversight, so a market-wide selloff producing many triggers at once could overload the box.
   # Highest-score candidates win the slots; the rest still appear on the tab + feed the pipeline.
   max_proposals_per_scan: 5
-  # Only the trigger tier creates approval-queue proposals — watch-tier names still appear on the
-  # Command Center tab and feed the candidate pipeline, but don't clutter the queue with
-  # lower-conviction (cross-not-yet) items. Set to [trigger, watch] to also queue watch names.
-  proposal_tiers: [trigger]
+  # Trigger + watch both feed paper_trade_proposals and ATM (same queue as Broker Proposals).
+  proposal_tiers: [trigger, watch]
   proposal_expiry_hours: 48
   default_strategy_id: pullback_macd_reversal
   telegram_alerts: true
