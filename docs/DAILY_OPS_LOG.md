@@ -1,4 +1,11 @@
 
+## 2026-06-27 — AI Trade Critique persistence + batch (UI 3.9)
+
+Made AI Trade Critique a persistent, queryable journal asset: `journal_ai_critiques` index,
+version history, tag-fingerprint staleness, search/insights APIs, trade-log chips, report
+readiness gate. Batch-generated **87 critiques** for 6M range (56 new). Doc:
+`docs/AI_TRADE_CRITIQUE.md`. Commits `65a48983`–`96be9bce`.
+
 ## 2026-06-27 — Universal replay backfill (all past + future trades)
 
 `replay_backfill.py` pipeline deployed: `build_trade_execution_quality` → `replay_chart_audit`.

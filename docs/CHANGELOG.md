@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-27 - AI Trade Critique persistence + system-wide access (UI 3.9)
+
+**First-class data asset** — critiques persist in `journal_trade_reviews.payload` + queryable
+`journal_ai_critiques` index (search, aggregation, coaching, morning brief).
+
+- **Storage:** `ai_critique`, `ai_critique_meta`, `ai_critique_history` (10 versions); staleness from tag fingerprint.
+- **API:** `GET/POST /api/v2/journal/ai-critique`; `/search`, `/insights`, `/setups`, `/summaries`, `POST /batch`.
+- **Consumers:** Trade Detail, Advanced Reports (`AiCritiqueInsightsPanel`), Behavioral, Execution Coach, Morning Brief.
+- **UI:** Stale banner + regenerate; trade-log `🤖` takeaway chips; **Generate AI critiques** / Grok batch toolbar.
+- **Readiness:** `score_trade_tags` requires `ai_critique` (and flags `ai_critique_stale`).
+- **CLI:** `--backfill-index`, `--reconcile-stale`; doc: `docs/AI_TRADE_CRITIQUE.md`.
+- **Batch run (6M range):** 56 generated + 31 cached ≈ 87 critiques indexed (45 no replay/EQ data).
+
+Commits: `65a48983` … `96be9bce`.
+
 ## 2026-06-27 - Universal replay backfill (all past + future trades)
 
 - **`replay_backfill.py`** — pipeline: `build_trade_execution_quality` → `replay_chart_audit` for every trade.
