@@ -349,6 +349,11 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
             c["proposal_id"] = dup0["id"]
             _db("UPDATE pullback_macd_candidates SET proposal_id=%s WHERE symbol=%s", (dup0["id"], c["sym"]))
             continue
+        try:
+            from broker_config import get_default_paper_account
+            _target_acct = get_default_paper_account()
+        except Exception:
+            _target_acct = "tradeai_automated"
         data = {
             "symbol": c["sym"], "strategy_id": strat,
             "setup_type": f"Pullback {c['pullback_pct']}% + MACD {c['tier']}",
@@ -358,6 +363,7 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
             "proposed_dollar_size": round(shares * c["entry"], 2), "proposed_dollar_risk": risk,
             "proposed_rr": c["rr"], "proposed_by": "pullback_macd_screener",
             "status": "PENDING", "discovery_source": "pullback_macd", "origin": "auto",
+            "target_account": _target_acct,
             "auto_execution_label": "manual", "auto_created": True,
             "risk_gate_result": "ADVISORY",
             "catalyst": f"Uptrend dip-buy: {c['pullback_pct']}% off 52w high, MACD {c['tier']}",

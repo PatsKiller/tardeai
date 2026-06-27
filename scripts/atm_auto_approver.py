@@ -422,16 +422,19 @@ def run_cycle():
             log.info(f"  {sym}: deferred (enrichment failed 3x)")
             continue
         if _enrich_status not in ("COMPLETE",):
-            # Fast-track for paper trading: skip enrichment gate if proposal is fresh,
-            # R:R >= 2.0, risk gate approved, and account is paper mode
+            # Source-neutral fast-track: curated pipelines (pullback/MACD, watchlist) with complete
+            # levels on paper, OR legacy fresh+APPROVED+R:R≥2. No origin/discovery filter on SELECT.
+            from atm_proposal_source_policy import atm_enrichment_bypass
             _rr = float(p.get("proposed_rr") or 0) if p.get("proposed_rr") else 0
             _rg = p.get("risk_gate_result") or ""
-            _is_paper = acct_mode == "paper"
-            _is_fresh = proposal_age_hours < 1.0
-            _fast_track = _is_paper and _rr >= 2.0 and _rg in ("APPROVED", "approved") and _is_fresh
+            _fast_track, _ft_reason = atm_enrichment_bypass(
+                p, acct_mode=acct_mode, proposal_age_hours=proposal_age_hours,
+            )
 
             if _fast_track:
-                log.info(f"  {sym}: FAST-TRACK — paper mode, R:R={_rr:.1f}, risk={_rg}, age={proposal_age_hours:.1f}h (skipping enrichment)")
+                _src = p.get("discovery_source") or p.get("origin") or "auto"
+                log.info(f"  {sym}: FAST-TRACK ({_ft_reason}) — source={_src}, R:R={_rr:.1f}, "
+                         f"risk={_rg}, age={proposal_age_hours:.1f}h (skipping enrichment)")
             else:
                 reasons.append({"gate": "not_yet_enriched", "detail": f"status={_enrich_status}"})
                 _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
