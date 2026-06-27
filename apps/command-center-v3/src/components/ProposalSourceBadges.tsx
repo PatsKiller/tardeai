@@ -3,6 +3,8 @@ import { deriveSourceAttribution, sourceAttributionTitle, type SourceAttribution
 const GREEN = '#22c55e'
 const BLUE = '#60a5fa'
 const PURPLE = '#a78bfa'
+const TEAL = '#2dd4bf'
+const AMBER = '#f59e0b'
 
 type Size = 'sm' | 'md'
 
@@ -26,28 +28,61 @@ function Badge({ label, color, title, size }: { label: string; color: string; ti
   )
 }
 
+function RoutingLaneBadge({ lane, size }: { lane: string; size: Size }) {
+  if (lane === 'paper_atm') {
+    return <Badge size={size} color={TEAL} title="Paper lane — ATM auto-test on tradeai_automated" label="◆ ATM test" />
+  }
+  if (lane === 'live_2fa') {
+    return <Badge size={size} color={AMBER} title="Broker lane — operator 2FA in Proposals UI" label="◆ 2FA live" />
+  }
+  return null
+}
+
 export default function ProposalSourceBadges({
   proposal,
   size = 'sm',
   showBothCombined = false,
+  showRoutingLane = true,
 }: {
   proposal: Record<string, unknown> | null | undefined
   size?: Size
   showBothCombined?: boolean
+  showRoutingLane?: boolean
 }) {
   const att: SourceAttribution = deriveSourceAttribution(proposal)
-  if (att.label === 'unknown') return null
-
   const title = sourceAttributionTitle(att)
+
+  if (att.label === 'protection') {
+    return (
+      <>
+        <Badge size={size} color={PURPLE} title={title} label="◆ Protection" />
+        {showRoutingLane && att.routing_lane && <RoutingLaneBadge lane={att.routing_lane} size={size} />}
+      </>
+    )
+  }
+
+  if (att.label === 'unknown') {
+    const disc = String((proposal as any)?.discovery_source || (proposal as any)?.origin || '').trim()
+    if (!disc) return null
+    return (
+      <>
+        <Badge size={size} color={BLUE} title={title} label={`◆ ${disc.replace(/_/g, ' ')}`} />
+        {showRoutingLane && att.routing_lane && <RoutingLaneBadge lane={att.routing_lane} size={size} />}
+      </>
+    )
+  }
 
   if (att.label === 'both' && showBothCombined) {
     return (
-      <Badge
-        size={size}
-        color={PURPLE}
-        title={title}
-        label={`◆ Watchlist + ${att.proposalChannel || 'Proposal'}`}
-      />
+      <>
+        <Badge
+          size={size}
+          color={PURPLE}
+          title={title}
+          label={`◆ Watchlist + ${att.proposalChannel || 'Proposal'}`}
+        />
+        {showRoutingLane && att.routing_lane && <RoutingLaneBadge lane={att.routing_lane} size={size} />}
+      </>
     )
   }
 
@@ -69,6 +104,7 @@ export default function ProposalSourceBadges({
           label={`◆ ${att.proposalChannel || 'Proposal'}`}
         />
       )}
+      {showRoutingLane && att.routing_lane && <RoutingLaneBadge lane={att.routing_lane} size={size} />}
     </>
   )
 }

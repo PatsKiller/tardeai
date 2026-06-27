@@ -1,4 +1,6 @@
 import { fmt$ } from '../lib/format'
+import ProposalSourceBadges from './ProposalSourceBadges'
+import ProposalStrategyBadge from './ProposalStrategyBadge'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -59,9 +61,8 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: TEXT0, fontFamily: 'monospace' }}>{p.symbol}</span>
-            <span title="Stop/take-profit adjustment for an open position — not a new entry." style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(168,85,247,.15)', color: PURPLE, cursor: 'help' }}>
-              PROTECTION
-            </span>
+            <ProposalSourceBadges proposal={p} size="sm" showRoutingLane />
+            <ProposalStrategyBadge proposal={p} size="sm" />
             <span title={disp.tip} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: `${disp.color}18`, color: disp.color, cursor: 'help' }}>
               {disp.label}
             </span>

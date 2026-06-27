@@ -1,6 +1,8 @@
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
+import ProposalSourceBadges from './ProposalSourceBadges'
+import ProposalStrategyBadge from './ProposalStrategyBadge'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -75,8 +77,12 @@ export default function ProtectionPanel({ onDrill }: Props) {
             if (candidates.length === 0) return null
             return (
               <div key={t.symbol} style={{ marginBottom: 10, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
+                    <ProposalSourceBadges proposal={{ ...t, proposal_kind: 'protection', origin: 'protection' }} size="sm" showRoutingLane />
+                    <ProposalStrategyBadge proposal={t} size="sm" />
+                  </div>
                   <span style={{ fontSize: 9, color: 'var(--text3)' }}>{candidates.length} options</span>
                 </div>
                 {candidates.map((c: any, i: number) => {

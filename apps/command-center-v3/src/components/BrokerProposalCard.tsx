@@ -5,6 +5,7 @@ import ThesisValidityBar from './ThesisValidityBar'
 import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 import ActionButton from './ActionButton'
 import ProposalSourceBadges from './ProposalSourceBadges'
+import ProposalStrategyBadge from './ProposalStrategyBadge'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import { PROPOSAL_STATUS_LABELS, routingPathLabel, unifiedEdgeFromProposal } from '../lib/proposalLabels'
 import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, resolveTickerContext, tradeEconomics } from '../lib/brokerThesis'
@@ -289,12 +290,7 @@ export default function BrokerProposalCard({
         ) : (
           <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, fontStyle: 'italic' }}>No live price</span>
         )}
-        <span
-          title={tickerCtx.strategyPurpose || p.strategy_id}
-          style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: 'rgba(249,115,22,.14)', color: '#fb923c' }}
-        >
-          {tickerCtx.strategyDisplay}
-        </span>
+        <ProposalStrategyBadge proposal={{ ...p, strategy_display_name: tickerCtx.strategyDisplay, strategy_description: tickerCtx.strategyPurpose }} size="md" />
         {tickerCtx.strategyTypeLabel && (
           <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
             {tickerCtx.strategyTypeLabel}
@@ -314,7 +310,7 @@ export default function BrokerProposalCard({
             </span>
           )
         })()}
-        <ProposalSourceBadges proposal={p} size="md" />
+        <ProposalSourceBadges proposal={p} size="md" showRoutingLane />
         <span style={{
           fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
           background: fid ? 'rgba(168,85,247,.18)' : 'rgba(96,165,250,.15)',

@@ -13171,13 +13171,14 @@ def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = 
     watchlist = watchlist_bridge or also_on_watchlist
     auto_proposal = (
         origin == "auto"
-        or discovery in ("screener", "incubator", "signal")
+        or discovery in ("screener", "incubator", "signal", "pullback_macd")
         or has_signal
         or "auto_proposal" in proposed_by
         or "incubator" in proposed_by
+        or "pullback_macd" in proposed_by
         or (bool(row.get("auto_created")) and not watchlist_bridge)
     )
-    proposal = auto_proposal and not (watchlist_bridge and not has_signal)
+    proposal = auto_proposal and not (watchlist_bridge and not has_signal and discovery != "pullback_macd")
     if watchlist and proposal:
         label = "both"
     elif watchlist:
@@ -13189,7 +13190,9 @@ def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = 
     channel = None
     if proposal:
         sc = (row.get("signal_evidence") or {}).get("screener") or row.get("screener_name") or row.get("scan_screener")
-        if discovery == "screener" or sc:
+        if discovery == "pullback_macd" or "pullback_macd" in proposed_by:
+            channel = "Pullback MACD"
+        elif discovery == "screener" or sc:
             channel = f"Screener · {sc}" if sc else "Screener"
         elif discovery == "incubator":
             channel = "Incubator"
@@ -13197,6 +13200,7 @@ def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = 
             channel = discovery.replace("_", " ").title()
         else:
             channel = "Proposal"
+    routing_lane = basis.get("routing_lane") if isinstance(basis, dict) else None
     row["also_on_watchlist"] = also_on_watchlist
     row["source_attribution"] = {
         "watchlist": watchlist,
@@ -13204,6 +13208,7 @@ def _attach_source_attribution(row: dict, watchlist_buy_syms: set[str] | None = 
         "watchlist_rating": str(rating or "BUY").upper().replace(" ", "_") if watchlist else None,
         "proposal_channel": channel,
         "label": label,
+        "routing_lane": routing_lane,
     }
     return row
 
@@ -13784,9 +13789,11 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
         f"""SELECT a.id, a.symbol, a.action, a.current_stop, a.proposed_stop, a.status,
                    a.requires_operator_approval, a.no_live_execution, a.created_at,
                    a.evidence_refs, a.tradeai_reason,
-                   t.account, t.entry_price, t.shares
+                   t.account, t.entry_price, t.shares, t.strategy_id, t.target_account,
+                   p.discovery_source AS entry_discovery_source, p.origin AS entry_origin
               FROM paper_protection_adjustment_proposals a
               JOIN paper_trades t ON t.id = a.trade_id
+              LEFT JOIN paper_trade_proposals p ON p.id::text = t.source_proposal_id
              WHERE {' AND '.join(where)}
              ORDER BY a.created_at DESC, a.id DESC""",
         tuple(params) if params else None,
@@ -13803,7 +13810,11 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
         else:
             atm_disp = "operator_approval"
         pid = int(r["id"])
-        out.append({
+        strat_id = str(r.get("strategy_id") or "")
+        sm = _broker_strategy_meta(strat_id) if strat_id else {}
+        entry_disc = str(r.get("entry_discovery_source") or "").lower()
+        entry_origin = str(r.get("entry_origin") or "").lower()
+        prot_row = {
             "id": -pid,
             "protection_id": pid,
             "queue_kind": "protection",
@@ -13817,6 +13828,7 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
             "shares": r.get("shares"),
             "status": r.get("status") or "PROPOSED",
             "origin": "protection",
+            "discovery_source": entry_disc or "protection",
             "routing_state": "protection",
             "atm_disposition": atm_disp,
             "created_at": r.get("created_at"),
@@ -13827,11 +13839,28 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
             "activity_pending": False,
             "intel": {"ok": False, "lazy": True, "skip": True},
             "oversight": {"status": None, "lazy": True, "skip": True},
-            "source_attribution": {"label": "protection", "origin": "protection"},
             "no_broker_actions": True,
             "evidence_refs": r.get("evidence_refs"),
             "tradeai_reason": r.get("tradeai_reason"),
-        })
+            "strategy_id": strat_id or None,
+            "resolved_strategy_id": strat_id or None,
+            "strategy_display_name": sm.get("display_name"),
+            "strategy_type": sm.get("strategy_type"),
+            "strategy_type_label": sm.get("strategy_type_label"),
+            "strategy_description": sm.get("purpose"),
+            "routing_lane": "paper_atm" if is_automated_account(acct_raw) else "live_2fa",
+        }
+        if entry_disc or entry_origin:
+            prot_row["entry_source"] = entry_disc or entry_origin
+        prot_row["source_attribution"] = {
+            "watchlist": False,
+            "proposal": False,
+            "label": "protection",
+            "proposal_channel": "Protection · ATM",
+            "routing_lane": prot_row["routing_lane"],
+            "entry_source": prot_row.get("entry_source"),
+        }
+        out.append(prot_row)
     return out
 
 
@@ -18714,16 +18743,39 @@ def _atm_adjustment_proposals_list():
                p.current_take_profit, p.proposed_take_profit, p.current_risk, p.proposed_risk,
                p.profit_locked_before, p.profit_locked_after, p.giveback_before, p.giveback_after,
                p.downside_protection_improvement, p.upside_limitation, p.tradeai_reason, p.hermes_reason,
-               p.evidence_refs, p.quote_price, p.alpaca_supported, p.expected_api, p.status, p.created_at
+               p.evidence_refs, p.quote_price, p.alpaca_supported, p.expected_api, p.status, p.created_at,
+               t.strategy_id, t.target_account,
+               ep.discovery_source AS entry_discovery_source, ep.origin AS entry_origin
         FROM paper_protection_adjustment_proposals p
         JOIN paper_trades t ON t.id = p.trade_id
+        LEFT JOIN paper_trade_proposals ep ON ep.id::text = t.source_proposal_id
         WHERE p.status = 'PROPOSED' AND p.created_at > now() - interval '1 day'
           AND t.status = 'open'
         ORDER BY p.symbol, p.id""") or []
     by_trade = {}
     for r in rows:
         key = r["trade_id"]
-        by_trade.setdefault(key, {"trade_id": key, "symbol": r["symbol"], "candidates": []})
+        strat_id = str(r.get("strategy_id") or "")
+        sm = _broker_strategy_meta(strat_id) if strat_id else {}
+        entry_src = str(r.get("entry_discovery_source") or r.get("entry_origin") or "").lower()
+        if key not in by_trade:
+            by_trade[key] = {
+                "trade_id": key,
+                "symbol": r["symbol"],
+                "strategy_id": strat_id or None,
+                "strategy_display_name": sm.get("display_name"),
+                "strategy_type_label": sm.get("strategy_type_label"),
+                "entry_source": entry_src or None,
+                "source_attribution": {
+                    "watchlist": False,
+                    "proposal": False,
+                    "label": "protection",
+                    "proposal_channel": "Protection · ATM",
+                    "routing_lane": "paper_atm",
+                    "entry_source": entry_src or None,
+                },
+                "candidates": [],
+            }
         by_trade[key]["candidates"].append({k: _json_clean(v) for k, v in r.items()})
     return {"trades": list(by_trade.values()), "proposal_count": len(rows),
             "paper_only": True, "requires_operator_approval": True,
