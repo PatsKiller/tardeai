@@ -276,8 +276,12 @@ def run_cycle():
                p.proposed_rr, p.risk_gate_result
         FROM paper_trade_proposals p
         WHERE p.status = 'PENDING' AND p.atm_expired_at IS NULL
+          AND COALESCE(p.proposal_kind, 'entry') = 'entry'
         ORDER BY p.created_at ASC
     """)
+    # SAFETY: the entry path bracket-submits (buy + stop + target). proposal_kind='protection' rows
+    # are stop modifications, NOT entries — they are handled by the protection pass below and must
+    # never reach submit_paper_bracket here.
     cols = [d[0] for d in cur.description]
     proposals = [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -654,6 +658,17 @@ def run_cycle():
     deferred_count = len(proposals) - approved_count - rejected_count - expired_count
     log.info(f"ATM cycle complete: {approved_count} approved, {rejected_count} rejected, "
              f"{expired_count} expired, {deferred_count} deferred")
+
+    # Protection adjustments are governed by the SAME ATM cycle: paper positions auto-apply the
+    # guarded stop-up actions; real positions stay PROPOSED for operator approval (+2FA). Nothing
+    # is applied without a paper_protection_adjustment_proposals record.
+    try:
+        from protection_atm_pass import run_protection_pass
+        pr = run_protection_pass(conn, mode=mode)
+        log.info(f"ATM protection pass: auto_applied={pr['auto_applied']} "
+                 f"operator_pending={pr['operator_pending']} advisory={pr['skipped_action']} failed={pr['failed']}")
+    except Exception as e:
+        log.warning(f"ATM protection pass error: {e}")
 
 
 if __name__ == "__main__":
