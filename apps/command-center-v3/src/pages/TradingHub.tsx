@@ -76,8 +76,8 @@ export default function TradingHub({ onDrill }: Props) {
             {/* hub-wide strip: "paper (Alpaca)" = the automated-trading PAPER pipeline's brokerage —
                 unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
             {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
-              ? <span>{trades.length} open (paper) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pending.length} pending proposals`} · paper acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
+              ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
+              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pending.length} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
             {readiness && <span> · P-level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
@@ -95,7 +95,7 @@ export default function TradingHub({ onDrill }: Props) {
       {/* Readiness bar */}
       {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
-          <span style={{ color: 'var(--text3)' }}>Paper Readiness:</span>
+          <span style={{ color: 'var(--text3)' }}>Automated Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)' }}>{readiness.closed_usable}/{readiness.target_2000} trades</span>
           <div style={{ flex: 1, height: 4, background: 'var(--bg2)', borderRadius: 2 }}>
