@@ -172,7 +172,7 @@ minimum_evidence:
     - earnings_calendar
     - analyst_revisions
 performance_context:
-  last_updated: '2026-06-26T06:30:03+00:00'
+  last_updated: '2026-06-27T06:30:02+00:00'
   closed_paper_trades: 2
   win_rate: 1.0
   avg_r_realized: 2.028

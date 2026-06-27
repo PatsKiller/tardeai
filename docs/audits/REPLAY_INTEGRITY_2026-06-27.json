@@ -1,0 +1,2450 @@
+{
+  "audited_at": "2026-06-27T21:17:11.234472+00:00",
+  "total": 90,
+  "ok": 62,
+  "warn": 28,
+  "fail": 0,
+  "dry_run": false,
+  "scale_fix": "volume_isolated_overlay_v3.4",
+  "results": [
+    {
+      "trade_key": "DRS:schwab_taxable:2026-06-26",
+      "symbol": "DRS",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-26",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:18.047338+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "VTAK:schwab_taxable:2026-06-25",
+      "symbol": "VTAK",
+      "open_date": "2026-06-25",
+      "close_date": "2026-06-25",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:18.737250+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 396,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 0.92,
+          "max_high": 1.25
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "LHX:schwab_taxable:2026-06-23",
+      "symbol": "LHX",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-23",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:19.023891+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "LMT:schwab_taxable:2026-06-23",
+      "symbol": "LMT",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-23",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:19.365683+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "KBR:schwab_taxable:2026-06-22",
+      "symbol": "KBR",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-22",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:19.721024+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "KTOS:schwab_taxable:2026-06-22",
+      "symbol": "KTOS",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-22",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:20.068484+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AVAV:schwab_taxable:2026-06-18",
+      "symbol": "AVAV",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-18",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:20.433760+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "IRDM:schwab_taxable:2026-06-16",
+      "symbol": "IRDM",
+      "open_date": "2026-03-03",
+      "close_date": "2026-06-16",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:20.766654+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "CAST:schwab_rollover_ira:2026-06-15",
+      "symbol": "CAST",
+      "open_date": "2026-06-15",
+      "close_date": "2026-06-15",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:21.523154+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.26,
+          "max_high": 5.2
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "RGNT:schwab_rollover_ira:2026-06-09",
+      "symbol": "RGNT",
+      "open_date": "2026-06-09",
+      "close_date": "2026-06-09",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:22.280377+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 424,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.13,
+          "max_high": 6.55
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GOVX:schwab_rollover_ira:2026-05-18",
+      "symbol": "GOVX",
+      "open_date": "2026-05-18",
+      "close_date": "2026-05-18",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:22.949298+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.7801,
+          "max_high": 4.39
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "PRSO:schwab_rollover_ira:2026-05-11",
+      "symbol": "PRSO",
+      "open_date": "2026-05-11",
+      "close_date": "2026-05-11",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:23.629987+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.05,
+          "max_high": 1.59
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "FATN:schwab_rollover_ira:2026-04-30",
+      "symbol": "FATN",
+      "open_date": "2026-04-30",
+      "close_date": "2026-04-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:24.320791+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.82,
+          "max_high": 3.73
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "DFSC:schwab_rollover_ira:2026-04-30",
+      "symbol": "DFSC",
+      "open_date": "2026-04-30",
+      "close_date": "2026-04-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:24.712371+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 178,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.65,
+          "max_high": 3.17
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "V:schwab_rollover_ira:2026-04-21",
+      "symbol": "V",
+      "open_date": "2025-09-02",
+      "close_date": "2026-04-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:25.354673+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 223,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 293.89,
+          "max_high": 358.62
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "PFE:schwab_rollover_ira:2026-04-21",
+      "symbol": "PFE",
+      "open_date": "2025-08-22",
+      "close_date": "2026-04-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:26.051253+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 233,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 23.11,
+          "max_high": 28.745
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "V:schwab_rollover_ira:2026-04-06",
+      "symbol": "V",
+      "open_date": "2007-12-31",
+      "close_date": "2026-04-06",
+      "status": "fallback",
+      "reason": "alpaca 403",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:26.386363+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GERN:schwab_rollover_ira:2026-02-26",
+      "symbol": "GERN",
+      "open_date": "2026-01-14",
+      "close_date": "2026-02-26",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:27.088306+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 42,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.26,
+          "max_high": 2.01
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GERN:schwab_taxable:2026-02-26",
+      "symbol": "GERN",
+      "open_date": "2026-01-14",
+      "close_date": "2026-02-26",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:27.294378+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 42,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.26,
+          "max_high": 2.01
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ADBE:schwab_roth_ira:2026-02-23",
+      "symbol": "ADBE",
+      "open_date": "2024-11-26",
+      "close_date": "2026-02-23",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:27.984130+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 435,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 224.13,
+          "max_high": 587.75
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ADBE:schwab_rollover_ira:2026-02-12",
+      "symbol": "ADBE",
+      "open_date": "2024-11-26",
+      "close_date": "2026-02-12",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:28.613668+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 424,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 224.13,
+          "max_high": 587.75
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "CSWC:schwab_rollover_ira:2026-02-12",
+      "symbol": "CSWC",
+      "open_date": "2026-01-16",
+      "close_date": "2026-02-12",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:29.289263+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 25,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 22.6,
+          "max_high": 23.84
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "PFLT:schwab_rollover_ira:2026-02-11",
+      "symbol": "PFLT",
+      "open_date": "2026-01-16",
+      "close_date": "2026-02-11",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:29.979384+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 24,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 8.63,
+          "max_high": 9.75
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "73017P409:schwab_taxable:2026-02-11",
+      "symbol": "73017P409",
+      "open_date": "2026-02-11",
+      "close_date": "2026-02-11",
+      "status": "fallback",
+      "reason": "alpaca 400",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:30.335773+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "PHIO:schwab_taxable:2026-02-10",
+      "symbol": "PHIO",
+      "open_date": "2026-02-10",
+      "close_date": "2026-02-10",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:31.089471+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.12,
+          "max_high": 1.58
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "DHX:schwab_taxable:2026-02-05",
+      "symbol": "DHX",
+      "open_date": "2026-02-05",
+      "close_date": "2026-02-05",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:31.794935+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 427,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.81,
+          "max_high": 2.2
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "FUSE:schwab_taxable:2026-02-03",
+      "symbol": "FUSE",
+      "open_date": "2026-02-03",
+      "close_date": "2026-02-03",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:32.499459+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 429,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2,
+          "max_high": 3.24
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "FUSE:schwab_taxable:2026-02-02",
+      "symbol": "FUSE",
+      "open_date": "2026-02-02",
+      "close_date": "2026-02-02",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:33.189848+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.26,
+          "max_high": 3.67
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ZSL:schwab_taxable:2026-01-30",
+      "symbol": "ZSL",
+      "open_date": "2026-01-30",
+      "close_date": "2026-01-30",
+      "status": "marker_warn",
+      "reason": "entry 2.11 below bar low 20.1; exit 2.14 below bar low 20.1",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:33.909952+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 20.1,
+          "max_high": 28
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 2.11 below bar low 20.1",
+            "exit 2.14 below bar low 20.1"
+          ]
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ALXO:schwab_taxable:2026-01-30",
+      "symbol": "ALXO",
+      "open_date": "2026-01-30",
+      "close_date": "2026-01-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:34.265400+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 314,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.63,
+          "max_high": 1.93
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "WRD:schwab_taxable:2026-01-30",
+      "symbol": "WRD",
+      "open_date": "2026-01-14",
+      "close_date": "2026-01-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:34.884907+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 18,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 6.88,
+          "max_high": 10.015
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ARKG:schwab_rollover_ira:2026-01-30",
+      "symbol": "ARKG",
+      "open_date": "2026-01-15",
+      "close_date": "2026-01-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:35.601906+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 17,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 28.455,
+          "max_high": 34.39
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "TRX:schwab_taxable:2026-01-29",
+      "symbol": "TRX",
+      "open_date": "2026-01-29",
+      "close_date": "2026-01-29",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:36.351333+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.965,
+          "max_high": 2.8
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GCTS:schwab_taxable:2026-01-29",
+      "symbol": "GCTS",
+      "open_date": "2026-01-29",
+      "close_date": "2026-01-29",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:36.739977+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.11,
+          "max_high": 1.84
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "NUWE:schwab_taxable:2026-01-27",
+      "symbol": "NUWE",
+      "open_date": "2026-01-27",
+      "close_date": "2026-01-27",
+      "status": "marker_warn",
+      "reason": "entry 4.8 below bar low 122.85; exit 4.83 below bar low 122.85",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:37.416164+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 122.85,
+          "max_high": 172.9
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 4.8 below bar low 122.85",
+            "exit 4.83 below bar low 122.85"
+          ]
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "44984F807:schwab_taxable:2026-01-27",
+      "symbol": "44984F807",
+      "open_date": "2026-01-27",
+      "close_date": "2026-01-27",
+      "status": "fallback",
+      "reason": "alpaca 400",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:37.692296+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GXAI:schwab_taxable:2026-01-26",
+      "symbol": "GXAI",
+      "open_date": "2026-01-26",
+      "close_date": "2026-01-26",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:38.453836+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.36,
+          "max_high": 2.18
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AXTI:schwab_rollover_ira:2026-01-22",
+      "symbol": "AXTI",
+      "open_date": "2025-11-03",
+      "close_date": "2026-01-22",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:39.094373+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 76,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 4.81,
+          "max_high": 26.66
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "44984F807:schwab_taxable:2026-01-20",
+      "symbol": "44984F807",
+      "open_date": "2026-01-20",
+      "close_date": "2026-01-20",
+      "status": "fallback",
+      "reason": "alpaca 400",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:39.451697+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "APAM:schwab_rollover_ira:2026-01-20",
+      "symbol": "APAM",
+      "open_date": "2025-08-26",
+      "close_date": "2026-01-20",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:40.166638+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 142,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 39.94,
+          "max_high": 48.46
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SHPH:schwab_taxable:2026-01-20",
+      "symbol": "SHPH",
+      "open_date": "2026-01-20",
+      "close_date": "2026-01-20",
+      "status": "marker_warn",
+      "reason": "entry 4.29 below bar low 20.8; exit 4.0301 below bar low 20.8",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:40.909328+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 20.8,
+          "max_high": 44.4
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 4.29 below bar low 20.8",
+            "exit 4.0301 below bar low 20.8"
+          ]
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SIBN:schwab_rollover_ira:2026-01-15",
+      "symbol": "SIBN",
+      "open_date": "2026-01-14",
+      "close_date": "2026-01-15",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:41.567125+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 7,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 16.66,
+          "max_high": 21.28
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AXTI:schwab_taxable:2026-01-08",
+      "symbol": "AXTI",
+      "open_date": "2025-11-05",
+      "close_date": "2026-01-08",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:42.265668+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 59,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.4,
+          "max_high": 26.66
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AXTI:schwab_rollover_ira:2026-01-08",
+      "symbol": "AXTI",
+      "open_date": "2025-11-03",
+      "close_date": "2026-01-08",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:42.967031+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 63,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 4.81,
+          "max_high": 26.66
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "BNAI:schwab_taxable:2026-01-02",
+      "symbol": "BNAI",
+      "open_date": "2026-01-02",
+      "close_date": "2026-01-02",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:43.717261+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 430,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.43,
+          "max_high": 4.25
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "APAM:schwab_taxable:2025-12-31",
+      "symbol": "APAM",
+      "open_date": "2025-08-26",
+      "close_date": "2025-12-31",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:44.369053+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 121,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 39.94,
+          "max_high": 48.46
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "EKSO:schwab_taxable:2025-12-30",
+      "symbol": "EKSO",
+      "open_date": "2025-12-30",
+      "close_date": "2025-12-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:45.123230+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 7.8001,
+          "max_high": 12.7
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SOPAQ:schwab_taxable:2025-12-29",
+      "symbol": "SOPAQ",
+      "open_date": "2025-12-29",
+      "close_date": "2025-12-29",
+      "status": "fallback",
+      "reason": "no Alpaca bars for this symbol/window",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:45.433429+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": null,
+        "bar_count": 0,
+        "fallback": "finviz",
+        "price_bounds": {},
+        "integrity": {
+          "marker_in_range": null,
+          "marker_warnings": []
+        },
+        "entry_et": null,
+        "exit_et": null,
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "OLOX:schwab_taxable:2025-11-13",
+      "symbol": "OLOX",
+      "open_date": "2025-11-13",
+      "close_date": "2025-11-13",
+      "status": "marker_warn",
+      "reason": "entry 3.47 below bar low 27.4; exit 3.3701 below bar low 27.4",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:46.163877+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 450,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 27.4,
+          "max_high": 39.8
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 3.47 below bar low 27.4",
+            "exit 3.3701 below bar low 27.4"
+          ]
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "MSGM:schwab_taxable:2025-11-07",
+      "symbol": "MSGM",
+      "open_date": "2025-11-07",
+      "close_date": "2025-11-07",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:46.872023+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.1601,
+          "max_high": 4.89
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "19:00:00 ET",
+        "exit_et": "19:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "VIVS:schwab_rollover_ira:2025-10-30",
+      "symbol": "VIVS",
+      "open_date": "2025-10-30",
+      "close_date": "2025-10-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:47.562682+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 441,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.37,
+          "max_high": 3.2
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "IBIO:schwab_rollover_ira:2025-10-23",
+      "symbol": "IBIO",
+      "open_date": "2025-10-23",
+      "close_date": "2025-10-23",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:48.258354+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 449,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.18,
+          "max_high": 2.05
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AIRE:schwab_taxable:2025-10-22",
+      "symbol": "AIRE",
+      "open_date": "2025-10-22",
+      "close_date": "2025-10-22",
+      "status": "marker_warn",
+      "reason": "entry 1.29 below bar low 14.44; exit 1.15 below bar low 14.44",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:48.971536+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 14.44,
+          "max_high": 32.5
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 1.29 below bar low 14.44",
+            "exit 1.15 below bar low 14.44"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "BOF:schwab_taxable:2025-10-21",
+      "symbol": "BOF",
+      "open_date": "2025-10-21",
+      "close_date": "2025-10-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:49.691853+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 449,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.44,
+          "max_high": 3.02
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "IBIO:schwab_taxable:2025-10-21",
+      "symbol": "IBIO",
+      "open_date": "2025-10-21",
+      "close_date": "2025-10-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:50.096440+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.03,
+          "max_high": 1.47
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "NERV:schwab_taxable:2025-10-21",
+      "symbol": "NERV",
+      "open_date": "2025-10-21",
+      "close_date": "2025-10-21",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:50.437240+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.98,
+          "max_high": 12.46
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GSIT:schwab_rollover_ira:2025-10-20",
+      "symbol": "GSIT",
+      "open_date": "2025-10-20",
+      "close_date": "2025-10-20",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:51.079242+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 409,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.15,
+          "max_high": 18.15
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GSIT:schwab_taxable:2025-10-20",
+      "symbol": "GSIT",
+      "open_date": "2025-10-20",
+      "close_date": "2025-10-20",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:51.307741+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 409,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 5.15,
+          "max_high": 18.15
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "RANI:schwab_taxable:2025-10-17",
+      "symbol": "RANI",
+      "open_date": "2025-10-17",
+      "close_date": "2025-10-17",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:51.940311+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 415,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.13,
+          "max_high": 2.39
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ACHV:schwab_taxable:2025-10-17",
+      "symbol": "ACHV",
+      "open_date": "2025-10-17",
+      "close_date": "2025-10-17",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:52.350209+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 436,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.71,
+          "max_high": 4.4399
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "CTXR:schwab_taxable:2025-10-16",
+      "symbol": "CTXR",
+      "open_date": "2025-10-16",
+      "close_date": "2025-10-16",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:53.020630+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 429,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.39,
+          "max_high": 1.94
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AUUD:schwab_taxable:2025-10-16",
+      "symbol": "AUUD",
+      "open_date": "2025-10-16",
+      "close_date": "2025-10-16",
+      "status": "marker_warn",
+      "reason": "entry 2.42 below bar low 15.32; exit 2.3043 below bar low 15.32",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:53.391548+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 446,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 15.32,
+          "max_high": 19.4
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 2.42 below bar low 15.32",
+            "exit 2.3043 below bar low 15.32"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ZNB:schwab_rollover_ira:2025-10-15",
+      "symbol": "ZNB",
+      "open_date": "2025-10-15",
+      "close_date": "2025-10-15",
+      "status": "marker_warn",
+      "reason": "entry 2.1349 below bar low 180.01; exit 2.035 below bar low 180.01",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:54.039542+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 436,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 180.01,
+          "max_high": 215
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 2.1349 below bar low 180.01",
+            "exit 2.035 below bar low 180.01"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "MNTS:schwab_taxable:2025-10-14",
+      "symbol": "MNTS",
+      "open_date": "2025-10-14",
+      "close_date": "2025-10-14",
+      "status": "marker_warn",
+      "reason": "entry 1.66 below bar low 27.85; exit 1.8743 below bar low 27.85",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:54.752197+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 450,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 27.85,
+          "max_high": 34.45
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 1.66 below bar low 27.85",
+            "exit 1.8743 below bar low 27.85"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "STI:schwab_taxable:2025-10-13",
+      "symbol": "STI",
+      "open_date": "2025-10-13",
+      "close_date": "2025-10-13",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:55.449335+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 398,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 9.3,
+          "max_high": 27.698
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "ELBM:schwab_taxable:2025-10-13",
+      "symbol": "ELBM",
+      "open_date": "2025-10-13",
+      "close_date": "2025-10-13",
+      "status": "marker_warn",
+      "reason": "exit 2.9305 below bar low 3.22",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:55.871961+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.22,
+          "max_high": 8.7
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "exit 2.9305 below bar low 3.22"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "GWH:schwab_taxable:2025-10-10",
+      "symbol": "GWH",
+      "open_date": "2025-10-10",
+      "close_date": "2025-10-10",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:56.526014+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.04,
+          "max_high": 5.33
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "TELO:schwab_taxable:2025-10-09",
+      "symbol": "TELO",
+      "open_date": "2025-10-09",
+      "close_date": "2025-10-09",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:57.212127+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 446,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.86,
+          "max_high": 2.091
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AMD:schwab_taxable:2025-09-30",
+      "symbol": "AMD",
+      "open_date": "2025-09-30",
+      "close_date": "2025-09-30",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:57.923886+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 446,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 159.33,
+          "max_high": 162.28
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SPRC:schwab_taxable:2025-09-30",
+      "symbol": "SPRC",
+      "open_date": "2025-09-30",
+      "close_date": "2025-09-30",
+      "status": "marker_warn",
+      "reason": "entry 6.38 below bar low 51.3; exit 6.1701 below bar low 51.3",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:58.327164+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 443,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 51.3,
+          "max_high": 63.9
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 6.38 below bar low 51.3",
+            "exit 6.1701 below bar low 51.3"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "RDHL:schwab_rollover_ira:2025-09-29",
+      "symbol": "RDHL",
+      "open_date": "2025-09-29",
+      "close_date": "2025-09-29",
+      "status": "marker_warn",
+      "reason": "entry 2.97 above bar high 2.79; exit 3.3308 above bar high 2.79",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:58.982881+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 450,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.01,
+          "max_high": 2.79
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 2.97 above bar high 2.79",
+            "exit 3.3308 above bar high 2.79"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "NUAI:schwab_taxable:2025-09-26",
+      "symbol": "NUAI",
+      "open_date": "2025-09-26",
+      "close_date": "2025-09-26",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:16:59.660571+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 1.63,
+          "max_high": 2.55
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "PEPG:schwab_taxable:2025-09-25",
+      "symbol": "PEPG",
+      "open_date": "2025-09-25",
+      "close_date": "2025-09-25",
+      "status": "marker_warn",
+      "reason": "entry 6.91 above bar high 6.34",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:00.369947+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 4.9,
+          "max_high": 6.34
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 6.91 above bar high 6.34"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SHFS:schwab_rollover_ira:2025-09-25",
+      "symbol": "SHFS",
+      "open_date": "2025-09-24",
+      "close_date": "2025-09-25",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:01.034171+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 8,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.07,
+          "max_high": 9.19
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "LAC:schwab_taxable:2025-09-25",
+      "symbol": "LAC",
+      "open_date": "2025-09-25",
+      "close_date": "2025-09-25",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:01.484544+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 6.37,
+          "max_high": 7.53
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SHFS:schwab_rollover_ira:2025-09-24",
+      "symbol": "SHFS",
+      "open_date": "2025-09-24",
+      "close_date": "2025-09-24",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:02.142810+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 6.4101,
+          "max_high": 9.74
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SSKN:schwab_taxable:2025-09-23",
+      "symbol": "SSKN",
+      "open_date": "2025-09-23",
+      "close_date": "2025-09-23",
+      "status": "marker_warn",
+      "reason": "entry 3.29 above bar high 3.04",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:02.849147+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.23,
+          "max_high": 3.04
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 3.29 above bar high 3.04"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SLNH:schwab_taxable:2025-09-23",
+      "symbol": "SLNH",
+      "open_date": "2025-09-23",
+      "close_date": "2025-09-23",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:03.250861+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.21,
+          "max_high": 3.06
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "BOXL:schwab_taxable:2025-09-22",
+      "symbol": "BOXL",
+      "open_date": "2025-09-22",
+      "close_date": "2025-09-22",
+      "status": "marker_warn",
+      "reason": "entry 5.6767 below bar low 154.8; exit 6.4713 below bar low 154.8",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:03.916471+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 154.8,
+          "max_high": 365.4
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 5.6767 below bar low 154.8",
+            "exit 6.4713 below bar low 154.8"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AGMH:schwab_taxable:2025-09-19",
+      "symbol": "AGMH",
+      "open_date": "2025-09-19",
+      "close_date": "2025-09-19",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:04.599652+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 447,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 6.23,
+          "max_high": 18.1
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "LASE:schwab_rollover_ira:2025-09-18",
+      "symbol": "LASE",
+      "open_date": "2025-09-18",
+      "close_date": "2025-09-18",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:05.300806+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 3.45,
+          "max_high": 5.88
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SPRC:schwab_taxable:2025-09-17",
+      "symbol": "SPRC",
+      "open_date": "2025-09-17",
+      "close_date": "2025-09-17",
+      "status": "marker_warn",
+      "reason": "entry 4.51 below bar low 32.85; exit 5.16 below bar low 32.85",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:06.015229+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 451,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 32.85,
+          "max_high": 57.24
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 4.51 below bar low 32.85",
+            "exit 5.16 below bar low 32.85"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "IHT:schwab_taxable:2025-09-15",
+      "symbol": "IHT",
+      "open_date": "2025-09-15",
+      "close_date": "2025-09-15",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:06.686418+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 448,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.39,
+          "max_high": 4.24
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "MOGU:schwab_taxable:2025-09-11",
+      "symbol": "MOGU",
+      "open_date": "2025-09-11",
+      "close_date": "2025-09-11",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:07.394376+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 446,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 4.21,
+          "max_high": 8.52
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "WLDS:schwab_taxable:2025-09-10",
+      "symbol": "WLDS",
+      "open_date": "2025-09-10",
+      "close_date": "2025-09-10",
+      "status": "marker_warn",
+      "reason": "entry 5.7 below bar low 22.32; exit 6.7 below bar low 22.32",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:08.111109+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 435,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 22.32,
+          "max_high": 98.19
+        },
+        "integrity": {
+          "marker_in_range": false,
+          "marker_warnings": [
+            "entry 5.7 below bar low 22.32",
+            "exit 6.7 below bar low 22.32"
+          ]
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "AXTI:schwab_taxable:2025-08-20",
+      "symbol": "AXTI",
+      "open_date": "2025-08-20",
+      "close_date": "2025-08-20",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:08.802338+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Min",
+        "source": "alpaca",
+        "bar_count": 368,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.2,
+          "max_high": 2.6791
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "XMTR:schwab_taxable:2025-08-19",
+      "symbol": "XMTR",
+      "open_date": "2025-08-05",
+      "close_date": "2025-08-19",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:09.446420+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 17,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 30.63,
+          "max_high": 49.5
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "SLDP:schwab_rollover_ira:2025-08-08",
+      "symbol": "SLDP",
+      "open_date": "2025-08-06",
+      "close_date": "2025-08-08",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:10.155670+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 9,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 2.9,
+          "max_high": 4.83
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "BRO:schwab_taxable:2025-07-29",
+      "symbol": "BRO",
+      "open_date": "2025-07-17",
+      "close_date": "2025-07-29",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:10.854881+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 15,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 90.55,
+          "max_high": 108.23
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    },
+    {
+      "trade_key": "BRO:schwab_rollover_ira:2025-07-29",
+      "symbol": "BRO",
+      "open_date": "2025-07-17",
+      "close_date": "2025-07-29",
+      "status": "ok",
+      "reason": "",
+      "replay_chart": {
+        "audited_at": "2026-06-27T21:17:11.067673+00:00",
+        "ui_version": "3.4",
+        "timeframe": "1Day",
+        "source": "alpaca",
+        "bar_count": 15,
+        "fallback": null,
+        "price_bounds": {
+          "min_low": 90.55,
+          "max_high": 108.23
+        },
+        "integrity": {
+          "marker_in_range": true,
+          "marker_warnings": []
+        },
+        "entry_et": "20:00:00 ET",
+        "exit_et": "20:00:00 ET",
+        "scale_fix": "volume_isolated_overlay_v3.4"
+      }
+    }
+  ]
+}

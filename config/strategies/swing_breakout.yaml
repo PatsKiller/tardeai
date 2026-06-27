@@ -193,7 +193,7 @@ technical_indicators_required:
     - vwap
     - opening_range
 performance_context:
-  last_updated: '2026-06-26T06:30:04+00:00'
+  last_updated: '2026-06-27T06:30:03+00:00'
   closed_paper_trades: 5
   win_rate: 0.6
   avg_r_realized: 0.6694

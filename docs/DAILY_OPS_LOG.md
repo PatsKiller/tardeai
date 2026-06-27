@@ -1,4 +1,12 @@
 
+## 2026-06-27 — Replay price-scale fix + 90-trade integrity audit
+
+Fixed systemic replay Y-axis misalignment (volume polluted candle price scale). UI **3.4**:
+`replayChartScale.ts`, isolated volume overlay, per-step scale sync, Re-sync scale button.
+Ran `scripts/replay_chart_audit.py` across all 90 deduped closed trades — backfilled
+`journal_trade_reviews.payload.replay_chart`; **62 ok / 28 warn / 0 fail** (warns = Finviz fallback or
+marker outside split-adjusted bar range). Audit: `docs/audits/REPLAY_INTEGRITY_2026-06-27.md`.
+
 ## 2026-06-22 — Fidelity monitored stops approved + server restart
 
 Operator approved Fidelity monitor-only stops: `snaptrade_pilot_arm.py --approve --confirm

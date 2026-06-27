@@ -405,12 +405,29 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     except Exception:
         pass
 
+    # Price integrity metadata for replay chart scale validation (client compares axis vs OHLC).
+    min_low = min(b["low"] for b in out_bars)
+    max_high = max(b["high"] for b in out_bars)
+    marker_in_range = True
+    marker_warnings = []
+    for m in markers:
+        p = float(m["price"])
+        # 5% slack: fills can sit between 1-min bars or differ slightly from split-adjusted OHLC.
+        if p < min_low * 0.95:
+            marker_in_range = False
+            marker_warnings.append(f"{m['type']} {p} below bar low {min_low}")
+        elif p > max_high * 1.05:
+            marker_in_range = False
+            marker_warnings.append(f"{m['type']} {p} above bar high {max_high}")
+
     et = lambda d: (d.astimezone(_ET).strftime("%H:%M:%S ET") if _ET else d.strftime("%H:%M UTC"))
     return {"symbol": symbol, "timeframe": timeframe, "source": source, "tz": "America/New_York",
             "entry_et": et(ent), "exit_et": et(ext), "bars": out_bars, "volume": vol, "vwap": vwap,
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
             "session_open_time": session_open_time, "session_close_time": session_close_time,
-            "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay}
+            "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay,
+            "price_bounds": {"min_low": round(min_low, 6), "max_high": round(max_high, 6)},
+            "integrity": {"marker_in_range": marker_in_range, "marker_warnings": marker_warnings}}
 
 
 if __name__ == "__main__":

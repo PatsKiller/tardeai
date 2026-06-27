@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import MonteCarloPanel from './MonteCarloPanel'
+import ReportingAuditPanel from './ReportingAuditPanel'
 
 export default function AdvancedReportsPanel({ account, days }: { account?: string; days: number }) {
   const [rowDim, setRowDim] = useState('setup_family')
@@ -17,8 +18,11 @@ export default function AdvancedReportsPanel({ account, days }: { account?: stri
     }
   }
 
+  const emptyPivot = !(p?.cells || []).some((c: any) => c.col && c.col !== '—')
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      <ReportingAuditPanel days={days} />
       <MonteCarloPanel account={account} days={days} />
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -35,6 +39,11 @@ export default function AdvancedReportsPanel({ account, days }: { account?: stri
             </div>
           ))}
           {(p?.cells || []).length === 0 && <div style={{ color: 'var(--text3)' }}>Annotate trades to populate pivot</div>}
+          {(p?.cells || []).length > 0 && emptyPivot && (
+            <div style={{ color: '#f59e0b', fontSize: 10, marginTop: 6, lineHeight: 1.4 }}>
+              Rows exist but all market_regime columns are "—" — tag Market regime on trades in Tagging Queue to unlock cross-tabs.
+            </div>
+          )}
         </div>
       </div>
       <button onClick={exportTax} style={{ fontSize: 10, padding: '6px 14px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', cursor: 'pointer' }}>⬇ Export tax CSV (wash-sale flags)</button>
