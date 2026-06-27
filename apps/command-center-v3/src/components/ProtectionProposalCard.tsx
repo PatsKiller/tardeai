@@ -45,6 +45,8 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
   }
   const acct = p.account_display || p.account || '—'
   const pid = p.protection_id ?? (p.id < 0 ? -p.id : p.id)
+  const trailMeta = p.evidence_refs?.trail ?? p.trail_meta
+  const trailPct = trailMeta?.trail_percent
 
   return (
     <div style={{
@@ -85,6 +87,11 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
         )}
         {p.shares != null && (
           <span style={{ color: MUTED }}>{p.shares} sh</span>
+        )}
+        {action === 'CONVERT_TO_TRAILING_STOP' && trailPct != null && (
+          <span title={trailMeta?.reason || 'Hybrid trail: max(family base %, ATR×family mult)'} style={{ color: PURPLE, cursor: 'help' }}>
+            Trail {trailPct}% · {trailMeta?.trail_family || '—'} · R≥{trailMeta?.r_threshold ?? '—'}
+          </span>
         )}
       </div>
 

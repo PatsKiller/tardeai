@@ -13783,6 +13783,7 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
     rows = _db_query(
         f"""SELECT a.id, a.symbol, a.action, a.current_stop, a.proposed_stop, a.status,
                    a.requires_operator_approval, a.no_live_execution, a.created_at,
+                   a.evidence_refs, a.tradeai_reason,
                    t.account, t.entry_price, t.shares
               FROM paper_protection_adjustment_proposals a
               JOIN paper_trades t ON t.id = a.trade_id
@@ -13828,6 +13829,8 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
             "oversight": {"status": None, "lazy": True, "skip": True},
             "source_attribution": {"label": "protection", "origin": "protection"},
             "no_broker_actions": True,
+            "evidence_refs": r.get("evidence_refs"),
+            "tradeai_reason": r.get("tradeai_reason"),
         })
     return out
 
