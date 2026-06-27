@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAPER_BASE = "https://paper-api.alpaca.markets"
 QUOTE_FRESH_MIN = 30
+TRAIL_PCT_MAX = 12.0
 STOP_UP_ACTIONS = {"MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN"}
 ALLOWED_EXEC_ACTIONS = STOP_UP_ACTIONS | {"ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP"}
 AUDIT_DIR = os.path.join(ROOT, "data/atm/protection_adjustment_audit")
@@ -97,7 +98,7 @@ def _common_proposal_context(proposal_id, operator, reason, confirm, action_date
         return fail("action_not_executable_this_phase", action=p["action"])
 
     cur.execute("""select status, stop_order_id, take_profit_order_id, take_profit_price,
-                          entry_price, shares, current_stop
+                          entry_price, shares, current_stop, strategy_id, planned_stop
                      from paper_trades where id=%s""", (p["trade_id"],))
     t = cur.fetchone()
     if not t or t["status"] != "open":
@@ -302,11 +303,46 @@ def _apply_trailing(result, conn, p, t, q, proposal_id, confirm):
         conn.close()
         print(json.dumps(result, indent=2, default=str))
         return result
+    from protection_trail_calculator import resolve_trail_percent_for_apply
+    stored_trail = None
+    refs = p.get("evidence_refs")
+    if isinstance(refs, str):
+        try:
+            refs = json.loads(refs)
+        except Exception:
+            refs = None
+    if isinstance(refs, dict):
+        stored_trail = refs.get("trail")
+    last_px = float(q.get("last_price") or q.get("last") or 0)
+    trail_res = resolve_trail_percent_for_apply(
+        stored_trail,
+        t.get("strategy_id"),
+        p["symbol"],
+        float(t["entry_price"]) if t.get("entry_price") else None,
+        float(t["planned_stop"]) if t.get("planned_stop") else None,
+        last_px if last_px > 0 else None,
+        float(t["current_stop"]) if t.get("current_stop") else None,
+    )
+    result["trail_resolution"] = {k: trail_res.get(k) for k in (
+        "trail_method", "trail_family", "r_multiple", "r_threshold", "trail_source",
+        "stored_drift_pct", "reason", "atr14", "atr_pct", "family_base_pct", "atr_component_pct",
+    ) if k in trail_res}
+    if not trail_res.get("eligible"):
+        result.update({"status": "BLOCKED", "block_reason": "trail_not_eligible",
+                       "detail": trail_res.get("reason")})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     try:
-        trail_pct = float(os.getenv("PROTECTION_TRAIL_PERCENT", "5"))
-    except Exception:
-        trail_pct = 5.0
-    if trail_pct <= 0 or trail_pct > 25:
+        trail_pct = float(trail_res["trail_percent"])
+    except (KeyError, TypeError, ValueError):
+        result.update({"status": "BLOCKED", "block_reason": "invalid_trail_percent"})
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    if trail_pct <= 0 or trail_pct > TRAIL_PCT_MAX:
         result.update({"status": "BLOCKED", "block_reason": "invalid_trail_percent", "trail_percent": trail_pct})
         audit(result)
         conn.close()

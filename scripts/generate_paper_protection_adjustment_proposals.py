@@ -109,14 +109,21 @@ def candidates(a):
                 "expected_api": "POST /v2/orders (sell limit, paper) — OCO if supported",
                 "tradeai_reason": f"Set fixed take-profit ~{int(TAKE_PROFIT_FRACTION*100)}% above current."})
 
-    # TRAILING (Alpaca supports trailing-stop; replace existing stop)
+    # TRAILING — hybrid ATR×family trail%; only when R-multiple gate passes
     if gain_ps > 0:
-        out.append({**base, "action": "CONVERT_TO_TRAILING_STOP", "proposed_stop": None,
-                    "proposed_take_profit": tp, "profit_locked_after": locked(cur_stop),
-                    "giveback_after": giveback(cur_stop), "proposed_risk": risk(cur_stop),
-                    "upside_limitation": "none (captures further upside)",
-                    "expected_api": "cancel+POST /v2/orders trailing_stop (paper) — replace",
-                    "tradeai_reason": "Convert to trailing stop to follow price up."})
+        from protection_trail_calculator import compute_trail_percent
+        trail = compute_trail_percent(
+            a.get("strategy"), a.get("symbol"), entry, a.get("planned_stop"), price,
+            current_stop=cur_stop,
+        )
+        if trail.get("eligible"):
+            out.append({**base, "action": "CONVERT_TO_TRAILING_STOP", "proposed_stop": None,
+                        "proposed_take_profit": tp, "profit_locked_after": locked(cur_stop),
+                        "giveback_after": giveback(cur_stop), "proposed_risk": risk(cur_stop),
+                        "upside_limitation": f"trails {trail['trail_percent']}% below high ({trail['trail_family']})",
+                        "expected_api": "cancel+POST /v2/orders trailing_stop (paper) — replace",
+                        "tradeai_reason": trail.get("reason") or "Convert to trailing stop to follow price up.",
+                        "trail_meta": trail})
     return out
 
 
@@ -144,11 +151,13 @@ def run(persist=True):
         a = a or {}
         # only generate for trades with an actionable advisory (skip pure NO_ACTION baselines? keep KEEP for all)
         for c in candidates(a):
+            ev = {"advisory_action": r["tradeai_action"], "hermes_opinion": r["hermes_opinion"]}
+            if c.get("trail_meta"):
+                ev["trail"] = c.pop("trail_meta")
             prop = {**c, "trade_id": r["paper_trade_id"], "symbol": r["symbol"],
                     "tradeai_advisory_action": r["tradeai_action"],
                     "hermes_reason": r["hermes_reason"],
-                    "evidence_refs": {"advisory_action": r["tradeai_action"],
-                                       "hermes_opinion": r["hermes_opinion"]},
+                    "evidence_refs": ev,
                     "quote_timestamp": str(a.get("quote_age_min")), "quote_price": a.get("current_price"),
                     "requires_operator_approval": True, "no_live_execution": True}
             prop.setdefault("tradeai_reason", r["tradeai_reason"])
