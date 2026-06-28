@@ -74,7 +74,8 @@ def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None, loo
             sector, industry, country, sector_etf,
             source, screener_label, run_label, scanned_at,
             intelligence_readiness, change_pct,
-            ticker_perf_1m, sector_perf_1m, vs_sector_pct
+            ticker_perf_1m, sector_perf_1m, vs_sector_pct,
+            discovery_trace_id
         FROM trade_ai_scans
         WHERE decision IN ('GO', 'A+')
         AND {time_clause}
@@ -419,6 +420,7 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
         "scan_run_label": scan.get('run_label'),
         "screener_label": scan.get('screener_label'),
         "discovery_source": scan.get('source'),
+        "discovery_trace_id": scan.get('discovery_trace_id'),  # P0-6: complete scan→signal→proposal chain
         "sync_created_by": "strategy_signal_sync",
         "sync_run_id": sync_run_id,
     }
