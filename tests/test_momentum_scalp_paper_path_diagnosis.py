@@ -33,7 +33,7 @@ def main():
           and "paper_trades_by_status" in r["stages"])
     check("reports confirmed paper trades (conservative)", "confirmed_paper_trades" in r["stages"])
     check("note affirms no broker writes / paper-only",
-          "No broker writes" in r["note"] and "Paper-only" in r["note"])
+          "No broker writes" in r["note"] and ("Sandbox-only" in r["note"] or "sandbox-only" in r["note"].lower()))
     check("markdown renders the bottleneck", "First bottleneck" in to_markdown(r))
     # The known live bottleneck is approval failing on stale quotes (freshness gate working).
     if r["stages"].get("atm_rejection_gates", {}).get("approve_proposal_failed"):

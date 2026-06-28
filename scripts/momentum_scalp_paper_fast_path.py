@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""P0-2: deterministic momentum_scalp PAPER fast path (NO human paper approval).
+"""P0-2: deterministic momentum_scalp Validation fast-path (NO human validation approval).
 
-Operator decision 2026-06-28: momentum_scalp paper sample-collection does not need human/operator
-paper approval. Deterministic gates replace the approval queue. A proposal that passes ALL gates is
-submitted straight to the paper-only path via the EXISTING safe submitter (proposal_paper_submitter.
-submit_paper) — which is paper-only and idempotent. This module never touches the live broker path,
+Operator decision 2026-06-28: momentum_scalp validation sample-collection does not need human/operator
+validation approval. Deterministic gates replace the approval queue. A proposal that passes ALL gates is
+submitted straight to the sandbox-only path via the EXISTING safe submitter (proposal_paper_submitter.
+submit_paper) — which is sandbox-only and idempotent. This module never touches the live broker path,
 never sets live-approval fields, and never weakens quote-freshness / TTL / window / liquidity / route
 / risk gates. Live trading is unchanged and still requires operator confirmation + 2FA.
 
     python3 scripts/momentum_scalp_paper_fast_path.py --dry-run     # read-only report (default)
-    python3 scripts/momentum_scalp_paper_fast_path.py --paper-only  # gate-pass → existing paper submit
+    python3 scripts/momentum_scalp_paper_fast_path.py --sandbox-only  # gate-pass → existing validation submit
 """
 from __future__ import annotations
 
@@ -214,7 +214,7 @@ def run(dry_run: bool = True) -> dict:
         candidates.append(ev)
 
         if ev["decision"] == "WOULD_SUBMIT_PAPER" and not dry_run:
-            # Deterministic gate-pass → existing SAFE paper submit (no approval). Idempotent + paper-only.
+            # Deterministic gate-pass → existing SAFE validation submit (no approval). Idempotent + sandbox-only.
             try:
                 from proposal_paper_submitter import submit_paper
                 res = submit_paper(conn, p["id"], dry_run=False)
@@ -240,7 +240,7 @@ def run(dry_run: bool = True) -> dict:
         "paper_submitted_symbols": submitted_syms,
         "candidates": candidates,
         "source_tag": SOURCE_TAG,
-        "note": "Deterministic gate-based paper fast path. NO human paper approval. Paper-only via the "
+        "note": "Deterministic gate-based validation fast-path. NO human validation approval. Sandbox-only via the "
                 "existing safe submitter; never the live broker path. Quote-freshness/TTL/window/"
                 "liquidity/route/risk gates unchanged. Operator confirmation / 2FA unchanged.",
     }
@@ -268,7 +268,7 @@ def maybe_run_after_generation(dry_run: bool = True) -> dict | None:
     import os
     if os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH") != "1":
         return None
-    # Even when enabled, paper-only submit requires the explicit env opt-in; otherwise dry-run.
+    # Even when enabled, sandbox-only submit requires the explicit env opt-in; otherwise dry-run.
     paper = os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH_SUBMIT") == "1"
     return run(dry_run=(dry_run and not paper))
 
@@ -295,11 +295,16 @@ def _audit(conn, proposal, ev, res):
 
 
 def main() -> int:
+    # Deprecated alias: canonical module is momentum_scalp_validation_fast_path.py (validation
+    # taxonomy). Kept working for backward compatibility — same deterministic gates, same safety.
+    print("Deprecated alias: use momentum_scalp_validation_fast_path.py "
+          "(validation taxonomy). This paper-named CLI still works.", file=sys.stderr)
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--paper-only", action="store_true")
+    # Legacy flags (this is the deprecated alias module): accept both spellings.
+    ap.add_argument("--paper-only", "--sandbox-only", dest="sandbox_only", action="store_true")
     args = ap.parse_args()
-    dry = not args.paper_only  # default dry-run; paper-only must be explicit
+    dry = not args.sandbox_only  # default dry-run; submit must be explicit
     print(json.dumps(run(dry_run=dry), indent=2, default=str))
     return 0
 

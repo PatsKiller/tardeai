@@ -1,14 +1,14 @@
 # Scalp Lifecycle Funnel
 
 **Status: PASS**  
-_Generated: 2026-06-28T21:33:16.744426+00:00 | window: 30d_  
+_Generated: 2026-06-28T21:58:55.084558+00:00 | window: 30d_  
 _Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_  
 
 Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 
 > **Operator correction 2026-06-28: no confirmed momentum_scalp paper trades were expected; prior counts (e.g. 17 opened / 3 closed) were over-attributed (non-executed rows + unlinked direct-label row). Counts below reflect conservative TRUE attribution.**
 
-> **Paper approval:** Momentum scalp paper testing does NOT require human paper approval — deterministic gates replace the approval queue. The paper fast path remains deterministic and paper-only; live trading is unchanged and still requires operator confirmation + 2FA.
+> **Validation approval:** Momentum scalp validation execution does NOT require human approval — deterministic gates replace validation approval for sample collection. The validation fast path remains deterministic and sandbox-only; live trading is unchanged and still requires operator confirmation + 2FA.
 
 **Confirmed momentum_scalp paper trades:** 2 closed (trade IDs [45, 22]); ambiguous/unlinked excluded (IDs [19]).
 
@@ -29,14 +29,14 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 | Proposals (momentum_scalp) | 52 | ok |
 | Proposals expired on intraday TTL | 0 | ok |
 | Proposals approved for paper (legacy ATM — NOT required) | 0 | ok |
-| paper fast path candidates | 0 | ok |
-| paper fast path gate pass | 0 | ok |
-| paper fast path submitted | 0 | ok |
-| paper fast path deferred | 0 | ok |
-| paper fast path rejected | 0 | ok |
-| paper fast path stale quote rejects | 0 | ok |
-| paper fast path large float scout rejects | 0 | ok |
-| paper fast path social only rejects | 0 | ok |
+| validation fast path candidates | 0 | ok |
+| validation fast path gate pass | 0 | ok |
+| validation fast path submitted | 0 | ok |
+| validation fast path deferred | 0 | ok |
+| validation fast path rejected | 0 | ok |
+| validation fast path stale quote rejects | 0 | ok |
+| validation fast path large float scout rejects | 0 | ok |
+| validation fast path social only rejects | 0 | ok |
 | ACTUAL momentum_scalp paper trades opened (confirmed) | 2 | ok |
 | ACTUAL momentum_scalp paper trades closed (confirmed) | 2 | ok |
 | Confirmed closed winners (momentum_scalp) | 1 | ok |
@@ -60,19 +60,19 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 - Win rate: **50.0%** (need ≥ 50%)
 - Profit factor: **1.40** (need ≥ 1.3)
 - Calendar months observed: **unknown** (need ≥ 6)
-- **Gate met: False** — Validation gate NOT met — momentum_scalp remains TESTING (paper only); confirmed closed paper trades = 2 of 30.
+- **Gate met: False** — Validation gate NOT met — momentum_scalp remains TESTING (sandbox-only); confirmed closed paper trades = 2 of 30.
 - Live-ready claim: **False** (momentum_scalp is TESTING)
 
 ## Rejected / deferred reasons
 
 | Decision | Count |
 |----------|-------|
-| SKIPPED_STRATEGY_CRITERIA | 333 |
+| SKIPPED_STRATEGY_CRITERIA | 332 |
 | SKIPPED_OUTSIDE_RTH | 283 |
 | SKIPPED_NOT_GO | 175 |
 | SKIPPED_LIQUIDITY | 156 |
-| SKIPPED_RECENTLY_REJECTED | 141 |
-| CREATED | 64 |
+| SKIPPED_RECENTLY_REJECTED | 132 |
+| CREATED | 63 |
 | SKIPPED_DUPLICATE | 39 |
 | SKIPPED_RECENTLY_CLOSED | 37 |
 | SKIPPED_OPEN_TRADE | 17 |

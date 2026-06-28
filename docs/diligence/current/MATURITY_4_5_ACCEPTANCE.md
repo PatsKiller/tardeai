@@ -130,7 +130,7 @@ operator confirmation / 2FA path unchanged and out of scope; autonomous live sub
 
 Preserves the PR #10 correction (confirmed momentum_scalp closed paper trades = **2/30**). Adds
 durable route persistence, route-aware injection, hybrid large-float scout handling, signal-sync
-route enforcement, and a paper-only fast ATM runner. **Combined Social → Momentum Scalp maturity
+route enforcement, and a sandbox-only fast ATM runner. **Combined Social → Momentum Scalp maturity
 remains 4.4/5 (4.5 NOT met)** — engineering/control 5.0, empirical capped until the validation
 sample (≥30 confirmed closed paper trades, ≥6 months) is met. Large-float scouts are retained and
 operator-visible but are NOT momentum_scalp and NOT eligible for the fast-path. Quote freshness,

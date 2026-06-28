@@ -119,7 +119,7 @@ def main():
     bad["validation_gate"]["paper_approval_required_for_sample_collection"] = True
     r = validate_strategy_config("momentum_scalp", bad)
     check("paper-approval-required regression caught",
-          (not r["ok"]) and any(e["code"] == "PAPER_APPROVAL_REQUIRED_REGRESSION" for e in r["errors"]))
+          (not r["ok"]) and any(e["code"] == "VALIDATION_APPROVAL_REQUIRED_REGRESSION" for e in r["errors"]))
 
     # 12. Regression: weakening live 2FA fails.
     bad2 = copy.deepcopy(real)
