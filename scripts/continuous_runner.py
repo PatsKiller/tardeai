@@ -66,6 +66,50 @@ SCORE_JUMP_THRESHOLD  = 10
 RVOL_5X_THRESHOLD     = 5.0
 RVOL_8X_THRESHOLD     = 8.0
 
+
+def classify_social_injection(row: dict) -> dict:
+    """P0-4: route-aware decision for injecting a scalp_scan_results row into live scoring.
+
+    Returns {injectable, tradeable, strategy_id?, manual_review_required, large_float, reason}.
+    Pure/testable. Missing route fields → safe fallback (NOT injected as tradeable), never GO.
+    """
+    def _num(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+    route = str(row.get("route") or "").strip().lower()
+    actionability = str(row.get("route_actionability") or "").strip().upper()
+    route_sid = str(row.get("route_strategy_id") or "").strip().lower()
+    decision = str(row.get("decision") or "").strip().upper()
+    cat_v = bool(row.get("catalyst_verified"))
+    rvol = _num(row.get("rvol"))
+    float_m = _num(row.get("float_m") if row.get("float_m") is not None else row.get("float_mm"))
+    price = _num(row.get("price"))
+
+    if not route:
+        return {"injectable": False, "tradeable": False, "reason": "no_durable_route_fields"}
+
+    # Standard micro-cap momentum scalp — every condition must hold.
+    if (decision == "GO" and route == "momentum_scalp" and actionability == "GO"
+            and route_sid == "momentum_scalp" and cat_v
+            and rvol is not None and rvol >= 5.0
+            and float_m is not None and float_m <= 20.0
+            and price is not None and price <= 25.0):
+        return {"injectable": True, "tradeable": True, "strategy_id": "momentum_scalp",
+                "manual_review_required": False, "large_float": False, "reason": "verified_microcap_GO"}
+
+    # Large-float scout / meme squeeze — injected as labelled MANUAL-REVIEW scout, NOT tradeable.
+    if route in ("large_float_social_scout", "meme_squeeze_momentum"):
+        return {"injectable": True, "tradeable": False, "strategy_id": route,
+                "manual_review_required": True, "large_float": True,
+                "reason": "large_float_scout_manual_review"}
+
+    # watch_only / WAIT / WATCH / portfolio / reject — not injected into the live tradeable path.
+    return {"injectable": False, "tradeable": False,
+            "reason": f"route={route}/{actionability or '-'}_not_tradeable"}
+
+
 # LLM rate gates
 LLM_HAIKU_COOLDOWN_MIN  = 30   # min minutes between Haiku calls per ticker
 LLM_SONNET_COOLDOWN_MIN = 120  # min minutes between Sonnet plans per ticker
@@ -287,24 +331,32 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     except Exception as e:
         print(f"  [live] ingestion error: {e}"); return
 
-    # Inject social/news candidates from scalp_scan_results (scored by social_scalp_scanner)
+    # Inject social/news candidates from scalp_scan_results — P0-4: ROUTE-AWARE (not score-only).
+    # Only verified micro-cap GO names enter the live scoring path as tradeable momentum_scalp;
+    # large-float scouts enter as labelled manual-review (not tradeable); social-only/watch names
+    # are NOT injected into live scoring (they remain on dashboards/watchlists elsewhere).
     try:
         from db_adapter import _execute
         _existing_syms = {t.get("symbol","") for t in tickers}
         _social = _execute("""
             SELECT DISTINCT ON (symbol)
                 symbol, score, rvol, price, change_pct, gap_pct, float_mm AS float_m,
-                sector, industry, country, sources
+                sector, industry, country, sources, decision,
+                route, route_actionability, route_strategy_id, route_reason_codes,
+                discovery_trace_id, catalyst_verified
             FROM scalp_scan_results
             WHERE scanned_at > NOW() - INTERVAL '4 hours'
-              AND score >= 25
             ORDER BY symbol, scanned_at DESC
         """) or []
         _injected = 0
+        _scouts = 0
         for sr in _social:
             sym = sr.get("symbol","")
             if sym in _existing_syms:
                 continue
+            inj = classify_social_injection(sr)
+            if not inj.get("injectable"):
+                continue  # social-only / watch / WAIT — not injected into live scoring as tradeable
             tickers.append({
                 "symbol": sym,
                 "price": float(sr.get("price") or 0),
@@ -321,11 +373,24 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 "source_lists": ",".join(sr.get("sources") or []),
                 "run_window": run_label,
                 "_source": "social",
+                # Durable route/lineage labels carried into scoring + downstream signal sync.
+                "discovery_trace_id": sr.get("discovery_trace_id"),
+                "route": sr.get("route"),
+                "route_actionability": sr.get("route_actionability"),
+                "route_strategy_id": sr.get("route_strategy_id"),
+                "route_reason_codes": sr.get("route_reason_codes"),
+                "catalyst_verified": bool(sr.get("catalyst_verified")),
+                "tradeable_scalp": inj["tradeable"],
+                "manual_review_required": inj.get("manual_review_required", False),
+                "large_float": inj.get("large_float", False),
             })
             _existing_syms.add(sym)
             _injected += 1
+            if inj.get("manual_review_required"):
+                _scouts += 1
         if _injected:
-            print(f"  [live] +{_injected} social/news candidates injected")
+            print(f"  [live] +{_injected} route-aware social candidates injected "
+                  f"({_scouts} large-float scouts / manual-review)")
     except Exception as e:
         print(f"  [live] social inject warning: {e}")
 

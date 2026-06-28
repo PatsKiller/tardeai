@@ -16,8 +16,10 @@ Hard rules (never violated):
 """
 from __future__ import annotations
 
-ROUTES = ("watch_only", "momentum_scalp", "meme_squeeze_momentum", "portfolio_agents", "reject")
+ROUTES = ("watch_only", "momentum_scalp", "meme_squeeze_momentum", "large_float_social_scout",
+          "portfolio_agents", "reject")
 ACTIONABILITY = ("WATCH", "WAIT", "GO", "MANUAL_REVIEW", "AVOID")
+FLOAT_CLASSES = ("micro_float", "large_float", "unknown")
 
 # Micro-cap momentum-scalp boundaries (kept in sync with momentum_scalp.yaml screen_filters).
 SCALP_MAX_FLOAT_M = 20.0
@@ -25,6 +27,10 @@ SCALP_MAX_PRICE = 25.0
 SCALP_MIN_RVOL = 5.0
 SQUEEZE_MIN_RVOL = 8.0
 SQUEEZE_MIN_GAP = 5.0
+# Large-float social scout (hybrid): a verified social/momentum name above the micro-cap ceiling
+# is RETAINED for operator review — never a standard momentum_scalp, never auto-GO.
+SCOUT_MAX_PRICE = 50.0
+SCOUT_LABEL = "large_float_social_scout"
 
 _PORTFOLIO_TAGS = {"dividend", "income", "retirement", "401k", "ira", "roth", "reit",
                    "bond", "core", "compounder", "defense", "long_term", "dividend_growth"}
@@ -93,12 +99,19 @@ def route_social_candidate(candidate: dict, finviz_data: dict,
         "sources": candidate.get("sources"),
     }
 
-    def result(route, actionability, strategy_id, requires_verified, social_only):
+    float_class = "unknown" if float_m is None else ("micro_float" if float_m <= SCALP_MAX_FLOAT_M else "large_float")
+
+    def result(route, actionability, strategy_id, requires_verified, social_only,
+               scout_label=None, manual_review_required=False, operator_label=None):
         assert route in ROUTES and actionability in ACTIONABILITY
         return {
             "route": route,
             "actionability": actionability,
             "strategy_id": strategy_id,
+            "float_class": float_class,
+            "scout_label": scout_label,
+            "manual_review_required": manual_review_required,
+            "operator_label": operator_label,
             "reason_codes": reason_codes,
             "requires_verified_catalyst": requires_verified,
             "social_only": social_only,
@@ -120,23 +133,38 @@ def route_social_candidate(candidate: dict, finviz_data: dict,
     # 3. Verified-catalyst routes.
     if verified:
         squeeze = has_squeeze_evidence(candidate, finviz, ce)
-        # 3a. Squeeze signature with strong RVOL + gap → meme squeeze, MANUAL REVIEW (never auto-GO).
-        if rvol >= SQUEEZE_MIN_RVOL and (gap is not None and gap >= SQUEEZE_MIN_GAP) and squeeze:
-            reason_codes.append("VERIFIED_SQUEEZE_SETUP")
-            return result("meme_squeeze_momentum", "MANUAL_REVIEW", "meme_squeeze_momentum",
-                          requires_verified=True, social_only=False)
-        # 3b. Micro-cap momentum scalp boundaries → momentum_scalp (GO eligible).
-        if rvol >= SCALP_MIN_RVOL and (float_m is not None and float_m <= SCALP_MAX_FLOAT_M) \
-                and price <= SCALP_MAX_PRICE:
+        micro = float_m is not None and float_m <= SCALP_MAX_FLOAT_M
+        large = float_m is not None and float_m > SCALP_MAX_FLOAT_M
+
+        # 3a. MICRO-cap momentum scalp → momentum_scalp (GO eligible). Standard low-float scalp ONLY.
+        if rvol >= SCALP_MIN_RVOL and micro and price <= SCALP_MAX_PRICE:
             reason_codes.append("VERIFIED_MICROCAP_MOMENTUM")
             return result("momentum_scalp", "GO", "momentum_scalp",
                           requires_verified=True, social_only=False)
-        # 3c. Verified large-float momentum that isn't a clean scalp → meme/manual review.
-        if float_m is not None and float_m > SCALP_MAX_FLOAT_M and rvol >= SCALP_MIN_RVOL:
-            reason_codes.append("VERIFIED_LARGE_FLOAT_MOMENTUM")
-            return result("meme_squeeze_momentum", "MANUAL_REVIEW", "meme_squeeze_momentum",
-                          requires_verified=True, social_only=False)
-        # 3d. Verified but price/float outside every strategy boundary → reject.
+
+        # 3b. LARGE-float social scout (hybrid, P0-5): retained for the operator, clearly labelled
+        # LARGE FLOAT, MANUAL REVIEW — never a standard momentum_scalp, never auto-GO/fast-path.
+        # Squeeze signature routes to meme_squeeze_momentum (with the scout sublabel); plain
+        # large-float momentum routes to the dedicated large_float_social_scout.
+        if large and rvol >= SCALP_MIN_RVOL and price <= SCOUT_MAX_PRICE:
+            if rvol >= SQUEEZE_MIN_RVOL and (gap is not None and gap >= SQUEEZE_MIN_GAP) and squeeze:
+                reason_codes.append("VERIFIED_LARGE_FLOAT_SQUEEZE")
+                route_id = "meme_squeeze_momentum"
+            else:
+                reason_codes.append("VERIFIED_LARGE_FLOAT_SOCIAL_SCOUT")
+                route_id = "large_float_social_scout"
+            return result(route_id, "MANUAL_REVIEW", route_id,
+                          requires_verified=True, social_only=False,
+                          scout_label=SCOUT_LABEL, manual_review_required=True,
+                          operator_label="LARGE FLOAT SOCIAL SCOUT")
+
+        # 3c. Very large float / high-price established name → portfolio agents (not a scalp/scout).
+        if large and price > SCOUT_MAX_PRICE:
+            reason_codes.append("LARGE_FLOAT_HIGH_PRICE_PORTFOLIO")
+            return result("portfolio_agents", "MANUAL_REVIEW", None,
+                          requires_verified=True, social_only=False, manual_review_required=True)
+
+        # 3d. Verified but price/float/rvol outside every strategy boundary → reject.
         reason_codes.append("OUT_OF_STRATEGY_BOUNDS")
         return result("reject", "AVOID", None, requires_verified=True, social_only=False)
 

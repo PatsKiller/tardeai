@@ -1,0 +1,48 @@
+strategy_id: large_float_social_scout
+display_name: Large-Float Social Scout
+version: 1.0.0
+status: TESTING
+purpose: >
+  Hybrid retention bucket for verified social/momentum names whose float is ABOVE the
+  micro-cap momentum_scalp ceiling (>20M). They are NOT standard low-float momentum scalps:
+  they are kept in the system, clearly labelled LARGE FLOAT, and routed to MANUAL REVIEW so
+  the operator can decide. Never auto-GO, never eligible for the momentum_scalp paper fast-path.
+# Deliberately NOT intraday — must never appear in proposal_lifecycle.INTRADAY_STRATEGIES and so
+# can never inherit the 30-minute fast-path / auto-approve behaviour of momentum_scalp.
+timeframe: manual_review
+timeframe_class: MANUAL_REVIEW
+universe: large_float_social_momentum
+manual_review_required: true
+auto_approve: false
+fast_path_eligible: false
+operator_label: "LARGE FLOAT SOCIAL SCOUT"
+eligible_accounts:
+  - taxable
+forbidden_accounts:
+  - rollover_ira
+  - roth_ira
+  - fidelity_rollover_ira
+screen_filters:
+  min_price: 1.0
+  max_price: 50.0
+  min_rvol: 5.0
+  min_float_m: 20            # ABOVE the micro-cap scalp ceiling by definition
+  catalyst_required: true
+setup_qualification:
+  catalyst_present: required
+  catalyst_verified_for_actionable: true
+  social_only_max_grade: WATCH
+recommendation_rules:
+  default: MANUAL_REVIEW
+  social_only_catalyst: WATCH
+  unverified_catalyst_max: WAIT
+notes: >
+  Routed here by social_route_policy.route_social_candidate when a verified candidate has
+  float_class=large_float. Carries scout_label=large_float_social_scout and
+  manual_review_required=true. Advisory only; no auto execution; LLMs advisory only.
+prompt_context:
+  summary: >
+    Large-float social momentum/scout name (>20M float). NOT a standard micro-cap momentum scalp.
+    Manual operator review required before any action; never auto-traded.
+validation_gate:
+  human_approval_required: true
