@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -47,10 +48,10 @@ STEPS = [
 ]
 
 
-def _run(cmd: list[str], timeout: int = 240) -> dict:
+def _run(cmd: list[str], timeout: int = 240, env: dict | None = None) -> dict:
     start = time.monotonic()
     try:
-        proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, timeout=timeout, env=env)
         rc = proc.returncode
         tail = (proc.stdout or proc.stderr or "").strip().splitlines()
         detail = tail[-1][:300] if tail else ""
@@ -61,10 +62,18 @@ def _run(cmd: list[str], timeout: int = 240) -> dict:
     return {"returncode": rc, "duration_s": round(time.monotonic() - start, 2), "detail": detail}
 
 
-def run_all() -> dict:
+def run_all(source_only: bool = False) -> dict:
+    # Source-only: the deployed-DB posture guards can't run in a bare CI sandbox. Signal
+    # every child via TRADE_AI_CI=1 (the validators self-skip DB-state guards and report
+    # them, never silently passing) and pass --source-only to the write-policy validator.
+    child_env = None
+    if source_only:
+        child_env = dict(os.environ, TRADE_AI_CI="1")
     results = []
     for label, cmd, optional in STEPS:
-        r = _run(cmd)
+        if source_only and label == "schwab_write_policy":
+            cmd = cmd + ["--source-only"]
+        r = _run(cmd, env=child_env)
         passed = r["returncode"] == 0
         results.append({
             "step": label, "command": " ".join(cmd), "returncode": r["returncode"],
@@ -83,8 +92,11 @@ def run_all() -> dict:
         "failed": sum(1 for r in results if r["status"] == "FAIL"),
         "warned": sum(1 for r in results if r["status"] == "WARN"),
         "total_duration_s": round(sum(r["duration_s"] for r in results), 2),
+        "source_only": source_only,
         "steps": results,
-        "note": "Read-only CI-equivalent release proof. No broker writes performed.",
+        "note": "Read-only CI-equivalent release proof. No broker writes performed."
+                + (" Source-only: DB-state posture guards deferred to the deployed run."
+                   if source_only else ""),
     }
 
 
@@ -113,11 +125,14 @@ def write_markdown(report: dict, out: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--source-only", action="store_true",
+                    help="Skip deployed-DB posture guards (CI sandbox); defer them to the deployed run.")
     ap.add_argument("--md-out", default="docs/project/CI_EVIDENCE_LATEST.md")
     ap.add_argument("--json-out", default="data/runtime/ci_evidence_latest.json")
     args = ap.parse_args()
 
-    report = run_all()
+    source_only = args.source_only or os.environ.get("TRADE_AI_CI") == "1"
+    report = run_all(source_only=source_only)
     md_out = ROOT / args.md_out
     write_markdown(report, md_out)
     try:
