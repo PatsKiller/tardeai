@@ -97,6 +97,37 @@ def main():
     ok_cfg["prompt_context"] = {"key_questions": ["Are we within 06:00–12:00 ET?"]}
     check("correct window prompt text passes", validate_strategy_config("x", ok_cfg)["ok"])
 
+    # ── P0-1 (paper fast-path no-approval semantics) on the REAL momentum_scalp.yaml ──
+    from strategy_config_validator import _load_cfg
+    real = _load_cfg("momentum_scalp")
+    rv = validate_strategy_config("momentum_scalp", real)
+    check("real momentum_scalp passes with paper fast-path", rv["ok"])
+    check("paper_approval_required is false",
+          real["paper_trade_rules"]["paper_approval_required"] is False)
+    check("sample collection needs no paper approval",
+          real["validation_gate"]["paper_approval_required_for_sample_collection"] is False)
+    check("promotion still needs human approval",
+          real["validation_gate"]["human_approval_required_for_promotion"] is True)
+    check("live operator confirmation + 2FA intact",
+          real["live_execution_policy"]["operator_confirmation_required"] is True
+          and real["live_execution_policy"]["two_factor_required"] is True)
+    check("autonomous live trading false", real["live_execution_policy"]["autonomous_live_trading"] is False)
+    check("momentum_scalp still TESTING", str(real.get("status")).upper() == "TESTING")
+
+    # 11. Regression detection: requiring paper approval for sample collection fails.
+    bad = copy.deepcopy(real)
+    bad["validation_gate"]["paper_approval_required_for_sample_collection"] = True
+    r = validate_strategy_config("momentum_scalp", bad)
+    check("paper-approval-required regression caught",
+          (not r["ok"]) and any(e["code"] == "PAPER_APPROVAL_REQUIRED_REGRESSION" for e in r["errors"]))
+
+    # 12. Regression: weakening live 2FA fails.
+    bad2 = copy.deepcopy(real)
+    bad2["live_execution_policy"]["two_factor_required"] = False
+    r2 = validate_strategy_config("momentum_scalp", bad2)
+    check("live-2FA-weakened regression caught",
+          (not r2["ok"]) and any(e["code"] == "LIVE_APPROVAL_WEAKENED" for e in r2["errors"]))
+
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     return 1 if FAIL else 0
 

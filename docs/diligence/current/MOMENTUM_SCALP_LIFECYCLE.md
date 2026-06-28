@@ -107,3 +107,13 @@ No broker writes; operator confirmation / 2FA path unchanged.
   proposals are evaluated ~10 min after creation (p95 ~173 min) — a cadence problem, not a gate problem.
 
 Operator confirmation / 2FA path unchanged and out of scope. No broker writes. LLMs advisory only.
+
+## Paper fast-path — no human paper approval (2026-06-28)
+
+Operator decision: momentum_scalp PAPER sample-collection is deterministic and gate-based — it does
+NOT require human paper approval. The slow ATM approval queue (which let quotes go stale before
+approval) is bypassed for paper: a PENDING momentum_scalp proposal that passes all deterministic
+gates is submitted straight to the paper-only path (`momentum_scalp_paper_fast_path.py` →
+`proposal_paper_submitter.submit_paper`). Quote-freshness/TTL/window/liquidity/route/risk gates are
+unchanged. LIVE trading is unchanged and still requires operator confirmation + 2FA. Large-float
+scouts and social-only candidates remain ineligible. See `MOMENTUM_SCALP_PAPER_FAST_PATH.md`.

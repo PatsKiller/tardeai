@@ -110,10 +110,12 @@ def build(days: int = 30) -> dict:
         detail = f"Signals exist but no proposals created; dominant auto-proposal decision: {top}."
     elif _approve_fail and _approve_fail >= max(1, _atm_approved):
         bottleneck = "approval_fails_on_stale_quote"
-        detail = (f"Proposals reach ATM but approval fails {_approve_fail}× (gate=approve_proposal_failed); "
-                  f"dominant cause: {str(approval_fail_sample)[:90]}. The freshness gate is working "
-                  f"correctly — the gap is generating a momentum_scalp proposal with a FRESH in-window "
-                  f"quote AND approving it before the 30-min TTL. Not a code bug; do NOT weaken freshness.")
+        detail = (f"Legacy ATM approval failed {_approve_fail}× (gate=approve_proposal_failed); dominant "
+                  f"cause: {str(approval_fail_sample)[:80]}. The freshness gate is working correctly. "
+                  f"Operator decision 2026-06-28: momentum_scalp paper testing does NOT require human "
+                  f"approval — the fix is to run the deterministic paper FAST-PATH "
+                  f"(momentum_scalp_paper_fast_path.py) immediately after a proposal is created or "
+                  f"becomes ENTRY_ZONE_VALID, NOT to 'approve faster'. Do NOT weaken freshness.")
     elif approved == 0 and pending and pending == proposals:
         bottleneck = "proposals_stuck_pending"
         detail = "Proposals created but none approved — all PENDING (ATM not approving / not running)."
@@ -156,6 +158,10 @@ def build(days: int = 30) -> dict:
         },
         "first_bottleneck": bottleneck,
         "bottleneck_detail": detail,
+        "recommended_fix": ("Run the deterministic paper FAST-PATH immediately after proposal "
+                            "creation / ENTRY_ZONE_VALID (momentum_scalp_paper_fast_path.py, paper-only, "
+                            "no human approval). Do NOT weaken quote freshness, TTL, window, or liquidity."),
+        "paper_approval_required": False,
         "valid_candidates_present": bool(signals),
         "warnings": warnings,
         "note": "Read-only diagnosis. No broker writes. Paper-only. Operator/2FA path unchanged.",

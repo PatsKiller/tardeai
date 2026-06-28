@@ -110,6 +110,13 @@ paper_trade_rules:
   log_entry_slippage: true
   log_max_adverse_excursion: true
   auto_exit_at_close: true
+  # Operator decision 2026-06-28: momentum_scalp PAPER sample-collection does NOT require human
+  # paper approval. Deterministic gates replace the paper-approval queue. This is paper-only and
+  # does NOT apply to live trading (live still requires operator confirmation + 2FA, see below).
+  paper_approval_required: false
+  deterministic_gates_required: true
+  allowed_account: alpaca_paper
+  submit_mode: paper_only_fast_path
 live_trade_rules:
   max_position_size: 2000
   max_dollar_risk: 200
@@ -208,7 +215,17 @@ validation_gate:
   min_win_rate: 0.5
   min_profit_factor: 1.3
   min_calendar_months: 6
-  human_approval_required: true
+  human_approval_required: true                            # retained (back-compat)
+  # Paper sample collection is deterministic/gate-based (no human paper approval); PROMOTION off
+  # TESTING and any LIVE use still require human/operator review + the existing 2FA path.
+  paper_approval_required_for_sample_collection: false
+  human_approval_required_for_promotion: true
+# LIVE execution requires the existing operator confirmation / two-factor (2FA) path — UNCHANGED
+# and out of scope. The paper fast-path above never touches live.
+live_execution_policy:
+  operator_confirmation_required: true
+  two_factor_required: true
+  autonomous_live_trading: false
 prompt_context:
   summary: Intraday momentum scalp on micro-cap names with verified catalyst and RVOL surge. Strict same-day exit, taxable account only.
   key_questions:

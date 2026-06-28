@@ -26,12 +26,12 @@ def main():
         check("latency has median + p95",
               "median" in r["latency_created_to_first_atm_min"] and "p95" in r["latency_created_to_first_atm_min"])
         check("cadence eligibility for 1/3/5 min",
-              set(r["atm_cadence_eligibility"].keys()) == {"within_1_min", "within_3_min", "within_5_min"})
+              set(r["fast_path_timing_eligibility"].keys()) == {"within_1_min", "within_3_min", "within_5_min"})
         check("each cadence has eligible + missed",
-              all("eligible_if_atm_ran" in v and "missed_by_slower_cadence" in v
-                  for v in r["atm_cadence_eligibility"].values()))
+              all("would_submit_if_fast_path_ran" in v and "missed_by_slow_timing" in v
+                  for v in r["fast_path_timing_eligibility"].values()))
         check("note affirms no broker writes + no weakening",
-              "No broker writes" in r["note"] and "must not be weakened" in r["note"])
+              "No broker writes" in r["note"] and "weakened" in r["note"].lower())
         check("markdown renders", "Freshness SLA" in to_markdown(r))
 
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed, {len(WARN)} warn")

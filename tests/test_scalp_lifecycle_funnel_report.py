@@ -26,6 +26,15 @@ def main():
     check("NEVER claims live-readiness", vg.get("live_ready_claim") is False)
     check("gate_met is boolean", isinstance(vg.get("gate_met"), bool))
 
+    # Paper fast-path reframe: approval is no longer a required stage.
+    check("paper_approval_required is False", rep.get("paper_approval_required") is False)
+    check("paper-approval no-approval note present", "does NOT require human paper approval"
+          in (rep.get("paper_approval_note") or ""))
+    check("fast-path metrics present", set(["paper_fast_path_candidates", "paper_fast_path_gate_pass",
+          "paper_fast_path_submitted", "paper_fast_path_rejected"]) <= set((rep.get("paper_fast_path") or {}).keys()))
+    check("approved-for-paper not a required/blocking stage",
+          not any(s["key"] == "proposals_approved" for s in rep.get("stages", [])))
+
     # P0-1: operator correction + conservative TRUE attribution (no inflated counts).
     check("operator correction present", "Operator correction 2026-06-28" in (rep.get("operator_correction") or ""))
     ms = (rep.get("families", {}) or {}).get("momentum_scalp", {})
