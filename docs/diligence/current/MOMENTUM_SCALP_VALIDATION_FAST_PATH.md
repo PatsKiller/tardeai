@@ -35,7 +35,8 @@ R:R≥1.5 · fresh quote · price-drift ≤ max · liquidity known.
 |----------------|---------|
 | Verified micro-float momentum GO | Validation fast-path eligible (deterministic submit, no approval) |
 | Verified large-float social scout (>20M) | Manual-review scout only — never validation fast-path |
-| Social-only high score | WATCH / WAIT only |
+| **Social Scout (≥2/5 pillars, not GO)** | **Operator-awareness pill only — REJECTED from the fast path (`SOCIAL_SCOUT_NOT_VALIDATION_ELIGIBLE`); never validation-eligible.** See [SOCIAL_SCOUT_PILLARS.md](SOCIAL_SCOUT_PILLARS.md). |
+| Social-only high score | WATCH / WAIT / SCOUT only |
 | Stale quote | Reject / defer (freshness preserved) |
 | Out of window | Reject / defer |
 | Invalid plan | Reject |

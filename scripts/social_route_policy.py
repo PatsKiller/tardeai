@@ -18,7 +18,10 @@ from __future__ import annotations
 
 ROUTES = ("watch_only", "momentum_scalp", "meme_squeeze_momentum", "large_float_social_scout",
           "portfolio_agents", "reject")
-ACTIONABILITY = ("WATCH", "WAIT", "GO", "MANUAL_REVIEW", "AVOID")
+# SCOUT (P0-2): an operator-awareness state for a social candidate that meets >=2 of the 5 Social
+# Scout pillars but is NOT GO, NOT validation-fast-path eligible, NOT a standard momentum_scalp. It is
+# strictly stronger-than-WATCH visibility, never tradeable.
+ACTIONABILITY = ("WATCH", "WAIT", "SCOUT", "GO", "MANUAL_REVIEW", "AVOID")
 FLOAT_CLASSES = ("micro_float", "large_float", "unknown")
 
 # Micro-cap momentum-scalp boundaries (kept in sync with momentum_scalp.yaml screen_filters).
@@ -90,6 +93,11 @@ def route_social_candidate(candidate: dict, finviz_data: dict,
     tags = [str(t).lower() for t in (candidate.get("strategy_tags") or [])]
     verified = catalyst_is_verified(ce)
 
+    # P0-2: evaluate the 5 Social Scout pillars (operator-awareness only — never makes anything
+    # tradeable). Lazy import avoids a circular dependency (the pillar module imports this one).
+    from social_scout_pillars import evaluate_social_scout_pillars
+    scout = evaluate_social_scout_pillars(candidate, finviz, ce)
+
     evidence = {
         "symbol": candidate.get("symbol"),
         "price": price, "rvol": rvol, "float_m": float_m, "gap_pct": gap,
@@ -103,10 +111,42 @@ def route_social_candidate(candidate: dict, finviz_data: dict,
 
     def result(route, actionability, strategy_id, requires_verified, social_only,
                scout_label=None, manual_review_required=False, operator_label=None):
-        assert route in ROUTES and actionability in ACTIONABILITY
+        # P0-2: a candidate that meets >=2 pillars but is NOT GO surfaces as a Social Scout. The pill
+        # never upgrades actionability into anything tradeable — at most WATCH/WAIT becomes SCOUT
+        # (still non-tradeable). GO is never touched; a graduated GO suppresses the scout pill.
+        count = scout["pillar_count"]
+        is_go = actionability == "GO"
+        # Scout surfacing is for "interesting, not there yet" lanes only — watch_only, large-float
+        # scout, and meme-squeeze (all non-tradeable / manual-review). A terminal reject/AVOID or a
+        # portfolio/income name is NOT a Social Scout, and a graduated GO suppresses the pill.
+        _scoutable = route in ("watch_only", "large_float_social_scout", "meme_squeeze_momentum")
+        is_scout = (count >= 2) and not is_go and _scoutable
+        act = actionability
+        if is_scout and act in ("WATCH", "WAIT"):
+            act = "SCOUT"
+        assert route in ROUTES and act in ACTIONABILITY
+
+        if is_scout:
+            if float_class == "large_float" or manual_review_required:
+                operator_pill = f"SOCIAL SCOUT · LARGE FLOAT · {count}/5"
+            else:
+                operator_pill = f"SOCIAL SCOUT · {count}/5"
+            scout_status = "SOCIAL_SCOUT"
+            operator_subtitle = scout["operator_subtitle"]
+            operator_color_token = scout["operator_color_token"]
+            # Surface why it is a scout + what it still needs (drives operator tooltips).
+            for rc in scout["reason_codes"] + scout["missing_reason_codes"]:
+                if rc not in reason_codes:
+                    reason_codes.append(rc)
+        else:
+            operator_pill = None
+            scout_status = "NONE"
+            operator_subtitle = None
+            operator_color_token = None
+
         return {
             "route": route,
-            "actionability": actionability,
+            "actionability": act,
             "strategy_id": strategy_id,
             "float_class": float_class,
             "scout_label": scout_label,
@@ -118,6 +158,20 @@ def route_social_candidate(candidate: dict, finviz_data: dict,
             "trace_id": trace_id,
             "evidence": evidence,
             "symbol": candidate.get("symbol"),
+            # --- Social Scout operator-awareness fields (P0-2) ---
+            "scout_status": scout_status,
+            "scout_pillar_count": count,
+            "pillar_count": count,
+            "pillars_met": scout["pillars_met"],
+            "pillars_missing": scout["pillars_missing"],
+            "operator_pill": operator_pill,
+            "operator_subtitle": operator_subtitle,
+            "operator_color_token": operator_color_token,
+            "operator_tooltip_hints": scout["operator_tooltip_hints"] if is_scout else [],
+            # HARD: a Scout/non-GO surface is never tradeable or validation-ready. Only GO (decided by
+            # this policy's own gates) is validation/tradeable-eligible via the normal path.
+            "not_tradeable": not is_go,
+            "not_validation_ready": not is_go,
         }
 
     # 1. Portfolio / income / retirement tags → portfolio agents (advisory, never a scalp).
