@@ -102,3 +102,24 @@ confirmation.** The existing operator confirmation / 2FA path is unchanged and o
 - [ ] Empirical validation sample: ≥30 closed paper trades, win rate ≥50%, profit factor
       ≥1.3, over ≥6 calendar months. This is a data-accumulation matter, not an engineering
       gap — the now-fixed 30-minute fast-path lets scalp proposals convert instead of expiring.
+
+---
+
+## Social → Momentum Scalp — corrected after operator zero-sample correction (2026-06-28)
+
+**Operator correction 2026-06-28: no confirmed momentum_scalp paper trades; prior counts (17
+opened / 1–3 closed) were over-attributed or stale.** Corrected conservative attribution
+(`scalp_trade_attribution.py`) confirms **2 closed** paper trades (IDs 22, 45 — DB-proven with
+`momentum_scalp` proposal lineage + fills); 1 ambiguous excluded; 19 non-executed rows are not
+trades.
+
+- **4.5 is NOT met for Social → Momentum Scalp** until the empirical validation sample exists
+  (≥30 confirmed closed paper trades, ≥50% win, ≥1.3 PF, ≥6 months, human approval).
+- **Engineering / control maturity: 5.0 / 5** (all P0 controls green).
+- **Empirical strategy maturity: 0.33 / 5** (2/30 confirmed closed).
+- **Combined Social → Momentum Scalp lifecycle: 4.4 / 5** — capped solely by the insufficient
+  validation sample (1–29 confirmed ⇒ 4.4; a zero confirmed sample would cap at 4.3).
+- Repo-level execution-safety maturity is **not** downgraded by the strategy-sample absence.
+
+Preserved invariants: no broker writes; LLMs advisory only; social-only signals WATCH/WAIT only;
+operator confirmation / 2FA path unchanged and out of scope; autonomous live submit disabled.

@@ -1,10 +1,14 @@
 # Scalp Lifecycle Funnel
 
 **Status: PASS**  
-_Generated: 2026-06-28T03:26:16.934235+00:00 | window: 30d_  
+_Generated: 2026-06-28T04:24:22.455809+00:00 | window: 30d_  
 _Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_  
 
 Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
+
+> **Operator correction 2026-06-28: no confirmed momentum_scalp paper trades were expected; prior counts (e.g. 17 opened / 3 closed) were over-attributed (non-executed rows + unlinked direct-label row). Counts below reflect conservative TRUE attribution.**
+
+**Confirmed momentum_scalp paper trades:** 2 closed (trade IDs [45, 22]); ambiguous/unlinked excluded (IDs [19]).
 
 ## Funnel stages
 
@@ -23,9 +27,12 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 | Proposals (momentum_scalp) | 67 | ok |
 | Proposals expired on intraday TTL | 0 | ok |
 | Proposals approved for paper | 0 | ok |
-| Paper trades opened (momentum_scalp) | 17 | ok |
-| Paper trades closed (momentum_scalp) | 1 | ok |
-| Closed winners (momentum_scalp) | 1 | ok |
+| ACTUAL momentum_scalp paper trades opened (confirmed) | 2 | ok |
+| ACTUAL momentum_scalp paper trades closed (confirmed) | 2 | ok |
+| Confirmed closed winners (momentum_scalp) | 1 | ok |
+| Unknown-strategy paper trades (ambiguous + mismatched) | 1 | ok |
+| Ambiguous-attribution rows (direct-label, no lineage/fill) | 1 | ok |
+| Non-executed momentum_scalp rows (cancelled/dedup — NOT trades) | 19 | ok |
 
 ## Conversion rates
 
@@ -35,15 +42,15 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 | signal_to_proposal | 90.5% |
 | proposal_to_approved | 0.0% |
 | approved_to_opened | — |
-| opened_to_closed | 5.9% |
+| opened_to_closed | 100.0% |
 
 ## Validation gate (momentum_scalp)
 
-- Closed paper trades: **1** (need ≥ 30)
-- Win rate: **100.0%** (need ≥ 50%)
-- Profit factor: **—** (need ≥ 1.3)
+- Closed paper trades: **2** (need ≥ 30)
+- Win rate: **50.0%** (need ≥ 50%)
+- Profit factor: **1.40** (need ≥ 1.3)
 - Calendar months observed: **unknown** (need ≥ 6)
-- **Gate met: False** — Validation gate NOT met — momentum_scalp remains TESTING (paper only).
+- **Gate met: False** — Validation gate NOT met — momentum_scalp remains TESTING (paper only); confirmed closed paper trades = 2 of 30.
 - Live-ready claim: **False** (momentum_scalp is TESTING)
 
 ## Rejected / deferred reasons

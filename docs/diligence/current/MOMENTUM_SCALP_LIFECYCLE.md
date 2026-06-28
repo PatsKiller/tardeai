@@ -64,3 +64,28 @@ min_profit_factor: 1.30       min_calendar_months: 6   human_approval_required: 
 The funnel report (`SCALP_LIFECYCLE_FUNNEL.md`) and maturity score
 (`SCALP_LIFECYCLE_MATURITY.md`) report whether this gate is met. Until it is, momentum_scalp
 stays TESTING and the combined lifecycle maturity is capped at 4.4.
+
+## Operator correction (2026-06-28) — true paper-trade attribution
+
+Prior reports over-attributed momentum_scalp paper trades (e.g. "17 opened / 3 closed"). Those
+figures counted **non-executed rows** (cancelled / dedup_removed proposals that never filled) as
+"opened" and an **unlinked direct-label row** as confirmed. Corrected, conservative attribution
+(`scripts/scalp_trade_attribution.py`) yields:
+
+- **Confirmed momentum_scalp paper trades: 2 closed** (trade IDs 22 GCTS, 45 ANY — both executed
+  with `momentum_scalp` proposal lineage + paper fills). 1 ambiguous (pt 19, unlinked) → excluded.
+  19 non-executed (cancelled/dedup) rows → **not trades**.
+- This is **2 of 30** required closed paper trades → validation gate **NOT met**; momentum_scalp
+  remains **TESTING**. No live-readiness claim.
+
+### Paper-path bottleneck (why the sample is tiny)
+
+`scripts/diagnose_momentum_scalp_paper_path.py` identifies the first bottleneck:
+**`approval_fails_on_stale_quote`** — momentum_scalp proposals reach ATM but the approval call
+fails (gate `approve_proposal_failed`, ~148×) because the quote is stale at approval time
+(~1100+ min old). **The freshness gate is working correctly — this is not a code bug, and the
+fix is NOT to weaken freshness.** The gap is operational: generate a momentum_scalp proposal with
+a fresh in-window quote AND approve it before the 30-minute TTL. `simulate_momentum_scalp_paper_path.py`
+proves a valid fresh in-window candidate reaches `WOULD_CREATE_PAPER_TRADE`; expired / social-only /
+liquidity-unknown / stale-quote / out-of-window candidates are correctly blocked or deferred.
+No broker writes; operator confirmation / 2FA path unchanged.

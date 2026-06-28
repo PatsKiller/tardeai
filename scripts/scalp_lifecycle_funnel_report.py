@@ -97,23 +97,41 @@ def build_funnel(days: int = 30) -> dict:
           f"SELECT COUNT(*) FROM paper_trade_proposals WHERE created_at > {since} "
           f"AND strategy_id = 'momentum_scalp' AND status IN ('APPROVED_FOR_PAPER_TEST','BROKER_SUBMITTED')")
 
-    # ── Paper orders + closed outcomes ──
-    opened = stage("paper_opened", "Paper trades opened (momentum_scalp)",
-                   f"SELECT COUNT(*) FROM paper_trades WHERE entry_time > {since} AND strategy_id = 'momentum_scalp'")
-    closed = stage("paper_closed", "Paper trades closed (momentum_scalp)",
-                   f"SELECT COUNT(*) FROM paper_trades WHERE entry_time > {since} "
-                   f"AND strategy_id = 'momentum_scalp' AND status = 'closed'")
-    wins = stage("paper_wins", "Closed winners (momentum_scalp)",
-                 f"SELECT COUNT(*) FROM paper_trades WHERE entry_time > {since} "
-                 f"AND strategy_id = 'momentum_scalp' AND status = 'closed' AND pnl > 0")
+    # ── Paper orders + closed outcomes (P0-1: conservative TRUE attribution) ──
+    # Operator correction 2026-06-28: prior counts over-attributed momentum_scalp paper trades
+    # (counted cancelled/dedup rows as "opened" and an unlinked direct-label row as confirmed).
+    # We now count ONLY executed paper_trades with priority-1 strategy_id + lineage/fill evidence.
+    try:
+        import scalp_trade_attribution as _attr
+        # All-time (days=None): the validation sample is CUMULATIVE; the --days window only scopes
+        # the discovery/social stages above, not the momentum_scalp paper-trade validation count.
+        attr = _attr.attribute(conn, days=None)
+    except Exception as e:
+        attr = {"ok": False, "note": str(e)[:120]}
+        warnings.append(f"attribution: {str(e).splitlines()[0][:120]}")
 
-    # Profit factor (gross win / gross loss)
-    gw, _ = _scalar(cur, f"SELECT COALESCE(SUM(pnl),0) FROM paper_trades WHERE entry_time > {since} "
-                         f"AND strategy_id='momentum_scalp' AND status='closed' AND pnl > 0")
-    gl, _ = _scalar(cur, f"SELECT COALESCE(SUM(pnl),0) FROM paper_trades WHERE entry_time > {since} "
-                         f"AND strategy_id='momentum_scalp' AND status='closed' AND pnl < 0")
-    win_rate = (wins / closed) if (closed and wins is not None) else None
-    profit_factor = (float(gw) / abs(float(gl))) if (gl not in (None, 0) and gw is not None) else None
+    if attr.get("ok"):
+        opened = attr["confirmed_opened"]
+        closed = attr["confirmed_closed"]
+        wins = attr["confirmed_winners"]
+        win_rate = attr.get("confirmed_win_rate")
+        profit_factor = attr.get("confirmed_profit_factor")
+    else:
+        opened = closed = wins = win_rate = profit_factor = None
+        warnings.append("attribution unavailable — momentum_scalp trade counts UNKNOWN")
+
+    stages.append({"key": "paper_opened", "label": "ACTUAL momentum_scalp paper trades opened (confirmed)",
+                   "count": opened, "available": attr.get("ok", False)})
+    stages.append({"key": "paper_closed", "label": "ACTUAL momentum_scalp paper trades closed (confirmed)",
+                   "count": closed, "available": attr.get("ok", False)})
+    stages.append({"key": "paper_wins", "label": "Confirmed closed winners (momentum_scalp)",
+                   "count": wins, "available": attr.get("ok", False)})
+    stages.append({"key": "unknown_strategy_paper_trades", "label": "Unknown-strategy paper trades (ambiguous + mismatched)",
+                   "count": attr.get("unknown_strategy_paper_trades"), "available": attr.get("ok", False)})
+    stages.append({"key": "ambiguous_attribution_rows", "label": "Ambiguous-attribution rows (direct-label, no lineage/fill)",
+                   "count": attr.get("ambiguous_count"), "available": attr.get("ok", False)})
+    stages.append({"key": "non_executed_rows", "label": "Non-executed momentum_scalp rows (cancelled/dedup — NOT trades)",
+                   "count": attr.get("non_executed_count"), "available": attr.get("ok", False)})
 
     # ── Rejected / deferred reason breakdown ──
     rej_rows, rej_err = [], None
@@ -146,7 +164,7 @@ def build_funnel(days: int = 30) -> dict:
         "opened_to_closed": conv("paper_closed", "paper_opened"),
     }
 
-    # ── Validation gate ──
+    # ── Validation gate (uses CONFIRMED closed paper trades only) ──
     gate_met = bool(
         closed is not None and closed >= GATE["min_closed_paper_trades"]
         and win_rate is not None and win_rate >= GATE["min_win_rate"]
@@ -160,11 +178,18 @@ def build_funnel(days: int = 30) -> dict:
         "status": status,
         "generated_at": started,
         "window_days": days,
+        "operator_correction": "Operator correction 2026-06-28: no confirmed momentum_scalp paper "
+                               "trades were expected; prior counts (e.g. 17 opened / 3 closed) were "
+                               "over-attributed (non-executed rows + unlinked direct-label row). "
+                               "Counts below reflect conservative TRUE attribution.",
         "stages": stages,
         "families": {
             "social_only": {"note": "watch_only/WAIT — advisory, not auto-tradeable"},
             "momentum_scalp": {"opened": opened, "closed": closed, "wins": wins,
-                               "win_rate": win_rate, "profit_factor": profit_factor},
+                               "win_rate": win_rate, "profit_factor": profit_factor,
+                               "confirmed_trade_ids": attr.get("confirmed_trade_ids"),
+                               "ambiguous_trade_ids": attr.get("ambiguous_trade_ids"),
+                               "attribution_chains": attr.get("attribution_chains")},
             "meme_squeeze_momentum": {"note": "manual-review route — no auto proposals"},
         },
         "conversions": conversions,
@@ -177,11 +202,16 @@ def build_funnel(days: int = 30) -> dict:
             "calendar_months_observed": months_observed,
             "gate_met": gate_met,
             "live_ready_claim": False,  # NEVER claim live-readiness from this report
-            "status_note": ("Validation gate NOT met — momentum_scalp remains TESTING (paper only)."
+            "status_note": ("Validation gate NOT met — momentum_scalp remains TESTING (paper only); "
+                            f"confirmed closed paper trades = {closed} of {GATE['min_closed_paper_trades']}."
                             if not gate_met else
                             "Trade-count/win/PF thresholds met on available data; 6-month calendar "
                             "span + human approval still required before any promotion."),
         },
+        "attribution": {k: attr.get(k) for k in (
+            "confirmed_opened", "confirmed_closed", "confirmed_winners", "ambiguous_count",
+            "mismatched_count", "non_executed_count", "unknown_strategy_paper_trades",
+            "confirmed_trade_ids", "ambiguous_trade_ids")} if attr.get("ok") else attr,
         "warnings": warnings,
         "note": "Read-only funnel report. No broker writes. LLMs advisory only.",
     }
@@ -193,6 +223,13 @@ def to_markdown(rep: dict) -> str:
          f"_Generated: {rep['generated_at']} | window: {rep.get('window_days')}d_  ",
          "_Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_  ",
          "", "Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.", ""]
+    if rep.get("operator_correction"):
+        L += [f"> **{rep['operator_correction']}**", ""]
+    _ms = (rep.get("families", {}) or {}).get("momentum_scalp", {})
+    if _ms.get("confirmed_trade_ids") is not None:
+        L += [f"**Confirmed momentum_scalp paper trades:** {_ms.get('closed')} closed "
+              f"(trade IDs {_ms.get('confirmed_trade_ids')}); "
+              f"ambiguous/unlinked excluded (IDs {_ms.get('ambiguous_trade_ids')}).", ""]
     if not rep.get("stages"):
         L += ["", "> WARN: " + "; ".join(rep.get("warnings", ["no data"]))]
         return "\n".join(L)
