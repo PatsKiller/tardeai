@@ -84,15 +84,16 @@ def build(days: int = 30) -> dict:
             pass
         warnings.append(f"failure_reasons: {str(e).splitlines()[0][:100]}")
 
-    # Cadence eligibility: how many proposals would have had a fresh quote if ATM ran within N min.
-    # Approximation: a proposal whose first-decision latency exceeded N minutes was "missed" by a
-    # slow cadence; running within N min would have kept the quote inside the freshness window.
+    # Fast-path eligibility: how many proposals would have SUBMITTED to paper if the deterministic
+    # FAST-PATH (not the approval queue) ran within N minutes of proposal creation, keeping the quote
+    # inside the freshness window. A proposal whose first-evaluation latency exceeded N minutes was
+    # missed by slow timing; running the fast-path within N min would have kept it fresh.
     cadence = {}
     for n in (1, 3, 5):
         missed = sum(1 for l in latencies if l > n)
         eligible_if_fast = sum(1 for l in latencies if l <= n)
-        cadence[f"within_{n}_min"] = {"eligible_if_atm_ran": eligible_if_fast,
-                                      "missed_by_slower_cadence": missed}
+        cadence[f"within_{n}_min"] = {"would_submit_if_fast_path_ran": eligible_if_fast,
+                                      "missed_by_slow_timing": missed}
 
     status = "PASS" if not warnings else "WARN"
     return {
@@ -116,10 +117,13 @@ def build(days: int = 30) -> dict:
             },
             "freshness_window_min": QUOTE_FRESH_MAX_MIN,
         },
-        "atm_cadence_eligibility": cadence,
+        "fast_path_timing_eligibility": cadence,
+        "paper_approval_required": False,
         "warnings": warnings,
         "note": "Read-only SLA report. No broker writes. Stale-quote failures are an OPERATIONAL "
-                "timing gap — the freshness gate is correct and must not be weakened.",
+                "timing gap — the freshness gate is correct and must NOT be weakened. The fix is "
+                "running the deterministic paper fast-path promptly (no human paper approval), not "
+                "approving faster. Live trading is unchanged (operator confirmation + 2FA).",
     }
 
 
@@ -139,10 +143,11 @@ def to_markdown(r: dict) -> str:
           f"(median quote age at failure: {fb['quote_age_at_failure_min']['median']} min, "
           f"freshness window {fb['freshness_window_min']} min)",
           f"- **TTL expiries: {fb['ttl_expiries']}**", "",
-          "## ATM cadence eligibility", "", "| If ATM ran within | Eligible | Missed by slower cadence |",
+          "## Fast-path timing eligibility (deterministic paper fast-path, NO approval)", "",
+          "| If fast-path ran within | Would submit to paper | Missed by slow timing |",
           "|------|------|------|"]
-    for k, v in r["atm_cadence_eligibility"].items():
-        L.append(f"| {k.replace('_',' ')} | {v['eligible_if_atm_ran']} | {v['missed_by_slower_cadence']} |")
+    for k, v in r["fast_path_timing_eligibility"].items():
+        L.append(f"| {k.replace('_',' ')} | {v['would_submit_if_fast_path_ran']} | {v['missed_by_slow_timing']} |")
     if r.get("warnings"):
         L += ["", "## Warnings", ""] + [f"- {w}" for w in r["warnings"]]
     L += ["", "> " + r["note"]]

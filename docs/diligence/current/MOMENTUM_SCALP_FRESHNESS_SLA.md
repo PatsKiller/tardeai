@@ -1,10 +1,10 @@
 # Momentum Scalp Freshness SLA
 
 **Status: PASS** | window: 30d  
-_Generated: 2026-06-28T17:01:13.778113+00:00_  
+_Generated: 2026-06-28T21:33:17.359493+00:00_  
 _Source: `python3 scripts/momentum_scalp_freshness_sla_report.py --days N --json`_  
 
-## Latency created → first ATM (50 proposals)
+## Latency created → first ATM (49 proposals)
 
 - median **9.94 min** · p95 **14.97 min** · max 226.12 min
 
@@ -13,13 +13,13 @@ _Source: `python3 scripts/momentum_scalp_freshness_sla_report.py --days N --json
 - **Stale-quote failures: 27** (median quote age at failure: 1070.0 min, freshness window 15.0 min)
 - **TTL expiries: 0**
 
-## ATM cadence eligibility
+## Fast-path timing eligibility (deterministic paper fast-path, NO approval)
 
-| If ATM ran within | Eligible | Missed by slower cadence |
+| If fast-path ran within | Would submit to paper | Missed by slow timing |
 |------|------|------|
-| within 1 min | 2 | 48 |
-| within 3 min | 5 | 45 |
-| within 5 min | 7 | 43 |
+| within 1 min | 2 | 47 |
+| within 3 min | 5 | 44 |
+| within 5 min | 7 | 42 |
 
-> Read-only SLA report. No broker writes. Stale-quote failures are an OPERATIONAL timing gap — the freshness gate is correct and must not be weakened.
+> Read-only SLA report. No broker writes. Stale-quote failures are an OPERATIONAL timing gap — the freshness gate is correct and must NOT be weakened. The fix is running the deterministic paper fast-path promptly (no human paper approval), not approving faster. Live trading is unchanged (operator confirmation + 2FA).
 
