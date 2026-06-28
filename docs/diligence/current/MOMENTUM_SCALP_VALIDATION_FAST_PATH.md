@@ -52,4 +52,20 @@ python3 scripts/momentum_scalp_validation_fast_path.py --loop --sleep-seconds 12
 Env-gated wiring (default OFF): `MOMENTUM_SCALP_VALIDATION_FAST_PATH=1` (run after generation, dry-run);
 `MOMENTUM_SCALP_VALIDATION_SUBMIT=1` (sandbox submit). Idempotent + daily/concurrent caps enforced.
 
+## Scheduled sample collection (live)
+
+Two complementary sandbox-only paths run weekdays inside the 06:00–12:00 ET window to accumulate the
+empirical validation sample. Both are idempotent and the internal window gate self-enforces (post-12:00
+batches no-op), so running both is safe overlap, not double submission.
+
+| Path | Cron | Timing role |
+|------|------|-------------|
+| Generation hook | `*/30 9-16 * * 1-5` `auto_proposal_generator.py --today --apply` with `MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1` | Fires the fast path immediately after each proposal batch — tightest timing, before quotes stale |
+| Standalone runner | `*/2 6-11 * * 1-5` `momentum_scalp_validation_fast_path.py --submit-sandbox` (flock-locked) | Every 2 min — catches proposals that become entry-valid between generation cycles |
+
+The hook lives in `run_auto_proposals()` (`maybe_run_after_generation`); it is sandbox/simulated only and
+never reaches a live broker submit. Maturity stays at the honest empirical level (confirmed-closed sample
+out of the 30 required) until the window runs and samples accrue — purely operational/data from here.
+
 > Legacy alias: `scripts/momentum_scalp_paper_fast_path.py` still works and prints a deprecation note.
+> Legacy env aliases `MOMENTUM_SCALP_PAPER_FAST_PATH[_SUBMIT]=1` are still honored by the hook.
