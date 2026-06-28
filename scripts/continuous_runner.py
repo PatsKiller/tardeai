@@ -83,6 +83,7 @@ def classify_social_injection(row: dict) -> dict:
     route_sid = str(row.get("route_strategy_id") or "").strip().lower()
     decision = str(row.get("decision") or "").strip().upper()
     cat_v = bool(row.get("catalyst_verified"))
+    scout_status = str(row.get("scout_status") or "").strip().upper()
     rvol = _num(row.get("rvol"))
     float_m = _num(row.get("float_m") if row.get("float_m") is not None else row.get("float_mm"))
     price = _num(row.get("price"))
@@ -90,9 +91,18 @@ def classify_social_injection(row: dict) -> dict:
     if not route:
         return {"injectable": False, "tradeable": False, "reason": "no_durable_route_fields"}
 
+    # P0-6: a Social Scout surfaces to the operator (injectable for visibility) but is NEVER tradeable
+    # — it cannot enter the live tradeable path or fire a GO. A graduated GO has scout_status=NONE.
+    if scout_status == "SOCIAL_SCOUT":
+        return {"injectable": True, "tradeable": False, "scout_status": "SOCIAL_SCOUT",
+                "manual_review_required": True,
+                "large_float": route in ("large_float_social_scout", "meme_squeeze_momentum"),
+                "reason": "social_scout_awareness_only_not_tradeable"}
+
     # Standard micro-cap momentum scalp — every condition must hold.
     if (decision == "GO" and route == "momentum_scalp" and actionability == "GO"
             and route_sid == "momentum_scalp" and cat_v
+            and scout_status != "SOCIAL_SCOUT"
             and rvol is not None and rvol >= 5.0
             and float_m is not None and float_m <= 20.0
             and price is not None and price <= 25.0):

@@ -90,6 +90,80 @@ def main():
                                                          {}, trace_id="abc")["trace_id"] == "abc")
     check("reason_codes are stable strings", all(isinstance(c, str) for c in r["reason_codes"]))
 
+    # ====================== P0-2: Social Scout pillar surfacing ======================
+
+    # S1. Social-only with social velocity + market confirmation (no catalyst, no float) =
+    #     Social Scout 2/5, watch_only, never GO.
+    r = route_social_candidate(
+        {"symbol": "SCT2", "mention_count": 80, "sources": ["reddit", "stocktwits"], "strategy_tags": []},
+        {"price": 4.0, "rvol": 9.0, "float_m": None, "gap_pct": 7.0},  # no float → structure/fit fail
+        {})  # no catalyst
+    check("S1 social-only 2/5 scout_status", r["scout_status"] == "SOCIAL_SCOUT")
+    check("S1 pillar_count == 2", r["scout_pillar_count"] == 2)
+    check("S1 operator_pill 'SOCIAL SCOUT · 2/5'", r["operator_pill"] == "SOCIAL SCOUT · 2/5")
+    check("S1 never GO (SCOUT actionability)", r["actionability"] == "SCOUT")
+    check("S1 route stays watch_only", r["route"] == "watch_only")
+    check("S1 not_validation_ready", r["not_validation_ready"] is True)
+    check("S1 not_tradeable", r["not_tradeable"] is True)
+    check("S1 strategy_id null (no signal)", r["strategy_id"] is None)
+    check("S1 needs catalyst tooltip", "NEEDS_CATALYST" in r["reason_codes"])
+
+    # S2. Social velocity + catalyst but missing market confirmation/structure = Social Scout 2/5.
+    r = route_social_candidate(
+        {"symbol": "SCT2B", "mention_count": 40, "sources": ["reddit"], "strategy_tags": []},
+        {"price": None, "rvol": None},  # no market data → confirmation + structure missing
+        {"catalyst_verified": True, "catalyst_source": "news"})
+    check("S2 velocity+catalyst 2/5 scout", r["scout_status"] == "SOCIAL_SCOUT")
+    check("S2 pillar_count == 2", r["scout_pillar_count"] == 2)
+    check("S2 operator_pill 2/5", r["operator_pill"] == "SOCIAL SCOUT · 2/5")
+    check("S2 never GO", r["actionability"] != "GO")
+    check("S2 needs market confirmation", "NEEDS_MARKET_CONFIRMATION" in r["reason_codes"])
+
+    # S3. 4/5 (everything but catalyst) = Social Scout 4/5, never GO.
+    r = route_social_candidate(
+        {"symbol": "SCT4", "mention_count": 60, "sources": ["reddit", "stocktwits"], "strategy_tags": []},
+        {"price": 5.0, "rvol": 8.0, "float_m": 9.0, "gap_pct": 6.0},  # micro metrics, but unverified
+        {})  # no catalyst
+    check("S3 4/5 scout_status", r["scout_status"] == "SOCIAL_SCOUT")
+    check("S3 pillar_count == 4", r["scout_pillar_count"] == 4)
+    check("S3 operator_pill 'SOCIAL SCOUT · 4/5'", r["operator_pill"] == "SOCIAL SCOUT · 4/5")
+    check("S3 never GO (no catalyst)", r["actionability"] != "GO")
+    check("S3 not_validation_ready", r["not_validation_ready"] is True)
+
+    # S4. Verified micro-float meeting all momentum_scalp gates STILL routes normal GO (no scout pill).
+    r = route_social_candidate(
+        {"symbol": "GOOD", "mention_count": 30, "sources": ["stocktwits"], "strategy_tags": []},
+        {"price": 5.0, "rvol": 7.0, "float_m": 8.0, "gap_pct": 4.0},
+        {"catalyst_verified": True, "catalyst_source": "news"})
+    check("S4 verified micro routes momentum_scalp", r["route"] == "momentum_scalp")
+    check("S4 GO preserved", r["actionability"] == "GO")
+    check("S4 GO suppresses scout pill", r["operator_pill"] is None and r["scout_status"] == "NONE")
+    check("S4 GO is validation/tradeable eligible via normal path",
+          r["not_tradeable"] is False and r["not_validation_ready"] is False)
+
+    # S5. Large-float with 2+ pillars = Social Scout / LARGE FLOAT, manual-review only, never momentum_scalp.
+    r = route_social_candidate(
+        {"symbol": "LRGF", "mention_count": 200, "sources": ["reddit"], "strategy_tags": []},
+        {"price": 18.0, "rvol": 7.0, "float_m": 80.0, "gap_pct": 4.0},
+        {"catalyst_verified": True, "catalyst_source": "news"})
+    check("S5 large-float scout route", r["route"] in ("large_float_social_scout", "meme_squeeze_momentum"))
+    check("S5 LARGE FLOAT pill", "LARGE FLOAT" in (r["operator_pill"] or ""))
+    check("S5 manual review only", r["actionability"] == "MANUAL_REVIEW" and r["manual_review_required"])
+    check("S5 never momentum_scalp", r["strategy_id"] != "momentum_scalp")
+    check("S5 not validation-fast-path eligible", r["not_validation_ready"] is True)
+
+    # S6. A Social Scout can NEVER be validation-fast-path eligible (sweep scout-producing combos).
+    scout_leak = False
+    for fm, pr, rv, cat in [(None, 4, 9, {}), (9, 5, 8, {}), (80, 18, 7,
+                            {"catalyst_verified": True, "catalyst_source": "news"})]:
+        rr = route_social_candidate(
+            {"symbol": "X", "mention_count": 60, "sources": ["reddit", "stocktwits"]},
+            {"price": pr, "rvol": rv, "float_m": fm, "gap_pct": 6.0}, cat)
+        if rr["scout_status"] == "SOCIAL_SCOUT" and (not rr["not_validation_ready"]
+                                                     or rr["actionability"] == "GO"):
+            scout_leak = True
+    check("S6 no Social Scout is validation-ready or GO", not scout_leak)
+
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     return 1 if FAIL else 0
 

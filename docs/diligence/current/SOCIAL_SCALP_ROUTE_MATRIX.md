@@ -77,3 +77,25 @@ candidates **route-aware**, not by score: only verified micro-cap GO names enter
 path as tradeable; large-float scouts enter as labelled manual-review; social-only/watch names are
 not injected. `strategy_signal_sync` enforces the durable route (and the float≤20M+verified
 fallback) so a large-float or social-only candidate can never become a standard momentum_scalp signal.
+
+## Social Scout pillar layer (2026-06-27)
+
+On top of routing, every candidate is scored against the **5 Social Scout pillars**
+(`social_scout_pillars.py`; see [SOCIAL_SCOUT_PILLARS.md](SOCIAL_SCOUT_PILLARS.md)). A candidate that
+meets **≥2 of 5** pillars but is **not** GO surfaces to the operator as a **Social Scout** — an
+awareness-only state, never tradeable.
+
+| Pillars met | Route effect | Actionability | scout_status | operator_pill |
+|-------------|--------------|---------------|--------------|---------------|
+| 0–1 | unchanged | per route policy | NONE | — |
+| 2–4 (watch_only / scout lanes) | unchanged | WATCH/WAIT **upgraded to SCOUT** (or MANUAL_REVIEW kept) | SOCIAL_SCOUT | `SOCIAL SCOUT · N/5` (or `· LARGE FLOAT · N/5`) |
+| graduated GO (verified micro) | momentum_scalp | **GO** | NONE (pill suppressed) | — |
+
+The route policy adds a `SCOUT` actionability (stronger-than-WATCH visibility, never tradeable) and
+emits `scout_status`, `scout_pillar_count`, `pillars_met/missing`, `operator_pill`,
+`operator_subtitle`, `operator_color_token`, `not_validation_ready`, `not_tradeable`. These are
+persisted (additive migration `migrate_social_scout_fields.py`) and broadcast/served to the UI
+(`/api/v2/trade-ai`, `/api/v2/scalp/live`). **A Social Scout never creates a strategy signal, never
+enters the validation fast path, and never fires a GO** — enforced in `strategy_signal_sync`,
+`continuous_runner`, and `momentum_scalp_paper_fast_path` (P0-6). Social-only stays WATCH/WAIT/SCOUT
+only; large-float scouts stay manual-review only; operator confirmation / 2FA unchanged.

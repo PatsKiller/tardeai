@@ -7665,6 +7665,10 @@ def _compute_trade_ai():
                 social_bullish_pct, social_wsb,
                 source, source_detail, run_type, run_label as scan_run_label,
                 intelligence_readiness,
+                route, route_actionability,
+                scout_status, scout_pillar_count, scout_pillars_met, scout_pillars_missing,
+                operator_pill, operator_subtitle, operator_color_token,
+                not_validation_ready, not_tradeable,
                 scanned_at
             FROM trade_ai_scans
             WHERE run_date >= CURRENT_DATE - INTERVAL '1 day'
@@ -7712,6 +7716,19 @@ def _compute_trade_ai():
                     "run_type": r.get("run_type"),
                     "scan_run_label": r.get("scan_run_label"),
                     "intelligence_readiness": r.get("intelligence_readiness"),
+                    # --- Social Scout operator-awareness fields (P0-5). Awareness only: a scout is
+                    # never tradeable / never validation-ready (see route policy + gates). ---
+                    "route": r.get("route"),
+                    "route_actionability": r.get("route_actionability"),
+                    "scout_status": r.get("scout_status"),
+                    "scout_pillar_count": r.get("scout_pillar_count"),
+                    "scout_pillars_met": r.get("scout_pillars_met"),
+                    "scout_pillars_missing": r.get("scout_pillars_missing"),
+                    "operator_pill": r.get("operator_pill"),
+                    "operator_subtitle": r.get("operator_subtitle"),
+                    "operator_color_token": r.get("operator_color_token"),
+                    "not_validation_ready": r.get("not_validation_ready"),
+                    "not_tradeable": r.get("not_tradeable"),
                 })
     except Exception:
         pass
