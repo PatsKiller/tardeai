@@ -105,18 +105,28 @@ agent_responsibilities:
   maria: Verify catalyst source and relevance. Check for contrary news.
   risk: Verify entry zone, stop placement, R:R ratio. Check for technical traps.
   steph: Verify position sizing and account fit. Confirm no wash sale risk.
+# Canonical operator-facing taxonomy: VALIDATION execution (sandbox/simulated sample collection).
+# The legacy `paper_trade_rules` block below is a deprecated alias kept for backward compatibility.
+validation_execution:
+  enabled: true
+  mode: sandbox_simulated
+  approval_required: false                 # deterministic gates replace human validation approval
+  deterministic_gates_required: true
+  account: alpaca_paper                    # sandbox account identifier (legacy storage)
+  account_label: sandbox_validation
+  submit_mode: validation_fast_path
+  legacy_storage: paper_trades
+  legacy_submitter: proposal_paper_submitter
 paper_trade_rules:
+  deprecated_alias_for: validation_execution   # legacy alias — see validation_execution above
   use_same_plan_as_live: true
   log_entry_slippage: true
   log_max_adverse_excursion: true
   auto_exit_at_close: true
-  # Operator decision 2026-06-28: momentum_scalp PAPER sample-collection does NOT require human
-  # paper approval. Deterministic gates replace the paper-approval queue. This is paper-only and
-  # does NOT apply to live trading (live still requires operator confirmation + 2FA, see below).
-  paper_approval_required: false
+  paper_approval_required: false           # legacy alias of validation_execution.approval_required
   deterministic_gates_required: true
   allowed_account: alpaca_paper
-  submit_mode: paper_only_fast_path
+  submit_mode: validation_fast_path
 live_trade_rules:
   max_position_size: 2000
   max_dollar_risk: 200
@@ -211,17 +221,20 @@ co_enables:
     - gap_and_go
   notes: Successful intraday momentum runners can incubate into multi-day swing setups.
 validation_gate:
-  min_closed_paper_trades: 30
+  min_closed_validation_trades: 30
+  min_closed_paper_trades: 30                              # legacy alias of min_closed_validation_trades
   min_win_rate: 0.5
   min_profit_factor: 1.3
   min_calendar_months: 6
   human_approval_required: true                            # retained (back-compat)
-  # Paper sample collection is deterministic/gate-based (no human paper approval); PROMOTION off
+  # Validation sample collection is deterministic/gate-based (no human validation approval); PROMOTION off
   # TESTING and any LIVE use still require human/operator review + the existing 2FA path.
-  paper_approval_required_for_sample_collection: false
-  human_approval_required_for_promotion: true
+  validation_approval_required_for_sample_collection: false
+  paper_approval_required_for_sample_collection: false    # legacy alias
+  human_promotion_review_required: true
+  human_approval_required_for_promotion: true             # legacy alias
 # LIVE execution requires the existing operator confirmation / two-factor (2FA) path — UNCHANGED
-# and out of scope. The paper fast-path above never touches live.
+# and out of scope. The validation fast-path above never touches live.
 live_execution_policy:
   operator_confirmation_required: true
   two_factor_required: true

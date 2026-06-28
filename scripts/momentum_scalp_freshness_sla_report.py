@@ -122,7 +122,7 @@ def build(days: int = 30) -> dict:
         "warnings": warnings,
         "note": "Read-only SLA report. No broker writes. Stale-quote failures are an OPERATIONAL "
                 "timing gap — the freshness gate is correct and must NOT be weakened. The fix is "
-                "running the deterministic paper fast-path promptly (no human paper approval), not "
+                "running the deterministic validation fast-path promptly (no human validation approval), not "
                 "approving faster. Live trading is unchanged (operator confirmation + 2FA).",
     }
 
@@ -143,7 +143,7 @@ def to_markdown(r: dict) -> str:
           f"(median quote age at failure: {fb['quote_age_at_failure_min']['median']} min, "
           f"freshness window {fb['freshness_window_min']} min)",
           f"- **TTL expiries: {fb['ttl_expiries']}**", "",
-          "## Fast-path timing eligibility (deterministic paper fast-path, NO approval)", "",
+          "## Fast-path timing eligibility (deterministic validation fast-path, NO approval)", "",
           "| If fast-path ran within | Would submit to paper | Missed by slow timing |",
           "|------|------|------|"]
     for k, v in r["fast_path_timing_eligibility"].items():

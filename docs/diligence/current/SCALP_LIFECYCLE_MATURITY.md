@@ -1,7 +1,7 @@
 # Scalp Lifecycle Maturity
 
 **Combined: 4.4 / 5** (raw 5.0) — meets 4.5: **False**  
-_Generated: 2026-06-28T21:33:40.686310+00:00_  
+_Generated: 2026-06-28T21:59:17.005057+00:00_  
 _Source: `python3 scripts/compute_scalp_lifecycle_maturity.py --json`_  
 
 > **Operator correction 2026-06-28:** combined maturity separates a mature engineering/control lifecycle from an immature empirical strategy lifecycle. There is no sufficient confirmed momentum_scalp paper-trade sample, so 4.5 is NOT met.
