@@ -1637,6 +1637,21 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
             log.info(f"  [monitor] {msg}")
     except Exception:
         pass
+
+    # P0-5: optional momentum_scalp paper fast-path after generation (default OFF; env-gated,
+    # paper-only, idempotent). No-op unless MOMENTUM_SCALP_PAPER_FAST_PATH=1. Never touches live.
+    try:
+        from momentum_scalp_paper_fast_path import maybe_run_after_generation
+        _fp = maybe_run_after_generation(dry_run=dry_run)
+        if _fp:
+            stats["momentum_scalp_paper_fast_path"] = {
+                "mode": _fp.get("mode"), "would_submit_paper": _fp.get("would_submit_paper"),
+                "paper_submitted_symbols": _fp.get("paper_submitted_symbols")}
+            log.info(f"  [fast-path] momentum_scalp paper fast-path: {_fp.get('mode')} "
+                     f"submit={_fp.get('would_submit_paper')}")
+    except Exception as _e:
+        log.debug(f"momentum_scalp fast-path hook skipped: {_e}")
+
     return stats
 
 
