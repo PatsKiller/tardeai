@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-28 - Social → Momentum Scalp lifecycle hardening (branch `hardening/social-momentum-scalp-lifecycle-4-5`)
+
+Closed all P0 lifecycle gaps from the Momentum Scalp / Social Scalp audit. No real trades; no
+live broker write endpoints called; operator confirmation / 2FA path unchanged and out of scope;
+LLMs advisory only; social-only signals never auto-tradeable without deterministic confirmation.
+
+- **P0-1 ATM expiry:** `atm_auto_approver.resolve_atm_expiry` enforces the 30-minute intraday TTL
+  (single source of truth) BEFORE approval — `EXPIRED_INTRADAY` / `intraday_ttl_expired`; the old
+  4-hour rule is a non-intraday fallback only; fail-safe blocks unknown-age scalps.
+- **P0-2 social alerts:** `social_scalp_scanner` keys alerts (and the `alerted` flag) off the FINAL
+  capped decision, not raw score — a social-only WAIT can never fire a GO alert or mirror.
+- **P0-3 config drift:** `momentum_scalp.yaml` float (20M) / window (12:00) / TTL (30min) aligned to
+  `intraday_execution`; new `strategy_config_validator.py` fails on drift.
+- **P0-4 liquidity:** intraday `_liquidity_prescreen` is fail-closed — unknown liquidity DEFERS
+  (`DEFER_LIQUIDITY_UNKNOWN`), force bypass logged.
+- **P0-5 routing:** deterministic `social_route_policy.route_social_candidate` (watch_only /
+  momentum_scalp / meme_squeeze_momentum / portfolio_agents / reject); GO suppressed off-route.
+- **P0-6 traceability:** additive `discovery_trace_id` migration (5 tables) + end-to-end threading;
+  privacy-safe source metadata; backward-compatible.
+- **P1:** funnel report, lifecycle maturity score (weighted + capped), outcome-learning loop
+  (bounded advisory weights). Combined maturity computes **4.4/5** — engineering complete (raw 5.0),
+  capped only by the unmet empirical validation sample (momentum_scalp still TESTING).
+
 ## 2026-06-27 - PO/P0/P1 maturity hardening → 4.5 (branch `hardening/po-p0-p1-maturity-4-5`)
 
 Execution-safety, methodology, broker-truth, and diligence-evidence hardening. No live trades;

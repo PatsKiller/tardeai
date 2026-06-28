@@ -1,13 +1,13 @@
 # Release Manifest (auto-generated)
 
-Status: WARN_NON_LIVE_ADJACENT
+Status: WARN
 
-_Generated: 2026-06-28T02:06:46.182427+00:00_  
+_Generated: 2026-06-28T03:30:31.998280+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
 
-- [WARN] repo_hygiene_report: dirty_count=15, no live-broker/secrets dirty files
+- [WARN] repo_hygiene_report: dirty_count=26, no live-broker/secrets dirty files
 - [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
 - [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
 - [PASS] python3 scripts/validate_schwab_write_policy.py:   27/27 guards green
@@ -22,23 +22,12 @@ _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 - live-adjacent (would FAIL): none
 - documented runtime/generated (WARN_NON_LIVE_ADJACENT only):
-  - `docs/diligence/current/AUDIT_LEDGER_SAMPLE.jsonl`
-  - `docs/diligence/current/AUDIT_LEDGER_STATUS.md`
-  - `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md`
-  - `docs/diligence/current/CONTROL_MATRIX.md`
-  - `docs/diligence/current/CURRENT_EXECUTION_STATE.md`
-  - `docs/diligence/current/KILL_SWITCH_MATRIX.md`
   - `docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md`
-  - `docs/diligence/current/MATURITY_SCORE_LATEST.md`
-  - `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md`
-  - `docs/diligence/current/ORDER_LIFECYCLE.md`
-  - `docs/diligence/current/RELEASE_READINESS.md`
-  - `docs/diligence/current/RISK_GATE_MATRIX.md`
-  - `docs/diligence/current/TEST_EVIDENCE.md`
-  - `docs/project/CI_EVIDENCE_LATEST.md`
-  - `docs/project/RELEASE_MANIFEST_LATEST.md`
-- other untracked-by-policy: none
-
-**Justification:** Remaining dirty files are regenerated evidence/runtime artifacts (diligence pack, runtime caches). No live-broker, secrets, or execution-adjacent source is dirty.
+  - `docs/diligence/current/MOMENTUM_SCALP_LIFECYCLE.md`
+  - `docs/diligence/current/SCALP_LIFECYCLE_FUNNEL.md`
+  - `docs/diligence/current/SCALP_LIFECYCLE_MATURITY.md`
+  - `docs/diligence/current/SCALP_OUTCOME_LEARNING.md`
+  - `docs/diligence/current/SOCIAL_SCALP_ROUTE_MATRIX.md`
+- other untracked-by-policy: ['config/strategies/momentum_scalp.yaml', 'docs/CHANGELOG.md', 'scripts/atm_auto_approver.py', 'scripts/auto_proposal_generator.py', 'scripts/social_scalp_scanner.py', 'scripts/compute_scalp_lifecycle_maturity.py', 'scripts/migrate_discovery_trace_id.py', 'scripts/scalp_lifecycle_funnel_report.py', 'scripts/scalp_outcome_learning.py', 'scripts/social_route_policy.py', 'scripts/strategy_config_validator.py', 'tests/test_momentum_scalp_config_consistency.py', 'tests/test_momentum_scalp_expiry_enforced.py', 'tests/test_momentum_scalp_liquidity_unknown.py', 'tests/test_scalp_lifecycle_funnel_report.py', 'tests/test_scalp_lifecycle_maturity.py', 'tests/test_scalp_outcome_learning.py', 'tests/test_social_route_policy.py', 'tests/test_social_scalp_decision_alerts.py', 'tests/test_social_traceability.py']
 
 *Does not authorize live trading. Operator-approved path only.*
