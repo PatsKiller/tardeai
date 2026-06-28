@@ -46,5 +46,5 @@ can never reach GO** — verified by a metric sweep in the test.
 the WS broadcast, and **suppresses any GO alert whose route is not GO** (social-only /
 watch_only / manual-review can never fire a GO alert even at a high raw score). A stable
 `discovery_trace_id` is generated per candidate and threaded scan → `scalp_scan_results` →
-`trade_ai_scans` → proposal → paper trade (additive migration
+`trade_ai_scans` → `strategy_signals` → proposal → paper trade (additive migration
 `scripts/migrate_discovery_trace_id.py`; degrades safely when columns are absent).
