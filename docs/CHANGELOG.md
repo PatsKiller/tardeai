@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-28 - Momentum scalp paper fast-path (no human paper approval)
+
+Operator decision: momentum_scalp PAPER sample-collection does not require human/operator paper
+approval. Deterministic gates replace the approval queue so valid micro-float scalps convert to paper
+promptly. Live trading unchanged (operator confirmation + 2FA). No live broker writes; LLMs advisory
+only; social-only WATCH/WAIT; large-float scouts manual-review only. Maturity stays 4.4 (2/30).
+
+- **P0-1** momentum_scalp.yaml: paper_approval_required=false, deterministic_gates_required,
+  submit_mode=paper_only_fast_path; validation_gate paper_approval_required_for_sample_collection=false
+  + human_approval_required_for_promotion=true; live_execution_policy (operator+2FA, autonomous=false).
+  Validator fails on paper-approval regression OR weakened live/2FA/promotion language.
+- **P0-2** momentum_scalp_paper_fast_path.py: deterministic gates (route/micro-float/window/TTL/plan/
+  R:R/fresh-quote/drift/liquidity) → existing safe submit_paper (paper-only, idempotent). dry-run-first.
+- **P0-5** env-gated wiring (MOMENTUM_SCALP_PAPER_FAST_PATH, default OFF) after generation; dedup +
+  daily/concurrent limits; excludes EXECUTED proposals.
+- **P0-3/P0-4** funnel adds paper_fast_path_* metrics + "no paper approval" note (approved-for-paper no
+  longer a required/blocking stage); diagnosis recommended_fix = run fast-path promptly (not "approve
+  faster"); SLA reframed to fast-path timing eligibility (within 1/3/5 min). Maturity not penalized
+  for missing approval; still capped <4.5 until empirical sample met.
+- **P0-7** live path / Schwab write policy / operator-2FA untouched (source-only 27/27, no-bypass green).
+
+
 ## 2026-06-28 - Scalp route persistence + hybrid large-float scout + conversion path (PR #10 follow-on)
 
 Finishes the Social → Momentum Scalp lifecycle so TradeAI generates regular AND social-derived

@@ -170,6 +170,37 @@ def validate_strategy_config(strategy_id: str, cfg: dict | None = None) -> dict:
             if field in cfg:
                 _scan_text(cfg[field], field)
 
+    # ── 5. Paper fast-path vs live-approval semantics (P0-1, momentum_scalp) ──
+    # Paper sample-collection may be deterministic/no-approval, but LIVE operator-approval / 2FA
+    # language must remain intact, promotion must still need human review, and momentum_scalp
+    # stays TESTING. A config that requires paper approval for sample collection is a regression.
+    ptr = cfg.get("paper_trade_rules") or {}
+    vg = cfg.get("validation_gate") or {}
+    lep = cfg.get("live_execution_policy") or {}
+    is_paper_fast_path = (ptr.get("submit_mode") == "paper_only_fast_path"
+                          or strategy_id == "momentum_scalp")
+    if is_paper_fast_path:
+        if vg.get("paper_approval_required_for_sample_collection") is True:
+            errors.append({"code": "PAPER_APPROVAL_REQUIRED_REGRESSION",
+                           "detail": "paper sample collection must be deterministic/no-approval "
+                                     "(paper_approval_required_for_sample_collection must be false)"})
+        if ptr.get("paper_approval_required") is True:
+            errors.append({"code": "PAPER_APPROVAL_REQUIRED_REGRESSION",
+                           "detail": "paper_trade_rules.paper_approval_required must be false for the fast path"})
+        if vg.get("human_approval_required_for_promotion") is False:
+            errors.append({"code": "PROMOTION_APPROVAL_WEAKENED",
+                           "detail": "human_approval_required_for_promotion must remain true"})
+        # LIVE operator-confirmation / 2FA language must be present and intact.
+        if lep and (lep.get("operator_confirmation_required") is False
+                    or lep.get("two_factor_required") is False
+                    or lep.get("autonomous_live_trading") is True):
+            errors.append({"code": "LIVE_APPROVAL_WEAKENED",
+                           "detail": "live_execution_policy must keep operator_confirmation_required + "
+                                     "two_factor_required true and autonomous_live_trading false"})
+        if strategy_id == "momentum_scalp" and str(cfg.get("status", "")).upper() != "TESTING":
+            errors.append({"code": "NOT_TESTING",
+                           "detail": f"momentum_scalp must remain TESTING (got status={cfg.get('status')})"})
+
     return {
         "ok": not errors,
         "strategy_id": strategy_id,
