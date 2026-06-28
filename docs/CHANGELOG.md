@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-28 - Validation sample-collection wiring (scheduled, sandbox-only)
+
+Operator chose cron+submit-sandbox to accumulate the empirical momentum_scalp validation sample. Two
+complementary sandbox-only paths now run weekdays in the 06:00–12:00 ET window; both idempotent, window
+gate self-enforces. No gate weakened; operator/2FA untouched; no live broker write. Maturity stays at the
+honest empirical level (2/30 confirmed) until the window runs — purely operational/data from here.
+
+- **Hook (PR #15, merge `812504ee`)** `maybe_run_after_generation` now honors canonical
+  `MOMENTUM_SCALP_VALIDATION_FAST_PATH=1` + `MOMENTUM_SCALP_VALIDATION_SUBMIT=1` (legacy `PAPER_*`
+  aliases still honored). Default OFF; sandbox-only; idempotent. Wiring test 13/13.
+- **Generation cron** env flags added to `auto_proposal_generator.py --today --apply` (`*/30 9-16 * * 1-5`)
+  so the fast path fires immediately after each proposal batch — tightest timing before quotes stale.
+- **Standalone cron** `*/2 6-11 * * 1-5 momentum_scalp_validation_fast_path.py --submit-sandbox`
+  (flock-locked) catches proposals that become entry-valid between generation cycles. Crontab backed up.
+
 ## 2026-06-28 - Momentum scalp validation fast-path (no human validation approval)
 
 Operator decision: momentum_scalp Validation sample-collection does not require human/operator paper
