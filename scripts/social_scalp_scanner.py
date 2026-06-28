@@ -481,6 +481,44 @@ def stamp_route_fields(conn, table: str, symbol: str, route: dict, catalyst_enri
         logger.debug("route stamp skipped (%s/%s): %s", table, symbol, e)
 
 
+def stamp_scout_fields(conn, table: str, symbol: str, route: dict) -> None:
+    """P0-3: persist Social Scout operator-awareness metadata on the just-written row IF columns
+    exist. No-op (safe, logged) when columns are missing — backward-compatible. Privacy-safe: only
+    derived pillar metadata + the operator pill are stored, never raw social-post text.
+
+    HARD invariant mirrored into storage: a persisted Social Scout row is ALWAYS not_tradeable +
+    not_validation_ready. The pill is awareness only and can never flip a row tradeable."""
+    import json as _json
+    if not route or not _has_col(conn, table, "scout_status"):
+        return
+    try:
+        cur = conn.cursor()
+        sets = ["scout_status=%s", "scout_pillar_count=%s", "scout_pillars_met=%s",
+                "scout_pillars_missing=%s", "operator_pill=%s", "operator_subtitle=%s",
+                "operator_color_token=%s", "not_validation_ready=%s", "not_tradeable=%s"]
+        vals = [route.get("scout_status"), route.get("scout_pillar_count"),
+                _json.dumps(route.get("pillars_met") or []),
+                _json.dumps(route.get("pillars_missing") or []),
+                route.get("operator_pill"), route.get("operator_subtitle"),
+                route.get("operator_color_token"),
+                bool(route.get("not_validation_ready", True)),
+                bool(route.get("not_tradeable", True))]
+        if table == "scalp_scan_results":
+            cur.execute(f"""UPDATE scalp_scan_results SET {', '.join(sets)}
+                            WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
+                                      ORDER BY scanned_at DESC LIMIT 1)""", vals + [symbol])
+        elif table == "trade_ai_scans":
+            cur.execute(f"""UPDATE trade_ai_scans SET {', '.join(sets)}
+                            WHERE symbol=%s AND run_date=CURRENT_DATE""", vals + [symbol])
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug("scout stamp skipped (%s/%s): %s", table, symbol, e)
+
+
 def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
                      score: int, grade: str, decision: str, sources: list):
     """Store result in scalp_scan_results."""
@@ -804,6 +842,7 @@ def run_scan():
         )
         stamp_discovery_trace(conn, "scalp_scan_results", symbol, discovery_trace_id)
         stamp_route_fields(conn, "scalp_scan_results", symbol, route, catalyst_enrichment)
+        stamp_scout_fields(conn, "scalp_scan_results", symbol, route)
 
         # Harmonize: also upsert into trade_ai_scans
         _upsert_trade_ai_scans(
@@ -812,6 +851,7 @@ def run_scan():
         )
         stamp_discovery_trace(conn, "trade_ai_scans", symbol, discovery_trace_id)
         stamp_route_fields(conn, "trade_ai_scans", symbol, route, catalyst_enrichment)
+        stamp_scout_fields(conn, "trade_ai_scans", symbol, route)
 
         # === IER WRITE-BACK (non-fatal) ===
         try:
@@ -843,6 +883,18 @@ def run_scan():
                 "mention_count": mention_count,
                 "route": route["route"],
                 "actionability": route["actionability"],
+                # Social Scout operator-awareness fields (P0-5) — surfaced live so the UI can render
+                # the pill without recomputing pillars. Awareness only: never tradeable/validation.
+                "scout_status": route.get("scout_status"),
+                "scout_pillar_count": route.get("scout_pillar_count"),
+                "scout_pillars_met": route.get("pillars_met"),
+                "scout_pillars_missing": route.get("pillars_missing"),
+                "operator_pill": route.get("operator_pill"),
+                "operator_subtitle": route.get("operator_subtitle"),
+                "operator_color_token": route.get("operator_color_token"),
+                "operator_tooltip_hints": route.get("operator_tooltip_hints"),
+                "not_validation_ready": route.get("not_validation_ready"),
+                "not_tradeable": route.get("not_tradeable"),
                 "discovery_trace_id": discovery_trace_id,
             })
         except Exception as e:
