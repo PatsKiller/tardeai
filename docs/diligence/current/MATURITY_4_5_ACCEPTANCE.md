@@ -123,3 +123,15 @@ trades.
 
 Preserved invariants: no broker writes; LLMs advisory only; social-only signals WATCH/WAIT only;
 operator confirmation / 2FA path unchanged and out of scope; autonomous live submit disabled.
+
+---
+
+## Route persistence + large-float scout follow-on (2026-06-28)
+
+Preserves the PR #10 correction (confirmed momentum_scalp closed paper trades = **2/30**). Adds
+durable route persistence, route-aware injection, hybrid large-float scout handling, signal-sync
+route enforcement, and a paper-only fast ATM runner. **Combined Social → Momentum Scalp maturity
+remains 4.4/5 (4.5 NOT met)** — engineering/control 5.0, empirical capped until the validation
+sample (≥30 confirmed closed paper trades, ≥6 months) is met. Large-float scouts are retained and
+operator-visible but are NOT momentum_scalp and NOT eligible for the fast-path. Quote freshness,
+TTL, liquidity, and window gates are unchanged; operator confirmation / 2FA is untouched.

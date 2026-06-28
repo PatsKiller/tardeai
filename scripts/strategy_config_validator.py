@@ -143,6 +143,33 @@ def validate_strategy_config(strategy_id: str, cfg: dict | None = None) -> dict:
         errors.append({"code": "MISSING_TTL",
                        "detail": "intraday_execution.proposal_ttl_minutes is required (source of truth)"})
 
+    # ── 4. HUMAN-FACING window language must match the authoritative window (P0-2) ──
+    # Stale prompt/context/description text (e.g. "13:30 ET" when the window is 06:00–12:00)
+    # misleads the LLM and operator even though the numeric gates are correct.
+    if end_min is not None:
+        import re as _re
+        end_hhmm = win.get("end")
+        # Times referenced in human-facing fields that are NOT the configured window edges are stale.
+        allowed_times = {str(win.get("start")), str(end_hhmm)}
+
+        def _scan_text(obj, path):
+            if isinstance(obj, str):
+                for t in _re.findall(r"\b([0-2]?\d:[0-5]\d)\b", obj):
+                    if t not in allowed_times:
+                        errors.append({"code": "STALE_WINDOW_TEXT",
+                                       "detail": f"human-facing field {path} references '{t}' but the "
+                                                 f"authoritative window is {win.get('start')}–{end_hhmm} ET"})
+            elif isinstance(obj, dict):
+                for k, v in obj.items():
+                    _scan_text(v, f"{path}.{k}")
+            elif isinstance(obj, list):
+                for i, v in enumerate(obj):
+                    _scan_text(v, f"{path}[{i}]")
+
+        for field in ("prompt_context", "purpose"):
+            if field in cfg:
+                _scan_text(cfg[field], field)
+
     return {
         "ok": not errors,
         "strategy_id": strategy_id,

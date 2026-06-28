@@ -432,6 +432,55 @@ def stamp_discovery_trace(conn, table: str, symbol: str, trace_id: str) -> None:
         logger.debug("discovery_trace stamp skipped (%s/%s): %s", table, symbol, e)
 
 
+def _has_col(conn, table: str, col: str) -> bool:
+    key = f"{table}.{col}"
+    if key in _TRACE_COL_CACHE:
+        return _TRACE_COL_CACHE[key]
+    has = False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s",
+                    (table, col))
+        has = cur.fetchone() is not None
+    except Exception:
+        has = False
+    _TRACE_COL_CACHE[key] = has
+    return has
+
+
+def stamp_route_fields(conn, table: str, symbol: str, route: dict, catalyst_enrichment: dict = None) -> None:
+    """P0-3: persist durable route/actionability fields on the just-written row IF columns exist.
+    No-op (safe, logged) when columns are missing — backward-compatible. Privacy-safe: no raw text."""
+    import json as _json
+    if not route or not _has_col(conn, table, "route"):
+        return
+    ce = catalyst_enrichment or {}
+    try:
+        cur = conn.cursor()
+        sets = ["route=%s", "route_actionability=%s", "route_strategy_id=%s", "route_reason_codes=%s"]
+        vals = [route.get("route"), route.get("actionability"), route.get("strategy_id"),
+                _json.dumps(route.get("reason_codes") or [])]
+        if table == "scalp_scan_results":
+            if _has_col(conn, table, "catalyst_verified"):
+                sets.append("catalyst_verified=%s"); vals.append(bool(ce.get("catalyst_verified")
+                            or ce.get("rag_catalyst_confirmed")))
+            if _has_col(conn, table, "catalyst_source"):
+                sets.append("catalyst_source=%s"); vals.append(ce.get("catalyst_source"))
+            cur.execute(f"""UPDATE scalp_scan_results SET {', '.join(sets)}
+                            WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
+                                      ORDER BY scanned_at DESC LIMIT 1)""", vals + [symbol])
+        elif table == "trade_ai_scans":
+            cur.execute(f"""UPDATE trade_ai_scans SET {', '.join(sets)}
+                            WHERE symbol=%s AND run_date=CURRENT_DATE""", vals + [symbol])
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug("route stamp skipped (%s/%s): %s", table, symbol, e)
+
+
 def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
                      score: int, grade: str, decision: str, sources: list):
     """Store result in scalp_scan_results."""
@@ -754,6 +803,7 @@ def run_scan():
             score, grade, decision, candidate["sources"],
         )
         stamp_discovery_trace(conn, "scalp_scan_results", symbol, discovery_trace_id)
+        stamp_route_fields(conn, "scalp_scan_results", symbol, route, catalyst_enrichment)
 
         # Harmonize: also upsert into trade_ai_scans
         _upsert_trade_ai_scans(
@@ -761,6 +811,7 @@ def run_scan():
             score, grade, decision, candidate["sources"],
         )
         stamp_discovery_trace(conn, "trade_ai_scans", symbol, discovery_trace_id)
+        stamp_route_fields(conn, "trade_ai_scans", symbol, route, catalyst_enrichment)
 
         # === IER WRITE-BACK (non-fatal) ===
         try:
