@@ -2,7 +2,7 @@
 
 Status: WARN
 
-_Generated: 2026-06-28T17:03:38.996660+00:00_  
+_Generated: 2026-06-28T21:34:55.521605+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
