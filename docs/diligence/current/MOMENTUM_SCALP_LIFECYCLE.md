@@ -5,7 +5,7 @@ _Source of truth for the intraday momentum_scalp lifecycle. Generated/validated 
 
 ## Status
 
-**Momentum Scalp is TESTING until its validation gate is met** — paper only, taxable account
+**Momentum Scalp is TESTING until its validation gate is met** — sandbox-only, taxable account
 only. No social signal can bypass the deterministic risk gates. No LLM can unlock execution.
 The existing operator confirmation / 2FA path is unchanged and out of scope.
 
@@ -97,10 +97,10 @@ No broker writes; operator confirmation / 2FA path unchanged.
 - **Standard momentum_scalp is MICRO-float (≤20M).** The signal-sync fallback can no longer infer
   momentum_scalp for float up to 100M, and requires a verified catalyst.
 - **Large-float social names are RETAINED and operator-visible** as `large_float_social_scout`
-  (manual review) — never standard momentum_scalp, never the momentum_scalp paper fast-path.
+  (manual review) — never standard momentum_scalp, never the momentum_scalp validation fast-path.
 - **Route/actionability are durable** (persisted on scan tables) and enforced end-to-end: injection
   (continuous_runner), signal creation (strategy_signal_sync), and the fast ATM runner all honour them.
-- **Paper conversion path:** `momentum_scalp_fast_atm_runner.py` (paper-only, dry-run-first) converts
+- **Paper conversion path:** `momentum_scalp_fast_atm_runner.py` (sandbox-only, dry-run-first) converts
   a fresh in-window micro-cap proposal via the EXISTING ATM approval path before the 30-min TTL —
   closing the operational timing gap WITHOUT weakening quote-freshness, TTL, liquidity, or window
   gates. The freshness SLA report shows 27 stale-quote failures vs 0 TTL expiries and that most
@@ -108,12 +108,12 @@ No broker writes; operator confirmation / 2FA path unchanged.
 
 Operator confirmation / 2FA path unchanged and out of scope. No broker writes. LLMs advisory only.
 
-## Paper fast-path — no human paper approval (2026-06-28)
+## Validation fast-path — no human validation approval (2026-06-28)
 
-Operator decision: momentum_scalp PAPER sample-collection is deterministic and gate-based — it does
-NOT require human paper approval. The slow ATM approval queue (which let quotes go stale before
+Operator decision: momentum_scalp Validation sample-collection is deterministic and gate-based — it does
+NOT require human validation approval. The slow ATM approval queue (which let quotes go stale before
 approval) is bypassed for paper: a PENDING momentum_scalp proposal that passes all deterministic
-gates is submitted straight to the paper-only path (`momentum_scalp_paper_fast_path.py` →
+gates is submitted straight to the sandbox-only path (`momentum_scalp_paper_fast_path.py` →
 `proposal_paper_submitter.submit_paper`). Quote-freshness/TTL/window/liquidity/route/risk gates are
 unchanged. LIVE trading is unchanged and still requires operator confirmation + 2FA. Large-float
 scouts and social-only candidates remain ineligible. See `MOMENTUM_SCALP_PAPER_FAST_PATH.md`.

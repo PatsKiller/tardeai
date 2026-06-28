@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P0-4: diagnose the PAPER-ONLY momentum_scalp conversion path.
+"""P0-4: diagnose the Sandbox-only momentum_scalp conversion path.
 
 Walks signal → proposal → approval → paper-trade and identifies the FIRST bottleneck stage
 and its dominant reason, so we can see why valid momentum_scalp candidates do (or do not)
@@ -112,8 +112,8 @@ def build(days: int = 30) -> dict:
         bottleneck = "approval_fails_on_stale_quote"
         detail = (f"Legacy ATM approval failed {_approve_fail}× (gate=approve_proposal_failed); dominant "
                   f"cause: {str(approval_fail_sample)[:80]}. The freshness gate is working correctly. "
-                  f"Operator decision 2026-06-28: momentum_scalp paper testing does NOT require human "
-                  f"approval — the fix is to run the deterministic paper FAST-PATH "
+                  f"Operator decision 2026-06-28: momentum_scalp validation testing does NOT require human "
+                  f"approval — the fix is to run the deterministic validation fast-path "
                   f"(momentum_scalp_paper_fast_path.py) immediately after a proposal is created or "
                   f"becomes ENTRY_ZONE_VALID, NOT to 'approve faster'. Do NOT weaken freshness.")
     elif approved == 0 and pending and pending == proposals:
@@ -158,13 +158,13 @@ def build(days: int = 30) -> dict:
         },
         "first_bottleneck": bottleneck,
         "bottleneck_detail": detail,
-        "recommended_fix": ("Run the deterministic paper FAST-PATH immediately after proposal "
-                            "creation / ENTRY_ZONE_VALID (momentum_scalp_paper_fast_path.py, paper-only, "
+        "recommended_fix": ("Run the deterministic validation fast-path immediately after proposal "
+                            "creation / ENTRY_ZONE_VALID (momentum_scalp_paper_fast_path.py, sandbox-only, "
                             "no human approval). Do NOT weaken quote freshness, TTL, window, or liquidity."),
         "paper_approval_required": False,
         "valid_candidates_present": bool(signals),
         "warnings": warnings,
-        "note": "Read-only diagnosis. No broker writes. Paper-only. Operator/2FA path unchanged.",
+        "note": "Read-only diagnosis. No broker writes. Sandbox-only. Operator/2FA path unchanged.",
     }
 
 
