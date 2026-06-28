@@ -43,10 +43,16 @@
     "link_rate_warn_pct": 5
   },
   "execution_hardening": {
-    "_comment": "Operator-approved automated trading hardening layer monitors.",
+    "_comment": "Operator-approved automated trading hardening layer monitors (incl. P1-6 extensions).",
     "enabled": true,
     "stale_order_minutes": 30,
-    "expired_pending_warn": 1
+    "expired_pending_warn": 1,
+    "stale_operator_approved_minutes": 60,
+    "ledger_release_mode": "review",
+    "chain_snapshot_warn_min": 1440,
+    "critique_min_sample": 20,
+    "critique_stale_warn_pct": 25,
+    "replay_degraded_warn_pct": 20
   },
   "options_desk": {
     "_comment": "Enterprise options desk infra: chain-snapshot retention + approval-queue backlog.",

@@ -118,7 +118,7 @@ check("live trading disabled", not has_live)
 
 # 14. No live submit/cancel functions added
 r = subprocess.run(
-    ["grep", "-rn", "submit_order\|cancel_order\|place_order",
+    ["grep", "-rn", r"submit_order\|cancel_order\|place_order",
      "scripts/paper_execution_quality_analyzer.py",
      "scripts/alpaca_paper_reconciler.py",
      "scripts/post_trade_thesis_reviewer.py",

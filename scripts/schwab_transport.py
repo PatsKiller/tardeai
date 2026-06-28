@@ -108,7 +108,7 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     readiness = evaluate_execution_readiness(
         {"intent_id": intent.intent_id, "correlation_id": intent.correlation_id,
          "account_key": account_key, "signal_evidence": ev},
-        asset_class=asset_class, broker="schwab", account_key=account_key, mode="live",
+        asset_class=asset_class, broker="schwab", account_key=account_key, mode="submit",
     )
     if not readiness.get("ok"):
         from brokers.execution_guard import ExecutionBlocked
@@ -126,6 +126,30 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     cur = conn.cursor()
     _pilot_ensure_table(cur)
     legs = (order_spec.get("orderLegCollection") or [{}])[0]
+    _symbol = (legs.get("instrument") or {}).get("symbol")
+    # Idempotency fence (P0-5): never create a second ACTIVE submit for the same
+    # intent/account/symbol. Schwab does not dedupe, so a duplicate row = a duplicate live
+    # order. A stale prior SUBMIT_REQUESTED must be reconciled (GET broker truth) first.
+    try:
+        from brokers.order_lifecycle import idempotency_key, is_duplicate_active_submit
+        idem = idempotency_key(intent.intent_id or "", account_key or "", _symbol or "")
+        cur.execute(
+            """SELECT intent_id, account_key, symbol, status FROM schwab_pilot_orders
+               WHERE intent_id=%s AND account_key=%s AND symbol=%s
+                 AND status NOT IN ('filled','canceled','cancelled','rejected','expired',
+                                    'error_reconcile_required','client_unavailable','post_exception')""",
+            (intent.intent_id, account_key, _symbol))
+        existing = [{"idempotency_key": idempotency_key(r[0] or "", r[1] or "", r[2] or ""),
+                     "status": r[3]} for r in (cur.fetchall() or [])]
+        if is_duplicate_active_submit(idem, existing):
+            raise NotProvenWrite(
+                f"duplicate_active_submit for {intent.intent_id}/{account_key}/{_symbol} — "
+                "reconcile existing open order before resubmitting")
+    except NotProvenWrite:
+        raise
+    except Exception:
+        # Never fail-open on a guard error path other than the explicit duplicate block.
+        pass
     # persist BEFORE any HTTP — Schwab does not dedupe; this row is the reconcile anchor on timeout
     cur.execute("""INSERT INTO schwab_pilot_orders
                      (correlation_id, intent_id, account_key, symbol, side, qty, limit_price, order_spec, status, kind)
