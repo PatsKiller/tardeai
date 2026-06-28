@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-06-28 - Scalp route persistence + hybrid large-float scout + conversion path (PR #10 follow-on)
+
+Finishes the Social → Momentum Scalp lifecycle so TradeAI generates regular AND social-derived
+scalps optimally, safely, traceably. Preserves PR #10 attribution/maturity (still 4.4/5, 2/30).
+No real trades; no live broker writes; operator/2FA path unchanged; LLMs advisory only.
+
+- **P0-1** `strategy_signal_sync.infer_strategy_id`: momentum_scalp fallback now micro-float (<=20M)
+  + verified catalyst (was <=100M, no catalyst). Large-float verified -> large_float_social_scout.
+- **P0-2** momentum_scalp.yaml prompt_context 13:30 ET -> 06:00-12:00 ET; validator now fails on
+  stale human-facing window text (STALE_WINDOW_TEXT).
+- **P0-3** additive migration (migrate_social_route_fields.py) persists route/actionability/
+  strategy_id/reason_codes/catalyst on scalp_scan_results + trade_ai_scans; scanner stamps them.
+- **P0-4** continuous_runner social injection is ROUTE-AWARE (classify_social_injection), not
+  score>=25: only verified micro-cap GO is tradeable; large-float = labelled manual-review scout;
+  social-only not injected. Carries discovery_trace_id + route labels.
+- **P0-5** hybrid large_float_social_scout route + fields (float_class/scout_label/
+  manual_review_required/operator_label "LARGE FLOAT SOCIAL SCOUT") + large_float_social_scout.yaml.
+  Large-float names RETAINED + operator-visible, never standard momentum_scalp.
+- **P0-6** strategy_signal_sync.route_enforced_strategy: durable route overrides loose YAML/fallback
+  (watch_only/scout/meme never create momentum_scalp; social+unverified never momentum_scalp).
+- **P0-7** momentum_scalp_fast_atm_runner.py (paper-only, dry-run-first): fresh in-window micro-cap
+  -> WOULD_APPROVE; stale/expired/out-of-window/social/scout blocked. No gate weakened, no live path.
+- **P1** freshness SLA report (27 stale-quote fails vs 0 TTL; median latency 9.95min, p95 173min;
+  cadence eligibility) + route-policy replay (old score-only 30 vs new route-aware 0 tradeable,
+  0 GO-leaks, scouts retained).
+
+
 ## 2026-06-28 - Scalp zero-sample reporting correction + paper-path diagnosis (branch `hardening/scalp-zero-sample-reporting-and-paper-path`)
 
 **Operator correction 2026-06-28: no over-attributed momentum_scalp paper trades.** Prior reports

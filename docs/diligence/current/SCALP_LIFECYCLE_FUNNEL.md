@@ -1,7 +1,7 @@
 # Scalp Lifecycle Funnel
 
 **Status: PASS**  
-_Generated: 2026-06-28T04:24:22.455809+00:00 | window: 30d_  
+_Generated: 2026-06-28T17:01:14.773303+00:00 | window: 30d_  
 _Source: `python3 scripts/scalp_lifecycle_funnel_report.py --days N --json`_  
 
 Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
@@ -14,17 +14,17 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 
 | Stage | Count | Source |
 |-------|-------|--------|
-| Social posts ingested | 5156 | ok |
-| Unique tickers mentioned | 190 | ok |
-| Social scalp scan rows | 1480 | ok |
-| Scalp scans alerted (final GO) | 159 | ok |
+| Social posts ingested | 5227 | ok |
+| Unique tickers mentioned | 197 | ok |
+| Social scalp scan rows | 1457 | ok |
+| Scalp scans alerted (final GO) | 153 | ok |
 | Scalp scans with discovery_trace_id | 0 | ok |
-| Scalp final decision = GO | 37 | ok |
-| Scalp final decision = WAIT | 1371 | ok |
+| Scalp final decision = GO | 32 | ok |
+| Scalp final decision = WAIT | 1353 | ok |
 | Scalp final decision = AVOID | 72 | ok |
-| trade_ai_scans rows (scalp-eligible) | 29091 | ok |
-| strategy_signals (momentum_scalp) | 74 | ok |
-| Proposals (momentum_scalp) | 67 | ok |
+| trade_ai_scans rows (scalp-eligible) | 27742 | ok |
+| strategy_signals (momentum_scalp) | 63 | ok |
+| Proposals (momentum_scalp) | 54 | ok |
 | Proposals expired on intraday TTL | 0 | ok |
 | Proposals approved for paper | 0 | ok |
 | ACTUAL momentum_scalp paper trades opened (confirmed) | 2 | ok |
@@ -38,8 +38,8 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 
 | Transition | Rate |
 |-----------|------|
-| scan_to_signal | 5.0% |
-| signal_to_proposal | 90.5% |
+| scan_to_signal | 4.3% |
+| signal_to_proposal | 85.7% |
 | proposal_to_approved | 0.0% |
 | approved_to_opened | — |
 | opened_to_closed | 100.0% |
@@ -57,13 +57,13 @@ Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.
 
 | Decision | Count |
 |----------|-------|
-| SKIPPED_STRATEGY_CRITERIA | 368 |
-| SKIPPED_RECENTLY_REJECTED | 338 |
+| SKIPPED_STRATEGY_CRITERIA | 342 |
 | SKIPPED_OUTSIDE_RTH | 283 |
+| SKIPPED_RECENTLY_REJECTED | 216 |
 | SKIPPED_NOT_GO | 175 |
-| CREATED | 170 |
 | SKIPPED_LIQUIDITY | 156 |
-| SKIPPED_DUPLICATE | 69 |
+| CREATED | 79 |
+| SKIPPED_DUPLICATE | 39 |
 | SKIPPED_RECENTLY_CLOSED | 37 |
 | SKIPPED_OPEN_TRADE | 17 |
 | SKIPPED_NO_ANALYST | 14 |

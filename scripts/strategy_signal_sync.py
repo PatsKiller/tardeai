@@ -75,7 +75,8 @@ def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None, loo
             source, screener_label, run_label, scanned_at,
             intelligence_readiness, change_pct,
             ticker_perf_1m, sector_perf_1m, vs_sector_pct,
-            discovery_trace_id
+            discovery_trace_id,
+            route, route_actionability, route_strategy_id
         FROM trade_ai_scans
         WHERE decision IN ('GO', 'A+')
         AND {time_clause}
@@ -192,17 +193,28 @@ def route_candidate_to_strategies(scan: dict, configs: dict) -> list:
 
 
 def infer_strategy_id(scan: dict) -> str:
-    """Legacy single-strategy inference. Used as fallback when no YAML matches."""
+    """Legacy single-strategy inference. Used as fallback when no YAML matches.
+
+    P0-1: standard momentum_scalp is MICRO-float (<=20M) + VERIFIED catalyst — aligned to
+    momentum_scalp.yaml. A large-float (>20M) verified name can NEVER become momentum_scalp;
+    it routes to large_float_social_scout (manual review). Missing float ⇒ no momentum_scalp.
+    """
     gap = abs(float(scan.get('gap_pct') or 0))
     price = float(scan.get('price') or 0)
     rvol = float(scan.get('rvol') or 0)
-    float_m = float(scan.get('float_m') or 0)
+    _fm = scan.get('float_m')
+    float_m = float(_fm) if _fm not in (None, '') else None
     cat_v = bool(scan.get('catalyst_verified', False))
 
-    # Strict momentum_scalp: ALL hard criteria must pass
-    if (1.0 <= price <= 25.0 and 0 < float_m <= 100.0
-            and rvol >= 5.0 and gap >= 5.0):
+    # Standard momentum_scalp: micro-float (<=20M) + verified catalyst + RVOL/gap/price (matches YAML).
+    if (cat_v and float_m is not None and 0 < float_m <= 20.0
+            and 1.0 <= price <= 25.0 and rvol >= 5.0 and gap >= 5.0):
         return 'momentum_scalp'
+
+    # Large-float (>20M) verified momentum/social → scout (MANUAL REVIEW), NEVER momentum_scalp.
+    if (cat_v and float_m is not None and float_m > 20.0
+            and rvol >= 5.0 and 1.0 <= price <= 50.0):
+        return 'large_float_social_scout'
 
     # gap_and_go: meaningful gap + volume
     if gap >= 5.0 and rvol >= 2.0 and 1.0 <= price <= 50.0:
@@ -218,6 +230,40 @@ def infer_strategy_id(scan: dict) -> str:
 
     # Default to gap_and_go rather than momentum_scalp
     return 'gap_and_go'
+
+
+def route_enforced_strategy(scan: dict, proposed_sid: str) -> tuple:
+    """P0-6: durable route/actionability fields (when present on the scan) OVERRIDE loose
+    YAML/fallback routing. Returns (allowed_strategy_id | None, reason).
+
+    * route=momentum_scalp + actionability=GO  → may create momentum_scalp.
+    * route=watch_only                          → no tradeable signal (None).
+    * route=meme_squeeze_momentum / large_float_social_scout → must NOT create momentum_scalp;
+      may create that route's own (manual-review) signal.
+    * source includes social + catalyst_verified=false → never momentum_scalp.
+    Missing route fields → strict YAML/fallback (proposed_sid unchanged).
+    """
+    route = (scan.get('route') or '').strip().lower()
+    actionability = (scan.get('route_actionability') or '').strip().upper()
+    source = str(scan.get('source') or '').lower()
+    cat_v = bool(scan.get('catalyst_verified', False))
+
+    # Social + unverified can never become momentum_scalp, regardless of other fields.
+    if proposed_sid == 'momentum_scalp' and 'social' in source and not cat_v:
+        return None, "social_unverified_blocked_from_momentum_scalp"
+
+    if not route:
+        return proposed_sid, "no_durable_route:strict_yaml_fallback"
+
+    if proposed_sid == 'momentum_scalp':
+        if route == 'momentum_scalp' and actionability == 'GO':
+            return 'momentum_scalp', "route=momentum_scalp/GO"
+        return None, f"route={route}/{actionability or '-'}_blocks_momentum_scalp"
+
+    # Non-momentum proposed strategy:
+    if route == 'watch_only':
+        return None, "route=watch_only_advisory_no_signal"
+    return proposed_sid, f"route={route}"
 
 
 def find_trade_plan(conn, symbol: str, scan_time=None) -> dict:
@@ -520,6 +566,14 @@ def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None,
                 log.info(f"  {symbol}: no YAML match, fallback to {fallback_sid}")
 
             for strategy_id, match_reasons, reject_reasons in routes:
+                # P0-6: durable route/actionability enforcement overrides loose YAML/fallback.
+                allowed_sid, enforce_reason = route_enforced_strategy(scan, strategy_id)
+                if allowed_sid is None:
+                    log.info(f"  {symbol}: route-enforcement blocked {strategy_id} ({enforce_reason})")
+                    continue
+                strategy_id = allowed_sid
+                match_reasons = list(match_reasons) + [f"route_enforced:{enforce_reason}"]
+
                 # Override strategy_id for this insertion
                 scan_copy = dict(scan)
                 scan_copy['strategy_id'] = strategy_id

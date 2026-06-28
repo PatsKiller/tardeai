@@ -1,7 +1,7 @@
 # Momentum Scalp Validation Tracker
 
 **Status: PASS** | gate met: **False** | live-ready: **False**  
-_Generated: 2026-06-28T04:24:45.265735+00:00_  
+_Generated: 2026-06-28T17:01:14.445678+00:00_  
 _Source: `python3 scripts/momentum_scalp_validation_tracker.py --json`_  
 
 > Counts use conservative confirmed attribution only (scalp_trade_attribution); ambiguous/non-executed rows excluded.

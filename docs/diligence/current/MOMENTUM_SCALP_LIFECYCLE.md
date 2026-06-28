@@ -89,3 +89,21 @@ a fresh in-window quote AND approve it before the 30-minute TTL. `simulate_momen
 proves a valid fresh in-window candidate reaches `WOULD_CREATE_PAPER_TRADE`; expired / social-only /
 liquidity-unknown / stale-quote / out-of-window candidates are correctly blocked or deferred.
 No broker writes; operator confirmation / 2FA path unchanged.
+
+## Route persistence, large-float scout & conversion path (2026-06-28)
+
+- **Single trading window everywhere:** 06:00–12:00 ET. Stale "13:30 ET" prompt language removed;
+  the config validator now fails on any human-facing field that references a non-window time.
+- **Standard momentum_scalp is MICRO-float (≤20M).** The signal-sync fallback can no longer infer
+  momentum_scalp for float up to 100M, and requires a verified catalyst.
+- **Large-float social names are RETAINED and operator-visible** as `large_float_social_scout`
+  (manual review) — never standard momentum_scalp, never the momentum_scalp paper fast-path.
+- **Route/actionability are durable** (persisted on scan tables) and enforced end-to-end: injection
+  (continuous_runner), signal creation (strategy_signal_sync), and the fast ATM runner all honour them.
+- **Paper conversion path:** `momentum_scalp_fast_atm_runner.py` (paper-only, dry-run-first) converts
+  a fresh in-window micro-cap proposal via the EXISTING ATM approval path before the 30-min TTL —
+  closing the operational timing gap WITHOUT weakening quote-freshness, TTL, liquidity, or window
+  gates. The freshness SLA report shows 27 stale-quote failures vs 0 TTL expiries and that most
+  proposals are evaluated ~10 min after creation (p95 ~173 min) — a cadence problem, not a gate problem.
+
+Operator confirmation / 2FA path unchanged and out of scope. No broker writes. LLMs advisory only.
