@@ -126,7 +126,8 @@ ok("consume(): 2FA approval burned single-use at submit", "approval_service.cons
 # 6. schwab-py imported ONLY at the transport boundary
 schwab_importers = []
 for f in SCRIPTS.glob("*.py"):
-    if f.name in ("schwab_transport.py", "validate_schwab_no_writes.py", "validate_schwab_write_policy.py"):
+    if f.name in ("schwab_transport.py", "validate_schwab_no_writes.py", "validate_schwab_write_policy.py",
+                  "broker_write_scanner.py"):  # scanner references the symbol as data, not a real import
         continue
     if re.search(r"\bfrom\s+schwab\.\w|\bimport\s+schwab\b(?!_)", f.read_text()):
         schwab_importers.append(f.name)
@@ -325,6 +326,18 @@ CANARY_CONSUMERS = ["api_v2.py", "schwab_journal_builder.py", "schwab_journal_cl
 missing = [f for f in CANARY_CONSUMERS if "canary" not in (SCRIPTS / f).read_text()]
 ok("canary exclusion wired into all round-trip consumers", not missing,
    f"missing: {missing}" if missing else f"{len(CANARY_CONSUMERS)} consumers filtered")
+
+# 17. structured broker-write bypass scan (P1-1): AST + regex, findings carry file/line/symbol/reason
+try:
+    sys.path.insert(0, str(SCRIPTS))
+    import broker_write_scanner as _bws
+    _scan = _bws.scan()
+    _detail = ("clean — all writes route through approved transports"
+               if _scan["ok"] else
+               "; ".join(f"{f['file']}:{f['line']} {f['symbol']}" for f in _scan["findings"][:5]))
+    ok("broker-write bypass scanner: no direct writes / raw HTTP / schwab-py leaks", _scan["ok"], _detail)
+except Exception as _e:
+    ok("broker-write bypass scanner", False, f"scanner_error:{_e}")
 
 passed = sum(1 for _, p, _ in checks if p)
 print(f"\n  {passed}/{len(checks)} guards green")

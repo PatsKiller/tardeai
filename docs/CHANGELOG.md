@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-06-27 - PO/P0/P1 maturity hardening → 4.5 (branch `hardening/po-p0-p1-maturity-4-5`)
+
+Execution-safety, methodology, broker-truth, and diligence-evidence hardening. No live trades;
+no broker write endpoints called; the operator confirmation / two-factor path is unchanged.
+
+- **P0-2 evidence hashes:** `evidence_approval.py` now stores SEPARATE bundle hashes
+  (approval/readiness/quote/risk/chain/model) and revalidates LIKE-TO-LIKE, fail-closed.
+- **P0-4 readiness modes:** `execution_readiness.py` splits `preflight` / `submit` / `dry_run` /
+  `audit`; submit-mode used by `schwab_transport`, preflight by the API endpoint.
+- **P0-3 intraday window fail-closed:** new `intraday_window.py`; malformed/missing windows block
+  auto-approval (`intraday_window_config_invalid`).
+- **P0-5 broker truth:** `order_lifecycle.py` status normalization + idempotency fence;
+  `reconcile_orders.py` full taxonomy report.
+- **P0-1 release manifest:** tri-state PASS / WARN_NON_LIVE_ADJACENT / FAIL + frontend smoke.
+- **P0-6 CI proof:** `run_release_ci_equivalent.py` + `.github/workflows/release-readiness.yml`.
+- **P1-1 scanner:** `broker_write_scanner.py` (AST + regex), wired into the no-bypass test and the
+  write-policy validator (now 27/27).
+- **P1-2 audit ledger:** non-mutating chain verify + live-adjacent coverage report.
+- **P1-3 options matrix:** `tests/fixtures/options_risk_blocks/` + matrix test + exported doc;
+  added `min_buying_power` hard block.
+- **P1-4 AI critique:** deterministic-first; LLM cannot overwrite deterministic facts; context/
+  response hashes + deterministic-fallback flag; replay-integrity degrades status.
+- **P1-6 health:** new execution-hardening collectors (release manifest, ledger coverage, stale
+  approvals, chain snapshots, critique stale / replay-degraded rates).
+- **PO diligence:** `compute_maturity_score.py` (weighted + capped), machine-derived
+  `export_diligence_evidence.py`, and `docs/diligence/current/` pack incl. `MATURITY_4_5_ACCEPTANCE.md`.
+
 ## 2026-06-27 - AI Trade Critique persistence + system-wide access (UI 3.9)
 
 **First-class data asset** — critiques persist in `journal_trade_reviews.payload` + queryable

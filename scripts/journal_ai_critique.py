@@ -164,6 +164,10 @@ def build_context(trade_key: str) -> dict | None:
         "realized_r": review.get("realized_r") or trade.get("r_multiple"),
         "mistake_tags": review.get("mistake_tags") or [],
         "strength_tags": review.get("strength_tags") or [],
+        "replay_integrity": {
+            "markers_resolved": bool(et is not None and xt is not None),
+            "chart_integrity": chart.get("integrity"),
+        },
     }
 
 
@@ -363,6 +367,75 @@ def _parse_llm(text: str) -> dict | None:
     return d if req.issubset(d.keys()) else None
 
 
+# ── Methodology hardening (P1-4) ──────────────────────────────────────────────────────
+
+def _stable_hash(obj) -> str:
+    import hashlib
+    canonical = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _context_hash(ctx: dict) -> str:
+    """Hash of the DETERMINISTIC inputs that drive the critique — independent of any LLM."""
+    keep = {
+        "trade_key": ctx.get("trade_key"),
+        "trade": ctx.get("trade"),
+        "eq": {k: v for k, v in (ctx.get("eq") or {}).items() if not hasattr(v, "isoformat")},
+        "classification": ctx.get("classification"),
+        "time_in_trade": ctx.get("time_in_trade"),
+        "indicators_at_entry": ctx.get("indicators_at_entry"),
+        "planned_r": ctx.get("planned_r"),
+        "realized_r": ctx.get("realized_r"),
+    }
+    return _stable_hash(keep)
+
+
+def _response_hash(text: str) -> str | None:
+    return _stable_hash({"llm_raw": text}) if text else None
+
+
+def _integrity_ok(integrity) -> bool:
+    """True unless the chart/replay integrity object explicitly reports a failure."""
+    if integrity is None:
+        return True
+    if isinstance(integrity, dict):
+        if integrity.get("ok") is False:
+            return False
+        if str(integrity.get("status", "")).lower() in ("fail", "failed", "error"):
+            return False
+        if integrity.get("time_integrity") is False:
+            return False
+    return True
+
+
+def replay_integrity_status(ctx: dict) -> dict:
+    """Replay integrity for the critique: markers resolved AND no time-integrity failure."""
+    r = ctx.get("replay_integrity") or {}
+    markers = bool(r.get("markers_resolved"))
+    integ = _integrity_ok(r.get("chart_integrity"))
+    return {"markers_resolved": markers, "time_integrity_ok": integ,
+            "ok": markers and integ, "chart_integrity": r.get("chart_integrity")}
+
+
+def _merge_llm_narrative(deterministic: dict, parsed: dict | None, llm_raw: str,
+                         lane: str) -> tuple[dict, bool]:
+    """Merge LLM prose over the deterministic narrative WITHOUT erasing deterministic facts.
+
+    The deterministic narrative is always retained (as ``deterministic_base_summary`` and
+    in the critique's separate ``deterministic_facts``). Returns ``(narrative,
+    deterministic_fallback)`` where ``deterministic_fallback`` is True when the LLM did not
+    contribute a usable narrative."""
+    base = dict(deterministic or {})
+    if parsed and parsed.get("summary"):
+        narrative = {**base, **parsed, "llm_enhanced": True, "llm_lane": lane,
+                     "deterministic": True, "deterministic_base_summary": base.get("summary")}
+        return narrative, False
+    if llm_raw:
+        return {**base, "summary": base.get("summary") or llm_raw[:600],
+                "parse_failed": True, "deterministic": True}, True
+    return base, True
+
+
 _TAG_FP_FIELDS = (
     "setup_family", "market_regime", "setup_types", "mistake_tags",
     "strength_tags", "emotion_before", "planned_r", "realized_r",
@@ -476,7 +549,9 @@ def load_stored_critique(trade_key: str) -> dict | None:
 
 
 def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", error: str = "",
-                   stale: bool = False, llm_raw: str = "") -> dict:
+                   stale: bool = False, llm_raw: str = "", context_hash: str = "",
+                   response_hash: str | None = None, deterministic_fallback: bool = False,
+                   replay_status: dict | None = None) -> dict:
     fp = tag_fingerprint(review)
     nar = (critique or {}).get("narrative") or {}
     return {
@@ -488,6 +563,10 @@ def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", e
         "stale": stale,
         "llm_enhanced": bool(nar.get("llm_enhanced")),
         "deterministic": bool(nar.get("deterministic")),
+        "deterministic_fallback": bool(deterministic_fallback),
+        "context_hash": context_hash or None,
+        "response_hash": response_hash,
+        "replay_integrity": replay_status or (critique or {}).get("replay_integrity"),
         "error_message": error[:300] if error else None,
         "llm_raw_preview": (llm_raw or "")[:500] if llm_raw else None,
     }
@@ -653,8 +732,10 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
     trade = ctx["trade"]
     eq = ctx["eq"]
     review = ctx["review"]
-    narrative = _deterministic_narrative(ctx, sections)
+    deterministic_narrative = _deterministic_narrative(ctx, sections)
+    narrative = dict(deterministic_narrative)
     llm_raw = ""
+    llm_parsed = None
 
     if use_llm:
         import llm_lane
@@ -689,13 +770,18 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
         )
         try:
             llm_raw = llm_lane.generate(prompt, lane=lane, timeout=90)
-            parsed = _parse_llm(llm_raw)
-            if parsed and parsed.get("summary"):
-                narrative = {**parsed, "llm_enhanced": True, "llm_lane": lane}
-            elif llm_raw:
-                narrative = {**narrative, "summary": (llm_raw or "")[:600], "parse_failed": True}
+            llm_parsed = _parse_llm(llm_raw)
         except Exception as e:
             narrative = {**narrative, "llm_error": str(e)[:120]}
+
+    # LLM prose may enrich but NEVER overwrite the deterministic facts.
+    narrative, deterministic_fallback = _merge_llm_narrative(
+        deterministic_narrative, llm_parsed, llm_raw, lane)
+
+    replay = replay_integrity_status(ctx)
+    crit_status = "ok" if replay["ok"] else "degraded"
+    crit_status_reason = "" if replay["ok"] else (
+        "replay_markers_unresolved" if not replay["markers_resolved"] else "time_integrity_failed")
 
     critique = {
         "version": PROMPT_VERSION,
@@ -704,10 +790,18 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
         "symbol": trade["symbol"],
         **sections,
         "narrative": narrative,
+        # Deterministic facts kept verbatim — LLM output cannot erase them.
+        "deterministic_facts": deterministic_narrative,
+        "replay_integrity": replay,
+        "status": crit_status,
+        "status_reason": crit_status_reason,
         "chart_meta": ctx["chart_meta"],
         "llm_raw": llm_raw[:4000] if llm_raw else None,
     }
-    meta = _critique_meta(review_row, critique, status="ok", llm_raw=llm_raw)
+    meta = _critique_meta(
+        review_row, critique, status=crit_status, llm_raw=llm_raw,
+        context_hash=_context_hash(ctx), response_hash=_response_hash(llm_raw),
+        deterministic_fallback=deterministic_fallback, replay_status=replay)
     save_critique(trade_key, critique, meta=meta, review=review_row)
     clean = dict(critique)
     return {
@@ -1001,6 +1095,18 @@ def batch_generate_critiques(
                 out["errors"] += 1
         except Exception:
             out["errors"] += 1
+    # Batch result JSON artifact (P1-4) — machine-readable run record.
+    try:
+        from pathlib import Path as _P
+        from datetime import datetime as _dt, timezone as _tz
+        out["generated_at"] = _dt.now(_tz.utc).isoformat()
+        rt = _P(__file__).resolve().parent.parent / "data" / "runtime"
+        rt.mkdir(parents=True, exist_ok=True)
+        art = rt / f"ai_critique_batch_{date.today().isoformat()}.json"
+        art.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
+        out["artifact_path"] = str(art)
+    except Exception:
+        pass
     return out
 
 

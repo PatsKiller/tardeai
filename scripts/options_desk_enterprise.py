@@ -123,7 +123,9 @@ def evaluate_hard_risk_blocks(
     cfg: Optional[dict] = None,
 ) -> List[dict]:
     """Configurable hard preflight rejects for live paths. Each block is machine-coded."""
-    if mode not in ("live", "operator_required"):
+    # Live-adjacent modes that must surface hard risk blocks. ``submit``/``preflight`` are the
+    # P0-4 readiness modes; ``advisory``/``dry_run``/``audit`` intentionally return no blocks.
+    if mode not in ("live", "operator_required", "submit", "preflight"):
         return []
     cfg = cfg or load_desk_config()
     blocks: List[dict] = []
@@ -185,6 +187,13 @@ def evaluate_hard_risk_blocks(
         blocks.append(_hard_block("max_per_strategy_notional",
                                   f"notional ${notional:,.0f} exceeds strategy cap",
                                   snapshot={"notional": notional, "strategy": strat}))
+
+    # Minimum buying power for the live submit (when broker buying power is known).
+    bp = proposal.get("buying_power")
+    if bp is not None and _f(bp) < cfg.get("hard_min_buying_power", 5_000):
+        blocks.append(_hard_block("min_buying_power",
+                                  f"buying power ${_f(bp):,.0f} below minimum ${cfg.get('hard_min_buying_power'):,.0f}",
+                                  snapshot={"buying_power": _f(bp), "min": cfg.get("hard_min_buying_power")}))
 
     # Assignment risk flag
     if proposal.get("assignment_risk") or proposal.get("deep_itm_short"):
