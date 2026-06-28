@@ -1,5 +1,11 @@
 # Kill Switch Matrix
 
+_Generated: 2026-06-28T01:27:40.283632+00:00_  
+_Source: `brokers.kill_switches.status()`_  
+**Status: PASS**
+
+Kill switches hard-block live submit. They are re-checked at submit time and after approval.
+
 ```json
 {
   "ok": true,
