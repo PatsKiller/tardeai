@@ -247,6 +247,13 @@ def route_enforced_strategy(scan: dict, proposed_sid: str) -> tuple:
     actionability = (scan.get('route_actionability') or '').strip().upper()
     source = str(scan.get('source') or '').lower()
     cat_v = bool(scan.get('catalyst_verified', False))
+    scout_status = str(scan.get('scout_status') or '').strip().upper()
+
+    # P0-6: a Social Scout is operator-awareness ONLY — it can never create a strategy signal. A
+    # graduated GO has scout_status=NONE (the route policy suppresses the pill on GO), so this never
+    # blocks a legitimate momentum_scalp/GO.
+    if scout_status == 'SOCIAL_SCOUT':
+        return None, "scout_status=SOCIAL_SCOUT_awareness_only_no_signal"
 
     # Social + unverified can never become momentum_scalp, regardless of other fields.
     if proposed_sid == 'momentum_scalp' and 'social' in source and not cat_v:

@@ -505,6 +505,20 @@ export default function TradingHub({ onDrill }: Props) {
       {tab === 'Scalp' && scalpData && (() => {
         // ── Live scalp signals: unwrap {timestamp,data:{...}} and present clearly + actionably ──
         const GC = (g?: string) => { const u = (g || '').toUpperCase(); return u === 'A' ? '#22c55e' : u === 'B' ? '#84cc16' : u === 'C' ? '#f59e0b' : u === 'D' || u === 'F' ? '#ef4444' : 'var(--text3)' }
+        // Social Scout pill — operator-awareness ONLY. Distinct violet (var(--social-scout)), never
+        // green/GO. No execution/validate/buy affordance: it is a watch/surface state, never tradeable.
+        const SCOUT_COLOR = 'var(--social-scout)'
+        const ScoutPill = ({ d }: { d: any }) => {
+          if (d.scout_status !== 'SOCIAL_SCOUT' || !d.operator_pill) return null
+          const hints = (d.operator_tooltip_hints || []).join(' · ')
+          const tip = `${d.operator_subtitle || 'Not quite there yet'}${hints ? ' — ' + hints : ''}\n`
+            + 'Awareness only — not a GO, not validation-fast-path eligible, not a standard momentum_scalp trade.'
+          return (
+            <span title={tip} style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+              background: 'var(--social-scout-dim)', color: SCOUT_COLOR, border: `1px solid ${SCOUT_COLOR}`,
+              whiteSpace: 'nowrap', cursor: 'help', marginRight: 6 }}>{d.operator_pill}</span>
+          )
+        }
         const raw: any[] = scalpData.signals ?? []
         const sigs = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
         const n = sigs.length
@@ -512,6 +526,7 @@ export default function TradingHub({ onDrill }: Props) {
         const byD = { GO: 0, WAIT: 0, 'NO-GO': 0 } as Record<string, number>
         sigs.forEach((d: any) => { const k = (d.decision || '').toUpperCase().replace('_', '-'); if (byD[k] != null) byD[k]++ })
         const catalyst = sigs.filter((d: any) => d.catalyst_verified).length
+        const scouts = sigs.filter((d: any) => d.scout_status === 'SOCIAL_SCOUT').length
         const avgScore = n ? Math.round(sigs.reduce((a: number, d: any) => a + (d.score || 0), 0) / n) : 0
         // "prime" actionable scalp = GO + grade A + catalyst verified (the criteria that actually matter)
         const prime = sigs.filter((d: any) => (d.decision || '').toUpperCase() === 'GO' && (d.grade || '').toUpperCase() === 'A' && d.catalyst_verified)
@@ -559,6 +574,7 @@ export default function TradingHub({ onDrill }: Props) {
             <Metric label="GO" value={byD.GO} color={byD.GO > 0 ? '#22c55e' : undefined} tip="Candidates graded GO — passed the scalp decision gate." />
             <Metric label="Grade A" value={byG['A'] || 0} color={(byG['A'] || 0) > 0 ? '#22c55e' : undefined} tip="Top-grade setups. Grade reflects setup quality (float/RVOL/catalyst/structure)." />
             <Metric label="Catalyst ✓" value={`${catalyst}/${n}`} tip="Signals with a verified catalyst. A real catalyst is required for a prime scalp." />
+            <Metric label="Social Scouts" value={scouts} color={scouts > 0 ? 'var(--social-scout)' : undefined} tip="Partial social setups meeting ≥2 of 5 scout pillars — interesting, not there yet. Awareness only: never GO, never validation-eligible, never a standard momentum_scalp." />
             <Metric label="Avg Score" value={avgScore} tip="Mean composite score across candidates (higher = stronger setup)." />
           </div>
 
@@ -606,7 +622,7 @@ export default function TradingHub({ onDrill }: Props) {
               <span style={{ flex: '0 0 60px', color: (d.rvol || 0) >= 5 ? '#22c55e' : (d.rvol || 0) >= 2 ? '#f59e0b' : 'var(--text3)' }}>{d.rvol != null ? `${d.rvol}x` : '—'}</span>
               <span style={{ flex: '0 0 60px', color: 'var(--text2)' }}>{d.change_percent || '—'}</span>
               <span style={{ flex: '0 0 54px', textAlign: 'center' }}>{d.catalyst_verified ? <span style={{ color: '#22c55e' }}>✓</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</span>
-              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)' }}>{d.source ?? '—'}</span>
+              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}><ScoutPill d={d} />{d.source ?? '—'}</span>
             </div>
           )})}
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.</div>

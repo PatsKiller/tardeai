@@ -48,10 +48,14 @@ def main():
     check("large squeeze is large_float + manual review",
           r["float_class"] == "large_float" and r["manual_review_required"] is True)
 
-    # 4. Social-only large-float (unverified) → WATCH/WAIT only, never scout-GO.
+    # 4. Social-only large-float (unverified) → WATCH/WAIT/SCOUT only, never GO/tradeable.
+    # (With the Social Scout layer, a social-only name meeting >=2 pillars surfaces as SCOUT — an
+    # operator-awareness state that is still never GO and always not_tradeable.)
     r = route_social_candidate(base, {"price": 12, "rvol": 7, "float_m": 50, "gap_pct": 6}, {})
     check("social-only large → watch_only", r["route"] == "watch_only")
-    check("social-only large never actionable", r["actionability"] in ("WATCH", "WAIT"))
+    check("social-only large never actionable (WATCH/WAIT/SCOUT, never GO)",
+          r["actionability"] in ("WATCH", "WAIT", "SCOUT") and r["actionability"] != "GO")
+    check("social-only large never tradeable", r["not_tradeable"] is True)
     check("social-only large is social_only", r["social_only"] is True)
 
     # 5. Output contract: scout label is one consistent value; route in allowed set.

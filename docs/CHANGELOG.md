@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-27 - Social Scout pillars (operator-awareness surfacing)
+
+Surface partial social setups that are not yet validation-ready or momentum_scalp/GO-ready but meet
+**≥2 of 5** Social Scout pillars, with a distinct violet pill so the operator sees "interesting, not
+there yet." Surfacing/visibility only — **not** an execution feature. No live trades, no sandbox
+validation submit from scout status, no broker writes, operator/2FA untouched. Validation maturity is
+**unchanged** by this change (visibility, not empirical sample evidence).
+
+- **P0-1** `social_scout_pillars.py` — deterministic 5-pillar model (social_velocity, market_confirmation,
+  catalyst_evidence, structure_tradeability, strategy_risk_fit). 0–1 → no pill; 2–4 → `SOCIAL SCOUT · N/5`;
+  5 ≠ GO (still gated). Always `not_tradeable` + `not_validation_ready`. (`tests/test_social_scout_pillars.py`)
+- **P0-2** `social_route_policy` calls the pillar evaluator, adds a `SCOUT` actionability (stronger-than-WATCH,
+  never tradeable) + scout fields. GO suppresses the pill; large-float → `SOCIAL SCOUT · LARGE FLOAT · N/5`.
+- **P0-3** `migrate_social_scout_fields.py` (additive, idempotent) persists scout metadata on
+  `scalp_scan_results` + `trade_ai_scans`; scanner stamps it (no raw social text).
+- **P0-4** Command-center-v3 Trading hub Scalp screen: violet `--social-scout` pill + "Social Scouts"
+  metric + tooltip; no Buy/Submit/Validate/Trade affordance.
+- **P0-5** scout fields added to `/api/v2/trade-ai` + `/api/v2/scalp/live` (WS ringbuffer) payloads.
+- **P0-6** a Social Scout can **never** create a strategy signal, enter the validation fast path, or fire a
+  GO — enforced in `strategy_signal_sync`, `continuous_runner`, `momentum_scalp_paper_fast_path`
+  (`SOCIAL_SCOUT_NOT_VALIDATION_ELIGIBLE`). (`test_social_scout_route_enforcement.py`, `..._validation_block.py`)
+- **P0-7** `social_scout_replay_report.py` (read-only, JSON/MD): pillar histogram, scouts surfaced,
+  large-float/social-only splits, graduated-to-GO, blocked-from-validation, top missing pillars.
+- **P0-8** docs (`SOCIAL_SCOUT_PILLARS.md`, route matrix, validation fast-path, replay) + taxonomy audit
+  0 violations. Social-only stays WATCH/WAIT/SCOUT only; large-float scouts manual-review only.
+
 ## 2026-06-28 - Validation sample-collection wiring (scheduled, sandbox-only)
 
 Operator chose cron+submit-sandbox to accumulate the empirical momentum_scalp validation sample. Two

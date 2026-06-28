@@ -100,6 +100,12 @@ def evaluate_paper_fast_path(proposal: dict, now: datetime = None, quote: dict =
         rc.append(f"ROUTE_BLOCKED_{route.upper()}"); return out("REJECT")
     if proposal.get("social_only") is True:
         rc.append("SOCIAL_ONLY"); return out("REJECT")
+    # P0-6: a Social Scout (operator-awareness state) can NEVER enter the validation fast path.
+    # Defense-in-depth: route/actionability checks below already block it, but a scout is rejected
+    # explicitly the moment it is recognised, on either the durable field or the SCOUT actionability.
+    if str(proposal.get("scout_status") or "").strip().upper() == "SOCIAL_SCOUT" \
+            or actionability == "SCOUT":
+        rc.append("SOCIAL_SCOUT_NOT_VALIDATION_ELIGIBLE"); return out("REJECT")
     if route and (route != "momentum_scalp" or actionability not in ("", "GO")
                   or (route_sid and route_sid != "momentum_scalp")):
         rc.append(f"ROUTE_NOT_MOMENTUM_GO({route}/{actionability})"); return out("REJECT")
