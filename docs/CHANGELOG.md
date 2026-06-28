@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-28 - Scalp zero-sample reporting correction + paper-path diagnosis (branch `hardening/scalp-zero-sample-reporting-and-paper-path`)
+
+**Operator correction 2026-06-28: no over-attributed momentum_scalp paper trades.** Prior reports
+showed "17 opened / 1–3 closed" — wrong. They counted non-executed (cancelled/dedup) rows as opened
+and an unlinked direct-label row as confirmed.
+
+- **True attribution** (`scalp_trade_attribution.py`): a trade counts only when executed AND
+  priority-1 `strategy_id='momentum_scalp'` AND lineage/fill evidence. Corrected confirmed = **2
+  closed** (IDs 22, 45); 1 ambiguous excluded; 19 non-executed are not trades.
+- **Funnel + maturity corrected**: funnel reports confirmed counts + unknown/ambiguous/non-executed
+  stages + operator-correction note; maturity separates engineering (5.0) from empirical (0.33),
+  caps zero-sample at 4.3 / 1–29-sample at 4.4. **Combined = 4.4; 4.5 NOT met.**
+- **Paper-path diagnosis** (`diagnose_momentum_scalp_paper_path.py`): first bottleneck =
+  `approval_fails_on_stale_quote` (148× `approve_proposal_failed`, ~18h-stale quotes). Freshness gate
+  working — no code weakening; gap is operational (fresh in-window generation + timely approval).
+- **Dry-run simulator** (`simulate_momentum_scalp_paper_path.py`): valid fresh in-window candidate →
+  `WOULD_CREATE_PAPER_TRADE`; expired/social-only/liquidity-unknown/stale/out-of-window blocked/deferred.
+- **Validation tracker** (`momentum_scalp_validation_tracker.py`): 2/30, gate false, never live-ready.
+- No broker writes; operator/2FA path unchanged; LLMs advisory only; repo-level safety preserved.
+
 ## 2026-06-28 - Social → Momentum Scalp lifecycle hardening (branch `hardening/social-momentum-scalp-lifecycle-4-5`)
 
 Closed all P0 lifecycle gaps from the Momentum Scalp / Social Scalp audit. No real trades; no

@@ -121,8 +121,15 @@ def apply_caps(raw: float, ev: dict, dims: dict) -> tuple[float, list[dict]]:
         caps.append({"cap": 4.1, "reason": "no end-to-end traceability"})
     if not ev["funnel_runs"]:
         caps.append({"cap": 4.2, "reason": "no funnel report"})
+    # P0-2: empirical validation-sample cap depends on the CONFIRMED closed count.
+    _closed = ev.get("closed_paper_trades")
     if not ev["funnel_gate_met"]:
-        caps.append({"cap": 4.4, "reason": "validation sample not met (momentum_scalp still TESTING)"})
+        if _closed in (None, 0):
+            caps.append({"cap": 4.3, "reason": "NO confirmed momentum_scalp paper-trade sample "
+                                               "(empirical strategy lifecycle immature)"})
+        else:
+            caps.append({"cap": 4.4, "reason": f"validation sample not met "
+                                               f"({_closed}/30 confirmed closed — still TESTING)"})
     if not ev["no_bypass_test"]:
         caps.append({"cap": 3.5, "reason": "broker-write bypass introduced"})
     final = raw
@@ -157,22 +164,40 @@ def compute() -> dict:
     social = _subscore({"social_only_catalyst_discipline", "route_policy_correctness",
                         "traceability", "empirical_funnel_evidence"})
 
+    # Engineering-control maturity (uncapped by empirical sample) vs empirical-strategy maturity.
+    _engineering = round(raw, 3)
+    _closed = ev.get("closed_paper_trades")
+    if _closed in (None, 0):
+        sample_status = "NO_CONFIRMED_SAMPLE"
+    elif _closed < 30:
+        sample_status = f"INSUFFICIENT_SAMPLE ({_closed}/30 confirmed closed)"
+    else:
+        sample_status = "SAMPLE_MET"
+    # Empirical maturity scales with progress toward the 30-trade gate (0 sample → low).
+    _empirical = round(min(1.0, (_closed or 0) / 30.0) * 5, 3)
+
     return {
         "ok": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "raw_weighted_score_of_5": raw,
         "final_maturity_score_of_5": final,
         "meets_4_5": final >= 4.5,
+        "engineering_control_maturity_of_5": _engineering,
+        "empirical_strategy_maturity_of_5": _empirical,
+        "combined_lifecycle_of_5": final,
         "momentum_scalp_lifecycle_of_5": momentum,
         "social_scalp_lifecycle_of_5": social,
-        "combined_lifecycle_of_5": final,
+        "validation_sample_status": sample_status,
+        "confirmed_closed_paper_trades": _closed,
+        "funnel_gate_met": ev.get("funnel_gate_met"),
         "caps_applied": caps,
         "score_lines": lines,
         "evidence": ev,
-        "note": ("Earned from machine evidence, bounded by hard caps. momentum_scalp remains TESTING "
-                 "until its validation gate (≥30 closed paper trades, ≥6 months) is met; that gate "
-                 "caps the combined score at 4.4. No broker writes. LLMs advisory only; operator/2FA "
-                 "path unchanged and out of scope."),
+        "note": ("Earned from machine evidence, bounded by hard caps. Engineering/control lifecycle is "
+                 "mature; the EMPIRICAL strategy lifecycle is not, because there is no sufficient "
+                 "confirmed momentum_scalp paper-trade sample (operator correction 2026-06-28). A zero "
+                 "confirmed sample caps combined at 4.3; a 1–29 sample caps at 4.4. No broker writes. "
+                 "LLMs advisory only; operator/2FA path unchanged and out of scope."),
     }
 
 
@@ -182,6 +207,13 @@ def to_markdown(r: dict) -> str:
          f"(raw {r['raw_weighted_score_of_5']}) — meets 4.5: **{r['meets_4_5']}**  ",
          f"_Generated: {r['generated_at']}_  ",
          "_Source: `python3 scripts/compute_scalp_lifecycle_maturity.py --json`_  ", "",
+         "> **Operator correction 2026-06-28:** combined maturity separates a mature engineering/control "
+         "lifecycle from an immature empirical strategy lifecycle. There is no sufficient confirmed "
+         "momentum_scalp paper-trade sample, so 4.5 is NOT met.", "",
+         f"- Engineering / control maturity: **{r.get('engineering_control_maturity_of_5')} / 5**",
+         f"- Empirical strategy maturity: **{r.get('empirical_strategy_maturity_of_5')} / 5** "
+         f"(validation sample: {r.get('validation_sample_status')}; "
+         f"confirmed closed = {r.get('confirmed_closed_paper_trades')})",
          f"- Momentum Scalp lifecycle: **{r['momentum_scalp_lifecycle_of_5']} / 5**",
          f"- Social Scalp lifecycle: **{r['social_scalp_lifecycle_of_5']} / 5**", "",
          "| Dimension | Weight | Score | Points/5 |", "|-----------|--------|-------|----------|"]
