@@ -262,15 +262,20 @@ def submission_allowed(open_count: int, today_count: int, limits: dict = None) -
 
 
 def maybe_run_after_generation(dry_run: bool = True) -> dict | None:
-    """P0-5 wiring hook. Runs the fast path ONLY when MOMENTUM_SCALP_PAPER_FAST_PATH=1 (default OFF).
-    Safe to call after proposal generation; idempotent (the query excludes EXECUTED proposals and
-    submit_paper re-checks its own duplicate/idempotency gates). Returns None when the flag is off."""
+    """P0-5 wiring hook. Runs the validation fast path after proposal generation ONLY when the env
+    flag is set (default OFF). Canonical flags: MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 (enable) and
+    MOMENTUM_SCALP_VALIDATION_SUBMIT=1 (sandbox submit). Legacy aliases MOMENTUM_SCALP_PAPER_FAST_PATH
+    / MOMENTUM_SCALP_PAPER_FAST_PATH_SUBMIT are still honored. Idempotent (the query excludes EXECUTED
+    proposals and submit_paper re-checks its own duplicate/idempotency gates). Returns None when OFF."""
     import os
-    if os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH") != "1":
+    enabled = (os.getenv("MOMENTUM_SCALP_VALIDATION_FAST_PATH") == "1"
+               or os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH") == "1")
+    if not enabled:
         return None
-    # Even when enabled, sandbox-only submit requires the explicit env opt-in; otherwise dry-run.
-    paper = os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH_SUBMIT") == "1"
-    return run(dry_run=(dry_run and not paper))
+    # Even when enabled, sandbox submit requires the explicit submit opt-in; otherwise dry-run.
+    submit = (os.getenv("MOMENTUM_SCALP_VALIDATION_SUBMIT") == "1"
+              or os.getenv("MOMENTUM_SCALP_PAPER_FAST_PATH_SUBMIT") == "1")
+    return run(dry_run=(dry_run and not submit))
 
 
 def _audit(conn, proposal, ev, res):
