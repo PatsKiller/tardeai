@@ -358,37 +358,67 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
 _LIQUIDITY_GATED_STRATEGIES = {"momentum_scalp", "gap_and_go", "earnings_catalyst"}
 
 
+def _is_intraday_strategy(strategy_id: str) -> bool:
+    """True for liquidity- and time-sensitive intraday strategies (momentum_scalp)."""
+    if not strategy_id:
+        return False
+    try:
+        import proposal_lifecycle as _pl
+        return strategy_id in _pl.INTRADAY_STRATEGIES
+    except Exception:
+        return strategy_id in ("momentum_scalp", "gap_and_go")
+
+
 def _liquidity_prescreen(symbol: str, rules: dict, strategy_id: str = None) -> tuple:
     """Structural liquidity gate at GENERATION time. Returns (ok: bool, reason: str).
 
-    Stops untradeable microcaps (wide spread / no real volume) from becoming
-    proposals — the noise the execution layer would block anyway, but only after
-    it has already pinged Telegram. strategy_signals carries no absolute volume or
-    spread, so we read a live quote (the only reliable source for thin names).
+    Stops untradeable microcaps (wide spread / no real volume) from becoming proposals.
+    strategy_signals carries no absolute volume or spread, so we read a live quote.
 
-    Strategy-aware: only intraday scalp/momentum setups are gated; swing/breakout/fib hold longer and
-    pass (the approval-time execution-readiness check remains the backstop). Fail-open by design:
-    outside regular hours, or when no quote / data error, this NEVER blocks.
+    P0-4 — intraday is FAIL-CLOSED: momentum_scalp is liquidity- and time-sensitive, so a
+    quote/provider error, a missing quote, or a stale quote must DEFER (no auto proposal),
+    never fail open. Outside regular hours it may proceed ONLY with a fresh extended-hours
+    quote (check_fresh_quote ok). Non-intraday gated strategies (e.g. earnings_catalyst)
+    keep the prior fail-open behavior — the approval-time execution layer is their backstop.
     """
     if strategy_id and strategy_id not in _LIQUIDITY_GATED_STRATEGIES:
-        return True, ""   # swing/breakout/fib/earnings — not intraday-liquidity-dependent
+        return True, ""   # swing/breakout/fib — not intraday-liquidity-dependent
     liq = (rules or {}).get("liquidity_prescreen") or {}
     if not liq.get("enabled", True):
         return True, ""
 
-    # Regular-hours only — off-hours quotes are not trustworthy for this gate.
-    try:
-        from market_session import current_market_session
-        if current_market_session() != "regular":
-            return True, ""
-    except Exception:
-        return True, ""
+    intraday = _is_intraday_strategy(strategy_id)
 
-    try:
-        from market_quote_provider import get_best_quote
-        q = get_best_quote(symbol) or {}
-    except Exception:
-        return True, ""  # never block on a data/provider error
+    if not intraday:
+        # NON-INTRADAY gated: preserve fail-open (off-hours quotes untrustworthy; exec layer backstops).
+        try:
+            from market_session import current_market_session
+            if current_market_session() != "regular":
+                return True, ""
+        except Exception:
+            return True, ""
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(symbol) or {}
+        except Exception:
+            return True, ""  # never block non-intraday on a data/provider error
+    else:
+        # INTRADAY (momentum_scalp): FAIL-CLOSED. Require a fresh quote (RTH or fresh extended-hours);
+        # provider error / missing / stale quote → DEFER, no proposal.
+        try:
+            from market_quote_provider import check_fresh_quote
+            fq = check_fresh_quote(symbol, strategy_id=strategy_id) or {}
+        except Exception as e:
+            return False, f"DEFER_LIQUIDITY_UNKNOWN: quote provider error ({e})"
+        if not fq.get("ok"):
+            return False, f"DEFER_LIQUIDITY_UNKNOWN: {fq.get('reason') or 'no fresh quote (stale/missing/off-hours)'}"
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(symbol) or {}
+        except Exception as e:
+            return False, f"DEFER_LIQUIDITY_UNKNOWN: quote provider error ({e})"
+        if not q:
+            return False, "DEFER_LIQUIDITY_UNKNOWN: no quote liquidity detail"
 
     spread = q.get("spread_pct")
     last = q.get("last_price")
@@ -429,6 +459,7 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
                entry_high, entry_low, stop_loss, target_1, target_2,
                shares, dollar_risk, risk_reward,
                sector, source_table, scan_run_label, discovery_source,
+               discovery_trace_id,
                fired_at
         FROM strategy_signals
         WHERE fired_at::date = CURRENT_DATE
@@ -1030,6 +1061,7 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "sizing_reason": sizing.get("sizing_reason"),
         "sector": signal.get("sector"),
         "discovery_source": signal.get("discovery_source"),
+        "discovery_trace_id": signal.get("discovery_trace_id"),  # P0-6: end-to-end lineage
         "setup_description": signal.get("setup_description"),
         "source_run_label": signal.get("scan_run_label"),
         "auto_execution_label": auto_context.get("execution_label", "manual") if auto_context else "manual",
@@ -1369,20 +1401,29 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     stats["details"].append({"symbol": sym, "decision": "SKIPPED_STRATEGY_CRITERIA", "reason": reason})
                     continue
 
-            # 2e. Liquidity pre-screen (live quote, regular-hours only, fail-open).
-            # Stops untradeable microcaps (wide spread / no real volume) from ever
-            # becoming a Telegram proposal — the noise the execution layer blocks at
-            # approval but only after it has already alerted. force=True bypasses.
-            if not force:
+            # 2e. Liquidity pre-screen. P0-4: INTRADAY (momentum_scalp) is FAIL-CLOSED — unknown
+            # liquidity DEFERS (no proposal) rather than failing open. force bypasses only in
+            # dry-run / manual / operator mode, and is ALWAYS logged (never a silent proceed).
+            if force:
+                _intraday = _is_intraday_strategy(sid)
+                if _intraday and not (dry_run or execution_label in ("manual", "operator")):
+                    log.warning(f"  {sym}: FORCE_BYPASS_LIQUIDITY (intraday {sid}, "
+                                f"execution_label={execution_label}) — operator-explicit liquidity bypass")
+                elif _intraday:
+                    log.info(f"  {sym}: liquidity prescreen bypassed via force "
+                             f"({sid}, dry_run={dry_run}, execution_label={execution_label})")
+            else:
                 liq_ok, liq_reason = _liquidity_prescreen(sym, shared_rules, sid)
                 if not liq_ok:
+                    _defer = liq_reason.startswith("DEFER_LIQUIDITY_UNKNOWN")
+                    _dcode = "DEFER_LIQUIDITY_UNKNOWN" if _defer else "SKIPPED_LIQUIDITY"
                     stats["liquidity_rejected"] += 1
                     stats["proposals_skipped"] += 1
-                    reason = f"SKIPPED_LIQUIDITY ({sym}: {liq_reason})"
+                    reason = f"{_dcode} ({sym}: {liq_reason})"
                     log.info(f"  {sym}: {reason}")
                     if not dry_run:
-                        record_decision(conn, run_label, sig, "SKIPPED_LIQUIDITY", [liq_reason], None, None, None)
-                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_LIQUIDITY", "reason": reason})
+                        record_decision(conn, run_label, sig, _dcode, [liq_reason], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": _dcode, "reason": reason})
                     continue
 
             # 2f. Analyst gate — equities need rating + price target (ETFs exempt).
