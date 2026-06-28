@@ -69,3 +69,36 @@ See `MATURITY_SCORE_LATEST.md` for the full line-by-line breakdown.
 - [ ] Maturity score ≥ 4.5 earned from evidence
 
 **Broker truth is authoritative after submit. No order is treated as live before broker acknowledgement.**
+
+---
+
+## Social → Momentum Scalp lifecycle (2026-06-28)
+
+Branch `hardening/social-momentum-scalp-lifecycle-4-5`. All P0 lifecycle gaps closed; P1
+funnel/maturity/outcome evidence generated from code. **Autonomous live submit remains
+disabled. Operator-approved broker submit path is gated by deterministic controls. LLMs are
+advisory only. Broker truth is authoritative after submit. No order is treated as live before
+broker acknowledgement. Social-only signals are never auto-tradeable without deterministic
+confirmation.** The existing operator confirmation / 2FA path is unchanged and out of scope.
+
+### P0 acceptance
+- [x] Expired intraday proposals cannot be approved (`resolve_atm_expiry`, EXPIRED_INTRADAY)
+- [x] Social-only candidates cannot send GO-style alerts (final-decision dispatch + route)
+- [x] `momentum_scalp.yaml` has no conflicting lifecycle criteria (validator green)
+- [x] Liquidity unknown does not auto-create momentum scalp proposals (DEFER, fail-closed)
+- [x] Social route policy is explicit and tested (`social_route_policy.py`)
+- [x] Traceability exists (discovery_trace_id, 5 tables) or degrades with documented WARN
+- [x] Funnel report runs (`scalp_lifecycle_funnel_report.py`)
+- [x] No broker-write bypass introduced (no-bypass test green)
+
+### Maturity (earned from evidence)
+- Raw weighted: **5.0 / 5** (all 8 engineering dimensions pass)
+- Momentum Scalp lifecycle: **4.4 / 5**  ·  Social Scalp lifecycle: **4.4 / 5**
+- **Combined: 4.4 / 5 — meets 4.5: FALSE.** Single binding cap: validation sample not met
+  (momentum_scalp has ~3 of 30 required closed paper trades; still TESTING). All P0 control
+  caps are non-binding.
+
+### Remaining blocker to 4.5
+- [ ] Empirical validation sample: ≥30 closed paper trades, win rate ≥50%, profit factor
+      ≥1.3, over ≥6 calendar months. This is a data-accumulation matter, not an engineering
+      gap — the now-fixed 30-minute fast-path lets scalp proposals convert instead of expiring.

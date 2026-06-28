@@ -202,6 +202,75 @@ def _intraday_window_gate(strategy_id: str) -> dict:
     return evaluate_intraday_window(strategy_id)
 
 
+def resolve_atm_expiry(strategy_id, created_at, expires_at=None, now=None) -> dict:
+    """P0-1: deterministic pre-approval expiry decision. Pure/testable (no DB).
+
+    For INTRADAY strategies the authoritative TTL is the strategy's minutes-based
+    intraday_execution.proposal_ttl_minutes (single source of truth, via
+    proposal_lifecycle.get_expiry_datetime) — NOT the legacy 4-hour rule. A stored
+    ``expires_at`` that is earlier is honored. Fail-safe: an intraday proposal whose
+    freshness cannot be established (no created_at and no expires_at) is BLOCKED, never
+    approved.
+
+    Returns one of:
+      {"action": "ok",     "intraday": bool, ...}
+      {"action": "expire", "reason": "intraday_ttl_expired",
+                           "lifecycle_status": "EXPIRED_INTRADAY", "message": str, ...}
+      {"action": "block",  "reason": "intraday_ttl_unknown", "message": str, ...}
+    Non-intraday strategies always return action="ok" here (the caller applies the
+    legacy fallback rules).
+    """
+    from datetime import datetime, timezone
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    try:
+        import proposal_lifecycle as _pl
+        intraday = strategy_id in _pl.INTRADAY_STRATEGIES
+    except Exception:
+        _pl = None
+        intraday = strategy_id in ("momentum_scalp", "gap_and_go")
+    if not intraday:
+        return {"action": "ok", "intraday": False}
+
+    def _aware(dt):
+        if dt is None:
+            return None
+        return dt if getattr(dt, "tzinfo", None) else dt.replace(tzinfo=timezone.utc)
+
+    created_at = _aware(created_at)
+    expires_at = _aware(expires_at)
+    ttl_min = _pl._intraday_ttl_minutes(strategy_id) if _pl else 30
+
+    # Authoritative expiry = created_at + TTL; honor a stored expires_at if it is earlier.
+    eff_expiry = None
+    if created_at is not None and _pl is not None:
+        eff_expiry = _pl.get_expiry_datetime(strategy_id, created_at)
+    elif created_at is not None:
+        from datetime import timedelta
+        eff_expiry = created_at + timedelta(minutes=ttl_min)
+    if expires_at is not None and (eff_expiry is None or expires_at < eff_expiry):
+        eff_expiry = expires_at
+
+    if eff_expiry is None:
+        return {"action": "block", "reason": "intraday_ttl_unknown", "intraday": True,
+                "ttl_minutes": ttl_min,
+                "message": (f"{strategy_id}: intraday proposal has no created_at/expires_at — "
+                            f"cannot verify {ttl_min}min TTL freshness (fail-safe block)")}
+
+    age_min = (now - created_at).total_seconds() / 60.0 if created_at is not None else None
+    if now >= eff_expiry:
+        msg = (f"{strategy_id}: intraday scalp proposal "
+               + (f"aged {age_min:.0f}min ≥ " if age_min is not None else "past expiry, ")
+               + f"{ttl_min}min TTL (expired {eff_expiry.isoformat()})")
+        return {"action": "expire", "reason": "intraday_ttl_expired", "intraday": True,
+                "lifecycle_status": "EXPIRED_INTRADAY", "ttl_minutes": ttl_min,
+                "age_minutes": age_min, "effective_expiry": eff_expiry, "message": msg}
+
+    return {"action": "ok", "intraday": True, "ttl_minutes": ttl_min,
+            "age_minutes": age_min, "effective_expiry": eff_expiry}
+
+
 def run_cycle():
     """Main ATM evaluation cycle."""
     conn = get_connection()
@@ -284,7 +353,7 @@ def run_cycle():
                p.proposed_target1, p.proposed_shares,
                p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures,
                p.created_at, p.atm_evaluation_count, p.atm_last_failure_reason,
-               p.proposed_rr, p.risk_gate_result
+               p.proposed_rr, p.risk_gate_result, p.expires_at, p.lifecycle_status
         FROM paper_trade_proposals p
         WHERE p.status = 'PENDING' AND p.atm_expired_at IS NULL
           AND COALESCE(p.proposal_kind, 'entry') = 'entry'
@@ -369,8 +438,14 @@ def run_cycle():
                 continue
         # AUTO_PAPER, AUTO_LIVE on a paper account (paper endpoint — no real money), or no policy → proceed.
 
-        # ── 1: Stale proposal expiry check ──
-        expiry_reason = None
+        # ── 1: Proposal expiry check (P0-1) ──
+        # INTRADAY strategies expire on their authoritative minutes-based TTL
+        # (intraday_execution.proposal_ttl_minutes — single source of truth). The legacy
+        # 4-hour rule is a FALLBACK only for non-intraday / legacy proposals.
+        expiry_code = None
+        expiry_lifecycle = "EXPIRED"
+        expiry_message = None
+        expiry_gate = "atm_expired"
         proposal_age_hours = 0
         try:
             _created = p.get("created_at")
@@ -385,33 +460,61 @@ def run_cycle():
         eval_count = p.get("atm_evaluation_count") or 0
         last_fail = p.get("atm_last_failure_reason") or ""
 
-        # Condition 1: proposal age > 4 hours
-        if proposal_age_hours > 4:
-            expiry_reason = f"age_exceeded_4h ({proposal_age_hours:.1f}h)"
-        # Condition 2: 5+ consecutive approve_proposal_failed with same reason
-        elif eval_count >= 5 and "approve_proposal_failed" in last_fail:
-            expiry_reason = f"persistent_approval_failure ({eval_count} attempts)"
-        # Condition 3: enrichment permanently failed
-        elif (p.get("enrichment_status") == "FAILED"
-              and (p.get("enrichment_failures") or 0) >= 3):
-            expiry_reason = f"enrichment_failed_3x"
+        _exp = resolve_atm_expiry(sid, p.get("created_at"), p.get("expires_at"))
+        if _exp["action"] == "block":
+            # Fail-safe: intraday proposal whose freshness can't be established — never approve,
+            # but do NOT permanently expire (await created_at/expires_at on a later cycle).
+            _log_decision(conn, pid, sym, sid, target,
+                          acct.get("broker", "unknown"), acct.get("mode", "unknown"),
+                          "deferred",
+                          [{"gate": _exp["reason"], "detail": _exp["message"]}],
+                          0, 0, 0, 0, 0, 0, 0, False, config_hash, mode)
+            log.info(f"  {sym}: deferred — {_exp['message']}")
+            continue
+        if _exp["action"] == "expire":
+            # Authoritative intraday TTL expiry — independent of the 4-hour rule.
+            expiry_code = _exp["reason"]                     # 'intraday_ttl_expired'
+            expiry_lifecycle = _exp["lifecycle_status"]      # 'EXPIRED_INTRADAY'
+            expiry_message = _exp["message"]
+            expiry_gate = "intraday_ttl_expired"
+        elif not _exp.get("intraday"):
+            # NON-INTRADAY fallback: honor stored expires_at first, then legacy 4h / failure rules.
+            _exp_at = p.get("expires_at")
+            if _exp_at is not None:
+                try:
+                    _ea = _exp_at if getattr(_exp_at, "tzinfo", None) else _exp_at.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) >= _ea:
+                        expiry_code = f"expires_at_reached ({_ea.isoformat()})"
+                except Exception:
+                    pass
+            if not expiry_code and proposal_age_hours > 4:
+                expiry_code = f"age_exceeded_4h ({proposal_age_hours:.1f}h)"
+            elif not expiry_code and eval_count >= 5 and "approve_proposal_failed" in last_fail:
+                expiry_code = f"persistent_approval_failure ({eval_count} attempts)"
+            elif not expiry_code and (p.get("enrichment_status") == "FAILED"
+                                      and (p.get("enrichment_failures") or 0) >= 3):
+                expiry_code = "enrichment_failed_3x"
+        # NOTE: for an intraday proposal with action=="ok" we deliberately do NOT apply the
+        # 4-hour rule — its only expiry authority is the minutes-based TTL above.
 
-        if expiry_reason:
+        if expiry_code:
+            if expiry_message is None:
+                expiry_message = f"ATM expired: {expiry_code}"
             cur.execute("""
                 UPDATE paper_trade_proposals
                 SET atm_expired_at = NOW(), atm_expiry_reason = %s,
-                    status = 'EXPIRED', lifecycle_status = 'EXPIRED',
+                    status = 'EXPIRED', lifecycle_status = %s,
                     lifecycle_message = %s
                 WHERE id = %s AND status NOT IN ('APPROVED_FOR_PAPER_TEST', 'BROKER_SUBMITTED')
-            """, (expiry_reason, f"ATM expired: {expiry_reason}", pid))
+            """, (expiry_code, expiry_lifecycle, expiry_message, pid))
             conn.commit()
             _log_decision(conn, pid, sym, sid, target,
                           acct.get("broker", "unknown"), acct.get("mode", "unknown"),
                           "rejected",
-                          [{"gate": "atm_expired", "detail": expiry_reason}],
+                          [{"gate": expiry_gate, "detail": expiry_message}],
                           0, 0, 0, 0, 0, 0, 0, False, config_hash, mode)
-            expired_this_cycle.append(f"{sym} ({expiry_reason})")
-            log.info(f"  {sym}: EXPIRED — {expiry_reason}")
+            expired_this_cycle.append(f"{sym} ({expiry_code})")
+            log.info(f"  {sym}: EXPIRED — {expiry_code}")
             continue
 
         pos_open = _count_positions(conn, target)

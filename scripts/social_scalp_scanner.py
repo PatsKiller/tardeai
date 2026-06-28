@@ -28,6 +28,7 @@ from finviz_enrichment import enrich_tickers
 from scoring import score_ticker, _load_weights
 from telegram_alert import send_telegram
 from scalp_ws_client import broadcast_scalp_update
+from social_route_policy import route_social_candidate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s")
 logger = logging.getLogger(__name__)
@@ -328,6 +329,109 @@ def ensure_results_table(conn):
     conn.commit()
 
 
+def apply_social_only_cap(decision: str, grade: str, catalyst_enrichment: dict):
+    """P0-2: cap an unverified social-only setup. A social surge with no credible catalyst
+    (SEC / news / analyst / RAG-confirmed) can never be GO or A+/A — it is downgraded to
+    WAIT / B. Pure and DB-free. Returns (decision, grade, capped: bool)."""
+    ce = catalyst_enrichment or {}
+    verified = bool(ce.get("catalyst_verified"))
+    has_news = bool(ce.get("catalyst")) and any(
+        kw in str(ce.get("catalyst_source", "")).lower()
+        for kw in ("sec", "news", "yahoo", "finnhub", "analyst", "press"))
+    if not verified and not has_news and (decision == "GO" or grade in ("A+", "A")):
+        return "WAIT", ("B" if grade in ("A+", "A") else grade), True
+    return decision, grade, False
+
+
+def alert_action_for(decision: str, grade: str = None) -> str:
+    """P0-2: which alert a FINAL (post-cap) decision warrants. Only a final GO fires the
+    GO-style scalp alert (and proposals-channel mirror); WAIT fires the soft wait alert;
+    everything else (AVOID) is store-only. Returns 'GO' | 'WAIT' | 'NONE'.
+
+    Alerting MUST key off this final decision, never the raw score — a capped social-only
+    WAIT with a high raw score must not look like an actionable GO."""
+    d = (decision or "").strip().upper()
+    if d == "GO":
+        return "GO"
+    if d == "WAIT":
+        return "WAIT"
+    return "NONE"
+
+
+# ── P0-6: end-to-end discovery traceability ────────────────────────────────────────────
+import hashlib as _hashlib
+import uuid as _uuid
+from datetime import datetime as _dt_trace, timezone as _tz_trace
+
+_TRACE_COL_CACHE: dict = {}
+
+
+def gen_discovery_trace_id(symbol: str) -> str:
+    """Stable, unique per-candidate discovery trace id: soc-YYYYMMDD-SYMBOL-<rand8>.
+    Threaded scan → scalp_scan_results → trade_ai_scans → proposal → paper trade."""
+    day = _dt_trace.now(_tz_trace.utc).strftime("%Y%m%d")
+    return f"soc-{day}-{(symbol or 'NA').upper()}-{_uuid.uuid4().hex[:8]}"
+
+
+def discovery_source_meta(candidate: dict, catalyst_enrichment: dict, route: dict | None = None) -> dict:
+    """Source metadata for a social candidate — platforms, mention count, a content HASH (not
+    raw text), catalyst evidence source, route decision, final decision. Privacy-safe."""
+    candidate = candidate or {}
+    ce = catalyst_enrichment or {}
+    sample = str(candidate.get("sample_content") or "")
+    return {
+        "source_platforms": candidate.get("sources") or [],
+        "mention_count": candidate.get("mention_count"),
+        "sample_content_sha256": _hashlib.sha256(sample.encode("utf-8")).hexdigest()[:16] if sample else None,
+        "catalyst_evidence_source": ce.get("catalyst_source"),
+        "catalyst_verified": bool(ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed")),
+        "route": (route or {}).get("route"),
+        "route_actionability": (route or {}).get("actionability"),
+        "route_reason_codes": (route or {}).get("reason_codes"),
+    }
+
+
+def _has_trace_col(conn, table: str) -> bool:
+    """Cached check: does `table` have a discovery_trace_id column? (backward-compatible writes)."""
+    if table in _TRACE_COL_CACHE:
+        return _TRACE_COL_CACHE[table]
+    has = False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name=%s AND column_name='discovery_trace_id'", (table,))
+        has = cur.fetchone() is not None
+    except Exception:
+        has = False
+    _TRACE_COL_CACHE[table] = has
+    return has
+
+
+def stamp_discovery_trace(conn, table: str, symbol: str, trace_id: str) -> None:
+    """Set discovery_trace_id on the just-written row for `symbol` IF the column exists.
+    No-op (safe) when the column is missing — preserves backward compatibility."""
+    if not trace_id or not _has_trace_col(conn, table):
+        return
+    try:
+        cur = conn.cursor()
+        if table == "scalp_scan_results":
+            cur.execute("""UPDATE scalp_scan_results SET discovery_trace_id=%s
+                           WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
+                                     ORDER BY scanned_at DESC LIMIT 1)
+                             AND discovery_trace_id IS NULL""", (trace_id, symbol))
+        elif table == "trade_ai_scans":
+            cur.execute("""UPDATE trade_ai_scans SET discovery_trace_id=%s
+                           WHERE symbol=%s AND run_date=CURRENT_DATE
+                             AND discovery_trace_id IS NULL""", (trace_id, symbol))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug("discovery_trace stamp skipped (%s/%s): %s", table, symbol, e)
+
+
 def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
                      score: int, grade: str, decision: str, sources: list):
     """Store result in scalp_scan_results."""
@@ -349,7 +453,7 @@ def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
             finviz_data.get("change_pct"),
             finviz_data.get("sector"),
             sources,
-            score >= GO_THRESHOLD,
+            decision == "GO",   # P0-2: alerted reflects the FINAL capped decision, not raw score
         ],
     )
     conn.commit()
@@ -615,21 +719,29 @@ def run_scan():
         grade = score_result.get("grade", "D")
         decision = score_result.get("decision", "AVOID")
 
-        # Social-only catalyst cap: max recommendation is WATCH unless confirmed
-        # by a credible source (SEC, news, analyst). Social surge alone is not
-        # sufficient for GO/A+. See shared_risk_rules.yaml catalyst_rules.
-        _catalyst_verified = bool(catalyst_enrichment.get("catalyst_verified"))
-        _has_news = bool(catalyst_enrichment.get("catalyst")) and \
-            any(kw in str(catalyst_enrichment.get("catalyst_source", "")).lower()
-                for kw in ('sec', 'news', 'yahoo', 'finnhub', 'analyst', 'press'))
-        if not _catalyst_verified and not _has_news:
-            if decision == "GO" or grade in ("A+", "A"):
-                logger.info(
-                    "%s — SOCIAL_ONLY_CATALYST cap: %s/%s → WAIT/B (no confirmed catalyst)",
-                    symbol, grade, decision)
-                decision = "WAIT"
-                if grade in ("A+", "A"):
-                    grade = "B"
+        # Social-only catalyst cap (P0-2): an unverified social surge can never be GO/A+ —
+        # downgraded to WAIT/B unless confirmed by a credible source (SEC/news/analyst/RAG).
+        _raw_decision, _raw_grade = decision, grade
+        decision, grade, _capped = apply_social_only_cap(decision, grade, catalyst_enrichment)
+        if _capped:
+            logger.info("%s — SOCIAL_ONLY_CATALYST cap: %s/%s → %s/%s (no confirmed catalyst)",
+                        symbol, _raw_grade, _raw_decision, grade, decision)
+
+        # P0-6: stable per-candidate discovery trace id (scan → row → proposal → trade).
+        discovery_trace_id = gen_discovery_trace_id(symbol)
+
+        # P0-5: explicit, deterministic routing to the correct strategy family.
+        _route_candidate = {
+            "symbol": symbol, "mention_count": mention_count,
+            "sources": candidate.get("sources", []), "strategy_tags": strategy_tags,
+            "sample_content": candidate.get("sample_content"),
+            "bull": candidate.get("bull", 0), "bear": candidate.get("bear", 0),
+        }
+        route = route_social_candidate(_route_candidate, finviz_data, catalyst_enrichment,
+                                       trace_id=discovery_trace_id)
+        logger.info("%s — route=%s actionability=%s reasons=%s trace=%s",
+                    symbol, route["route"], route["actionability"],
+                    ",".join(route["reason_codes"]), discovery_trace_id)
 
         logger.info(
             "%s — score %d (%s/%s) | RVOL %.1fx | mentions %d",
@@ -641,12 +753,14 @@ def run_scan():
             conn, symbol, mention_count, finviz_data,
             score, grade, decision, candidate["sources"],
         )
+        stamp_discovery_trace(conn, "scalp_scan_results", symbol, discovery_trace_id)
 
         # Harmonize: also upsert into trade_ai_scans
         _upsert_trade_ai_scans(
             conn, symbol, mention_count, finviz_data,
             score, grade, decision, candidate["sources"],
         )
+        stamp_discovery_trace(conn, "trade_ai_scans", symbol, discovery_trace_id)
 
         # === IER WRITE-BACK (non-fatal) ===
         try:
@@ -673,34 +787,35 @@ def run_scan():
                 "decision": decision,
                 "change_percent": str(finviz_data.get("change_pct", "")),
                 "rvol": float(finviz_data.get("rvol") or 0),
-                "catalyst_verified": False,
+                "catalyst_verified": bool(route["evidence"].get("catalyst_verified")),
                 "source": "social",
                 "mention_count": mention_count,
+                "route": route["route"],
+                "actionability": route["actionability"],
+                "discovery_trace_id": discovery_trace_id,
             })
         except Exception as e:
             logger.warning("WS broadcast skipped for %s: %s", symbol, e)
 
-        if score >= APLUS_THRESHOLD:
-            # A+ — full alert with trade plan prompt
+        # P0-2 + P0-5: alerting keys off the FINAL capped decision, NOT the raw score, AND the
+        # route's actionability is authoritative. A social-only / watch_only / manual-review route
+        # can NEVER fire a GO-style alert or mirror to the proposals channel, even if the score is high.
+        _action = alert_action_for(decision, grade)
+        if _action == "GO" and route["actionability"] != "GO":
+            logger.info("%s — GO alert suppressed: route=%s actionability=%s (not auto-tradeable)",
+                        symbol, route["route"], route["actionability"])
+            _action = "WAIT"
+        if _action == "GO":
             send_scalp_alert(
                 symbol, score, grade, decision, finviz_data,
                 mention_count, candidate["sources"],
                 candidate.get("bull", 0), candidate.get("bear", 0),
             )
             go_count += 1
-        elif score >= GO_THRESHOLD:
-            # GO — standard alert
-            send_scalp_alert(
-                symbol, score, grade, decision, finviz_data,
-                mention_count, candidate["sources"],
-                candidate.get("bull", 0), candidate.get("bear", 0),
-            )
-            go_count += 1
-        elif score >= 30:
-            # WAIT — softer notification, no trade action
+        elif _action == "WAIT":
+            # WAIT — softer notification, no trade action, no proposals-channel mirror
             _send_wait_alert(symbol, score, finviz_data, mention_count)
-        # AVOID (<30) — stored only, no alert
-        # Dashboard reads scalp_scan_results directly to show AVOID list
+        # AVOID — stored only, no alert. Dashboard reads scalp_scan_results to show the AVOID list.
 
     logger.info("=== Scan complete: %d GO/A+ alerts fired ===", go_count)
     conn.close()

@@ -170,15 +170,15 @@ entry_criteria:
       - 1.0
       - 25.0
   - id: FLOAT_LOW
-    description: Float under 100M shares (preferred under 20M)
+    description: Float under 20M shares (preferred under 10M)   # aligned to screen_filters.max_float_m (P0-3)
     metric: float_m
     operator: lte
-    value: 100
+    value: 20
   - id: ENTRY_WINDOW
-    description: Current time before 13:30 ET
+    description: Current time within intraday_execution window (06:00–12:00 ET)   # aligned to intraday_execution (P0-3)
     metric: current_time_et
     operator: lte
-    value: 810
+    value: 720   # 12:00 ET in minutes-from-midnight (matches intraday_execution.trading_window_et.end)
 exit_rules:
   stop_method: fixed_pct
   stop_max_pct: 0.15
@@ -186,7 +186,10 @@ exit_rules:
   intraday_exit_required: true
   no_overnight_hold: true
 lifecycle:
-  proposal_expiry_hours: 4
+  # P0-3: intraday_execution.proposal_ttl_minutes is the SINGLE SOURCE OF TRUTH for proposal TTL.
+  # The old proposal_expiry_hours:4 contradicted the 30-minute scalp TTL and is removed.
+  proposal_expiry_minutes: 30
+  source_of_truth: intraday_execution.proposal_ttl_minutes
   overnight_allowed: false
   max_hold_days: 0
 risk:
