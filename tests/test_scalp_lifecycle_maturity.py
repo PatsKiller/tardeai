@@ -31,12 +31,23 @@ def main():
     final, caps = apply_caps(5.0, ev, dims)
     check("all-good gate-met → uncapped 5.0", final == 5.0 and not caps)
 
-    # 3. Validation sample unmet caps at 4.4.
-    ev2 = {**_all_good_ev(), "funnel_gate_met": False}
+    # 3. Validation sample unmet (1-29 confirmed) caps at 4.4.
+    ev2 = {**_all_good_ev(), "funnel_gate_met": False, "closed_paper_trades": 2}
     final, caps = apply_caps(5.0, ev2, ev2)
-    check("no validation sample caps at 4.4", final == 4.4)
+    check("insufficient sample (2/30) caps at 4.4", final == 4.4)
     check("4.4 cap reason cites validation sample",
           any(c["cap"] == 4.4 and "validation sample" in c["reason"] for c in caps))
+
+    # 3b. ZERO confirmed sample caps at 4.3 (P0-2).
+    ev2b = {**_all_good_ev(), "funnel_gate_met": False, "closed_paper_trades": 0}
+    final, caps = apply_caps(5.0, ev2b, ev2b)
+    check("zero confirmed sample caps at 4.3", final == 4.3)
+    check("4.3 cap reason cites NO confirmed sample",
+          any(c["cap"] == 4.3 and "NO confirmed" in c["reason"] for c in caps))
+
+    # 3c. None (unknown) confirmed sample also caps at 4.3.
+    ev2c = {**_all_good_ev(), "funnel_gate_met": False, "closed_paper_trades": None}
+    check("unknown sample caps at 4.3", apply_caps(5.0, ev2c, ev2c)[0] == 4.3)
 
     # 4. Config conflict caps at 4.0.
     ev3 = {**_all_good_ev(), "config_ok": False, "config_test": False}

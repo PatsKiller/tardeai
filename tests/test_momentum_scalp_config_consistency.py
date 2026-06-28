@@ -80,6 +80,23 @@ def main():
     r = validate_strategy_config("y", {"timeframe_class": "SHORT_SWING"})
     check("non-intraday strategy passes (not gated)", r["ok"])
 
+    # 8. P0-2: stale human-facing window language (13:30 ET) is caught.
+    bad = copy.deepcopy(GOOD)
+    bad["prompt_context"] = {"key_questions": ["Are we within the entry window (before 13:30 ET)?"]}
+    r = validate_strategy_config("x", bad)
+    check("stale 13:30 prompt text fails", not r["ok"])
+    check("stale window code present", any(e["code"] == "STALE_WINDOW_TEXT" for e in r["errors"]))
+
+    # 9. The REAL momentum_scalp.yaml prompt_context has no stale 13:30 language.
+    real = validate_strategy_config("momentum_scalp")
+    check("real momentum_scalp has no stale window text",
+          not any(e["code"] == "STALE_WINDOW_TEXT" for e in real["errors"]))
+
+    # 10. Correct in-window prompt language (06:00–12:00) passes.
+    ok_cfg = copy.deepcopy(GOOD)
+    ok_cfg["prompt_context"] = {"key_questions": ["Are we within 06:00–12:00 ET?"]}
+    check("correct window prompt text passes", validate_strategy_config("x", ok_cfg)["ok"])
+
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     return 1 if FAIL else 0
 

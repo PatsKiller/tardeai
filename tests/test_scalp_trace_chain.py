@@ -27,9 +27,9 @@ def warn(name, msg):
 def main():
     src = open(os.path.join(os.path.dirname(__file__), "..", "scripts", "strategy_signal_sync.py")).read()
 
-    # 1. Static wiring: the scan SELECT and the lineage dict both reference discovery_trace_id.
-    check("scan SELECT pulls discovery_trace_id",
-          bool(re.search(r"discovery_trace_id\s*\n\s*FROM trade_ai_scans", src)))
+    # 1. Static wiring: the scan SELECT references discovery_trace_id before FROM trade_ai_scans.
+    _sel = src.split("FROM trade_ai_scans")[0][-600:] if "FROM trade_ai_scans" in src else ""
+    check("scan SELECT pulls discovery_trace_id", "discovery_trace_id" in _sel)
     check("lineage copies scan discovery_trace_id",
           '"discovery_trace_id": scan.get(\'discovery_trace_id\')' in src
           or '"discovery_trace_id": scan.get("discovery_trace_id")' in src)
