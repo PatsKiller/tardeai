@@ -1286,6 +1286,98 @@ def collect_execution_hardening_health() -> list[dict]:
                           route="/v3/trading?tab=Options"))
     except Exception:
         pass
+
+    # ── P1-6 monitoring extensions ──────────────────────────────────────────────────
+    # 1. Release manifest WARN/FAIL (read the auto-generated manifest's status line).
+    try:
+        from pathlib import Path as _P
+        man = _P(__file__).resolve().parent.parent / "docs" / "project" / "RELEASE_MANIFEST_LATEST.md"
+        if man.exists():
+            st = ""
+            for line in man.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("Status:"):
+                    st = line.split(":", 1)[1].strip()
+                    break
+            if st == "FAIL":
+                out.append(_f("execution_health", "release_manifest_fail", "critical",
+                              "Release manifest status FAIL — live-adjacent dirty or validator failed",
+                              route="/v3/system",
+                              recommended_action="Run scripts/validate_release_readiness.py --json --skip-build"))
+            elif st == "WARN":
+                out.append(_f("execution_health", "release_manifest_warn", "warning",
+                              "Release manifest WARN (non-classified dirty files present)",
+                              route="/v3/system",
+                              recommended_action="Classify/clean dirty files; rerun release readiness"))
+    except Exception:
+        pass
+
+    # 2. Audit-ledger coverage of live-adjacent event types (write/verify failure → blocker).
+    try:
+        from audit_ledger import coverage_report
+        cov = coverage_report(release_mode=cfg.get("ledger_release_mode", "review"))
+        if cov.get("status") == "FAIL":
+            out.append(_f("execution_health", "audit_ledger_coverage_fail", "critical",
+                          f"audit ledger coverage FAIL: missing {cov.get('missing_critical')}",
+                          recommended_action="Investigate ledger write path before live-adjacent run",
+                          route="/v3/system"))
+        elif cov.get("status") == "WARN" and cov.get("any_live_activity"):
+            out.append(_f("execution_health", "audit_ledger_coverage_warn", "warning",
+                          f"audit ledger missing expected events: {cov.get('missing_expected')[:5]}",
+                          route="/v3/system"))
+    except Exception as e:
+        out.append(_f("execution_health", "audit_ledger_coverage_error", "info", str(e)[:120]))
+
+    # 3. Stale OPERATOR_APPROVED records specifically (separate from SUBMIT_REQUESTED).
+    try:
+        oa = _db("""SELECT COUNT(*) AS c FROM broker_order_intents
+                    WHERE state='OPERATOR_APPROVED'
+                      AND updated_at < NOW() - (%s || ' minutes')::interval""",
+                 (int(cfg.get("stale_operator_approved_minutes", 60)),), fetch="one")
+        if oa and int(oa.get("c") or 0) > 0:
+            out.append(_f("execution_health", "stale_operator_approved", "warning",
+                          f"{oa['c']} OPERATOR_APPROVED intents stale without submit",
+                          count=int(oa["c"]), route="/v3/trading?tab=Broker+Orders",
+                          recommended_action="Reconcile or expire stale approvals"))
+    except Exception:
+        pass
+
+    # 4. Stale option chain snapshots (live options path depends on fresh broker chains).
+    try:
+        snap = _db("""SELECT EXTRACT(EPOCH FROM (NOW()-MAX(captured_at)))/60.0 AS age_min
+                      FROM options_chain_snapshots""", fetch="one")
+        if snap and snap.get("age_min") is not None:
+            age = float(snap["age_min"])
+            warn_min = float(cfg.get("chain_snapshot_warn_min", 1440))
+            if age > warn_min:
+                out.append(_f("execution_health", "option_chain_snapshot_stale", "warning",
+                              f"newest option chain snapshot is {age/60.0:.1f}h old",
+                              age_minutes=round(age, 1), route="/v3/trading?tab=Options",
+                              recommended_action="Refresh option chain snapshots (vol-analytics cron)"))
+    except Exception:
+        pass
+
+    # 5. AI critique stale rate + 6. replay-integrity (degraded) rate.
+    try:
+        crit = _db("""SELECT COUNT(*) AS total,
+                             SUM(CASE WHEN stale THEN 1 ELSE 0 END) AS stale_n,
+                             SUM(CASE WHEN status='degraded' THEN 1 ELSE 0 END) AS degraded_n
+                      FROM journal_ai_critiques""", fetch="one")
+        total = int((crit or {}).get("total") or 0)
+        if total >= int(cfg.get("critique_min_sample", 20)):
+            stale_rate = int((crit or {}).get("stale_n") or 0) / total * 100.0
+            degraded_rate = int((crit or {}).get("degraded_n") or 0) / total * 100.0
+            if stale_rate >= float(cfg.get("critique_stale_warn_pct", 25)):
+                out.append(_f("intelligence_quality", "ai_critique_stale_rate", "warning",
+                              f"{stale_rate:.0f}% of AI critiques are stale (tags changed)",
+                              rate_pct=round(stale_rate, 1), route="/v3/trade-in-view",
+                              recommended_action="Regenerate stale critiques"))
+            if degraded_rate >= float(cfg.get("replay_degraded_warn_pct", 20)):
+                out.append(_f("intelligence_quality", "replay_integrity_degraded_rate", "warning",
+                              f"{degraded_rate:.0f}% of critiques degraded (replay integrity)",
+                              rate_pct=round(degraded_rate, 1), route="/v3/trade-in-view",
+                              recommended_action="Investigate replay markers / time integrity"))
+    except Exception:
+        pass
     return out
 
 

@@ -93,6 +93,33 @@ Report readiness (`score_trade_tags`) treats `ai_critique` and `ai_critique_stal
 6. **Coaching**: Execution Coach / Morning Brief include critique bullets.
 7. **Error state**: Force generation on invalid trade_key → error persisted, Regenerate still works.
 
+## Methodology hardening (P1-4)
+
+The critique is **deterministic-first**. Numbers, times, and indicator values come only from
+replay bars + `trade_execution_quality` + journal tags. The LLM contributes *prose only* and
+can never overwrite deterministic facts:
+
+- `_deterministic_narrative` is always computed and stored verbatim under the critique's
+  `deterministic_facts` key. `_merge_llm_narrative` layers LLM prose on top but retains the
+  deterministic summary as `narrative.deterministic_base_summary`.
+- **Provenance captured per critique** (in `ai_critique_meta`): `prompt_version`,
+  `context_hash` (hash of the deterministic inputs), `response_hash` (hash of the raw LLM
+  output, `null` when no LLM ran), and `deterministic_fallback` (true when the LLM did not
+  contribute a usable narrative).
+- **Replay-integrity dependency**: if replay markers are unresolved or chart time-integrity
+  fails, the critique `status` is `degraded` (not clean) with a `status_reason`. See
+  `replay_integrity_status`.
+- **Stale on tag change**: `tag_fingerprint` / `_stale_from_tags` flip the `stale` flag when
+  operator tags change after generation, and clear it when they match again.
+- **Invalid trade key**: `build_context` returns `None`; `generate_critique` persists an error
+  state that remains regenerable via `force=True`.
+- **Batch artifact**: `batch_generate_critiques` writes a machine-readable run record to
+  `data/runtime/ai_critique_batch_<date>.json`.
+- **Search/index mirror**: `_search_text` + `_upsert_index` keep `journal_ai_critiques` in
+  sync with the stored payload.
+
+Covered by `tests/test_journal_ai_critique.py`.
+
 ## Version
 
 `PROMPT_VERSION = ai_critique_v2` (in `scripts/journal_ai_critique.py`)

@@ -30,6 +30,7 @@ def _ensure_table(cur) -> None:
                      single_use BOOLEAN DEFAULT TRUE,
                      used_at TIMESTAMPTZ,
                      evidence_hash TEXT NOT NULL,
+                     evidence_hashes_json JSONB,
                      proposal_snapshot_json JSONB,
                      risk_snapshot_json JSONB,
                      quote_snapshot_json JSONB,
@@ -39,11 +40,65 @@ def _ensure_table(cur) -> None:
                      operator_attestation_text TEXT,
                      status TEXT DEFAULT 'approved',
                      created_at TIMESTAMPTZ DEFAULT NOW())""")
+    # Migration-safe: add the separate-hash column to pre-existing tables.
+    try:
+        cur.execute("ALTER TABLE evidence_bound_approvals ADD COLUMN IF NOT EXISTS evidence_hashes_json JSONB")
+    except Exception:
+        pass
 
 
 def _hash_snapshots(snapshots: dict) -> str:
     canonical = json.dumps(snapshots, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _hash_one(snapshot: Any) -> str:
+    """Canonical hash of a single bundle (dict/list/scalar). Stable across processes."""
+    canonical = json.dumps(snapshot if snapshot is not None else {},
+                           sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def compute_bundle_hashes(
+    *,
+    proposal_snapshot: dict | None = None,
+    risk_snapshot: dict | None = None,
+    quote_snapshot: dict | None = None,
+    chain_snapshot: dict | None = None,
+    model_snapshot: dict | None = None,
+    readiness_snapshot: dict | None = None,
+) -> dict:
+    """Compute SEPARATE, like-to-like canonical hashes for each evidence bundle.
+
+    Returns one hash per bundle plus an overall ``approval_evidence_hash`` that binds
+    them all. Revalidation MUST compare each regenerated bundle hash against its stored
+    counterpart of the SAME type — never an overall hash against a single-bundle hash
+    (that comparison is meaningless and produces false blocks / false confidence).
+
+    For the readiness bundle we prefer the readiness resolver's own ``evidence_hash``
+    (when present) so that ``readiness_hash`` stored here is identical in kind to what
+    ``evaluate_execution_readiness`` emits at submit time.
+    """
+    readiness_snapshot = readiness_snapshot or {}
+    readiness_self_hash = readiness_snapshot.get("evidence_hash") if isinstance(readiness_snapshot, dict) else None
+    bundles = {
+        "proposal": proposal_snapshot or {},
+        "risk": risk_snapshot or {},
+        "quote": quote_snapshot or {},
+        "chain": chain_snapshot or {},
+        "model": model_snapshot or {},
+        "readiness": readiness_snapshot or {},
+    }
+    hashes = {
+        "approval_evidence_hash": _hash_snapshots(bundles),
+        "proposal_snapshot_hash": _hash_one(proposal_snapshot),
+        "risk_snapshot_hash": _hash_one(risk_snapshot),
+        "quote_snapshot_hash": _hash_one(quote_snapshot),
+        "chain_snapshot_hash": _hash_one(chain_snapshot),
+        "model_snapshot_hash": _hash_one(model_snapshot),
+        "readiness_hash": readiness_self_hash or _hash_one(readiness_snapshot),
+    }
+    return hashes
 
 
 def create_evidence_approval(
@@ -66,15 +121,13 @@ def create_evidence_approval(
     conn = _conn()
     if not conn:
         return {"ok": False, "error": "db_unavailable"}
-    snapshots = {
-        "proposal": proposal_snapshot or {},
-        "risk": risk_snapshot or {},
-        "quote": quote_snapshot or {},
-        "chain": chain_snapshot or {},
-        "model": model_snapshot or {},
-        "readiness": readiness_snapshot or {},
-    }
-    evidence_hash = _hash_snapshots(snapshots)
+    bundle_hashes = compute_bundle_hashes(
+        proposal_snapshot=proposal_snapshot, risk_snapshot=risk_snapshot,
+        quote_snapshot=quote_snapshot, chain_snapshot=chain_snapshot,
+        model_snapshot=model_snapshot, readiness_snapshot=readiness_snapshot,
+    )
+    # `evidence_hash` remains the overall approval-evidence binding (backward compatible).
+    evidence_hash = bundle_hashes["approval_evidence_hash"]
     cid = correlation_id or str(uuid.uuid4())
     expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=ttl_minutes)
     cur = conn.cursor()
@@ -82,14 +135,15 @@ def create_evidence_approval(
     cur.execute(
         """INSERT INTO evidence_bound_approvals
            (proposal_id, intent_id, correlation_id, operator_user, approval_channel,
-            approved_at, expires_at, single_use, evidence_hash,
+            approved_at, expires_at, single_use, evidence_hash, evidence_hashes_json,
             proposal_snapshot_json, risk_snapshot_json, quote_snapshot_json,
             chain_snapshot_json, model_snapshot_json, readiness_snapshot_json,
             operator_attestation_text, status)
-           VALUES (%s,%s,%s,%s,%s,NOW(),%s,TRUE,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s,'approved')
+           VALUES (%s,%s,%s,%s,%s,NOW(),%s,TRUE,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s::jsonb,%s,'approved')
            RETURNING id""",
         (
             proposal_id, intent_id, cid, operator_user, approval_channel, expires, evidence_hash,
+            json.dumps(bundle_hashes, default=str),
             json.dumps(proposal_snapshot or {}, default=str),
             json.dumps(risk_snapshot or {}, default=str),
             json.dumps(quote_snapshot or {}, default=str),
@@ -105,10 +159,12 @@ def create_evidence_approval(
         from audit_ledger import record_event
         record_event("queue_approval", decision="approved", correlation_id=cid,
                      actor=operator_user, component="evidence_approval",
-                     snapshot={"evidence_hash": evidence_hash, "intent_id": intent_id})
+                     snapshot={"evidence_hash": evidence_hash, "readiness_hash": bundle_hashes["readiness_hash"],
+                               "intent_id": intent_id})
     except Exception:
         pass
     return {"ok": True, "approval_id": aid, "evidence_hash": evidence_hash,
+            "hashes": bundle_hashes,
             "expires_at": expires.isoformat(), "correlation_id": cid}
 
 
@@ -121,7 +177,7 @@ def fetch_approval(intent_id: str) -> dict | None:
     cur.execute(
         """SELECT id, proposal_id, intent_id, correlation_id, evidence_hash, expires_at,
                   used_at, status, proposal_snapshot_json, risk_snapshot_json, quote_snapshot_json,
-                  readiness_snapshot_json
+                  readiness_snapshot_json, evidence_hashes_json, chain_snapshot_json
            FROM evidence_bound_approvals
            WHERE intent_id=%s AND status='approved'
            ORDER BY id DESC LIMIT 1""",
@@ -130,11 +186,17 @@ def fetch_approval(intent_id: str) -> dict | None:
     row = cur.fetchone()
     if not row:
         return None
+    hashes = row[12] or {}
+    if isinstance(hashes, str):
+        try:
+            hashes = json.loads(hashes)
+        except Exception:
+            hashes = {}
     return {
         "id": row[0], "proposal_id": row[1], "intent_id": row[2], "correlation_id": row[3],
         "evidence_hash": row[4], "expires_at": row[5], "used_at": row[6], "status": row[7],
         "proposal_snapshot": row[8], "risk_snapshot": row[9], "quote_snapshot": row[10],
-        "readiness_snapshot": row[11],
+        "readiness_snapshot": row[11], "hashes": hashes, "chain_snapshot": row[13],
     }
 
 
@@ -143,46 +205,103 @@ def revalidate_before_submit(
     *,
     current_quote: dict | None = None,
     current_readiness: dict | None = None,
+    current_risk: dict | None = None,
+    current_chain: dict | None = None,
     kill_switch_check: bool = True,
+    require_readiness: bool = True,
 ) -> dict:
-    """Revalidate evidence-bound approval immediately before confirm/submit."""
+    """Revalidate evidence-bound approval immediately before confirm/submit.
+
+    Comparison is strictly LIKE-TO-LIKE: each regenerated bundle hash is compared only
+    against the stored hash of the SAME bundle type. We never compare the overall
+    approval-evidence hash against a single-bundle (e.g. readiness) hash — that produced
+    spurious blocks in the prior implementation. If a required bundle cannot be
+    regenerated, we fail closed.
+
+    Returns a dict whose ``checks`` field records each like-to-like comparison performed.
+    """
     rec = fetch_approval(intent_id)
     if not rec:
         return {"ok": False, "reason": "no_evidence_bound_approval", "hard_block": True}
+    stored = rec.get("hashes") or {}
+    checks: list[dict] = []
     now = dt.datetime.now(dt.timezone.utc)
     if rec.get("used_at"):
         return {"ok": False, "reason": "approval_already_used_single_use", "hard_block": True}
     exp = rec.get("expires_at")
     if exp and now > exp:
         return {"ok": False, "reason": "approval_expired", "hard_block": True}
+
+    # ── Quote: tolerance-based (price drift), NOT hash-exact — a 1-cent move must not block. ──
     orig_quote = rec.get("quote_snapshot") or {}
     if current_quote and orig_quote:
         op = _f(orig_quote.get("mid") or orig_quote.get("price"))
         cp = _f(current_quote.get("mid") or current_quote.get("price"))
         if op > 0 and cp > 0:
             move = abs(cp - op) / op * 100.0
+            checks.append({"bundle": "quote", "kind": "tolerance", "move_pct": round(move, 4),
+                           "tolerance_pct": QUOTE_TOLERANCE_PCT})
             if move > QUOTE_TOLERANCE_PCT:
                 return {"ok": False, "reason": f"quote_moved_{move:.2f}pct_beyond_tolerance",
-                        "hard_block": True, "snapshot": {"orig": op, "current": cp}}
+                        "hard_block": True, "snapshot": {"orig": op, "current": cp}, "checks": checks}
+
+    # ── Readiness: like-to-like readiness_hash, and hard-block status. ──
     if current_readiness and not current_readiness.get("ok"):
         return {"ok": False, "reason": "readiness_changed_to_block",
-                "hard_block": True, "blocks": current_readiness.get("hard_blocks")}
+                "hard_block": True, "blocks": current_readiness.get("hard_blocks"), "checks": checks}
+    stored_readiness_hash = stored.get("readiness_hash")
+    if current_readiness:
+        new_readiness_hash = current_readiness.get("evidence_hash") or current_readiness.get("readiness_hash")
+        if stored_readiness_hash and new_readiness_hash:
+            checks.append({"bundle": "readiness", "kind": "hash",
+                           "match": new_readiness_hash == stored_readiness_hash})
+            if new_readiness_hash != stored_readiness_hash:
+                return {"ok": False, "reason": "readiness_hash_changed", "hard_block": True,
+                        "orig": stored_readiness_hash, "current": new_readiness_hash, "checks": checks}
+    elif require_readiness:
+        # Submit context requires a regenerated readiness bundle — fail closed if absent.
+        return {"ok": False, "reason": "readiness_bundle_unavailable_fail_closed",
+                "hard_block": True, "checks": checks}
+
+    # ── Risk: like-to-like risk_snapshot_hash (exact). ──
+    if current_risk is not None:
+        stored_risk_hash = stored.get("risk_snapshot_hash")
+        new_risk_hash = _hash_one(current_risk)
+        if stored_risk_hash:
+            checks.append({"bundle": "risk", "kind": "hash", "match": new_risk_hash == stored_risk_hash})
+            if new_risk_hash != stored_risk_hash:
+                return {"ok": False, "reason": "risk_state_changed", "hard_block": True,
+                        "orig": stored_risk_hash, "current": new_risk_hash, "checks": checks}
+        else:
+            return {"ok": False, "reason": "risk_bundle_unavailable_fail_closed",
+                    "hard_block": True, "checks": checks}
+
+    # ── Chain: like-to-like chain_snapshot_hash (material change). ──
+    if current_chain is not None:
+        stored_chain_hash = stored.get("chain_snapshot_hash")
+        new_chain_hash = _hash_one(current_chain)
+        if stored_chain_hash:
+            checks.append({"bundle": "chain", "kind": "hash", "match": new_chain_hash == stored_chain_hash})
+            if new_chain_hash != stored_chain_hash:
+                return {"ok": False, "reason": "chain_changed_materially", "hard_block": True,
+                        "orig": stored_chain_hash, "current": new_chain_hash, "checks": checks}
+        else:
+            return {"ok": False, "reason": "chain_bundle_unavailable_fail_closed",
+                    "hard_block": True, "checks": checks}
+
+    # ── Kill switch: re-check at submit (post-approval activation must block). ──
     if kill_switch_check:
         try:
             from brokers.kill_switches import is_blocked
             blocked, reasons = is_blocked(live_submit=True)
             if blocked:
                 return {"ok": False, "reason": "kill_switch_after_approval",
-                        "hard_block": True, "reasons": reasons}
+                        "hard_block": True, "reasons": reasons, "checks": checks}
         except Exception:
-            return {"ok": False, "reason": "kill_switch_check_failed", "hard_block": True}
-    orig_hash = rec.get("evidence_hash")
-    if current_readiness:
-        new_hash = current_readiness.get("evidence_hash")
-        if new_hash and orig_hash and new_hash != orig_hash:
-            return {"ok": False, "reason": "evidence_hash_changed", "hard_block": True,
-                    "orig": orig_hash, "current": new_hash}
-    return {"ok": True, "evidence_hash": orig_hash, "approval_id": rec.get("id")}
+            return {"ok": False, "reason": "kill_switch_check_failed", "hard_block": True, "checks": checks}
+
+    return {"ok": True, "evidence_hash": rec.get("evidence_hash"),
+            "readiness_hash": stored_readiness_hash, "approval_id": rec.get("id"), "checks": checks}
 
 
 def consume_approval(intent_id: str) -> bool:

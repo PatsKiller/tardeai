@@ -1,0 +1,127 @@
+{
+  "_about": "Options hard-risk block fixture matrix (P1-3). Each case feeds evaluate_hard_risk_blocks (mode=live) and asserts a STABLE machine code, severity, source, function, and snapshot keys. Changing a code requires updating this fixture.",
+  "cases": [
+    {
+      "name": "earnings_blackout",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "dte": 7,
+                 "enterprise": {"earnings": {"in_blackout": true, "reason": "earnings in 3d"}}}},
+      "expect": {"code": "earnings_blackout", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "reason_contains": "earnings"}
+    },
+    {
+      "name": "ex_dividend_cc_risk",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "ex_div_within_dte": true,
+                 "ex_div_date": "2026-07-01", "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "ex_dividend_cc_risk", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["ex_div"]}
+    },
+    {
+      "name": "bs_estimate_only",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "data_source": "bs_estimate", "contracts": 1}},
+      "expect": {"code": "bs_estimate_only", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["data_source"]}
+    },
+    {
+      "name": "no_resolved_occ",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "occ_symbol": null, "contract": null, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "no_resolved_occ", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "reason_contains": "OCC"}
+    },
+    {
+      "name": "oi_below_threshold",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "enterprise": {"liquidity": {"pass": false, "issues": ["OI 10 below 50"]}}}},
+      "expect": {"code": "oi_below_threshold", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks"}
+    },
+    {
+      "name": "volume_below_threshold",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "enterprise": {"liquidity": {"pass": false, "issues": ["volume 1 below 5"]}}}},
+      "expect": {"code": "volume_below_threshold", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks"}
+    },
+    {
+      "name": "spread_too_wide",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "enterprise": {"liquidity": {"pass": false, "issues": ["spread 30% too wide"]}}}},
+      "expect": {"code": "spread_too_wide", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks"}
+    },
+    {
+      "name": "quote_stale",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "quote_age_seconds": 999, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "quote_stale", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["quote_age_seconds"]}
+    },
+    {
+      "name": "option_chain_stale",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "chain_age_seconds": 9999, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "option_chain_stale", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["chain_age_seconds"]}
+    },
+    {
+      "name": "market_closed",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "market_session": "closed", "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "market_closed", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "reason_contains": "session"}
+    },
+    {
+      "name": "max_contracts_per_order",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 999,
+                 "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "max_contracts_per_order", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["contracts"]}
+    },
+    {
+      "name": "max_per_strategy_notional",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "premium_total": 9999999, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "max_per_strategy_notional", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["notional"]}
+    },
+    {
+      "name": "assignment_exercise_risk",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "assignment_risk": true, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "assignment_exercise_risk", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["assignment_risk"]}
+    },
+    {
+      "name": "min_buying_power",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "buying_power": 100, "enterprise": {"liquidity": {"pass": true}}}},
+      "expect": {"code": "min_buying_power", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["buying_power", "min"]}
+    },
+    {
+      "name": "max_net_delta_pct",
+      "input": {"proposal": {"symbol": "TST", "strategy": "long_call", "contracts": 1,
+                 "enterprise": {"liquidity": {"pass": true}}},
+                "holdings": [{"market_value": 10000, "is_cash": false}],
+                "positions": [{"qty": 10, "delta": 1.0, "underlying_price": 100, "option_type": "call", "side": "LONG"}]},
+      "expect": {"code": "max_net_delta_pct", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["net_delta_pct", "cap"]}
+    },
+    {
+      "name": "max_symbol_notional_pct",
+      "input": {"proposal": {"symbol": "TST", "strategy": "long_call", "contracts": 1, "premium_total": 9000,
+                 "enterprise": {"liquidity": {"pass": true}}},
+                "holdings": [{"market_value": 10000, "is_cash": false}],
+                "positions": []},
+      "expect": {"code": "max_symbol_notional_pct", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks", "snapshot_keys": ["top_sym_pct", "cap"]}
+    },
+    {
+      "name": "enterprise_block_passthrough",
+      "input": {"proposal": {"symbol": "TST", "strategy": "covered_call", "contracts": 1,
+                 "enterprise": {"liquidity": {"pass": true}, "blocks": [{"code": "custom_enterprise_block", "reason": "policy", "severity": "hard", "source": "options_desk_enterprise", "function": "evaluate_hard_risk_blocks", "snapshot": {}}]}}},
+      "expect": {"code": "custom_enterprise_block", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "evaluate_hard_risk_blocks"}
+    }
+  ]
+}
