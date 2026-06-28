@@ -1,6 +1,6 @@
 # Audit Ledger Status
 
-_Generated: 2026-06-28T01:27:40.318228+00:00_  
+_Generated: 2026-06-28T02:06:07.289660+00:00_  
 _Source: `audit_ledger.verify_chain() + audit_ledger.coverage_report()`_  
 **Status: WARN**
 
@@ -11,7 +11,7 @@ Append-only hash-chained ledger. Chain verification does not mutate rows. Covera
 ```json
 {
   "ok": true,
-  "verified": 167
+  "verified": 277
 }
 ```
 
@@ -23,12 +23,12 @@ Append-only hash-chained ledger. Chain verification does not mutate rows. Covera
   "status": "WARN",
   "chain": {
     "ok": true,
-    "verified": 167
+    "verified": 277
   },
   "event_counts": {
     "readiness_evaluated": 35,
-    "order_lifecycle_transition": 17,
-    "readiness_blocked": 115
+    "order_lifecycle_transition": 33,
+    "readiness_blocked": 209
   },
   "expected_event_types": [
     "readiness_evaluated",
@@ -72,7 +72,7 @@ Append-only hash-chained ledger. Chain verification does not mutate rows. Covera
   ],
   "any_live_activity": true,
   "release_mode": "review",
-  "total_events": 167,
-  "generated_at": "2026-06-28T01:27:40.317925+00:00"
+  "total_events": 277,
+  "generated_at": "2026-06-28T02:06:07.289197+00:00"
 }
 ```

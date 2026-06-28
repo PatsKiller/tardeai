@@ -1,15 +1,15 @@
 # Maturity 4.5 Acceptance Checklist
 
-_Generated: 2026-06-28T01:27:40.319416+00:00_
+_Generated: 2026-06-28T02:06:07.291007+00:00_
 _Source: `python3 scripts/export_diligence_evidence.py` + `scripts/compute_maturity_score.py`_
 **Status: **4.5 BLOCKED****
 
 ## 1. Current maturity score
 
-- Final maturity (after caps): **3.75 / 5** (does not meet 4.5)
-- Raw weighted: 4.6 / 5
+- Final maturity (after caps): **4.35 / 5** (does not meet 4.5)
+- Raw weighted: 4.8 / 5
 - Caps applied:
-- release readiness FAIL → cap 3.75
+- release WARN (not classified non-live-adjacent) → cap 4.35
 
 See `MATURITY_SCORE_LATEST.md` for the full line-by-line breakdown.
 

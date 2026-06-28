@@ -1,6 +1,6 @@
 # Risk Gate Matrix
 
-_Generated: 2026-06-28T01:27:40.318389+00:00_  
+_Generated: 2026-06-28T02:06:07.289854+00:00_  
 _Source: `options_desk_enterprise.evaluate_hard_risk_blocks (see OPTIONS_RISK_BLOCK_MATRIX.md)`_  
 **Status: PASS**
 

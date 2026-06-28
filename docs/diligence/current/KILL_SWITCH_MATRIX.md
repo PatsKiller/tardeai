@@ -1,6 +1,6 @@
 # Kill Switch Matrix
 
-_Generated: 2026-06-28T01:27:40.283632+00:00_  
+_Generated: 2026-06-28T02:06:07.238286+00:00_  
 _Source: `brokers.kill_switches.status()`_  
 **Status: PASS**
 
