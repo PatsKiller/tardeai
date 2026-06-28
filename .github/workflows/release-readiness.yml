@@ -29,12 +29,15 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install pyyaml || true
 
-      - name: Run CI-equivalent release proof (read-only, no broker writes)
-        run: |
-          python3 scripts/run_release_ci_equivalent.py --json | tee ci_evidence.json
+      # Source-only proof: runs every code/source-level fence and SKIPS (never silently
+      # passes) the deployed-DB posture guards, which are proven by the deployed run.
+      # TRADE_AI_CI=1 (job env) makes the validators self-select source-only mode.
+      # No pipe — the script's exit code propagates honestly (no tee masking).
+      - name: Run CI-equivalent release proof (source-only, read-only, no broker writes)
+        run: python3 scripts/run_release_ci_equivalent.py --source-only
 
-      - name: Schwab write policy (must be green)
-        run: python3 scripts/validate_schwab_write_policy.py
+      - name: Schwab write policy — source-only (must be green)
+        run: python3 scripts/validate_schwab_write_policy.py --source-only
 
       - name: No broker write bypass (must be green)
         run: python3 tests/test_no_broker_write_bypass.py
@@ -45,6 +48,5 @@ jobs:
         with:
           name: ci-evidence
           path: |
-            ci_evidence.json
             docs/project/CI_EVIDENCE_LATEST.md
             data/runtime/ci_evidence_latest.json
