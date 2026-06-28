@@ -23,10 +23,19 @@ def main():
     os.environ["MOMENTUM_SCALP_PAPER_FAST_PATH"] = "1"
     os.environ.pop("MOMENTUM_SCALP_PAPER_FAST_PATH_SUBMIT", None)
     rep = maybe_run_after_generation(dry_run=True)
-    check("flag on → hook runs", rep is not None)
+    check("legacy flag on → hook runs", rep is not None)
     if rep:
-        check("hook runs in dry-run (no paper submit without explicit opt-in)", rep.get("mode") == "dry_run")
+        check("hook runs in dry-run (no submit without explicit opt-in)", rep.get("mode") == "dry_run")
     os.environ.pop("MOMENTUM_SCALP_PAPER_FAST_PATH", None)
+
+    # 2b. Canonical VALIDATION env flag also enables the hook.
+    os.environ["MOMENTUM_SCALP_VALIDATION_FAST_PATH"] = "1"
+    os.environ.pop("MOMENTUM_SCALP_VALIDATION_SUBMIT", None)
+    rep = maybe_run_after_generation(dry_run=True)
+    check("canonical MOMENTUM_SCALP_VALIDATION_FAST_PATH enables hook", rep is not None)
+    if rep:
+        check("canonical flag runs dry-run without submit opt-in", rep.get("mode") == "dry_run")
+    os.environ.pop("MOMENTUM_SCALP_VALIDATION_FAST_PATH", None)
 
     # 3. Dedup/limits gate (pure):
     check("open paper trade blocks duplicate", submission_allowed(open_count=1, today_count=0)[0] is False)
