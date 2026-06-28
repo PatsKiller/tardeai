@@ -109,9 +109,25 @@ def evaluate_execution_readiness(
     asset_class: str = "equity",
     broker: str = "schwab",
     account_key: str | None = None,
-    mode: str = "live",
+    mode: str = "submit",
 ) -> dict:
-    """Evaluate all gates for a submit/preflight decision. Fail-closed on any unknown."""
+    """Evaluate all gates for a submit/preflight decision. Fail-closed on any unknown.
+
+    Modes (P0-4 — preflight readiness is separated from submit readiness):
+      * ``preflight``  — evaluate deterministic gates only; if everything deterministic
+                          passes and only operator confirmation remains, return
+                          ``operator_required`` WITHOUT marking gates failed. No 2FA hard block.
+      * ``submit``     — require ALL deterministic gates AND operator 2FA; missing 2FA is a
+                          HARD block. (``live`` is accepted as an alias of ``submit``.)
+      * ``dry_run``    — never writes; reports what would block.
+      * ``audit``      — no side effects at all (no audit-ledger write); full gate matrix.
+    An unknown mode is treated as ``submit`` (strictest / fail-closed).
+    """
+    raw_mode = mode
+    if mode in ("live", "operator_required"):
+        mode = "submit" if mode == "live" else "preflight"
+    if mode not in ("preflight", "submit", "dry_run", "audit"):
+        mode = "submit"
     correlation_id = str(
         getattr(intent_or_proposal, "correlation_id", None)
         or (intent_or_proposal or {}).get("correlation_id")
@@ -222,7 +238,10 @@ def evaluate_execution_readiness(
     if asset_class == "option" and isinstance(intent_or_proposal, dict):
         try:
             import options_desk_enterprise as ent
-            blocks = ent.evaluate_hard_risk_blocks(intent_or_proposal, mode=mode)
+            # Always evaluate hard risk blocks for an options readiness check, regardless of
+            # the readiness mode (preflight/submit/dry_run/audit all surface would-be blocks).
+            risk_mode = "submit" if mode in ("submit", "audit") else "preflight"
+            blocks = ent.evaluate_hard_risk_blocks(intent_or_proposal, mode=risk_mode)
             for b in blocks:
                 _collect(_gate(b["code"], False, b["reason"], source=b.get("source", "options_desk_enterprise"),
                                snapshot=b.get("snapshot")))
@@ -259,9 +278,18 @@ def evaluate_execution_readiness(
         if chain_age is not None and float(chain_age) > max_chain:
             _collect(_gate("option_chain_fresh", False, f"chain stale {chain_age}s"))
 
-    # 2FA
-    if mode in ("live", "operator_required"):
-        _collect(_operator_2fa(intent_id))
+    # 2FA — operator confirmation gate. Classification is mode-dependent (P0-4):
+    #   submit            → missing 2FA is a HARD block (submit readiness)
+    #   preflight/dry_run → missing 2FA is an OPERATOR-REQUIRED step, not a safety failure
+    #   audit             → recorded in the matrix only
+    twofa_gate = _operator_2fa(intent_id)
+    gate_results[twofa_gate["code"]] = twofa_gate
+    if not twofa_gate["ok"]:
+        if mode == "submit":
+            hard_blocks.append({"code": twofa_gate["code"], "reason": twofa_gate["reason"],
+                                "source": twofa_gate.get("source")})
+        else:
+            required_operator_steps.append("Complete operator 2FA (type ticker or telegram code)")
 
     # Broker ack rule (informational at preflight)
     _collect(_gate("broker_ack_required", True,
@@ -279,45 +307,76 @@ def evaluate_execution_readiness(
     }
     evidence_hash = _evidence_hash(snapshots)
 
-    ok = len(hard_blocks) == 0
-    if not ok:
+    informational_gates = [
+        {"code": g["code"], "reason": g["reason"]}
+        for g in gate_results.values() if g.get("severity") == "info"
+    ]
+
+    deterministic_ok = len(hard_blocks) == 0
+    twofa_ok = bool(gate_results.get("operator_2fa_confirmed", {}).get("ok"))
+    global_ok = bool(gate_results.get("global_live_allowed", {}).get("ok"))
+    paper = _paper_mode()
+
+    if mode == "audit":
+        result_mode = "audit"
+    elif not deterministic_ok:
         result_mode = "blocked"
-    elif mode == "dry_run" or _paper_mode():
+    elif mode == "dry_run" or paper:
         result_mode = "dry_run"
-    elif not gate_results.get("operator_2fa_confirmed", {}).get("ok"):
-        result_mode = "operator_required"
-        required_operator_steps.extend(["Complete operator 2FA (type ticker or telegram code)"])
-    elif not gate_results.get("global_live_allowed", {}).get("ok"):
+    elif not global_ok:
         result_mode = "blocked"
         required_operator_steps.append("Enable global live locks via operator procedure (not autonomous)")
+    elif not twofa_ok:
+        # Reachable only in preflight (submit makes missing 2FA a hard block above).
+        result_mode = "operator_required"
+        required_operator_steps.append("Complete operator 2FA (type ticker or telegram code)")
     else:
         result_mode = "ready_after_approval"
 
+    if result_mode == "audit":
+        ok_out = deterministic_ok
+    else:
+        ok_out = deterministic_ok and result_mode in ("dry_run", "ready_after_approval")
+
+    final_submit_ready = bool(
+        mode == "submit" and deterministic_ok and global_ok and twofa_ok
+        and not paper and result_mode == "ready_after_approval"
+    )
+
     out = {
-        "ok": ok and result_mode in ("dry_run", "ready_after_approval"),
+        "ok": ok_out,
         "mode": result_mode,
+        "requested_mode": raw_mode,
         "hard_blocks": hard_blocks,
+        "operator_required_steps": list(dict.fromkeys(required_operator_steps)),
         "soft_warnings": soft_warnings,
+        "informational_gates": informational_gates,
+        "final_submit_ready": final_submit_ready,
+        # back-compat alias retained for existing callers/tests
         "required_operator_steps": list(dict.fromkeys(required_operator_steps)),
         "gate_results": gate_results,
         "correlation_id": correlation_id,
         "evidence_hash": evidence_hash,
+        "readiness_hash": evidence_hash,  # like-to-like key for evidence_approval revalidation
         "generated_at": _iso(),
-        "paper_mode": _paper_mode(),
+        "paper_mode": paper,
         "autonomous_live_submit_allowed": False,
     }
-    try:
-        from audit_ledger import record_event
-        record_event(
-            "readiness_evaluated",
-            decision=result_mode,
-            reason=hard_blocks[0]["reason"] if hard_blocks else "pass",
-            correlation_id=correlation_id,
-            component="execution_readiness",
-            snapshot={"evidence_hash": evidence_hash, "ok": out["ok"], "mode": result_mode},
-        )
-    except Exception:
-        pass
+    # ``audit`` mode is strictly side-effect-free — no audit-ledger write.
+    if mode != "audit":
+        try:
+            from audit_ledger import record_event
+            record_event(
+                "readiness_evaluated" if ok_out else "readiness_blocked",
+                decision=result_mode,
+                reason=hard_blocks[0]["reason"] if hard_blocks else "pass",
+                correlation_id=correlation_id,
+                component="execution_readiness",
+                snapshot={"evidence_hash": evidence_hash, "ok": ok_out, "mode": result_mode,
+                          "requested_mode": raw_mode},
+            )
+        except Exception:
+            pass
     return out
 
 

@@ -213,6 +213,18 @@ def is_overnight(strategy_id: str) -> bool:
     return strategy_id not in INTRADAY_STRATEGIES
 
 
+def intraday_window_status(strategy_id: str, *, now_et=None) -> dict:
+    """Fail-closed intraday trading-window evaluation for a strategy (P0-3).
+
+    Single source of truth for any auto-route / auto-approval path that must respect a
+    strategy's intraday execution window. A missing or malformed
+    ``intraday_execution.trading_window_et`` for an intraday strategy returns
+    ``blocked=True`` with code ``intraday_window_config_invalid`` — never fail-open.
+    Non-intraday strategies return ``applicable=False`` (unrestricted)."""
+    from intraday_window import evaluate_intraday_window
+    return evaluate_intraday_window(strategy_id, now_et=now_et, intraday=is_intraday(strategy_id))
+
+
 def get_monitor_interval(strategy_id: str) -> int:
     tc = get_timeframe_class(strategy_id)
     return MONITOR_INTERVALS.get(tc, 60)

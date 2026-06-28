@@ -1,13 +1,19 @@
 # Release Readiness
 
+_Generated: 2026-06-28T02:05:13.781589+00:00_  
+_Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_  
+**Status: WARN_NON_LIVE_ADJACENT**
+
+Release readiness must be PASS or explicitly justified WARN with no live-adjacent dirty files.
+
 ```json
 {
   "blockers": [],
   "checks": [
     {
-      "detail": "dirty_count=7, but no live-broker/secrets dirty files",
+      "detail": "dirty_count=15, no live-broker/secrets dirty files",
       "name": "repo_hygiene_report",
-      "returncode": 0,
+      "returncode": null,
       "status": "WARN"
     },
     {
@@ -23,16 +29,16 @@
       "status": "PASS"
     },
     {
-      "detail": "  26/26 guards green",
+      "detail": "  27/27 guards green",
       "name": "python3 scripts/validate_schwab_write_policy.py",
       "returncode": 0,
       "status": "PASS"
     },
     {
-      "detail": "skipped or package.json missing",
-      "name": "command_center_v3_build",
+      "detail": "command-center-v3 present, build script defined, dist/index.html built",
+      "name": "frontend_smoke",
       "returncode": null,
-      "status": "WARN"
+      "status": "PASS"
     },
     {
       "detail": "}",
@@ -53,7 +59,7 @@
       "status": "PASS"
     },
     {
-      "detail": "6 passed, 0 failed",
+      "detail": "11 passed, 0 failed",
       "name": "python3 tests/test_no_broker_write_bypass.py",
       "returncode": 0,
       "status": "PASS"
@@ -65,13 +71,35 @@
       "status": "PASS"
     }
   ],
+  "dirty_classification": {
+    "live_adjacent": [],
+    "other": [],
+    "runtime_generated": [
+      "docs/diligence/current/AUDIT_LEDGER_SAMPLE.jsonl",
+      "docs/diligence/current/AUDIT_LEDGER_STATUS.md",
+      "docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md",
+      "docs/diligence/current/CONTROL_MATRIX.md",
+      "docs/diligence/current/CURRENT_EXECUTION_STATE.md",
+      "docs/diligence/current/KILL_SWITCH_MATRIX.md",
+      "docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md",
+      "docs/diligence/current/MATURITY_SCORE_LATEST.md",
+      "docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md",
+      "docs/diligence/current/ORDER_LIFECYCLE.md",
+      "docs/diligence/current/RELEASE_READINESS.md",
+      "docs/diligence/current/RISK_GATE_MATRIX.md",
+      "docs/diligence/current/TEST_EVIDENCE.md",
+      "docs/project/CI_EVIDENCE_LATEST.md",
+      "docs/project/RELEASE_MANIFEST_LATEST.md"
+    ]
+  },
+  "generated_at": "2026-06-28T02:05:13.751455+00:00",
   "manifest_path": "docs/project/RELEASE_MANIFEST_LATEST.md",
   "notes": [
     "This gate is read-only.",
     "It does not authorize broker execution.",
-    "A PASS means the repo is ready for review/release, not that live trading is enabled."
+    "PASS or WARN_NON_LIVE_ADJACENT means ready for review/release, not that live trading is enabled."
   ],
   "ok": true,
-  "status": "WARN"
+  "status": "WARN_NON_LIVE_ADJACENT"
 }
 ```

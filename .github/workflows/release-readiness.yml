@@ -1,0 +1,52 @@
+name: release-readiness
+
+# Read-only release-gating proof. NEVER performs broker writes — every step is a
+# validator or test. Mirrors scripts/run_release_ci_equivalent.py so the same proof
+# exists locally and in CI.
+
+on:
+  push:
+    branches: ["main", "hardening/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  release-readiness:
+    runs-on: ubuntu-latest
+    env:
+      ALPACA_MODE: paper
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install minimal deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pyyaml || true
+
+      # Source-only proof: runs every code/source-level fence and SKIPS (never silently
+      # passes) the deployed-DB posture guards, which are proven by the deployed run.
+      # TRADE_AI_CI=1 (job env) makes the validators self-select source-only mode.
+      # No pipe — the script's exit code propagates honestly (no tee masking).
+      - name: Run CI-equivalent release proof (source-only, read-only, no broker writes)
+        run: python3 scripts/run_release_ci_equivalent.py --source-only
+
+      - name: Schwab write policy — source-only (must be green)
+        run: python3 scripts/validate_schwab_write_policy.py --source-only
+
+      - name: No broker write bypass (must be green)
+        run: python3 tests/test_no_broker_write_bypass.py
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence
+          path: |
+            docs/project/CI_EVIDENCE_LATEST.md
+            data/runtime/ci_evidence_latest.json

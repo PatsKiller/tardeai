@@ -137,20 +137,105 @@ def tail(limit: int = 50) -> list[dict]:
 
 
 def verify_chain(limit: int = 500) -> dict:
-    """Verify hash chain integrity over recent events."""
+    """Verify hash chain integrity over recent events WITHOUT mutating any event row.
+
+    When ``limit`` is smaller than the ledger, only a window is verified; we seed the
+    expected previous hash from the first row's own ``prev_event_hash`` so a partial
+    window verifies its internal linkage rather than spuriously reporting a chain break.
+    """
     rows = tail(limit)
     if not rows:
         return {"ok": True, "verified": 0, "note": "empty ledger"}
-    prev = "GENESIS"
+    # Seed from the first row's recorded predecessor so a partial tail still verifies.
+    prev = rows[0].get("prev_event_hash") or "GENESIS"
     verified = 0
     for row in rows:
-        eh = row.pop("event_hash", None)
+        eh = row.get("event_hash")
         if row.get("prev_event_hash") != prev:
             return {"ok": False, "verified": verified, "error": "chain_break", "event_id": row.get("event_id")}
-        calc = _hash_payload(row)
-        row["event_hash"] = eh
+        # Recompute over the canonical body WITHOUT mutating the row (copy, drop the hash).
+        body = {k: v for k, v in row.items() if k != "event_hash"}
+        calc = _hash_payload(body)
         if eh != calc:
             return {"ok": False, "verified": verified, "error": "hash_mismatch", "event_id": row.get("event_id")}
         prev = eh
         verified += 1
     return {"ok": True, "verified": verified}
+
+
+# Live-adjacent event types we expect to see covered in a healthy live-adjacent ledger.
+EXPECTED_LIVE_ADJACENT_EVENTS = (
+    "readiness_evaluated", "readiness_blocked", "risk_block_emitted", "queue_approval",
+    "evidence_revalidation", "submit_requested", "broker_ack_received", "broker_reject",
+    "partial_fill", "fill", "cancel", "reconcile_result", "kill_switch_change",
+    "release_readiness_run",
+)
+
+# Events that are strictly required whenever any live-adjacent activity has occurred.
+CRITICAL_LIVE_ADJACENT_EVENTS = (
+    "readiness_evaluated", "queue_approval", "submit_requested", "reconcile_result",
+)
+
+
+def coverage_report(limit: int = 5000, *, release_mode: str = "review") -> dict:
+    """Report which expected live-adjacent event types are present in the ledger.
+
+    ``release_mode='live'`` escalates missing CRITICAL event types (when any live-adjacent
+    activity exists) to FAIL; otherwise they are WARN. A ledger write/verify failure is a
+    release blocker for live-adjacent mode.
+    """
+    rows = tail(limit)
+    present = {}
+    for r in rows:
+        et = r.get("event_type")
+        if et:
+            present[et] = present.get(et, 0) + 1
+    seen = set(present)
+    any_live_activity = bool(seen & set(EXPECTED_LIVE_ADJACENT_EVENTS))
+    missing_expected = [e for e in EXPECTED_LIVE_ADJACENT_EVENTS if e not in seen]
+    missing_critical = [e for e in CRITICAL_LIVE_ADJACENT_EVENTS if e not in seen]
+
+    chain = verify_chain(min(limit, 5000))
+    if not chain.get("ok"):
+        status = "FAIL"
+    elif any_live_activity and missing_critical:
+        status = "FAIL" if release_mode == "live" else "WARN"
+    elif missing_expected:
+        status = "WARN"
+    else:
+        status = "PASS"
+
+    return {
+        "ok": chain.get("ok", False),
+        "status": status,
+        "chain": chain,
+        "event_counts": present,
+        "expected_event_types": list(EXPECTED_LIVE_ADJACENT_EVENTS),
+        "present_event_types": sorted(seen),
+        "missing_expected": missing_expected,
+        "missing_critical": missing_critical,
+        "any_live_activity": any_live_activity,
+        "release_mode": release_mode,
+        "total_events": len(rows),
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+
+def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--verify", action="store_true")
+    ap.add_argument("--coverage", action="store_true")
+    ap.add_argument("--release-mode", default="review")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+    if args.coverage:
+        out = coverage_report(release_mode=args.release_mode)
+    else:
+        out = verify_chain()
+    print(json.dumps(out, indent=2, default=str))
+    return 0 if out.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

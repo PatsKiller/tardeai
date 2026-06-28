@@ -22031,7 +22031,15 @@ def _execution_current_state(query=None):
 
 
 def _execution_readiness(query=None):
-    """GET /api/v2/execution/readiness — evaluate readiness for optional proposal/intent params."""
+    """GET /api/v2/execution/readiness — evaluate readiness for optional proposal/intent params.
+
+    This is a read-only inspection endpoint, so it defaults to ``preflight`` mode (P0-4):
+    deterministic gates are evaluated and an outstanding operator 2FA is reported as an
+    operator-required step rather than a safety hard-block. Callers may pass ``mode=audit``
+    for a fully side-effect-free gate matrix, or ``mode=submit`` to see submit-strict
+    classification. The actual broker submit path always uses submit-mode readiness in
+    ``schwab_transport.place_order`` — this endpoint never submits.
+    """
     q = query or {}
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     from brokers.execution_readiness import evaluate_execution_readiness
@@ -22046,9 +22054,14 @@ def _execution_readiness(query=None):
         "data_source": g("data_source"),
         "market_session": g("market_session"),
     }
+    req_mode = g("mode", "preflight")
+    # Never let an inspection endpoint claim submit-readiness side effects; only the
+    # transport submits. Allowed inspection modes:
+    if req_mode not in ("preflight", "submit", "dry_run", "audit"):
+        req_mode = "preflight"
     return _json_clean(evaluate_execution_readiness(
         proposal, asset_class=g("asset_class", "option"), broker=g("broker", "schwab"),
-        account_key=g("account_key"), mode=g("mode", "live"),
+        account_key=g("account_key"), mode=req_mode,
     ))
 
 
