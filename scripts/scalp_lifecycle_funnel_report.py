@@ -93,37 +93,39 @@ def build_funnel(days: int = 30) -> dict:
     stage("proposals_expired_intraday", "Proposals expired on intraday TTL",
           f"SELECT COUNT(*) FROM paper_trade_proposals WHERE created_at > {since} "
           f"AND strategy_id = 'momentum_scalp' AND lifecycle_status = 'EXPIRED_INTRADAY'")
-    # NOTE (operator decision 2026-06-28): momentum_scalp paper testing does NOT require human paper
+    # NOTE (operator decision 2026-06-28): momentum_scalp validation testing does NOT require human paper
     # approval — deterministic gates replace the approval queue. "Proposals approved for paper" is no
     # longer a REQUIRED conversion stage; it is reported for context only (legacy ATM path).
     stage("proposals_approved_legacy", "Proposals approved for paper (legacy ATM — NOT required)",
           f"SELECT COUNT(*) FROM paper_trade_proposals WHERE created_at > {since} "
           f"AND strategy_id = 'momentum_scalp' AND status IN ('APPROVED_FOR_PAPER_TEST','BROKER_SUBMITTED')")
 
-    # ── Deterministic paper FAST-PATH metrics (replace approval as the conversion stage, P0-3) ──
+    # ── Deterministic VALIDATION FAST-PATH metrics (replace approval as the conversion stage, P0-3/P0-4) ──
     fast_path = {}
+    legacy_aliases = {}
     try:
-        import momentum_scalp_paper_fast_path as _fp
+        import momentum_scalp_validation_fast_path as _fp
         fpr = _fp.run(dry_run=True)
         if fpr.get("ok"):
             _cands = fpr.get("candidates", [])
             def _rc(code):
                 return sum(1 for c in _cands if code in (c.get("reason_codes") or []))
             fast_path = {
-                "paper_fast_path_candidates": fpr.get("candidates_evaluated", 0),
-                "paper_fast_path_gate_pass": fpr.get("would_submit_paper", 0),
-                "paper_fast_path_submitted": len(fpr.get("paper_submitted_symbols") or []),
-                "paper_fast_path_deferred": fpr.get("would_defer", 0),
-                "paper_fast_path_rejected": fpr.get("would_reject", 0),
-                "paper_fast_path_stale_quote_rejects": _rc("STALE_QUOTE"),
-                "paper_fast_path_large_float_scout_rejects":
+                "validation_fast_path_candidates": fpr.get("candidates_evaluated", 0),
+                "validation_fast_path_gate_pass": fpr.get("would_submit_validation", 0),
+                "validation_fast_path_submitted": len(fpr.get("validation_submitted_symbols") or []),
+                "validation_fast_path_deferred": fpr.get("would_defer", 0),
+                "validation_fast_path_rejected": fpr.get("would_reject", 0),
+                "validation_fast_path_stale_quote_rejects": _rc("STALE_QUOTE"),
+                "validation_fast_path_large_float_scout_rejects":
                     _rc("ROUTE_BLOCKED_LARGE_FLOAT_SOCIAL_SCOUT") + _rc("ROUTE_BLOCKED_MEME_SQUEEZE_MOMENTUM"),
-                "paper_fast_path_social_only_rejects": _rc("SOCIAL_ONLY") + _rc("ROUTE_BLOCKED_WATCH_ONLY"),
+                "validation_fast_path_social_only_rejects": _rc("SOCIAL_ONLY") + _rc("ROUTE_BLOCKED_WATCH_ONLY"),
             }
+            legacy_aliases = {k.replace("validation_", "paper_", 1): k for k in fast_path}
             for k, v in fast_path.items():
                 stages.append({"key": k, "label": k.replace("_", " "), "count": v, "available": True})
     except Exception as e:
-        warnings.append(f"fast_path: {str(e).splitlines()[0][:100]}")
+        warnings.append(f"validation_fast_path: {str(e).splitlines()[0][:100]}")
 
     # ── Paper orders + closed outcomes (P0-1: conservative TRUE attribution) ──
     # Operator correction 2026-06-28: prior counts over-attributed momentum_scalp paper trades
@@ -187,8 +189,8 @@ def build_funnel(days: int = 30) -> dict:
     conversions = {
         "scan_to_signal": conv("signals_scalp", "scalp_scans"),
         "signal_to_proposal": conv("proposals_scalp", "signals_scalp"),
-        "proposal_to_fast_path_gate_pass": conv("paper_fast_path_gate_pass", "proposals_scalp"),
-        "fast_path_gate_pass_to_opened": conv("paper_opened", "paper_fast_path_gate_pass"),
+        "proposal_to_fast_path_gate_pass": conv("validation_fast_path_gate_pass", "proposals_scalp"),
+        "fast_path_gate_pass_to_opened": conv("paper_opened", "validation_fast_path_gate_pass"),
         "opened_to_closed": conv("paper_closed", "paper_opened"),
     }
 
@@ -221,11 +223,14 @@ def build_funnel(days: int = 30) -> dict:
             "meme_squeeze_momentum": {"note": "manual-review route — no auto proposals"},
         },
         "conversions": conversions,
-        "paper_fast_path": fast_path,
-        "paper_approval_required": False,
-        "paper_approval_note": ("Momentum scalp paper testing does NOT require human paper approval — "
-                                "deterministic gates replace the approval queue. The paper fast path "
-                                "remains deterministic and paper-only; live trading is unchanged and "
+        "validation_fast_path": fast_path,
+        "validation_fast_path_legacy_aliases": legacy_aliases,
+        "confirmed_closed_validation_trades": closed,
+        "validation_gate_met": gate_met,
+        "validation_approval_required": False,
+        "validation_approval_note": ("Momentum scalp validation execution does NOT require human approval — "
+                                "deterministic gates replace validation approval for sample collection. The validation fast path "
+                                "remains deterministic and sandbox-only; live trading is unchanged and "
                                 "still requires operator confirmation + 2FA."),
         "reject_deferred_reasons": rej_rows,
         "validation_gate": {
@@ -236,7 +241,7 @@ def build_funnel(days: int = 30) -> dict:
             "calendar_months_observed": months_observed,
             "gate_met": gate_met,
             "live_ready_claim": False,  # NEVER claim live-readiness from this report
-            "status_note": ("Validation gate NOT met — momentum_scalp remains TESTING (paper only); "
+            "status_note": ("Validation gate NOT met — momentum_scalp remains TESTING (sandbox-only); "
                             f"confirmed closed paper trades = {closed} of {GATE['min_closed_paper_trades']}."
                             if not gate_met else
                             "Trade-count/win/PF thresholds met on available data; 6-month calendar "
@@ -259,8 +264,8 @@ def to_markdown(rep: dict) -> str:
          "", "Read-only. No broker writes. Social-only signals are advisory (WATCH/WAIT) only.", ""]
     if rep.get("operator_correction"):
         L += [f"> **{rep['operator_correction']}**", ""]
-    if rep.get("paper_approval_note"):
-        L += [f"> **Paper approval:** {rep['paper_approval_note']}", ""]
+    if rep.get("validation_approval_note"):
+        L += [f"> **Validation approval:** {rep['validation_approval_note']}", ""]
     _ms = (rep.get("families", {}) or {}).get("momentum_scalp", {})
     if _ms.get("confirmed_trade_ids") is not None:
         L += [f"**Confirmed momentum_scalp paper trades:** {_ms.get('closed')} closed "

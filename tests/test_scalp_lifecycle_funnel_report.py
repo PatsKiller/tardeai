@@ -27,11 +27,11 @@ def main():
     check("gate_met is boolean", isinstance(vg.get("gate_met"), bool))
 
     # Paper fast-path reframe: approval is no longer a required stage.
-    check("paper_approval_required is False", rep.get("paper_approval_required") is False)
-    check("paper-approval no-approval note present", "does NOT require human paper approval"
-          in (rep.get("paper_approval_note") or ""))
-    check("fast-path metrics present", set(["paper_fast_path_candidates", "paper_fast_path_gate_pass",
-          "paper_fast_path_submitted", "paper_fast_path_rejected"]) <= set((rep.get("paper_fast_path") or {}).keys()))
+    check("validation_approval_required is False", rep.get("validation_approval_required") is False)
+    check("validation no-approval note present", "does NOT require human approval"
+          in (rep.get("validation_approval_note") or ""))
+    check("fast-path metrics present", set(["validation_fast_path_candidates", "validation_fast_path_gate_pass",
+          "validation_fast_path_submitted", "validation_fast_path_rejected"]) <= set((rep.get("validation_fast_path") or {}).keys()))
     check("approved-for-paper not a required/blocking stage",
           not any(s["key"] == "proposals_approved" for s in rep.get("stages", [])))
 

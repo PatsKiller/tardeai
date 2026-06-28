@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-06-28 - Momentum scalp paper fast-path (no human paper approval)
+## 2026-06-28 - Momentum scalp validation fast-path (no human validation approval)
 
-Operator decision: momentum_scalp PAPER sample-collection does not require human/operator paper
+Operator decision: momentum_scalp Validation sample-collection does not require human/operator paper
 approval. Deterministic gates replace the approval queue so valid micro-float scalps convert to paper
 promptly. Live trading unchanged (operator confirmation + 2FA). No live broker writes; LLMs advisory
 only; social-only WATCH/WAIT; large-float scouts manual-review only. Maturity stays 4.4 (2/30).
@@ -12,10 +12,10 @@ only; social-only WATCH/WAIT; large-float scouts manual-review only. Maturity st
   + human_approval_required_for_promotion=true; live_execution_policy (operator+2FA, autonomous=false).
   Validator fails on paper-approval regression OR weakened live/2FA/promotion language.
 - **P0-2** momentum_scalp_paper_fast_path.py: deterministic gates (route/micro-float/window/TTL/plan/
-  R:R/fresh-quote/drift/liquidity) → existing safe submit_paper (paper-only, idempotent). dry-run-first.
+  R:R/fresh-quote/drift/liquidity) → existing safe submit_paper (sandbox-only, idempotent). dry-run-first.
 - **P0-5** env-gated wiring (MOMENTUM_SCALP_PAPER_FAST_PATH, default OFF) after generation; dedup +
   daily/concurrent limits; excludes EXECUTED proposals.
-- **P0-3/P0-4** funnel adds paper_fast_path_* metrics + "no paper approval" note (approved-for-paper no
+- **P0-3/P0-4** funnel adds paper_fast_path_* metrics + "no validation approval" note (approved-for-paper no
   longer a required/blocking stage); diagnosis recommended_fix = run fast-path promptly (not "approve
   faster"); SLA reframed to fast-path timing eligibility (within 1/3/5 min). Maturity not penalized
   for missing approval; still capped <4.5 until empirical sample met.
@@ -42,7 +42,7 @@ No real trades; no live broker writes; operator/2FA path unchanged; LLMs advisor
   Large-float names RETAINED + operator-visible, never standard momentum_scalp.
 - **P0-6** strategy_signal_sync.route_enforced_strategy: durable route overrides loose YAML/fallback
   (watch_only/scout/meme never create momentum_scalp; social+unverified never momentum_scalp).
-- **P0-7** momentum_scalp_fast_atm_runner.py (paper-only, dry-run-first): fresh in-window micro-cap
+- **P0-7** momentum_scalp_fast_atm_runner.py (sandbox-only, dry-run-first): fresh in-window micro-cap
   -> WOULD_APPROVE; stale/expired/out-of-window/social/scout blocked. No gate weakened, no live path.
 - **P1** freshness SLA report (27 stale-quote fails vs 0 TTL; median latency 9.95min, p95 173min;
   cadence eligibility) + route-policy replay (old score-only 30 vs new route-aware 0 tradeable,
@@ -249,7 +249,7 @@ system and not governed by the ATM. Now coupled — see `docs/PROTECTION_ATM_COU
 - `proposal_kind` discriminator + ATM entry-path guard (`proposal_kind='entry'`) so a protection
   row can never reach the bracket-entry submitter.
 - `protection_atm_pass`: PAPER positions auto-apply only the hard-guarded stop-UP actions
-  (MOVE_STOP_TO_PROFIT_LOCK/BREAKEVEN via apply_paper_protection_adjustment — paper-only, REPLACE,
+  (MOVE_STOP_TO_PROFIT_LOCK/BREAKEVEN via apply_paper_protection_adjustment — sandbox-only, REPLACE,
   risk-down-only); REAL stays operator (+2FA); other actions advisory. Wired into the ATM cycle +
   cron `*/15 9-16`. Flag `PROTECTION_ATM_AUTO_APPLY_PAPER` (default on).
 - `GET /api/v2/protection-proposals` unifies them into the proposals view (API-layer union, not a
@@ -899,7 +899,7 @@ coverage ⚠" so a high Hermes rank with CIO AVOID / 1 analyst reads as hype, no
 compatible). `auto_proposal_generator` stamps instrument_type + side=long on every proposal. New
 `POST /api/v2/rotation/propose-etf` creates an advisory **PENDING, manual-review-required** ETF/short
 proposal from a sleeve play (long: stop −8%/target +12%; short: stop +8%/target −10%; ~$500 review size;
-deduped per symbol). Paper-only, advisory — never auto-approved/executed; existing gates apply. UI:
+deduped per symbol). Sandbox-only, advisory — never auto-approved/executed; existing gates apply. UI:
 **Propose LONG / SHORT (review)** buttons on the ETF Sleeve Play cards.
 
 ## 2026-06-18 - ETFs & Funds as first-class instruments (research / UI / rotations, long+short)
@@ -1225,7 +1225,7 @@ Protective stop management is live across the whole book. New canonical referenc
 - **Health agent** `stop_health_check.py` → SIEM + Telegram + system_health + **Hermes** findings.
 - **Grok** R:R curation `grok_stop_review.py` (reviewed-by-GROK on the card; advisory).
 - **Alpaca = AUTOMATIC** `alpaca_stop_manager.py` — ratchets paper stops up to the R:R-optimal level
-  (`strategy_trailing_policy`), paper-only, no 2FA; all other accounts manual.
+  (`strategy_trailing_policy`), sandbox-only, no 2FA; all other accounts manual.
 - Live: 4 Schwab protective stops (DRS/KBR/KTOS fixed + IRDM trailing) + 4 Alpaca, all healthy.
 
 ## 2026-06-15 - Stage 2c: LIVE protective-stop submit wired (DRS POC) + email/telegram either-channel 2FA
@@ -2705,7 +2705,7 @@ lossy CSV -> 416 API rows (granular slippage fills, qualified/ordinary dividends
 noise filtered; $10,553 dividend income; backup taken). schwab_journal_builder.py built 131 round-trips
 (5-min fill aggregation + FIFO): 48.9% win, +$17,410.96 net (RGNT scalp +$59.91). schwab_journal_classifier.py
 adds LLM strategy/grade/lesson per trip. Surfaces: System->Brokers SchwabMonitor, Journal->Real Accounts
-SchwabJournal. Daily cron ingest->build->classify. Separate from paper_trades (gate stays paper-only).
+SchwabJournal. Daily cron ingest->build->classify. Separate from paper_trades (gate stays sandbox-only).
 Schwab WRITES still NOT_PROVEN/fenced (validator 12/12, api_write_enabled=false). Deferred: Gate-A 7-day
 roll-forward observation, real rate limits, CSV retirement (10-day dual-run), watchlists.
 

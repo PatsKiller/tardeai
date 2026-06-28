@@ -175,21 +175,26 @@ def validate_strategy_config(strategy_id: str, cfg: dict | None = None) -> dict:
     # language must remain intact, promotion must still need human review, and momentum_scalp
     # stays TESTING. A config that requires paper approval for sample collection is a regression.
     ptr = cfg.get("paper_trade_rules") or {}
+    vex = cfg.get("validation_execution") or {}
     vg = cfg.get("validation_gate") or {}
     lep = cfg.get("live_execution_policy") or {}
-    is_paper_fast_path = (ptr.get("submit_mode") == "paper_only_fast_path"
+    is_paper_fast_path = (vex.get("submit_mode") == "validation_fast_path"
+                          or ptr.get("submit_mode") in ("paper_only_fast_path", "validation_fast_path")
                           or strategy_id == "momentum_scalp")
     if is_paper_fast_path:
-        if vg.get("paper_approval_required_for_sample_collection") is True:
-            errors.append({"code": "PAPER_APPROVAL_REQUIRED_REGRESSION",
-                           "detail": "paper sample collection must be deterministic/no-approval "
-                                     "(paper_approval_required_for_sample_collection must be false)"})
-        if ptr.get("paper_approval_required") is True:
-            errors.append({"code": "PAPER_APPROVAL_REQUIRED_REGRESSION",
-                           "detail": "paper_trade_rules.paper_approval_required must be false for the fast path"})
-        if vg.get("human_approval_required_for_promotion") is False:
+        # Validation sample collection must be deterministic / no human approval (canonical + legacy).
+        if (vg.get("validation_approval_required_for_sample_collection") is True
+                or vg.get("paper_approval_required_for_sample_collection") is True
+                or vex.get("approval_required") is True
+                or ptr.get("paper_approval_required") is True):
+            errors.append({"code": "VALIDATION_APPROVAL_REQUIRED_REGRESSION",
+                           "detail": "validation sample collection must be deterministic/no-approval "
+                                     "(approval_required / *_for_sample_collection must be false)"})
+        # Promotion off TESTING must still need human review (canonical or legacy field).
+        if (vg.get("human_promotion_review_required") is False
+                or vg.get("human_approval_required_for_promotion") is False):
             errors.append({"code": "PROMOTION_APPROVAL_WEAKENED",
-                           "detail": "human_approval_required_for_promotion must remain true"})
+                           "detail": "human promotion review must remain required"})
         # LIVE operator-confirmation / 2FA language must be present and intact.
         if lep and (lep.get("operator_confirmation_required") is False
                     or lep.get("two_factor_required") is False
