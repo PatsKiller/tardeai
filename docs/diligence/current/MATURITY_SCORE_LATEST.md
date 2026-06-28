@@ -1,6 +1,6 @@
 # Trade AI — Maturity Score
 
-_Generated: 2026-06-28T01:32:09.610029+00:00_
+_Generated: 2026-06-28T02:07:44.233618+00:00_
 _Source: `python3 scripts/compute_maturity_score.py --json`_
 
 ## Result

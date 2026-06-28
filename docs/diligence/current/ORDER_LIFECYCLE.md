@@ -1,6 +1,6 @@
 # Order Lifecycle
 
-_Generated: 2026-06-28T01:27:40.318400+00:00_  
+_Generated: 2026-06-28T02:06:07.289867+00:00_  
 _Source: `brokers/order_lifecycle.py + brokers/reconcile_orders.py`_  
 **Status: PASS**
 

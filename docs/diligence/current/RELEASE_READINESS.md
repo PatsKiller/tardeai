@@ -1,6 +1,6 @@
 # Release Readiness
 
-_Generated: 2026-06-28T01:26:49.915661+00:00_  
+_Generated: 2026-06-28T02:05:13.781589+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_  
 **Status: WARN_NON_LIVE_ADJACENT**
 
@@ -76,23 +76,23 @@ Release readiness must be PASS or explicitly justified WARN with no live-adjacen
     "other": [],
     "runtime_generated": [
       "docs/diligence/current/AUDIT_LEDGER_SAMPLE.jsonl",
+      "docs/diligence/current/AUDIT_LEDGER_STATUS.md",
+      "docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md",
       "docs/diligence/current/CONTROL_MATRIX.md",
       "docs/diligence/current/CURRENT_EXECUTION_STATE.md",
       "docs/diligence/current/KILL_SWITCH_MATRIX.md",
+      "docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md",
+      "docs/diligence/current/MATURITY_SCORE_LATEST.md",
+      "docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md",
       "docs/diligence/current/ORDER_LIFECYCLE.md",
       "docs/diligence/current/RELEASE_READINESS.md",
       "docs/diligence/current/RISK_GATE_MATRIX.md",
       "docs/diligence/current/TEST_EVIDENCE.md",
-      "docs/project/RELEASE_MANIFEST_LATEST.md",
-      "docs/diligence/current/AUDIT_LEDGER_STATUS.md",
-      "docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md",
-      "docs/diligence/current/HEALTH_MONITORING_MATRIX.md",
-      "docs/diligence/current/MATURITY_4_5_ACCEPTANCE.md",
-      "docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md",
-      "docs/project/CI_EVIDENCE_LATEST.md"
+      "docs/project/CI_EVIDENCE_LATEST.md",
+      "docs/project/RELEASE_MANIFEST_LATEST.md"
     ]
   },
-  "generated_at": "2026-06-28T01:26:49.886485+00:00",
+  "generated_at": "2026-06-28T02:05:13.751455+00:00",
   "manifest_path": "docs/project/RELEASE_MANIFEST_LATEST.md",
   "notes": [
     "This gate is read-only.",
