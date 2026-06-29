@@ -73,31 +73,113 @@ def _recent(conn, symbol, lane):
     return cur.fetchone() is not None
 
 
+# Symbols actually held / proposed / under an active directive. Cached once per run so the budget
+# guard can tier each candidate without a per-symbol round-trip.
+def _trigger_context(conn):
+    cur = conn.cursor()
+    ctx = {"holdings": set(), "proposals": set(), "directive": set()}
+    try:
+        cur.execute("SELECT data FROM latest_holdings")
+        row = cur.fetchone()
+        if row and row[0]:
+            d = row[0] if isinstance(row[0], (list, dict)) else json.loads(row[0])
+            items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
+            for it in items:
+                if isinstance(it, dict):
+                    s = (it.get("symbol") or it.get("ticker") or "").upper().strip()
+                    if s and s not in ("CASH", "USD"):
+                        ctx["holdings"].add(s)
+    except Exception:
+        pass
+    for key, sql in [
+        ("proposals", "SELECT DISTINCT symbol FROM paper_trade_proposals WHERE status IN ('pending','approved','open','active','proposed')"),
+        ("directive", "SELECT DISTINCT symbol FROM watch_directive_hits"),
+    ]:
+        try:
+            cur.execute(sql)
+            for r in cur.fetchall():
+                if r[0]:
+                    ctx[key].add(str(r[0]).upper().strip())
+        except Exception:
+            pass
+    return ctx
+
+
+def _trigger_for(r, ctx):
+    """Map a candidate row to (trigger_source, has_active_trigger) for the budget guard.
+    Strongest trigger wins: held > proposed > directive > high-rank > broad."""
+    sym = (r.get("symbol") or "").upper().strip()
+    if sym in ctx["holdings"]:
+        return "holdings", True
+    if sym in ctx["proposals"]:
+        return "open_proposal", True
+    if sym in ctx["directive"]:
+        return "active_directive", True
+    score = r.get("hermes_composite_score") or 0
+    rank = r.get("hermes_rank")
+    if (score and score >= 70) or (rank is not None and rank <= 20):
+        return "high_rank_watchlist", True
+    # Everything else is broad-universe curation — metadata only, the guard will not call an LLM.
+    return "top20_curation", False
+
+
 def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
     conn = _conn()
     rows = _named(conn, symbols) if symbols else _top(conn, top)
-    report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0, "detail": []}
+    report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0,
+              "metadata_only": 0, "deferred": 0, "blocked": 0, "detail": []}
+    # Budget guard: broad-universe names get METADATA_ONLY (no cloud LLM); only held / proposed /
+    # directive / high-rank names reach a free-OAuth lane. Eliminates the broad-universe LLM fan-out.
+    try:
+        from hermes_research_budget_guard import decide as _budget_decide, _load_policy as _load_bpol
+        _bpol = _load_bpol()
+        _tier_of = _bpol.get("trigger_source_tier", {})
+    except Exception:
+        _budget_decide = None
+        _bpol, _tier_of = None, {}
+    ctx = _trigger_context(conn)
+    tier_count = {}            # per-tier symbols already ALLOWed this run -> enforces per-run caps
     for r in rows:
         q = _question(r)
+        trig, has_trig = _trigger_for(r, ctx)
+        tier = _tier_of.get(trig, "T3")
         for lane in lanes:
-            if _recent(conn, r["symbol"], lane):
-                report["skipped"] += 1
+            recent = _recent(conn, r["symbol"], lane)
+            decision = "ALLOW"
+            if _budget_decide is not None:
+                gd = _budget_decide(symbol=r["symbol"], trigger_source=trig,
+                                    research_type="enhanced_intel", lane="cloud_" + lane,
+                                    urgency="normal", has_active_trigger=has_trig, dedup_fresh=recent,
+                                    symbols_this_run=tier_count.get(tier, 0))
+                decision = gd["decision"]
+                if decision == "ALLOW":
+                    tier_count[tier] = tier_count.get(tier, 0) + 1
+            elif recent:
+                decision = "DEFER"
+            if decision != "ALLOW":
+                report[{"METADATA_ONLY": "metadata_only", "DEFER": "deferred",
+                        "BLOCK": "blocked"}.get(decision, "skipped")] += 1
+                report["detail"].append({"symbol": r["symbol"], "lane": lane, "trigger_source": trig,
+                                         "budget_decision": decision})
                 continue
             if not apply:
-                report["detail"].append({"symbol": r["symbol"], "lane": lane, "action": "dry-run"})
+                report["detail"].append({"symbol": r["symbol"], "lane": lane,
+                                         "trigger_source": trig, "budget_decision": "ALLOW",
+                                         "action": "dry-run"})
                 continue
             try:
                 cp = subprocess.run(
                     [sys.executable, str(PROJECT_ROOT / "scripts" / "hermes_external_researcher.py"),
                      "--lane", lane, "--symbol", r["symbol"], "--question", q,
-                     "--trigger", "top20_curation", "--priority", "P2", "--apply"],
+                     "--trigger", trig, "--priority", "P2", "--apply"],
                     cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=180)
                 ok = cp.returncode == 0
                 report["called"] += 1 if ok else 0
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "ok": ok})
             except Exception as e:
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "error": str(e)[:80]})
-    print(json.dumps({k: report[k] for k in ("top", "lanes", "called", "skipped")}, indent=2))
+    print(json.dumps({k: report[k] for k in ("top", "lanes", "called", "skipped",
+                                              "metadata_only", "deferred", "blocked")}, indent=2))
     return report
 
 

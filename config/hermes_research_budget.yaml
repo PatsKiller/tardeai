@@ -1,0 +1,138 @@
+# Hermes Research Budget Policy
+# Same governance posture as config/llm_budget_policy.yaml + config/finviz_screener_cadence_policy.yaml:
+# tier research by how strong its trigger is, cap each tier, keep broad-universe work OFF the LLM,
+# free-OAuth only for deep cloud synthesis, NEVER a paid fallback, fail closed for unknown sources.
+#
+# Decisions: ALLOW | DEFER | METADATA_ONLY | BLOCK. Read by scripts/hermes_research_budget_guard.py.
+# Advisory-only system: nothing here places trades, touches the broker, or bypasses any gate.
+
+version: 1
+fail_closed: true            # unknown trigger_source / unknown tier -> BLOCK
+no_paid_fallback: true       # paid models are never a fallback for a free-OAuth or local job
+default_research_ttl_hours: 24
+
+# Market-hours local-GPU policy MUST match docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md.
+market_hours:
+  timezone: America/New_York
+  window: "06:00-12:00"
+  # Heavy local models are blocked locally during market hours (Arc B50 VRAM/contention protection).
+  blocked_local_models: ["gemma3:27b", "gemma4-31b"]
+  allowed_local_models: ["gemma3:4b", "gemma3:12b", "qwen3:8b", "nomic-embed-text"]
+
+# Free-OAuth cloud lanes (no paid key). Paid models may only run when explicitly cost-gated, never
+# as an automatic fallback.
+lanes:
+  free_oauth: ["grok", "chatgpt"]          # xAI :8645 + openai-codex :8646
+  free_oauth_models: ["grok-3-mini", "gpt-5.4", "gpt-5-codex"]
+  paid_models: ["claude-sonnet-4-6", "claude-opus-4-8", "gpt-4o"]
+  local_models: ["gemma3:4b", "gemma3:12b", "qwen3:8b"]
+  local_heavy_models: ["gemma3:27b", "gemma4-31b"]
+
+# Tiers — strongest trigger first. trigger_source values map to a tier in `trigger_source_tier`.
+tiers:
+  T0:
+    name: "Held risk — holdings, open positions, open proposals"
+    description: "Capital is actually exposed. Always research-eligible."
+    llm_allowed: true
+    cloud_allowed: true                     # free-OAuth deep synthesis allowed
+    local_allowed: true
+    max_symbols_per_run: 200
+    max_llm_calls_per_day: 600
+    research_ttl_hours: 12
+
+  T1:
+    name: "Actionable — GO candidates, approval queue, high-ranked watchlist"
+    description: "Near-term decision pending. Capped to keep the lane fast."
+    llm_allowed: true
+    cloud_allowed: true
+    local_allowed: true
+    max_symbols_per_run: 50                  # the GO/high-rank cap
+    max_llm_calls_per_day: 300
+    research_ttl_hours: 12
+    watchlist_min_score: 70                  # only high-rank watchlist counts as T1
+
+  T2:
+    name: "Themed — active directives, sector themes, WAIT candidates"
+    description: "Requires an explicit active trigger (directive/theme/wait). No trigger -> drop a tier."
+    llm_allowed: true
+    cloud_allowed: true                      # free-OAuth deep synthesis allowed
+    local_allowed: true
+    requires_active_trigger: true
+    max_symbols_per_run: 80
+    max_llm_calls_per_day: 200
+    research_ttl_hours: 24
+
+  T3:
+    name: "Broad discovery universe — metadata only, NO LLM"
+    description: "Snapshot/screener/broad watchlist. Metadata enrichment only. LLM is never called here."
+    llm_allowed: false                       # hard: broad universe never calls an LLM
+    cloud_allowed: false
+    local_allowed: false
+    metadata_only: true
+    max_symbols_per_run: 1000
+    research_ttl_hours: 72
+
+  T4:
+    name: "Cold universe — no research"
+    description: "No active trigger, not ranked, not held. No research at all."
+    llm_allowed: false
+    cloud_allowed: false
+    local_allowed: false
+    no_research: true
+
+# trigger_source -> tier. Anything NOT listed here is unknown -> fail closed (BLOCK).
+trigger_source_tier:
+  holdings: T0
+  open_position: T0
+  open_positions: T0
+  position_protection: T0
+  open_proposal: T0
+  open_proposals: T0
+  proposal_review: T0
+  approval_queue: T1
+  go_candidate: T1
+  momentum_scalp_go: T1
+  high_rank_watchlist: T1
+  watchlist_high_rank: T1
+  active_directive: T2
+  watch_directive: T2
+  directive_hit: T2
+  sector_theme: T2
+  wait_candidate: T2
+  watchlist_wait: T2
+  topic_research: T2
+  incubator: T2
+  broad_universe: T3
+  ticker_snapshot: T3
+  ticker_snapshot_daily: T3
+  finviz_broad: T3
+  cold_watchlist: T3
+  top20_curation: T3          # the 20k-row broad driver: metadata-only by default; promote per-symbol via tier
+  cold_universe: T4
+  unranked: T4
+  # Existing producer trigger_reason values (mapped so known flows pass; unknown still fails closed).
+  enh_position: T0
+  enh_closed_trade: T0
+  paper_postmortem: T0
+  monthly_protection_meta_review: T0
+  enh_proposal: T1
+  enh_scalp: T1
+  enh_report: T2
+  enh_sector: T2
+  research_scheduler: T2
+  feedback-seed: T2
+  feedback_seed: T2
+  manual: T1                  # operator-initiated research is actionable by definition
+  operator_telegram: T1
+
+# Duplicate-suppression: same (symbol, research_type, lane) inside this window -> DEFER.
+dedup:
+  freshness_hours: 12
+  decision_when_fresh: DEFER
+
+# When a cloud (free-OAuth) lane is requested but unavailable (auth fail / cooldown / down):
+#   T1/T0 urgent -> DEFER (retry later). NEVER fall back to paid or to local heavy models.
+cloud_unavailable:
+  decision: DEFER
+  never_fallback_to_paid: true
+  never_fallback_to_local_heavy: true
