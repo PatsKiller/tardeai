@@ -66,6 +66,13 @@ def _pilot_preconditions(account_key, kind="canary"):
         from brokers.protective_stop_policy import effective_account_allowlist
         allow = effective_account_allowlist()
         desc = "protective-stop allowlist"
+    elif kind == "oco_bracket":
+        # An OCO bracket is a protective EXIT (sell-to-close stop + take-profit) — same safe direction and
+        # account envelope as a protective stop, so it shares the protective-stop allowlist. (P3, inert until
+        # OCO_BRACKETS_SCHWAB is armed; see schwab_oco_bracket.submit_oco.)
+        from brokers.protective_stop_policy import effective_account_allowlist
+        allow = effective_account_allowlist()
+        desc = "OCO-bracket allowlist (shares the protective-stop envelope)"
     elif kind == "options":
         from brokers.options_execution_policy import OPTIONS_ACCOUNT_ALLOWLIST
         allow = OPTIONS_ACCOUNT_ALLOWLIST
