@@ -113,6 +113,41 @@ def main():
     check("output contains all required keys", keys.issubset(set(r.keys())))
     check("PILLARS has exactly 5", len(PILLARS) == 5)
 
+    # ====================== P0-7: Finviz source → pillar mapping ======================
+    # A PURE Finviz candidate (market metrics only, NO social mentions/sources, NO catalyst) meets
+    # market_confirmation + structure_tradeability + strategy_risk_fit, but NOT social_velocity
+    # (that needs social evidence) and NOT catalyst_evidence — i.e. a 3/5 Social Scout, never GO.
+    pure_finviz = evaluate_social_scout_pillars(
+        {"symbol": "FVZ", "mention_count": 0, "sources": []},          # no social
+        {"price": 6.0, "rvol": 7.0, "float_m": 9.0, "gap_pct": 6.0},   # Finviz metrics
+        {})                                                            # no catalyst
+    check("pure-Finviz meets market_confirmation", "market_confirmation" in pure_finviz["pillars_met"])
+    check("pure-Finviz meets structure_tradeability", "structure_tradeability" in pure_finviz["pillars_met"])
+    check("pure-Finviz meets strategy_risk_fit", "strategy_risk_fit" in pure_finviz["pillars_met"])
+    check("pure-Finviz does NOT meet social_velocity (needs social evidence)",
+          "social_velocity" not in pure_finviz["pillars_met"])
+    check("pure-Finviz is a Social Scout (2-4 pillars)", pure_finviz["scout_status"] == SCOUT_STATUS)
+    check("pure-Finviz never tradeable", pure_finviz["not_tradeable"] is True)
+
+    # Finviz + verified catalyst (headline) but still NO social → 4/5 (missing only social_velocity).
+    finviz_catalyst = evaluate_social_scout_pillars(
+        {"symbol": "FVC", "mention_count": 0, "sources": []},
+        {"price": 6.0, "rvol": 7.0, "float_m": 9.0, "gap_pct": 6.0},
+        {"catalyst_verified": True, "catalyst_source": "news"})
+    check("Finviz+catalyst (no social) = 4/5", finviz_catalyst["pillar_count"] == 4)
+    check("Finviz+catalyst still missing social_velocity",
+          finviz_catalyst["pillars_missing"] == ["social_velocity"])
+
+    # Finviz + social velocity + verified catalyst → 5/5 (all pillars). Still NOT auto-GO — the pillar
+    # module keeps not_tradeable/not_validation_ready True; GO is decided ONLY by the route policy.
+    full = evaluate_social_scout_pillars(
+        {"symbol": "FUL", "mention_count": 40, "sources": ["reddit", "stocktwits"]},  # social velocity
+        {"price": 6.0, "rvol": 7.0, "float_m": 8.0, "gap_pct": 6.0},                  # Finviz
+        {"catalyst_verified": True, "catalyst_source": "news"})                       # catalyst
+    check("Finviz+social+catalyst = 5/5", full["pillar_count"] == 5)
+    check("5/5 still not tradeable (module never auto-GOs)", full["not_tradeable"] is True)
+    check("5/5 still not validation-ready (route policy decides GO)", full["not_validation_ready"] is True)
+
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     return 1 if FAIL else 0
 

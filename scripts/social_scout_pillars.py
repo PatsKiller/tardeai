@@ -25,6 +25,16 @@ HARD INVARIANTS (this module can NEVER assert otherwise):
     policy + deterministic gates (see social_route_policy / validation fast path), never here.
 
 This function is pure and deterministic. LLMs / social sentiment remain advisory inputs only.
+
+Finviz source → pillar mapping (P0-7) — which source feeds which pillar:
+  * Finviz RVOL / gap / change / volume          → market_confirmation
+  * Finviz price / float / spread / halt / offering / reverse-split risk → structure_tradeability
+  * Finviz price / float / RVOL / gap + strategy boundaries → strategy_risk_fit
+  * News / catalyst fields (Finviz headlines, SEC, RAG) → catalyst_evidence
+  * Social source mention velocity / source diversity   → social_velocity  (NOT Finviz)
+So a PURE Finviz candidate can reach 2-4 pillars but can NEVER satisfy social_velocity on its own;
+a Finviz + social + verified-catalyst candidate can reach 5/5. 5/5 is still NOT auto-GO — GO is
+decided only by social_route_policy + the deterministic gates.
 """
 from __future__ import annotations
 

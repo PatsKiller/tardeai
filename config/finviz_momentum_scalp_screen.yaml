@@ -1,0 +1,56 @@
+# Finviz momentum-scalp screen — targeted source filter for the every-5-min early-window scan.
+#
+# These filters MUST stay aligned with config/strategies/momentum_scalp.yaml `screen_filters`.
+# tests/test_finviz_momentum_scalp_filters.py FAILS the build on drift (float>20M, RVOL<5, price>25,
+# or any path that would let an unverified / social-only candidate become GO).
+#
+# Two lanes (see SOCIAL_SCOUT_PILLARS.md):
+#   A. Tradeable momentum_scalp GO  — must satisfy ALL of `tradeable` below + verified catalyst +
+#      route=momentum_scalp + actionability=GO + every downstream deterministic gate. Finviz alone is
+#      NEVER sufficient for GO.
+#   B. Social Scout / watch         — may meet only 2-4 of the five pillars; route/actionability stays
+#      WATCH/WAIT/SCOUT; never tradeable, never validation-ready; still surfaced to the UI.
+
+momentum_scalp_finviz_screen:
+  enabled: true
+  # Operator decision (2026-06-28): run this screen every 5 minutes, 06:00-12:00 ET, trading days.
+  cadence_minutes: 5
+  window_et: {start: "06:00", end: "12:00"}
+
+  # --- Tradeable momentum_scalp GO boundaries (mirror momentum_scalp.yaml screen_filters) ---
+  tradeable:
+    price:   {min: 1.0, max: 25.0, preferred_max: 10.0}
+    float_m: {max: 20, preferred_max: 10}        # NEVER above 20M for a momentum_scalp GO
+    rvol:    {min: 5.0, premium: 8.0}            # NEVER below 5 for a momentum_scalp GO
+    gap_pct: {min_abs: 5.0}
+    volume:  {min_shares: 1000000}
+    score:   {min: 40, aplus: 48}
+    catalyst:
+      required_for_go: true
+      verified_required_for_momentum_scalp: true
+    route_required: momentum_scalp
+    actionability_required: GO
+
+  # --- Social Scout surfacing (lane B) — visibility only, never tradeable ---
+  scout:
+    min_pillars: 2          # 2-4 of 5 → SOCIAL SCOUT · N/5 (never GO)
+    # Finviz contributes these pillars; social_velocity needs social evidence (not Finviz):
+    finviz_pillars: [market_confirmation, structure_tradeability, strategy_risk_fit, catalyst_evidence]
+    social_only_max_actionability: SCOUT   # social-only stays WATCH/WAIT/SCOUT, never GO
+    large_float_manual_review_only: true   # float > 20M → large_float_social_scout, manual review
+
+  # --- Finviz Elite screener URL params (low-float, high-RVOL gappers, price 1-25) ---
+  # Reference only — the wrapper builds the export URL from `tradeable` above; documented here so the
+  # filter intent is auditable. (sh_float_u20 = float under 20M, sh_relvol_o5 = rel-vol over 5,
+  # sh_price_1to25, ta_change_u5 / ta_gap_u5 = up >=5%, sh_avgvol_o1000 = avg vol over 1M.)
+  finviz_url_filters: "sh_price_1to25,sh_float_u20,sh_relvol_o5,sh_curvol_o1000,ta_gap_u5"
+  finviz_order: "-relativevolume"
+
+  # --- Safety (never weakened by this screen) ---
+  safety:
+    no_broker_writes: true
+    social_only_never_go: true
+    large_float_manual_review_only: true
+    quote_freshness_unchanged: true
+    ttl_minutes: 30
+    operator_2fa_unchanged: true
