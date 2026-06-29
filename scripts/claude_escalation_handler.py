@@ -457,7 +457,31 @@ def process_queue(dry_run=False):
     LLAMACPP_GGUF = Path.home() / "llama-cpp-vulkan" / "gemma4-31b-hf.gguf"
     LLAMACPP_BIN = Path.home() / "llama-cpp-vulkan" / "llama-b9405" / "llama-server"
 
-    if LLAMACPP_GGUF.exists() and LLAMACPP_BIN.exists():
+    # LOAD/PRIORITY GUARD (2026-06-29 outage fix): gemma4:31b burns ~3 CPU cores via CPU-spilling
+    # Vulkan on this box. When health-agent escalations spike during contention, spawning 31B
+    # investigations starved the single-threaded dashboard server → more endpoint timeouts → more
+    # findings → more escalations → a runaway feedback loop (dashboard ERR_CONNECTION_RESET, load 8+).
+    # Skip the 31B tier (fall through to the lighter local/cloud tiers) during the market window or
+    # under high load, so escalation investigation never amplifies an outage it is reporting.
+    _skip_31b = False
+    try:
+        _load1 = os.getloadavg()[0]
+        _load_cap = float(os.getenv("ESCALATION_31B_LOAD_CAP", "4.0"))
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            _et = datetime.now(_ZI("America/New_York"))
+        except Exception:
+            _et = datetime.now()
+        _in_market = _et.weekday() < 5 and 6 <= _et.hour < 12
+        if os.getenv("DISABLE_GEMMA4_31B_ESCALATION") == "1" or _in_market or _load1 > _load_cap:
+            _skip_31b = True
+            log.info(f"  Tier 3a SKIPPED (gemma4:31b) — priority guard: market_window={_in_market} "
+                     f"load1={_load1:.1f} cap={_load_cap} — using a lighter lane so escalation work "
+                     f"does not starve the dashboard")
+    except Exception:
+        pass
+
+    if not _skip_31b and LLAMACPP_GGUF.exists() and LLAMACPP_BIN.exists():
         log.info("  Tier 3a: Attempting gemma4:31b via llama.cpp...")
         _llama_proc = None
         try:
