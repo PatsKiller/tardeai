@@ -1,9 +1,11 @@
 # OCO Brackets + ATM ↔ Proposals Unification — Design
 
-**Status:** Design (approved scope, not yet implemented)
-**Date:** 2026-06-29
+**Status:** Partially implemented — **paper OCO lifecycle live (P1+P2); Schwab OCO (P3) staged inert behind a hard-off flag; P4/P5 pending.** (PR #27)
+**Date:** 2026-06-29 (updated 2026-06-29)
 **Author:** Claude (with John Whiting)
-**Related:** `ATM_PROPOSAL_CONTROLS_2026_06_04.md`, `BROKER_PROPOSALS_UI.md`, `CURRENT_EXECUTION_STATE.md`, `ENGINEERING_HARD_RULES.md`, `project_schwab_token_race_recurrence` (memory), `project_stage2c_protective_stops` (memory)
+**Related:** `ATM_PROPOSAL_CONTROLS_2026_06_04.md`, `BROKER_PROPOSALS_UI.md`, `CURRENT_EXECUTION_STATE.md`, `ENGINEERING_HARD_RULES.md`, `project_oco_atm_unification` (memory), `project_schwab_token_race_recurrence` (memory), `project_stage2c_protective_stops` (memory)
+
+> **Implementation status (2026-06-29):** the entire **paper** OCO lifecycle is live and proven — entry auto-brackets at fill, the trailing ratchet PATCHes the OCO stop leg in place, monitors are OCO-aware, and paper auto-applies sit in proposals + notify. The **Schwab** OCO (P3) is fully built — order-spec builder, fractional/tp guards, gate-routable OrderIntent, `kind='oco_bracket'` guard family, and a protective policy that validates an OCO — but it is **inert**: `OCO_BRACKETS_SCHWAB` is unset (live submit fail-closed) and `GATES_REMOVED=True` keeps the policy a 2FA-only pass-through today. No live Schwab OCO exists until the operator arms the canary. See §8 for the per-phase status.
 
 ---
 
@@ -107,13 +109,13 @@ No DB rename of existing `paper_*` tables (operator-facing taxonomy already call
 
 ## 8. Phasing
 
-| Phase | Deliverable | Risk |
-|-------|-------------|------|
-| **P1** | Alpaca native OCO: `convert_to_oco` + bracket `submit_entry`; retrofit AGNC + the stopped paper positions; ATM stop-up replaces OCO stop leg. | Low (paper only) |
-| **P2** | Entry auto-bracket at fill (paper), incl. reconciler retrofit hook. | Low |
-| **P3** | Schwab API OCO `order_spec` builder + `kind="oco_bracket"` + 2FA ticket in the unified queue; fractional-share guard. | **Med-High** (new live Schwab order surface — harden behind Stage-2 caps + canary before lifting) |
-| **P4** | Fidelity manual OCO ticket draft. | Low |
-| **P5** | Governance unification + shadow proposal rows for paper auto-apply (audit parity). | Low |
+| Phase | Deliverable | Risk | Status |
+|-------|-------------|------|--------|
+| **P1** | Alpaca native OCO: `convert_to_oco` + retrofit the stopped paper positions; ATM stop-up ratchets the OCO stop leg in place (PATCH). | Low (paper only) | ✅ **Shipped** — `alpaca_stop_manager.py` (`convert_to_oco`, `run_oco_retrofit`, in-place leg ratchet); AGNC live OCO proven. Paper auto-applies sit in proposals + notify. |
+| **P2** | Entry auto-bracket at fill (paper), reconciler hook + OCO-aware stop monitoring. | Low | ✅ **Shipped** — `alpaca_paper_reconciler.py` auto-bracket hook; `nested=true` + leg-descent stop detection in reconciler & `atm_market_open_watch` (no false naked alarms). |
+| **P3** | Schwab API OCO `order_spec` builder + `kind="oco_bracket"` + 2FA ticket; fractional-share guard; protective policy passes an OCO. | **Med-High** (new live Schwab order surface) | 🟡 **Built, INERT** — `schwab_oco_bracket.py` (builder/guards/intent), `_pilot_preconditions` family routing, `protective_stop_policy` OCO validation. `OCO_BRACKETS_SCHWAB` off (fail-closed). **Remaining: operator-armed 1-share live canary** (not done by Claude). |
+| **P4** | Fidelity manual OCO ticket draft. | Low | ⬜ Pending |
+| **P5** | Governance unification + shadow proposal rows for paper auto-apply (audit parity). | Low | ⬜ Pending (partial: paper auto-apply already writes APPLIED + notifies) |
 
 P1–P2 deliver the real take-profit on paper. P3 is the only phase that opens a new **live** broker order type — it must go through the same canary/proof discipline as Stage 2b/2c (small qty, caps, read-back, ARM-to-fire) before broad use.
 
