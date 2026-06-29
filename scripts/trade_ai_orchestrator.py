@@ -631,11 +631,10 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         try:
             _empty_syms = [t.get("symbol") for t in scored if not (t.get("sector") or "").strip()]
             if _empty_syms:
-                cur2 = conn.cursor()
-                cur2.execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
+                _sector_rows = _execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
                                 WHERE symbol = ANY(%s) AND COALESCE(sector,'') <> ''
-                                ORDER BY symbol, scanned_at DESC""", (_empty_syms,))
-                _sector_map = dict(cur2.fetchall())
+                                ORDER BY symbol, scanned_at DESC""", (_empty_syms,), fetch="all") or []
+                _sector_map = {r["symbol"]: r["sector"] for r in _sector_rows}
                 for t in scored:
                     if not (t.get("sector") or "").strip() and t.get("symbol") in _sector_map:
                         t["sector"] = _sector_map[t.get("symbol")]
