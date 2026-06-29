@@ -24,6 +24,11 @@ strategy maturity claim** — the empirical validation sample (still 3/30) remai
   `social_velocity`; Finviz+social+verified-catalyst = 5/5; 5/5 ≠ GO.
 - **P0-8** docs (lifecycle/maturity/SLA/validation/pillars) + CHANGELOG + manifest; taxonomy audit 0
   violations. 183 backend tests green; no broker writes.
+- **Health monitor + auto-fix** `health_agent.collect_momentum_scalp_source_health` (schedule-aware,
+  06:00–12:00 ET) flags a stale/failing 5-min scan (`momentum_scalp_finviz_scan_stale` /
+  `momentum_scalp_early_lane_error`) and **auto-remediates** by re-running the lane fast
+  (`--skip-finviz-refresh`); script added to the auto-remediation safety allowlist (source/sandbox only,
+  no broker writes); cooldown + circuit-breaker escalate to operator/code review if ineffective.
 
 ## 2026-06-28 - Trade AI scanner: top-30 pagination, Social Scouts, persistent selection, ToS copy
 

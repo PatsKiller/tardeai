@@ -60,6 +60,8 @@ def main() -> int:
     ap.add_argument("--run-validation-fast-path", action="store_true",
                     help="hand off to the validation fast path (dry unless --submit-validation/env)")
     ap.add_argument("--submit-validation", action="store_true", help="sandbox validation submit")
+    ap.add_argument("--skip-finviz-refresh", action="store_true",
+                    help="run handoff stages only (fast) — used by health auto-remediation to unstick the lane")
     ap.add_argument("--ignore-window", action="store_true", help="run outside 06:00-12:00 ET")
     ap.add_argument("--now", type=str, help="override ET now (ISO) for testing")
     args = ap.parse_args()
@@ -87,8 +89,12 @@ def main() -> int:
         print(json.dumps(rep, default=str))
         return 0
 
-    # Stage 1 — Finviz source refresh (throttle-safe; source rows only).
-    rep["stages"].append(lane.stage_finviz_scan(dry_run=not apply))
+    # Stage 1 — Finviz source refresh (throttle-safe; source rows only). Skippable for a fast
+    # downstream-only unstick (health auto-remediation).
+    if args.skip_finviz_refresh:
+        rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "skipped_finviz_refresh"})
+    else:
+        rep["stages"].append(lane.stage_finviz_scan(dry_run=not apply))
     # Stage 2-4 — optional handoff.
     if sync:
         rep["stages"].append(lane.stage_signal_sync(dry_run=not apply))

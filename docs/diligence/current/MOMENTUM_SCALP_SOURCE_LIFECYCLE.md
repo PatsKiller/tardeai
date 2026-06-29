@@ -57,3 +57,21 @@ Finviz screen / social discovery
 All stages are idempotent, reuse existing proven scripts, and perform **no live broker writes**. The
 remaining blocker to strategy maturity 4.5 is unchanged: the **empirical validation sample** (2/30
 confirmed closed simulated validation trades) — this work feeds it fresh candidates, it does not claim it.
+
+## Health monitoring & auto-fix
+
+The health agent (`health_agent.py`) monitors the early lane and **auto-remediates** it:
+
+* `collect_momentum_scalp_source_health()` — **schedule-aware** (judges only inside 06:00–12:00 ET on
+  trading days, so no weekend/off-hours floods). It reads `logs/finviz_momentum_scalp_scan.log`:
+  * log missing or stale >12 min (cron is `*/5`) → `momentum_scalp_finviz_scan_stale` (warning;
+    critical >30 min);
+  * last run `status=PARTIAL/FAIL` or `failed_stages` → `momentum_scalp_early_lane_error` (warning).
+* **Auto-fix**: both finding types are in `health_agent_policy.json` `auto_remediate.finding_types` with
+  a `remediation_map` command that re-runs the lane **fast** (`run_finviz_momentum_scalp_scan.py
+  --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path`). The script is
+  on the auto-remediation **safety allowlist** (source/sandbox only — no broker writes), governed by the
+  existing cooldown + circuit-breaker (escalates to operator/code review if a fix proves ineffective).
+
+This makes the every-5-min source lane self-healing without weakening any gate or touching the
+operator/2FA path.
