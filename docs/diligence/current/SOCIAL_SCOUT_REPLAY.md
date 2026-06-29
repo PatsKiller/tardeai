@@ -1,7 +1,7 @@
 # Social Scout Replay
 
 **Status: PASS** | window: 30d  
-_Generated: 2026-06-29T01:43:01.983491+00:00_  
+_Generated: 2026-06-29T02:21:23.437054+00:00_  
 _Source: `python3 scripts/social_scout_replay_report.py --days N --json`_  
 
 Replayed **1458** social scan rows.

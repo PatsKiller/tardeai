@@ -145,7 +145,16 @@ def _pillar_market_confirmation(finviz: dict) -> bool:
 
 
 def _pillar_catalyst_evidence(catalyst_enrichment: dict) -> bool:
-    return bool(catalyst_is_verified(catalyst_enrichment))
+    # A verified news/filing/event catalyst OR a recent, relevant SEC/Form 4 open-market insider BUY
+    # satisfies catalyst_evidence. SEC/Form 4 is supporting context only — it contributes this pillar
+    # when recent + relevant, but (like every other pillar) NEVER creates GO on its own.
+    if catalyst_is_verified(catalyst_enrichment):
+        return True
+    try:
+        from sec_form4_source_maturity import sec_form4_catalyst_evidence
+        return bool(sec_form4_catalyst_evidence(catalyst_enrichment))
+    except Exception:
+        return False
 
 
 def _pillar_structure_tradeability(candidate: dict, finviz: dict, catalyst_enrichment: dict) -> bool:

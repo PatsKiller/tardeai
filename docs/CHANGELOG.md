@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-06-28 - Momentum scalp source maturity to honest 4.5+ (SEC/Form 4, latency states, consistency)
+
+Raise the remaining 3.x source areas to honest 4.5+ via real evidence — not score inflation. No live
+trades, no broker writes, operator/2FA untouched, no gate weakened. **No strategy maturity claim** —
+empirical validation sample (2/30) remains the blocker to 4.5.
+
+- **P0-1** Reconciled the validation-sample count: canonical = `scalp_trade_attribution.confirmed_closed`
+  = **2/30** (trade IDs **45, 22**). Fixed `momentum_scalp_source_maturity_report` (was reading a
+  non-existent `confirmed` key → raw COUNT(*) over-count of 3). New `test_validation_sample_consistency.py`
+  fails if any report disagrees (source maturity / ops / tracker / lifecycle now all say 2/30).
+- **P0-2** SEC/Form 4 **3.0 → 4.5-ready**: `run_sec_form4_momentum_context.py` (scheduled wrapper, dry-run
+  default, lineage, reuses `sec_data_ingest`) + `sec_form4_source_maturity.py` (context classifier +
+  evidence-based scorer) + cron `45 5` & `15 9` ET. Supporting evidence only — never GO, never bypass gates.
+- **P0-3** Latency SLA distinct states: `PASS` / `WARN_PENDING_OBSERVATION` (no live samples — NOT a code
+  failure) / `WARN_LATENCY` / `FAIL`; separate `latency_sla_readiness_score` (4.5) vs `…observed_score`
+  (pending). Stale-quote DEFER still never a PASS.
+- **P0-4** No-inflation enforcement: a source reads 5.0 ONLY with live in-window observation; report
+  explicitly separates source maturity / latency readiness / observed latency / validation-sample maturity /
+  live readiness. Combined source maturity **4.33 → 4.5**.
+- **P0-5** Health monitoring extended to SEC/Form 4, signal sync, proposal generation, social scan
+  (schedule-aware, no off-hours floods); SEC context auto-remediation added to the safety allowlist.
+- **P0-6** SEC/Form 4 contributes the `catalyst_evidence` pillar only when a recent (≤7d) open-market
+  insider buy is relevant; `social_velocity` still needs social; 5/5 still ≠ GO.
+- **P0-7** docs (SEC context, lifecycle, maturity, latency SLA, pillars) + CHANGELOG + manifest; taxonomy 0.
+
 ## 2026-06-28 - Momentum scalp Finviz every-5-min early lane + source-maturity reporting
 
 Source/scheduler/filter/reporting hardening to feed the validation fast path fresh candidates from
