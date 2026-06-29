@@ -1066,9 +1066,14 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
         t = lane.now_et()
         trading = lane.is_trading_day(t)
         hhmm = t.strftime("%H:%M")
-        in_early = trading and ("06:00" <= hhmm <= "12:00")        # signal/proposal early window
-        in_session = trading and ("06:00" <= hhmm <= "16:00")      # social scan window
-        in_sec = trading and ("05:30" <= hhmm <= "12:00")          # SEC context window (05:45 + 09:15)
+        # Windows: SEC context after its 05:45 cron has had a chance to run (start 06:00). The
+        # proposal/signal/social OUTPUT-staleness checks are scoped to the ACTIVE session (09:30+) —
+        # pre-market 06:00-09:30 is legitimately quiet (weekend-stale quotes are correctly skipped, the
+        # orchestrator runs at 09:00), so "no fresh output" there is EXPECTED, not a fault. This stops
+        # the pre-market false floods seen 2026-06-29 (proposal_gen 3504m, social 750m at 07:46).
+        in_sec = trading and ("06:00" <= hhmm <= "12:00")            # SEC context window (05:45 + 09:15)
+        in_active = trading and ("09:30" <= hhmm <= "12:00")         # post-open signal/proposal flow
+        in_active_social = trading and ("09:30" <= hhmm <= "16:00")  # post-open social scan
 
         def _age_min(sql):
             h = _db_age_h(sql)
@@ -1084,20 +1089,33 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
                           f"— re-running the context wrapper (source/read-only)",
                           surfaced="momentum scalp · SEC/Form 4 catalyst context"))
 
-        for sql, table_window, ftype, label in [
-            ("SELECT MAX(created_at) FROM strategy_signals", in_early,
-             "momentum_scalp_signal_sync_stale", "signal sync"),
-            ("SELECT MAX(created_at) FROM paper_trade_proposals", in_early,
-             "momentum_scalp_proposal_gen_stale", "proposal generation"),
-            ("SELECT MAX(scanned_at) FROM scalp_scan_results", in_session,
-             "momentum_scalp_social_scan_stale", "social scan"),
-        ]:
-            thr = 90 if table_window is in_early else 120
-            a = _assess_source_stale(_age_min(sql), thr, table_window)
-            if a["finding"]:
-                out.append(_f("pipeline_freshness", ftype, a["severity"],
-                              f"momentum scalp {label} output {a['reason']} during its window",
-                              surfaced=f"momentum scalp · {label}"))
+        # Signal sync — strategy_signals uses fired_at (NOT created_at, which does not exist). Active
+        # session only.
+        a = _assess_source_stale(_age_min("SELECT MAX(fired_at) FROM strategy_signals"), 120, in_active)
+        if a["finding"]:
+            out.append(_f("pipeline_freshness", "momentum_scalp_signal_sync_stale", "warning",
+                          f"momentum scalp signal sync output {a['reason']} during the active session",
+                          surfaced="momentum scalp · signal sync"))
+
+        # Proposal generation — CONDITION-AWARE: only a real conversion gap counts. Fire only when a
+        # FRESH GO strategy_signal exists (≤120m) but no proposal has been created since it fired. If
+        # there are no fresh GO signals (or candidates are correctly stale-quote-skipped), an absence of
+        # proposals is EXPECTED, not a fault — so it is not flagged.
+        if in_active:
+            go_sig_age = _age_min("SELECT MAX(fired_at) FROM strategy_signals WHERE signal_type='GO'")
+            prop_age = _age_min("SELECT MAX(created_at) FROM paper_trade_proposals")
+            if go_sig_age is not None and go_sig_age <= 120 and (prop_age is None or prop_age > go_sig_age + 90):
+                out.append(_f("pipeline_freshness", "momentum_scalp_proposal_gen_stale", "warning",
+                              f"fresh GO signal ({go_sig_age:.0f}m) not converting — proposal generation "
+                              f"output stale ({'none' if prop_age is None else f'{prop_age:.0f}m'}) post-open",
+                              surfaced="momentum scalp · proposal generation"))
+
+        # Social scan — active-session output freshness (pre-market carryover excluded).
+        a = _assess_source_stale(_age_min("SELECT MAX(scanned_at) FROM scalp_scan_results"), 180, in_active_social)
+        if a["finding"]:
+            out.append(_f("pipeline_freshness", "momentum_scalp_social_scan_stale", "warning",
+                          f"momentum scalp social scan output {a['reason']} during the active session",
+                          surfaced="momentum scalp · social scan"))
     except Exception as e:
         out.append(_f("pipeline_freshness", "momentum_scalp_multi_source_monitor_error", "info",
                       f"multi-source monitor failed: {str(e)[:80]}"))
