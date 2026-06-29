@@ -63,6 +63,15 @@ and `hermes_research_intelligence`: `trigger_source`, `trigger_id`, `budget_tier
 `lane_used`, `research_expires_at`, `research_reason`, `downstream_outcome`. New research rows record
 the real tier-driving trigger and the budget decision instead of a blanket `top20_curation`.
 
+**Historical backfill** — `scripts/backfill_hermes_research_provenance.py` populates the ~29.4k
+pre-enforcement rows from what each already records (trigger_reason / research_type / lane / model):
+factual `trigger_source` + `budget_tier` + `lane_used` + `research_expires_at = created_at + tier TTL`,
+and `budget_decision = 'legacy'` (we do **not** fabricate ALLOW/DEFER for rows that ran before the
+guard existed). Idempotent (`WHERE budget_tier IS NULL`), grouped UPDATEs, `--dry-run` available.
+Result: 0 rows left UNMAPPED; the panel now reads stored tiers instead of inferring them. The
+retrospective what-if showed **23,275 of 29,413 historical rows (79%) would have been
+METADATA_ONLY** under the current policy — the size of the broad-universe LLM problem now closed.
+
 ## Verify
 
 ```bash

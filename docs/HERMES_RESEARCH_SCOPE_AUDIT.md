@@ -8,9 +8,9 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 
 | Window | External (cloud) calls | External distinct symbols | Local calls | Local distinct symbols | Total calls |
 |---|---|---|---|---|---|
-| 1d | 7960 | 931 | 162 | 62 | 8122 |
-| 7d | 21557 | 1118 | 1246 | 173 | 22803 |
-| 30d | 23393 | 1202 | 5979 | 375 | 29372 |
+| 1d | 8000 | 931 | 163 | 62 | 8163 |
+| 7d | 21597 | 1118 | 1247 | 173 | 22844 |
+| 30d | 23433 | 1202 | 5980 | 375 | 29413 |
 
 ## Current source-of-truth symbol counts (the trigger universe)
 
@@ -20,7 +20,7 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 | open_positions | 40 |
 | open_proposals | 0 |
 | watchlist_items_active | 3959 |
-| watchlist_high_rank(score>=70) | 1156 |
+| watchlist_high_rank(score>=70) | 1176 |
 | watch_directive_hits | 1029 |
 | incubator_universe | 170 |
 | strategy_watchpool | 628 |
@@ -33,9 +33,9 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 
 | Lane | Calls | Models |
 |---|---|---|
-| cloud_free_oauth | 23863 | grok-3-mini:15820, gpt-5.4:7945, grok:95, gpt-5-codex:3 |
+| cloud_free_oauth | 23903 | grok-3-mini:15840, gpt-5.4:7965, grok:95, gpt-5-codex:3 |
 | local_gpu | 4818 | librarian_loop:2484, gemma3:4b:1617, gemma3:12b:717 |
-| other_nonllm | 652 | synth:grok:350, options_engine:183, synth:chatgpt:40, stop_lifecycle_monitor:39, hermes_librarian:10, topic_monitor_bridge:10, searxng_scheduled_dryrun:8, searxng_manual:5, alert_integration:3, siem_normalizer:3, operator_telegram:1 |
+| other_nonllm | 653 | synth:grok:350, options_engine:184, synth:chatgpt:40, stop_lifecycle_monitor:39, hermes_librarian:10, topic_monitor_bridge:10, searxng_scheduled_dryrun:8, searxng_manual:5, alert_integration:3, siem_normalizer:3, operator_telegram:1 |
 | cloud_paid | 39 | claude-sonnet-4-6:39 |
 
 **Local GPU calls (30d):** 4818
@@ -49,8 +49,8 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 
 ## Duplicate research (30d)
 
-- Repeated (symbol, question) pairs: **5935**
-- Redundant repeat calls (beyond first): **11853** (50.7% of all external calls)
+- Repeated (symbol, question) pairs: **5938**
+- Redundant repeat calls (beyond first): **11892** (50.7% of all external calls)
 
 ## Stale research
 
@@ -64,7 +64,7 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 | Status | Rows | Promoted to table |
 |---|---|---|
 | archived | 3943 | 15 |
-| promoted | 2036 | 0 |
+| promoted | 2037 | 0 |
 
 ## Top-25 most expensive sources (calls × lane weight)
 
@@ -73,8 +73,8 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 | 1 | top20_curation | cloud_free_oauth | grok-3-mini | 13523 | 1046 | 40569 |
 | 2 | top20_curation | cloud_free_oauth | gpt-5.4 | 7049 | 980 | 21147 |
 | 3 | hri:research_backlog | local_gpu | librarian_loop | 2484 | 0 | 2484 |
-| 4 | research_scheduler | cloud_free_oauth | gpt-5.4 | 643 | 101 | 1929 |
-| 5 | research_scheduler | cloud_free_oauth | grok-3-mini | 633 | 79 | 1899 |
+| 4 | research_scheduler | cloud_free_oauth | gpt-5.4 | 663 | 103 | 1989 |
+| 5 | research_scheduler | cloud_free_oauth | grok-3-mini | 653 | 79 | 1959 |
 | 6 | hri:momentum_catalyst | local_gpu | gemma3:4b | 1348 | 137 | 1348 |
 | 7 | enh_scalp | cloud_free_oauth | grok-3-mini | 443 | 68 | 1329 |
 | 8 | hri:protection_advisory | cloud_free_oauth | grok-3-mini | 414 | 45 | 1242 |
@@ -99,7 +99,7 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 ## Findings
 
 - **[warning]** 39 paid-model research calls in 30d ({'claude-sonnet-4-6': 39}) — must be deliberate cost-gated oversight, never a fallback.
-- **[warning]** 11853 redundant repeat external calls in 30d (50.7% of external) — dedup/expiry under-enforced.
+- **[warning]** 11892 redundant repeat external calls in 30d (50.7% of external) — dedup/expiry under-enforced.
 - **[warning]** Source 'top20_curation' drove LLM research on 1046 symbols (13523 calls) — broad-universe LLM research; should be tiered/capped.
 
 ---
