@@ -1,30 +1,32 @@
 # Scalp Lifecycle Maturity
 
-**Combined: 4.4 / 5** (raw 5.0) — meets 4.5: **False**  
-_Generated: 2026-06-28T21:59:17.005057+00:00_  
+**Combined: 3.25 / 5** (raw 3.25) — meets 4.5: **False**  
+_Generated: 2026-06-29T02:21:23.262404+00:00_  
 _Source: `python3 scripts/compute_scalp_lifecycle_maturity.py --json`_  
 
 > **Operator correction 2026-06-28:** combined maturity separates a mature engineering/control lifecycle from an immature empirical strategy lifecycle. There is no sufficient confirmed momentum_scalp paper-trade sample, so 4.5 is NOT met.
 
-- Engineering / control maturity: **5.0 / 5**
+- Engineering / control maturity: **3.25 / 5**
 - Empirical strategy maturity: **0.333 / 5** (validation sample: INSUFFICIENT_SAMPLE (2/30 confirmed closed); confirmed closed = 2)
-- Momentum Scalp lifecycle: **4.4 / 5**
-- Social Scalp lifecycle: **4.4 / 5**
+- Momentum Scalp lifecycle: **3.8 / 5**
+- Social Scalp lifecycle: **2.5 / 5**
 
 | Dimension | Weight | Score | Points/5 |
 |-----------|--------|-------|----------|
 | Strategy config consistency | 15% | 1.0 | 0.75 |
 | Intraday TTL / window enforcement | 15% | 1.0 | 0.75 |
-| Social-only catalyst discipline | 15% | 1.0 | 0.75 |
+| Social-only catalyst discipline | 15% | 0.0 | 0.0 |
 | Route policy correctness | 15% | 1.0 | 0.75 |
-| Liquidity / data-freshness handling | 10% | 1.0 | 0.5 |
-| End-to-end traceability | 10% | 1.0 | 0.5 |
+| Liquidity / data-freshness handling | 10% | 0.0 | 0.0 |
+| End-to-end traceability | 10% | 0.0 | 0.0 |
 | Empirical funnel evidence | 10% | 1.0 | 0.5 |
 | Outcome-learning loop | 10% | 1.0 | 0.5 |
 
 ## Caps applied
 
-- Cap **4.4** (from 5.0): validation sample not met (2/30 confirmed closed — still TESTING)
+- Cap **3.8** (not binding): social-only could send GO-style alert
+- Cap **4.1** (not binding): no end-to-end traceability
+- Cap **4.4** (not binding): validation sample not met (2/30 confirmed closed — still TESTING)
 
 ## Evidence
 
@@ -33,10 +35,10 @@ _Source: `python3 scripts/compute_scalp_lifecycle_maturity.py --json`_
 | config_ok | True |
 | expiry_test | True |
 | window_test | True |
-| alerts_test | True |
+| alerts_test | False |
 | route_test | True |
-| liquidity_test | True |
-| trace_test | True |
+| liquidity_test | False |
+| trace_test | False |
 | no_bypass_test | True |
 | config_test | True |
 | trace_cols_present | True |

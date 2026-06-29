@@ -75,3 +75,18 @@ The health agent (`health_agent.py`) monitors the early lane and **auto-remediat
 
 This makes the every-5-min source lane self-healing without weakening any gate or touching the
 operator/2FA path.
+
+### Multi-source health (all remaining sources)
+
+`collect_momentum_scalp_multi_source_health` extends schedule-aware health to the other sources:
+
+| Source | Finding type | Window | Auto-fix |
+|--------|--------------|--------|----------|
+| SEC/Form 4 context | `sec_form4_context_stale` | 05:45–09:15 ET | re-run `run_sec_form4_momentum_context.py` (allowlisted, source-only) |
+| Signal sync | `momentum_scalp_signal_sync_stale` | 06:00–12:00 ET | (visibility) |
+| Proposal generation | `momentum_scalp_proposal_gen_stale` | 06:00–12:00 ET | (visibility) |
+| Social scan | `momentum_scalp_social_scan_stale` | 06:00–16:00 ET | (visibility) |
+
+All checks are silent outside their windows (no off-hours floods). The SEC context auto-remediation is on
+the auto-remediation safety allowlist (source/read-only, no broker writes) under the existing cooldown +
+circuit-breaker. Quote/liquidity freshness is covered by the existing `market_quotes_stale` finding.
