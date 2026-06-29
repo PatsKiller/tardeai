@@ -515,6 +515,26 @@ _COUNTRY_FLAGS = {
 }
 def _country_flag(c): return _COUNTRY_FLAGS.get((c or "").strip().lower(), "🇺🇸") if c else ""
 
+_hermes_gov_mod = [None, 0.0]  # [module, mtime]
+
+
+def _hermes_governance_mod():
+    """Return the hermes_governance_api module, reloading it when its source file changes. Mirrors the
+    api_v2 hot-reload guard so edits to the governance summary land without a full server restart
+    (a plain __import__ would keep serving the stale in-memory copy)."""
+    import importlib
+    import hermes_governance_api as _mod
+    try:
+        m = os.path.getmtime(_mod.__file__)
+        if m != _hermes_gov_mod[1]:
+            _mod = importlib.reload(_mod)
+            _hermes_gov_mod[1] = m
+        _hermes_gov_mod[0] = _mod
+    except Exception:
+        _hermes_gov_mod[0] = _mod
+    return _hermes_gov_mod[0]
+
+
 def _db_query(sql, params=None, fetch="all"):
     """Run a read-only DB query. Returns list or dict or None."""
     try:
@@ -23971,7 +23991,9 @@ ROUTES = {
     "/api/v2/hermes/profiles-status": _hermes_profiles_status,
     "/api/v2/hermes/legacy-agents": _hermes_legacy_agents,
     # Hermes Research Governance panel (read-only research-scope audit + budget posture).
-    "/api/v2/hermes/research-governance": lambda: __import__("hermes_governance_api").governance_summary(),
+    # Served from a pre-warmed disk TTL cache (heavy audit out of the request path); ?fresh=1 recomputes.
+    "/api/v2/hermes/research-governance": lambda q=None: _hermes_governance_mod().governance_summary(
+        fresh=str(((q or {}).get("fresh") or "")).lower() in ("1", "true", "yes")),
     "/api/v2/openclaw/status": _openclaw_status,
     "/api/v2/openclaw/agent-soul": _openclaw_agent_soul,
     "/api/v2/tradeai/fleet": _tradeai_fleet,

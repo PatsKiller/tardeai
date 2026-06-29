@@ -29,7 +29,21 @@ through `api_v2.handle`; read-only, wrapped as `{ok, data}`).
 - The panel surfaces governance; it does not create trades or research. Any "run now" style action,
   where added, is source-fetch / metadata only and respects the budget guard.
 
+## Caching
+
+The summary runs the full research-scope audit (~3.5s of SELECTs) — too heavy for the single-threaded
+request path. It is served from a **disk TTL cache** (`data/runtime/hermes_governance_cache.json`,
+`HERMES_GOV_TTL_SEC` default 600s), the same pattern as `finviz-strip-map`:
+
+- Cached read ≈ **1–3ms**; fresh recompute ≈ 3.5s.
+- `?fresh=1` forces a recompute.
+- **Pre-warmed out of the request path** by cron: `*/10 6-20 * * 1-5 … hermes_governance_api.py --warm`
+  (writes the cache atomically; `flock`-guarded). With a 600s TTL and 120s panel poll, every poll is
+  a cache hit.
+- `api_v2` reaches the module through an mtime-guarded reload (`_hermes_governance_mod()`), so code
+  edits land without a full server restart.
+
 ## Refresh
 
-The panel polls every 120s via `useApi`. Underlying numbers come from the live
-`hermes_research_scope_audit.build()` plus tier inference for historical rows.
+The panel polls every 120s via `useApi`. Underlying numbers come from the cached
+`hermes_governance_api.governance_summary()` (audit + stored/backfilled tiers).
