@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-29 - Momentum scalp lane load relief + health false-positive fixes (Monday incident)
+
+First trading morning after the every-5-min lane went in, Health Agent fired DEGRADED 69/100 and
+`/api/v2/trade-ai` timed out. Investigation + fixes (source/scheduler/monitoring only; no live trades,
+no broker writes, operator/2FA untouched, no gate weakened; pipeline gates were working correctly —
+the GO candidate was correctly stale-quote-skipped). See `MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md`.
+
+- **Server overload (real regression):** each 5-min lane run took ~210s (Finviz `--run` 90s + signal_sync
+  86s + proposal 33s), saturating the single-threaded server → API timeouts + 4 flock-skips. **Fix:** split
+  the cron — fast downstream chain every 5 min (`--skip-finviz-refresh`, `timeout 200`), heavy Finviz
+  refresh every 15 min (`timeout 150`), one flock. Removes the 90s refresh from 11/12 runs.
+- **Health check bug:** `momentum_scalp_signal_sync_stale` queried `strategy_signals.created_at` (doesn't
+  exist) → `MAX(fired_at)`.
+- **Pre-market false floods:** `proposal_gen_stale`/`social_scan_stale`/`sec_context` fired during the
+  legitimately-quiet pre-open. Now scoped to the active session (09:30+); `proposal_gen_stale` is
+  **condition-aware** (fires only when a fresh GO signal isn't converting, not on bare staleness); SEC
+  window starts 06:00 (after its 05:45 cron). 23/23 source-health tests; no off-hours/pre-market floods.
+
 ## 2026-06-28 - Fix scalp-lifecycle-maturity 3.25 phantom regression (env-fragile evidence runner)
 
 `SCALP_LIFECYCLE_MATURITY.md` had regressed to **3.25/5** with `alerts_test`/`liquidity_test`/`trace_test`

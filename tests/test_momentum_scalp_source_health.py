@@ -57,6 +57,23 @@ def main():
                   "momentum_scalp_proposal_gen_stale", "momentum_scalp_social_scan_stale"]:
         check(f"finding type defined: {ftype}", ftype in src)
 
+    # ---- 2026-06-29 incident fixes: no pre-market false floods + correct column + condition-aware ----
+    coll = src[src.index("def collect_momentum_scalp_multi_source_health"):
+               src.index("def collect_momentum_scalp_multi_source_health") + 4200]
+    check("signal sync uses fired_at (created_at does NOT exist on strategy_signals)",
+          "MAX(fired_at) FROM strategy_signals" in coll and "MAX(created_at) FROM strategy_signals" not in coll)
+    check("proposal/signal output checks scoped to active session (09:30+, no pre-market floods)",
+          '"09:30"' in coll)
+    check("proposal_gen is condition-aware (fresh-GO-not-converting, not bare staleness)",
+          "signal_type='GO'" in coll and "not converting" in coll)
+    check("SEC context window starts 06:00 (after its 05:45 cron)", '"06:00" <= hhmm <= "12:00"' in coll)
+    # The bare-staleness pre-market proposal check (the false-flood source) is gone.
+    check("no unconditional 06:00 proposal-output staleness check",
+          'MAX(created_at) FROM paper_trade_proposals", in_early' not in coll)
+
+    # Live: right now (whatever the time), the collector must not raise and must return a list.
+    check("collector still returns a clean list", isinstance(ha.collect_momentum_scalp_multi_source_health(), list))
+
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     return 1 if FAIL else 0
 

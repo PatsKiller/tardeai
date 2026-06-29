@@ -48,7 +48,12 @@ Finviz screen / social discovery
 
 * `config/finviz_momentum_scalp_screen.yaml` — targeted Finviz filters mirroring `momentum_scalp.yaml`.
 * `run_finviz_momentum_scalp_scan.py` — window-gated (06:00–12:00 ET) wrapper, dry-run default,
-  optional handoff; cron every 5 min.
+  optional handoff. **Cadence (revised 2026-06-29 after a load incident):** the fast downstream
+  conversion chain runs **every 5 min** (`--skip-finviz-refresh`, `timeout 200`), while the heavy
+  ~90s Finviz `--run` refresh runs **every 15 min** (`--apply` only, `timeout 150`) — both on one
+  flock so they never pile up. (Originally a single 5-min full-chain cron; that ran ~210s/run and
+  saturated the single-threaded server → `/api/v2/trade-ai` timeouts. See
+  [MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md](MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md).)
 * `momentum_scalp_early_lane_runner.py` — one command runs scan → signal sync → proposals → validation,
   per-stage JSON + latency, dry-run default.
 * `momentum_scalp_source_maturity_report.py` — per-source maturity (source vs validation separated).
