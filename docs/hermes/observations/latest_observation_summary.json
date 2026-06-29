@@ -1,6 +1,6 @@
 {
-  "date": "2026-06-27",
-  "timestamp": "2026-06-27T06:31:12.563148+00:00",
+  "date": "2026-06-28",
+  "timestamp": "2026-06-28T06:30:55.555583+00:00",
   "total_checks": 12,
   "passed": 11,
   "warnings": [
@@ -16,7 +16,7 @@
       "ok": true
     },
     "hermes_loop_last_log": {
-      "log": "Jun 26 21:01:42 ms01-openclaw systemd[2973]: hermes-autonomous-loop.service: Main process exited, code=exited, status=1/FAILURE\nJun 26 21:01:42 ms01-openclaw systemd[2973]: hermes-autonomous-loop.service: Failed with result 'exit-code'.\nJun 26 21:01:42 ms01-openclaw systemd[2973]: Failed to start he",
+      "log": "Jun 27 21:04:42 ms01-openclaw python[3806498]:     VALIDATION FAILED: ['MISSING required column: summary', 'evidence_json has only 1 substantive keys (need >= 2)']\nJun 27 21:04:42 ms01-openclaw python[3806498]: Done in 59.4s: 0 validated, 2 failed/rejected\nJun 27 21:04:42 ms01-openclaw systemd[2973]",
       "ok": true
     },
     "searxng_container": {
@@ -32,13 +32,13 @@
       "ok": true
     },
     "hermes_rows": {
-      "total": 5600,
+      "total": 5733,
       "staged": 0,
-      "promoted": 1763,
+      "promoted": 1801,
       "ok": true
     },
     "hermes_embeddings": {
-      "count": 3118,
+      "count": 3251,
       "ok": true
     },
     "kill_switch": {
