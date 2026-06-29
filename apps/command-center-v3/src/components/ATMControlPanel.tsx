@@ -78,7 +78,7 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 440, maxWidth: 'min(440px, 95vw)' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>Edit Automation — {account.display_name}</div>
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>{account.broker} · {account.environment} · source {policy.source ?? '—'}. {account.environment === 'live' ? 'AUTO_LIVE is gate-interlocked on live accounts (refused until the live-trading gate passes).' : 'Paper account — modes route to the paper endpoint (no real-money risk).'}</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>{account.broker} · {account.environment} · source {policy.source ?? '—'}. {account.environment === 'live' ? 'AUTO_LIVE is gate-interlocked on live accounts (refused until the live-trading gate passes).' : 'Validation account — modes route to the sandbox endpoint (no real-money risk; legacy alpaca_paper identifier).'}</div>
         <label style={{ fontSize: 11, display: 'block', marginBottom: 10 }}>name (this section)
           <input style={{ ...inp, width: '100%' }} value={f.display_name} onChange={e => set('display_name', e.target.value)} placeholder="e.g. Alpaca Paper — Conservative Auto" />
         </label>
