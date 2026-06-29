@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-06-29 - Hermes research scope audit + budget governance (tiering + caps)
+
+Applied the Finviz/LLM governance methodology to Hermes research. **Audit first:** `hermes_research_scope_audit.py`
+found Hermes researching **~1,202 distinct symbols / 30d** via cloud lanes (**931 in one day**), with
+**88% of external calls (20,574 / 30d) from one broad-universe source** (`top20_curation`, 1,047 symbols) and
+**~11,776 redundant repeat calls (~50%)**. 39 paid `claude-sonnet-4-6` calls flagged. Advisory only — no trades,
+no broker writes, operator/2FA untouched.
+
+- **Budget policy + guard** `config/hermes_research_budget.yaml` + `scripts/hermes_research_budget_guard.py` —
+  tiers T0 (held) · T1 (actionable, cap 50) · T2 (themed, needs active trigger, cap 80) · T3 (broad,
+  **metadata-only, no LLM**) · T4 (cold, no research). Decisions ALLOW/DEFER/METADATA_ONLY/BLOCK. Fail closed
+  for unknown source; no paid fallback; market-hours 27B/31B blocked (matches LOCAL_LLM_RUNTIME_POLICY);
+  cloud-unavailable → DEFER (never paid/local-heavy); duplicate → DEFER. 28 guard tests + self-test.
+- **Producers patched** `hermes_top20_external_intel.py` (the 20k-row driver) now gates every (symbol, lane):
+  live dry-run over 923 candidates → ~104 ALLOW / 815 DEFER / 4 METADATA_ONLY (**~89% cloud fan-out cut**,
+  coverage preserved within caps). `hermes_external_researcher.py` gains a central guard chokepoint +
+  records provenance. `top20_curation` calls now tagged with the real tier-driving trigger_source.
+- **Provenance** `migrate_hermes_research_provenance.py` — additive nullable columns (trigger_source, tier,
+  budget_decision, lane_used, research_expires_at, downstream_outcome, …) on both research tables.
+  `backfill_hermes_research_provenance.py` backfilled all **29,413 historical rows** (idempotent, factual,
+  budget_decision='legacy'); 0 left unmapped; panel now reads stored tiers. Retrospective: **23,275 (79%)
+  would have been METADATA_ONLY** under the new policy.
+- **Governance panel** System → Hermes card + `GET /api/v2/hermes/research-governance` (read-only): research
+  by tier, LLM by lane, local GPU, duplicate/stale/no-trigger, top expensive sources, budget posture.
+  Served from a disk TTL cache (`HERMES_GOV_TTL_SEC`, default 600s; ~1-3ms cached vs ~3.5s fresh; `?fresh=1`
+  bypass) pre-warmed by cron `*/10 6-20 * * 1-5 … --warm`; `api_v2` reaches it via an mtime-guarded reload.
+- **Docs** `HERMES_RESEARCH_SCOPE_AUDIT.md`, `HERMES_RESEARCH_BUDGET_POLICY.md`, `HERMES_GOVERNANCE_PANEL.md`.
+
 ## 2026-06-29 - GPU/LLM overload + dashboard outage: tiered job prioritization + escalation 31B guard
 
 Acute incident: dashboard `ERR_CONNECTION_RESET` (load 8+) during market hours. **Root cause = a feedback
