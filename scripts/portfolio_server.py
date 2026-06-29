@@ -1172,8 +1172,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
-        # v2 API dispatch
-        if path.startswith("/api/v2/"):
+        # v2 API dispatch (+ Finviz Screener Governance admin routes, which live in api_v2.handle
+        # under /api/admin/finviz-screeners — metadata + source-only run-now, no broker writes)
+        if path.startswith("/api/v2/") or path.startswith("/api/admin/finviz-screeners"):
             try:
                 _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
@@ -1596,8 +1597,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             json_response(self, 400, {"error": "Invalid JSON body"})
             return
 
-        # v2 API POST dispatch
-        if path.startswith("/api/v2/"):
+        # v2 API POST dispatch (+ Finviz admin POST: update/enable/disable/run-now — audited,
+        # source-only, no broker writes; routed through api_v2.handle → finviz_admin_api)
+        if path.startswith("/api/v2/") or path.startswith("/api/admin/finviz-screeners"):
             try:
                 _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
