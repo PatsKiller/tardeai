@@ -76,6 +76,7 @@ export default function HermesPanel() {
   const { data: ccal } = useApi<any>('/api/v2/hermes/catalyst-calibration', 300_000)
   const { data: pa } = useApi<any>('/api/v2/pro-analyst/pills', 300_000)
   const { data: wd } = useApi<any>('/api/v2/watch-directives', 120_000)
+  const { data: gov } = useApi<any>('/api/v2/hermes/research-governance', 120_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
   const [openLoop, setOpenLoop] = useState<string | null>(null)
 
@@ -102,6 +103,65 @@ export default function HermesPanel() {
         {st?.sidecar_retired_dirs?.length > 0 && <div style={{ ...kv, marginTop: 6 }}>Retired dirs: {st.sidecar_retired_dirs.join(', ')}</div>}
         <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6 }}>⚠ {st?.gateway_note}</div>
       </div>
+
+      {/* Research Governance (read-only) — research scope by tier/lane + budget posture */}
+      {gov && (
+        <div style={{ ...card, borderColor: gov.status === 'WARN' ? '#f59e0b' : 'var(--border)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            Hermes Research Governance {gov.status === 'WARN' && <span style={{ color: '#f59e0b', fontSize: 11 }}>⚠ WARN</span>}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
+            30d: <b style={{ color: 'var(--text1)' }}>{gov.windows?.['30d']?.total_calls}</b> research calls ·
+            external {gov.windows?.['30d']?.external_distinct_symbols} symbols ·
+            local GPU {gov.local_gpu_calls_30d} calls · 1d: {gov.windows?.['1d']?.external_distinct_symbols} symbols
+          </div>
+          {/* By tier */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 6, marginBottom: 8 }}>
+            {Object.entries(gov.by_tier || {}).map(([t, v]: any) => (
+              <div key={t} style={{ ...kv, background: t === 'T3' ? 'rgba(245,158,11,.10)' : 'var(--bg1)', borderRadius: 6, padding: '4px 8px' }}>
+                <b style={{ color: t === 'T3' ? '#f59e0b' : 'var(--text1)' }}>{t}</b>: {v.calls} calls / {v.symbols} sym
+              </div>
+            ))}
+          </div>
+          {/* Lanes */}
+          <div style={{ fontSize: 11, marginBottom: 6 }}>
+            Lanes (30d): {Object.entries(gov.llm_by_lane || {}).map(([l, n]: any) => (
+              <span key={l} style={{ marginRight: 10, color: l === 'cloud_paid' ? '#ef4444' : 'var(--text3)' }}>
+                {l}=<b style={{ color: 'var(--text1)' }}>{n}</b>
+              </span>
+            ))}
+          </div>
+          {/* Posture */}
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            broad-universe LLM: <b style={{ color: '#22c55e' }}>{gov.policy?.broad_universe_llm}</b> ·
+            paid fallback: <b style={{ color: '#22c55e' }}>{gov.policy?.paid_fallback}</b> ·
+            market-hours 27B/31B: <b style={{ color: '#22c55e' }}>{gov.policy?.market_hours_local_heavy}</b>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>
+            duplicate: <b style={{ color: '#f59e0b' }}>{gov.duplicate?.redundant_calls}</b> redundant calls ({gov.duplicate?.pct_of_external}%) ·
+            no-trigger: {gov.no_active_trigger?.researched_with_no_trigger}/{gov.no_active_trigger?.researched_distinct_30d} ·
+            stale &gt;30d: {gov.stale?.stale_gt30d || 0} sym
+          </div>
+          {/* Top expensive sources */}
+          {gov.top_expensive_sources?.length > 0 && (
+            <details style={{ fontSize: 11 }}>
+              <summary style={{ cursor: 'pointer', color: 'var(--text3)' }}>Top expensive sources</summary>
+              <table style={{ width: '100%', fontSize: 10, marginTop: 6, borderCollapse: 'collapse' }}>
+                <thead><tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
+                  <th>Source</th><th>Lane</th><th>Calls</th><th>Symbols</th><th>Cost</th></tr></thead>
+                <tbody>
+                  {gov.top_expensive_sources.slice(0, 10).map((e: any, i: number) => (
+                    <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td>{e.source}</td><td>{e.lane}</td><td>{e.calls}</td><td>{e.symbols}</td><td>{e.cost_units}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>{gov.note}</div>
+        </div>
+      )}
 
       {/* Workflow Matrix (Phase 209, read-only) */}
       {wfm && (

@@ -271,6 +271,26 @@ def main():
     if not args.model:
         args.model = LANE_CFG[args.lane]["default_model"]
 
+    # Budget guard (central chokepoint): any producer that shells through this script is gated.
+    # Hard-enforce the broad-universe-no-LLM invariant + fail-closed for unknown triggers. The
+    # deliberate paid (claude) oversight lane is operator-authorized and not auto-blocked here; the
+    # "no paid fallback" rule is enforced where automated lane-selection happens (the budget guard).
+    args.budget_decision = "ALLOW"
+    try:
+        from hermes_research_budget_guard import decide as _bdecide
+        _trig = (args.trigger or "manual").split(":")[0]   # normalize 'paper_postmortem:13' -> 'paper_postmortem'
+        _lk = "cloud_paid" if args.lane == "claude" else "cloud_" + args.lane
+        _gd = _bdecide(symbol=args.symbol or "_", trigger_source=_trig, research_type="external_research",
+                       lane=_lk, urgency=args.priority)
+        args.budget_decision = _gd["decision"]
+        # Enforce only the broad-universe / cold / fail-closed cuts. Never block the paid oversight lane.
+        if _gd["decision"] in ("METADATA_ONLY", "BLOCK") and _gd["tier"] in ("T3", "T4", "UNKNOWN") and args.lane != "claude":
+            print(f"\n[budget-guard] {args.lane}/{_trig} -> {_gd['decision']} (tier={_gd['tier']}): {_gd['reason']}")
+            print("  broad-universe / cold / unknown trigger — no external LLM call. (metadata-only path elsewhere.)")
+            return
+    except Exception as _be:
+        print(f"[budget-guard] advisory check skipped: {_be}")
+
     question = redact(args.question)
     ctx = safe_context(args.symbol)
     ctx = json.loads(redact(json.dumps(ctx)))  # defense-in-depth redaction pass over whole context
@@ -329,12 +349,14 @@ def main():
                          user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
     cur.execute("""INSERT INTO hermes_external_research
         (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
-         recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
+         trigger_source, budget_decision, lane_used)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
          parsed.get("recommendation"), json.dumps(parsed.get("evidence")), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
-         parsed.get("operator_action")))
+         parsed.get("operator_action"),
+         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
     if status == "sent":
