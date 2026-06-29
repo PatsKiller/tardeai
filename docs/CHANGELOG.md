@@ -19,6 +19,9 @@ no broker writes, operator/2FA untouched.
   records provenance. `top20_curation` calls now tagged with the real tier-driving trigger_source.
 - **Provenance** `migrate_hermes_research_provenance.py` — additive nullable columns (trigger_source, tier,
   budget_decision, lane_used, research_expires_at, downstream_outcome, …) on both research tables.
+  `backfill_hermes_research_provenance.py` backfilled all **29,413 historical rows** (idempotent, factual,
+  budget_decision='legacy'); 0 left unmapped; panel now reads stored tiers. Retrospective: **23,275 (79%)
+  would have been METADATA_ONLY** under the new policy.
 - **Governance panel** System → Hermes card + `GET /api/v2/hermes/research-governance` (read-only): research
   by tier, LLM by lane, local GPU, duplicate/stale/no-trigger, top expensive sources, budget posture.
 - **Docs** `HERMES_RESEARCH_SCOPE_AUDIT.md`, `HERMES_RESEARCH_BUDGET_POLICY.md`, `HERMES_GOVERNANCE_PANEL.md`.
