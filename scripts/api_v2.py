@@ -24137,6 +24137,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as _ie:
             return 500, {"ok": False, "error": f"inference: {_ie}"}
 
+    # Finviz Screener Governance admin routes (delegated to finviz_admin_api; metadata + source-only
+    # run-now; NO broker writes; edits audited; never GO-eligible by itself).
+    if base_path.startswith("/api/admin/finviz-screeners"):
+        try:
+            from finviz_admin_api import handle_finviz_admin
+            _fr = handle_finviz_admin(base_path, method, body, query)
+            if _fr is not None:
+                return _fr
+        except Exception as _fe:
+            return 500, {"ok": False, "error": f"finviz-admin: {_fe}"}
+
     # POST routes
     if method == "POST":
         if base_path == "/api/v2/health/remediate":
