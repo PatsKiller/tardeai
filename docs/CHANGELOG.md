@@ -21,8 +21,18 @@ sharing one local GPU with no time-of-day priority. No live trades / broker writ
   T3 research/synthesis to the free cloud-OAuth lanes (Grok :8645 / ChatGPT :8646).
 - **Embed timeout** `rag_retrieval` 30s → 90s (`EMBED_TIMEOUT_S`) so the proposal-review worker stops
   spinning on cold-embed timeouts under load.
-- Still open (next): cloud-OAuth usage monitor, zombie-`processing` reaper, health-agent wiring for the
-  new guard/contention, offloading the 8 morning single-shot LLM jobs to cloud.
+- **Dashboard server made multi-threaded** (`portfolio_server.py` ThreadingMixIn + bounded semaphore
+  `DASHBOARD_MAX_CONCURRENCY`=16) with **thread-local DB connections** (`db_adapter`) — fixes the
+  recurring single-thread hang where one slow endpoint blocked `/api/health` (8–12s → ~2ms; verified a
+  parallel slow request no longer blocks). Crons unchanged (one conn per process).
+- **Zombie reaper** `reset_stuck_agent_jobs.py` — resets `watchlist_agent_jobs` stuck `processing`>30m →
+  `queued` (worker died mid-job, no `updated_at`); on the health auto-remediation safety allowlist.
+- **Cloud-OAuth usage monitor** `cloud_oauth_usage_monitor.py` — per-lane calls/day + auth-fail +
+  **paid-fallback** detection (Grok :8645 / ChatGPT :8646); never routes free-only to a paid key.
+- **Health-agent wiring** `collect_infra_optimization_health` — stuck-jobs (auto-remediated via reaper),
+  cloud-OAuth issues, and an `llm_market_window_contention` regression alert if an unguarded T3 LLM job
+  creeps back into 06:00–12:00 ET. Full design: `JOB_SCHEDULE_TIERED_PRIORITIZATION.md`.
+- Still open (next): offload the 8 morning single-shot T3 LLM jobs to cloud; drop gemma4:31b off the box.
 
 First trading morning after the every-5-min lane went in, Health Agent fired DEGRADED 69/100 and
 `/api/v2/trade-ai` timed out. Investigation + fixes (source/scheduler/monitoring only; no live trades,
