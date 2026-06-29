@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-06-28 - Trade AI scanner: top-30 pagination, Social Scouts, persistent selection, ToS copy
+
+Operator UX/visibility + copy-list tooling for the Trading hub Trade AI scanner (Market Opportunities
+Scanner). UI/API/report cleanup only — no live trades, no sandbox validation submit, no broker writes,
+operator/2FA untouched. Social Scouts remain awareness-only and non-tradeable. **No maturity change.**
+
+- **P0-1** Operator-facing taxonomy cleanup: "P-level" → "Validation level", "Automated Readiness" →
+  "Validation Readiness", "P0/paper caps" → "P0/validation caps" (TradingHub); ATM panel "Paper account
+  … paper endpoint" → "Validation account … sandbox endpoint (legacy alpaca_paper)". Release manifest
+  regenerated; taxonomy audit 0 violations.
+- **P0-2** Top-30 pagination, 10 per page (`1`/`2`/`3` + Previous/Next, "Showing X–Y of 30"); page
+  count based on the top-30 window. Default sort score-desc; existing GO/WAIT/Universe filters preserved.
+- **P0-3** Social Scout rows surfaced in the scanner: violet `SOCIAL SCOUT · N/5` pill (or `· LARGE
+  FLOAT · N/5`) + `Social Scouts` filter tab + `SCOUT` decision label + `--social-scout` left border;
+  tooltip with missing-pillar hints. GO rows suppress the pill. No execution affordance.
+- **P0-4** Persistent checkbox selection across pages/filters/refresh via `localStorage`
+  (`tradeai.scanner.selectedSymbols.<YYYY-MM-DD>`); de-duped; select/clear page + clear all.
+- **P0-5** Thinkorswim copy list: selected count + selectable textarea (comma/newline/space) + Copy
+  (clipboard API + textarea fallback) + "Copied N symbols". Cross-page symbols copied together.
+- **P0-6** `/api/v2/trade-ai` already returns all ranked rows + scout pill fields (PR #17); no decision
+  filter drops scouts; backwards-compatible when fields absent. (Deployed server restart exposes fields.)
+- **P0-7** `apps/command-center-v3/src/lib/scannerSelection.ts` pure utils (paginate/toggle/TOS-format/
+  pill) + `scannerSelection.test.ts` (32 checks, Node type-strip runner). Backend scout tests green.
+
 ## 2026-06-27 - Social Scout pillars (operator-awareness surfacing)
 
 Surface partial social setups that are not yet validation-ready or momentum_scalp/GO-ready but meet

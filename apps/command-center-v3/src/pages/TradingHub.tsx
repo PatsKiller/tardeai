@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import {
+  pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
+  formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, type TosFormat,
+} from '../lib/scannerSelection'
 import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -33,8 +37,24 @@ export default function TradingHub({ onDrill }: Props) {
     (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
-  const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
+  const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT' | 'SCOUT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
+  // Trade AI scanner: top-30 pagination + persistent cross-page symbol selection + Thinkorswim copy.
+  // Selection persists in localStorage keyed by day so it survives refresh/pagination but does not
+  // linger across scanner runs forever. Awareness/selection only — never executes or validates.
+  const scanDay = new Date().toISOString().slice(0, 10)
+  const selKey = selectionStorageKey(scanDay)
+  const [selectedSyms, setSelectedSyms] = useState<string[]>(() => {
+    try { return dedupeSymbols(JSON.parse(localStorage.getItem(selKey) || '[]')) } catch { return [] }
+  })
+  const persistSel = (next: string[]) => {
+    const deduped = dedupeSymbols(next)
+    setSelectedSyms(deduped)
+    try { localStorage.setItem(selKey, JSON.stringify(deduped)) } catch { /* private mode */ }
+  }
+  const [scannerPage, setScannerPage] = useState(1)
+  const [tosFormat, setTosFormat] = useState<TosFormat>('comma')
+  const [tosCopied, setTosCopied] = useState(false)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
   const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000, { enabled: tab === 'Trade AI' })
@@ -78,7 +98,7 @@ export default function TradingHub({ onDrill }: Props) {
             {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
               ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
               : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pending.length} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
-            {readiness && <span> · P-level: {readiness.level?.replace(/_/g, ' ')}</span>}
+            {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -95,7 +115,7 @@ export default function TradingHub({ onDrill }: Props) {
       {/* Readiness bar */}
       {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
-          <span style={{ color: 'var(--text3)' }}>Automated Readiness:</span>
+          <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)' }}>{readiness.closed_usable}/{readiness.target_2000} trades</span>
           <div style={{ flex: 1, height: 4, background: 'var(--bg2)', borderRadius: 2 }}>
@@ -111,7 +131,7 @@ export default function TradingHub({ onDrill }: Props) {
       )}
       {tab === 'Proposals' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, fontSize: 10, color: '#fbbf24' }}>
-          Path B operator route — P0/paper caps are advisory only. <b>Auto route (2FA)</b> opens trade review (edit size/risk) before Schwab approval.
+          Path B operator route — P0/validation caps are advisory only. <b>Auto route (2FA)</b> opens trade review (edit size/risk) before Schwab approval.
         </div>
       )}
 
@@ -134,7 +154,17 @@ export default function TradingHub({ onDrill }: Props) {
           )
         }
         const tickers: any[] = (tradeAi?.tickers ?? []).slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))
-        const filtered = tradeFilter === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === tradeFilter)
+        const isScoutRow = (t: any) => t.scout_status === 'SOCIAL_SCOUT'
+        const filtered = tradeFilter === 'ALL' ? tickers
+          : tradeFilter === 'SCOUT' ? tickers.filter(isScoutRow)
+          : tickers.filter((t: any) => t.decision === tradeFilter)
+        const scoutCount = tickers.filter(isScoutRow).length
+        // Top-30, 10 per page. Page count is based on the top-30 window, not the whole universe.
+        const pv = pageSlice(filtered, scannerPage, 30, 10)
+        const pageRows = pv.items
+        // Selection helpers operate on the WHOLE selection (cross-page), independent of the page.
+        const pageSymbols = pageRows.map((t: any) => t.symbol)
+        const tosText = formatThinkorswimSymbols(selectedSyms, tosFormat)
         const copyBoxes = (['GO', 'WAIT', 'ALL'] as const).map(type => {
           const syms = (type === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === type)).map((t: any) => t.symbol)
           return { type, label: type === 'ALL' ? 'Universe' : type, syms, text: syms.join(','), color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)' }
@@ -159,8 +189,13 @@ export default function TradingHub({ onDrill }: Props) {
         }
         const pctColor = (v: any) => { const n = parseFloat(v); return isNaN(n) ? 'var(--text3)' : n >= 0 ? '#22c55e' : '#ef4444' }
         const pctText = (v: any) => (v === '' || v == null) ? '—' : `${v}%`
+        const pgBtn = (disabled: boolean): CSSProperties => ({
+          padding: '3px 9px', fontSize: 10, borderRadius: 5, fontFamily: 'monospace',
+          border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)',
+          cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
+        })
         // Richer ticker table layout
-        const gridCols = '52px 72px 1fr 60px 30px 48px 64px 58px 58px 50px 1.3fr 1fr 1.6fr'
+        const gridCols = '26px 52px 72px 1fr 60px 30px 48px 64px 58px 58px 50px 1.3fr 1fr 1.6fr'
         const runHistory: any[] = tradeAi?.run_history ?? []
         const sectors: Record<string, number> = tradeAi?.sectors ?? {}
         const sectorEntries = Object.entries(sectors).sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -223,43 +258,61 @@ export default function TradingHub({ onDrill }: Props) {
               ))}
             </div>
 
-            {/* Decision filter */}
+            {/* Decision filter (+ Social Scout awareness filter) */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              {(['ALL', 'GO', 'WAIT'] as const).map(f => {
+              {(['ALL', 'GO', 'WAIT', 'SCOUT'] as const).map(f => {
                 const active = tradeFilter === f
-                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : '#60a5fa'
-                const count = f === 'ALL' ? tickers.length : tickers.filter((t: any) => t.decision === f).length
+                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'SCOUT' ? 'var(--social-scout)' : '#60a5fa'
+                const count = f === 'ALL' ? tickers.length : f === 'SCOUT' ? scoutCount : tickers.filter((t: any) => t.decision === f).length
+                const label = f === 'ALL' ? 'Universe' : f === 'SCOUT' ? 'Social Scouts' : f
                 return (
-                  <button key={f} onClick={() => setTradeFilter(f)} style={{
+                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : undefined} style={{
                     padding: '4px 12px', fontSize: 10, borderRadius: 5, cursor: 'pointer', fontWeight: active ? 700 : 500,
                     border: `1px solid ${active ? fc : 'var(--border)'}`,
                     background: active ? `${fc}22` : 'var(--bg2)', color: active ? fc : 'var(--text3)', fontFamily: 'monospace',
-                  }}>{f === 'ALL' ? 'Universe' : f} ({count})</button>
+                  }}>{label} ({count})</button>
                 )
               })}
             </div>
 
             <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: 1080 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', alignItems: 'center' }}>
+              <span title="Select/clear all rows on this page">
+                <input type="checkbox" aria-label="Select visible page"
+                  checked={pageSymbols.length > 0 && pageSymbols.every((s: string) => selectedSyms.includes(String(s).toUpperCase()))}
+                  onChange={e => persistSel(e.target.checked ? selectSymbols(selectedSyms, pageSymbols) : deselectSymbols(selectedSyms, pageSymbols))}
+                  style={{ cursor: 'pointer' }} />
+              </span>
               <span>Decision</span><span>Source</span><span>Symbol</span><span>Score</span><span>Grd</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Gap%</span><span>Float</span><span>Sector</span><span>Social</span><span>Catalyst</span>
             </div>
-            {filtered.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No {tradeFilter === 'ALL' ? '' : tradeFilter + ' '}tickers in the latest run.</div> :
-            filtered.slice(0, 60).map((t: any, i: number) => {
+            {filtered.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No {tradeFilter === 'ALL' ? '' : tradeFilter === 'SCOUT' ? 'Social Scout ' : tradeFilter + ' '}rows in the latest run.</div> :
+            pageRows.map((t: any, i: number) => {
               const sb = srcBadge(t)
               const country = t.country || ''
               const flag = (!country || country === '🇺🇸' || country === 'United States') ? '' : country
               const social = t.social_sentiment || ''
               const socialColor = social.includes('Very Bullish') ? '#4ade80' : social.includes('Bullish') ? '#86efac' : social.includes('Bearish') ? '#f87171' : 'var(--text3)'
               const score = t.score ?? 0
+              const scout = getSocialScoutPill(t)
+              const sym = String(t.symbol || '').toUpperCase()
+              const checked = selectedSyms.includes(sym)
               return (
               <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai', rows: [t] })}
-                style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${decisionColor(t.decision)}` }}>
-                <span style={{ fontWeight: 700, fontSize: 9, color: decisionColor(t.decision) }}>{t.decision || 'NO-GO'}</span>
+                style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${scout.isScout ? 'var(--social-scout)' : decisionColor(t.decision)}` }}>
+                <span onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input type="checkbox" aria-label={`Select ${sym}`} checked={checked}
+                    onChange={() => persistSel(toggleSelectedSymbol(selectedSyms, sym))} style={{ cursor: 'pointer' }} />
+                </span>
+                <span style={{ fontWeight: 700, fontSize: 9, color: scout.isScout ? 'var(--social-scout)' : decisionColor(t.decision) }}>{scout.isScout ? 'SCOUT' : (t.decision || 'NO-GO')}</span>
                 <span title={sb.label} style={{ fontSize: 8, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${sb.color}40`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
                 <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
+                  {scout.isScout && (
+                    <span title={`${scout.subtitle}${scout.hints && scout.hints.length ? ' — ' + scout.hints.join(' · ') : ''}\nAwareness only — not a GO, not validation-fast-path eligible, not a standard momentum_scalp trade.`}
+                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-scout-dim)', color: 'var(--social-scout)', border: '1px solid var(--social-scout)', whiteSpace: 'nowrap', cursor: 'help' }}>{scout.text}</span>
+                  )}
                   {' '}<ProAnalystPill symbol={t.symbol} map={paMap} compact />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -294,7 +347,48 @@ export default function TradingHub({ onDrill }: Props) {
             )})}
             </div>
             </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/NO-GO). Click a row for full scan detail. Showing top {Math.min(60, filtered.length)} of {filtered.length}{tradeFilter !== 'ALL' ? ` ${tradeFilter}` : ''} by score{tradeFilter !== 'ALL' ? ` (${tickers.length} universe)` : ''}.</div>
+
+            {/* Pagination — top 30, 10 per page */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+                {pv.total === 0 ? 'No rows' : `Showing ${pv.from}–${pv.to} of ${pv.total}`} (top 30 by score{tradeFilter !== 'ALL' ? ` · ${tradeFilter === 'SCOUT' ? 'Social Scouts' : tradeFilter}` : ''})
+              </span>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setScannerPage(p => Math.max(1, Math.min(p, pv.pageCount) - 1))} disabled={pv.page <= 1} style={pgBtn(pv.page <= 1)}>‹ Previous</button>
+              {Array.from({ length: pv.pageCount }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setScannerPage(p)} style={{ ...pgBtn(false), ...(p === pv.page ? { background: 'rgba(96,165,250,.18)', color: '#60a5fa', borderColor: '#60a5fa', fontWeight: 700 } : {}) }}>{p}</button>
+              ))}
+              <button onClick={() => setScannerPage(p => Math.min(pv.pageCount, Math.min(p, pv.pageCount) + 1))} disabled={pv.page >= pv.pageCount} style={pgBtn(pv.page >= pv.pageCount)}>Next ›</button>
+            </div>
+
+            {/* Thinkorswim copy list — persists symbols selected across pages/filters */}
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>Thinkorswim copy list</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{selectedSyms.length} selected</span>
+                <div style={{ flex: 1 }} />
+                {(['comma', 'newline', 'space'] as const).map(fmt => (
+                  <button key={fmt} onClick={() => setTosFormat(fmt)} style={{ ...pgBtn(false), ...(tosFormat === fmt ? { background: 'rgba(96,165,250,.18)', color: '#60a5fa', borderColor: '#60a5fa' } : {}) }}>{fmt}</button>
+                ))}
+                <button onClick={() => persistSel(selectSymbols(selectedSyms, pageSymbols))} style={pgBtn(false)}>Select page</button>
+                <button onClick={() => persistSel(deselectSymbols(selectedSyms, pageSymbols))} style={pgBtn(false)}>Clear page</button>
+                <button onClick={() => persistSel([])} disabled={selectedSyms.length === 0} style={pgBtn(selectedSyms.length === 0)}>Clear all</button>
+                <button onClick={() => {
+                  const done = () => { setTosCopied(true); setTimeout(() => setTosCopied(false), 1500) }
+                  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(tosText).then(done).catch(done)
+                  else done()
+                }} disabled={selectedSyms.length === 0} style={{ ...pgBtn(selectedSyms.length === 0), background: tosCopied ? 'rgba(34,197,94,.15)' : 'var(--bg1)', color: tosCopied ? '#22c55e' : 'var(--text1)', borderColor: tosCopied ? '#22c55e' : 'var(--border)', fontWeight: 700 }}>
+                  {tosCopied ? `✓ Copied ${selectedSyms.length} symbol${selectedSyms.length === 1 ? '' : 's'}` : 'Copy'}
+                </button>
+              </div>
+              {/* selectable textarea fallback — operator can manually copy if clipboard API is blocked */}
+              <textarea readOnly value={tosText} aria-label="Selected symbols for Thinkorswim"
+                placeholder="Check rows above to build a Thinkorswim symbol list (selection persists across pages)…"
+                style={{ width: '100%', minHeight: 38, resize: 'vertical', boxSizing: 'border-box', fontSize: 11, fontFamily: 'monospace', color: 'var(--text0)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px' }} />
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout symbols can be copied but remain non-tradeable.</div>
+            </div>
+
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/NO-GO). Click a row for full scan detail. Top 30 by score, 10 per page{tradeFilter !== 'ALL' ? ` · ${tradeFilter === 'SCOUT' ? 'Social Scouts' : tradeFilter} filter` : ''} ({tickers.length} universe). Social Scouts are awareness-only.</div>
 
             {/* Run History + Sector Distribution */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>

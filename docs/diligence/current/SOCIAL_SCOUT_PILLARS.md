@@ -89,3 +89,26 @@ Color token `--social-scout` (violet `#a855f7`, deliberately not green/GO, amber
 The pill renders in the Trading hub Scalp screen rows + a "Social Scouts" summary metric, with a
 tooltip of `operator_subtitle` + missing-pillar hints. There is **no** Buy / Submit / Validate / Trade
 affordance on a Social Scout — it is a watch/surface/awareness state only.
+
+### Trade AI scanner (Market Opportunities Scanner)
+
+The Trading hub **Trade AI** scanner surfaces Social Scout rows in the same ranked table:
+
+* **Top 30, 10 per page.** The table pages the top-30 ranked rows (`1`/`2`/`3`, Previous/Next,
+  "Showing 1–10 of 30"). Page count is based on the top-30 window, not the whole universe.
+* **Social Scout filter.** A `Social Scouts` filter tab shows only `scout_status = SOCIAL_SCOUT`
+  rows; the violet `SOCIAL SCOUT · N/5` pill (or `· LARGE FLOAT · N/5`) renders inline next to the
+  symbol, with a left-border in `--social-scout` and `SCOUT` in the decision column. Tooltip =
+  `operator_subtitle` + missing-pillar hints. GO rows suppress the pill and render normally.
+* **Persistent selection.** A checkbox column lets the operator select symbols; selection persists
+  **across pages, filters, and refresh** via `localStorage` keyed by day
+  (`tradeai.scanner.selectedSymbols.<YYYY-MM-DD>`). De-duplicated case-insensitively. Controls:
+  select/clear visible page, clear all.
+* **Thinkorswim copy list.** A copy panel shows the selected count + a selectable textarea of the
+  symbols (comma / newline / space format) with a Copy button (clipboard API + textarea fallback) and
+  "Copied N symbols" feedback. Social Scout symbols can be copied but remain non-tradeable.
+
+All of this is **operator awareness / selection only**. There is no Buy / Submit / Validate / Trade
+action anywhere on a Social Scout (or on the copy list); copying symbols never places, validates, or
+queues a trade. Pure UI logic (pagination, selection, TOS formatting, pill derivation) lives in
+`apps/command-center-v3/src/lib/scannerSelection.ts` and is covered by `scannerSelection.test.ts`.
