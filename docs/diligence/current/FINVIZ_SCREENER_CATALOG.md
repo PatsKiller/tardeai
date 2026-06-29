@@ -54,10 +54,20 @@ recommendations, and `config/finviz_screener_cadence_policy.yaml` for the cadenc
 
 ## Governance
 
-* Admin modal "Finviz Screener Governance" (System/admin page) — view/manage every registry screener:
-  cadence class, active flag, notes, sunset candidate, **run-now (source fetch only — never a trade)**;
-  shows actual cadence windows + last/next run. Changes are audit-logged (operator, timestamp,
-  before/after).
+* **Admin panel "Finviz Screener Governance"** — command-center-v3 **System → Finviz** tab
+  (`FinvizScreenerPanel`). View/manage every registry screener: strategy family, cadence class,
+  active flag, notes, **next/last run + row count**, scalp-lane membership, and **run-now (SOURCE
+  FETCH ONLY — never a trade, never a gate bypass)**. Edits are audit-logged via `admin_write_guard`
+  (operator, timestamp, before→after).
+* **API** (`finviz_admin_api.py`, delegated from `api_v2.handle()`):
+  * `GET  /api/admin/finviz-screeners` — list (registry+DB merge, cadence, next/last run)
+  * `GET  /api/admin/finviz-screeners/audit` — efficiency audit
+  * `POST /api/admin/finviz-screeners/:id/update` — cadence_class / notes / sunset_candidate (metadata only)
+  * `POST /api/admin/finviz-screeners/:id/enable | /disable` — DB `active` flag
+  * `POST /api/admin/finviz-screeners/:id/run-now` — throttle-safe Finviz fetch via
+    `run_finviz_targeted_screeners` (no broker path, no order submission)
 * `validate_finviz_screener_registry.py` fails the build if the DB and registry drift.
 
-No live broker writes. Operator confirmation / 2FA untouched. LLMs advisory only.
+No live broker writes. Operator confirmation / 2FA untouched. LLMs advisory only. No screener is
+GO-eligible by itself — strict momentum_scalp gates (float ≤20M, RVOL ≥5, verified catalyst, fresh
+quote, route, valid plan) apply downstream regardless of which screen surfaced the symbol.

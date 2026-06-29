@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-06-29 - Finviz screener governance + LLM/cloud budget control plane + Arc B50 runtime ratification
+
+Methodical governance for every Finviz screener and a hard budget control plane for local-GPU / cloud-OAuth
+LLM usage, plus ratification of the Intel Arc Pro B50 local runtime. No live trades / broker writes;
+operator confirmation / 2FA untouched; LLMs advisory only; no screener is GO-eligible by itself.
+
+- **Screener registry + catalog (P1)** `config/finviz_screeners.yaml` — canonical registry: 5 operator
+  presets (scalp/gapper/swing) + 29 DB-discovered screens (classified by strategy family + cadence class).
+  `export_finviz_screeners.py` (DB→registry), `validate_finviz_screener_registry.py` (fails build on
+  DB↔registry drift). → `FINVIZ_SCREENER_CATALOG.md`.
+- **Targeted scalp lane (P2)** `run_finviz_targeted_screeners.py` + `momentum_scalp_early_lane_runner.py`
+  — the momentum-scalp 5-min lane now fetches ONLY the 3 purpose-built scalp/gapper screens (drops
+  intraday-continuation outside 09:30–11:30 ET), **never the broad all-active `finviz_screener_runner --run`**
+  (29 income/swing screens). Rows tagged with screener_id/preset_id/discovery_trace_id; `uses_broad_runner=False`.
+- **Cadence policy + efficiency audit (P3)** `config/finviz_screener_cadence_policy.yaml` (7 cadence
+  classes by signal decay; only `scalp_fast` ≤5 min), `apply_finviz_screener_cadence.py`,
+  `finviz_screener_efficiency_audit.py` (keep/reduce/merge/sunset; scalp never auto-sunset). →
+  `FINVIZ_SCREENER_EFFICIENCY_AUDIT.md`.
+- **LLM/cloud budget enforcement (P4)** `config/llm_budget_policy.yaml` + `llm_budget_guard.py` +
+  `llm_request_router.py` — market-hour `gemma3:27b`/`gemma4-31b` → **hard_block**; paid model for a
+  free-OAuth job → **hard_fail**; T3 with cloud unavailable/over-budget → **defer** (never local-31B,
+  never paid). Health agent ingests budget findings.
+- **Morning control plane (P5)** `morning_control_plane_report.py` — one read-only roll-up of Finviz /
+  local-LLM / cloud-OAuth / dashboard / scheduler state. → `FINVIZ_AND_LLM_MORNING_CONTROL_PLANE.md`.
+- **Admin governance (P6)** `finviz_admin_api.py` (delegated from `api_v2.handle()`) + command-center-v3
+  **System → Finviz** tab (`FinvizScreenerPanel`): view/manage cadence, active, notes, next/last run;
+  **run-now is SOURCE FETCH ONLY** (no broker path, no order submission); edits audited via
+  `admin_write_guard`. 21/21 tests assert no trade/gate-bypass surface.
+- **Arc Pro B50 runtime ratification (P7)** `config/local_llm_runtime_policy.yaml` +
+  `local_llm_runtime_probe.py` + `local_llm_benchmark.py` — ratifies gemma3:12b (production ceiling) /
+  gemma3:4b (fast) / nomic-embed-text (protected); pins generation to the discrete B50
+  (`GGML_VK_VISIBLE_DEVICES=1`, never integrated Iris Xe); Vulkan production with SYCL/oneAPI as an
+  evidence-gated off-hours benchmark candidate; 27b/31b hard-blocked in market hours. →
+  `LOCAL_LLM_RUNTIME_POLICY.md`.
+- Tests: 146 new (registry 15 / targeted 16 / not-broad 10 / cadence 16 / efficiency 13 / budget 24 /
+  cloud 12 / runtime 19 / admin 21). Baselines green: 27/27 Schwab guards, no-broker-write 11/11,
+  broker_write_scanner 0 findings, taxonomy 0 violations.
+
 ## 2026-06-29 - GPU/LLM overload + dashboard outage: tiered job prioritization + escalation 31B guard
 
 Acute incident: dashboard `ERR_CONNECTION_RESET` (load 8+) during market hours. **Root cause = a feedback

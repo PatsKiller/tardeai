@@ -1,7 +1,7 @@
 # Finviz & LLM Morning Control Plane
 
 **Status: PASS**  
-_Generated: 2026-06-29T10:57:58.064667_  
+_Generated: 2026-06-29T11:09:03.292240_  
 
 ## Finviz
 
@@ -22,7 +22,7 @@ _Generated: 2026-06-29T10:57:58.064667_
 
 ## Dashboard
 
-- /api/health: {'http': '200', 'seconds': 0.002342} · threaded: True
+- /api/health: {'http': '200', 'seconds': 0.002245} · threaded: True
 
 ## Scheduler
 
