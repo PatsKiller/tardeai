@@ -1,0 +1,399 @@
+# Canonical Finviz screener registry — single source of truth for screener names, URLs, filters,
+# strategy family, cadence class, signal-decay/time-sensitivity, and active/sunset status.
+#
+# Two groups:
+#   screeners:    operator-provided purpose-built presets (scalp/gapper + swing). These drive the
+#                 5-minute scalp lane (scalp_fast only) and the swing cadence.
+#   db_screeners: the 29 screeners currently in the finviz_screeners DB table (income/swing/fundamental;
+#                 NONE are momentum_scalp). classification_status=needs_review until operator-confirmed.
+#
+# validate_finviz_screener_registry.py FAILS the build if the DB and this registry drift (missing /
+# extra / active-mismatch). Finviz screens are DISCOVERY ONLY — go_eligible_by_itself is always false;
+# momentum_scalp GO still requires the strict downstream deterministic gates (float<=20M, RVOL>=5,
+# verified catalyst, fresh quote, route=momentum_scalp/GO, not-scout, valid plan, risk/liquidity/TTL).
+
+screeners:
+  - screener_id: momentum_scalp_primary_gappers
+    preset_id: s144880153
+    name: "Momentum Scalp — Primary Premarket High-RVOL Gappers"
+    strategy_family: momentum_scalp
+    time_sensitivity: scalp_fast
+    cadence_class: scalp_fast
+    active: true
+    cadence: {market_days_only: true, timezone: America/New_York,
+              windows: [{start: "06:00", end: "10:30", every_minutes: 5}]}
+    url: "https://elite.finviz.com/screener?v=151&f=cap_smallunder%2Cgeo_usa%2Csh_avgvol_o100%2Csh_float_u50%2Csh_price_2to20%2Csh_relvol_o5%2Cta_gap_u10&ft=4&o=-sector&c=0%2C1%2C2%2C3%2C4%2C5%2C6%2C7%2C25%2C67%2C65%2C66%2C136%2C137&preset=s144880153"
+    filters: {cap: small_under, geo: usa, avg_volume_min: 100000, float_max_m: 50,
+              price_min: 2, price_max: 20, rel_volume_min: 5, gap_up_min_pct: 10}
+    primary_use: "Premarket scalp/gapper discovery. Broad discovery; strict momentum_scalp GO gates apply downstream."
+    contributes_to: [market_confirmation, structure_tradeability, strategy_risk_fit, catalyst_evidence_optional]
+    go_eligible_by_itself: false
+    notes: "Float <50M is broader than momentum_scalp GO (<=20M). Downstream GO requires float<=20M, verified catalyst, fresh quote, route=momentum_scalp, actionability=GO, valid plan, all deterministic gates."
+
+  - screener_id: momentum_scalp_low_price_active_gappers
+    preset_id: s144880160
+    name: "Momentum Scalp — Lower-Price Active Gappers"
+    strategy_family: momentum_scalp
+    time_sensitivity: scalp_fast
+    cadence_class: scalp_fast
+    active: true
+    cadence: {market_days_only: true, timezone: America/New_York,
+              windows: [{start: "06:00", end: "10:30", every_minutes: 5}]}
+    url: "https://elite.finviz.com/screener?v=111&f=cap_smallunder%2Cexch_nyse%7Cnasd%2Csh_avgvol_o100%2Csh_curvol_o50%2Csh_float_u50%2Csh_price_1to10%2Csh_relvol_o2%2Cta_gap_u5&ft=4&o=-change&preset=s144880160"
+    filters: {cap: small_under, exchanges: [nyse, nasdaq], avg_volume_min: 100000, current_volume_min: 50000,
+              float_max_m: 50, price_min: 1, price_max: 10, rel_volume_min: 2, gap_up_min_pct: 5}
+    primary_use: "Broader active low-price gapper discovery. Good for early Social Scout/watch candidates; strict GO gates apply."
+    contributes_to: [market_confirmation, structure_tradeability, strategy_risk_fit]
+    go_eligible_by_itself: false
+
+  - screener_id: momentum_scalp_intraday_continuation
+    preset_id: s144880157
+    name: "Momentum Scalp — Intraday Continuation / Change From Open"
+    strategy_family: momentum_scalp
+    time_sensitivity: scalp_fast
+    cadence_class: scalp_fast
+    active: true
+    cadence: {market_days_only: true, timezone: America/New_York,
+              windows: [{start: "09:30", end: "11:30", every_minutes: 5}]}
+    url: "https://elite.finviz.com/screener?v=111&f=cap_smallunder%2Cexch_nyse%7Cnasd%2Csh_avgvol_o100%2Csh_curvol_o100%2Csh_float_u50%2Csh_price_1to10%2Csh_relvol_o2%2Cta_changeopen_5to50&ft=4&o=-change&preset=s144880157"
+    filters: {cap: small_under, exchanges: [nyse, nasdaq], avg_volume_min: 100000, current_volume_min: 100000,
+              float_max_m: 50, price_min: 1, price_max: 10, rel_volume_min: 2,
+              change_from_open_min_pct: 5, change_from_open_max_pct: 50}
+    primary_use: "Post-open continuation / opening-range momentum discovery (09:30-11:30 ET only)."
+    contributes_to: [market_confirmation, structure_tradeability, strategy_risk_fit]
+    go_eligible_by_itself: false
+
+  - screener_id: swing_smallcap_quality_trend_extension
+    preset_id: s144880159
+    name: "Swing — Small-Cap Quality Trend Extension"
+    strategy_family: swing
+    time_sensitivity: swing_daily
+    cadence_class: swing_daily
+    active: true
+    cadence: {market_days_only: true, timezone: America/New_York,
+              windows: [{start: "10:00", end: "10:05", every_minutes: 1440},
+                        {start: "15:30", end: "15:35", every_minutes: 1440}]}
+    url: "https://elite.finviz.com/screener?v=111&f=cap_smallunder%2Cfa_curratio_o1%2Cfa_debteq_u1%2Csh_avgvol_o300%2Csh_price_10to200%2Cta_sma50_pa10&preset=s144880159"
+    filters: {cap: small_under, current_ratio_min: 1, debt_to_equity_max: 1, avg_volume_min: 300000,
+              price_min: 10, price_max: 200, price_vs_sma50: above_10pct}
+    primary_use: "Small-cap quality/trend-extension swing candidates. NOT a scalp screen."
+    recommended_frequency: "1-2x/day"
+    go_eligible_by_itself: false
+
+  - screener_id: swing_smallcap_uptrend_pullback
+    preset_id: s144880158
+    name: "Swing — Small-Cap Uptrend Pullback"
+    strategy_family: swing
+    time_sensitivity: swing_intraday
+    cadence_class: swing_intraday
+    active: true
+    cadence: {market_days_only: true, timezone: America/New_York,
+              windows: [{start: "09:45", end: "09:50", every_minutes: 1440},
+                        {start: "12:30", end: "12:35", every_minutes: 1440},
+                        {start: "15:30", end: "15:35", every_minutes: 1440}]}
+    url: "https://elite.finviz.com/screener?v=111&f=cap_smallunder%2Cfa_curratio_o1%2Cfa_debteq_u1%2Csh_avgvol_o300%2Csh_price_10to200%2Cta_sma20_pb%2Cta_sma200_pa%2Cta_sma50_pa&preset=s144880158"
+    filters: {cap: small_under, current_ratio_min: 1, debt_to_equity_max: 1, avg_volume_min: 300000,
+              price_min: 10, price_max: 200, price_vs_sma20: below, price_vs_sma50: above, price_vs_sma200: above}
+    primary_use: "Swing pullback in an uptrend. Watchlist/swing research, NOT scalp execution."
+    recommended_frequency: "2-3x/day"
+    go_eligible_by_itself: false
+
+# The scalp 5-minute lane runs ONLY these scalp_fast screener_ids (intraday_continuation only 09:30-11:30):
+scalp_lane_screener_ids:
+  - momentum_scalp_primary_gappers
+  - momentum_scalp_low_price_active_gappers
+  - momentum_scalp_intraday_continuation
+
+# === 29 screeners exported from the finviz_screeners DB table (2026-06-29) ===
+# All income/swing/fundamental — NONE are momentum_scalp. classification_status=needs_review.
+db_screeners:
+- screener_id: bond_etf_income
+  name: Bond ETF Income
+  strategy_family: bond_income
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,sec_financial&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67&o=-dividendyield
+  primary_use: Financial sector ETFs sorted by yield (includes bond funds)
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: core_compounder_value
+  name: Core Compounder Value
+  strategy_family: core_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=cap_largeover,fa_pe_u25,fa_epsqoq_pos,ta_sma200_pa
+  primary_use: Large cap, PE <25, growing EPS, above SMA200
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: quality_compounders
+  name: Quality Compounders
+  strategy_family: core_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=fa_epsyoy5_o10,fa_roe_o15,cap_largeover,geo_usa
+  primary_use: Quality growth with durable competitive advantage
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: roth_growth
+  name: Roth-Friendly Growth
+  strategy_family: core_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=cap_largeover,fa_epsqoq_pos,fa_salesqoq_pos,ta_sma200_pa&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Large cap, growing EPS+sales, above SMA200. Tax-free growth for Roth.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: core_index_broad
+  name: Core Index / Broad Market
+  strategy_family: core_index
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_div_pos,geo_usa&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67&o=-marketcap
+  primary_use: US broad market ETFs sorted by market cap
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: covered_call_etf
+  name: Covered-Call ETF Scanner
+  strategy_family: covered_call_income
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_dividendyield_o5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: ETFs with yield >5% (likely covered-call or option-income)
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: covered_call_rotation
+  name: Covered-Call Rotation Window
+  strategy_family: covered_call_income
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_dividendyield_o6,sh_avgvol_o500
+  primary_use: "ETFs yield >6%, avg vol >500K \u2014 covered-call rotation candidates"
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: etf_income
+  name: Income ETFs
+  strategy_family: covered_call_income
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_div_pos,fa_dividendyield_o3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: ETFs with yield >3%
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: defense_basket
+  name: Defense/Aerospace Basket
+  strategy_family: defense_thesis
+  time_sensitivity: swing_daily
+  cadence_class: swing_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ind_aerospacedefense&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Aerospace & Defense industry scan
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: defense_momentum
+  name: Defense Momentum
+  strategy_family: defense_thesis
+  time_sensitivity: swing_daily
+  cadence_class: swing_daily
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=geo_usa,ind_aerospacedefense,ta_perf_1mup
+  primary_use: null
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: div_growth_quality
+  name: Dividend Growth Quality
+  strategy_family: dividend_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=fa_div_o3,fa_roe_o15,fa_payoutratio_u60p,ta_sma50_pa
+  primary_use: Div >3%, ROE >15%, payout <60%, above SMA50
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: dividend_aristocrats
+  name: Dividend Aristocrats (Growth)
+  strategy_family: dividend_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=fa_div_o1.5,fa_epsyoy5_o5,cap_largeover,geo_usa
+  primary_use: Dividend growers 5yr+ history, 2-4% yield
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: dividend_growth
+  name: Dividend Growth Compounder
+  strategy_family: dividend_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=fa_div_o2,fa_epsqoq_pos,fa_payoutratio_u70,cap_largeover&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: null
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: taxable_qualified_div
+  name: Taxable-Friendly Qualified Dividends
+  strategy_family: dividend_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=cap_largeover,fa_div_pos,fa_dividendyield_o1,fa_pe_u25&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Large cap, yield >1%, PE <25. Qualified dividends for taxable accounts.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: value_income
+  name: Value + Income
+  strategy_family: dividend_growth_compounder
+  time_sensitivity: fundamental_daily
+  cadence_class: fundamental_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_pe_u20,fa_peg_u2,fa_dividendyield_o1&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: PE <20, PEG <2, yield >1%. Value plays with income.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: fib_retracement_targeted
+  name: "Fib Retracement Bounce \u2014 pullback in uptrend (targeted)"
+  strategy_family: fib_retracement_bounce
+  time_sensitivity: swing_intraday
+  cadence_class: swing_intraday
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=sh_price_o5,sh_avgvol_o500,ta_sma20_pb,ta_sma50_pa,ta_sma200_pa,ta_rsi_nob60&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: "Uptrend (above 50/200 SMA) pulled back below 20 SMA, RSI not overbought \u2014 matches fib_retracement_bounce config (buy weakness in strength)."
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: high_yield_bdc_reit
+  name: High-Yield BDC/REIT (>6%)
+  strategy_family: high_yield_income_bdc
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=fa_div_o6,cap_smallover,geo_usa
+  primary_use: BDCs, REITs, CEFs with >6% yield
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: high_yield_income
+  name: High-Yield Income (BDC/CEF)
+  strategy_family: high_yield_income_bdc
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_dividendyield_o5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Yield >5%, positive dividend. Filter BDCs/CEFs manually.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: ira_income_friendly
+  name: IRA-Friendly Income
+  strategy_family: high_yield_income_bdc
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_dividendyield_o4,fa_payoutratio_u80p&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Yield >4%, payout <80%. Best in IRA for tax-deferred income.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: income_candidates
+  name: Income Candidates (Div >3%)
+  strategy_family: income_add
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=fa_div_o3,geo_usa,cap_smallover,sh_avgvol_o200
+  primary_use: null
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: intl_dividend
+  name: International Dividend
+  strategy_family: international_dividend
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=geo_notusa,fa_div_pos,fa_dividendyield_o2&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Non-US stocks with yield >2%
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: recovery_candidates
+  name: Recovery Watch Candidates
+  strategy_family: recovery_watch
+  time_sensitivity: scout_intraday
+  cadence_class: scout_intraday
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=ta_sma50_pb,ta_rsi_os30,sh_relvol_o1&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: "Below SMA50, RSI oversold, volume spike \u2014 potential recovery"
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: reit_income_scan
+  name: REIT Income Scanner
+  strategy_family: reit_income
+  time_sensitivity: income_weekly
+  cadence_class: income_weekly
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=sec_realestate,fa_div_pos,fa_dividendyield_o3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Real estate sector, yield >3%
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: sector_leaders
+  name: Sector Leaders (Rotation)
+  strategy_family: sector_rotation
+  time_sensitivity: swing_daily
+  cadence_class: swing_daily
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=geo_usa,cap_midover,sh_avgvol_o1000,ta_perf_1wup
+  primary_use: null
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: speculative_catalyst
+  name: Speculative w/ Catalyst
+  strategy_family: speculative_growth
+  time_sensitivity: scout_intraday
+  cadence_class: scout_intraday
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=cap_midover,sh_relvol_o2,ta_change_u5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Mid+ cap, RVOL >2x, >5% recent move. Catalyst screening.
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: tactical_momentum
+  name: Tactical Momentum
+  strategy_family: speculative_growth
+  time_sensitivity: scout_intraday
+  cadence_class: scout_intraday
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=cap_midover,ta_sma20_pa,ta_sma50_pa,ta_change_u3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Mid+ cap, above both SMAs, recent positive change
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: swing_breakout_targeted
+  name: "Swing Breakout \u2014 base breakout (targeted)"
+  strategy_family: swing_breakout
+  time_sensitivity: swing_daily
+  cadence_class: swing_daily
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=sh_price_o5,sh_price_u150,sh_float_u500,sh_relvol_o1.5,sh_avgvol_o500,ta_sma20_pa,ta_sma50_pa,ta_highlow52w_b0to10h&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: "Near 52w high, above 20/50 SMA, RVOL>1.5, float<500M, $5-150 \u2014 matches swing_breakout config."
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: oversold_reversion
+  name: Oversold Mean Reversion
+  strategy_family: swing_trade
+  time_sensitivity: swing_intraday
+  cadence_class: swing_intraday
+  active: true
+  url: https://finviz.com/screener.ashx?v=111&f=ta_rsi_ob30,geo_usa,sh_avgvol_o500,sh_price_o5
+  primary_use: null
+  go_eligible_by_itself: false
+  classification_status: needs_review
+- screener_id: swing_momentum
+  name: Swing Trade Momentum
+  strategy_family: swing_trade
+  time_sensitivity: swing_intraday
+  cadence_class: swing_intraday
+  active: true
+  url: https://elite.finviz.com/export?v=152&f=sh_relvol_o1.5,ta_sma20_pa,ta_sma50_pa,ta_rsi_nos60&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67
+  primary_use: Relative volume >1.5x, above SMA20+50, RSI not overbought
+  go_eligible_by_itself: false
+  classification_status: needs_review

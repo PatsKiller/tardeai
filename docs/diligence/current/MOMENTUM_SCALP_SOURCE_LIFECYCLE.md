@@ -54,6 +54,16 @@ Finviz screen / social discovery
   flock so they never pile up. (Originally a single 5-min full-chain cron; that ran ~210s/run and
   saturated the single-threaded server → `/api/v2/trade-ai` timeouts. See
   [MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md](MOMENTUM_SCALP_HEALTH_INCIDENT_20260629.md).)
+* **Targeted scalp screens (2026-06-29):** `stage_finviz_scan` now runs
+  `run_finviz_targeted_screeners.py` with the registry `scalp_lane_screener_ids` — **only the 2-3
+  purpose-built scalp/gapper screens** (`momentum_scalp_primary_gappers`,
+  `momentum_scalp_low_price_active_gappers`, and `momentum_scalp_intraday_continuation` *only*
+  09:30–11:30 ET). It **no longer calls `finviz_screener_runner.py --run`**, which fired all 29 broad
+  income/swing/fundamental DB screeners every 5 min (none are momentum_scalp). The 29 broad screeners
+  run on their own cadence classes (see [FINVIZ_SCREENER_CATALOG.md](FINVIZ_SCREENER_CATALOG.md) +
+  `config/finviz_screener_cadence_policy.yaml`). Rows are tagged with full source lineage
+  (screener_id / preset_id / source_url_hash / discovery_trace_id / strategy_family). Discovery only —
+  Finviz never creates GO; strict downstream gates unchanged.
 * `momentum_scalp_early_lane_runner.py` — one command runs scan → signal sync → proposals → validation,
   per-stage JSON + latency, dry-run default.
 * `momentum_scalp_source_maturity_report.py` — per-source maturity (source vs validation separated).

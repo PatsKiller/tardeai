@@ -84,14 +84,35 @@ def _py() -> str:
 
 # ── Stages (each returns a JSON-able summary) ───────────────────────────────────────────────
 
+def _scalp_lane_screener_ids(now=None) -> list:
+    """The TARGETED scalp/gapper screens for the 5-min lane (from config/finviz_screeners.yaml
+    scalp_lane_screener_ids). momentum_scalp_intraday_continuation only fires inside 09:30-11:30 ET —
+    it is a post-open continuation screen."""
+    import yaml
+    reg = yaml.safe_load((ROOT / "config" / "finviz_screeners.yaml").read_text())
+    ids = list(reg.get("scalp_lane_screener_ids", []))
+    t = now or now_et()
+    hhmm = t.strftime("%H:%M")
+    if not ("09:30" <= hhmm <= "11:30"):
+        ids = [i for i in ids if i != "momentum_scalp_intraday_continuation"]
+    return ids
+
+
 def stage_finviz_scan(dry_run: bool) -> dict:
-    """Finviz source refresh — reuses the throttle-safe finviz_screener_runner. Source rows only."""
-    s = {"stage": "finviz_scan", "ran": not dry_run}
+    """TARGETED Finviz scalp discovery — runs ONLY the purpose-built scalp/gapper screens
+    (run_finviz_targeted_screeners with the registry scalp_lane_screener_ids), NOT
+    `finviz_screener_runner.py --run` (which would fire all 29 broad DB screeners). Discovery only;
+    strict momentum_scalp GO gates apply downstream. Source rows only — no broker writes."""
+    s = {"stage": "finviz_scan", "ran": not dry_run, "targeted": True}
+    ids = _scalp_lane_screener_ids()
+    s["scalp_screeners"] = ids
     if dry_run:
-        s.update(ok=True, reason="dry_run_no_refresh"); return s
-    r = _run([_py(), str(SCRIPTS / "finviz_screener_runner.py"), "--run"], timeout=FINVIZ_TIMEOUT)
+        s.update(ok=True, reason="dry_run_no_fetch"); return s
+    r = _run([_py(), str(SCRIPTS / "run_finviz_targeted_screeners.py"),
+              "--screeners", ",".join(ids), "--apply", "--json"], timeout=FINVIZ_TIMEOUT)
     s.update(ok=(r["rc"] == 0), latency_ms=r["latency_ms"], rc=r["rc"],
-             reason="finviz_screener_runner --run", stderr=r["stderr_tail"])
+             reason=f"run_finviz_targeted_screeners (scalp_fast only: {','.join(ids)})",
+             stderr=r["stderr_tail"])
     return s
 
 
