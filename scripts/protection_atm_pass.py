@@ -18,10 +18,14 @@ import os
 def _is_paper_account(acct: str) -> bool:
     from automated_account import is_automated_account
     return is_automated_account(acct)
-# apply_paper_protection_adjustment executes these on the automated account; KEEP_CURRENT_STOP stays advisory.
+# Auto-apply is limited to stop-UP actions (Alpaca REPLACE → the stop is never absent and risk can only
+# decrease), per this module's design. ADD_FIXED_TAKE_PROFIT is intentionally NOT here: it is a NEW sell
+# order (POST), not a stop replace, and the proposals are only generated for already-stopped positions whose
+# shares are fully held_for_orders — so Alpaca 403s the standalone limit and the proposal re-fired every pass
+# (the AGNC loop). It stays ADVISORY; an operator places it as an OCO. KEEP_CURRENT_STOP also stays advisory.
 AUTO_APPLY_ACTIONS = {
     "MOVE_STOP_TO_PROFIT_LOCK", "MOVE_STOP_TO_BREAKEVEN",
-    "ADD_FIXED_TAKE_PROFIT", "CONVERT_TO_TRAILING_STOP",
+    "CONVERT_TO_TRAILING_STOP",
 }
 
 
@@ -94,6 +98,12 @@ def run_protection_pass(conn=None, *, mode: str = "active", dry_run: bool = Fals
             if ok:
                 out["auto_applied"] += 1
                 out["details"].append({"id": r["id"], "symbol": r["symbol"], "decision": "auto_applied", "action": action})
+            elif str(res.get("status") or "").upper() == "NOT_APPLICABLE":
+                # Structurally not placeable (e.g. shares fully held by the existing stop) — marked terminal by
+                # the engine, NOT retried. Count as skipped, not failed, so the summary stays honest.
+                out["skipped_action"] += 1
+                out["details"].append({"id": r["id"], "symbol": r["symbol"], "decision": "not_applicable",
+                                       "action": action, "reason": str(res.get("block_reason") or "")[:120]})
             else:
                 out["failed"] += 1
                 out["details"].append({"id": r["id"], "symbol": r["symbol"], "decision": "apply_failed",
