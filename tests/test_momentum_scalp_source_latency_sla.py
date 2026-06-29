@@ -49,7 +49,22 @@ def main():
                           "fresh_quote_evaluations": 0, "stale_quote_rejects": 0}, open_t)
     check("no data → overall not PASS", ev["overall"] != "PASS")
 
-    # ---- build(): structure + safety notes ----
+    # ---- distinct window statuses (P0-3) ----
+    pending = evaluate_window({"source_to_proposal_min": None, "proposal_to_validation_min": None,
+                               "samples": 0, "fresh_quote_evaluations": 0, "stale_quote_rejects": 0}, open_t)
+    check("no samples → WARN_PENDING_OBSERVATION (not a failure)",
+          pending["status"] == "WARN_PENDING_OBSERVATION")
+    passing = evaluate_window({"source_to_proposal_min": 3, "proposal_to_validation_min": 0.5,
+                               "samples": 5, "fresh_quote_evaluations": 5, "stale_quote_rejects": 0}, open_t)
+    check("observed samples meeting SLA → PASS", passing["status"] == "PASS")
+    slow = evaluate_window({"source_to_proposal_min": 7, "proposal_to_validation_min": 0.5,
+                            "samples": 5, "fresh_quote_evaluations": 5, "stale_quote_rejects": 0}, open_t)
+    check("samples missing target → WARN_LATENCY", slow["status"] == "WARN_LATENCY")
+    broken = evaluate_window({"source_to_proposal_min": 40, "proposal_to_validation_min": 0.5,
+                             "samples": 5, "fresh_quote_evaluations": 5, "stale_quote_rejects": 0}, open_t)
+    check("badly missed target with samples → FAIL", broken["status"] == "FAIL")
+
+    # ---- build(): structure + new readiness/observed scores ----
     r = build(30)
     check("report ok", r.get("ok") is True)
     check("has 3 windows", set(r["windows"].keys()) == {"premarket", "open", "late_morning"})
@@ -57,6 +72,13 @@ def main():
     check("no live broker writes note", "No live broker writes" in r["safety_note"])
     check("targets match spec (open 5/1)",
           r["windows"]["open"]["targets"] == {"source_to_proposal_max": 5, "proposal_to_validation_max": 1})
+    check("readiness score present (4.5-ready)", r["latency_sla_readiness_score"] in (3.0, 4.5))
+    check("observed score is None until live PASS or distinct number",
+          r["latency_sla_observed_score"] in (None, 4.0, 5.0))
+    check("no-samples build status is pending, not FAIL/PASS",
+          r["status"] in ("WARN_PENDING_OBSERVATION", "WARN_LATENCY", "PASS", "FAIL"))
+    check("observation note: no samples is not a code failure",
+          "NOT a code failure" in r["observation_note"])
     check("markdown renders", "Latency SLA" in to_markdown(r))
 
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

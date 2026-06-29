@@ -1,7 +1,7 @@
 # Momentum Scalp Validation Ops
 
 **Status: PASS** | validation gate met: **False** | live-ready: **False**  
-_Generated: 2026-06-29T01:43:02.429852+00:00 | window 30d_  
+_Generated: 2026-06-29T02:21:00.413438+00:00 | window 30d_  
 _Source: `python3 scripts/momentum_scalp_validation_ops_report.py --days N --json`_  
 
 ## Validation fast-path snapshot (dry-run)

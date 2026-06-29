@@ -44,8 +44,10 @@ float ≤ 20M, price ≤ $25, verified catalyst). Pillar boundary constants are 
 | Finviz | RVOL / gap / change / volume | `market_confirmation` |
 | Finviz | price / float / spread / halt / offering / reverse-split risk | `structure_tradeability` |
 | Finviz | price / float / RVOL / gap + strategy boundaries | `strategy_risk_fit` |
-| News / catalyst | Finviz headlines, SEC, RAG catalyst confirmation | `catalyst_evidence` |
-| **Social sources** | mention velocity / source diversity | `social_velocity` (**not** Finviz) |
+| News / catalyst | Finviz headlines, RAG catalyst confirmation | `catalyst_evidence` |
+| **SEC / Form 4** | recent open-market insider BUY (≤7d) | `catalyst_evidence` (supporting only — see [SEC_FORM4_MOMENTUM_CONTEXT.md](SEC_FORM4_MOMENTUM_CONTEXT.md)) |
+| Quote / liquidity | price/spread/volume confirms tradeability | (confirms structure; does **not** create catalyst or social velocity) |
+| **Social sources** | mention velocity / source diversity | `social_velocity` (**not** Finviz, **not** SEC) |
 
 **Finviz alone is never sufficient.** A pure-Finviz candidate can reach **2–4** pillars
 (market_confirmation + structure_tradeability + strategy_risk_fit, and catalyst_evidence when a verified
