@@ -271,9 +271,11 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 fh.write(json.dumps(entry) + "\n")
             state[ftype] = st
             continue
-        # Safe portfolio-pricing scripts only (no broker order submission).
+        # Safe scripts only (no broker order submission). run_finviz_momentum_scalp_scan is
+        # source/sandbox-only (window-gated, no live broker writes) — safe to auto-run to unstick the lane.
         if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
-                and "snaptrade_sync.py" not in cmd:
+                and "snaptrade_sync.py" not in cmd \
+                and "run_finviz_momentum_scalp_scan.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -977,6 +979,65 @@ def collect_pipeline_freshness() -> list[dict]:
     return out
 
 
+def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exists, in_window) -> dict:
+    """Pure: decide whether the momentum_scalp Finviz 5-min early lane is healthy. Schedule-aware —
+    only judges DURING the 06:00-12:00 ET window (no off-hours/weekend false alarms). Returns a dict
+    {finding: bool, type, severity, message} or {finding: False}."""
+    if not in_window:
+        return {"finding": False, "reason": "off_window"}
+    # Cron is every 5 min; >12 min of no fresh log output ⇒ ≥2 missed runs (or the scan is hung).
+    if not log_exists:
+        return {"finding": True, "type": "momentum_scalp_finviz_scan_stale", "severity": "warning",
+                "message": "momentum_scalp Finviz 5-min scan log missing during 06:00-12:00 ET window "
+                           "(cron may not be firing) — re-running the early lane"}
+    if log_age_min is not None and log_age_min > 12:
+        sev = "critical" if log_age_min > 30 else "warning"
+        return {"finding": True, "type": "momentum_scalp_finviz_scan_stale", "severity": sev,
+                "message": f"momentum_scalp Finviz 5-min scan last ran {log_age_min:.0f} min ago "
+                           f"(cron is */5) during the 06:00-12:00 ET window — re-running the early lane"}
+    if last_status in ("PARTIAL", "FAIL") or failed_stages:
+        return {"finding": True, "type": "momentum_scalp_early_lane_error", "severity": "warning",
+                "message": f"momentum_scalp early lane last run status={last_status} "
+                           f"failed_stages={failed_stages or []} — re-running to recover"}
+    return {"finding": False, "reason": "fresh"}
+
+
+def collect_momentum_scalp_source_health() -> list[dict]:
+    """Schedule-aware health for the momentum_scalp Finviz every-5-min early lane (06:00-12:00 ET).
+    A stale/failing scan during the window is auto-remediable (re-run the lane, source/sandbox only —
+    no broker writes), so it is NOT tagged kind='code'. Outside the window this is silent."""
+    out: list[dict] = []
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import momentum_scalp_early_lane_runner as lane
+        t = lane.now_et()
+        in_window = lane.is_trading_day(t) and lane.in_window(t)
+        log = PROJECT_ROOT / "logs" / "finviz_momentum_scalp_scan.log"
+        log_exists = log.exists()
+        age_min = (_file_age_h(log) or 0) * 60 if log_exists else None
+        last_status, failed_stages = None, None
+        if log_exists:
+            try:
+                tail = log.read_text(errors="replace").strip().splitlines()
+                for ln in reversed(tail[-8:]):
+                    ln = ln.strip()
+                    if ln.startswith("{"):
+                        j = json.loads(ln)
+                        last_status = j.get("status")
+                        failed_stages = j.get("failed_stages")
+                        break
+            except Exception:
+                pass
+        a = _assess_momentum_scalp_scan(age_min, last_status, failed_stages, log_exists, in_window)
+        if a.get("finding"):
+            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
+                          surfaced="Trading hub · momentum scalp early lane"))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "momentum_scalp_source_monitor_error", "info",
+                      f"momentum scalp source monitor failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_proposal_integrity() -> list[dict]:
     """Per-proposal FINANCIAL correctness — the gap that let a stale favorable live R:R (WEN 13.48,
     computed when price was near the $7.37 stop) keep showing after the price blew past the $8.53
@@ -1423,6 +1484,7 @@ COLLECTORS = [
     collect_proposal_maturity,
     collect_log_errors,
     collect_pipeline_freshness,
+    collect_momentum_scalp_source_health,
     collect_proposal_integrity,
     collect_options_desk_health,
     collect_pullback_macd_screener,
