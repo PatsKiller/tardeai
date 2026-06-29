@@ -23970,6 +23970,8 @@ ROUTES = {
     "/api/v2/system/applications": lambda: _system_applications(),
     "/api/v2/hermes/profiles-status": _hermes_profiles_status,
     "/api/v2/hermes/legacy-agents": _hermes_legacy_agents,
+    # Hermes Research Governance panel (read-only research-scope audit + budget posture).
+    "/api/v2/hermes/research-governance": lambda: __import__("hermes_governance_api").governance_summary(),
     "/api/v2/openclaw/status": _openclaw_status,
     "/api/v2/openclaw/agent-soul": _openclaw_agent_soul,
     "/api/v2/tradeai/fleet": _tradeai_fleet,
