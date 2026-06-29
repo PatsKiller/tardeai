@@ -22,7 +22,7 @@ the routing plan. No broker writes; operator/2FA untouched._
 
 | Asset | Detail | Assessment |
 |-------|--------|------------|
-| GPU | AMD/Vulkan (no `nvidia-smi`); `llama-cpp-vulkan` | consumer GPU; 31B models spill to CPU |
+| GPU | **Intel Arc Pro B50** (Battlemage G21, discrete, ~16GB VRAM) + Intel Iris Xe (integrated); Mesa/Vulkan via `llama-cpp-vulkan`; 61GB system RAM | 16GB VRAM ceiling — models >~14GB spill to CPU/RAM |
 | `llama-server` :8081 | serving **`gemma4-31b-hf.gguf`** | ❌ **288–345% CPU**, CPU-spilling — the #1 contention source |
 | ollama :11434 | `gemma3:4b` loaded (was at **128k context**, since reduced to 8k) | 4B is weak for analysis; 128k context was wasteful |
 | ollama models installed | gemma3:4b, gemma3:12b(+ctx4k), gemma3:27b (17GB), **gemma3-overnight (17GB)**, qwen3:8b, qwen3-embedding:8b, nomic-embed-text (274MB) | too many large models competing for one GPU |
@@ -37,6 +37,57 @@ the routing plan. No broker writes; operator/2FA untouched._
    keep embeddings on a dedicated lane / pinned.
 3. **One big model at a time** — `prevent_qwen3_gemma_coresidency` already exists in policy; extend the
    same discipline so only ONE heavy model is resident, and never during the 06:00–12:00 market window.
+
+## Recommended local model for the Intel Arc Pro B50 (16GB VRAM)
+
+The hard constraint is **16GB VRAM** on the discrete Arc Pro B50 (Battlemage). A model that doesn't fully
+fit spills to CPU/RAM over the integrated path and burns cores (that's exactly what gemma4-31b did).
+Keep the resident model **≤ ~10GB** so the KV-cache/context + the embed model also fit.
+
+| Model | Size | Fits 16GB? | Use |
+|-------|------|:----------:|-----|
+| **gemma3:12b** | 8.1GB | ✅ (with headroom for context + embeddings) | **RECOMMENDED primary** — best quality that stays fully GPU-resident |
+| qwen3:8b | 5.2GB | ✅ easily | strong, fast alternative / fallback for analysis |
+| gemma3:4b | 3.3GB | ✅ trivially | fastest — high-throughput light tasks (scalp critic, classification) |
+| nomic-embed-text | 274MB | ✅ keep pinned/resident | embeddings — never evict during market hours |
+| gemma3:27b | 17GB | ❌ spills | avoid locally (use cloud) |
+| **gemma4-31b** | 17GB+ | ❌ spills (caused the outage) | **do not run locally** — cloud only, or drop |
+
+**Bottom line:** **`gemma3:12b` is the right local model** (quality + fully resident in 16GB), with
+`qwen3:8b`/`gemma3:4b` for fast/throughput work and `nomic-embed-text` pinned for embeddings. Anything
+≥17GB (gemma3:27b, gemma4-31b) must go to the **free cloud-OAuth lanes**, not the local GPU.
+
+**Two hardware notes:**
+1. There are **two Intel GPUs** — the discrete **Arc Pro B50 (16GB, device 1)** and the integrated **Iris
+   Xe (shares the 61GB system RAM, device 0)**. Pin llama.cpp/ollama to the **discrete Arc Pro B50**
+   (e.g. `GGML_VK_VISIBLE_DEVICES=1` / `ONEAPI_DEVICE_SELECTOR`) — if it lands on the integrated Iris Xe
+   it runs on shared RAM and is far slower, which can look like "CPU spill."
+2. For best Intel performance, **Intel IPEX-LLM / oneAPI** (or ollama's Intel-GPU build) is faster than
+   generic Mesa/Vulkan — a worthwhile upgrade if local LLM throughput becomes the bottleneck. Within the
+   current Vulkan setup, gemma3:12b on the Arc Pro B50 is the right choice.
+
+### Intel driver/software status (checked 2026-06-29)
+
+The stack is **modern and B50-capable** — no urgent action needed:
+
+* Kernel **6.17.0-29** with the **`xe`** driver on the B50 (correct for Battlemage; Iris Xe stays on `i915`).
+* **Mesa 25.2.8** / Vulkan **1.4.318** — well past the Battlemage minimum.
+* Intel compute runtime (NEO) **26.14**, Level-Zero **1.28**, and **oneAPI 2025.3** installed.
+
+**Updates available (operator should apply — needs sudo):**
+
+* `intel-opencl-icd` **26.14 → 26.18.38308.4** and `libze-intel-gpu1` **26.14 → 26.18** — newer Intel GPU
+  **compute runtime** (the part LLM inference uses); worth taking for B50 optimizations.
+* `intel-media-va-driver-non-free` 26.2.0→26.2.2, `intel-gsc` 0.9.5→1.2.0 (video/firmware — not LLM-critical).
+
+```bash
+sudo apt update && sudo apt install --only-upgrade intel-opencl-icd libze-intel-gpu1 intel-gsc intel-media-va-driver-non-free
+```
+
+**The bigger lever is the backend, not the driver version:** oneAPI 2025.3 + Level-Zero are already
+installed, so running llama.cpp/ollama on the **SYCL/oneAPI (or IPEX-LLM)** backend — pinned to the
+discrete B50 — would be faster than the current generic Vulkan path, and `gemma3:12b` is already present
+in `~/llama-cpp-vulkan/`. Driver currency is fine; the win is **backend + model choice + GPU pinning**.
 
 ## The routing matrix
 
