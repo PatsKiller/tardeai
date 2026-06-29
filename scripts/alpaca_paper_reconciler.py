@@ -79,8 +79,10 @@ def get_alpaca_orders(env, status="open"):
     key = env.get("ALPACA_API_KEY", "")
     secret = env.get("ALPACA_SECRET_KEY", "")
     base = env.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    # nested=true so OCO/bracket child legs (the 'held' stop leg) are returned inside the parent's legs[];
+    # without it an OCO-protected position's stop is invisible and the position looks naked.
     req = urllib.request.Request(
-        f"{base}/v2/orders?status={status}&limit=200",
+        f"{base}/v2/orders?status={status}&limit=200&nested=true",
         headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
@@ -106,8 +108,13 @@ def reconcile(apply_fixes=False):
         alpaca_orders = get_alpaca_orders(env, status="open")
     except Exception:
         alpaca_orders = []
-    stop_by_sym = {o["symbol"]: o for o in alpaca_orders
-                   if o.get("type") in ("stop", "stop_limit") and o.get("side") == "sell"}
+    # Descend into legs[]: an OCO/bracket stop leg is 'held' and nested in its parent, so a flat top-level
+    # scan misses it and the OCO-protected position would be falsely flagged NO_BROKER_STOP.
+    stop_by_sym = {}
+    for o in alpaca_orders:
+        for c in [o] + (o.get("legs") or []):
+            if c.get("type") in ("stop", "stop_limit") and c.get("side") == "sell" and c.get("symbol"):
+                stop_by_sym[c["symbol"]] = c
 
     # Get DB open trades
     cur.execute("""
@@ -239,12 +246,34 @@ def reconcile(apply_fixes=False):
             })
 
     conn.close()
+
+    # ── P2: auto-attach OCO bracket at fill ──────────────────────────────────────────────────────────────
+    # Bracket-path entries (limit/RTH) already get their stop+take-profit OCO from Alpaca at fill. Market /
+    # extended-hours entries submit a simple buy + a standalone stop, so they hold a stop but NO take-profit.
+    # Here we convert any such filled position into an OCO bracket (stop + take-profit), so every filled paper
+    # position ends up bracketed. Idempotent — run_oco_retrofit skips positions already on an OCO / with a
+    # take-profit — and reuses the P1 stop-never-absent rollback. Design: OCO_ATM_UNIFICATION_DESIGN.md P2.
+    oco = {"converted": 0}
+    if apply_fixes:
+        try:
+            import alpaca_stop_manager as asm
+            oco = asm.run_oco_retrofit(apply=True)
+            for a in (oco.get("actions") or []):
+                if (a.get("result") or {}).get("status") == "OCO_ACTIVE":
+                    fixes.append(f"{a['symbol']}: auto-bracketed at fill — OCO stop ${a['keep_stop']} "
+                                 f"+ take-profit ${a['add_take_profit']}")
+        except Exception as e:
+            issues.append({"type": "OCO_AUTOBRACKET_ERROR", "severity": "LOW", "symbol": "-",
+                           "detail": f"auto-bracket pass failed: {str(e)[:120]}"})
+
     return {
         "timestamp": datetime.now().isoformat(),
         "alpaca_count": len(alpaca_pos),
         "db_open_count": len(db_trades),
         "issues": issues,
         "fixes": fixes,
+        "oco_autobracket": {"mode": oco.get("mode"), "converted": oco.get("converted", 0),
+                            "skipped": len(oco.get("skipped", [])), "errors": oco.get("errors", 0)},
         "by_severity": {s: sum(1 for i in issues if i["severity"] == s) for s in ("HIGH","MEDIUM","LOW")},
     }
 
