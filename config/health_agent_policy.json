@@ -125,7 +125,8 @@
       "market_quotes_stale",
       "momentum_scalp_finviz_scan_stale",
       "momentum_scalp_early_lane_error",
-      "sec_form4_context_stale"
+      "sec_form4_context_stale",
+      "agent_jobs_processing_stuck"
     ]
   },
   "remediation_map": {
@@ -153,7 +154,8 @@
     "journal_review_stale": "flock -n /tmp/journal_review.lock .venv/bin/python scripts/journal_review_builder.py",
     "momentum_scalp_finviz_scan_stale": "flock -n /tmp/tradeai_finviz_momentum_scalp.lock .venv/bin/python scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation --ignore-window >> logs/finviz_momentum_scalp_scan.log 2>&1",
     "momentum_scalp_early_lane_error": "flock -n /tmp/tradeai_finviz_momentum_scalp.lock .venv/bin/python scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation --ignore-window >> logs/finviz_momentum_scalp_scan.log 2>&1",
-    "sec_form4_context_stale": "flock -n /tmp/tradeai_sec_form4_ctx.lock .venv/bin/python scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1"
+    "sec_form4_context_stale": "flock -n /tmp/tradeai_sec_form4_ctx.lock .venv/bin/python scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1",
+    "agent_jobs_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

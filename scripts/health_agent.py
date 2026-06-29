@@ -277,7 +277,8 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
                 and "snaptrade_sync.py" not in cmd \
                 and "run_finviz_momentum_scalp_scan.py" not in cmd \
-                and "run_sec_form4_momentum_context.py" not in cmd:
+                and "run_sec_form4_momentum_context.py" not in cmd \
+                and "reset_stuck_agent_jobs.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -1122,6 +1123,48 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
     return out
 
 
+def collect_infra_optimization_health() -> list[dict]:
+    """Health for the 2026-06-29 GPU/scheduling optimization work: zombie agent jobs (auto-remediable
+    via the reaper), cloud-OAuth lane usage/health, and market-window LLM-contention regression. Never
+    raises. Source/DB-state only — no broker writes."""
+    out: list[dict] = []
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    # 1. Zombie 'processing' agent jobs — auto-remediable (reset → queued so the worker re-runs them).
+    try:
+        from db_adapter import get_connection
+        from reset_stuck_agent_jobs import find_stuck
+        stuck = find_stuck(get_connection())
+        if stuck:
+            sev = "warning" if len(stuck) < 10 else "critical"
+            out.append(_f("execution_health", "agent_jobs_processing_stuck", sev,
+                          f"{len(stuck)} agent jobs stuck in 'processing' >30m (worker died mid-job) — "
+                          f"resetting to queued", count=len(stuck)))
+    except Exception:
+        pass
+    # 2. Cloud-OAuth lanes — usage / reachability / paid-fallback.
+    try:
+        from cloud_oauth_usage_monitor import build as _oauth_build
+        for f in _oauth_build().get("findings", []):
+            out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"]))
+    except Exception:
+        pass
+    # 3. Market-window LLM contention regression — alert if an UNGUARDED T3 LLM job creeps back into the
+    #    06:00-12:00 ET window (the guard should keep effective contention down).
+    try:
+        from job_schedule_audit import audit as _audit
+        a = _audit()
+        unguarded = [j["name"] for j in a["jobs"]
+                     if j["tier"] == "T3" and j["resource_class"] == "llm" and not j.get("market_guarded")
+                     and (set(j["hours"]) & set(range(6, 12))) and (set(j["hours"]) - set(range(6, 12)))]
+        if len(unguarded) > 3:
+            out.append(_f("execution_health", "llm_market_window_contention", "warning",
+                          f"{len(unguarded)} unguarded T3 LLM jobs in the 06:00-12:00 ET window — "
+                          f"re-run apply_llm_priority_guard_to_crontab.py --apply", count=len(unguarded)))
+    except Exception:
+        pass
+    return out
+
+
 def collect_proposal_integrity() -> list[dict]:
     """Per-proposal FINANCIAL correctness — the gap that let a stale favorable live R:R (WEN 13.48,
     computed when price was near the $7.37 stop) keep showing after the price blew past the $8.53
@@ -1570,6 +1613,7 @@ COLLECTORS = [
     collect_pipeline_freshness,
     collect_momentum_scalp_source_health,
     collect_momentum_scalp_multi_source_health,
+    collect_infra_optimization_health,
     collect_proposal_integrity,
     collect_options_desk_health,
     collect_pullback_macd_screener,
