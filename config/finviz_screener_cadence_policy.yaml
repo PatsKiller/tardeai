@@ -1,0 +1,54 @@
+# Finviz screener cadence policy — run each screener only as often as its signal decay justifies.
+# A screener's cadence_class (set in config/finviz_screeners.yaml) maps to one of these classes.
+# The 5-minute scalp lane uses ONLY scalp_fast; everything else runs on a slower cadence. This protects
+# Finviz rate limits + the local GPU + the single-threaded dashboard. Discovery only — no broker writes.
+
+cadence_classes:
+  scalp_fast:
+    description: "Fast-decay scalp/gapper screens (the 5-min lane)."
+    default_windows:
+      - {start: "06:00", end: "10:30", every_minutes: 5}
+    max_screeners_per_run: 3
+    local_llm_allowed: light_only        # gemma3:4b classification only
+    cloud_llm_allowed: false
+
+  scout_intraday:
+    description: "Intraday watch/scout screens (speculative, recovery)."
+    default_windows:
+      - {start: "06:00", end: "12:00", every_minutes: 15}
+    local_llm_allowed: light_only
+    cloud_llm_allowed: limited
+
+  swing_intraday:
+    description: "Swing pullbacks / intraday swing-setup refresh."
+    default_times: ["09:45", "12:30", "15:30"]
+    local_llm_allowed: false
+    cloud_llm_allowed: limited
+
+  swing_daily:
+    description: "Swing trend/quality / sector-rotation / breakout screens."
+    default_times: ["10:00", "15:30"]
+    local_llm_allowed: false
+    cloud_llm_allowed: limited
+
+  fundamental_daily:
+    description: "Fundamental / slow-moving equity screens (core, dividend growth)."
+    default_times: ["17:00"]
+    local_llm_allowed: false
+    cloud_llm_allowed: limited
+
+  income_weekly:
+    description: "Dividend / income / ETF screens (slowest decay)."
+    default_days: ["SAT"]
+    default_times: ["09:00"]
+    local_llm_allowed: false
+    cloud_llm_allowed: batch_only
+
+  experimental_disabled:
+    description: "Experimental / duplicative / low-yield screens disabled until reviewed."
+    active: false
+
+# Invariants enforced by tests:
+#   - scalp_fast is the ONLY class allowed at <=5-min cadence.
+#   - swing presets s144880159 / s144880158 are swing_daily / swing_intraday — never scalp cadence.
+#   - the 29 broad DB screeners are scout_intraday/swing_*/fundamental_daily/income_weekly — never 5-min.

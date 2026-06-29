@@ -1,0 +1,66 @@
+# LLM budget control plane — reserves the local GPU and the FREE cloud-OAuth lanes. Enforcement (not
+# just monitoring). Hard rules: NO paid fallback for free-OAuth jobs; if cloud lanes are unavailable,
+# T3 jobs DEFER (never fall back to local 31B/27B or a paid key); local 31B/27B is BLOCKED 06:00-12:00 ET.
+
+lanes:
+  local_fast:
+    models: ["gemma3:4b"]
+    market_window_allowed: true
+    max_calls_per_5m: 20
+    max_concurrent: 2
+    purpose: ["classification", "scout_reason", "short_advisory"]
+
+  local_quality:
+    models: ["gemma3:12b"]
+    market_window_allowed: true
+    max_calls_per_5m: 8
+    max_concurrent: 1
+    purpose: ["higher_quality_advisory", "proposal_explanation"]
+    fallback_to: local_fast
+
+  local_embed:
+    models: ["nomic-embed-text"]
+    market_window_allowed: true
+    protected: true
+    timeout_seconds: 90
+    max_concurrent: 1
+
+  local_blocked_market:
+    models: ["gemma3:27b", "gemma4-31b"]
+    market_window_allowed: false
+    action: hard_block
+
+  cloud_grok:
+    port: 8645
+    free_only: true
+    warning_daily_pct: 60
+    throttle_daily_pct: 80
+    hard_stop_daily_pct: 95
+    auth_failure_cooldown_minutes: 60
+    paid_fallback: hard_fail
+
+  cloud_chatgpt_codex:
+    port: 8646
+    free_only: true
+    warning_daily_pct: 60
+    throttle_daily_pct: 80
+    hard_stop_daily_pct: 95
+    auth_failure_cooldown_minutes: 60
+    paid_fallback: hard_fail
+
+tier_policy:
+  T1:
+    market_window: local_fast_or_local_quality_only
+    cloud_allowed: false
+  T2:
+    market_window: local_fast_or_cloud_if_budget_ok
+    cloud_allowed: true
+  T3:
+    market_window: cloud_only_or_defer
+    cloud_allowed: true
+    if_cloud_unavailable: defer
+    never_fallback_to_local_31b: true
+    never_fallback_to_paid: true
+
+market_window: {start: "06:00", end: "12:00", timezone: America/New_York}
+soft_daily_call_cap: 800

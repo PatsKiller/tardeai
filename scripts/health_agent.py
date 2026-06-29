@@ -1148,6 +1148,13 @@ def collect_infra_optimization_health() -> list[dict]:
             out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"]))
     except Exception:
         pass
+    # 2b. LLM budget enforcement — paid fallback (critical) / cloud throttle-stop / auth cooldown.
+    try:
+        from llm_budget_guard import build as _budget_build
+        for f in _budget_build().get("findings", []):
+            out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"]))
+    except Exception:
+        pass
     # 3. Market-window LLM contention regression — alert if an UNGUARDED T3 LLM job creeps back into the
     #    06:00-12:00 ET window (the guard should keep effective contention down).
     try:
