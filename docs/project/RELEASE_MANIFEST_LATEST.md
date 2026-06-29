@@ -2,7 +2,7 @@
 
 Status: PASS
 
-_Generated: 2026-06-29T01:54:05.992519+00:00_  
+_Generated: 2026-06-29T02:25:56.432959+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
