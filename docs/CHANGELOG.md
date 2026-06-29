@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-28 - Fix scalp-lifecycle-maturity 3.25 phantom regression (env-fragile evidence runner)
+
+`SCALP_LIFECYCLE_MATURITY.md` had regressed to **3.25/5** with `alerts_test`/`liquidity_test`/`trace_test`
+false. **Root cause: environment fragility, not a code regression or stale detector.** The maturity
+generator ran its evidence tests with `sys.executable`; those tests import `social_scalp_scanner` /
+`market_quote_provider`, which `load_dotenv()` at module top. When the doc was regenerated under the bare
+sandbox python (no `dotenv`), the tests raised `ModuleNotFoundError` **at import** (before any assertion)
+→ scored 0 → 3.25. Under the venv (the real runtime / cron / CI interpreter, which has `dotenv`) all three
+pass and the score is **4.4/5**.
+
+- Fix: `compute_scalp_lifecycle_maturity._run_test` now runs evidence under the **venv interpreter first**
+  (`_evidence_interpreters`) so the result reflects real behavior, not the caller's environment. Tri-state
+  `_run_test_state` (PASS / FAIL / **ENV_ERROR**) distinguishes a genuine assertion failure from an
+  unimportable test; ENV_ERROR is surfaced as an explicit `evidence_indeterminate` warning ("re-run under
+  .venv") instead of a phantom low score. Report adds `maturity_separation` (engineering vs empirical
+  sample; source maturity / latency readiness reported separately, do NOT lift this score).
+- Result: combined **4.4/5**, momentum 4.4, social 4.4 (was 2.5), engineering/control 5.0, `meets_4_5:
+  False`. Capped at 4.4 by the empirical validation sample **2/30 (trade IDs 45 & 22)** — unchanged.
+  **Strategy maturity 4.5+ NOT claimed.** No scores inflated.
+- `SCALP_LIFECYCLE_MATURITY_REGRESSION_DIAGNOSIS.md` documents per-check classification (all three =
+  environment fragility, none real/stale). New `test_scalp_lifecycle_maturity_regression.py` (21) guards
+  it. No broker writes; operator/2FA untouched; no gate weakened.
+
 ## 2026-06-28 - Momentum scalp source maturity to honest 4.5+ (SEC/Form 4, latency states, consistency)
 
 Raise the remaining 3.x source areas to honest 4.5+ via real evidence — not score inflation. No live

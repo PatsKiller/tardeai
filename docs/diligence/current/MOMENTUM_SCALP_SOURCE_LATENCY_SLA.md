@@ -2,7 +2,7 @@
 
 **Status: WARN_PENDING_OBSERVATION** | readiness score: 4.5/5 | observed score: pending | samples: 0 | window: 30d  
 _4.5-ready, pending live in-window observation_  
-_Generated: 2026-06-29T02:21:00.084560+00:00_  
+_Generated: 2026-06-29T02:48:13.568154+00:00_  
 _Source: `python3 scripts/momentum_scalp_source_latency_sla.py --days N --json`_  
 
 | Window | Range | samples | src→proposal | target | proposal→validation | target | status | bottleneck |
