@@ -17,6 +17,11 @@ def check(name, cond):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}")
 
 
+def any_live_observed(r):
+    return any(s.get("in_window_freshness_observed") or s.get("metrics", {}).get("live_observed")
+               for s in r.get("sources", []))
+
+
 def main():
     # ---- score_source rubric ----
     check("5.0 when everything proven (fresh + latency observed)",
@@ -57,6 +62,26 @@ def main():
     check("does not claim strategy 4.5/5.0 in source section",
           r["combined_source_maturity"] <= 5.0 and vm["empirical_gate_met"] in (True, False))
     check("no live broker writes note", "No live broker writes" in r["safety_note"])
+
+    # ---- P0-4: explicit dimension separation + no inflation ----
+    md = r["maturity_dimensions"]
+    check("dimensions separate source/latency/validation/live",
+          {"source_maturity", "latency_readiness_score", "latency_observed_score",
+           "validation_sample_maturity", "live_readiness"} <= set(md.keys()))
+    # No source may read 5.0 without live in-window observation.
+    for s in r["sources"]:
+        if s["after"] >= 5.0:
+            check(f"{s['key']} 5.0 only if live observed",
+                  s.get("in_window_freshness_observed") or s.get("metrics", {}).get("live_observed"))
+    check("no source inflated to 5.0 without observation (current state ≤4.5)",
+          all(s["after"] <= 4.5 for s in r["sources"]) or any_live_observed(r))
+    check("live_readiness reflects pending observation",
+          "pending" in md["live_readiness"] or "observed" in md["live_readiness"])
+    check("validation sample maturity is a /30 string", md["validation_sample_maturity"].endswith("/30"))
+    # SEC/Form 4 specifically moved 3.0 → 4.5-ready (only after real integration), not 5.0.
+    sec = next((s for s in r["sources"] if s["key"] == "sec_form4"), None)
+    if sec:
+        check("SEC/Form 4 moved to 4.5 (not inflated to 5.0)", 4.5 <= sec["after"] < 5.0 or sec["after"] == 4.5)
 
     # ---- markdown ----
     md = to_markdown(r)

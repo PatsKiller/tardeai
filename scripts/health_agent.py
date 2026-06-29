@@ -271,11 +271,13 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 fh.write(json.dumps(entry) + "\n")
             state[ftype] = st
             continue
-        # Safe scripts only (no broker order submission). run_finviz_momentum_scalp_scan is
-        # source/sandbox-only (window-gated, no live broker writes) — safe to auto-run to unstick the lane.
+        # Safe scripts only (no broker order submission). run_finviz_momentum_scalp_scan and
+        # run_sec_form4_momentum_context are source/sandbox-only (no live broker writes) — safe to
+        # auto-run to unstick the lane / refresh supporting evidence.
         if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
                 and "snaptrade_sync.py" not in cmd \
-                and "run_finviz_momentum_scalp_scan.py" not in cmd:
+                and "run_finviz_momentum_scalp_scan.py" not in cmd \
+                and "run_sec_form4_momentum_context.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -1038,6 +1040,70 @@ def collect_momentum_scalp_source_health() -> list[dict]:
     return out
 
 
+def _assess_source_stale(age_min, threshold_min, in_window, present=True) -> dict:
+    """Pure, schedule-aware staleness: only judges inside the relevant window (no off-hours floods)."""
+    if not in_window:
+        return {"finding": False, "reason": "off_window"}
+    if not present:
+        return {"finding": True, "severity": "warning", "reason": "missing"}
+    if age_min is None:
+        return {"finding": False, "reason": "unknown_age"}
+    if age_min > threshold_min:
+        return {"finding": True, "severity": "critical" if age_min > threshold_min * 3 else "warning",
+                "reason": f"stale {age_min:.0f}m (>{threshold_min}m)"}
+    return {"finding": False, "reason": "fresh"}
+
+
+def collect_momentum_scalp_multi_source_health() -> list[dict]:
+    """Schedule-aware health for the remaining momentum_scalp sources beyond the Finviz lane: SEC/Form 4
+    context, strategy signal sync, proposal generation, social scan. Silent outside each source's
+    window (no off-hours floods). SEC context is auto-remediable (safe source-only wrapper); the rest
+    surface for visibility. Never raises."""
+    out: list[dict] = []
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import momentum_scalp_early_lane_runner as lane
+        t = lane.now_et()
+        trading = lane.is_trading_day(t)
+        hhmm = t.strftime("%H:%M")
+        in_early = trading and ("06:00" <= hhmm <= "12:00")        # signal/proposal early window
+        in_session = trading and ("06:00" <= hhmm <= "16:00")      # social scan window
+        in_sec = trading and ("05:30" <= hhmm <= "12:00")          # SEC context window (05:45 + 09:15)
+
+        def _age_min(sql):
+            h = _db_age_h(sql)
+            return h * 60 if h is not None else None
+
+        # SEC/Form 4 context — log freshness. Auto-remediable (re-run the context wrapper).
+        sec_log = PROJECT_ROOT / "logs" / "sec_form4_momentum_context.log"
+        sec_age = (_file_age_h(sec_log) or 0) * 60 if sec_log.exists() else None
+        a = _assess_source_stale(sec_age, 240, in_sec, present=sec_log.exists())
+        if a["finding"]:
+            out.append(_f("pipeline_freshness", "sec_form4_context_stale", a["severity"],
+                          f"SEC/Form 4 momentum context {a['reason']} during its 05:45-09:15 ET window "
+                          f"— re-running the context wrapper (source/read-only)",
+                          surfaced="momentum scalp · SEC/Form 4 catalyst context"))
+
+        for sql, table_window, ftype, label in [
+            ("SELECT MAX(created_at) FROM strategy_signals", in_early,
+             "momentum_scalp_signal_sync_stale", "signal sync"),
+            ("SELECT MAX(created_at) FROM paper_trade_proposals", in_early,
+             "momentum_scalp_proposal_gen_stale", "proposal generation"),
+            ("SELECT MAX(scanned_at) FROM scalp_scan_results", in_session,
+             "momentum_scalp_social_scan_stale", "social scan"),
+        ]:
+            thr = 90 if table_window is in_early else 120
+            a = _assess_source_stale(_age_min(sql), thr, table_window)
+            if a["finding"]:
+                out.append(_f("pipeline_freshness", ftype, a["severity"],
+                              f"momentum scalp {label} output {a['reason']} during its window",
+                              surfaced=f"momentum scalp · {label}"))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "momentum_scalp_multi_source_monitor_error", "info",
+                      f"multi-source monitor failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_proposal_integrity() -> list[dict]:
     """Per-proposal FINANCIAL correctness — the gap that let a stale favorable live R:R (WEN 13.48,
     computed when price was near the $7.37 stop) keep showing after the price blew past the $8.53
@@ -1485,6 +1551,7 @@ COLLECTORS = [
     collect_log_errors,
     collect_pipeline_freshness,
     collect_momentum_scalp_source_health,
+    collect_momentum_scalp_multi_source_health,
     collect_proposal_integrity,
     collect_options_desk_health,
     collect_pullback_macd_screener,
