@@ -35,13 +35,50 @@ DIMENSIONS = [
 ]
 
 
+def _evidence_interpreters() -> list:
+    """Interpreters to run evidence tests with, venv FIRST. The repo's runtime deps (e.g. dotenv,
+    used by social_scalp_scanner / market_quote_provider) live in .venv — the SAME interpreter that
+    cron and CI use. Running evidence under the bare invoking interpreter (which may lack those deps)
+    made the evidence tests error at IMPORT and falsely score control dimensions 0 → a phantom 3.25
+    regression. Prefer the venv so the result reflects real behavior, not the caller's environment."""
+    out = []
+    venv = ROOT / ".venv" / "bin" / "python"
+    if venv.exists():
+        out.append(str(venv))
+    if sys.executable not in out:
+        out.append(sys.executable)
+    return out
+
+
+def _run_test_state(name: str, timeout: int = 90) -> str:
+    """Run an evidence test. Returns 'PASS' | 'FAIL' | 'ENV_ERROR'. A FAIL means assertions actually
+    ran and failed (a real regression). An ENV_ERROR means the test could not even be imported/collected
+    in any available interpreter (missing dependency) — that is NOT proof of a control failure and must
+    not be scored as one; it is surfaced as indeterminate so the report says 're-run under .venv'."""
+    last_env_err = False
+    for py in _evidence_interpreters():
+        try:
+            p = subprocess.run([py, str(ROOT / "tests" / name)],
+                               cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+            if p.returncode == 0:
+                return "PASS"
+            blob = (p.stderr or "") + (p.stdout or "")
+            ran_assertions = ("passed," in blob) or ("failed" in blob.lower())
+            import_error = ("ModuleNotFoundError" in blob) or ("ImportError" in blob)
+            if import_error and not ran_assertions:
+                last_env_err = True
+                continue            # couldn't load the test here — try the next interpreter
+            return "FAIL"           # assertions ran and failed → genuine regression
+        except Exception:
+            last_env_err = True
+            continue
+    return "ENV_ERROR" if last_env_err else "FAIL"
+
+
 def _run_test(name: str, timeout: int = 90) -> bool:
-    try:
-        p = subprocess.run([sys.executable, str(ROOT / "tests" / name)],
-                           cwd=ROOT, capture_output=True, text=True, timeout=timeout)
-        return p.returncode == 0
-    except Exception:
-        return False
+    """Back-compat boolean: True only on a real PASS. ENV_ERROR/FAIL → False (callers that need to
+    distinguish indeterminate use _run_test_state)."""
+    return _run_test_state(name, timeout) == "PASS"
 
 
 def gather_evidence() -> dict:
@@ -54,15 +91,26 @@ def gather_evidence() -> dict:
     except Exception:
         ev["config_ok"] = False
 
-    # test-backed dimensions
-    ev["expiry_test"] = _run_test("test_momentum_scalp_expiry_enforced.py")
-    ev["window_test"] = _run_test("test_intraday_window_fail_closed.py")
-    ev["alerts_test"] = _run_test("test_social_scalp_decision_alerts.py")
-    ev["route_test"] = _run_test("test_social_route_policy.py")
-    ev["liquidity_test"] = _run_test("test_momentum_scalp_liquidity_unknown.py")
-    ev["trace_test"] = _run_test("test_social_traceability.py")
-    ev["no_bypass_test"] = _run_test("test_no_broker_write_bypass.py", timeout=120)
-    ev["config_test"] = _run_test("test_momentum_scalp_config_consistency.py")
+    # test-backed dimensions — tri-state (PASS/FAIL/ENV_ERROR), evidence run under the venv first.
+    _tests = {
+        "expiry_test": "test_momentum_scalp_expiry_enforced.py",
+        "window_test": "test_intraday_window_fail_closed.py",
+        "alerts_test": "test_social_scalp_decision_alerts.py",
+        "route_test": "test_social_route_policy.py",
+        "liquidity_test": "test_momentum_scalp_liquidity_unknown.py",
+        "trace_test": "test_social_traceability.py",
+        "no_bypass_test": "test_no_broker_write_bypass.py",
+        "config_test": "test_momentum_scalp_config_consistency.py",
+    }
+    ev["_test_states"] = {}
+    ev["_indeterminate"] = []
+    for key, fname in _tests.items():
+        state = _run_test_state(fname, timeout=120 if key == "no_bypass_test" else 90)
+        ev["_test_states"][key] = state
+        ev[key] = (state == "PASS")
+        if state == "ENV_ERROR":
+            ev["_indeterminate"].append(fname)
+    ev["evidence_interpreter"] = _evidence_interpreters()[0]
 
     # traceability columns present
     try:
@@ -193,11 +241,30 @@ def compute() -> dict:
         "caps_applied": caps,
         "score_lines": lines,
         "evidence": ev,
+        # Dimension separation (P0-5): engineering/control lifecycle vs empirical strategy sample.
+        # SOURCE maturity (4.5-ready) and LATENCY readiness (4.5-ready, pending live observation) are
+        # reported SEPARATELY by the source-maturity / latency-SLA reports and do NOT lift this combined
+        # strategy-lifecycle score, which stays capped by the empirical validation sample.
+        "maturity_separation": {
+            "engineering_control_lifecycle": _engineering,
+            "empirical_strategy_sample": f"{_closed if _closed is not None else '?'}/30",
+            "source_maturity": "see MOMENTUM_SCALP_SOURCE_MATURITY.md (4.5-ready, separate)",
+            "latency_readiness": "see MOMENTUM_SCALP_SOURCE_LATENCY_SLA.md (4.5-ready / WARN_PENDING_OBSERVATION)",
+            "strategy_maturity_4_5_claimable": False,
+        },
+        "evidence_interpreter": ev.get("evidence_interpreter"),
+        "evidence_indeterminate": ev.get("_indeterminate") or [],
+        "evidence_indeterminate_warning": (
+            "INDETERMINATE: one or more evidence tests could not be imported in this interpreter "
+            "(missing runtime dependency). Scores below may understate maturity — regenerate under "
+            ".venv/bin/python (the runtime/cron interpreter) for authoritative evidence."
+            if ev.get("_indeterminate") else None),
         "note": ("Earned from machine evidence, bounded by hard caps. Engineering/control lifecycle is "
                  "mature; the EMPIRICAL strategy lifecycle is not, because there is no sufficient "
-                 "confirmed momentum_scalp paper-trade sample (operator correction 2026-06-28). A zero "
-                 "confirmed sample caps combined at 4.3; a 1–29 sample caps at 4.4. No broker writes. "
-                 "LLMs advisory only; operator/2FA path unchanged and out of scope."),
+                 "confirmed momentum_scalp validation-trade sample (operator correction 2026-06-28). A zero "
+                 "confirmed sample caps combined at 4.3; a 1–29 sample caps at 4.4. Strategy maturity 4.5+ "
+                 "is NOT claimed. Source maturity (4.5-ready) is reported separately and does not lift this "
+                 "score. No broker writes. LLMs advisory only; operator/2FA path unchanged and out of scope."),
     }
 
 
