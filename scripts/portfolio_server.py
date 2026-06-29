@@ -32,6 +32,7 @@ IMPORT CONTRACT (/api/import):
 """
 
 import http.server
+import socketserver
 import json
 import os
 import subprocess
@@ -1106,6 +1107,19 @@ AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/archive/", "/reports/", "/as
 
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
+    def finish(self):
+        # Multi-threaded server (2026-06-29): close this request thread's DB connection so the server
+        # never accumulates one open connection per request thread. Crons are unaffected (single thread).
+        try:
+            from db_adapter import close_thread_conn
+            close_thread_conn()
+        except Exception:
+            pass
+        try:
+            super().finish()
+        except Exception:
+            pass
+
     def log_message(self, fmt, *args):
         # Suppress noisy GET logs for static files, keep API logs
         path = args[0] if args else ""
@@ -1956,17 +1970,27 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-class ReusableHTTPServer(http.server.HTTPServer):
-    """HTTPServer with SO_REUSEADDR to prevent 'Address already in use' on restart.
+class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    """Threaded HTTPServer with SO_REUSEADDR.
 
-    request_queue_size raised 5→128 (2026-06-12, found live during the canary session): the server
-    is deliberately single-threaded (shared DB connection is not thread-safe), so one slow endpoint
-    serializes the dashboard's parallel polls — with the default backlog of 5, overflow connections
-    were silently DROPPED (UI buttons hung on 'translating…'). A deep queue keeps them waiting
-    instead of dying; latency under burst is acceptable, dropped requests are not."""
+    2026-06-29: made MULTI-THREADED (was deliberately single-threaded) so one slow endpoint no longer
+    blocks every other request — the 2026-06-25/29 "Reconnecting"/ERR_CONNECTION_RESET hangs were the
+    single thread stuck on a heavy endpoint while /api/health and the dashboard's parallel polls queued
+    behind it. Thread-safety: db_adapter now hands each thread its OWN connection (closed in
+    PortfolioHandler.finish), so concurrent requests never share cursor/transaction state.
+
+    Concurrency is BOUNDED by a semaphore (DASHBOARD_MAX_CONCURRENCY, default 16) so we never spawn an
+    unbounded number of request threads / DB connections under a poll burst; excess connections wait in
+    the request_queue_size=128 backlog rather than being dropped."""
     allow_reuse_address = True
     allow_reuse_port = True
     request_queue_size = 128
+    daemon_threads = True
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "16")))
+
+    def process_request_thread(self, request, client_address):
+        with self._sem:
+            super().process_request_thread(request, client_address)
 
 
 if __name__ == "__main__":

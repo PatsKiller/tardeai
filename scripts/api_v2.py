@@ -10188,7 +10188,7 @@ def _paper_proposals_enriched():
 
                 # Scan history
                 scan_rows = _db_query("""
-                    SELECT decision, signal_score, price, rvol, gap_pct, change_pct,
+                    SELECT decision, score, price, rvol, gap_pct, change_pct,
                            catalyst_verified, scanned_at
                     FROM trade_ai_scans WHERE symbol = %s
                     ORDER BY scanned_at DESC LIMIT 5

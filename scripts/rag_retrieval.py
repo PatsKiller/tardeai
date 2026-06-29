@@ -1,4 +1,5 @@
 """rag_retrieval.py — Universal RAG Retrieval Engine for Trade AI v12.
+import os
 
 Covers all intelligence source types. Used by all agents.
 Falls back to keyword search if Ollama unavailable.
@@ -42,7 +43,11 @@ def _get_conn():
 
 def embed_text(text):
     try:
-        r = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text[:2000]}, timeout=30)
+        # 2026-06-29: 30s was too short under GPU contention (a big model loading evicts/cold-starts the
+        # embed model), causing the proposal-review worker to spin on failed embeds and hit its 12m cap.
+        # 90s rides out a transient load spike. Override with EMBED_TIMEOUT_S.
+        _t = float(os.getenv("EMBED_TIMEOUT_S", "90"))
+        r = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text[:2000]}, timeout=_t)
         r.raise_for_status()
         return r.json().get("embedding")
     except Exception as e:
