@@ -78,6 +78,31 @@ class TestOcoBuilder(unittest.TestCase):
         self.assertEqual(t["order_strategy"], "OCO")
         self.assertEqual(t["order_spec"]["orderStrategyType"], "OCO")
 
+    def test_10_intent_protective_marker_and_shape(self):
+        from brokers.execution_guard import PROTECTIVE_STOP_MARKER
+        from brokers.order_intent import Direction
+        intent = oco.make_oco_intent("schwab_taxable", "AGNC", 293, 11.24, 10.75,
+                                     current_price=10.97, held_qty=293)
+        self.assertEqual(intent.direction, Direction.LONG)          # both legs sell-to-close
+        self.assertEqual(intent.broker, "schwab")
+        self.assertEqual(intent.meta.strategy_id, PROTECTIVE_STOP_MARKER)   # routes through protective gate
+        ev = intent.meta.signal_evidence
+        self.assertEqual(ev["instruction"], "SELL")
+        self.assertEqual(ev["order_type"], "OCO")
+        self.assertEqual(ev["stop_price"], 10.75)
+        self.assertEqual(ev["take_profit_price"], 11.24)
+        self.assertEqual(float(intent.entry.stop_price), 10.75)     # STOP leg is the intent entry
+
+    def test_11_intent_validates_structurally(self):
+        from brokers.order_intent import validate
+        intent = oco.make_oco_intent("schwab_taxable", "AGNC", 293, 11.24, 10.75)
+        vr = validate(intent)
+        self.assertTrue(vr.ok, f"intent failed canonical validation: {getattr(vr,'errors',None)}")
+
+    def test_12_intent_rejects_fractional(self):
+        with self.assertRaises(oco.OcoAbort):
+            oco.make_oco_intent("schwab_taxable", "AGNC", 10.5, 11.24, 10.75)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

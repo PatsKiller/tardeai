@@ -104,17 +104,56 @@ def preview_oco_ticket(symbol, qty, take_profit_price, stop_price, account_key=N
     }
 
 
-def submit_oco(account_key, symbol, qty, take_profit_price, stop_price, intent, *, canary=True):
+def make_oco_intent(account_key, symbol, qty, take_profit_price, stop_price, *,
+                    current_price=None, advised_stop=None, held_qty=None):
+    """Build a gate-routable OrderIntent for a Schwab SELL OCO. Direction LONG (both legs are sell-to-close),
+    stamped with the protective-stop marker so the execution guard routes it through the protective envelope
+    (sell-to-close; drift/qty/notional caps). The STOP leg is the intent's entry so the protective policy has
+    a stop to evaluate; the take-profit rides in signal_evidence. PURE — does not submit.
+
+    NOTE (canary-phase): protective_stop_policy.evaluate must learn to PASS order_type 'OCO' (today it knows
+    STOP/STOP_LIMIT/TRAILING_STOP). Until then the gate fail-closes on a live submit — which is the safe
+    inert behavior; nothing reaches the broker while OCO_BRACKETS_SCHWAB is off.
+    """
+    validate_oco(symbol, qty, take_profit_price, stop_price)
+    import uuid
+    from brokers.order_intent import (OrderIntent, Instrument, Direction, EntrySpec, EntryMethod,
+                                      Quantity, TIF, SessionPolicy, IntentMeta)
+    from brokers.execution_guard import PROTECTIVE_STOP_MARKER
+    symbol = str(symbol).upper()
+    qty = int(qty)
+    entry = EntrySpec(method=EntryMethod.STOP, stop_price=float(stop_price))
+    meta = IntentMeta(
+        strategy_id=PROTECTIVE_STOP_MARKER, created_by="operator",
+        thesis=f"Schwab OCO bracket on held {symbol}: stop {_money(stop_price)} + take-profit {_money(take_profit_price)}",
+        signal_evidence={"instruction": "SELL", "order_type": "OCO",
+                         "stop_price": float(stop_price), "take_profit_price": float(take_profit_price),
+                         "advised_stop": float(advised_stop) if advised_stop is not None else float(stop_price),
+                         "current_price": float(current_price) if current_price is not None else None,
+                         "held_qty": float(held_qty) if held_qty is not None else float(qty)})
+    return OrderIntent(
+        instrument=Instrument(symbol), direction=Direction.LONG, entry=entry,
+        quantity=Quantity(qty=float(qty)), broker="schwab", account_key=account_key,
+        tif=TIF.GTC, session=SessionPolicy.NORMAL, meta=meta,
+        intent_id=str(uuid.uuid4()), correlation_id=str(uuid.uuid4()),
+    )
+
+
+def submit_oco(account_key, symbol, qty, take_profit_price, stop_price, intent=None, *, canary=True, **evidence):
     """LIVE submit via the existing guard + 2FA stack (schwab_transport.place_order, kind='oco_bracket').
 
     FAIL-CLOSED: raises unless OCO_BRACKETS_SCHWAB=1 AND (canary) qty <= OCO_CANARY_MAX_QTY. Until the
-    canary proof, P3 live OCO stays disabled — this never reaches place_order while the flag is off.
+    canary proof, P3 live OCO stays disabled — this never reaches place_order while the flag is off. When
+    no intent is supplied one is built via make_oco_intent (protective-marker routed); `evidence` forwards
+    current_price/advised_stop/held_qty.
     """
     validate_oco(symbol, qty, take_profit_price, stop_price)
     if not flag_enabled():
         raise OcoAbort(f"{OCO_FLAG} is OFF — live Schwab OCO submit disabled (canary proof required first)")
     if canary and int(qty) > OCO_CANARY_MAX_QTY:
         raise OcoAbort(f"canary cap: qty {qty} exceeds OCO_CANARY_MAX_QTY={OCO_CANARY_MAX_QTY}")
+    if intent is None:
+        intent = make_oco_intent(account_key, symbol, qty, take_profit_price, stop_price, **evidence)
     spec = make_oco_order_spec(symbol, qty, take_profit_price, stop_price)
     from schwab_transport import place_order   # full stack: readiness -> evidence -> 2FA -> idempotency -> POST
     return place_order(account_key, spec, intent, kind="oco_bracket")
