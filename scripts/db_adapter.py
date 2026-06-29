@@ -67,29 +67,49 @@ USE_DB = _db_enabled()
 
 # ── PostgreSQL connection ─────────────────────────────────────────────────────
 
-_conn = None
+import threading as _threading
+
+# THREAD-LOCAL connections (2026-06-29): the dashboard server is now multi-threaded, so a single
+# shared connection would let concurrent requests corrupt each other's cursor/transaction state.
+# Each thread gets its OWN connection. Single-threaded callers (crons) still get exactly one
+# persistent connection (their main thread's), so their behavior is unchanged.
+_tls = _threading.local()
 
 def _get_conn():
-    """Get or create PostgreSQL connection (lazy, singleton)."""
-    global _conn
-    if _conn is None or _conn.closed:
+    """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
+    conn = getattr(_tls, "conn", None)
+    if conn is not None and not conn.closed:
+        return conn
+    try:
+        import psycopg2
+        import psycopg2.extras
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            port=int(os.getenv("DB_PORT", "5432")),
+            dbname=os.getenv("DB_NAME", "trade_ai"),
+            user=os.getenv("DB_USER", "trade_ai"),
+            password=os.getenv("DB_PASSWORD", ""),
+            connect_timeout=10,
+        )
+        conn.autocommit = False
+        _tls.conn = conn
+        return conn
+    except Exception as e:
+        print(f"  [db_adapter] PostgreSQL connection failed: {e}")
+        print(f"  [db_adapter] Falling back to JSON")
+        return None
+
+
+def close_thread_conn():
+    """Close + clear THIS thread's connection. Call at the end of a threaded request so the
+    multi-threaded server doesn't accumulate one open DB connection per request thread."""
+    conn = getattr(_tls, "conn", None)
+    if conn is not None:
         try:
-            import psycopg2
-            import psycopg2.extras
-            _conn = psycopg2.connect(
-                host=os.getenv("DB_HOST", "localhost"),
-                port=int(os.getenv("DB_PORT", "5432")),
-                dbname=os.getenv("DB_NAME", "trade_ai"),
-                user=os.getenv("DB_USER", "trade_ai"),
-                password=os.getenv("DB_PASSWORD", ""),
-                connect_timeout=10,
-            )
-            _conn.autocommit = False
-        except Exception as e:
-            print(f"  [db_adapter] PostgreSQL connection failed: {e}")
-            print(f"  [db_adapter] Falling back to JSON")
-            return None
-    return _conn
+            conn.close()
+        except Exception:
+            pass
+        _tls.conn = None
 
 
 # Alias for scripts that import get_connection
