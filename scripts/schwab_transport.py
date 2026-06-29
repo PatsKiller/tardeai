@@ -290,6 +290,17 @@ def build_client(account_key, broker="schwab", environment="live"):
     tkey = tm.canonical_token_key(broker, environment) or account_key
     if tm.read_oauth_token(tkey, broker, environment) is None:
         return None, {"status": "degraded", "reason": "no Schwab login token (manager is system-of-record)"}
+    # Fail-fast when the manager has marked this token degraded (refresh token revoked/expired server-side →
+    # re-auth required). Without this guard, every read still constructs a client and triggers a doomed
+    # schwab-py refresh → POST /oauth/token 400 invalid_grant in a tight retry loop, which blocks request-
+    # path endpoints (broker-proposals) long enough to time out the dashboard. Cleared automatically by a
+    # successful re-auth (seed_token clears the degraded flag), so normal reads resume with no code change.
+    try:
+        if tm.health(tkey, broker, environment).get("degraded"):
+            return None, {"status": "degraded", "needs_reauth": True,
+                          "reason": "Schwab token degraded — re-auth required (manager is system-of-record)"}
+    except Exception:
+        pass
     try:
         from schwab.auth import client_from_access_functions
         client = client_from_access_functions(

@@ -239,6 +239,9 @@ def read_oauth_token(account_key, broker="schwab", environment="live"):
     if fresh or row[4]:
         _release_refresh_lock()
     else:
+        # Stale → a refresh is imminent. SINGLE-REFRESHER invariant: only one process/thread may refresh at a
+        # time. A peer that refreshes with a now-superseded rotating token trips Schwab's reuse-detection and
+        # revokes the WHOLE family (invalid_grant) — the 2026-06-28 21:54 death. So we MUST hold the lock.
         if _acquire_refresh_lock(broker, environment):
             cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, updated_at, degraded
                            FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
@@ -247,6 +250,18 @@ def read_oauth_token(account_key, broker="schwab", environment="live"):
             if not row or not row[1]:
                 _release_refresh_lock()
                 return None
+            # Won the lock — double-check: a peer may have rotated the token while we waited. If it is now
+            # fresh, NO refresh will follow, so release the lock immediately (else it leaks until the idle
+            # timeout and stalls other refreshers); schwab-py sees a fresh access token and skips its refresh.
+            if bool(row[0] and row[2] and row[2] > _now() + timedelta(seconds=ACCESS_REFRESH_MARGIN_S)):
+                _release_refresh_lock()
+            # else: keep the lock held across schwab-py's refresh; write_oauth_token releases it in finally.
+        else:
+            # Could NOT serialize within the wait budget (lock held/contended, or lock infra unavailable).
+            # FAIL CLOSED: do NOT hand back a stale token for an UNSERIALIZED refresh — that concurrent
+            # refresh is exactly what revokes the family. Returning None makes this one read degrade
+            # gracefully; the stored token is untouched and the next poll retries once the lock is free.
+            return None
     inner = {"token_type": "Bearer", "refresh_token": _dec(row[1])}
     if row[0]:
         inner["access_token"] = _dec(row[0])
