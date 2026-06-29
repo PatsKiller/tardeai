@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-06-28 - Momentum scalp Finviz every-5-min early lane + source-maturity reporting
+
+Source/scheduler/filter/reporting hardening to feed the validation fast path fresh candidates from
+06:00–12:00 ET. No live trades, no broker writes, operator/2FA untouched, no gate weakened. **No
+strategy maturity claim** — the empirical validation sample (still 3/30) remains the blocker to 4.5.
+
+- **P0-1** `MOMENTUM_SCALP_SOURCE_LIFECYCLE.md` documents the discovery→scan→signal→proposal→validation
+  path, current schedules, tables, and gaps.
+- **P0-2** `run_finviz_momentum_scalp_scan.py` (window-gated 06:00–12:00 ET, dry-run default, handoff
+  flags) + cron `*/5 6-11 * * 1-5` (flock, parseable JSON logs). Off-window = safe no-op.
+- **P0-3** `config/finviz_momentum_scalp_screen.yaml` mirrors `momentum_scalp.yaml` filters;
+  `test_finviz_momentum_scalp_filters.py` FAILS on float>20M / RVOL<5 / price>25 / social-only-GO;
+  allows 2–4 pillar Social Scout surfacing.
+- **P0-4** `momentum_scalp_early_lane_runner.py` — one command runs scan → signal sync → proposals →
+  validation; per-stage JSON + latency; dry-run default; sandbox submit needs `--submit-validation`/env.
+- **P0-5** `momentum_scalp_source_maturity_report.py` — per-source 0–5 maturity (Finviz/scanner/social/
+  news/SEC/quote/signal/proposal/validation); combined **3.9→4.5** (→5.0 once the live 5-min window is
+  observed). SOURCE maturity reported SEPARATELY from validation maturity; **does not claim 4.5+**.
+- **P0-6** `momentum_scalp_source_latency_sla.py` — source→proposal / proposal→validation latency
+  graded PASS/WARN/FAIL by window; a stale-quote DEFER is NEVER counted as a PASS (freshness preserved).
+- **P0-7** Finviz→pillar source mapping documented + tested: pure-Finviz reaches 2–4 pillars but never
+  `social_velocity`; Finviz+social+verified-catalyst = 5/5; 5/5 ≠ GO.
+- **P0-8** docs (lifecycle/maturity/SLA/validation/pillars) + CHANGELOG + manifest; taxonomy audit 0
+  violations. 183 backend tests green; no broker writes.
+- **Health monitor + auto-fix** `health_agent.collect_momentum_scalp_source_health` (schedule-aware,
+  06:00–12:00 ET) flags a stale/failing 5-min scan (`momentum_scalp_finviz_scan_stale` /
+  `momentum_scalp_early_lane_error`) and **auto-remediates** by re-running the lane fast
+  (`--skip-finviz-refresh`); script added to the auto-remediation safety allowlist (source/sandbox only,
+  no broker writes); cooldown + circuit-breaker escalate to operator/code review if ineffective.
+
 ## 2026-06-28 - Trade AI scanner: top-30 pagination, Social Scouts, persistent selection, ToS copy
 
 Operator UX/visibility + copy-list tooling for the Trading hub Trade AI scanner (Market Opportunities
