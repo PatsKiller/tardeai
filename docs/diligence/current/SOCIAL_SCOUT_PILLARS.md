@@ -37,6 +37,23 @@ Thresholds are deliberately **lighter** than the tradeable momentum_scalp GO gat
 float ≤ 20M, price ≤ $25, verified catalyst). Pillar boundary constants are imported from
 `social_route_policy` so the two stay in lock-step.
 
+### Finviz source → pillar mapping (P0-7)
+
+| Source | Fields | Pillar fed |
+|--------|--------|------------|
+| Finviz | RVOL / gap / change / volume | `market_confirmation` |
+| Finviz | price / float / spread / halt / offering / reverse-split risk | `structure_tradeability` |
+| Finviz | price / float / RVOL / gap + strategy boundaries | `strategy_risk_fit` |
+| News / catalyst | Finviz headlines, SEC, RAG catalyst confirmation | `catalyst_evidence` |
+| **Social sources** | mention velocity / source diversity | `social_velocity` (**not** Finviz) |
+
+**Finviz alone is never sufficient.** A pure-Finviz candidate can reach **2–4** pillars
+(market_confirmation + structure_tradeability + strategy_risk_fit, and catalyst_evidence when a verified
+headline exists) but can **never** satisfy `social_velocity` without social evidence. A Finviz + social +
+verified-catalyst candidate can reach **5/5** — and 5/5 is still **not** auto-GO; GO is decided only by
+`social_route_policy` + the deterministic gates. This is the combined source model: the Finviz screen
+(`config/finviz_momentum_scalp_screen.yaml`) and social discovery together determine the pillar count.
+
 ## Threshold behavior
 
 | Pillars met | Result |

@@ -61,8 +61,9 @@ batches no-op), so running both is safe overlap, not double submission.
 
 | Path | Cron | Timing role |
 |------|------|-------------|
+| **Finviz 5-min early lane** | `*/5 6-11 * * 1-5` `run_finviz_momentum_scalp_scan.py --window early --apply --sync-signals --generate-proposals --run-validation-fast-path --submit-validation` (flock-locked) | **Every 5 min** — refreshes the Finviz source then chains signal sync → proposals → validation so fresh candidates reach validation fast (operator decision 2026-06-28). See [MOMENTUM_SCALP_SOURCE_LIFECYCLE.md](MOMENTUM_SCALP_SOURCE_LIFECYCLE.md). |
 | Generation hook | `*/30 9-16 * * 1-5` `auto_proposal_generator.py --today --apply` with `MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1` | Fires the fast path immediately after each proposal batch — tightest timing, before quotes stale |
-| Standalone runner | `*/2 6-11 * * 1-5` `momentum_scalp_validation_fast_path.py --submit-sandbox` (flock-locked) | Every 2 min — catches proposals that become entry-valid between generation cycles |
+| Standalone runner | `*/2 6-11 * * 1-5` `momentum_scalp_validation_fast_path.py --submit-sandbox` (flock-locked) | Every 2 min — backup; catches proposals that become entry-valid between generation cycles |
 
 The hook lives in `run_auto_proposals()` (`maybe_run_after_generation`); it is sandbox/simulated only and
 never reaches a live broker submit. Maturity stays at the honest empirical level (confirmed-closed sample
