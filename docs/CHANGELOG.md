@@ -24,6 +24,8 @@ no broker writes, operator/2FA untouched.
   would have been METADATA_ONLY** under the new policy.
 - **Governance panel** System → Hermes card + `GET /api/v2/hermes/research-governance` (read-only): research
   by tier, LLM by lane, local GPU, duplicate/stale/no-trigger, top expensive sources, budget posture.
+  Served from a disk TTL cache (`HERMES_GOV_TTL_SEC`, default 600s; ~1-3ms cached vs ~3.5s fresh; `?fresh=1`
+  bypass) pre-warmed by cron `*/10 6-20 * * 1-5 … --warm`; `api_v2` reaches it via an mtime-guarded reload.
 - **Docs** `HERMES_RESEARCH_SCOPE_AUDIT.md`, `HERMES_RESEARCH_BUDGET_POLICY.md`, `HERMES_GOVERNANCE_PANEL.md`.
 
 ## 2026-06-29 - GPU/LLM overload + dashboard outage: tiered job prioritization + escalation 31B guard

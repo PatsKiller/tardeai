@@ -6,11 +6,19 @@ much Hermes researches, by tier and lane, and what the budget guard is deferring
 
 Read-only. No writes, no broker calls, no LLM calls, no gate bypass.
 """
+import json
 import os
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+
+# Disk TTL cache — the summary runs the full research-scope audit (~3-4s of SELECTs), too heavy for
+# the request path. Served from a pre-warmed cache like the other heavy endpoints (finviz-strip-map).
+# `fresh=True` (route `?fresh=1`) forces recompute. Pre-warm via `--warm` on a cron out of band.
+_CACHE_PATH = os.path.join(ROOT, "data", "runtime", "hermes_governance_cache.json")
+_TTL_SEC = int(os.getenv("HERMES_GOV_TTL_SEC", "600"))  # 10 min
 
 # trigger_reason / trigger_source -> tier (mirror of config/hermes_research_budget.yaml, for
 # historical rows that pre-date the budget_tier column).
@@ -42,8 +50,34 @@ def _rows(sql, p=None):
     return _exec(sql, p, fetch="all") or []
 
 
-def governance_summary():
-    """Everything the Hermes Governance panel needs. Read-only."""
+def governance_summary(fresh=False):
+    """Cached entry point for the panel. Serves a pre-warmed disk TTL cache so the heavy audit never
+    blocks the request path; `fresh=True` (or an expired/absent cache) recomputes. Read-only."""
+    if not fresh:
+        try:
+            if os.path.exists(_CACHE_PATH):
+                cached = json.loads(open(_CACHE_PATH).read())
+                if time.time() - float(cached.get("_cached_at") or 0) < _TTL_SEC:
+                    cached["cached"] = True
+                    return cached
+        except Exception:
+            pass
+    out = _governance_summary_compute()
+    try:
+        out["_cached_at"] = time.time()
+        out["cached"] = False
+        os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
+        tmp = _CACHE_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(json.dumps(out, default=str))
+        os.replace(tmp, _CACHE_PATH)
+    except Exception:
+        pass
+    return out
+
+
+def _governance_summary_compute():
+    """Everything the Hermes Governance panel needs. Read-only. Heavy (~3-4s) — call via the cache."""
     from hermes_research_scope_audit import build as _audit_build
     audit = _audit_build()
 
@@ -89,3 +123,20 @@ def governance_summary():
         "note": "Read-only Hermes research governance. Advisory only — no trades, no broker writes, "
                 "no gate bypass. Broad universe never calls an LLM.",
     }
+
+
+if __name__ == "__main__":
+    # `--warm` recomputes and writes the disk cache (cron, out of the request path).
+    # `--json` prints the (possibly cached) summary.
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--warm", action="store_true", help="recompute + write cache, then exit")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    t0 = time.time()
+    d = governance_summary(fresh=a.warm)
+    if a.warm:
+        print(json.dumps({"warmed": True, "cached_path": _CACHE_PATH, "ttl_sec": _TTL_SEC,
+                          "compute_sec": round(time.time() - t0, 2), "status": d.get("status")}, indent=2))
+    else:
+        print(json.dumps(d, indent=2, default=str))
