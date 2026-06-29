@@ -151,11 +151,27 @@ def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id,
                            updated_at=NOW()
                            WHERE (lifecycle_state='open' OR status='open') AND symbol=%s""",
                         (stop_id or old_stop_id, tp_id, tp, group_id, symbol))
+            # Audit parity: an auto-applied paper ATM action must SIT IN THE PROPOSALS QUEUE, not apply
+            # invisibly. The OCO fulfils the take-profit, so mark the now-satisfied take-profit proposal
+            # APPLIED — the ticker then shows as applied in the queue instead of a stale "wants a take-profit"
+            # pending. (Real accounts are unaffected: they stay operator-pending + 2FA, never auto-applied.)
+            cur.execute("""UPDATE paper_protection_adjustment_proposals SET status='APPLIED'
+                           WHERE symbol=%s AND action='ADD_FIXED_TAKE_PROFIT' AND status='PROPOSED'
+                             AND trade_id IN (SELECT id FROM paper_trades
+                                              WHERE symbol=%s AND (lifecycle_state='open' OR status='open'))""",
+                        (symbol, symbol))
             conn.commit()
         except Exception:
             conn.rollback()
     res.update({"status": "OCO_ACTIVE", "oco_group_id": group_id, "stop_order_id": stop_id, "take_profit_order_id": tp_id})
     _audit(symbol, "CONVERT_TO_OCO", f"stop ${sp} + take-profit ${tp} qty {qty} group {group_id}")
+    # Operator notification (audit parity): paper auto-applies notify; they don't gate on 2FA (paper only).
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(f"🟢 ATM auto (paper) · {symbol}: converted to OCO bracket — stop ${sp} + take-profit "
+                      f"${tp} ({qty} sh). Now in proposals as APPLIED. No 2FA (paper); real accounts stay 2FA.")
+    except Exception:
+        pass
     return res
 
 
