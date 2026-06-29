@@ -258,16 +258,15 @@ def run(apply: bool = False) -> dict:
     rows = cur.fetchall()
     market_hours = True
     report = {"mode": "APPLIED" if apply else "DRY-RUN", "considered": len(rows), "actions": [], "held": 0,
-              "errors": 0, "oco_skipped": 0}
+              "errors": 0, "oco_ratcheted": 0}
 
     for sym, entry, planned, strat, shares, cur_px, stop_oid, bracket_state in rows:
         sym = str(sym).upper()
-        # OCO-managed positions: a standalone cancel+replace would cancel the OCO's stop leg and orphan the
-        # take-profit. The OCO stop leg is 'held' (not in status=open) so it can't be ratcheted the simple
-        # way. Skip here — in-place OCO leg-ratchet (PATCH the held stop leg) is the P1 follow-up increment.
-        if str(bracket_state or "").upper() == "OCO_ACTIVE":
-            report["oco_skipped"] += 1
-            continue
+        # OCO-managed positions ratchet the held stop LEG in place (PATCH) rather than the standalone
+        # cancel+replace — which would cancel the OCO stop leg and orphan the take-profit. The OCO stop leg
+        # is 'held' (nested, not in status=open) so its current price comes from the DB stop columns and its
+        # id from stop_order_id (set by convert_to_oco).
+        is_oco = str(bracket_state or "").upper() == "OCO_ACTIVE"
         entry, planned, cur_px = _f(entry), _f(planned), _f(cur_px)
         lv = live.get(sym)
         current_stop = (lv["stop"] if lv and lv.get("stop") is not None else planned)
@@ -290,32 +289,51 @@ def run(apply: bool = False) -> dict:
         plan = {"symbol": sym, "from_stop": round(current_stop, 2), "to_stop": round(new_stop, 2),
                 "current_price": cur_px, "r_multiple": rec.get("r_multiple"), "family": rec.get("family"),
                 "reason": rec.get("reason"), "old_order_id": (lv["id"] if lv else stop_oid)}
+        # Keep EVERY stop column in sync (fix 2026-06-19): the ratchet previously updated only
+        # stop_loss_price, so stop_loss / current_stop and the trailing flags went stale — readers
+        # (journal, scale engine, card trailing-state) saw the OLD stop and trailing_active stayed
+        # NULL (the SNOW symptom). Now stamp the trailing state on every ratchet.
+        _sync_stop_cols = ("UPDATE paper_trades SET stop_loss_price=%s, stop_loss=%s, current_stop=%s, "
+                           "stop_type='trailing', trailing_active=TRUE, stop_order_id=%s, "
+                           "stop_updated_at=NOW(), updated_at=NOW() "
+                           "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s")
         if apply:
             try:
                 old_id = lv["id"] if lv else stop_oid
                 qty = int(lv["qty"]) if (lv and lv.get("qty")) else int(shares)
-                if old_id:
-                    try:
-                        _alpaca_req(env, f"/v2/orders/{old_id}", method="DELETE")
-                    except Exception:
-                        pass   # already gone / filled — re-place anyway is unsafe, so guard below
-                resp = _alpaca_req(env, "/v2/orders", method="POST", body={
-                    "symbol": sym, "qty": qty, "side": "sell", "type": "stop",
-                    "stop_price": str(round(new_stop, 2)), "time_in_force": "gtc"})
-                new_id = str(resp.get("id") or "")
-                # Keep EVERY stop column in sync (fix 2026-06-19): the ratchet previously updated only
-                # stop_loss_price, so stop_loss / current_stop and the trailing flags went stale — readers
-                # (journal, scale engine, card trailing-state) saw the OLD stop and trailing_active stayed
-                # NULL (the SNOW symptom). Now stamp the trailing state on every ratchet.
-                cur.execute("UPDATE paper_trades SET stop_loss_price=%s, stop_loss=%s, current_stop=%s, "
-                            "stop_type='trailing', trailing_active=TRUE, stop_order_id=%s, "
-                            "stop_updated_at=NOW(), updated_at=NOW() "
-                            "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s",
-                            (round(new_stop, 2), round(new_stop, 2), round(new_stop, 2), new_id, sym))
-                conn.commit()
-                plan["new_order_id"] = new_id
-                plan["status"] = "ratcheted"
-                _audit(sym, "RATCHET", f"${plan['from_stop']}→${plan['to_stop']} (R={rec.get('r_multiple')}, {rec.get('family')}) #{new_id}")
+                if is_oco:
+                    # In-place replace of the OCO stop LEG — keeps the take-profit, NO naked window. On failure
+                    # do NOT cancel (that would orphan the take-profit); leave the OCO intact and report.
+                    if not old_id:
+                        plan["status"] = "oco_no_leg_id_skipped"
+                        report["errors"] += 1
+                    else:
+                        resp = _alpaca_req(env, f"/v2/orders/{old_id}", method="PATCH",
+                                           body={"stop_price": str(round(new_stop, 2))})
+                        new_id = str(resp.get("id") or old_id)
+                        cur.execute(_sync_stop_cols,
+                                    (round(new_stop, 2), round(new_stop, 2), round(new_stop, 2), new_id, sym))
+                        conn.commit()
+                        plan["new_order_id"] = new_id
+                        plan["status"] = "ratcheted_oco_leg"
+                        report["oco_ratcheted"] += 1
+                        _audit(sym, "RATCHET_OCO", f"${plan['from_stop']}→${plan['to_stop']} (R={rec.get('r_multiple')}, {rec.get('family')}) OCO leg #{new_id}")
+                else:
+                    if old_id:
+                        try:
+                            _alpaca_req(env, f"/v2/orders/{old_id}", method="DELETE")
+                        except Exception:
+                            pass   # already gone / filled — re-place anyway is unsafe, so guard below
+                    resp = _alpaca_req(env, "/v2/orders", method="POST", body={
+                        "symbol": sym, "qty": qty, "side": "sell", "type": "stop",
+                        "stop_price": str(round(new_stop, 2)), "time_in_force": "gtc"})
+                    new_id = str(resp.get("id") or "")
+                    cur.execute(_sync_stop_cols,
+                                (round(new_stop, 2), round(new_stop, 2), round(new_stop, 2), new_id, sym))
+                    conn.commit()
+                    plan["new_order_id"] = new_id
+                    plan["status"] = "ratcheted"
+                    _audit(sym, "RATCHET", f"${plan['from_stop']}→${plan['to_stop']} (R={rec.get('r_multiple')}, {rec.get('family')}) #{new_id}")
             except Exception as e:
                 conn.rollback()
                 plan["status"] = f"error: {str(e)[:80]}"
