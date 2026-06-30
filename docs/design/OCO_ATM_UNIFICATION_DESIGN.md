@@ -137,3 +137,44 @@ P1–P2 deliver the real take-profit on paper. P3 is the only phase that opens a
 - Integration (paper): bracket entry fills → both legs live; take-profit hit cancels stop and vice-versa; stop-up replaces only the stop leg.
 - Canary (Schwab): one whole-share OCO via the 2FA ticket, read-back verified, before any cap lift.
 - Backout: feature-flag each phase (`OCO_BRACKETS_PAPER`, `OCO_BRACKETS_SCHWAB`); flipping off reverts to the current standalone-stop + advisory-take-profit behavior (PR #27).
+
+---
+
+## 11. Due-diligence hardening (2026-06-30, pre-canary)
+
+Closed the stock-management gaps that had to be airtight on the **paper** path before a Schwab OCO canary. No
+change to live Schwab enablement; `OCO_BRACKETS_SCHWAB` stays **OFF**; 2FA / operator gates untouched.
+
+- **Stop-never-absent is now crash-safe (not just rollback-safe).** `convert_to_oco`
+  (`scripts/alpaca_stop_manager.py`) writes `bracket_state='OCO_REPLACING'` **and persists the last-known
+  stop price BEFORE canceling the standalone stop**. A process death between cancel and OCO-ack therefore
+  leaves a recoverable marker instead of a silently naked position.
+- **Read-back verification.** After every OCO POST, the broker open orders are re-read
+  (`_classify_broker_protection`). If the read-back cannot confirm an OCO (broker unreadable, or only a bare
+  stop / nothing came back), the convert does **not** declare `OCO_ACTIVE` — it rolls back to a standalone
+  stop. The POST response is never trusted on its own.
+- **Repair supervisor.** `repair_oco_replacing(apply=False)` (`--repair-oco`) scans `OCO_REPLACING` rows and
+  reconciles to broker truth: OCO present → `OCO_ACTIVE`; standalone stop present → `STOP_ONLY` (restored);
+  **neither (naked) → immediately re-place a standalone stop at the last-known price + alert**; broker
+  unreadable → leave `OCO_REPLACING`, never guess naked.
+- **Reconciler split.** `alpaca_paper_reconciler.py --fix` is now **DB-metadata-only** and never mutates the
+  broker. The OCO auto-bracket retrofit (a broker write) moved behind the explicit, separate
+  `--apply-oco-retrofit` flag and no longer rides along on `--fix` — and is **not** auto-scheduled (the
+  operator opts into automation deliberately).
+- **`qty_available` fails closed.** `apply_paper_protection_adjustment.py` no longer defaults `avail=shares`
+  on a failed position read. Unreadable qty → `BROKER_QTY_UNKNOWN` / `DEFER_RECHECK` (no order placed), with
+  a bounded recheck count (`qty_recheck_attempts`, cap 6) that marks the proposal terminal rather than
+  looping the ATM pass forever.
+- **Tests:** `tests/test_oco_dd_gaps.py` (14) — interruption states, read-back rollback, supervisor branches,
+  `--fix` issues no POST/DELETE/PATCH, `--apply-oco-retrofit` is explicit + paper-only, qty-unknown
+  fail-closed + bounded. Existing `test_schwab_oco_bracket` (12), `test_protective_policy_oco` (6),
+  `test_no_broker_write_bypass` (9) stay green; Schwab no-write validator 27/27.
+
+### Remaining path to the one-share Schwab OCO canary
+1. Soak the paper OCO lifecycle with `--repair-oco` scheduled (dry-run first) — confirm zero unresolved
+   `OCO_REPLACING` rows over a full session.
+2. Verify `orderStrategyType:"OCO"` round-trips through `schwab-py place_order` against the Schwab **sandbox**
+   (section 9 open item) — read-back, no cap lift.
+3. Resolve the 2FA-latency-on-risk-reducing-stop-ups recommendation (section 9).
+4. Then, and only then: arm `OCO_BRACKETS_SCHWAB=1` for a **single whole-share** OCO via the existing 2FA
+   ticket, read-back verified, within `OCO_CANARY_MAX_QTY`. No cap lift until that canary round-trips clean.
