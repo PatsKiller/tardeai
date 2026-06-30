@@ -26,7 +26,7 @@ import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
 import HealthHub from './pages/HealthHub'
 
-const BUILD_MARKER = 'cc-v3 click-preflight-validate 2026-06-30'
+const BUILD_MARKER = 'cc-v3 preflight-ux-2a3a5a 2026-06-30'
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
