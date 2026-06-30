@@ -249,12 +249,20 @@ Time in profit: {pct_profit}% ({min_profit} min green / {min_dd} min red)
 Entry: RVOL {rvol} | above VWAP {vwap} ({vwap_dist}%) | RSI {rsi} | MACD {macd}
 Opportunity: missed {missed}% post-exit | runner {runner}
 Planned R {planned_r} → Realized R {realized_r}
+Stop discipline: initial {init_stop_atr}×ATR | breakeven {be_secured} | exit-R vs planned-stop-R {r_vs_stop}
+
+Also critique STOP DISCIPLINE per the momentum-scalp policy: (a) was the initial stop optimal vs the MAE
+(too tight = stopped on noise; too loose = gave back too much)? (b) was breakeven moved at the right R? (c)
+what R was left on the table or saved? (d) recommend stop params for THIS setup+regime. NOTE: protective
+trailing is config-OFF — it backtested net-negative for momentum (truncates the fat tail); do NOT recommend
+adding a trailing stop.
 
 Return STRICT JSON only:
 {{"summary": "2-3 sentence overview",
 "strengths": ["...", "..."],
 "improvements": ["...", "..."],
 "takeaways": ["repeat this...", "fix this..."],
+"stop_critique": {{"initial_stop_vs_mae": "...", "breakeven_timing": "...", "r_left_on_table": "...", "recommended_params_setup_regime": "..."}},
 "suggested_tags": ["tag1", "tag2"],
 "what_if_scenarios": [{{"scenario": "...", "outcome": "..."}}]}}"""
 
@@ -767,6 +775,9 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
             runner=eq.get("runner_type"),
             planned_r=ctx.get("planned_r"),
             realized_r=ctx.get("realized_r"),
+            init_stop_atr=trade.get("initial_stop_atr") or "—",
+            be_secured=("yes" if trade.get("breakeven_trigger_r") is not None else "not tagged"),
+            r_vs_stop=trade.get("final_r_vs_planned_stop") if trade.get("final_r_vs_planned_stop") is not None else "—",
         )
         try:
             llm_raw = llm_lane.generate(prompt, lane=lane, timeout=90)
