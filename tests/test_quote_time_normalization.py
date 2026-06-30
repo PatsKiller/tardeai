@@ -69,25 +69,24 @@ def test_07_api_gate_uses_normalizer_not_bare_fromisoformat():
     assert "_dt.datetime.fromisoformat(raw_ts)" not in api
 
 
-def test_08_after_hours_is_24_7_gtc_with_ack():
+def test_08_after_hours_default_next_session_override_gated():
     api = API.read_text(encoding="utf-8")
-    # GTC stop is valid 24/7: after-hours requires an ACK, not a regular-session block
-    assert "after_hours_ack_required" in api
-    assert "_after_hours_ack" in api
+    # default: after-hours restricted to the next regular session; AFTER_HOURS_GTC is opt-in (override + ack)
+    assert "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" in api
     assert "READY_FOR_OPERATOR_AFTER_HOURS_GTC" in api
-    assert "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" not in api
+    assert "_after_hours_override_enabled" in api and "_after_hours_ack" in api
     fn = api.split("def _after_hours_ack")[1].split("\ndef ")[0]
-    assert "after_hours_ack" in fn and "_after_hours_stops_disabled" in fn  # ack gate + optional kill-switch
+    assert "_after_hours_override_enabled()" in fn and "after_hours_ack" in fn
 
 
-def test_09_after_hours_ack_gate(monkeypatch):
+def test_09_after_hours_ack_requires_override_and_ack(monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
     import api_v2
-    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", raising=False)
-    assert api_v2._after_hours_ack({}) is False                          # no ack -> blocked
-    assert api_v2._after_hours_ack({"after_hours_ack": True}) is True     # ack -> allowed 24/7
-    monkeypatch.setenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", "1")
-    assert api_v2._after_hours_ack({"after_hours_ack": True}) is False    # kill-switch forbids
+    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", raising=False)
+    assert api_v2._after_hours_ack({"after_hours_ack": True}) is False   # no override policy -> blocked
+    monkeypatch.setenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "1")
+    assert api_v2._after_hours_ack({}) is False                          # override but no ack
+    assert api_v2._after_hours_ack({"after_hours_ack": True}) is True     # override + ack -> allowed
 
 
 def test_10_ui_shows_session_ack_and_no_raw_parse_error():
@@ -110,8 +109,8 @@ def test_11_preflight_classifies_quote_and_fails_on_unparseable():
     assert "Quote timestamp could not be parsed" in pf
 
 
-def test_13_readiness_after_hours_fresh_is_ready_gtc_not_blocked(monkeypatch):
-    """A fresh after-hours quote must be READY (24/7 GTC, ack required), not blocked for the session."""
+def test_13_after_hours_default_next_session_override_to_gtc(monkeypatch):
+    """Default after-hours → NEXT_REGULAR_SESSION; with the explicit override → AFTER_HOURS_GTC (ack required)."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import api_v2, datetime as _dt
     try:
@@ -120,12 +119,45 @@ def test_13_readiness_after_hours_fresh_is_ready_gtc_not_blocked(monkeypatch):
     except Exception:
         import pytest
         pytest.skip("zoneinfo unavailable")
-    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", raising=False)
+    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", raising=False)
     r = api_v2._stop_live_readiness({"symbol": "V", "account": "schwab_rollover_ira", "quote_at": fresh})
-    # only meaningful when the synthetic quote actually lands after-hours; otherwise it's regular/ready
-    if r.get("quote_session") in ("after_hours", "pre_market") and r.get("quote_fresh"):
-        assert r.get("canary_state") == "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
-        assert r.get("requires_after_hours_ack") is True
+    if r.get("quote_session") in ("after_hours", "pre_market") and r.get("quote_fresh") and r.get("account_api_write_enabled"):
+        assert r.get("canary_state") == "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+        monkeypatch.setenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "1")
+        r2 = api_v2._stop_live_readiness({"symbol": "V", "account": "schwab_rollover_ira", "quote_at": fresh})
+        assert r2.get("canary_state") == "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+        assert r2.get("requires_after_hours_ack") is True
+
+
+def test_14_refresh_quote_is_read_only_no_broker_write():
+    api = API.read_text(encoding="utf-8")
+    assert "/api/v2/holdings/protective-stop/refresh-quote" in api
+    fn = api.split("def _protective_stop_refresh_quote")[1].split("\ndef ")[0]
+    for bad in ("place_order", "submit_order", "schwab_transport.submit", "INSERT INTO evidence", "DELETE"):
+        assert bad not in fn, f"refresh-quote must be read-only — found {bad!r}"
+    assert '"broker_request_sent": False' in fn
+
+
+def test_15_roth_not_armed_blocks_and_rollover_distinct():
+    """schwab_roth is not armed for live writes (ticket mode); rollover is — they are distinct canary targets."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import api_v2
+    assert api_v2._protective_account_api_write("schwab_roth") is False
+    assert api_v2._protective_account_api_write("schwab_rollover_ira") is True
+    api = API.read_text(encoding="utf-8")
+    assert "account_api_write_enabled" in api
+    assert "not armed for live API writes" in api
+
+
+def test_16_one_v_canary_only_and_target_binds_fields():
+    api = API.read_text(encoding="utf-8")
+    assert "_one_v_canary_conflict" in api and "Only one" in api
+    pf = PF.read_text(encoding="utf-8")
+    # the canary_target binds account/qty/residual/order_kind/trail/TIF/session/quote into the evidence path
+    assert "canary_target" in pf
+    for f in ("account", "qty", "residual", "order_kind", "trail_pct", "time_in_force", "session", "quote_at"):
+        assert f in pf
+    assert "--refresh-quote" in pf and "--allow-after-hours-gtc" in pf and "--time-in-force" in pf
 
 
 def test_12_no_broker_write_in_normalizer_or_preflight_quote_path():

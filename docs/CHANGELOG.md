@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-06-30 - Schwab live-stop: latest-quote refresh + after-hours GTC override + explicit canary target
+
+Reconciles the after-hours policy and adds the operator's refresh-quote path. After-hours GTC is supported
+**only** when the latest quote is refreshed + fresh, the override is enabled, and the operator acknowledges.
+
+- **Refresh-quote endpoint** `POST /api/v2/holdings/protective-stop/refresh-quote` (`_protective_stop_refresh_quote`):
+  fetches the LATEST available quote read-only, comparing all sources (Schwab extended-hours / Alpaca /
+  market_quotes / Finviz) and picking the **freshest** (trust breaks ties) — after-hours Finviz/Schwab beat
+  Alpaca's 16:00 close. Persists the refreshed quote; returns price/bid/ask, raw+normalized timestamp, source,
+  session, freshness, `after_hours_ack_required`, `can_submit_gtc_after_hours`, blockers, `operator_readiness`.
+  `broker_request_sent=false` — never submits.
+- **Session-aware freshness** (`quote_time.is_fresh`): regular 15m, extended hours 60m (a GTC stop rests).
+- **After-hours policy (reconciled):** default after-hours → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`.
+  `AFTER_HOURS_GTC` only with the explicit override (`SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` /
+  `--allow-after-hours-gtc`) AND the operator after-hours acknowledgement. Never READY while stale/unparseable.
+- **Explicit canary target + rollover-vs-roth:** readiness/preflight bind symbol+account+qty+residual+order_kind
+  +trail+TIF+session+quote into the evidence `order_spec_hash` (`canary_target`). The UI shows a large CANARY
+  TARGET block + Refresh button + after-hours ack. `schwab_roth.api_write_enabled=FALSE` (ticket mode) →
+  readiness BLOCKED with a clear "not armed for live API writes" reason; the armed live-write account is
+  `schwab_rollover_ira`. One-V-canary-only conflict check blocks simultaneous rollover+roth canaries.
+- **Preflight** `--time-in-force --refresh-quote --allow-after-hours-gtc`; reports `canary_target`,
+  `operator_readiness`, `after_hours_ack_required`.
+- Unchanged: evidence-bound approval, per-order 2FA, whole-share, read-back; no broad stops; OCO OFF; Fidelity
+  manual-only; no autonomous submit. Build clean; **63 tests pass**; validator 27/27; no broker request sent.
+
 ## 2026-06-30 - Schwab live-stop: after-hours works 24/7 via GTC + operator acknowledgement
 
 Supersedes the regular-session-only after-hours policy below. A protective stop is submitted **GTC**

@@ -61,12 +61,28 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   // Live-stop readiness snapshot (read-only; no broker calls, no evidence writes) for the Schwab canary panel.
   const [readiness, setReadiness] = useState<any>(null)
-  const quoteTsForReadiness = h?.price_as_of ?? h?.source_timestamp ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
+  const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const baseQuoteTs = h?.price_as_of ?? h?.source_timestamp ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
+  const quoteTsForReadiness = refreshedQuote?.quote_time_normalized ?? baseQuoteTs
   useEffect(() => {
     if (!isSchwab) return
     fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(quoteTsForReadiness))}`)
       .then(x => x.json()).then(j => setReadiness(unwrapApi(j))).catch(() => {})
   }, [isSchwab, sym, acct, quoteTsForReadiness])
+
+  // Refresh latest quote (read-only; never submits a broker order) and re-evaluate readiness.
+  const refreshQuote = async () => {
+    setRefreshing(true)
+    try {
+      const raw = await fetch('/api/v2/holdings/protective-stop/refresh-quote', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, account: acct, order_kind: 'TRAILING_STOP', trail_pct: trailPct }),
+      }).then(x => x.json())
+      setRefreshedQuote(unwrapApi(raw))
+    } catch { /* surfaced via stale state */ }
+    setRefreshing(false)
+  }
 
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
@@ -236,13 +252,16 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
   // + backend evidence revalidation enforce them at submit; we never silently rely on the frontend for safety.
   const backendHardBlock: string | null = isSchwab && readiness ? (
-    readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
-      : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
-        : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
-          : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
-            : readiness.after_hours_stops_disabled ? 'After-hours stop submission is disabled by policy.'
-              : (readiness.requires_after_hours_ack && !afterHoursAck) ? 'After-hours GTC stop: check the after-hours acknowledgement below to proceed (the order rests until triggered).'
-                : null
+    readiness.account_api_write_enabled === false ? `${acct} is not armed for live API writes (ticket mode). The live-stop canary runs on an api_write-enabled Schwab account (e.g. schwab_rollover_ira), not this one.`
+      : readiness.other_account_canary ? `Another ${sym} canary is already active on ${readiness.other_account_canary}. Only one ${sym} canary may be armed at a time.`
+        : readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
+          : !readiness.quote_fresh ? 'Blocked: quote is stale or after-hours freshness is not valid. Refresh latest quote first.'
+            : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
+              : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
+                : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
+                  : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours: first live canary is restricted to a regular session. After-hours override available only with explicit acknowledgement; not recommended for first canary.'
+                    : (readiness.requires_after_hours_ack && !afterHoursAck) ? 'Check the after-hours GTC acknowledgement below to proceed.'
+                      : null
   ) : null
   const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
   const liveBlocked = !logic.canRequestLive || backendHardBlock != null
@@ -404,8 +423,22 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         ]
         return (
           <div data-testid="live-stop-readiness" style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(2,6,23,.45)', border: '1px solid rgba(148,163,184,.2)' }}>
+            {/* EXPLICIT CANARY TARGET — never inferred from the current filter; binds symbol/account/qty/residual. */}
+            <div data-testid="canary-target" style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'rgba(59,130,246,.1)', border: `1px solid ${BLUE}55` }}>
+              <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>CANARY TARGET</div>
+              <div style={{ fontSize: 13, color: TEXT0, fontWeight: 800, lineHeight: 1.5 }}>
+                Symbol: <b>{sym}</b> · Account: <b>{acct}</b><br />
+                Order: <b>SELL {logic.wholeQty} {sym} {selectedKind === 'TRAILING' ? `TRAILING_STOP ${trailLabel}%` : selectedKind} GTC</b><br />
+                Residual: <b>{logic.residualQty.toFixed(4)} monitored</b>
+              </div>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12, color: MUTED, fontWeight: 900, letterSpacing: 0.3 }}>LIVE STOP READINESS</div>
+              <button onClick={e => { e.stopPropagation(); refreshQuote() }} disabled={refreshing}
+                title="Fetch the latest available quote (read-only; no broker order is placed)"
+                style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: refreshing ? 'wait' : 'pointer',
+                  border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>
+                {refreshing ? '…' : '↻ Refresh latest quote'}</button>
               {rd.canary_state && (() => {
                 const cs = rd.canary_state
                 const wholeOk = logic.residualQty <= 1e-6 || wholeShareConfirmed
@@ -414,7 +447,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
                 const label = fullReady
                   ? (cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '✅ READY — AFTER-HOURS GTC' : '✅ READY_FOR_OPERATOR')
                   : cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '⚠️ READY — ACKNOWLEDGE AFTER-HOURS'
-                    : '⛔ BLOCKED — resolve gates'
+                    : cs === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? '⚠️ NEXT REGULAR SESSION'
+                      : '⛔ BLOCKED — resolve gates'
                 const col = fullReady ? GREEN : RED
                 return (
                   <span data-testid="canary-state" style={{ fontSize: 11, fontWeight: 900, padding: '2px 8px', borderRadius: 999,
@@ -471,7 +505,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
                    border: `1px solid ${afterHoursAck ? GREEN : AMBER}` }}>
           <input type="checkbox" checked={afterHoursAck} onChange={e => setAfterHoursAck(e.target.checked)}
                  style={{ width: 18, height: 18, marginTop: 1, accentColor: afterHoursAck ? GREEN : AMBER, flexShrink: 0 }} />
-          <span>{afterHoursAck ? '✅ ' : '⚠️ '}I understand this is after-hours; Schwab may accept the GTC order but trigger behavior depends on regular-market conditions.</span>
+          <span>{afterHoursAck ? '✅ ' : '⚠️ '}I understand this is an after-hours GTC Schwab protective stop request. The order may rest as GTC, and execution/trigger behavior is governed by Schwab’s order rules. Submit only after per-order 2FA and broker read-back.</span>
         </label>
       )}
 

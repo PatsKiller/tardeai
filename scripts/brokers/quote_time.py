@@ -103,5 +103,22 @@ def classify_session(raw, now=None):
     return "closed"
 
 
-# Freshness window (seconds) for a live-stop request quote.
+# Freshness windows (seconds). Regular session is tight; extended hours is more lenient because quotes
+# update less often and the protective order is GTC (it rests until triggered, so a quote within the hour
+# is acceptable WITH the operator after-hours acknowledgement). Overnight/closed stays on the tight window
+# (no recent print → stale → blocked).
 FRESH_MAX_AGE_SEC = 15 * 60
+AFTER_HOURS_MAX_AGE_SEC = 60 * 60
+
+
+def fresh_max_age_for(session):
+    """Session-aware freshness window in seconds."""
+    return AFTER_HOURS_MAX_AGE_SEC if session in ("after_hours", "pre_market") else FRESH_MAX_AGE_SEC
+
+
+def is_fresh(raw, now=None):
+    """Session-aware freshness check for a quote timestamp."""
+    age = quote_age_seconds(raw, now=now)
+    if age is None:
+        return False
+    return age <= fresh_max_age_for(classify_session(raw, now=now))

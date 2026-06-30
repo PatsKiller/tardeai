@@ -102,6 +102,9 @@ def run_preflight(
     dry_run: bool,
     quote_at: str | None = None,
     after_hours_ack: bool = False,
+    time_in_force: str = "GTC",
+    refresh_quote: bool = False,
+    allow_after_hours_gtc: bool = False,
 ) -> dict:
     if not dry_run:
         return {"ok": False, "error": "preflight_requires_dry_run"}
@@ -113,17 +116,27 @@ def run_preflight(
         supersede_approval,
     )
     from brokers.execution_readiness import evaluate_execution_readiness
-    from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, FRESH_MAX_AGE_SEC
+    from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, is_fresh
 
     sym = symbol.upper().strip()
-    # ── Quote timestamp normalization + session classification (Part A/B). The ' ET' shape that broke
-    # datetime.fromisoformat() now parses via the shared normalizer; an unparseable quote FAILS the preflight
-    # with a human message (never a raw isoformat error). After-hours blocks the first canary unless overridden.
+    # ── Quote normalization + session classification. --refresh-quote fetches the latest available quote
+    # (read-only) first. Freshness is session-aware (regular 15m / extended 60m). An unparseable quote FAILS
+    # with a human message (never a raw isoformat error). After-hours readiness is AFTER_HOURS_GTC only with
+    # --allow-after-hours-gtc; otherwise it defers to the next regular session.
+    quote_refresh = None
+    if refresh_quote:
+        try:
+            import api_v2
+            quote_refresh = api_v2._protective_stop_refresh_quote({"symbol": sym, "account": account})
+            if quote_refresh.get("quote_time_normalized"):
+                quote_at = quote_refresh["quote_time_normalized"]
+        except Exception as e:
+            quote_refresh = {"error": str(e)[:80]}
     raw_quote = quote_at if quote_at is not None else _quote_at_for(account, sym)
     parsed_q = parse_quote_ts(raw_quote)
     q_session = classify_session(raw_quote)
     q_age = quote_age_seconds(raw_quote)
-    q_fresh = bool(q_age is not None and q_age <= FRESH_MAX_AGE_SEC)
+    q_fresh = is_fresh(raw_quote)
     if parsed_q is None:
         return {"ok": False, "stage": "quote_validation", "broker_submitted": False, "symbol": sym,
                 "quote_raw": raw_quote, "quote_session": "unknown", "quote_freshness_class": "unparseable",
@@ -140,7 +153,8 @@ def run_preflight(
         q_class = "after_hours_gtc_ack_required"
     operator_readiness = ("BLOCKED_STALE_QUOTE" if not q_fresh
                           else "READY_FOR_OPERATOR" if q_session == "regular"
-                          else "READY_FOR_OPERATOR_AFTER_HOURS_GTC")
+                          else "READY_FOR_OPERATOR_AFTER_HOURS_GTC" if allow_after_hours_gtc
+                          else "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION")
     held_qty, broker_price = _holding_truth(account, sym)
     qty = float(qty if qty is not None else held_qty if held_qty is not None else 0)
     current_price = float(current_price if current_price is not None else broker_price if broker_price is not None else 0)
@@ -216,7 +230,15 @@ def run_preflight(
         "quote_freshness_class": q_class,
         "operator_readiness": operator_readiness,
         "after_hours_ack": bool(after_hours_ack),
+        "after_hours_ack_required": q_session != "regular",
         "requires_after_hours_ack": q_session != "regular",
+        "allow_after_hours_gtc": bool(allow_after_hours_gtc),
+        "quote_refresh": quote_refresh,
+        # Explicit canary target — the evidence-bound order_spec_hash binds account+qty+order_type+trail+TIF, so
+        # rollover (201/8.7%) and roth (130/10%) are distinct targets and can never be confused.
+        "canary_target": {"symbol": sym, "account": account, "qty": whole_qty, "residual": residual_qty,
+                          "order_kind": ot, "trail_pct": trail_pct, "time_in_force": time_in_force,
+                          "session": q_session, "quote_at": to_iso(raw_quote)},
         "symbol": sym,
         "account": account,
         "order_type": ot,
@@ -251,7 +273,11 @@ def main() -> None:
     ap.add_argument("--current-price", type=float)
     ap.add_argument("--quote-at", help="quote timestamp (ISO / 'YYYY-MM-DD HH:MM:SS ET'); default from holdings")
     ap.add_argument("--after-hours-ack", action="store_true",
-                    help="operator after-hours acknowledgement (GTC stop valid 24/7; trigger behavior depends on regular-market conditions)")
+                    help="operator after-hours acknowledgement (trigger behavior depends on regular-market conditions)")
+    ap.add_argument("--time-in-force", default="GTC", help="order duration (default GTC; protective stops rest until triggered)")
+    ap.add_argument("--refresh-quote", action="store_true", help="fetch the latest available quote (read-only) before classifying")
+    ap.add_argument("--allow-after-hours-gtc", action="store_true",
+                    help="enable the explicit after-hours GTC override (default off; otherwise defers to next regular session)")
     ap.add_argument("--dry-run", action="store_true", required=True)
     args = ap.parse_args()
     out = run_preflight(
@@ -266,6 +292,9 @@ def main() -> None:
         dry_run=args.dry_run,
         quote_at=args.quote_at,
         after_hours_ack=args.after_hours_ack,
+        time_in_force=args.time_in_force,
+        refresh_quote=args.refresh_quote,
+        allow_after_hours_gtc=args.allow_after_hours_gtc,
     )
     print(json.dumps(out, indent=2, default=str))
     sys.exit(0 if out.get("ok") else 1)

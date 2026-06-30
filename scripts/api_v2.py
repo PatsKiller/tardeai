@@ -173,20 +173,150 @@ def _cached_schwab_validator():
     return res
 
 
-def _after_hours_stops_disabled():
-    """Optional kill-switch to forbid after-hours stop submission entirely (default: allowed 24/7 with ack)."""
+def _after_hours_override_enabled():
+    """Is the explicit after-hours OVERRIDE policy enabled? Default OFF — the first live canary is restricted
+    to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). A GTC stop is technically valid 24/7, but
+    after-hours submission is opt-in only via SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1."""
     import os as _os
-    return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOPS_DISABLED", "")).lower() in ("1", "true", "yes")
+    return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
 
 
 def _after_hours_ack(body=None):
-    """After-hours / pre-market GTC protective-stop submission is valid 24/7 (the order is Good-Till-Cancel and
-    rests until triggered), but requires an explicit operator acknowledgement that trigger behavior depends on
-    regular-market conditions. Returns True only if acknowledged AND not disabled by the kill-switch. Never
-    relaxes any other gate (fresh quote / evidence-bound approval / whole-share / 2FA / read-back)."""
-    if _after_hours_stops_disabled():
-        return False
-    return bool((body or {}).get("after_hours_ack"))
+    """After-hours / pre-market submission is permitted ONLY when the override policy is enabled AND the
+    operator explicitly acknowledges it (the GTC order rests until triggered; trigger behavior depends on
+    regular-market conditions). Default: blocked → next regular session. Never relaxes any other gate (fresh
+    quote / evidence-bound approval / whole-share / 2FA / read-back)."""
+    return _after_hours_override_enabled() and bool((body or {}).get("after_hours_ack"))
+
+
+def _one_v_canary_conflict(symbol, account):
+    """One protective-stop canary per symbol at a time. Returns the conflicting account if an active
+    evidence-bound approval (or armed broker stop) for this symbol exists on a DIFFERENT account, else None.
+    Prevents simultaneous rollover+roth canaries on the same symbol. Read-only."""
+    s = (symbol or "").upper(); a = (account or "")
+    try:
+        rows = _db_query("""SELECT COALESCE(proposal_snapshot_json->>'symbol', readiness_snapshot_json->>'symbol') sym,
+                                   COALESCE(proposal_snapshot_json->>'account', readiness_snapshot_json->>'account') acct
+                            FROM evidence_bound_approvals
+                            WHERE status='approved' AND used_at IS NULL
+                              AND (expires_at IS NULL OR expires_at > NOW())""") or []
+        for r in rows:
+            if str(r.get("sym") or "").upper() == s and str(r.get("acct") or "") and str(r.get("acct")) != a:
+                return str(r.get("acct"))
+    except Exception:
+        pass
+    return None
+
+
+def _protective_stop_refresh_quote(body=None):
+    """POST /api/v2/holdings/protective-stop/refresh-quote — fetch the LATEST available quote (read-only,
+    highest-trust source first) for a live-stop readiness check, persist it, and return a readiness object.
+    NEVER submits, modifies, or cancels a broker order (broker_request_sent=false)."""
+    import datetime as _dt
+    from brokers.quote_time import (parse_quote_ts, classify_session, to_iso, quote_age_seconds,
+                                    fresh_max_age_for, is_fresh)
+    b = body or {}
+    sym = str(b.get("symbol", "")).upper().strip()
+    acct = str(b.get("account", "")).strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required", "broker_request_sent": False}
+    # Gather quote candidates from every available source, then pick the FRESHEST parseable one (highest trust
+    # breaks ties). After-hours, Finviz/Schwab extended-hours prints are newer than Alpaca paper (which stops
+    # at the 16:00 close), so "latest available" must compare timestamps, not just take a fixed priority. All
+    # reads are READ-ONLY — no broker order is placed.
+    candidates = []  # (trust, parsed_ts, price, bid, ask, source, raw_ts)
+
+    def _add(price, src, raw_ts, trust, bid=None, ask=None):
+        try:
+            if price is None:
+                return
+            p = parse_quote_ts(raw_ts)
+            if p is None:
+                return
+            candidates.append((trust, p, float(price), bid, ask, src, raw_ts))
+        except Exception:
+            pass
+
+    if acct.startswith("schwab"):                      # Schwab extended-hours quote (read-only, best-effort)
+        try:
+            from schwab_transport import get_quote as _sq
+            sq = _sq(acct, sym) or {}
+            qtl = sq.get("quoteTimeInLong") or sq.get("quote_time_in_long")
+            sts = sq.get("quote_time") or sq.get("timestamp") or sq.get("quoteTime")
+            if sts is None and qtl:
+                sts = _dt.datetime.fromtimestamp(int(qtl) / 1000, tz=_dt.timezone.utc)
+            _add(sq.get("last_price") or sq.get("last") or sq.get("price") or sq.get("mark"),
+                 "schwab", sts, trust=3, bid=sq.get("bid"), ask=sq.get("ask"))
+        except Exception:
+            pass
+    try:
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(sym) or {}
+        _add(q.get("last_price"), q.get("provider") or "market_provider", q.get("quote_timestamp"),
+             trust=2, bid=q.get("bid"), ask=q.get("ask"))
+    except Exception:
+        pass
+    r = _db_query("SELECT price, source, fetched_at FROM market_quotes WHERE symbol=%s AND source NOT LIKE 'refresh:%%' "
+                  "ORDER BY fetched_at DESC LIMIT 1", (sym,), fetch="one")
+    if r:
+        _add(r.get("price"), r.get("source") or "market_quotes", r.get("fetched_at"), trust=1)
+    try:
+        fv = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get(sym) or {}
+        _add(fv.get("price"), "finviz", fv.get("last_fetched") or fv.get("last_updated"), trust=0)
+    except Exception:
+        pass
+
+    candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)   # freshest first; trust breaks ties
+    if candidates:
+        _, parsed, price, bid, ask, source, raw_ts = candidates[0]
+        quote = {"price": price, "bid": bid, "ask": ask}
+    else:
+        quote = parsed = source = raw_ts = None
+        bid = ask = None
+
+    session = classify_session(raw_ts)
+    age = quote_age_seconds(raw_ts)
+    fresh = is_fresh(raw_ts)
+    # persist the refreshed quote (advisory record; never touches a broker order)
+    if quote and parsed:
+        try:
+            _db_query("INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
+                      (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)), fetch=None)
+        except Exception:
+            pass
+    override = _after_hours_override_enabled()
+    blockers = []
+    if quote is None:
+        blockers.append("No quote available from any source.")
+    elif not parsed:
+        blockers.append("Quote timestamp could not be parsed.")
+    elif not fresh:
+        blockers.append(f"Quote is stale ({int(age) // 60}m old) — outside the {fresh_max_age_for(session) // 60}m "
+                        f"{session.replace('_', '-')} freshness window.")
+    if quote is not None and parsed and session != "regular" and not override:
+        blockers.append("After-hours override is not enabled (regular session required by default).")
+    out = {
+        "ok": quote is not None and parsed is not None, "symbol": sym, "account": acct,
+        "broker_request_sent": False,
+        "quote_price": quote["price"] if quote else None,
+        "quote_bid": quote.get("bid") if quote else None, "quote_ask": quote.get("ask") if quote else None,
+        "quote_source": source, "quote_time_raw": str(raw_ts) if raw_ts else None,
+        "quote_time_normalized": to_iso(raw_ts), "quote_parse_ok": parsed is not None,
+        "session": session, "quote_age_sec": int(age) if age is not None else None, "quote_fresh": fresh,
+        "after_hours_ack_required": bool(quote is not None and parsed and session != "regular"),
+        "after_hours_override_enabled": override,
+        "can_submit_gtc_after_hours": bool(override and fresh and session != "regular"),
+        "blockers": blockers,
+    }
+    if quote is None or not parsed or not fresh:
+        out["operator_readiness"] = "BLOCKED"
+    elif session == "regular":
+        out["operator_readiness"] = "READY_FOR_OPERATOR"
+    elif override:
+        out["operator_readiness"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+    else:
+        out["operator_readiness"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+    return out
 
 
 def _stop_live_readiness(query=None):
@@ -242,7 +372,7 @@ def _stop_live_readiness(query=None):
     out["preflight_status"] = "approval_present" if (out.get("active_approval") or {}).get("exists") else "not_run"
     # Quote freshness + session classification (ET-aware; the failing ' ET' shape now normalizes cleanly).
     try:
-        from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, FRESH_MAX_AGE_SEC
+        from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, is_fresh
         raw_q = q.get("quote_at")
         if not raw_q:
             raw_q = _holding_source_timestamp(sym, acct)
@@ -252,7 +382,7 @@ def _stop_live_readiness(query=None):
         out["quote_normalized"] = to_iso(raw_q)
         out["quote_session"] = classify_session(raw_q)
         age = quote_age_seconds(raw_q)
-        out["quote_fresh"] = bool(age is not None and age <= FRESH_MAX_AGE_SEC)
+        out["quote_fresh"] = is_fresh(raw_q)   # session-aware (regular 15m / extended 60m)
         out["quote_age_sec"] = int(age) if age is not None else None
     except Exception as e:
         out["quote_parse_ok"] = False
@@ -262,34 +392,55 @@ def _stop_live_readiness(query=None):
     # System-side canary readiness. READY_FOR_OPERATOR never means "submit" — the operator must still click +
     # per-order 2FA, and the backend revalidates evidence at submit.
     ex = out.get("execution") or {}
+    # Per-account live-write arming (broker_accounts.api_write_enabled). schwab_roth is NOT armed (ticket mode);
+    # only rollover_ira / taxable are. This is the rollover-vs-roth distinction — the roth card can never arm a
+    # live API canary, preventing the operator from confusing it with the armed rollover account.
+    out["account_api_write_enabled"] = _protective_account_api_write(acct) if acct.startswith("schwab") else False
     system_ready = bool(
         out.get("db_available") and out.get("evidence_store_available")
         and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
-        and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass"))
+        and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass")
+        and out.get("account_api_write_enabled"))
     # GTC stops are valid 24/7 (rest until triggered). A fresh, parseable quote + clean backend gates → ready,
-    # but after-hours/pre-market additionally require the operator after-hours acknowledgement at submit.
-    # Unparseable / stale → BLOCKED; the kill-switch disables after-hours entirely.
-    out["after_hours_stops_disabled"] = _after_hours_stops_disabled()
+    # but after-hours/pre-market is RESTRICTED by default to the next regular session — after-hours GTC is
+    # opt-in only (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) and requires the operator acknowledgement at submit.
+    # Unparseable / stale → BLOCKED. Never READY while the quote is stale/unparseable.
+    out["after_hours_override_enabled"] = _after_hours_override_enabled()
+    out["requires_after_hours_ack"] = False
+    # One-V-canary discipline: a conflicting canary on another account blocks this one.
+    conflict_acct = _one_v_canary_conflict(sym, acct)
+    out["other_account_canary"] = conflict_acct
     if not out.get("quote_parse_ok"):
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "Quote timestamp could not be parsed; refresh quote."
     elif not out.get("quote_fresh"):
         out["canary_state"] = "BLOCKED"
-        out["canary_blocker"] = "Quote is stale; refresh price."
+        out["canary_blocker"] = ("Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
+                                 "regular market hours before arming live canary.")
+    elif conflict_acct:
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = (f"Another {sym} canary is already active on {conflict_acct}. Only one {sym} "
+                                 "canary may be armed at a time — complete or reject it first.")
+    elif acct.startswith("schwab") and not out.get("account_api_write_enabled"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = (f"{acct} is not armed for live API writes (ticket mode). The live-stop canary "
+                                 "runs on an api_write-enabled Schwab account (e.g. schwab_rollover_ira), not this one.")
     elif not system_ready:
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "A backend readiness gate is not satisfied."
     elif out.get("quote_session") == "regular":
         out["canary_state"] = "READY_FOR_OPERATOR"
-        out["requires_after_hours_ack"] = False
-    elif out.get("after_hours_stops_disabled"):
-        out["canary_state"] = "BLOCKED"
-        out["canary_blocker"] = "After-hours stop submission is disabled by policy (kill-switch on)."
-    else:
+    elif out.get("after_hours_override_enabled"):
         out["canary_state"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
         out["requires_after_hours_ack"] = True
-        out["canary_note"] = ("After-hours GTC stop: valid 24/7 (rests until triggered). Requires the operator "
+        out["canary_note"] = ("After-hours GTC stop: the order rests until triggered. Requires the operator "
                               "after-hours acknowledgement; trigger behavior depends on regular-market conditions.")
+    else:
+        # default: after-hours restricted to the next regular session; override available but not recommended
+        out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+        out["canary_blocker"] = ("After-hours quote: first live canary is restricted to a regular session. "
+                                 "After-hours override available only with explicit acknowledgement; not "
+                                 "recommended for first canary.")
     out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
     return out
 
@@ -24942,7 +25093,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "ticket": ticket, "account": acct}
                         if quote_at:
                             import datetime as _dt
-                            from brokers.quote_time import parse_quote_ts, classify_session, FRESH_MAX_AGE_SEC
+                            from brokers.quote_time import parse_quote_ts, classify_session, fresh_max_age_for
                             ts = parse_quote_ts(quote_at)
                             if ts is None:
                                 # Never surface a raw "Invalid isoformat string" — block with a human message.
@@ -24951,22 +25102,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                       "requesting a live stop.",
                                              "quote_raw": str(quote_at)[:40], "ticket": ticket, "account": acct}
                             age = (_dt.datetime.now(_dt.timezone.utc) - ts.astimezone(_dt.timezone.utc)).total_seconds()
-                            if age > FRESH_MAX_AGE_SEC:
+                            if age > fresh_max_age_for(classify_session(ts)):
                                 return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                              "error": "Quote is stale; refresh price before requesting a live stop.",
                                              "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
                                              "ticket": ticket, "account": acct}
-                            # After-hours policy: a GTC protective stop is valid 24/7 (it rests until triggered),
-                            # so an after-hours quote does NOT block submission — but the operator must acknowledge
-                            # that trigger behavior depends on regular-market conditions. Allowed with after_hours_ack;
-                            # an optional kill-switch (SCHWAB_AFTER_HOURS_STOPS_DISABLED) can forbid it entirely.
+                            # After-hours policy: default is regular-session-only for the first live canary. A GTC
+                            # stop rests until triggered, so after-hours is technically valid, but it is opt-in ONLY
+                            # via the explicit override (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND the operator
+                            # after-hours acknowledgement. Without both → blocked to the next regular session.
                             session = classify_session(ts)
                             if acct.startswith("schwab") and session != "regular" and not _after_hours_ack(b):
-                                gate = "after_hours_disabled" if _after_hours_stops_disabled() else "after_hours_ack_required"
-                                err = ("After-hours stop submission is disabled by policy." if _after_hours_stops_disabled()
-                                       else "After-hours quote. This GTC stop is valid 24/7 and rests until triggered, but "
-                                            "trigger behavior depends on regular-market conditions — acknowledge after-hours "
-                                            "to proceed.")
+                                if _after_hours_override_enabled():
+                                    gate, err = "after_hours_ack_required", (
+                                        "After-hours GTC stop: trigger behavior depends on regular-market conditions — "
+                                        "check the after-hours acknowledgement to proceed.")
+                                else:
+                                    gate, err = "after_hours_blocked", (
+                                        "Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
+                                        "regular market hours before arming live canary. After-hours override available "
+                                        "only with explicit acknowledgement; not recommended for first canary.")
                                 return 200, {"ok": False, "mode": "blocked", "gate": gate, "error": err,
                                              "session": session, "quote_at_normalized": ts.isoformat(),
                                              "ticket": ticket, "account": acct}
@@ -25086,6 +25241,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                           else "(Account write not enabled — ticket only.)")}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/protective-stop/refresh-quote":
+            # Fetch the latest available quote (read-only) for a live-stop readiness check. Never submits,
+            # modifies, or cancels a broker order.
+            try:
+                return 200, {"ok": True, **_protective_stop_refresh_quote(body or {})}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200], "broker_request_sent": False}
 
         if base_path == "/api/v2/holdings/protective-stop/reject-intent":
             # Reject/cancel a pending 2FA approval lock. This only supersedes approval rows; it never submits
