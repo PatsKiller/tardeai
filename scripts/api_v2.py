@@ -952,10 +952,18 @@ def portfolio_holdings():
     #                  (Alpaca ingest) → finviz_quote_cache → technical snapshot — NOT SnapTrade.
     _live_mq: dict[str, float] = {}
     _live_fv: dict[str, float] = {}
-    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price
+    # Quote-source fetch times — so each holding can carry a source_timestamp the protective-stop gate uses
+    # to judge freshness (without it the gate reads "Price timestamp: missing" and blocks every live stop).
+    _live_mq_ts: dict[str, str] = {}
+    _live_fv_ts: dict[str, str] = {}
+    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price, fetched_at
                             FROM market_quotes ORDER BY symbol, fetched_at DESC""") or []):
         try:
-            _live_mq[( _qr.get("symbol") or "").upper()] = float(_qr["price"])
+            _smq = (_qr.get("symbol") or "").upper()
+            _live_mq[_smq] = float(_qr["price"])
+            _fa = _qr.get("fetched_at")
+            if _fa is not None:
+                _live_mq_ts[_smq] = _fa.isoformat() if hasattr(_fa, "isoformat") else str(_fa)
         except (TypeError, ValueError, KeyError):
             pass
     _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
@@ -967,6 +975,9 @@ def portfolio_holdings():
         try:
             if _fvrow.get("price"):
                 _live_fv[_su] = float(_fvrow["price"])
+                _ffa = _fvrow.get("last_fetched") or _fvrow.get("last_updated")
+                if _ffa:
+                    _live_fv_ts[_su] = str(_ffa)
         except (TypeError, ValueError):
             pass
         try:
@@ -1029,6 +1040,22 @@ def portfolio_holdings():
                 _px = 0.0
             _px_source = "technical_snapshot"
         _px_live = _px_source in ("market_quotes", "finviz") and _px > 0
+        # Stamp the price with WHEN its source was fetched, so the protective-stop freshness gate has a real
+        # timestamp instead of treating every holding as a stale quote. Per source: market_quotes/finviz carry
+        # their own fetch time; broker-synced (schwab) and holdings/snaptrade prices use the holding's as_of.
+        if _px_source == "market_quotes":
+            _px_ts = _live_mq_ts.get(_su)
+        elif _px_source == "finviz":
+            _px_ts = _live_fv_ts.get(_su)
+        elif _px_source in ("schwab", "holdings", "snaptrade"):
+            # Freshness gate = how current is our price knowledge for this symbol. A live finviz / market-quote
+            # tick (the same source the schwab reprice draws from, just more recent) is the freshest signal;
+            # fall back to the holdings.json reprice time, then the clean per-holding ISO updated_at, then the
+            # date-only as_of last (it parses to midnight and would read as stale).
+            _px_ts = (_live_fv_ts.get(_su) or _live_mq_ts.get(_su)
+                      or h.get("last_repriced") or p.get("updated_at") or p.get("as_of"))
+        else:
+            _px_ts = None
         _mv = round(_shares * _px, 2) if (_px > 0 and _shares > 0 and not p.get("is_cash")) else float(p.get("market_value") or 0)
         _cb = basis_map.get((sym, p.get("account", "")), p.get("cost_basis"))
         if _cb is None and p.get("avg_cost") and _shares:
@@ -1055,6 +1082,7 @@ def portfolio_holdings():
             "current_price": _px,
             "price_source": _px_source,
             "price_live": _px_live,
+            "source_timestamp": _px_ts,   # quote fetch time → protective-stop freshness gate (null = unknown)
             "market_value": _mv,
             "portfolio_pct": _ppct or 0,
             "day_change": _day_chg,
