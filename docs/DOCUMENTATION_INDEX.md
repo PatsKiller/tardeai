@@ -31,6 +31,7 @@
 |----------|---------|--------|
 | `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade monitoring, stop/target rules, after-hours research, overnight pipeline | Active |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc + Ollama setup, model list, GPU memory map | Active |
+| `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, free-lane fallback, monthly Claude meta-review | Active (2026-06-29) |
 | `docs/COST_MODEL.md` | Cloud LLM operating cost model, budget gates | Active |
 | `docs/LLM_DATA_DICTIONARY.md` | Data flow to every model call, 6 context types, anti-hallucination spec | Active |
 

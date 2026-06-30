@@ -96,6 +96,9 @@ def main():
         by_sym.setdefault(sym, {})
         if model not in by_sym[sym]:
             by_sym[sym][model] = {"rec": ev.get("recommendation"), "why": (summary or "")[:140],
+                                  # floor-clamp flag: True when the stop was widened to the family floor
+                                  # (was too tight) — Claude should sanity-check the widening explicitly.
+                                  "floored": bool(ev.get("floored")) or ((ev.get("recommendation") or {}).get("_floored_from_pct") is not None),
                                   "conf": float(conf or 0),
                                   "px": round(float(inp.get("price") or 0), 2),
                                   "atr": round(float(inp.get("atr") or 0), 2),

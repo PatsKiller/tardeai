@@ -151,6 +151,7 @@ def _sanity_check(rec, t, bounds=None):
     warn = questionable / out-of-family-band · ok = clean."""
     b = bounds or {}
     stop_max = float(b.get("stop_max_pct", 12.0))
+    stop_min = float(b.get("stop_min_pct", 0.0))
     trail_max = float(b.get("trail_max_pct", 20.0))
     issues: list[str] = []
     fail = False
@@ -177,6 +178,8 @@ def _sanity_check(rec, t, bounds=None):
                 pass
         if dist < 0.5:
             issues.append(f"stop only {dist:.1f}% below — inside noise, will whipsaw")
+        elif stop_min and dist < stop_min - 1.0:   # too TIGHT: below the family floor (whipsaws a core hold)
+            issues.append(f"stop {dist:.1f}% below — TIGHTER than the {stop_min:.0f}% family floor (whipsaw risk; should be widened)")
         elif dist > stop_max + 1.0:   # 1% tolerance so a stop sitting AT the band edge isn't flagged
             issues.append(f"stop {dist:.1f}% below — beyond the {stop_max:.0f}% family band / weak protection")
         # anchor-to-structure: only demand the stop sit at/below the 20d swing low when that low is
@@ -252,7 +255,7 @@ def run(lane="grok", symbols=None, limit=12):
         want = {s.strip().upper() for s in symbols}
         cands = [c for c in cands if (c.get("symbol") or "").upper() in want] or \
                 [{"symbol": s, "account": "schwab", "shares": 0, "cost_basis": 0, "market_value": 0} for s in want]
-    done = failed = 0
+    done = failed = fellback = 0
     for c in cands:
         sym = (c.get("symbol") or "").upper()
         bars = _bars(sym)
@@ -288,13 +291,41 @@ def run(lane="grok", symbols=None, limit=12):
             prompt += ("\nNOTE: this is a retirement-plan FUND position — stop ORDERS are impossible. "
                        "Frame stop_price as a NAV ALERT level for a manual trim/rebalance decision, and "
                        "trail as a review trigger, not an order." + proxy_note)
+        used_lane = lane
         try:
             out = llm_lane.generate(prompt, lane=lane, timeout=120)
         except Exception as e:
-            print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
+            # Free-lane resilience: on a Grok/ChatGPT OAuth failure (e.g. 403 token-rotation blip) retry on
+            # the LOCAL gemma lane — free, never a paid fallback (honours the no-paid-fallback policy).
+            if lane != "local":
+                try:
+                    out = llm_lane.generate(prompt, lane="local", timeout=120)
+                    used_lane = "local"; fellback += 1
+                    print(f"  {sym}: {lane} lane failed ({str(e)[:40]}) -> local gemma fallback (free, no paid)")
+                except Exception as e2:
+                    print(f"  {sym}: lane error {lane}:{str(e)[:25]} / local:{str(e2)[:25]}"); failed += 1; continue
+            else:
+                print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
         rec = _parse(out)
         if not rec:
             print(f"  {sym}: unparseable response"); failed += 1; continue
+        # FAMILY-FLOOR enforcement (2026-06-29): the 20d-swing-low anchor can yield a stop TIGHTER than the
+        # family minimum for low-volatility holdings (income ETFs near their range, e.g. SCHD/DIVI) — which
+        # whipsaws a "held-through-noise" core position. Widen the recommended stop to the family floor and
+        # record it in the rationale (mirrors the prompt's too-WIDE cap, applied to the too-TIGHT side).
+        try:
+            _px = float(t["price"]); _smin = float(fb.get("stop_min_pct") or 0)
+            if _px > 0 and _smin and rec.get("stop_price") is not None:
+                _dist = (_px - float(rec["stop_price"])) / _px * 100
+                if _dist < _smin - 0.1:
+                    rec["stop_price"] = round(_px * (1 - _smin / 100), 2)
+                    rec["stop_pct_below"] = _smin
+                    rec["_floored_from_pct"] = round(_dist, 1)
+                    rec["rationale"] = (str(rec.get("rationale") or "")[:120]
+                        + f" · widened to the {_smin:.0f}% {fb['label']} floor (20d swing low only "
+                          f"{_dist:.1f}% below — too tight to hold through noise)").strip()
+        except Exception:
+            pass
         # Extended core at the family stop cap: offer a matching % trail (same width as fixed stop).
         try:
             spb = float(rec.get("stop_pct_below") or 0)
@@ -308,7 +339,7 @@ def run(lane="grok", symbols=None, limit=12):
         except Exception:
             pass
         sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
-        model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
+        model = "grok-3-mini" if used_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
         cur.execute("""INSERT INTO hermes_research_intelligence
                          (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
                           thesis_type, evidence_json, confidence_score, model_used, prompt_hash,
@@ -322,8 +353,13 @@ def run(lane="grok", symbols=None, limit=12):
                          else f" · trail ${rec.get('trail_offset')}")   # $ BEFORE the value, never a suffix
                         if rec.get("trail_recommended") else " · no trail yet"),
                      json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
-                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": lane, "sanity": sanity,
-                                 "family": family, "family_source": fam_source, "family_bounds": fb}),
+                                 "pnl_pct": pnl_pct}, "recommendation": rec, "lane": used_lane, "sanity": sanity,
+                                 "family": family, "family_source": fam_source, "family_bounds": fb,
+                                 # explicit floor-clamp marker so the monthly Claude meta-review sanity-checks
+                                 # widenings (rec._floored_from_pct = original too-tight %, now at the floor).
+                                 "floored": ({"from_pct": rec.get("_floored_from_pct"),
+                                              "to_floor_pct": fb.get("stop_min_pct")}
+                                             if rec.get("_floored_from_pct") is not None else False)}),
                      rec.get("confidence"), model, PROMPT_VERSION))
         conn.commit()
         sflag = '' if sanity['verdict'] == 'ok' else f" · ⚠{sanity['verdict'].upper()}: {'; '.join(sanity['issues'])[:70]}"
@@ -331,7 +367,7 @@ def run(lane="grok", symbols=None, limit=12):
               f"trail={'%s%%' % rec.get('trail_offset') if rec.get('trail_recommended') else 'no'} "
               f"· conf {rec.get('confidence')} · {model}{sflag}")
         done += 1
-    print(json.dumps({"lane": lane, "advised": done, "failed": failed,
+    print(json.dumps({"lane": lane, "advised": done, "failed": failed, "fellback_to_local": fellback,
                       "note": "advisory only — surfaced on Portfolio cards + monthly Claude meta-review"}))
 
 
