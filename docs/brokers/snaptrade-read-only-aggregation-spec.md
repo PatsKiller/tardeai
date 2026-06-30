@@ -40,6 +40,7 @@ NOT a replacement for the direct Schwab integration, and it introduces **no trad
 | API: `GET /api/v2/snaptrade/status`, `POST /api/v2/snaptrade/credentials` | ✅ shipped | status (masked) + save keys |
 | `scripts/brokers/snaptrade_connect.py` | ✅ shipped | `register` (mint userSecret) + `login` (brokerage link URL) + `status` |
 | `scripts/snaptrade_sync.py` | ✅ shipped | pull mapped accounts → `normalize_positions` → merge → `protected_holdings_write`. **Dry run unless `--apply`.** |
+| `scripts/snaptrade_activity_ingest.py` | required for Fidelity activity | pull mapped account activity → `trade_transactions` ledger. **Dividend cash receipts, dividend reinvestments, sells, buys, and interest do not come from `snaptrade_sync.py`; run this activity ingest with `--apply` to persist them.** |
 | `config/snaptrade_accounts.json` | ✅ shipped (empty) | SnapTrade `accountId` → internal `account_key` map (only mapped accounts are synced) |
 
 ## Data flow
@@ -51,6 +52,29 @@ SnapTrade ──GET──▶ snaptrade_read (read-only) ──normalize_position
 ```
 Each holding carries `position_source="snaptrade"` provenance so the merge never double-counts and a stale/
 failed sync falls back to the last-good snapshot **+ the existing proxy-map** (the 401k never disappears).
+
+## Fidelity activity and dividends
+
+`scripts/snaptrade_sync.py` is positions/balances only. It does **not** import Fidelity activity rows such as:
+
+- `DIVIDEND RECEIVED ... SCHD (Cash)`
+- `DIVIDEND RECEIVED ... SCHG (Cash)`
+- dividend reinvestment / DRIP rows, if the account is configured to reinvest
+- `YOU SOLD ... HPE (Cash)`
+
+Those require the separate read-only activity ingest path:
+
+```bash
+python3 scripts/snaptrade_activity_ingest.py          # dry run, no writes
+python3 scripts/snaptrade_activity_ingest.py --apply  # writes local trade_transactions only
+```
+
+The activity ingest writes only to the local `trade_transactions` ledger. It does not submit broker orders,
+does not enable Fidelity trading, and does not change the SnapTrade/Fidelity manual-only execution policy.
+Cash dividends remain cash ledger entries. Reinvested dividends should be recorded from Fidelity/SnapTrade
+activity as dividend/reinvestment income plus the associated share purchase when the feed exposes both legs;
+if the feed only exposes a single reinvestment row, preserve the raw description and symbol in
+`trade_transactions` so income and share-count reconciliation can audit it.
 
 ## SDK / API
 Python: `pip install snaptrade-python-sdk` (imported lazily in `snaptrade_read._client()` — no hard dep until

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-30 - SnapTrade/Fidelity activity ingest documented
+
+Clarified the SnapTrade/Fidelity data split: `scripts/snaptrade_sync.py` is positions/balances only, while
+Fidelity activity requires `scripts/snaptrade_activity_ingest.py --apply`.
+
+- Cash dividend receipts such as `DIVIDEND RECEIVED ... (Cash)` must be imported through the activity ingest
+  to reach `trade_transactions`.
+- Reinvested dividends / DRIP rows also require the activity ingest. When Fidelity/SnapTrade exposes separate
+  dividend-income and share-purchase legs, both should be preserved; if it exposes one reinvestment row, keep
+  the raw description for reconciliation.
+- This remains read-only against SnapTrade/Fidelity and does not enable Fidelity API trading.
+
 ## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored
 
 Re-audit after the budget guard went live (deployed 13:01 ET). **Broad-universe LLM research is confirmed
