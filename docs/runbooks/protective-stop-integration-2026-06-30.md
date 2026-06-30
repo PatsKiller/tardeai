@@ -2,9 +2,11 @@
 
 ## Scope
 
-Integration branch: `fix/stop-execution-journal-reentry-integration`.
+**Runtime branch (deployed UI):** `runtime/pr33-stop-evidence-deploy` — commit `df269ed2` (preflight UX 2A/3A/5A).
 
-This branch stacks the DB timeout guard, holding quote timestamp fix, OCO DD hardening, stop-management UI decision layer, and stop lock-in trailing advisory. It does not enable Schwab OCO brackets.
+**Integration branch (stack source):** `fix/stop-execution-journal-reentry-integration`.
+
+This branch stacks the DB timeout guard, holding quote timestamp fix, session-aware quote freshness, click-time preflight UX, OCO DD hardening, stop-management UI decision layer, and stop lock-in trailing advisory. It does not enable Schwab OCO brackets.
 
 Draft PR: https://github.com/PatsKiller/tardeai/pull/33
 
@@ -161,7 +163,35 @@ Portfolio and Open Trades must show **current** broker protective-stop state, no
   - Quote as-of
   - Operator confirmed stop (`confirmed_at`, Fidelity manual)
 - Inline label on Portfolio stop panel: `last reviewed {timestamp}` beside STOP STATUS.
-- Build marker after this change: `cc-v3 live-stops-review-ts 2026-06-30`.
+- Build marker after live-stops wiring: `cc-v3 live-stops-review-ts 2026-06-30`.
+
+## Click-Time Preflight (Portfolio UX — 1A–5A)
+
+Operator UX choices locked **2026-06-30** on `runtime/pr33-stop-evidence-deploy`:
+
+| Choice | Behavior |
+|--------|----------|
+| **1A** | Unchanged logic after validation → auto-proceed to 2FA / Fidelity manual ticket |
+| **2A** | Changed logic → structured amber diff + **Proceed anyway** / **Cancel** |
+| **3A** | Preflight re-fetches `/api/v2/portfolio/llm-coverage` (fresh protection advisory) |
+| **4A** | Always full preflight on every click (~1–3s) |
+| **5A** | Holding card updates price / market value / timestamps from preflight |
+
+**Trigger:** Schwab `Request … via 2FA` buttons, Fidelity `Create … manual ticket`, and Schwab 2FA `approve` buttons.
+
+**Read-only API chain (no broker writes until 2FA completes):**
+
+1. `POST /api/v2/holdings/protective-stop/refresh-quote`
+2. `GET /api/v2/portfolio/llm-coverage` → merge `protection[SYMBOL]`
+3. `GET /api/v2/holdings/live-stops`
+4. `GET /api/v2/holdings/stop-readiness` (Schwab only)
+5. Recalc `buildStopLogic` in `stopManagement.ts`
+
+**2A structured diff** (`data-testid="preflight-diff"`): price, decision, status, advisor stop, broker stop (fixed or trailing), recommendation text, blockers added (+) / removed (−).
+
+**5A holding patch:** `PortfolioHub` `onPreflightUpdate` merges into local state — `current_price`, `source_timestamp`, `price_as_of`, `market_value`, protection chip — so the card above the stop panel reflects the validated quote.
+
+**Build marker:** `cc-v3 preflight-ux-2a3a5a 2026-06-30` (footer of Command Center v3).
 
 ## Quote Timestamp Normalization & After-Hours Policy
 
@@ -198,14 +228,22 @@ triggered. (During the dead overnight window the quote will be stale → `BLOCKE
 
 ## Validation Snapshot
 
-Last validation on integration branch `fix/stop-execution-journal-reentry-integration`:
+Last validation on runtime branch `runtime/pr33-stop-evidence-deploy` (commit `df269ed2`):
+
+- `tests/test_stop_fixed_trailing_validation.py` + `tests/test_stop_management_decision_logic.py` +
+  `tests/test_stop_management_ui_hardening.py` (incl. test_16 live-stops/review tooltips, test_17 click
+  preflight, test_18 PortfolioHub holding patches): **40 passed**.
+- `npm run build` in `apps/command-center-v3`: passed (tsc + vite).
+- Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`.
+- UI assertions: `portfolio/llm-coverage` in preflight path; `preflight-diff` + `onPreflightUpdate` present;
+  session-aware quote freshness (15m regular / 60m extended).
+
+Prior validation on integration branch `fix/stop-execution-journal-reentry-integration`:
 
 - `tests/test_stop_fixed_trailing_validation.py`: fixed vs trailing math/UI/backend parity (distance %, trail
   alignment 0.35%, floor mismatch, live trailing `stop_price=null`, Schwab order-spec shape).
-- `tests/test_stop_management_decision_logic.py` + `tests/test_stop_management_ui_hardening.py` (incl.
-  test_16 live-stops + review tooltips): all pass.
 - `python3 scripts/verify_protective_stop_submit_flow.py --json`: PASS (`no_submit_performed=true`).
-- Build marker: `cc-v3 live-stops-review-ts 2026-06-30`.
+- Build marker (live-stops wiring): `cc-v3 live-stops-review-ts 2026-06-30`.
 
 Prior validation after deploying PR #33 into the runtime checkout:
 

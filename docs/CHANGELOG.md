@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-30 - Preflight UX 2A/3A/5A (structured diff, advisory refresh, holding patch)
+
+Operator UX choices locked in and implemented on `runtime/pr33-stop-evidence-deploy` (`df269ed2`):
+
+- **1A / 4A — Auto-proceed when unchanged; always full preflight:** every Schwab 2FA button, Fidelity manual ticket, and 2FA approve click runs full preflight (~1–3s): `POST /api/v2/holdings/protective-stop/refresh-quote` → `GET /api/v2/portfolio/llm-coverage` → `GET /api/v2/holdings/live-stops` → `GET /api/v2/holdings/stop-readiness` (Schwab) → recalc `buildStopLogic`. Unchanged + valid → auto-continues to 2FA intent / manual ticket.
+- **2A — Structured change display:** if logic changes, amber `preflight-changed` panel shows before→after lines for price, decision, status, advisor stop, broker stop, recommendation, and blockers added/removed; operator chooses **Proceed anyway** or **Cancel**.
+- **3A — Advisory refresh:** preflight re-fetches `/api/v2/portfolio/llm-coverage` and merges fresh `protection[sym]` into stop logic before comparing before/after (Schwab + Fidelity).
+- **5A — Holding row update:** `PortfolioHub` patches local holding state via `onPreflightUpdate` — `current_price`, `source_timestamp`, `price_as_of`, `market_value`, and protection chip — so the card above the stop panel reflects the validated quote without a full page reload.
+- Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`. Tests: **40 passed** (`test_stop_fixed_trailing_validation`, `test_stop_management_ui_hardening` incl. test_18, `test_stop_management_decision_logic`). Frontend `npm run build` OK.
+
 ## 2026-06-30 - Click-time stop preflight (2FA + Fidelity manual)
 
 - `HoldingProtectionActions`: clicking Schwab 2FA or Fidelity manual ticket now runs live preflight first — refresh-quote (Schwab/Finviz), live-stops re-read, stop-readiness, recalc `buildStopLogic`; shows diff + "Proceed anyway" if decision changed; 2FA approve also re-validates before broker submit.
