@@ -3,6 +3,10 @@
 _Source of truth for the intraday momentum_scalp lifecycle. Generated/validated by
 `scripts/strategy_config_validator.py momentum_scalp` and the P0 tests below._
 
+> **Stop/trail policy:** layered initial stop, breakeven, and portfolio-heat rules are defined in
+> [`../../MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](../../MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md).
+> Chandelier trailing is config-OFF (advisory/replay only) until the §6 validation gate passes.
+
 ## Status
 
 **Momentum Scalp is TESTING until its validation gate is met** — sandbox-only, taxable account

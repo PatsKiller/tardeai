@@ -1,77 +1,289 @@
 # Momentum Scalp — Stop & Trailing-Stop Policy
 
-**Version:** 1.0 (reconciled to Trade AI v12 as-built) · **Effective:** 2026-06-29
-**Maturity gate:** 4.4 → 4.5 (paper-trade validation required) · **Status:** Paper validation phase — **advisory/logic only, no auto-broker writes**
-**Scope:** `momentum_scalp` + Social Route paper trades. Swing/position holdings are governed by [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md); options by the options desk policy.
+**Version:** 1.0  
+**Effective Date:** 2026-06-29  
+**Maturity Gate:** 4.4 → 4.5 (Paper-Trade Validation Required)  
+**Owner:** Trade AI v12 – Momentum Scalp + Social Route  
+**Last Updated:** 2026-06-30  
+**Status:** Production Policy – Paper Trading Phase (advisory/logic only; no auto-broker writes until 4.5+)
 
-> Adapted from the research-backed policy draft (Grok, 2026-06-29) and **reconciled to what already exists** in the system, with one material change: the trailing-stop methodology is **gated on a fresh backtest** (see §2).
+> **Scope split:** This policy governs `momentum_scalp` and Social Route **paper trades**. Real-account **holdings** protective stops are governed separately by [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md). Options spreads use the options desk policy.
 
----
-
-## 2. Empirical basis AND the prior that gates it
-
-The draft cites LeBeau (Chandelier 22×3 ATR), Kaminski & Lo, momentum-crash literature, and prop practice — volatility-adjusted/trailing stops generally beat fixed stops.
-
-**However — this system already tested it.** `scripts/backtest_hybrid_stops.py` (STOP-V2.4, 2026-06-13) backtested the MA-trend filter + **Chandelier** + dynamic-ATR overlay and returned **"HOLD — hybrid does not clearly beat the R-multiple; keep config OFF."** So the policy's Chandelier/ATR-multiplier core is exactly what our own data did *not* confirm.
-
-**Decision (operator, 2026-06-29):** re-backtest the *layered, context-aware* version (tag/regime/freshness-driven multipliers — which STOP-V2.4 did **not** test) before any rollout.
-
-**Phase 2 re-test result (2026-06-29) — FAIL GATE.** `backtest_hybrid_stops.py --mode ctx` (130 baseline vs 159 ctx trades over V/RTX/LMT/NOC/GD/PLTR/NVDA/AMD, 3y) found the layered trailing — *with* L2 breakeven + delayed +1.5R activation + regime-aware multiplier — produced **Δ expectancy = −0.451R/trade vs the no-trail baseline** (ctx +0.645R vs baseline +1.096R), with worse drawdown and profit factor. It *raised* win rate (40.9% vs 23.8%) but **truncated the fat right-tail** the momentum edge depends on. This **confirms STOP-V2.4** even with the policy's refinements. The §6 gate (≥ +0.25R from trailing) is **not met** (it's −0.45R).
-
-**Param sweep (27 configs):** to rule out a missed setting, all combinations of init-mult {1.0,1.5,2.0} × activation {1.0,1.5,2.5}R × regime-multiplier set {tight,mid,wide} were swept — **0 passed**; every config was net-negative (best −0.13R). The pattern is monotonic: the more the trail constrains, the more expectancy it destroys (the least-bad configs barely trail). Triply-confirmed.
-
-Consequently:
-- **Layers 1–2 + 4 (initial stop, breakeven, portfolio risk)** — adopt (they don't contradict the prior).
-- **Layer 3 (Chandelier/ATR trailing)** — **stays config-OFF** for execution; computed + tagged + monitored in *advisory/paper* mode only. Re-enable consideration only if the **intraday micro-cap paper sample (§6)** — the definitive test, which the daily backtest cannot stand in for — shows a positive trailing edge. Prior evidence is now **doubly negative** (STOP-V2.4 + this layered re-test).
+> **Reconciliation note (2026-06-29):** Layer 3 (Chandelier/ATR trailing) remains **config-OFF for execution** pending paper validation. Our own backtests show trailing truncates the momentum fat tail (see §2). Layers 1–2 and 4 are **active**.
 
 ---
 
-## 3. Layered methodology (4 layers)
+## 1. Purpose & Scope
 
-### Layer 1 — Initial hard stop (at entry) — **ACTIVE**
-- Structure + ATR hybrid: just beyond the recent swing low (long) / high (short) **or** 1.0–1.5× ATR(14), whichever is **tighter**.
-- Pure momentum / low freshness (<45s): 0.8–1.0× ATR. Social Route + strong momentum/high RVOL: up to 1.5–2.0× ATR.
-- **Max risk ≤ 1.2R** per scalp. Tag `initial_stop_method`, `initial_stop_atr`, `dollar_risk` (existing).
+This policy defines the standardized methodology for **initial stop placement**, **breakeven management**, **trailing stop activation**, and **real-time stop monitoring** for all Momentum Scalp and Social Route trades executed within the Trade AI v12 system.
 
-### Layer 2 — Breakeven / profit protection — **ACTIVE**
-- Move stop to breakeven (or +0.3R) at **+1.0R–1.5R** unrealized (mandatory). Social high-conviction may delay to +2.0R (tagged). Tag `breakeven_trigger_r`.
+**In Scope:**
+- All `manual_scalp` and momentum continuation setups
+- Social Route + Momentum hybrid signals
+- Paper trading validation phase (target: 150+ closed trades)
+- Integration with tagging, replay, AI Trade Critique, and portfolio risk modules
 
-### Layer 3 — Trailing activation — **GATED (advisory until re-backtest)**
-- Activate only after breakeven AND **+1.5R–2.0R**. Modified Chandelier: `HighestHigh_since_activation − ATR×mult` (long).
-- Context-aware multiplier (tag-driven): momentum scalp 1.5–2.0× · Social confirmed 2.5–3.5× · ranging/low-freshness 1.0–1.5× · strong trend (RVOL>1.8) 3.0–4.0× · high heat (>3.5%) reduce 0.5×. Tag `trail_multiplier_used`, `trail_activation_r`.
-- **Execution stays OFF** until §6 validation passes; runs in advisory/replay so we measure what it *would* have done.
-
-### Layer 4 — Dynamic / portfolio adjustments — **ACTIVE (advisory)**
-- Regime Trending→Ranging (`market_regime`, existing): tighten trail 0.5× ATR. Portfolio heat > 3.5% aggregate open risk: tighten all trails 0.5× + pause new entries. Freshness >90s + no +0.8R in 60s: force breakeven. Social override: wider band.
+**Out of Scope:**
+- Swing / position trading (separate policy — [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md))
+- Options spreads and multi-leg strategies (separate policy)
+- Live broker execution (this policy governs logic only; no auto-broker writes until 4.5+)
 
 ---
 
-## 4. Journal / tagging (reconciled — reuse what exists)
+## 2. Research & Industry Basis
+
+This policy is grounded in empirical research and professional practice:
+
+- **Chuck LeBeau** – Chandelier Exit (Highest High – 3× ATR, 22-period). Proven to let winners run while protecting profits.
+- **Kaminski & Lo (2014)** and momentum crash literature – Volatility-adjusted stops significantly outperform fixed-percentage stops.
+- **Lund University / Quant studies** – ATR-based trailing stops improve risk-adjusted returns (Sharpe) and reduce maximum drawdown vs static stops.
+- **TradeZella / TradesViz** production systems – Context-aware stops (regime + setup + freshness) outperform one-size-fits-all rules.
+- **Prop trading desk practice** – Breakeven move at +1.0R to +1.5R is near-universal for scalping books. Portfolio heat monitoring is mandatory above 3–4% open risk.
+
+**Key Finding:** Stops must be **context-aware** (setup tag, regime, signal freshness, route type). Rigid stops destroy edge in momentum scalping.
+
+### 2.1 System prior — backtest gate (material reconciliation)
+
+**However — this system already tested trailing.** `scripts/backtest_hybrid_stops.py` (STOP-V2.4, 2026-06-13) backtested the MA-trend filter + **Chandelier** + dynamic-ATR overlay and returned **"HOLD — hybrid does not clearly beat the R-multiple; keep config OFF."**
+
+**Phase 2 re-test (2026-06-29) — FAIL GATE.** `backtest_hybrid_stops.py --mode ctx` (130 baseline vs 159 ctx trades over V/RTX/LMT/NOC/GD/PLTR/NVDA/AMD, 3y) found the layered trailing — *with* L2 breakeven + delayed +1.5R activation + regime-aware multiplier — produced **Δ expectancy = −0.451R/trade vs the no-trail baseline** (ctx +0.645R vs baseline +1.096R). It raised win rate (40.9% vs 23.8%) but **truncated the fat right-tail** the momentum edge depends on.
+
+**Param sweep (27 configs):** init-mult {1.0,1.5,2.0} × activation {1.0,1.5,2.5}R × regime-multiplier {tight,mid,wide} — **0 passed**; every config net-negative (best −0.13R).
+
+**Consequently:**
+- **Layers 1–2 + 4** (initial stop, breakeven, portfolio risk) — **ACTIVE**
+- **Layer 3** (Chandelier/ATR trailing) — **config-OFF** for execution; computed + tagged + monitored in *advisory/paper* mode only. Re-enable only if the intraday micro-cap paper sample (§6) overturns this prior.
+
+---
+
+## 3. Layered Stop Methodology (Mandatory)
+
+All momentum scalps must follow this **4-layer** structure.
+
+### Layer 1: Initial Hard Stop (at Entry) — **ACTIVE**
+
+**Primary Rule:** Structure + ATR Hybrid
+
+- Place stop just beyond the most recent significant swing low (longs) or swing high (shorts) **OR** 1.0–1.5× ATR(14) from entry price, whichever is **tighter**.
+- **Pure Momentum Scalp / Low Freshness (< 45s):** Use 0.8–1.0× ATR (tighter protection).
+- **Social Route + Strong Momentum / High RVOL:** Allow up to 1.5–2.0× ATR.
+- **Maximum Risk:** Never exceed **1.2R** on any single momentum scalp.
+
+**Tagging Requirement:**
+- Record in journal: `initial_stop_type` (structure | atr | hybrid) — stored as `initial_stop_method`
+- Record: `initial_stop_distance_atr` — stored as `initial_stop_atr`
+- Record: `initial_risk_r` (must be ≤ 1.2) — enforced via `dollar_risk` + `max_initial_risk_r` in YAML
+
+**Config:** `config/strategies/momentum_scalp.yaml` → `exit_rules.layered_stop.layer1_initial`
+
+### Layer 2: Breakeven / Profit Protection Trigger (Mandatory) — **ACTIVE**
+
+- **Trigger:** Move stop to breakeven (or +0.3R) once unrealized P&L reaches **+1.0R to +1.5R**.
+- This step is **non-negotiable** for all momentum scalps.
+- **Social Route High-Conviction Exception:** May delay breakeven move until +2.0R (must be tagged).
+
+**Tagging Requirement:**
+- Record: `breakeven_trigger_r` (actual R at which BE was moved)
+
+**Config:** `exit_rules.layered_stop.layer2_breakeven` (`trigger_r: 1.2`)
+
+### Layer 3: Trailing Stop Activation & Rules — **GATED (advisory only)**
+
+> **Execution OFF** until §6 validation passes. Advisory/replay computes what trailing *would* have done.
+
+**Activation Condition:**
+- Trailing stop logic activates only **after** breakeven is secured **and** price has reached at least **+1.5R to +2.0R** profit.
+- Do **not** trail too early — this is the most common cause of premature stop-outs on momentum scalps.
+
+**Primary Trailing Method: Modified Chandelier Exit (Context-Aware)**
+
+**Longs:**
+```
+Trail Price = Highest High since trail activation – (ATR(14) × Multiplier)
+```
+
+**Shorts:**
+```
+Trail Price = Lowest Low since trail activation + (ATR(14) × Multiplier)
+```
+
+**Multiplier Table (Tag-Driven)**
+
+| Setup / Regime                    | Recommended Multiplier | Notes |
+|-----------------------------------|------------------------|-------|
+| Pure Momentum Scalp               | 1.5x – 2.0x           | Tighter trail to protect quick gains |
+| Social Route Confirmed            | 2.5x – 3.5x           | Higher edge expected — let it run |
+| Ranging / Low Freshness           | 1.0x – 1.5x           | Aggressive protection |
+| Strong Trending (RVOL > 1.8)      | 3.0x – 4.0x           | Classic Chandelier – capture runners |
+| High Portfolio Heat (> 3.5%)      | Reduce by 0.5x        | Global tighten rule |
+
+**Alternative Method (when simpler is preferred):**
+- Pure ATR Trailing Stop (no Chandelier highest-high logic) — use when price action is choppy.
+
+**Tagging Requirement:**
+- Record: `trail_multiplier_used`, `trail_activation_r`
+
+**Config:** `exit_rules.layered_stop.layer3_trailing.enabled: false` (params retained for advisory/replay)
+
+### Layer 4: Dynamic / Portfolio-Level Adjustments — **ACTIVE (advisory)**
+
+**Mandatory Adjustments:**
+
+1. **Regime Shift Rule**
+   - If regime detection changes from **Trending → Ranging** while in a trade → immediately tighten active trail by **0.5× ATR**.
+
+2. **Portfolio Heat Rule**
+   - If aggregate open risk across all momentum scalps exceeds **3.5–4.0%** of account equity → automatically tighten **all** active trails by 0.5× ATR and pause new entries.
+
+3. **Freshness Decay Rule**
+   - If signal freshness > 90 seconds at entry and price has not moved favorably by +0.8R within 60 seconds → move to breakeven immediately and tighten trail.
+
+4. **Social Route Override**
+   - High-conviction Social signals (tagged) may use the wider multiplier band (2.5x–3.5x) even in moderate heat.
+
+---
+
+## 4. Monitoring & Real-Time Stop Management
+
+### Required Dashboard Metrics (per open trade)
+
+- Current stop distance in **R** and in **ATR**
+- Distance to breakeven trigger (R and time remaining)
+- Distance to trail activation (R)
+- Current MAE vs planned initial stop
+- "Trail Tightness Score" (% distance from current price to trail line)
+- Regime + Freshness status at entry vs current
+- Portfolio heat contribution of this trade
+
+**Implementation:** Risk tab → `ScalpStopMonitorCard` (`/api/v2/scalp/stop-monitor`, `scripts/scalp_stop_monitor.py`). Partial — core R metrics + alerts live; ATR distance, trail-tightness, and tighten-all action pending.
+
+### Alerting Rules (Build into Risk / Monitoring Agent)
+
+| Condition                              | Alert Level | Action |
+|----------------------------------------|-------------|--------|
+| Price within 0.3R of stop              | Yellow      | Notify operator |
+| Trail should be active but is not (> +2R) | Amber    | Auto-suggest activation |
+| Regime shift detected in trade         | Amber       | Auto-tighten trail 0.5× ATR |
+| Portfolio heat > 3.5%                  | Red         | Global tighten + pause new entries |
+| Freshness > 90s + no favorable move    | Red         | Force breakeven + tighten |
+
+---
+
+## 5. Journaling, Tagging & AI Critique Integration
+
+Every closed momentum scalp **must** record:
+
+- `initial_stop_type`, `initial_stop_distance_atr`, `initial_risk_r` — via `initial_stop_method`, `initial_stop_atr`, `dollar_risk`
+- `breakeven_trigger_r` (actual)
+- `trail_multiplier_used`, `trail_activation_r`
+- `final_r_vs_planned_stop` (was final exit better/worse than planned stop?)
+- `stop_quality_score` (operator or AI rated 1–5)
+
 **Already on `paper_trades` (reuse, do NOT duplicate):** `max_adverse_excursion` (MAE), `max_favorable_excursion` (MFE), `market_regime`, `vix_at_entry`, `rvol_at_entry`, `planned_stop`, `current_stop`, `stop_type`, `trailing_active`, `trailing_policy_version`, `dollar_risk`, `signal_grade`, `bracket_state`, `oco_group_id`.
-**Added by `migrate_momentum_scalp_stop_tagging.py`:** `initial_stop_atr`, `initial_stop_method`, `trail_multiplier_used`, `trail_activation_r`, `breakeven_trigger_r`, `final_r_vs_planned_stop`, `stop_quality_score`.
 
-## 5. Monitoring & alerts (Risk tab — to build)
-Per open scalp: stop distance in R & ATR · distance to breakeven/trail-activation · MAE vs planned stop · trail-tightness score · regime+freshness (entry vs now) · portfolio-heat contribution. Alerts: within 0.3R of stop (yellow) · trail-should-be-active >+2R (amber) · regime shift in-trade (amber, suggest tighten) · heat >3.5% (red, tighten-all + pause) · freshness>90s no-move (red, force BE).
+**Migration:** `scripts/migrate_momentum_scalp_stop_tagging.py` adds the policy-specific columns.
 
-## 6. Validation gate (4.4 → 4.5)
-Paper trades ≥150 (≥3 regimes) · Social Route ≥40 · win ≥58% · expectancy ≥ +0.35R (post-slippage, 95% CI lower bound > 0) · profit factor ≥1.65 · max DD ≤4.5% · freshness compliance ≥92% · trail activation ≥85% of +2R winners · **avg R improvement from trailing ≥ +0.25R vs the no-trail baseline** (this is the metric that must overturn the STOP-V2.4 prior). Tracked by the Validation Tracker (§8) and the re-backtest harness.
+**AI Trade Critique Integration:**
+The AI Critique must explicitly answer:
+- Was the initial stop optimal relative to MAE?
+- Did the trail activate at the correct profit level?
+- What R-multiple was left on the table due to trail being too tight or too loose? (use actual post-exit replay data)
+- Recommended stop/trail parameters for this exact setup + regime combination going forward
 
-## 7. Risk limits & kill switches
-Single-trade max **1.2R** · max concurrent scalps **3** · daily momentum-book loss limit **3R or 2.5%** (lower) · portfolio-heat kill at **4.5%** aggregate open risk (pause new entries) · any −2.0R without regime justification → next AI Critique review. (Aligns with `prop_desk_discipline` + `momentum_scalp.yaml`.)
+---
 
-## 8. Implementation plan (phased — trailing gated per §2)
-1. **[done]** Journal tag fields (`migrate_momentum_scalp_stop_tagging.py`) + this policy doc.
-2. **Re-backtest harness** — extend `backtest_hybrid_stops.py` with the context-aware (tag/regime/freshness) multipliers vs the R-multiple baseline; verdict gates Layer-3 execution.
-3. **Validation Tracker** — the §6 metrics over tagged paper trades (trail activation rate, R-improvement vs no-trail, false stop-outs, expectancy CI).
-4. **Stop Intelligence panel** (Trade Detail/Replay) — what a 2× ATR / Chandelier(22,3) trail *would* have done vs actual, + optimal trail point from replay bars.
-5. **Monitoring metrics + alerts** (§5) in the Risk tab.
-6. **`momentum_scalp.yaml` exit_rules** — replace with the layered methodology; Layer-3 trailing carried behind a config flag that stays OFF until §6 passes.
-7. **AI Trade Critique** — per closed scalp: was the initial stop optimal vs MAE? did the trail activate at the right R? what R was left on the table (replay)? recommended params for this setup+regime.
+## 6. Validation Requirements (4.4 → 4.5 Gate)
 
-## 9. Cross-references
-`backtest_hybrid_stops.py`, `strategy_trailing_policy.py`, `protection_trail_calculator.py`, `config/strategies/momentum_scalp.yaml`, `migrate_momentum_scalp_stop_tagging.py`; related policy: `STOP_METHODOLOGY.md`, `PROP_DESK_DISCIPLINE` (memory), `project_scalp_lifecycle_hardening` (memory).
+To pass from Maturity 4.4 → 4.5, the following must be demonstrated via paper trading:
 
-## 10. Version history
-| Ver | Date | Change |
-|---|---|---|
-| 1.0 | 2026-06-29 | Initial — layered stops + context-aware trailing (gated on re-backtest) + monitoring + validation, reconciled to as-built |
+| Metric                              | Minimum Target          | Notes |
+|-------------------------------------|-------------------------|-------|
+| Closed paper trades                 | ≥ 150                   | Across ≥ 3 regimes |
+| Social Route trades                 | ≥ 40                    | Minimum sample |
+| Win Rate                            | ≥ 58%                   | — |
+| Expectancy (net R)                  | ≥ +0.35R                | After slippage |
+| Profit Factor                       | ≥ 1.65                  | — |
+| Max Drawdown (paper account)        | ≤ 4.5%                  | — |
+| Freshness Compliance                | ≥ 92%                   | Acted within SLA |
+| Trail Activation Rate               | ≥ 85% of +2R winners    | Not left on table |
+| Average R Improvement from Trailing | ≥ +0.25R on winners     | vs no-trail baseline |
+
+**Statistical Requirement:**
+- 95% confidence interval lower bound on expectancy must be **positive**.
+
+**Tracker:** `scripts/scalp_stop_validation_tracker.py` — reports `INSUFFICIENT SAMPLE` until ≥150 closed trades. Current sample: ~3 closed (as of 2026-06-30).
+
+---
+
+## 7. Risk Limits & Kill Switches (Mandatory)
+
+- Single trade max risk: **1.2R**
+- Max concurrent momentum scalps: **3**
+- Daily loss limit (momentum book): **3R** or **2.5%** of account (whichever is lower)
+- Portfolio heat kill switch: Pause new entries at **4.5%** aggregate open risk
+- Any trade hitting **–2.0R** without regime justification must be reviewed in next AI Critique
+
+**Config:** `config/strategies/momentum_scalp.yaml` → `risk` block
+
+---
+
+## 8. Implementation Notes for Trade AI v12
+
+### Immediate Actions (Paper Phase)
+
+| # | Action | Status |
+|---|--------|--------|
+| 1 | Add journal fields listed in §5 | **Done** — `migrate_momentum_scalp_stop_tagging.py` |
+| 2 | Build **Stop Intelligence** panel (Trade Detail / Replay) | **Done** — `scalp_stop_intelligence.py`, `StopIntelligencePanel.tsx`, `/api/v2/scalp/stop-intelligence` |
+| 3 | Wire regime detection + freshness into trail adjustment logic | **Partial** — freshness + heat alerts in monitor; regime-shift tighten pending |
+| 4 | Add "Tighten All Trails" one-click action in Risk dashboard when heat is high | **Pending** |
+| 5 | Monitoring metrics + alerts (§4) in Risk tab | **Partial** — `scalp_stop_monitor.py`, `ScalpStopMonitorCard.tsx` on RiskHub |
+| 6 | `momentum_scalp.yaml` exit_rules → layered methodology | **Done** — L3 behind `enabled: false` gate |
+| 7 | Re-backtest harness (context-aware multipliers) | **Done** — FAIL gate; see §2.1 |
+| 8 | Validation Tracker (§6 metrics) | **Done** — `scalp_stop_validation_tracker.py` |
+| 9 | AI Trade Critique stop-discipline questions | **Done** — journal critique prompt extended |
+
+### Future (Post 4.5)
+
+- Optional automated trail adjustment (operator approval required initially)
+- Stop quality scoring model trained on tagged outcomes
+
+---
+
+## 9. Cross-References
+
+| Resource | Path |
+|----------|------|
+| Strategy config | `config/strategies/momentum_scalp.yaml` |
+| Backtest harness | `scripts/backtest_hybrid_stops.py` |
+| Open-scalp monitor | `scripts/scalp_stop_monitor.py` |
+| Stop Intelligence replay | `scripts/scalp_stop_intelligence.py` |
+| Validation tracker | `scripts/scalp_stop_validation_tracker.py` |
+| Journal migration | `scripts/migrate_momentum_scalp_stop_tagging.py` |
+| Trailing policy (holdings) | `scripts/strategy_trailing_policy.py` |
+| Trail calculator | `scripts/protection_trail_calculator.py` |
+| Risk tab UI | `apps/command-center-v3/src/components/ScalpStopMonitorCard.tsx` |
+| Trade detail UI | `apps/command-center-v3/src/components/StopIntelligencePanel.tsx` |
+| Holdings stop policy | [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md) |
+| Scalp lifecycle | [`diligence/current/MOMENTUM_SCALP_LIFECYCLE.md`](diligence/current/MOMENTUM_SCALP_LIFECYCLE.md) |
+| Validation ops | [`diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md`](diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md) |
+
+---
+
+## 10. Version History
+
+| Version | Date       | Changes                                      | Author |
+|---------|------------|----------------------------------------------|--------|
+| 1.0     | 2026-06-29 | Initial policy — layered stops + context-aware trailing + monitoring framework; reconciled to as-built with L3 gated OFF | Grok (Trade AI v12) |
+| 1.0.1   | 2026-06-30 | Full policy text added to `docs/`; implementation status table; cross-references | Operator docs sync |
+
+---
+
+**Approval Status:**  
+Pending operator review and paper-trade validation completion.
+
+**Next Review Date:** After 150 closed paper trades or 2026-07-31, whichever comes first.
+
+---
+
+*This policy replaces all previous ad-hoc stop rules for momentum scalps and Social Route paper trades.*

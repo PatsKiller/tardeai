@@ -8,6 +8,7 @@ import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
 import AskAgents from '../components/AskAgents'
 import HoldingProtectionActions from '../components/HoldingProtectionActions'
+import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import HoldingReportLinks from '../components/HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { holdingReportEligible } from '../lib/reportLinks'
@@ -107,7 +108,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   }
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
-  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
+  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000)
+  const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
@@ -154,6 +156,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
   const monitoredByKey: Record<string, any> = monitoredStops?.by_key ?? {}
   const confirmedByKey: Record<string, any> = (llmCov as any)?.confirmed_stops ?? {}
+  const liveStopsByKey: Record<string, any> = (liveStops as any)?.by_key ?? {}
+  const brokerStopsFetchedAt = (liveStops as any)?.fetched_at ?? (llmCov as any)?.broker_stops_fetched_at ?? null
   // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
   // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
@@ -386,8 +390,17 @@ export default function PortfolioHub({ onDrill }: Props) {
                       )}
                       {(() => {
                         const pr = protection[(h.symbol || '').toUpperCase()]
+                        const stopKey = `${(h.symbol || '').toUpperCase()}:${h.account}`
+                        const liveConf = mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey])
+                        const stopTip = stopReviewTooltip({
+                          advisoryAt: pr.at, advisoryModel: pr.model,
+                          priceAt: h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp,
+                          brokerFetchedAt: liveConf?.fetched_at ?? brokerStopsFetchedAt,
+                          brokerOrderId: liveConf?.order_id,
+                          confirmedAt: liveConf?.confirmed_at,
+                        })
                         return pr ? (
-                          <span title={`${pr.rec}\n${pr.rationale ?? ''}\nanalyzed ${String(pr.at).slice(0, 10)} by ${pr.model} · confidence ${pr.confidence ?? '—'} · ADVISORY ONLY`}
+                          <span title={`${stopTip}\n\n${pr.rec}\n${pr.rationale ?? ''} · ADVISORY ONLY`}
                             style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
                               background: 'rgba(168,85,247,.16)', border: '1px solid rgba(168,85,247,.35)', color: '#a855f7', cursor: 'help' }}>
                             🛡 {pr.stop_price != null
@@ -415,13 +428,14 @@ export default function PortfolioHub({ onDrill }: Props) {
                       if (!pr?.stop_price && !schwabSmall) return null
                       const key = `${(h.symbol || '').toUpperCase()}:${h.account}`
                       const mon = monitoredByKey[key]
-                      const conf = confirmedByKey[key]
+                      const conf = mergeLiveStop(confirmedByKey[key], liveStopsByKey[key])
                       return (
                         <HoldingProtectionActions
                           h={h}
                           pr={pr}
                           monitored={mon}
                           confirmedStop={conf}
+                          brokerStopsFetchedAt={brokerStopsFetchedAt}
                           onRefresh={() => refetchMonitored?.()}
                         />
                       )

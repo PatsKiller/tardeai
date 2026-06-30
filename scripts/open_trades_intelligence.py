@@ -359,8 +359,8 @@ def _load_base_positions():
     return base, excluded, counts
 
 
-_BSTOP_CACHE = {"ts": 0.0, "map": {}}
-_ASTOP_CACHE = {"ts": 0.0, "map": {}}
+_BSTOP_CACHE = {"ts": 0.0, "map": {}, "key": None, "fetched_at": None}
+_ASTOP_CACHE = {"ts": 0.0, "map": {}, "fetched_at": None}
 _BSTOP_TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "replaced", "working_rejected"}
 
 
@@ -402,10 +402,14 @@ def _alpaca_protective_stops():
                 "order_id": str(o.get("id") or ""), "stop_price": sp,
                 "trail_offset": trail_offset, "trail_link": ("trail" if trail_offset else None),
                 "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
-                "qty": o.get("qty"), "account": "alpaca_paper"}
+                "qty": o.get("qty"), "account": "alpaca_paper", "source": "broker"}
     except Exception:
         return out
-    _ASTOP_CACHE.update(ts=time.time(), map=out)
+    import datetime as _dt
+    _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    for _v in out.values():
+        _v["fetched_at"] = _fetched
+    _ASTOP_CACHE.update(ts=time.time(), map=out, fetched_at=_fetched)
     return out
 
 
@@ -419,6 +423,7 @@ def _broker_protective_stops(accounts):
     _ckey = tuple(sorted({(a or "").lower() for a in (accounts or [])}))
     if time.time() - _BSTOP_CACHE["ts"] < 60 and _BSTOP_CACHE.get("key") == _ckey and _BSTOP_CACHE["map"]:
         return _BSTOP_CACHE["map"]
+    import datetime as _dt
     out = {}
     # Alpaca paper account uses its own trading API (not Schwab) — pull its live SELL stops too so paper
     # positions count as broker-protected on the same canonical footing. Only when a paper acct is requested.
@@ -430,7 +435,8 @@ def _broker_protective_stops(accounts):
     try:
         import schwab_transport as st
     except Exception:
-        _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey)
+        _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched)
         return out
     for acct in accounts:
         try:
@@ -464,11 +470,19 @@ def _broker_protective_stops(accounts):
                     "order_id": str(o.get("orderId") or ""), "stop_price": sp,
                     "trail_offset": trail_offset, "trail_link": o.get("stopPriceLinkType"),
                     "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
-                    "qty": leg.get("quantity"), "account": acct}
+                    "qty": leg.get("quantity"), "account": acct, "source": "broker"}
         except Exception:
             continue
-    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey)
+    _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    for _v in out.values():
+        _v["fetched_at"] = _fetched
+    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched)
     return out
+
+
+def broker_stops_fetched_at() -> str | None:
+    """ISO timestamp of the last Schwab/Alpaca protective-stop API read (60s cache)."""
+    return _BSTOP_CACHE.get("fetched_at") or _ASTOP_CACHE.get("fetched_at")
 
 
 def build_intelligence():
@@ -893,6 +907,7 @@ def build_intelligence():
             "basis_unverified_count": sum(1 for p in positions if not p["basis_reliable"]),
             "last_price_update": max([p["price_updated_at"] for p in positions if p["price_updated_at"]] or [None]),
             "last_hermes_update": last_hermes, "last_technical_update": last_tech,
+            "broker_stops_fetched_at": broker_stops_fetched_at(),
             "by_account": by_acct, "by_broker": by_broker,
             "risk_counts": {"near_stop": sum(1 for p in positions if p["protection"]["stop_near"]),
                             "tp_missing": sum(1 for p in positions if p["protection"]["tp_missing"] and p.get("basis_kind") != "avg_cost"),

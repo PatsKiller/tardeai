@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-30 - Stop management wired + docs sync (runtime branch)
+
+- Ported live-stop integration from `fix/stop-execution-journal-reentry-integration` onto `runtime/pr33-stop-evidence-deploy`: `stopManagement.ts` (fixed + trailing `resolveLiveStop`), `stopReviewTooltip.ts`, `HoldingProtectionActions`, `PortfolioHub` (`/api/v2/holdings/live-stops` 60s refresh), `PositionDecisionCard`, `OpenTradesIntelligence`, `api_v2.py` live-stops overlay.
+- Momentum scalp policy: expanded `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`; cross-linked from `STOP_METHODOLOGY.md`, `DOCUMENTATION_INDEX.md`, `MOMENTUM_SCALP_LIFECYCLE.md`.
+- Command Center pages verified: Portfolio (live broker stops + review tooltips), Risk (`ScalpStopMonitorCard`), Trade Detail (`StopIntelligencePanel`). Build marker `cc-v3 live-stops-review-ts 2026-06-30`.
+- Tests: **37 passed** (`test_stop_fixed_trailing_validation`, `test_stop_management_ui_hardening`, `test_stop_management_decision_logic`). Frontend `npm run build` OK.
+
 ## 2026-06-30 - Protective stop integration + Fidelity activity lifecycle
 
 - Created the `fix/stop-execution-journal-reentry-integration` stack to combine DB timeout guards, holding quote timestamps, OCO DD hardening, stop-card decision UI, and lock-in trailing advisory before any OCO canary.
