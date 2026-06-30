@@ -1,6 +1,6 @@
 # Stop & Trailing-Stop Methodology (canonical)
 
-**Status:** Active · **Updated:** 2026-06-30 · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md).
+**Status:** Active · **Updated:** 2026-06-30 · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
 
 > **Advisory only.** Nothing here places, modifies, or cancels a broker order. Real-account stops are operator-placed (Fidelity manual / Schwab per-order 2FA). The engine recommends; the operator executes.
 
@@ -51,5 +51,39 @@ Every recommendation is checked against the real technicals + family bounds; ver
 ## 7. Governance — monthly Claude meta-review
 `scripts/monthly_protection_meta_review.py` (1st of month, cost-gated Claude oversight) reviews **all** of the month's protection advisories per symbol — gemma + grok recs together — and judges soundness. Floor-widened recs carry an explicit **`floored`** flag so the widenings are sanity-checked specifically. This is the only paid lane in the stop path, and it is a deliberate, monthly, cost-gated review — never a per-call fallback.
 
-## 8. Cross-references
-`holding_protection_advisor.py`, `holding_family.py`, `monthly_protection_meta_review.py`, `HoldingProtectionActions.tsx`, `PortfolioHub.tsx`; paper side: `alpaca_stop_manager.py` + `design/OCO_ATM_UNIFICATION_DESIGN.md`; runtime/lane policy: `diligence/current/LOCAL_LLM_RUNTIME_POLICY.md`.
+## 8. Quote freshness (session-aware gate)
+
+The Portfolio stop panel blocks live-stop requests when the quote is outside a session-aware window (matches `scripts/brokers/quote_time.py`):
+
+| Session | Max age |
+|---------|---------|
+| Regular | **15 min** |
+| Pre-market / after-hours | **60 min** |
+
+Naive `YYYY-MM-DD HH:MM:SS` timestamps from Finviz after-hours are parsed as **America/New_York**, not browser-local or UTC. The UI prefers `source_timestamp` (quote fetch time) over `price_as_of` for the freshness gate.
+
+## 9. Click-time preflight (Portfolio UX — operator choices 1A–5A)
+
+Before any Schwab 2FA submit or Fidelity manual ticket, `HoldingProtectionActions` runs a **read-only** click-time preflight (~1–3s). Nothing is submitted until validation completes.
+
+**Sequence (always full — 4A):**
+
+1. Pause — button shows `Validating…`
+2. `POST /api/v2/holdings/protective-stop/refresh-quote` (Schwab → market provider → DB → Finviz; freshest wins)
+3. `GET /api/v2/portfolio/llm-coverage` — refresh protection advisory for the symbol (**3A**)
+4. `GET /api/v2/holdings/live-stops` — re-read broker protective stop (60s cache)
+5. `GET /api/v2/holdings/stop-readiness` — Schwab canary gates (read-only)
+6. Recalc `buildStopLogic` with fresh quote + advisory + live stop
+
+**Outcomes:**
+
+- **Unchanged + valid (1A):** auto-continues to 2FA intent / Fidelity manual ticket.
+- **Changed (2A):** amber `preflight-changed` panel with structured before→after diff (price, decision, status, advisor stop, broker stop, recommendation, blockers ±) + **Proceed anyway** / **Cancel**.
+- **2FA approve:** same preflight runs again before broker submit.
+
+**Holding card sync (5A):** `PortfolioHub` merges preflight quote into the holding row (`current_price`, `market_value`, timestamps) and protection chip without a full holdings refetch.
+
+Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`.
+
+## 10. Cross-references
+`holding_protection_advisor.py`, `holding_family.py`, `monthly_protection_meta_review.py`, `HoldingProtectionActions.tsx`, `PortfolioHub.tsx`, `stopManagement.ts`, `brokers/quote_time.py`; paper side: `alpaca_stop_manager.py` + `design/OCO_ATM_UNIFICATION_DESIGN.md`; runtime/lane policy: `diligence/current/LOCAL_LLM_RUNTIME_POLICY.md`; integration runbook: `runbooks/protective-stop-integration-2026-06-30.md`.
