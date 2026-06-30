@@ -115,7 +115,7 @@ def test_11_stale_quote_disables_modify_place_and_floor_mismatch_flagged():
     src = read(LOGIC) + read(UI)
     assert "stale_quote" in src
     assert "liveBlocked" in src
-    assert "disabled={busy || liveBlocked" in src
+    assert "disabled={busy || validating || liveBlocked" in src
     assert "Floor mismatch: displayed stop is inside the" in src
     assert "floor_math_consistent" in src
     assert "familyFloorPct" in src
