@@ -169,9 +169,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 6, padding: '7px 9px', borderRadius: 8, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.22)' }}>
       {(confirmedStop?.stop_price != null || monitored?.status === 'armed') && (
-        <div style={{ fontSize: 9, color: GREEN, fontWeight: 800, marginBottom: 5 }}
+        <div style={{ fontSize: 12.5, color: GREEN, fontWeight: 800, marginBottom: 6, padding: '3px 8px', borderRadius: 5, background: `${GREEN}14`, border: `1px solid ${GREEN}33` }}
           title={confirmedStop?.note ?? (monitored ? 'Software-monitored stop (not a broker order)' : '')}>
-          ✓ {confirmedStop ? 'Stop active' : 'Tracked'} @ ${Number(liveStop).toFixed(2)}
+          ✓ {confirmedStop ? 'Stop active' : 'Tracked'} @ <b style={{ fontFamily: 'monospace', fontSize: 14 }}>${Number(liveStop).toFixed(2)}</b>
           {confirmedStop
             ? (confirmedIsTrailing ? ' · trailing @ Fidelity' : ' · fixed stop @ Fidelity')
             : monitored?.order_type === 'TRAILING_STOP' && monitored.trail_pct != null ? ` · trail ${monitored.trail_pct}%` : ' · fixed'}
