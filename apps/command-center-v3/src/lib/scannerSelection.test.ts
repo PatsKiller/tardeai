@@ -7,6 +7,8 @@ import {
   dedupeSymbols, formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, missingPillarHints,
 } from './scannerSelection.ts'
 
+declare const process: { exit(code?: number): never }
+
 let pass = 0, fail = 0
 function check(name: string, cond: boolean) {
   if (cond) { pass++; console.log(`  [PASS] ${name}`) }

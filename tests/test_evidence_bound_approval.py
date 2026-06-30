@@ -113,6 +113,49 @@ def test_blocks_when_readiness_changes_to_hard_block():
     check("readiness hard block blocks", not r["ok"] and r.get("reason") == "readiness_changed_to_block")
 
 
+def test_blocks_when_order_spec_changes_after_approval():
+    from brokers import evidence_approval as ea
+    original_spec = {
+        "orderType": "STOP",
+        "duration": "GOOD_TILL_CANCEL",
+        "orderLegCollection": [
+            {"instruction": "SELL", "quantity": 10, "instrument": {"symbol": "V", "assetType": "EQUITY"}}
+        ],
+        "stopPrice": "250.00",
+    }
+    changed_spec = {**original_spec, "stopPrice": "251.00"}
+    rec = _rec(proposal_snapshot={"order_spec_hash": ea.order_spec_hash(original_spec)})
+    with mock.patch.object(ea, "fetch_approval", return_value=rec), _clear_killswitch():
+        r = ea.revalidate_before_submit(
+            "i1",
+            current_readiness={"ok": True, "evidence_hash": "READINESS_HASH_AAA"},
+            current_order_spec=changed_spec,
+        )
+    check("order spec change blocks", not r["ok"] and r.get("reason") == "order_spec_hash_changed")
+
+
+def test_order_spec_hash_match_passes():
+    from brokers import evidence_approval as ea
+    spec = {
+        "orderType": "TRAILING_STOP",
+        "duration": "GOOD_TILL_CANCEL",
+        "orderLegCollection": [
+            {"instruction": "SELL", "quantity": 1, "instrument": {"symbol": "V", "assetType": "EQUITY"}}
+        ],
+        "stopPriceLinkBasis": "LAST",
+        "stopPriceLinkType": "PERCENT",
+        "stopPriceOffset": 4.0,
+    }
+    rec = _rec(proposal_snapshot={"order_spec_hash": ea.order_spec_hash(spec)})
+    with mock.patch.object(ea, "fetch_approval", return_value=rec), _clear_killswitch():
+        r = ea.revalidate_before_submit(
+            "i1",
+            current_readiness={"ok": True, "evidence_hash": "READINESS_HASH_AAA"},
+            current_order_spec=spec,
+        )
+    check("order spec hash match passes", r.get("ok") is True, r.get("reason", ""))
+
+
 def test_blocks_when_readiness_hash_changes():
     from brokers import evidence_approval as ea
     rec = _rec()

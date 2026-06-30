@@ -34,6 +34,27 @@ def test_fidelity_dividend_activity_maps_to_trade_transactions_shape():
     assert row["account"] == "fidelity_rollover_ira"
 
 
+def test_fidelity_reinvested_dividend_keeps_drip_classification_and_lot_data():
+    mod = load_module()
+    row = mod.normalize_activity(
+        {
+            "id": "drip-schd-20260629",
+            "date": "2026-06-29",
+            "description": "DIVIDEND REINVESTMENT SCHWAB US DIVIDEND EQUITY ETF (SCHD) (Cash)",
+            "symbol": "SCHD",
+            "quantity": 12.5,
+            "amount": 505.00,
+            "type": "DIVIDEND REINVESTMENT",
+        },
+        "fidelity_rollover_ira",
+    )
+    assert row["action"] == "Reinvested Dividend"
+    assert row["symbol"] == "SCHD"
+    assert row["quantity"] == 12.5
+    assert row["price"] == 40.4
+    assert row["amount"] == 505.00
+
+
 def test_fidelity_full_sell_activity_maps_to_sell_row():
     mod = load_module()
     row = mod.normalize_activity(
@@ -65,6 +86,7 @@ def test_snaptrade_activity_ingest_is_read_only_and_dry_by_default():
     assert "place_order" not in src
     assert "submit_order" not in src
     assert "execute_order" not in src
+    assert "Reinvested Dividend" in src
 
 
 def test_portfolio_api_suppresses_stale_fidelity_holding_after_full_sell():
@@ -73,4 +95,3 @@ def test_portfolio_api_suppresses_stale_fidelity_holding_after_full_sell():
     assert "action IN ('Buy','Sell')" in src
     assert "fully sold the stale holding" in src
     assert "_sold_qty >= _shares" in src
-

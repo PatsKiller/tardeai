@@ -32,7 +32,22 @@ def submit_fully_approved(intent_id: str) -> dict:
             res = {"status": "monitored_armed" if res.get("ok") else "rejected", **res}
         elif marker == PROTECTIVE_STOP_MARKER:
             from brokers import protective_stop_pilot as _psp
+            from brokers.execution_readiness import evaluate_execution_readiness
+            from brokers.evidence_approval import create_order_evidence_approval
             order_spec = _psp.spec_from_intent(intent)
+            ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+            readiness = evaluate_execution_readiness(
+                {"intent_id": intent.intent_id, "correlation_id": intent.correlation_id,
+                 "account_key": acct, "signal_evidence": ev},
+                asset_class="equity", broker="schwab", account_key=acct, mode="submit",
+            )
+            if not readiness.get("ok"):
+                blocks = "; ".join(b.get("reason", "") for b in readiness.get("hard_blocks", [])[:3])
+                return {"ok": False, "stage": "submit", "error": f"EXECUTION_READINESS BLOCK: {blocks}"}
+            eb = create_order_evidence_approval(intent, order_spec, readiness_snapshot=readiness)
+            if not eb.get("ok"):
+                return {"ok": False, "stage": "submit",
+                        "error": f"could not bind evidence approval: {eb.get('error') or eb.get('reason')}"}
             res = _psp.submit(acct, order_spec, intent)
         elif marker == QUEUE_ENTRY_MARKER:
             from brokers import broker_entry_pilot as _bep

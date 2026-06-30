@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-30 - Protective stop integration + Fidelity activity lifecycle
+
+- Created the `fix/stop-execution-journal-reentry-integration` stack to combine DB timeout guards, holding quote timestamps, OCO DD hardening, stop-card decision UI, and lock-in trailing advisory before any OCO canary.
+- Fixed Schwab protective STOP / STOP_LIMIT / TRAILING_STOP evidence binding: fully approved intents now create an evidence-bound record tied to the exact Schwab order JSON hash, and broker submit revalidates that hash before `place_order`.
+- Added Fidelity manual stop-ticket helper with `MANUAL_PENDING`, `MANUAL_PLACED`, `MANUAL_SKIPPED`, and `MANUAL_NOT_APPLICABLE` status payloads. Fidelity remains manual-only with no API submit.
+- Extended SnapTrade/Fidelity activity ingest to preserve reinvested dividend / DRIP rows.
+- Added ticker lifecycle aggregation and stop-out re-entry watch helpers. Uploaded Fidelity examples calculate HPE realized P/L `-$4,906.86` and GCTS realized P/L `-$1,370.10`; dividends are income, rollover cash is not trading P/L.
+- Added read-only `scripts/oco_readiness_report.py`; OCO remains blocked until basic protective STOP and trailing STOP canaries, evidence binding, read-back, DB, validator, execution state, and kill switches are clean.
+
 ## 2026-06-30 - Fix: bound lock_timeout/statement_timeout per connection to stop dashboard hangs
 
 The dashboard repeatedly froze (`⟳ Reconnecting to backend… showing last-known data`, all KPIs `—`). The
