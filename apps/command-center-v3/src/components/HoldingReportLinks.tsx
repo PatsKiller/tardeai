@@ -13,12 +13,15 @@ const iconBtn = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  width: 22,
-  height: 18,
-  fontSize: 11,
+  minWidth: 30,
+  height: 26,
+  padding: '0 9px',
+  gap: 4,
+  fontSize: 16,
+  fontWeight: 800 as const,
   lineHeight: 1,
   textDecoration: 'none' as const,
-  borderRadius: 4,
+  borderRadius: 6,
   cursor: 'pointer' as const,
 }
 
@@ -63,9 +66,9 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
         onClick={stop}
         title={tip}
         aria-label={`Generate analyst prospectus for ${sym}`}
-        style={{ ...iconBtn, width: 'auto', padding: '0 7px', gap: 4, color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 9 }}
+        style={{ ...iconBtn, padding: '0 10px', color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 12 }}
       >
-        📄{compact ? '' : ' Generate'}
+        📄{compact ? '' : <span style={{ fontSize: 11 }}>&nbsp;Generate</span>}
       </a>
     )
   }
@@ -92,7 +95,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           title={tip}
           style={{ ...iconBtn, color: '#f59e0b', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)' }}
         >
-          📕
+          📕{!compact && <span style={{ fontSize: 10.5, fontWeight: 800 }}>PDF</span>}
         </a>
       )}
       {entry.docx && (
@@ -105,7 +108,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           title={tip}
           style={{ ...iconBtn, color: '#60a5fa', background: 'rgba(96,165,250,.12)', border: '1px solid rgba(96,165,250,.35)' }}
         >
-          📘
+          📘{!compact && <span style={{ fontSize: 10.5, fontWeight: 800 }}>Word</span>}
         </a>
       )}
       <a
@@ -118,7 +121,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
         ↻
       </a>
       {!compact && (
-        <span style={{ fontSize: 7.5, color: '#64748b', whiteSpace: 'nowrap' }}>{relTime(entry.generated_at)}</span>
+        <span style={{ fontSize: 9.5, color: '#64748b', whiteSpace: 'nowrap' }}>{relTime(entry.generated_at)}</span>
       )}
     </span>
   )

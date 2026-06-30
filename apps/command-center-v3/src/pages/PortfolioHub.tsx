@@ -355,6 +355,20 @@ export default function PortfolioHub({ onDrill }: Props) {
                       )}
                       {dayPct != null && <span style={{ fontSize: 9.5, color: dayPct >= 0 ? '#22c55e' : '#ef4444' }}>today {dayPct >= 0 ? '+' : ''}{Number(dayPct).toFixed(1)}%</span>}
                     </div>
+                    {/* per-share current price + purchase (cost-basis) price — operator: show larger */}
+                    {(() => {
+                      const sh = Number(h.shares) || 0
+                      const cur = sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null
+                      const buy = sh > 0 && h.cost_basis != null && Number(h.cost_basis) > 0 ? Number(h.cost_basis) / sh : null
+                      if (cur == null) return null
+                      return (
+                        <div style={{ display: 'flex', gap: 14, marginTop: 5, fontSize: 12.5, fontWeight: 700, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                          <span style={{ color: 'var(--text2)' }}>Price <b style={{ fontFamily: 'monospace', fontSize: 14, color: 'var(--text0)' }}>${cur.toFixed(2)}</b></span>
+                          <span style={{ color: 'var(--text3)' }} title={buy != null ? 'Average purchase price per share (cost basis ÷ shares)' : '401(k) funds carry no per-lot cost basis'}>
+                            Cost <b style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{buy != null ? `$${buy.toFixed(2)}` : '—'}</b></span>
+                        </div>
+                      )
+                    })()}
                     {/* % of portfolio bar */}
                     <div style={{ marginTop: 7, height: 5, background: 'var(--bg2)', borderRadius: 3 }}>
                       <div style={{ width: `${Math.min(100, (h.portfolio_pct ?? 0) * 4)}%`, height: '100%', background: ac, borderRadius: 3, minWidth: 2 }} />
@@ -374,8 +388,8 @@ export default function PortfolioHub({ onDrill }: Props) {
                         const pr = protection[(h.symbol || '').toUpperCase()]
                         return pr ? (
                           <span title={`${pr.rec}\n${pr.rationale ?? ''}\nanalyzed ${String(pr.at).slice(0, 10)} by ${pr.model} · confidence ${pr.confidence ?? '—'} · ADVISORY ONLY`}
-                            style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
-                              background: 'rgba(168,85,247,.13)', color: '#a855f7', cursor: 'help' }}>
+                            style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
+                              background: 'rgba(168,85,247,.16)', border: '1px solid rgba(168,85,247,.35)', color: '#a855f7', cursor: 'help' }}>
                             🛡 {String(pr.rec).split('·')[0].trim()}</span>
                         ) : null
                       })()}
