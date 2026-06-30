@@ -978,6 +978,20 @@ def portfolio_holdings():
                 _fv_day[_su] = float(_fvrow["change_pct"])
         except (TypeError, ValueError):
             pass
+    _latest_fidelity_trade: dict[tuple[str, str], dict] = {}
+    try:
+        for _tr in (_db_query("""
+            SELECT DISTINCT ON (account, upper(symbol))
+                   account, upper(symbol) AS symbol, action, quantity, trade_date, trade_time, amount
+            FROM trade_transactions
+            WHERE account LIKE 'fidelity_%'
+              AND action IN ('Buy','Sell')
+              AND trade_date >= CURRENT_DATE - INTERVAL '45 days'
+            ORDER BY account, upper(symbol), trade_date DESC, trade_time DESC NULLS LAST
+        """) or []):
+            _latest_fidelity_trade[(str(_tr.get("account") or ""), str(_tr.get("symbol") or "").upper())] = _tr
+    except Exception:
+        _latest_fidelity_trade = {}
     rows = []
     for p in holdings:
         if (p.get("market_value") or 0) < 50 and not p.get("is_cash"):
@@ -1007,11 +1021,21 @@ def portfolio_holdings():
             pi_input["week52_low_pct"] = t_snap["pct_from_low"]
         _shares = float(p.get("shares") or 0)
         _acct = str(p.get("account") or "")
+        _is_fidelity_acct = _acct.startswith("fidelity") and _acct != "fidelity_401k"
+        _latest_trade = _latest_fidelity_trade.get((_acct, sym.upper())) if _is_fidelity_acct else None
+        if _latest_trade and str(_latest_trade.get("action") or "").lower() == "sell":
+            try:
+                _sold_qty = abs(float(_latest_trade.get("quantity") or 0))
+            except (TypeError, ValueError):
+                _sold_qty = 0.0
+            if _shares > 0 and _sold_qty >= _shares - 1e-6:
+                # SnapTrade positions can lag after a Fidelity stop/manual sale. If the synced activity ledger
+                # says the latest trade fully sold the stale holding, suppress it from Portfolio/stop cards.
+                continue
         _stale_px = float(p.get("current_price") or p.get("price") or 0)
         _su = sym.upper()
         _mq = _live_mq.get(_su)
         _fvpx = _live_fv.get(_su)
-        _is_fidelity_acct = _acct.startswith("fidelity") and _acct != "fidelity_401k"
         _is_schwab_acct = _acct.startswith("schwab")
         if _is_schwab_acct and _stale_px > 0:
             _px, _px_source = _stale_px, "schwab"
@@ -1030,7 +1054,7 @@ def portfolio_holdings():
             try:
                 _px = float(_tp) if _tp is not None else 0.0
             except (TypeError, ValueError):
-            _px = 0.0
+                _px = 0.0
             _px_source = "technical_snapshot"
         if _px_source == "finviz":
             _price_as_of = _fv_meta.get("last_updated", "")
