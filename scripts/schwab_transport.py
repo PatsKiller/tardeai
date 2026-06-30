@@ -123,7 +123,11 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         raise ExecutionBlocked(f"EXECUTION_READINESS BLOCK: {blocks}")
     try:
         from brokers.evidence_approval import revalidate_before_submit
-        rev = revalidate_before_submit(intent.intent_id, current_readiness=readiness)
+        rev = revalidate_before_submit(
+            intent.intent_id,
+            current_readiness=readiness,
+            current_order_spec=order_spec,
+        )
         if not rev.get("ok"):
             from brokers.execution_guard import ExecutionBlocked
             raise ExecutionBlocked(f"EVIDENCE_REVALIDATION BLOCK: {rev.get('reason')}")
@@ -201,6 +205,11 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         loc = resp.headers.get("Location", "")
         order_id = loc.rstrip("/").rsplit("/", 1)[-1] if loc else None
     approval_service.consume(intent.intent_id)              # single-use: burn the 2FA set NOW
+    try:
+        from brokers.evidence_approval import consume_approval as _consume_evidence_approval
+        _consume_evidence_approval(intent.intent_id)
+    except Exception:
+        pass
     cur.execute("UPDATE schwab_pilot_orders SET status='submitted', broker_order_id=%s, updated_at=NOW() "
                 "WHERE id=%s", (order_id, row_id)); conn.commit()
     if kind == "canary":

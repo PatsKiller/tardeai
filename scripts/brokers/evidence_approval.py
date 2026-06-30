@@ -59,6 +59,11 @@ def _hash_one(snapshot: Any) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def order_spec_hash(order_spec: dict | None) -> str:
+    """Canonical hash for the exact broker order payload submitted after approval."""
+    return _hash_one(order_spec or {})
+
+
 def compute_bundle_hashes(
     *,
     proposal_snapshot: dict | None = None,
@@ -168,6 +173,101 @@ def create_evidence_approval(
             "expires_at": expires.isoformat(), "correlation_id": cid}
 
 
+def _confirmed_approval_context(intent_id: str) -> dict:
+    """Best-effort channel/operator context for the approval that unlocked an intent."""
+    conn = _conn()
+    if not conn:
+        return {}
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT channel, confirmed_at, expires_at
+               FROM trade_approvals
+               WHERE intent_id=%s AND status='confirmed'
+               ORDER BY confirmed_at DESC NULLS LAST, id DESC LIMIT 1""",
+            (intent_id,),
+        )
+        row = cur.fetchone()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    return {
+        "approval_channel": row[0] or "web",
+        "operator_user": "operator",
+        "confirmed_at": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1] or ""),
+        "expires_at": row[2].isoformat() if hasattr(row[2], "isoformat") else str(row[2] or ""),
+    }
+
+
+def create_order_evidence_approval(
+    intent,
+    order_spec: dict,
+    *,
+    readiness_snapshot: dict | None = None,
+    risk_snapshot: dict | None = None,
+    quote_snapshot: dict | None = None,
+    chain_snapshot: dict | None = None,
+    model_snapshot: dict | None = None,
+    operator_user: str | None = None,
+    approval_channel: str | None = None,
+) -> dict:
+    """Bind a fully approved live order intent to the exact Schwab order spec.
+
+    This is used immediately before the broker submit boundary. It does not approve
+    anything by itself; callers must first verify the normal per-order 2FA approval.
+    """
+    iid = str(getattr(intent, "intent_id", "") or "").strip()
+    if not iid:
+        return {"ok": False, "error": "intent_id_required"}
+    existing = fetch_approval(iid)
+    if existing and not existing.get("used_at"):
+        return {"ok": True, "approval_id": existing.get("id"),
+                "evidence_hash": existing.get("evidence_hash"),
+                "correlation_id": existing.get("correlation_id"),
+                "existing": True}
+    inst = getattr(intent, "instrument", None)
+    ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+    ctx = _confirmed_approval_context(iid)
+    spec_hash = order_spec_hash(order_spec)
+    proposal_snapshot = {
+        "intent_id": iid,
+        "correlation_id": str(getattr(intent, "correlation_id", "") or ""),
+        "account_key": getattr(intent, "account_key", None),
+        "broker": getattr(intent, "broker", None),
+        "symbol": (getattr(inst, "symbol", "") or "").upper(),
+        "qty": getattr(getattr(intent, "quantity", None), "qty", None),
+        "order_type": ev.get("order_type") or order_spec.get("orderType"),
+        "stop_price": ev.get("stop_price") or order_spec.get("stopPrice"),
+        "limit_price": ev.get("limit_price") or order_spec.get("price"),
+        "trail_pct": ev.get("trail_pct") or order_spec.get("stopPriceOffset"),
+        "current_price": ev.get("current_price"),
+        "held_qty": ev.get("held_qty"),
+        "order_spec_hash": spec_hash,
+        "order_spec": order_spec,
+    }
+    if quote_snapshot is None and ev.get("current_price") is not None:
+        quote_snapshot = {"price": ev.get("current_price"), "symbol": proposal_snapshot["symbol"]}
+    return create_evidence_approval(
+        intent_id=iid,
+        proposal_id=ev.get("proposal_id"),
+        correlation_id=proposal_snapshot["correlation_id"] or None,
+        operator_user=operator_user or ctx.get("operator_user") or "operator",
+        approval_channel=approval_channel or ctx.get("approval_channel") or "web",
+        proposal_snapshot=proposal_snapshot,
+        risk_snapshot=risk_snapshot,
+        quote_snapshot=quote_snapshot,
+        chain_snapshot=chain_snapshot,
+        model_snapshot=model_snapshot,
+        readiness_snapshot=readiness_snapshot,
+        operator_attestation=(
+            f"Approved {proposal_snapshot['symbol']} {proposal_snapshot['order_type']} "
+            f"{proposal_snapshot['qty']} for {proposal_snapshot['account_key']} "
+            f"spec={spec_hash}"
+        ),
+    )
+
+
 def fetch_approval(intent_id: str) -> dict | None:
     conn = _conn()
     if not conn:
@@ -207,6 +307,7 @@ def revalidate_before_submit(
     current_readiness: dict | None = None,
     current_risk: dict | None = None,
     current_chain: dict | None = None,
+    current_order_spec: dict | None = None,
     kill_switch_check: bool = True,
     require_readiness: bool = True,
 ) -> dict:
@@ -231,6 +332,20 @@ def revalidate_before_submit(
     exp = rec.get("expires_at")
     if exp and now > exp:
         return {"ok": False, "reason": "approval_expired", "hard_block": True}
+
+    # ── Broker order spec: exact hash match. Price/qty/account/type changes need a new approval. ──
+    proposal = rec.get("proposal_snapshot") or {}
+    stored_order_spec_hash = proposal.get("order_spec_hash") if isinstance(proposal, dict) else None
+    if stored_order_spec_hash:
+        if current_order_spec is None:
+            return {"ok": False, "reason": "order_spec_bundle_unavailable_fail_closed",
+                    "hard_block": True, "checks": checks}
+        new_order_spec_hash = order_spec_hash(current_order_spec)
+        checks.append({"bundle": "order_spec", "kind": "hash",
+                       "match": new_order_spec_hash == stored_order_spec_hash})
+        if new_order_spec_hash != stored_order_spec_hash:
+            return {"ok": False, "reason": "order_spec_hash_changed", "hard_block": True,
+                    "orig": stored_order_spec_hash, "current": new_order_spec_hash, "checks": checks}
 
     # ── Quote: tolerance-based (price drift), NOT hash-exact — a 1-cent move must not block. ──
     orig_quote = rec.get("quote_snapshot") or {}

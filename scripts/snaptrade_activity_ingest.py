@@ -89,6 +89,8 @@ def _classify(activity: dict) -> str:
     raw = " ".join(str(_pick(activity, k) or "") for k in (
         "type", "transaction_type", "activity_type", "description", "name",
     )).upper()
+    if ("REINVEST" in raw or "DRIP" in raw) and ("DIVIDEND" in raw or "DISTRIBUTION" in raw):
+        return "Reinvested Dividend"
     if "DIVIDEND" in raw or "DISTRIBUTION" in raw:
         return "Dividend"
     if "INTEREST" in raw:
@@ -115,6 +117,13 @@ def normalize_activity(activity: dict, account_key: str) -> dict | None:
         qty = 0.0
         price = 0.0
         if sym == "CASH" and action == "Dividend":
+            m = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\)", desc)
+            if m:
+                sym = m.group(1).upper()
+    if action == "Reinvested Dividend":
+        if price <= 0 and qty > 0 and amount:
+            price = abs(amount) / qty
+        if sym == "CASH":
             m = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\)", desc)
             if m:
                 sym = m.group(1).upper()
