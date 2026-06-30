@@ -257,6 +257,37 @@ def _apply_take_profit(result, conn, p, t, q, proposal_id, confirm):
         print(json.dumps(result, indent=2, default=str))
         return result
 
+    # Pre-flight available-qty guard. A standalone take-profit sell can only use shares NOT already committed
+    # to another exit order. When the existing protective stop holds all shares (qty_available == 0), Alpaca
+    # rejects a separate TP limit with 403 "insufficient qty available" — and because the failure path leaves
+    # the proposal status='PROPOSED', the ATM pass re-submitted it every run (the AGNC BLOCKED retry loop).
+    # Placing a take-profit here would require an OCO conversion (cancel the standalone stop → replace with a
+    # stop+limit OCO), which we do NOT do automatically: it would momentarily leave the position unprotected,
+    # violating the engine's "stop never absent" invariant. So skip the doomed order and (when applying) mark
+    # the proposal terminal (NOT_APPLICABLE) so it is not retried; surface it for operator OCO review.
+    avail = shares
+    try:
+        posr = requests.get(f"{PAPER_BASE}/v2/positions/{p['symbol']}", headers=_headers(), timeout=20)
+        if posr.status_code == 200:
+            avail = int(float((posr.json() or {}).get("qty_available")))
+    except Exception:
+        avail = shares
+    if avail < shares:
+        result.update({"status": "NOT_APPLICABLE", "block_reason": "shares_held_by_existing_stop",
+                       "qty_available": avail, "shares": shares,
+                       "advisory": "All shares already held by the existing protective stop; a separate take-"
+                                   "profit limit is not placeable (would require an OCO conversion — operator "
+                                   "review). Auto-apply skipped; proposal marked terminal so it is not retried."})
+        if confirm:
+            wc = conn.cursor()
+            wc.execute("update paper_protection_adjustment_proposals set status='NOT_APPLICABLE' where id=%s",
+                       (proposal_id,))
+            conn.commit()
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
+
     result["proposed_take_profit_final"] = tp_px
     if not confirm:
         result.update({"status": "DRY_RUN_PREVIEW",

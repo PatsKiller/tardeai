@@ -194,6 +194,7 @@ def _protective_gate_reason(intent: OrderIntent) -> str | None:
             qty=(intent.quantity.qty if intent.quantity else None),
             held_qty=ev.get("held_qty"),
             symbol=(intent.instrument.symbol if intent.instrument else None),
+            take_profit=ev.get("take_profit_price"),   # OCO limit leg (P3); ignored for STOP/STOP_LIMIT/TRAILING
         )
         return None if ok else "; ".join(reasons)
     except Exception as e:

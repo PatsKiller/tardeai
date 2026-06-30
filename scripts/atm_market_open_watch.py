@@ -51,12 +51,16 @@ def broker_open_orders():
     base = "https://paper-api.alpaca.markets"
     h = {"APCA-API-KEY-ID": os.getenv("ALPACA_API_KEY"),
          "APCA-API-SECRET-KEY": os.getenv("ALPACA_SECRET_KEY")}
+    # nested=true so OCO/bracket child legs (the 'held' stop leg) are returned; descend into legs[] when
+    # building the per-symbol order book, else an OCO-protected position looks NAKED (false alarm).
     r = requests.get(f"{base}/v2/orders", headers=h,
-                     params={"status": "open", "limit": 200}, timeout=15)
+                     params={"status": "open", "limit": 200, "nested": "true"}, timeout=15)
     r.raise_for_status()
     out = {}
     for o in r.json():
-        out.setdefault(o["symbol"], []).append(o)
+        for c in [o] + (o.get("legs") or []):
+            if c.get("symbol"):
+                out.setdefault(c["symbol"], []).append(c)
     return out
 
 
