@@ -43,6 +43,14 @@ request path. It is served from a **disk TTL cache** (`data/runtime/hermes_gover
 - `api_v2` reaches the module through an mtime-guarded reload (`_hermes_governance_mod()`), so code
   edits land without a full server restart.
 
+## Provenance coverage
+
+Stored provenance now spans the research-producing tables **and** the synthesis/source-curation tables
+(`watchlist_final_synthesis`, `risk_synthesis_results`, `watchlist_synthesis_safety_history`,
+`source_weights`, `source_performance`, `source_learning_scores`, `rec_source_quality`). Historical rows
+read `budget_decision='legacy'` (pre-guard, not fabricated); new rows from the guarded producers carry the
+live `trigger_source` / `budget_tier` / `budget_decision='ALLOW'` / `lane_used` (local — never paid).
+
 ## Refresh
 
 The panel polls every 120s via `useApi`. Underlying numbers come from the cached

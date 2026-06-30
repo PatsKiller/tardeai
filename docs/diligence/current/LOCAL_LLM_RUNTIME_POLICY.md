@@ -40,6 +40,7 @@ Single-GPU box (Intel Arc B50). Ollama runs **one resident model at a time** —
 - `fail_closed: true` — unknown lane / unknown trigger / missing inputs → block, never guess.
 - **Cloud unavailable** (free-OAuth proxy down/auth-expired) → `DEFER`; **never** fall back to paid and **never** fall back to a local-heavy model.
 - Paid lane requested for a research call → `BLOCK` (paid is reserved for explicit cost-gated oversight outside this research path).
+- **Router enforcement arm:** `llm_router.get_llm_response(..., free_only=True)` filters the provider chain to `_FREE_PROVIDERS = {local}` before any call, so a producer that passes `free_only=True` cannot reach a paid provider even as a fallback. The automated research-topic crons (`auto_research.py`, `iterate_research_topics.py`) gate on `decide()` and then call with `free_only=True`; deliberate paid oversight (`monthly_protection_meta_review.py`, monthly, operator-authorized) is the only sanctioned exception and is tagged `lane='claude'`.
 
 ## 6. Cross-references
 - `config/hermes_research_budget.yaml` — `market_hours`, `lanes`, tier policy (must mirror §2–§5).

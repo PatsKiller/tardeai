@@ -8,9 +8,9 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 
 | Window | External (cloud) calls | External distinct symbols | Local calls | Local distinct symbols | Total calls |
 |---|---|---|---|---|---|
-| 1d | 7661 | 942 | 187 | 73 | 7848 |
-| 7d | 22101 | 1116 | 1206 | 174 | 23307 |
-| 30d | 24080 | 1202 | 6018 | 382 | 30098 |
+| 1d | 6096 | 943 | 206 | 74 | 6302 |
+| 7d | 22390 | 1116 | 1246 | 174 | 23636 |
+| 30d | 24399 | 1203 | 6053 | 381 | 30452 |
 
 ## Current source-of-truth symbol counts (the trigger universe)
 
@@ -23,49 +23,48 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 | watchlist_high_rank(score>=70) | 1293 |
 | watch_directive_hits | 1033 |
 | incubator_universe | 170 |
-| strategy_watchpool | 633 |
+| strategy_watchpool | 634 |
 | finviz_hits(30d snapshot) | 5434 |
 | ticker_snapshot_daily(30d,broad) | 5434 |
-| catalyst_events(30d) | 669 |
-| news_articles(7d) | 236 |
+| catalyst_events(30d) | 674 |
+| news_articles(7d) | 234 |
 
 ## LLM calls by lane (30d)
 
 | Lane | Calls | Models |
 |---|---|---|
-| cloud_free_oauth | 24550 | grok-3-mini:16338, gpt-5.4:8114, grok:95, gpt-5-codex:3 |
-| local_gpu | 4841 | librarian_loop:2485, gemma3:4b:1635, gemma3:12b:721 |
-| other_nonllm | 668 | synth:grok:350, options_engine:196, synth:chatgpt:50, stop_lifecycle_monitor:42, hermes_librarian:10, searxng_scheduled_dryrun:8, searxng_manual:5, alert_integration:3, siem_normalizer:3, operator_telegram:1 |
+| cloud_free_oauth | 24869 | grok-3-mini:16624, gpt-5.4:8147, grok:95, gpt-5-codex:3 |
+| local_gpu | 4864 | librarian_loop:2485, gemma3:4b:1667, gemma3:12b:712 |
+| other_nonllm | 680 | synth:grok:350, options_engine:208, synth:chatgpt:50, stop_lifecycle_monitor:42, hermes_librarian:10, searxng_scheduled_dryrun:8, searxng_manual:5, alert_integration:3, siem_normalizer:3, operator_telegram:1 |
 | cloud_paid | 39 | claude-sonnet-4-6:39 |
 
-**Local GPU calls (30d):** 4841
+**Local GPU calls (30d):** 4864
 
 ## Research with no active trigger (30d)
 
-- Distinct researched: **1295**
+- Distinct researched: **1296**
 - Active-trigger universe: **4045**
-- Researched with NO active trigger: **66** (5.1%)
+- Researched with NO active trigger: **67** (5.2%)
 - Sample: AEHG, AIX, AMAGX, AMHI, AUUD, BUG, CDEX, FSELX, FSPTX, GOVX, IHT, IMUC, INVE, IPM, MEMI, MPWR, MSGM, MTVA, NAMM, NUWE, OMER, PEPG, PMN, RANI, REPORT:AEGIS_MORNING_BRIEF_2026-06-09
 
 ## Duplicate research (30d)
 
-- Repeated (symbol, question) pairs: **5990**
-- Redundant repeat calls (beyond first): **12356** (51.3% of all external calls)
+- Repeated (symbol, question) pairs: **6085**
+- Redundant repeat calls (beyond first): **12556** (51.5% of all external calls)
 
 ## Stale research
 
 | Bucket | Distinct symbols |
 |---|---|
-| aging_7_30d | 513 |
+| aging_7_30d | 514 |
 | fresh_0_7d | 1116 |
 
 ## Downstream outcome (local intelligence, 30d)
 
 | Status | Rows | Promoted to table |
 |---|---|---|
-| archived | 3944 | 15 |
-| promoted | 2070 | 0 |
-| staged | 4 | 0 |
+| archived | 3935 | 7 |
+| promoted | 2118 | 0 |
 
 ## Top-25 most expensive sources (calls × lane weight)
 
@@ -75,32 +74,32 @@ Same governance methodology as the Finviz/LLM control plane: measure exactly how
 | 2 | top20_curation | cloud_free_oauth | gpt-5.4 | 7049 | 980 | 21147 |
 | 3 | hri:research_backlog | local_gpu | librarian_loop | 2485 | 0 | 2485 |
 | 4 | research_scheduler | cloud_free_oauth | gpt-5.4 | 751 | 104 | 2253 |
-| 5 | research_scheduler | cloud_free_oauth | grok-3-mini | 747 | 79 | 2241 |
+| 5 | research_scheduler | cloud_free_oauth | grok-3-mini | 748 | 79 | 2244 |
 | 6 | enh_scalp | cloud_free_oauth | grok-3-mini | 513 | 68 | 1539 |
-| 7 | hri:momentum_catalyst | local_gpu | gemma3:4b | 1357 | 138 | 1357 |
+| 7 | hri:momentum_catalyst | local_gpu | gemma3:4b | 1361 | 138 | 1361 |
 | 8 | enh_proposal | cloud_free_oauth | grok-3-mini | 426 | 173 | 1278 |
 | 9 | hri:protection_advisory | cloud_free_oauth | grok-3-mini | 414 | 45 | 1242 |
-| 10 | hri:ticker_thesis_challenge | local_gpu | gemma3:12b | 707 | 202 | 707 |
-| 11 | enh_position | cloud_free_oauth | grok-3-mini | 174 | 6 | 522 |
-| 12 | enh_sector | cloud_free_oauth | grok-3-mini | 159 | 11 | 477 |
-| 13 | enh_closed_trade | cloud_free_oauth | grok-3-mini | 148 | 19 | 444 |
-| 14 | active_directive | cloud_free_oauth | grok-3-mini | 146 | 78 | 438 |
+| 10 | active_directive | cloud_free_oauth | grok-3-mini | 352 | 82 | 1056 |
+| 11 | hri:ticker_thesis_challenge | local_gpu | gemma3:12b | 702 | 202 | 702 |
+| 12 | enh_position | cloud_free_oauth | grok-3-mini | 180 | 6 | 540 |
+| 13 | enh_sector | cloud_free_oauth | grok-3-mini | 159 | 11 | 477 |
+| 14 | enh_closed_trade | cloud_free_oauth | grok-3-mini | 148 | 19 | 444 |
 | 15 | monthly_protection_meta_review | cloud_paid | claude-sonnet-4-6 | 39 | 39 | 390 |
-| 16 | hri:stop_curation | cloud_free_oauth | grok | 95 | 12 | 285 |
-| 17 | enh_scalp | cloud_free_oauth | gpt-5.4 | 88 | 36 | 264 |
-| 18 | enh_proposal | cloud_free_oauth | gpt-5.4 | 65 | 60 | 195 |
-| 19 | enh_closed_trade | cloud_free_oauth | gpt-5.4 | 48 | 14 | 144 |
-| 20 | holdings | cloud_free_oauth | grok-3-mini | 48 | 24 | 144 |
-| 21 | hri:youtube_discovery | local_gpu | gemma3:4b | 127 | 79 | 127 |
-| 22 | enh_sector | cloud_free_oauth | gpt-5.4 | 33 | 11 | 99 |
-| 23 | enh_position | cloud_free_oauth | gpt-5.4 | 31 | 3 | 93 |
-| 24 | hri:protection_advisory | local_gpu | gemma3:4b | 91 | 39 | 91 |
-| 25 | hri:topic_research | other_nonllm | synth:grok | 350 | 0 | 70.0 |
+| 16 | holdings | cloud_free_oauth | grok-3-mini | 120 | 24 | 360 |
+| 17 | hri:stop_curation | cloud_free_oauth | grok | 95 | 12 | 285 |
+| 18 | enh_scalp | cloud_free_oauth | gpt-5.4 | 88 | 36 | 264 |
+| 19 | enh_proposal | cloud_free_oauth | gpt-5.4 | 65 | 60 | 195 |
+| 20 | active_directive | cloud_free_oauth | gpt-5.4 | 48 | 48 | 144 |
+| 21 | enh_closed_trade | cloud_free_oauth | gpt-5.4 | 48 | 14 | 144 |
+| 22 | hri:youtube_discovery | local_gpu | gemma3:4b | 127 | 79 | 127 |
+| 23 | hri:protection_advisory | local_gpu | gemma3:4b | 119 | 44 | 119 |
+| 24 | enh_sector | cloud_free_oauth | gpt-5.4 | 33 | 11 | 99 |
+| 25 | enh_position | cloud_free_oauth | gpt-5.4 | 31 | 3 | 93 |
 
 ## Findings
 
 - **[warning]** 39 paid-model research calls in 30d ({'claude-sonnet-4-6': 39}) — must be deliberate cost-gated oversight, never a fallback.
-- **[warning]** 12356 redundant repeat external calls in 30d (51.3% of external) — dedup/expiry under-enforced.
+- **[warning]** 12556 redundant repeat external calls in 30d (51.5% of external) — dedup/expiry under-enforced.
 - **[warning]** Source 'top20_curation' drove LLM research on 1046 symbols (13523 calls) — broad-universe LLM research; should be tiered/capped.
 
 ---

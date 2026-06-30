@@ -44,11 +44,30 @@ def iterate_topics(send_telegram: bool = False) -> list:
 
     results = []
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from llm_router import get_llm_response, LOCAL_MODEL
+    from hermes_research_budget_guard import decide, ALLOW
 
     for t in topics:
         topic = t["topic"]
         prev = t.get("latest_findings", "")
         count = t.get("research_count", 0)
+
+        # Budget guard: topic iteration is T2 (themed, free-lane only). An active topic IS the
+        # active trigger. Non-ALLOW (cloud-down DEFER, paid BLOCK, market-hours heavy-block) skips
+        # the LLM call entirely — never a paid fallback. Skip is audited honestly below.
+        gd = decide(symbol=topic[:64], trigger_source="topic_iteration", research_type="research",
+                    lane="local", model=LOCAL_MODEL, urgency="normal", has_active_trigger=True)
+        if gd.get("decision") != ALLOW:
+            cur.execute("""
+                INSERT INTO portfolio_intelligence_events
+                    (event_type, severity, source, payload)
+                VALUES ('research_iteration_skipped', 'info', 'iterate_research_topics.py', %s)
+            """, (json.dumps({"topic_id": t["id"], "topic": topic,
+                              "trigger_source": "topic_iteration", "budget_tier": gd.get("tier"),
+                              "budget_decision": gd.get("decision"), "lane_used": gd.get("lane_used"),
+                              "guard_reason": gd.get("reason")}, default=str),))
+            print(f"  [{t['id']}] {topic[:40]}... skipped: {gd.get('decision')}")
+            continue
 
         prompt = f"""/no_think You are a certified retirement planner providing an updated advisory.
 
@@ -72,8 +91,8 @@ Provide:
 Keep it concise (3-4 paragraphs) and actionable."""
 
         try:
-            from llm_router import get_llm_response
-            result = get_llm_response("agent_narrative", prompt, max_tokens=600)
+            # free_only=True: local lane only — paid fallback is structurally impossible.
+            result = get_llm_response("agent_narrative", prompt, max_tokens=600, free_only=True)
 
             if result.get("success"):
                 response = result["response"]
@@ -93,7 +112,11 @@ Keep it concise (3-4 paragraphs) and actionable."""
                         (event_type, severity, source, payload)
                     VALUES ('research_iteration', 'info', 'iterate_research_topics.py', %s)
                 """, (json.dumps({"topic_id": t["id"], "topic": topic,
-                                   "iteration": count + 1, "provider": result.get("provider")}, default=str),))
+                                   "iteration": count + 1, "provider": result.get("provider"),
+                                   "research_reason": "topic_iteration",
+                                   "trigger_source": "topic_iteration", "budget_tier": gd.get("tier"),
+                                   "budget_decision": gd.get("decision"), "lane_used": result.get("provider"),
+                                   "research_expires_at": gd.get("expires_at")}, default=str),))
 
                 results.append({
                     "topic_id": t["id"],

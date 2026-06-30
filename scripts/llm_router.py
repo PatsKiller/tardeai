@@ -292,6 +292,14 @@ _PROVIDERS = {
     "openai": _call_openai,
 }
 
+# Providers that cost no money. `local` is the only zero-cost provider in this router
+# (grok/claude/openai all bill a metered API key). When free_only=True is requested, every
+# other provider is filtered out of the chain BEFORE any call is made, so an automated caller
+# can never silently fall back onto a paid lane. This is the structural backstop behind the
+# Hermes research budget guard: even if a producer's task_type maps to a paid-capable chain,
+# free_only forces the chain down to the no-cost set and returns failure rather than spending.
+_FREE_PROVIDERS = {"local"}
+
 
 def get_llm_response(
     task_type: str,
@@ -300,6 +308,7 @@ def get_llm_response(
     high_impact: bool = False,
     max_tokens: int = 800,
     local_timeout: int = None,
+    free_only: bool = False,
 ) -> dict:
     """Route LLM request through provider hierarchy. Returns best response.
 
@@ -309,6 +318,10 @@ def get_llm_response(
         high_impact: If True, prefer Claude/Grok over local
         max_tokens: Max response tokens
         local_timeout: Override local timeout (default 8s for fallback trigger)
+        free_only: If True, restrict the provider chain to zero-cost lanes (_FREE_PROVIDERS).
+                   No paid provider is ever called, even as a fallback. Automated research
+                   producers MUST pass free_only=True — paid lanes are reserved for explicit,
+                   operator-authorized oversight paths, never for automated fallback.
 
     Returns:
         dict with: model_used, provider, response, latency, cost_estimate, fallback_reason
@@ -318,6 +331,11 @@ def get_llm_response(
         providers = _HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"])
     else:
         providers = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
+
+    if free_only:
+        # Strip every paid provider out of the chain up front. If nothing free remains, the
+        # request fails closed (no paid spend) rather than escalating to a billed lane.
+        providers = [p for p in providers if p in _FREE_PROVIDERS] or ["local"]
 
     fallback_reasons = []
     total_cost = 0.0

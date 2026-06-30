@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-06-29 - Hermes governance: paid-lane producers guarded + provenance extended to synthesis/source tables
+
+Closed the two validation gaps left after the budget guard merged (PR #26).
+
+- **Paid-lane producers routed through the guard.** The two automated research-topic producers —
+  `scripts/auto_research.py` (cron 21:00 wkdays, was `cio_synthesis` high-impact → Claude/OpenAI fallback)
+  and `scripts/iterate_research_topics.py` (cron 08:00 wkdays, was `agent_narrative` → Claude fallback) —
+  now (1) call `hermes_research_budget_guard.decide()` BEFORE any LLM work and skip+audit on any non-ALLOW
+  verdict, and (2) call the LLM via a new `get_llm_response(..., free_only=True)` path. `free_only` strips
+  every paid provider out of the router chain up front (`_FREE_PROVIDERS = {local}`), so **automated paid
+  fallback is now structurally impossible** — not merely discouraged. New tier mappings added for the
+  producer sources (`auto_research_conflict`/`_high_impact` → T1, `auto_research_discovery`/`topic_iteration`
+  → T2). Unknown producer still fails closed (BLOCK). Deliberate paid oversight
+  (`monthly_protection_meta_review`, the 39 claude-sonnet/30d calls) is unchanged — it stays explicit,
+  tagged, and operator-authorized, never a fallback. Live single-symbol confirmation: `lane_used=local`,
+  `budget_decision=ALLOW`, `cost=0.0`.
+- **Provenance extended to the synthesis & source-curation tables.** `scripts/migrate_synthesis_source_provenance.py`
+  (idempotent, `--check`/`--dry-run`) adds the 10 nullable provenance columns (`trigger_source`, `trigger_id`,
+  `budget_tier`, `budget_decision`, `lane_used`, `research_expires_at`, `research_reason`, `downstream_outcome`,
+  `source_table`, `source_row_id`) to 7 tables that create research-like conclusions:
+  `watchlist_final_synthesis`, `risk_synthesis_results`, `watchlist_synthesis_safety_history` (LLM synthesis, T2)
+  and `source_weights`, `source_performance`, `source_learning_scores`, `rec_source_quality` (source scoring, T3,
+  `lane=computed`). 70 columns added, **5,213 historical rows backfilled as `budget_decision='legacy'`** — zero
+  fabricated ALLOW/DEFER; `trigger_id`/`downstream_outcome`/`source_row_id` left NULL (no invented lineage).
+- **Tests:** new `tests/test_hermes_paid_guard_and_provenance.py` — **61/61 pass** (paid-fallback impossible,
+  explicit-oversight-is-operator-source, unknown-producer-fail-closed, broad-universe-no-LLM, cloud-down-DEFER,
+  market-hours-heavy-BLOCK, all 7 tables carry provenance, backfill legacy-only, migration idempotent, no
+  broker/2FA/execution writes in any new file). Existing suites green: budget guard 28/28, governance API 16/16.
+- **LOCAL_LLM policy** canonical in git at `docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md` (the `free_only`
+  router path is the enforcement arm of its no-paid-fallback rule).
+
 ## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored
 
 Re-audit after the budget guard went live (deployed 13:01 ET). **Broad-universe LLM research is confirmed

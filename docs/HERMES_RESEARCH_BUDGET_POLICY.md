@@ -56,6 +56,35 @@ The guard returns one of: **ALLOW · DEFER · METADATA_ONLY · BLOCK**.
 - **`hermes_external_researcher.py`** (central chokepoint for all shell-through producers): enforces
   the broad-universe-no-LLM + fail-closed cuts before any external call and records provenance.
 
+## Paid-lane producers (no automated paid fallback)
+
+Two automated research-topic crons could previously fall back onto a paid lane when local/free was
+unavailable, because their router task types (`cio_synthesis`, `agent_narrative`) list `claude`/`openai`
+after `local`. Both are now hard-guarded:
+
+| producer | cron | old behavior | now |
+|---|---|---|---|
+| `scripts/auto_research.py` | 21:00 wkdays | `cio_synthesis`, `high_impact=True` → Claude/OpenAI fallback | `decide()` gate → `free_only=True` (local lane only) |
+| `scripts/iterate_research_topics.py` | 08:00 wkdays | `agent_narrative` → Claude fallback | `decide()` gate → `free_only=True` (local lane only) |
+
+Two-layer enforcement:
+1. **Guard gate** — each producer calls `hermes_research_budget_guard.decide(trigger_source=…, lane="local")`
+   before any web/LLM work. A non-ALLOW verdict (cloud-down DEFER, unknown→BLOCK, market-hours-heavy→BLOCK)
+   skips the LLM call entirely and writes a `*_skipped` intelligence event for audit.
+2. **`free_only` router path** — `get_llm_response(..., free_only=True)` filters the provider chain down to
+   `_FREE_PROVIDERS = {local}` *before any call is made*. Even if a task type maps to a paid-capable chain,
+   no paid provider is reachable; if nothing free succeeds the call fails closed rather than spending.
+
+Producer trigger sources are mapped in `trigger_source_tier`: `auto_research_conflict` / `auto_research_high_impact`
+→ T1, `auto_research_discovery` / `topic_iteration` → T2. Every research row these write carries
+`trigger_source` + `budget_tier` + `budget_decision` + `lane_used` + `research_expires_at`.
+
+**Deliberate paid oversight is NOT a fallback.** `scripts/monthly_protection_meta_review.py` (monthly,
+operator-authorized) intentionally uses Claude and is tagged `lane='claude'`, `advisory_only`. It is the only
+sanctioned paid research path and is explicit, auditable, and never reached automatically. The broader agent/
+advisory pipeline (`agent_watchlist_engine.py`, `run_alex_daily.py`, `overnight_batch.py`) remains governed by
+the router's `$1.50/day` paid budget cap (PR #24) — a known, bounded surface, flagged under *Remaining limitations*.
+
 ## Provenance
 
 `scripts/migrate_hermes_research_provenance.py` adds nullable columns to `hermes_external_research`
@@ -72,6 +101,15 @@ Result: 0 rows left UNMAPPED; the panel now reads stored tiers instead of inferr
 retrospective what-if showed **23,275 of 29,413 historical rows (79%) would have been
 METADATA_ONLY** under the current policy — the size of the broad-universe LLM problem now closed.
 
+**Synthesis & source-curation tables** — `scripts/migrate_synthesis_source_provenance.py` extends the same
+provenance vocabulary (plus `source_table` / `source_row_id` lineage pointers) to 7 tables that produce
+research-like conclusions but pre-dated the guard: `watchlist_final_synthesis`, `risk_synthesis_results`,
+`watchlist_synthesis_safety_history` (LLM synthesis → T2) and `source_weights`, `source_performance`,
+`source_learning_scores`, `rec_source_quality` (statistical source scoring → T3, `lane_used='computed'`,
+no LLM). Additive (`ADD COLUMN IF NOT EXISTS`), idempotent (`WHERE budget_tier IS NULL`), with `--check`/
+`--dry-run`. The 5,213 historical rows are backfilled `budget_decision='legacy'` (never fabricated
+ALLOW/DEFER); `trigger_id` / `downstream_outcome` / `source_row_id` stay NULL (no invented lineage).
+
 ## Verify
 
 ```bash
@@ -79,4 +117,6 @@ python3 scripts/hermes_research_scope_audit.py --json
 python3 scripts/hermes_research_budget_guard.py --selftest      # exits non-zero on any invariant break
 python3 tests/test_hermes_research_budget_guard.py
 python3 tests/test_hermes_governance_api.py
+python3 tests/test_hermes_paid_guard_and_provenance.py          # paid-fallback + synthesis/source provenance
+python3 scripts/migrate_synthesis_source_provenance.py --check  # idempotent: 0 cols / 0 rows after apply
 ```

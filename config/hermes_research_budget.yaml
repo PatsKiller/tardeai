@@ -123,6 +123,12 @@ trigger_source_tier:
   feedback-seed: T2
   feedback_seed: T2
   manual: T1                  # operator-initiated research is actionable by definition
+
+  # --- automated research-producer crons (routed through the guard; free-lane only) ---
+  auto_research_conflict: T1      # auto_research.py: agents disagree on a held/near-decision symbol
+  auto_research_high_impact: T1   # auto_research.py: proposed BUY/SELL/TRIM on >5% weight
+  auto_research_discovery: T2     # auto_research.py: fresh screener discovery, not yet researched
+  topic_iteration: T2             # iterate_research_topics.py: re-research an active user topic
   operator_telegram: T1
 
 # Duplicate-suppression: same (symbol, research_type, lane) inside this window -> DEFER.

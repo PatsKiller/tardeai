@@ -107,12 +107,57 @@ def find_research_triggers() -> list:
     return triggers
 
 
-def research_symbol(symbol: str, reason: str = "manual") -> dict:
-    """Run deep research on a symbol using LLM + web search + available intel."""
-    from llm_router import get_llm_response
+# reason -> guard trigger_source. Anything not mapped here (CLI --research, unknown) defaults to
+# "manual" (T1, operator-initiated). The guard fails closed on a genuinely unknown source.
+_REASON_SOURCE = {
+    "agent_conflict": "auto_research_conflict",
+    "high_impact_decision": "auto_research_high_impact",
+    "new_discovery": "auto_research_discovery",
+}
+
+
+def _record_skip(symbol: str, reason: str, gd: dict):
+    """Audit a guard-skipped research attempt so DEFER/BLOCK is never silent."""
+    try:
+        conn = _get_conn(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO portfolio_intelligence_events
+                (symbol, event_type, severity, source, payload)
+            VALUES (%s, 'auto_research_skipped', 'info', 'auto_research.py', %s)
+        """, (symbol, json.dumps({
+            "research_reason": reason,
+            "trigger_source": gd.get("trigger_source"),
+            "budget_tier": gd.get("tier"),
+            "budget_decision": gd.get("decision"),
+            "lane_used": gd.get("lane_used"),
+            "guard_reason": gd.get("reason"),
+        }, default=str)))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+
+def research_symbol(symbol: str, reason: str = "manual", trigger_source: str = "manual") -> dict:
+    """Run deep research on a symbol using LLM + web search + available intel.
+
+    Every LLM call is gated by the Hermes research budget guard and uses the free/local lane
+    only — automated research can never fall back onto a paid lane. A non-ALLOW guard verdict
+    skips the LLM call entirely and is recorded for audit.
+    """
+    from llm_router import get_llm_response, LOCAL_MODEL
+    from hermes_research_budget_guard import decide, ALLOW
     from intel_query import get_intel_summary
     from agent_collab import get_agent_context
     from web_research import research_symbol_web
+
+    # --- Budget guard FIRST: decide before spending any web/LLM effort. ---
+    gd = decide(symbol=symbol, trigger_source=trigger_source, research_type="research",
+                lane="local", model=LOCAL_MODEL, urgency="normal", has_active_trigger=True)
+    if gd.get("decision") != ALLOW:
+        _record_skip(symbol, reason, gd)
+        return {"symbol": symbol, "skipped": True, "decision": gd.get("decision"),
+                "trigger_source": trigger_source, "tier": gd.get("tier"),
+                "reason": gd.get("reason")}
 
     # Gather all available context
     intel = get_intel_summary(symbol=symbol, min_quality=30, max_chars=500, days=14)
@@ -142,14 +187,15 @@ Provide a concise research brief covering:
 
 Keep under 300 words. Be specific with numbers and dates."""
 
-    result = get_llm_response("cio_synthesis", prompt, max_tokens=600, high_impact=True)
+    # free_only=True: local lane only — paid fallback is structurally impossible.
+    result = get_llm_response("cio_synthesis", prompt, max_tokens=600, free_only=True)
 
     if not result.get("success"):
         return {"error": "LLM failed", "symbol": symbol}
 
     research = result["response"]
 
-    # Store as intelligence event
+    # Store as intelligence event (with full budget-guard provenance)
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -158,6 +204,12 @@ Keep under 300 words. Be specific with numbers and dates."""
         VALUES (%s, 'auto_research', 'info', 'auto_research.py', %s)
     """, (symbol, json.dumps({
         "reason": reason,
+        "research_reason": reason,
+        "trigger_source": trigger_source,
+        "budget_tier": gd.get("tier"),
+        "budget_decision": gd.get("decision"),
+        "lane_used": result.get("provider"),
+        "research_expires_at": gd.get("expires_at"),
         "provider": result.get("provider"),
         "cost": result.get("cost_estimate", 0),
     }, default=str)))
@@ -200,7 +252,11 @@ def run_check(send_telegram: bool = False):
     results = []
     for t in sorted(triggers, key=lambda x: x["priority"])[:3]:
         print(f"  Researching: {t['symbol']} ({t['reason']})")
-        result = research_symbol(t["symbol"], t["detail"])
+        src = _REASON_SOURCE.get(t["reason"], "manual")
+        result = research_symbol(t["symbol"], t["detail"], trigger_source=src)
+        if result.get("skipped"):
+            print(f"    skipped: {result.get('decision')} ({result.get('reason')})")
+            continue
         if not result.get("error"):
             researched += 1
             results.append(result)
@@ -227,9 +283,11 @@ if __name__ == "__main__":
         idx = sys.argv.index("--research")
         if idx + 1 < len(sys.argv):
             symbol = sys.argv[idx + 1].upper()
-            result = research_symbol(symbol, "manual")
+            result = research_symbol(symbol, "manual", trigger_source="manual")
             if result.get("research"):
                 print(result["research"])
+            elif result.get("skipped"):
+                print(f"Skipped by budget guard: {result.get('decision')} — {result.get('reason')}")
             else:
                 print(f"Error: {result.get('error')}")
         else:
