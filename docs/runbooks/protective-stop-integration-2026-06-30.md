@@ -162,7 +162,7 @@ Last validation after deploying PR #33 into the runtime checkout:
 - `python3 scripts/execution_state.py --json`: `operator_live_via_2fa_allowed=true`, `operator_approved_live_submit_possible=true`, `autonomous_live_submit_allowed=false`, and no current blockers.
 - `python3 scripts/validate_release_readiness.py --json --skip-build`: `ok=true`, `status=WARN` only because of pre-existing non-live-adjacent dirty `config/strategies/*.yaml` files in the runtime checkout; `live_adjacent=[]`.
 - V trailing-stop dry-run preflight passed with `whole_qty=201`, `residual_qty=0.4412`, matching approved/submit order-spec hashes, evidence revalidation `ok=true`, and `broker_submitted=false`.
-- The synthetic dry-run approval row was cleared with `approval_service.reject()`; active approval lock check returned zero pending/confirmed rows.
+- The dry-run preflight now **supersedes its own** simulated `evidence_bound_approvals` row at the end of the run (`evidence_approval.supersede_approval(intent_id)` → `status='superseded'`), so repeated dry-runs never leave a false "active approval lock". The result carries `dry_run_evidence_superseded` + `active_approval_lock=false`. (Previously the cleanup called `approval_service.reject()`, which only resets `trade_approvals` 2FA-channel rows — not the `evidence_bound_approvals` lock — so those locks accumulated and showed as a false active approval in the readiness panel.) Verified: two consecutive V dry-runs leave zero active locks.
 - `python3 scripts/oco_readiness_report.py`: `ready_for_oco_one_share_canary=false`.
 
 ## Remaining Blockers Before Any OCO Canary

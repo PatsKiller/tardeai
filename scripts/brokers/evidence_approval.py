@@ -448,6 +448,28 @@ def consume_approval(intent_id: str) -> bool:
     return n > 0
 
 
+def supersede_approval(intent_id: str, reason: str = "superseded") -> int:
+    """Invalidate any UNUSED, still-'approved' evidence-bound approval row(s) for an intent so they no longer
+    count as an active approval lock. Used to clean up the simulated approval a dry-run preflight persists
+    (status -> 'superseded'; never marks 'consumed', which would imply the order was actually placed).
+    Returns the number of rows superseded. No broker call, metadata only."""
+    conn = _conn()
+    if not conn:
+        return 0
+    cur = conn.cursor()
+    _ensure_table(cur)
+    cur.execute(
+        """UPDATE evidence_bound_approvals
+              SET status='superseded',
+                  operator_attestation_text = COALESCE(operator_attestation_text, '') || %s
+            WHERE intent_id=%s AND status='approved' AND used_at IS NULL""",
+        (f" [superseded: {reason}]", intent_id),
+    )
+    n = cur.rowcount
+    conn.commit()
+    return n
+
+
 def _f(v, default=0.0) -> float:
     try:
         return float(v)

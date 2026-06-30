@@ -90,6 +90,7 @@ def run_preflight(
         create_order_evidence_approval,
         order_spec_hash,
         revalidate_before_submit,
+        supersede_approval,
     )
     from brokers.execution_readiness import evaluate_execution_readiness
 
@@ -150,10 +151,17 @@ def run_preflight(
         kill_switch_check=False,
     )
     approved_hash = evidence.get("order_spec_hash") or submit_hash
+    # Dry-run cleanup: the simulated evidence-bound approval was only created to revalidate the chain (done
+    # above). Supersede it so a dry-run never leaves a lingering "active approval lock" — the operator's real
+    # click + per-order 2FA creates a fresh approval. (Previously only trade_approvals was reset, so these
+    # evidence_bound_approvals rows accumulated and showed as a false active lock in the readiness panel.)
+    superseded = supersede_approval(intent.intent_id, reason="dry_run_preflight")
     return {
         "ok": bool(rev.get("ok") and approved_hash == submit_hash),
         "stage": "preflight",
         "broker_submitted": False,
+        "dry_run_evidence_superseded": superseded,
+        "active_approval_lock": False,
         "symbol": sym,
         "account": account,
         "order_type": ot,

@@ -110,6 +110,36 @@ def test_11_oco_brackets_schwab_off_and_not_enabled():
     assert 'OCO_BRACKETS_SCHWAB"] = "1"' not in api and "OCO_BRACKETS_SCHWAB=1" not in read(UI)
 
 
+def test_13_dry_run_preflight_supersedes_its_own_evidence_lock():
+    """The dry-run preflight must invalidate the simulated evidence-bound approval it creates, so repeated
+    dry-runs never leave a false 'active approval lock' in the readiness panel."""
+    ea = (ROOT / "scripts/brokers/evidence_approval.py").read_text(encoding="utf-8")
+    pf = (ROOT / "scripts/protective_stop_2fa_preflight.py").read_text(encoding="utf-8")
+    # the invalidation helper exists and marks superseded (NOT consumed — that would imply the order placed)
+    assert "def supersede_approval" in ea
+    sup = ea.split("def supersede_approval")[1].split("\ndef ")[0]
+    assert "status='superseded'" in sup and "status='consumed'" not in sup
+    # the preflight imports and calls it, and reports the cleared lock
+    assert "supersede_approval" in pf
+    assert "supersede_approval(intent.intent_id" in pf
+    assert '"active_approval_lock": False' in pf
+
+
+def test_14_supersede_approval_is_metadata_only_no_broker_call():
+    ea = (ROOT / "scripts/brokers/evidence_approval.py").read_text(encoding="utf-8")
+    sup = ea.split("def supersede_approval")[1].split("\ndef ")[0]
+    for bad in ("place_order", "submit_order", "schwab_transport", "requests.", "urlopen"):
+        assert bad not in sup, f"supersede_approval must be metadata-only — found {bad!r}"
+    # unknown intent supersedes nothing (returns 0), never raises
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        from brokers import evidence_approval as ea_mod
+    except Exception:
+        import pytest
+        pytest.skip("evidence_approval import unavailable")
+    assert ea_mod.supersede_approval("no-such-intent-zzz") == 0
+
+
 def test_12_readiness_endpoint_runtime_is_read_only(tmp_path):
     """Call the endpoint and assert it returns the gate snapshot WITHOUT submitting anything."""
     sys.path.insert(0, str(ROOT / "scripts"))
