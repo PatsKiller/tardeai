@@ -113,8 +113,11 @@ OCO is not ready until those are clean. This task does not enable an OCO canary.
 Last local validation on the integration branch:
 
 - `npm run build` in `apps/command-center-v3`: passed with existing Vite bundle-size/script warnings.
-- Requested pytest group: `73 passed`.
+- Requested pytest group after the V trailing-stop incident fix: `66 passed`.
+- Earlier full integration pytest group: `73 passed`.
 - Focused evidence/manual-ticket/activity tests: `37 passed`.
+- Built UI bundle includes build marker `cc-v3 stop-evidence PR33 2026-06-30`.
+- V trailing-stop dry-run preflight resolves the local holdings snapshot, then fails closed at `missing_field=postgres_connection` while PostgreSQL is unavailable; no Schwab request is sent.
 - `python3 scripts/validate_schwab_write_policy.py`: `24/26`, fail-closed because PostgreSQL was unavailable in the session.
 - DB role timeout verification could not run because PostgreSQL was unavailable.
 - `python3 scripts/execution_state.py --json`: command ran, but reported `operator_live_via_2fa_allowed=false` and `kill_switch_db_unavailable`.
