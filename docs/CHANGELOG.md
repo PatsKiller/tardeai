@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored
+
+Re-audit after the budget guard went live (deployed 13:01 ET). **Broad-universe LLM research is confirmed
+eliminated:** `top20_curation` (the 20k-call driver) dropped to **zero LLM calls after 13:01** — every 7-day
+row is now `budget_decision='legacy'` (pre-guard) — and a live guard check returns `METADATA_ONLY` (T3) for
+`top20_curation` on every LLM lane (grok / chatgpt / gemma3:12b). Guard selftest clean; **28/28 tests pass**
+(broad-universe-no-LLM, unknown→fail-closed, market-hours-heavy-blocked, free-OAuth-unavailable→DEFER-not-paid,
+T0 holdings ALLOW, T1 cap, T2 needs-trigger, duplicate→DEFER, expiry, no broker writes).
+
+- **Verified scope (re-audit):** 30d = 30,092 research calls (24,074 cloud-free-OAuth + 6,018 local-GPU);
+  1d = 7,888 (942 distinct cloud symbols + 73 local); 7d = 23,306. LLM by lane/30d: free-OAuth **24,544**
+  (grok-3-mini 16,333 · gpt-5.4 8,113), local **4,841** (gemma3:4b 1,635 · librarian 2,485 · gemma3:12b 721),
+  **paid 39** (claude-sonnet, monthly protection meta-review — deliberate cost-gated, never a fallback).
+  No-active-trigger 66/1,295 (5.1%). Regenerated `docs/HERMES_RESEARCH_SCOPE_AUDIT.md`.
+- **Restored** `docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md` — the canonical local-GPU doc the guard
+  claims to match was referenced everywhere but absent on disk; reconstructed from the live enforced rules
+  (06:00–12:00 ET local-heavy block, single-resident-model + file lock, free-OAuth-only, no paid fallback).
+- **Remaining (legacy/historical, not live leaks):** the 30d duplicate (~51%) and broad-universe totals are
+  dominated by pre-guard activity; the guard now DEFERs duplicates and METADATA_ONLYs broad names going
+  forward. Synthesis/source-curation tables (`watchlist_final_synthesis`, `source_*`, `rec_source_quality`)
+  still lack the provenance vocabulary — a follow-up if their research is to be tier-governed too.
+
 ## 2026-06-29 - Hermes research scope audit + budget governance (tiering + caps)
 
 Applied the Finviz/LLM governance methodology to Hermes research. **Audit first:** `hermes_research_scope_audit.py`
