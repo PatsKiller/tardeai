@@ -79,7 +79,9 @@ const BLOCKER_PRIORITY = [
 
 const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
 const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT', 'OCO'])
-const QUOTE_MAX_AGE_SEC = 15 * 60
+/** Match brokers/quote_time.py — regular 15m; extended hours 60m (Finviz/Schwab after-hours update slower). */
+const FRESH_MAX_AGE_SEC = 15 * 60
+const AFTER_HOURS_MAX_AGE_SEC = 60 * 60
 const TRAIL_TOLERANCE = 0.35
 const STOP_MATCH_TOLERANCE_DOLLARS = 0.05
 const FLOOR_TOLERANCE_PCT = 0.15
@@ -108,11 +110,39 @@ export function isFundLikeInstrument(h: any): boolean {
   return t.includes('mutual_fund') || t.includes('money_market') || t === 'cash'
 }
 
+export type QuoteSession = 'regular' | 'pre_market' | 'after_hours' | 'closed' | 'unknown'
+
 export function quoteAgeSeconds(sourceTimestamp?: string | null, nowMs = Date.now()): number | null {
   if (!sourceTimestamp) return null
   const ts = parseTimestampMs(sourceTimestamp)
   if (!Number.isFinite(ts)) return null
   return Math.max(0, Math.round((nowMs - ts) / 1000))
+}
+
+/** US-equity session for the quote time (America/New_York) — mirrors scripts/brokers/quote_time.py. */
+export function classifyQuoteSession(sourceTimestamp?: string | null): QuoteSession {
+  const ms = parseTimestampMs(sourceTimestamp)
+  if (!Number.isFinite(ms)) return 'unknown'
+  const wd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date(ms))
+  if (wd === 'Sat' || wd === 'Sun') return 'closed'
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(new Date(ms))
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0)
+  const minute = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
+  const mins = hour * 60 + minute
+  if (mins >= 9 * 60 + 30 && mins < 16 * 60) return 'regular'
+  if (mins >= 4 * 60 && mins < 9 * 60 + 30) return 'pre_market'
+  if (mins >= 16 * 60 && mins < 20 * 60) return 'after_hours'
+  return 'closed'
+}
+
+export function freshMaxAgeSec(session: QuoteSession): number {
+  return session === 'after_hours' || session === 'pre_market' ? AFTER_HOURS_MAX_AGE_SEC : FRESH_MAX_AGE_SEC
+}
+
+export function isQuoteFresh(sourceTimestamp?: string | null, nowMs = Date.now()): boolean {
+  const age = quoteAgeSeconds(sourceTimestamp, nowMs)
+  if (age === null) return false
+  return age <= freshMaxAgeSec(classifyQuoteSession(sourceTimestamp))
 }
 
 export function isTrailingBrokerStop(stop?: any, monitored?: any): boolean {
@@ -170,14 +200,16 @@ export function resolveLiveStop(
 export function parseTimestampMs(sourceTimestamp?: string | null): number {
   if (!sourceTimestamp) return NaN
   const raw = String(sourceTimestamp).trim()
-  const direct = Date.parse(raw)
-  if (Number.isFinite(direct)) return direct
-  const et = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2})?)\s+E[DS]?T$/i)
-  if (et) {
-    const month = Number(et[1].slice(5, 7))
+  // Portfolio/Finviz quotes are America/New_York — parse naive "YYYY-MM-DD HH:MM:SS" as ET, not browser-local/UTC.
+  const naiveEt = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2})?)(\s+E[DS]?T)?$/i)
+  if (naiveEt) {
+    const month = Number(naiveEt[1].slice(5, 7))
     const offset = month >= 3 && month <= 11 ? '-04:00' : '-05:00'
-    return Date.parse(`${et[1]}T${et[2]}${offset}`)
+    const parsed = Date.parse(`${naiveEt[1]}T${naiveEt[2]}${offset}`)
+    if (Number.isFinite(parsed)) return parsed
   }
+  const direct = Date.parse(raw.replace('Z', '+00:00'))
+  if (Number.isFinite(direct)) return direct
   return NaN
 }
 
@@ -207,8 +239,11 @@ export function buildStopLogic(input: {
   const instrumentType = normalizeInstrumentType(h)
   const isFundLike = isFundLikeInstrument(h)
   const blockers: StopBlocker[] = []
-  const quoteAge = quoteAgeSeconds(input.sourceTimestamp ?? pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null, input.nowMs)
-  const staleQuote = quoteAge == null || quoteAge > QUOTE_MAX_AGE_SEC
+  const quoteTs = input.sourceTimestamp ?? input.h?.source_timestamp ?? pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
+  const quoteSession = classifyQuoteSession(quoteTs)
+  const quoteMaxAge = freshMaxAgeSec(quoteSession)
+  const quoteAge = quoteAgeSeconds(quoteTs, input.nowMs)
+  const staleQuote = !isQuoteFresh(quoteTs, input.nowMs)
   const familyFloorPct = extractFamilyFloorPct(pr)
   const familyFloorLabel = String(pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'not provided')
 
@@ -222,7 +257,12 @@ export function buildStopLogic(input: {
     blockers.push({ code: 'missing_quote', message: 'Missing current quote; live stop request blocked.' })
   }
   if (staleQuote) {
-    blockers.push({ code: 'stale_quote', message: 'Quote is stale or timestamp is missing; refresh price before requesting a live stop.' })
+    const ageNote = quoteAge != null ? `${Math.round(quoteAge / 60)}m old` : 'timestamp missing/unparseable'
+    const winNote = `${quoteMaxAge / 60}m ${quoteSession.replace('_', ' ')} window`
+    blockers.push({
+      code: 'stale_quote',
+      message: `Quote is outside the ${winNote} (${ageNote}); refresh price before requesting a live stop.`,
+    })
   }
   if (advisoryStop != null && currentPrice != null && advisoryStop >= currentPrice) {
     blockers.push({ code: 'stop_not_protective', message: `Advisory stop $${advisoryStop.toFixed(2)} is at/above current price $${currentPrice.toFixed(2)}.` })

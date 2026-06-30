@@ -394,7 +394,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                         const liveConf = mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey])
                         const stopTip = stopReviewTooltip({
                           advisoryAt: pr.at, advisoryModel: pr.model,
-                          priceAt: h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp,
+                          priceAt: h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp,
                           brokerFetchedAt: liveConf?.fetched_at ?? brokerStopsFetchedAt,
                           brokerOrderId: liveConf?.order_id,
                           confirmedAt: liveConf?.confirmed_at,

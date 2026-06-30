@@ -55,7 +55,7 @@ def test_hpe_like_existing_stop_tighter_keeps_current_stop_and_flags_floor_misma
           },
           confirmedStop: { stop_price: 42.59, source: 'manual' },
           trailPct: 4,
-          nowMs: Date.parse('2026-06-30T13:30:00Z')
+          nowMs: Date.parse('2026-06-30T15:30:00Z')
         })""",
     )
     assert result["state"] == "FIDELITY STOP RECORDED — MANUAL"
@@ -63,7 +63,7 @@ def test_hpe_like_existing_stop_tighter_keeps_current_stop_and_flags_floor_misma
     assert result["existing_stop_is_tighter_than_advisory"] is True
     assert result["advisory_stop_is_tighter_than_existing"] is False
     assert result["stop_delta_amount"] == 0.4
-    assert result["primary_operator_action"].startswith("Recommendation based on stale quote")
+    assert result["primary_operator_action"].startswith("Recommendation based on stale quote")  # 2.5h > any freshness window
     assert "Keep existing $42.59 stop" in result["primary_operator_action"]
     assert result["floor_math_consistent"] is False
     assert any(b["code"] == "floor_mismatch" for b in result["blockers"])

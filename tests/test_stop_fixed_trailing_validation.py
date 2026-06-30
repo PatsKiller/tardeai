@@ -375,3 +375,25 @@ def test_funds_not_applicable(tmp_path):
     )
     assert r["state"] == "NOT APPLICABLE"
     assert r["stop_action_decision"] == "NOT_APPLICABLE"
+
+
+def test_after_hours_finviz_quote_fresh_within_60m(tmp_path):
+    """Finviz after-hours @ 17:35 ET is fresh at 18:00 ET (25m) — not the old flat 15m gate."""
+    js = compile_stop_management(tmp_path)
+    quote_et = "2026-06-30 17:35:10"
+    now_ms = int(__import__("datetime").datetime(2026, 6, 30, 18, 0, 0, tzinfo=__import__("datetime").timezone(__import__("datetime").timedelta(hours=-4))).timestamp() * 1000)
+    r = run_logic(
+        js,
+        f"""m.buildStopLogic({{
+          h: {{ symbol: 'SCHD', account: 'schwab_rollover_ira', shares: 4155, current_price: 31.70, source_timestamp: '{quote_et}' }},
+          pr: {{ price: 31.70, stop_price: 30.44, source_broker: 'schwab', source_timestamp: '2026-06-30T17:05:02' }},
+          orderKind: 'STOP',
+          sourceTimestamp: '{quote_et}',
+          wholeShareConfirmed: true,
+          nowMs: {now_ms}
+        }})""",
+    )
+    assert all(b["code"] != "stale_quote" for b in r["blockers"]), r["blockers"]
+    assert r["canRequestLive"] is True
+    fresh = run_logic(js, f"m.isQuoteFresh('{quote_et}', {now_ms})")
+    assert fresh is True
