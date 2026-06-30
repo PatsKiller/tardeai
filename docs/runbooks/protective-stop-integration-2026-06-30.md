@@ -110,17 +110,26 @@ OCO is not ready until those are clean. This task does not enable an OCO canary.
 
 ## Validation Snapshot
 
-Last local validation on the integration branch:
+Last validation after deploying PR #33 into the runtime checkout:
 
 - `npm run build` in `apps/command-center-v3`: passed with existing Vite bundle-size/script warnings.
 - Requested pytest group after the V trailing-stop incident fix: `66 passed`.
 - Earlier full integration pytest group: `73 passed`.
 - Focused evidence/manual-ticket/activity tests: `37 passed`.
-- Built UI bundle includes build marker `cc-v3 stop-evidence PR33 2026-06-30`.
-- V trailing-stop dry-run preflight resolves the local holdings snapshot, then fails closed at `missing_field=postgres_connection` while PostgreSQL is unavailable; no Schwab request is sent.
-- `python3 scripts/validate_schwab_write_policy.py`: `24/26`, fail-closed because PostgreSQL was unavailable in the session.
-- DB role timeout verification could not run because PostgreSQL was unavailable.
-- `python3 scripts/execution_state.py --json`: command ran, but reported `operator_live_via_2fa_allowed=false` and `kill_switch_db_unavailable`.
+- Runtime checkout before deployment: `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, branch `fix/db-hang-prevention`, commit `32c58202d6dac5f6047ad7b7fe0bc671ffdd4bdd`, serving stale `/v3/assets/index-DDl-G8gk.js`.
+- Runtime checkout after deployment: branch `runtime/pr33-stop-evidence-deploy`, commit `494674104dafbd0ff59f23795944e022270bfcb6`.
+- New served UI bundle: `/v3/assets/index-CDfEtgRO.js`.
+- Served UI bundle includes build marker `cc-v3 stop-evidence PR33 2026-06-30`.
+- Served UI bundle no longer contains `placeholder:"000000"` or `approved, but Schwab rejected`.
+- Served UI bundle contains `Trade AI blocked submit before Schwab`, `Request Schwab stop via 2FA`, and `Create Fidelity manual ticket`.
+- Runtime server restarted through `bash linux_launchers/restart_server.sh`; backend health returned `{"ok": true, "version": "2.0", "port": 7777, "holdings_exists": true}`.
+- PostgreSQL was reachable with the runtime `.env`; DB role timeouts verified as `lock_timeout=3s`, `idle_in_transaction_session_timeout=2min`, and `statement_timeout=3min`.
+- `pg_stat_activity` showed no blocked queries; stale idle sessions were not terminated because `pg_blocking_pids` returned no blockers.
+- `python3 scripts/validate_schwab_write_policy.py`: `27/27 guards green`.
+- `python3 scripts/execution_state.py --json`: `operator_live_via_2fa_allowed=true`, `operator_approved_live_submit_possible=true`, `autonomous_live_submit_allowed=false`, and no current blockers.
+- `python3 scripts/validate_release_readiness.py --json --skip-build`: `ok=true`, `status=WARN` only because of pre-existing non-live-adjacent dirty `config/strategies/*.yaml` files in the runtime checkout; `live_adjacent=[]`.
+- V trailing-stop dry-run preflight passed with `whole_qty=201`, `residual_qty=0.4412`, matching approved/submit order-spec hashes, evidence revalidation `ok=true`, and `broker_submitted=false`.
+- The synthetic dry-run approval row was cleared with `approval_service.reject()`; active approval lock check returned zero pending/confirmed rows.
 - `python3 scripts/oco_readiness_report.py`: `ready_for_oco_one_share_canary=false`.
 
 ## Remaining Blockers Before Any OCO Canary
