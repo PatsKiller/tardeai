@@ -173,6 +173,16 @@ def _cached_schwab_validator():
     return res
 
 
+def _after_hours_stop_override(body=None):
+    """Explicit after-hours override for a Schwab live-stop canary. Default OFF — the first live canary is
+    restricted to a regular session. Requires BOTH an approved policy flag AND an operator acknowledgement in
+    the request; never enabled silently. Never relaxes any other gate (fresh quote / evidence / 2FA / read-back)."""
+    import os as _os
+    policy_on = str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
+    operator_ack = bool((body or {}).get("after_hours_ack"))
+    return policy_on and operator_ack
+
+
 def _stop_live_readiness(query=None):
     """GET /api/v2/holdings/stop-readiness?symbol=&account= — READ-ONLY readiness snapshot for the Schwab
     live-stop canary panel. No broker calls, no evidence writes, no order placement, no preflight side effects."""
@@ -224,17 +234,66 @@ def _stop_live_readiness(query=None):
     # Preflight has side effects (evidence write) → never auto-run from a GET. Report whether a valid approval
     # already exists for this symbol; otherwise the operator must run the dry-run preflight explicitly.
     out["preflight_status"] = "approval_present" if (out.get("active_approval") or {}).get("exists") else "not_run"
-    # System-side canary readiness. Quote-freshness and whole-share confirmation are frontend/operator gates and
-    # are combined client-side; this reflects the BACKEND gates only. READY_FOR_OPERATOR never means "submit" —
-    # the operator must still click + per-order 2FA, and the backend revalidates evidence at submit.
+    # Quote freshness + session classification (ET-aware; the failing ' ET' shape now normalizes cleanly).
+    try:
+        from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, FRESH_MAX_AGE_SEC
+        raw_q = q.get("quote_at")
+        if not raw_q:
+            raw_q = _holding_source_timestamp(sym, acct)
+        out["quote_raw"] = raw_q
+        parsed = parse_quote_ts(raw_q)
+        out["quote_parse_ok"] = parsed is not None
+        out["quote_normalized"] = to_iso(raw_q)
+        out["quote_session"] = classify_session(raw_q)
+        age = quote_age_seconds(raw_q)
+        out["quote_fresh"] = bool(age is not None and age <= FRESH_MAX_AGE_SEC)
+        out["quote_age_sec"] = int(age) if age is not None else None
+    except Exception as e:
+        out["quote_parse_ok"] = False
+        out["quote_session"] = "unknown"
+        out["quote_fresh"] = False
+        out["quote_error"] = str(e)[:80]
+    # System-side canary readiness. READY_FOR_OPERATOR never means "submit" — the operator must still click +
+    # per-order 2FA, and the backend revalidates evidence at submit.
     ex = out.get("execution") or {}
     system_ready = bool(
         out.get("db_available") and out.get("evidence_store_available")
         and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
         and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass"))
-    out["canary_state"] = "READY_FOR_OPERATOR" if system_ready else "BLOCKED"
+    # After-hours policy: a clean regular-session fresh quote is required for the first canary. After-hours →
+    # READY_FOR_OPERATOR_NEXT_REGULAR_SESSION (never auto-armed). Unparseable / stale → BLOCKED.
+    if not out.get("quote_parse_ok"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "Quote timestamp could not be parsed; refresh quote."
+    elif not out.get("quote_fresh"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "Quote is stale; refresh price."
+    elif not system_ready:
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "A backend readiness gate is not satisfied."
+    elif out.get("quote_session") == "regular":
+        out["canary_state"] = "READY_FOR_OPERATOR"
+    else:
+        out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+        out["canary_blocker"] = ("After-hours quote detected. First live canary is restricted to a regular "
+                                 "session. Retry next market session after a fresh quote.")
     out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
     return out
+
+
+def _holding_source_timestamp(symbol: str, account: str):
+    """Read a holding's price source_timestamp from canonical holdings.json (read-only) for session/freshness."""
+    try:
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        s = (symbol or "").upper(); a = (account or "")
+        # prefer the ET reprice time / per-holding ISO updated_at over the date-only as_of (which has no
+        # time and would misclassify the session). The frontend normally passes the live quote_at directly.
+        for r in (h.get("holdings", []) or []):
+            if str(r.get("symbol", "")).upper() == s and str(r.get("account", "")) == a:
+                return h.get("last_repriced") or r.get("updated_at") or r.get("as_of")
+        return h.get("last_repriced")
+    except Exception:
+        return None
 
 
 def _protective_holding_truth(account_key: str, symbol: str):
@@ -24870,15 +24929,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "ticket": ticket, "account": acct}
                         if quote_at:
                             import datetime as _dt
-                            raw_ts = str(quote_at).replace("Z", "+00:00")
-                            ts = _dt.datetime.fromisoformat(raw_ts)
-                            if ts.tzinfo is None:
-                                ts = ts.replace(tzinfo=_dt.timezone.utc)
-                            age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
-                            if age > 15 * 60:
+                            from brokers.quote_time import parse_quote_ts, classify_session, FRESH_MAX_AGE_SEC
+                            ts = parse_quote_ts(quote_at)
+                            if ts is None:
+                                # Never surface a raw "Invalid isoformat string" — block with a human message.
+                                return 200, {"ok": False, "mode": "blocked", "gate": "quote_unparseable",
+                                             "error": "Quote timestamp could not be parsed; refresh quote before "
+                                                      "requesting a live stop.",
+                                             "quote_raw": str(quote_at)[:40], "ticket": ticket, "account": acct}
+                            age = (_dt.datetime.now(_dt.timezone.utc) - ts.astimezone(_dt.timezone.utc)).total_seconds()
+                            if age > FRESH_MAX_AGE_SEC:
                                 return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                              "error": "Quote is stale; refresh price before requesting a live stop.",
-                                             "quote_age_sec": int(age), "ticket": ticket, "account": acct}
+                                             "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
+                                             "ticket": ticket, "account": acct}
+                            # After-hours policy: a Schwab live-stop canary requires a REGULAR-session quote unless an
+                            # explicit, operator-acknowledged after-hours override is approved (default: blocked).
+                            session = classify_session(ts)
+                            if acct.startswith("schwab") and session != "regular" and not _after_hours_stop_override(b):
+                                return 200, {"ok": False, "mode": "blocked", "gate": "after_hours_blocked",
+                                             "error": ("After-hours quote. Live stop canary requires a regular-session "
+                                                       "quote or an explicit after-hours override."),
+                                             "session": session, "quote_at_normalized": ts.isoformat(),
+                                             "ticket": ticket, "account": acct}
                         else:
                             return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                          "error": "Quote timestamp missing; refresh price before requesting a live stop.",

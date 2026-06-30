@@ -141,6 +141,34 @@ backend revalidates evidence, and the UI shows `LIVE BROKER STOP` only after bro
 For the **V** Schwab rollover IRA canary the only blocker was `fractional_qty` (201.4412 sh, residual 0.4412,
 whole-share unchecked). With confirmation checked and all gates clean, V is `READY_FOR_OPERATOR`.
 
+## Quote Timestamp Normalization & After-Hours Policy
+
+The quote feeds emit several timestamp shapes (`...T...-04:00`, `...Z`, `YYYY-MM-DD HH:MM:SS`, and
+`YYYY-MM-DD HH:MM:SS ET`). `datetime.fromisoformat()` raised on the ` ET` / space-separated shapes, which
+previously surfaced `Quote validation failed: Invalid isoformat string` to the operator.
+
+- **Shared normalizer** `scripts/brokers/quote_time.py`: `parse_quote_ts` returns one tz-aware datetime (or
+  `None`), `classify_session` → `regular | pre_market | after_hours | closed | unknown` (America/New_York via
+  `zoneinfo`; EDT/EST resolved by date). ` ET`/space-separated → Eastern, never silent UTC. Unparseable →
+  `None`, so callers block with a human message — never a raw isoformat error.
+- Used by the `api_v2` protective-stop quote gate, the `/api/v2/holdings/stop-readiness` panel, and
+  `protective_stop_2fa_preflight` (which now reports `quote_session`, `quote_freshness_class`, and
+  `operator_readiness`, and FAILS on an unparseable quote).
+- **After-hours policy:** a Schwab live-stop canary requires a **regular-session** quote (Mon–Fri
+  09:30–16:00 ET). After-hours with a fresh quote → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION` (never
+  auto-armed). Override is opt-in only: BOTH `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` AND an operator
+  `after_hours_ack` in the request (`_after_hours_stop_override`); default OFF. The override relaxes only the
+  session gate — fresh quote, evidence-bound approval, whole-share qty, per-order 2FA, and read-back still
+  apply, and broad stops are never enabled from an after-hours canary.
+- **UI:** the readiness panel shows Quote (parsed/fresh), Session, raw→normalized timestamp, a three-state
+  canary badge, and a human readiness message. After-hours / unparseable also disable the live-stop button
+  with their reason. The raw `Invalid isoformat string` is never shown.
+
+**Operator instruction:** retry the V trailing-stop canary during the **next regular session**
+(09:30–16:00 ET, Mon–Fri) once the readiness panel shows `Session: regular`, `Quote: fresh`, and
+`READY_FOR_OPERATOR`; then check whole-share confirmation, click *Request Schwab trailing stop via 2FA* once,
+and complete per-order 2FA.
+
 ## Validation Snapshot
 
 Last validation after deploying PR #33 into the runtime checkout:

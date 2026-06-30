@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-30 - Schwab live-stop: ET-aware quote timestamp normalization + after-hours canary policy
+
+The V trailing-stop canary was blocked by `Quote validation failed: Invalid isoformat string: '2026-06-30
+16:15:02 ET'` — the protective-stop quote gate (`api_v2`) parsed the quote timestamp with
+`datetime.fromisoformat()`, which can't handle the ` ET` / space-separated shapes the holdings feed emits.
+
+- **Shared normalizer** `scripts/brokers/quote_time.py`: `parse_quote_ts` accepts ISO+offset, ISO `Z`,
+  space-separated local, and a trailing ` ET`/`EDT`/`EST` (America/New_York via `zoneinfo`, EDT/EST resolved
+  by date — never a fixed offset, never a silent naive datetime). `classify_session` →
+  `regular | pre_market | after_hours | closed | unknown`. Unparseable → `None` so callers BLOCK with a human
+  message, never a raw isoformat error.
+- **Backend gate** (`api_v2` protective-stop handler + `_stop_live_readiness` + `protective_stop_2fa_preflight`)
+  now route quote timestamps through the normalizer. Unparseable → "Quote timestamp could not be parsed;
+  refresh quote." Stale → block. Session surfaced.
+- **After-hours policy**: a Schwab live-stop canary requires a **regular-session** quote. After-hours (fresh)
+  → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION` (never auto-armed). Override is opt-in only — requires BOTH
+  `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` AND an operator `after_hours_ack`; default OFF. No other gate relaxed.
+- **UI** (`HoldingProtectionActions`): readiness panel now shows Quote (parsed/fresh), Session, and
+  raw→normalized timestamp, a three-state canary badge (`READY_FOR_OPERATOR` / `… NEXT REGULAR SESSION` /
+  `BLOCKED`), and a human readiness message — never the raw parse error. After-hours/unparseable also disable
+  the live-stop button with their reason.
+- Verified: `2026-06-30 16:15:02 ET` → `2026-06-30T16:15:02-04:00`, session `after_hours`; V dry-run preflight
+  PASS (`broker_submitted=false`, hashes match, whole 201 / residual 0.4412, no active lock,
+  `operator_readiness=READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`). Build clean; **59 tests pass** (12 new);
+  validator 27/27. No broker request sent; `OCO_BRACKETS_SCHWAB` OFF; Fidelity manual-only.
+
 ## 2026-06-30 - Schwab live-stop: expose disabled reason + live-stop readiness panel (PR #33 canary prep)
 
 A disabled Schwab `STOP` / `STOP_LIMIT` / `TRAILING_STOP` button no longer grays out silently. The V Schwab

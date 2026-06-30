@@ -60,11 +60,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   // Live-stop readiness snapshot (read-only; no broker calls, no evidence writes) for the Schwab canary panel.
   const [readiness, setReadiness] = useState<any>(null)
+  const quoteTsForReadiness = h?.price_as_of ?? h?.source_timestamp ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
   useEffect(() => {
     if (!isSchwab) return
-    fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}`)
+    fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(quoteTsForReadiness))}`)
       .then(x => x.json()).then(j => setReadiness(unwrapApi(j))).catch(() => {})
-  }, [isSchwab, sym, acct])
+  }, [isSchwab, sym, acct, quoteTsForReadiness])
 
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
@@ -233,10 +234,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
   // + backend evidence revalidation enforce them at submit; we never silently rely on the frontend for safety.
   const backendHardBlock: string | null = isSchwab && readiness ? (
-    readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
-      : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
-        : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
-          : null
+    readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
+      : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
+        : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
+          : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
+            : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours quote — first live canary is restricted to a regular session. Retry next market session.'
+              : null
   ) : null
   const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
   const liveBlocked = !logic.canRequestLive || backendHardBlock != null
@@ -370,15 +373,23 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
       {/* LIVE STOP READINESS — compact gate panel for the Schwab live-stop canary (read-only). */}
       {isSchwab && showProtect && (() => {
-        const quoteFresh = !logic.blockers.some(b => b.code === 'stale_quote' || b.code === 'missing_quote')
         const rd = readiness || {}
         const exec = rd.execution || {}
         const ap = rd.active_approval || {}
         const sv = rd.schwab_validator || {}
+        const session: string = rd.quote_session ?? 'unknown'
+        const quoteParseOk: boolean = rd.quote_parse_ok !== false
+        const quoteFresh: boolean = rd.quote_fresh === true
         const ICON = (s: 'ok' | 'warn' | 'block') => s === 'ok' ? '✅' : s === 'warn' ? '⚠️' : '⛔'
+        const quoteStatus: 'ok' | 'warn' | 'block' = !quoteParseOk ? 'block' : !quoteFresh ? 'block' : 'ok'
+        const quoteValue = !quoteParseOk ? 'could not be parsed — refresh quote'
+          : !quoteFresh ? `stale — refresh price${rd.quote_age_sec != null ? ` (${Math.round(rd.quote_age_sec / 60)}m old)` : ''}` : 'fresh'
+        const sessionStatus: 'ok' | 'warn' | 'block' = session === 'regular' ? 'ok' : (session === 'after_hours' || session === 'pre_market') ? 'warn' : 'block'
         const rows: { label: string; status: 'ok' | 'warn' | 'block'; value: string }[] = [
           { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-evidence PR33 2026-06-30' },
-          { label: 'Quote', status: quoteFresh ? 'ok' : 'block', value: quoteFresh ? 'fresh' : 'stale — refresh price' },
+          { label: 'Quote', status: quoteStatus, value: quoteValue },
+          { label: 'Session', status: sessionStatus, value: session.replace(/_/g, '-') },
+          { label: 'Quote raw / normalized', status: quoteParseOk ? 'ok' : 'block', value: `${String(rd.quote_raw ?? '—')} → ${String(rd.quote_normalized ?? 'unparseable')}` },
           { label: 'DB / evidence store', status: (rd.db_available && rd.evidence_store_available) ? 'ok' : 'block', value: rd.db_available == null ? 'checking…' : (rd.db_available && rd.evidence_store_available) ? 'available' : 'unavailable' },
           { label: 'Schwab validator', status: sv.pass ? 'ok' : (sv.summary ? 'block' : 'warn'), value: sv.summary || 'checking…' },
           { label: 'Execution state', status: exec.operator_live_via_2fa_allowed ? 'ok' : 'block', value: exec.operator_live_via_2fa_allowed ? 'operator 2FA live allowed' : (exec.error || 'blocked') },
@@ -393,12 +404,15 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12, color: MUTED, fontWeight: 900, letterSpacing: 0.3 }}>LIVE STOP READINESS</div>
               {rd.canary_state && (() => {
-                const ready = rd.canary_state === 'READY_FOR_OPERATOR' && quoteFresh && (logic.residualQty <= 1e-6 || wholeShareConfirmed)
+                const cs = rd.canary_state
+                const fullReady = cs === 'READY_FOR_OPERATOR' && quoteFresh && (logic.residualQty <= 1e-6 || wholeShareConfirmed)
+                const label = fullReady ? '✅ READY_FOR_OPERATOR'
+                  : cs === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? '⚠️ READY — NEXT REGULAR SESSION'
+                    : '⛔ BLOCKED — resolve gates'
+                const col = fullReady ? GREEN : RED
                 return (
                   <span data-testid="canary-state" style={{ fontSize: 11, fontWeight: 900, padding: '2px 8px', borderRadius: 999,
-                    color: ready ? GREEN : AMBER, background: ready ? `${GREEN}1e` : `${AMBER}1e`, border: `1px solid ${ready ? GREEN : AMBER}` }}>
-                    {ready ? '✅ READY_FOR_OPERATOR' : '⚠️ BLOCKED — resolve gates'}
-                  </span>
+                    color: fullReady ? GREEN : AMBER, background: `${col}1e`, border: `1px solid ${fullReady ? GREEN : AMBER}` }}>{label}</span>
                 )
               })()}
             </div>
@@ -410,6 +424,15 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
                   <span style={{ fontWeight: 700 }}>{r.value}</span>
                 </div>
               ))}
+            </div>
+            {/* Human-readable readiness message — never a raw parse error. */}
+            <div data-testid="readiness-message" style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700,
+              color: rd.canary_state === 'READY_FOR_OPERATOR' ? GREEN : RED }}>
+              {!quoteParseOk ? 'Quote timestamp could not be parsed; refresh quote.'
+                : rd.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION'
+                  ? 'After-hours quote detected. First live canary is restricted to regular session. Try next market session after a fresh quote.'
+                  : rd.canary_state === 'READY_FOR_OPERATOR' ? 'Quote fresh.'
+                    : (rd.canary_blocker || 'Resolve the gates above before requesting a live stop.')}
             </div>
           </div>
         )

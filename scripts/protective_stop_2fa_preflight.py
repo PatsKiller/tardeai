@@ -25,6 +25,24 @@ def _conn():
     return _get_conn()
 
 
+def _quote_at_for(account: str, symbol: str):
+    """Best-effort quote timestamp for session/freshness classification (read-only): the holdings.json
+    reprice time (ET) or the per-holding updated_at. The API/UI normally passes the live quote_at directly."""
+    for path in (
+        PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json",
+        PROJECT_ROOT.parent / "trade-ai-v12-rebuild" / "data" / "portfolios" / "state" / "holdings.json",
+    ):
+        try:
+            d = json.loads(path.read_text())
+            for row in d.get("holdings") or []:
+                if str(row.get("symbol") or "").upper() == symbol.upper() and str(row.get("account") or "") == account:
+                    return d.get("last_repriced") or row.get("updated_at") or row.get("as_of")
+            return d.get("last_repriced")
+        except Exception:
+            pass
+    return None
+
+
 def _holding_truth(account: str, symbol: str) -> tuple[float | None, float | None]:
     try:
         import api_v2
@@ -82,6 +100,8 @@ def run_preflight(
     qty: float | None,
     current_price: float | None,
     dry_run: bool,
+    quote_at: str | None = None,
+    after_hours_override: bool = False,
 ) -> dict:
     if not dry_run:
         return {"ok": False, "error": "preflight_requires_dry_run"}
@@ -93,8 +113,28 @@ def run_preflight(
         supersede_approval,
     )
     from brokers.execution_readiness import evaluate_execution_readiness
+    from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, FRESH_MAX_AGE_SEC
 
     sym = symbol.upper().strip()
+    # ── Quote timestamp normalization + session classification (Part A/B). The ' ET' shape that broke
+    # datetime.fromisoformat() now parses via the shared normalizer; an unparseable quote FAILS the preflight
+    # with a human message (never a raw isoformat error). After-hours blocks the first canary unless overridden.
+    raw_quote = quote_at if quote_at is not None else _quote_at_for(account, sym)
+    parsed_q = parse_quote_ts(raw_quote)
+    q_session = classify_session(raw_quote)
+    q_age = quote_age_seconds(raw_quote)
+    q_fresh = bool(q_age is not None and q_age <= FRESH_MAX_AGE_SEC)
+    if parsed_q is None:
+        return {"ok": False, "stage": "quote_validation", "broker_submitted": False, "symbol": sym,
+                "quote_raw": raw_quote, "quote_session": "unknown", "quote_freshness_class": "unparseable",
+                "error": "Quote timestamp could not be parsed; refresh quote before requesting a live stop."}
+    if q_session == "regular":
+        q_class = "regular_session_fresh" if q_fresh else "regular_session_stale"
+    else:
+        q_class = "after_hours_override" if after_hours_override else "after_hours_blocked"
+    operator_readiness = ("READY_FOR_OPERATOR" if (q_session == "regular" and q_fresh)
+                          else "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" if (q_fresh and not after_hours_override)
+                          else "READY_FOR_OPERATOR" if after_hours_override else "BLOCKED_STALE_QUOTE")
     held_qty, broker_price = _holding_truth(account, sym)
     qty = float(qty if qty is not None else held_qty if held_qty is not None else 0)
     current_price = float(current_price if current_price is not None else broker_price if broker_price is not None else 0)
@@ -162,6 +202,14 @@ def run_preflight(
         "broker_submitted": False,
         "dry_run_evidence_superseded": superseded,
         "active_approval_lock": False,
+        "quote_raw": raw_quote,
+        "quote_normalized": to_iso(raw_quote),
+        "quote_session": q_session,
+        "quote_fresh": q_fresh,
+        "quote_age_sec": int(q_age) if q_age is not None else None,
+        "quote_freshness_class": q_class,
+        "operator_readiness": operator_readiness,
+        "after_hours_override": bool(after_hours_override),
         "symbol": sym,
         "account": account,
         "order_type": ot,
@@ -194,6 +242,9 @@ def main() -> None:
     ap.add_argument("--limit-price", type=float)
     ap.add_argument("--qty", type=float)
     ap.add_argument("--current-price", type=float)
+    ap.add_argument("--quote-at", help="quote timestamp (ISO / 'YYYY-MM-DD HH:MM:SS ET'); default from holdings")
+    ap.add_argument("--after-hours-override", action="store_true",
+                    help="explicit operator-acknowledged after-hours override (default off; first canary is regular-session only)")
     ap.add_argument("--dry-run", action="store_true", required=True)
     args = ap.parse_args()
     out = run_preflight(
@@ -206,6 +257,8 @@ def main() -> None:
         qty=args.qty,
         current_price=args.current_price,
         dry_run=args.dry_run,
+        quote_at=args.quote_at,
+        after_hours_override=args.after_hours_override,
     )
     print(json.dumps(out, indent=2, default=str))
     sys.exit(0 if out.get("ok") else 1)
