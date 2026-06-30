@@ -14,9 +14,13 @@ The draft cites LeBeau (Chandelier 22×3 ATR), Kaminski & Lo, momentum-crash lit
 
 **However — this system already tested it.** `scripts/backtest_hybrid_stops.py` (STOP-V2.4, 2026-06-13) backtested the MA-trend filter + **Chandelier** + dynamic-ATR overlay and returned **"HOLD — hybrid does not clearly beat the R-multiple; keep config OFF."** So the policy's Chandelier/ATR-multiplier core is exactly what our own data did *not* confirm.
 
-**Decision (operator, 2026-06-29):** re-backtest the *layered, context-aware* version (tag/regime/freshness-driven multipliers — which STOP-V2.4 did **not** test) before any rollout. Until that backtest shows a positive edge:
-- **Layers 1–2 + 4 (initial stop, breakeven, portfolio risk)** — adopt now (they don't contradict the prior).
-- **Layer 3 (Chandelier/ATR trailing)** — **config-gated OFF** for execution; computed + tagged + monitored in *advisory/paper* mode so it can be validated against the prior.
+**Decision (operator, 2026-06-29):** re-backtest the *layered, context-aware* version (tag/regime/freshness-driven multipliers — which STOP-V2.4 did **not** test) before any rollout.
+
+**Phase 2 re-test result (2026-06-29) — FAIL GATE.** `backtest_hybrid_stops.py --mode ctx` (130 baseline vs 159 ctx trades over V/RTX/LMT/NOC/GD/PLTR/NVDA/AMD, 3y) found the layered trailing — *with* L2 breakeven + delayed +1.5R activation + regime-aware multiplier — produced **Δ expectancy = −0.451R/trade vs the no-trail baseline** (ctx +0.645R vs baseline +1.096R), with worse drawdown and profit factor. It *raised* win rate (40.9% vs 23.8%) but **truncated the fat right-tail** the momentum edge depends on. This **confirms STOP-V2.4** even with the policy's refinements. The §6 gate (≥ +0.25R from trailing) is **not met** (it's −0.45R).
+
+Consequently:
+- **Layers 1–2 + 4 (initial stop, breakeven, portfolio risk)** — adopt (they don't contradict the prior).
+- **Layer 3 (Chandelier/ATR trailing)** — **stays config-OFF** for execution; computed + tagged + monitored in *advisory/paper* mode only. Re-enable consideration only if the **intraday micro-cap paper sample (§6)** — the definitive test, which the daily backtest cannot stand in for — shows a positive trailing edge. Prior evidence is now **doubly negative** (STOP-V2.4 + this layered re-test).
 
 ---
 
