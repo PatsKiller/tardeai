@@ -6,6 +6,16 @@ const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b'
 const SCHWAB_SELL_ALL_MAX_SHARES = 40
 const unwrapApi = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
 const apiReason = (j: any) => j?.result?.error ?? j?.error ?? j?.reason ?? j?.message ?? 'request failed'
+const internalBlockMessage = (r: any) => {
+  const reason = r?.reason || apiReason(r)
+  if (r?.broker_submitted === false && (r?.stage === 'evidence_revalidation' || String(reason).includes('no_evidence_bound_approval'))) {
+    return 'Trade AI blocked submit before Schwab: missing evidence-bound approval. No broker order was sent.'
+  }
+  if (r?.broker_submitted === false) {
+    return `Trade AI blocked submit before Schwab: ${reason}. No broker order was sent.`
+  }
+  return null
+}
 
 const BROKER_URL: Record<string, string> = {
   fidelity: 'https://digital.fidelity.com/ftgw/digital/portfolio/summary',
@@ -186,8 +196,10 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         onRefresh?.()
       } else if (r?.stage === 'confirm' && r?.ok && r?.fully_approved === false) {
         setMsg('channel confirmed — waiting on the other factor')
+      } else if (r?.mode === 'blocked' || r?.broker_submitted === false) {
+        setMsg(`⛔ ${internalBlockMessage(r) ?? apiReason(r)}`)
       } else if (r?.stage === 'submit' && (ostatus === 'error' || r?.ok === false)) {
-        setMsg(`⛔ approved, but Schwab rejected: ${apiReason(r)}`)
+        setMsg(`⛔ Schwab rejected the submitted order: ${apiReason(r)}`)
       } else {
         setMsg(`⛔ ${apiReason(r)}`)
       }
@@ -308,7 +320,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
                 ? `Fidelity has no trading API — arms a software-monitored ${trailLabel}% trailing stop + a manual Active Trader ticket to replace the fixed stop`
                 : `Submit a ${trailLabel}% trailing stop via the Schwab API (per-order 2FA) to replace the fixed stop`}
               style={{ fontSize: 9.5, fontWeight: 900, padding: '4px 10px', borderRadius: 5, cursor: (busy || needsReauth) ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: `${GREEN}1e`, color: GREEN, whiteSpace: 'nowrap' }}
-            >{busy && !intentId ? '…' : isFidelity ? `Switch manually @ Fidelity` : `Switch @ Schwab (API · 2FA)`}</button>
+            >{busy && !intentId ? '…' : isFidelity ? `Create Fidelity manual ticket` : `Request Schwab trailing stop via 2FA`}</button>
             {needsReauth && <span style={{ fontSize: 8.5, color: RED, fontWeight: 700 }}>Schwab re-auth required</span>}
           </div>
         </div>
@@ -342,9 +354,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       {showProtect && (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
-          {isSchwab && btn(`Request Schwab fixed stop`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
-          {isSchwab && trailPct != null && btn(`Request Schwab trailing stop`, 'TRAILING', preferTrail)}
-          {isSchwab && btn('Request Schwab stop-limit', 'STOP_LIMIT')}
+          {isSchwab && btn(`Request Schwab fixed stop via 2FA`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
+          {isSchwab && trailPct != null && btn(`Request Schwab trailing stop via 2FA`, 'TRAILING', preferTrail)}
+          {isSchwab && btn('Request Schwab stop-limit via 2FA', 'STOP_LIMIT')}
           {isFidelity && (
             <button
               onClick={e => { e.stopPropagation(); requestOrder(logic.liveStop != null ? 'STOP_LIMIT' : 'STOP') }}

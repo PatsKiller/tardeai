@@ -202,7 +202,7 @@ export function buildStopLogic(input: {
     trailPct,
   })
   const actionLabel = broker === 'schwab'
-    ? 'Request Schwab stop'
+    ? 'Request Schwab stop via 2FA'
     : broker === 'fidelity'
       ? (liveStop != null ? 'Review Fidelity stop' : 'Create Fidelity manual ticket')
       : 'Not applicable'

@@ -26,6 +26,8 @@ import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
 import HealthHub from './pages/HealthHub'
 
+const BUILD_MARKER = 'cc-v3 stop-evidence PR33 2026-06-30'
+
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
   if (!degraded) return null
@@ -70,6 +72,9 @@ function Shell() {
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
+          <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
+            Build: {BUILD_MARKER}
+          </div>
         </main>
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />

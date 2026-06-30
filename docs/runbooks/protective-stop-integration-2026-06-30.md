@@ -30,6 +30,30 @@ Protective-stop confirmation now binds the fully approved intent to the exact Sc
 
 `schwab_transport.place_order()` revalidates the exact order spec hash and readiness snapshot immediately before `client.place_order()`. If quantity, account, symbol, order type, stop price, limit price, or trailing percent changes after approval, submit blocks with `order_spec_hash_changed` and requires a fresh approval.
 
+If evidence is missing, the API must return an internal pre-broker block:
+
+- `mode=blocked`
+- `stage=evidence_revalidation`
+- `broker_submitted=false`
+- `reason=no_evidence_bound_approval`
+
+The UI must say: `Trade AI blocked submit before Schwab: missing evidence-bound approval. No broker order was sent.`
+
+## Schwab Protective Stop Preflight
+
+Before any live STOP / STOP_LIMIT / TRAILING_STOP canary, run:
+
+```bash
+python3 scripts/protective_stop_2fa_preflight.py \
+  --symbol V \
+  --account schwab_rollover_ira \
+  --order-kind TRAILING_STOP \
+  --trail-pct 8.7 \
+  --dry-run
+```
+
+The preflight creates a dry-run intent, simulates typed-ticker approval, creates evidence, revalidates the exact order-spec hash, and stops before any Schwab broker write. If PostgreSQL is unavailable, it must fail closed with `missing_field=postgres_connection`.
+
 ## Fidelity Activity And Journal
 
 `scripts/snaptrade_activity_ingest.py --apply` is the required path for Fidelity/SnapTrade activity. Position/balance sync alone does not import activity, dividends, or DRIPs.

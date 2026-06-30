@@ -3,9 +3,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"
+LEGACY_UI = ROOT / "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
 LOGIC = ROOT / "apps/command-center-v3/src/lib/stopManagement.ts"
 API = ROOT / "scripts/api_v2.py"
 OCO = ROOT / "scripts/schwab_oco_bracket.py"
+APP = ROOT / "apps/command-center-v3/src/App.tsx"
 
 
 def read(path: Path) -> str:
@@ -125,3 +127,27 @@ def test_12_operator_decision_area_replaces_dense_rationale():
     assert "Mode" in src
     assert "Reason to act" in src
     assert "Analyst note:" in src
+
+
+def test_13_internal_guard_copy_not_schwab_rejected_and_no_sample_code():
+    src = read(UI) + read(LEGACY_UI)
+    assert "Trade AI blocked submit before Schwab: missing evidence-bound approval. No broker order was sent." in src
+    assert "approved, but Schwab rejected" not in src
+    assert "placeholder=\"6-digit code\"" in src
+    assert "placeholder=\"000000\"" not in src
+
+
+def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
+    src = read(UI) + read(LEGACY_UI) + read(LOGIC)
+    assert "Request Schwab stop via 2FA" in src
+    assert "Request Schwab fixed stop via 2FA" in src
+    assert "Request Schwab trailing stop via 2FA" in src
+    assert "Create Fidelity manual ticket" in src
+    assert "Execute @ Schwab" not in src
+    assert "Execute @ Fidelity" not in src
+
+
+def test_15_build_marker_visible_for_deployment_verification():
+    src = read(APP)
+    assert "BUILD_MARKER" in src
+    assert "cc-v3 stop-evidence PR33 2026-06-30" in src
