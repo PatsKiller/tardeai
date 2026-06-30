@@ -390,7 +390,9 @@ export default function PortfolioHub({ onDrill }: Props) {
                           <span title={`${pr.rec}\n${pr.rationale ?? ''}\nanalyzed ${String(pr.at).slice(0, 10)} by ${pr.model} · confidence ${pr.confidence ?? '—'} · ADVISORY ONLY`}
                             style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
                               background: 'rgba(168,85,247,.16)', border: '1px solid rgba(168,85,247,.35)', color: '#a855f7', cursor: 'help' }}>
-                            🛡 {String(pr.rec).split('·')[0].trim()}</span>
+                            🛡 {pr.stop_price != null
+                              ? `stop $${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` (${Number(pr.stop_distance_pct).toFixed(1)}% below)` : ''}`
+                              : String(pr.rec).split('·')[0].trim()}</span>
                         ) : null
                       })()}
                       <span style={{ flex: 1 }} />

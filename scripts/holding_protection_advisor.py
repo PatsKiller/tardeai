@@ -151,6 +151,7 @@ def _sanity_check(rec, t, bounds=None):
     warn = questionable / out-of-family-band · ok = clean."""
     b = bounds or {}
     stop_max = float(b.get("stop_max_pct", 12.0))
+    stop_min = float(b.get("stop_min_pct", 0.0))
     trail_max = float(b.get("trail_max_pct", 20.0))
     issues: list[str] = []
     fail = False
@@ -177,6 +178,8 @@ def _sanity_check(rec, t, bounds=None):
                 pass
         if dist < 0.5:
             issues.append(f"stop only {dist:.1f}% below — inside noise, will whipsaw")
+        elif stop_min and dist < stop_min - 1.0:   # too TIGHT: below the family floor (whipsaws a core hold)
+            issues.append(f"stop {dist:.1f}% below — TIGHTER than the {stop_min:.0f}% family floor (whipsaw risk; should be widened)")
         elif dist > stop_max + 1.0:   # 1% tolerance so a stop sitting AT the band edge isn't flagged
             issues.append(f"stop {dist:.1f}% below — beyond the {stop_max:.0f}% family band / weak protection")
         # anchor-to-structure: only demand the stop sit at/below the 20d swing low when that low is
@@ -295,6 +298,23 @@ def run(lane="grok", symbols=None, limit=12):
         rec = _parse(out)
         if not rec:
             print(f"  {sym}: unparseable response"); failed += 1; continue
+        # FAMILY-FLOOR enforcement (2026-06-29): the 20d-swing-low anchor can yield a stop TIGHTER than the
+        # family minimum for low-volatility holdings (income ETFs near their range, e.g. SCHD/DIVI) — which
+        # whipsaws a "held-through-noise" core position. Widen the recommended stop to the family floor and
+        # record it in the rationale (mirrors the prompt's too-WIDE cap, applied to the too-TIGHT side).
+        try:
+            _px = float(t["price"]); _smin = float(fb.get("stop_min_pct") or 0)
+            if _px > 0 and _smin and rec.get("stop_price") is not None:
+                _dist = (_px - float(rec["stop_price"])) / _px * 100
+                if _dist < _smin - 0.1:
+                    rec["stop_price"] = round(_px * (1 - _smin / 100), 2)
+                    rec["stop_pct_below"] = _smin
+                    rec["_floored_from_pct"] = round(_dist, 1)
+                    rec["rationale"] = (str(rec.get("rationale") or "")[:120]
+                        + f" · widened to the {_smin:.0f}% {fb['label']} floor (20d swing low only "
+                          f"{_dist:.1f}% below — too tight to hold through noise)").strip()
+        except Exception:
+            pass
         # Extended core at the family stop cap: offer a matching % trail (same width as fixed stop).
         try:
             spb = float(rec.get("stop_pct_below") or 0)
