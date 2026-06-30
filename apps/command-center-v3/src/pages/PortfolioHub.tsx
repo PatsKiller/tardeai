@@ -430,7 +430,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                       if (!sc) return null
                       return (
                         <div style={{ borderTop: '1px solid var(--border)', marginTop: 7, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          {sc.description && <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.4 }}>{sc.description}</div>}
+                          {sc.description && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{sc.description}</div>}
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 8.5 }}>
                             {sc.sector && <span style={{ color: '#60a5fa' }}>{sc.sector}{sc.sector_etf ? ` (${sc.sector_etf})` : ''}</span>}
                             {sc.vs_sector_week != null && <span title={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`}

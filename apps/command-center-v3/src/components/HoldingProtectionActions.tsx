@@ -168,10 +168,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 6, padding: '7px 9px', borderRadius: 8, background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.22)' }}>
+      {/* ADVISORY stop (nothing placed/monitored) — unmistakable that this is a recommendation, not active */}
+      {!(confirmedStop?.stop_price != null || monitored?.status === 'armed') && stop != null && (
+        <div style={{ fontSize: 11.5, color: AMBER, fontWeight: 800, marginBottom: 6, padding: '3px 8px', borderRadius: 5, background: `${AMBER}14`, border: `1px solid ${AMBER}40` }}
+          title="Advisory recommendation only — NO stop order is placed or monitored. Use Protect below to arm one.">
+          ○ ADVISORY stop @ <b style={{ fontFamily: 'monospace', fontSize: 13 }}>${stop.toFixed(2)}</b> — not placed
+        </div>
+      )}
       {(confirmedStop?.stop_price != null || monitored?.status === 'armed') && (
-        <div style={{ fontSize: 12.5, color: GREEN, fontWeight: 800, marginBottom: 6, padding: '3px 8px', borderRadius: 5, background: `${GREEN}14`, border: `1px solid ${GREEN}33` }}
-          title={confirmedStop?.note ?? (monitored ? 'Software-monitored stop (not a broker order)' : '')}>
-          ✓ {confirmedStop ? 'Stop active' : 'Tracked'} @ <b style={{ fontFamily: 'monospace', fontSize: 14 }}>${Number(liveStop).toFixed(2)}</b>
+        <div style={{ fontSize: 12.5, color: confirmedStop ? GREEN : PURPLE, fontWeight: 800, marginBottom: 6, padding: '3px 8px', borderRadius: 5, background: `${(confirmedStop ? GREEN : PURPLE)}14`, border: `1px solid ${(confirmedStop ? GREEN : PURPLE)}40` }}
+          title={confirmedStop?.note ?? (monitored ? 'Software-MONITORED stop — not a resting broker order; the system watches price and alerts/sells on breach' : '')}>
+          {confirmedStop ? '● STOP LIVE' : '◉ MONITORED'} @ <b style={{ fontFamily: 'monospace', fontSize: 14 }}>${Number(liveStop).toFixed(2)}</b>
           {confirmedStop
             ? (confirmedIsTrailing ? ' · trailing @ Fidelity' : ' · fixed stop @ Fidelity')
             : monitored?.order_type === 'TRAILING_STOP' && monitored.trail_pct != null ? ` · trail ${monitored.trail_pct}%` : ' · fixed'}
@@ -255,7 +262,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       )}
 
       {trail && showProtect && (
-        <div style={{ fontSize: 8.5, color: MUTED, marginTop: 5, lineHeight: 1.45 }}>{protectionExplain(pr, trail, { brokerFixedActive: confirmedIsFixed })}</div>
+        <div style={{ fontSize: 10.5, color: MUTED, marginTop: 5, lineHeight: 1.5 }}>{protectionExplain(pr, trail, { brokerFixedActive: confirmedIsFixed })}</div>
       )}
       {msg && <div style={{ fontSize: 9, marginTop: 5, color: msg.startsWith('✅') ? GREEN : msg.startsWith('⛔') ? RED : AMBER }}>{msg}</div>}
       {ticket && (
