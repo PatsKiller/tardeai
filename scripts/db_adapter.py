@@ -92,6 +92,21 @@ def _get_conn():
             connect_timeout=10,
         )
         conn.autocommit = False
+        # Idle-in-transaction safety net (2026-06-29): code that runs a read via _get_conn().cursor() without
+        # an explicit commit/rollback leaves the transaction open holding locks — which blocked a DDL migration
+        # on paper_trades (an idle-in-txn connection held an AccessShareLock for minutes). Auto-abort any
+        # transaction left idle > 2 min so it can NEVER hold a lock indefinitely; legitimate transactions
+        # commit well within that, and the _execute path recovers via its except→rollback. This enforces the
+        # "commit-per-request" intent at the DB level without changing write atomicity (autocommit stays off).
+        try:
+            with conn.cursor() as _c:
+                _c.execute("SET idle_in_transaction_session_timeout = '120s'")
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         _tls.conn = conn
         return conn
     except Exception as e:

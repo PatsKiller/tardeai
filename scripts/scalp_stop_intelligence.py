@@ -49,11 +49,18 @@ def _walk(bars, entry, init_stop, mode, mult=2.0, chand_n=22):
 def whatif(trade_id):
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
-    cur.execute("""SELECT id, symbol, entry_price, exit_price, COALESCE(planned_stop, stop_loss_price) AS stop,
-                          exit_reason, market_regime FROM paper_trades WHERE id=%s""", (trade_id,))
+    # trade_intrabar_bars.trade_instance_id references trade_instances.id (NOT paper_trades.id — different
+    # id spaces). Load the trade from trade_instances so entry/symbol MATCH the bars; pull the stop +
+    # regime from paper_trades via the shared trade_key.
+    cur.execute("""SELECT ti.id, ti.symbol, ti.entry_price, ti.exit_price,
+                          COALESCE(pt.planned_stop, pt.stop_loss_price) AS stop,
+                          pt.exit_reason, pt.market_regime
+                   FROM trade_instances ti
+                   LEFT JOIN paper_trades pt ON pt.trade_key = ti.trade_key
+                   WHERE ti.id=%s""", (trade_id,))
     t = cur.fetchone()
     if not t:
-        return {"error": f"trade {trade_id} not found"}
+        return {"error": f"trade_instance {trade_id} not found"}
     tid, sym, entry, exit_, stop, reason, regime = t
     entry = float(entry); exit_ = float(exit_) if exit_ else None
     stop = float(stop) if stop else None
