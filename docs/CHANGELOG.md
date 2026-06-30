@@ -9,6 +9,7 @@
 - Added ticker lifecycle aggregation and stop-out re-entry watch helpers. Uploaded Fidelity examples calculate HPE realized P/L `-$4,906.86` and GCTS realized P/L `-$1,370.10`; dividends are income, rollover cash is not trading P/L.
 - Added read-only `scripts/oco_readiness_report.py`; OCO remains blocked until basic protective STOP and trailing STOP canaries, evidence binding, read-back, DB, validator, execution state, and kill switches are clean.
 - Opened draft PR #33 and documented validation state in `docs/runbooks/protective-stop-integration-2026-06-30.md`: UI build and requested pytest group pass; DB-dependent Schwab validator and DB timeout checks remain blocked by PostgreSQL unavailability in the local session.
+- Hardened the Schwab protective-stop evidence failure path after the V trailing-stop incident: evidence now records proof type/hash and TIF/residual details, internal evidence blocks return `broker_submitted=false`, UI copy says Trade AI blocked before Schwab, and `scripts/protective_stop_2fa_preflight.py --dry-run` proves order-spec hash binding before any canary.
 
 ## 2026-06-30 - Fix: bound lock_timeout/statement_timeout per connection to stop dashboard hangs
 

@@ -24981,6 +24981,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if sub.get("stage") == "submit" and not sub.get("ok"):
                     return 200, {"ok": False, "stage": "submit", "error": sub.get("error"),
                                  "result": sub.get("result"), "modify_cancel_result": replace_result}
+                if sub.get("mode") == "blocked" and not sub.get("ok"):
+                    return 200, {"ok": False, "mode": "blocked",
+                                 "stage": sub.get("stage") or "submit",
+                                 "broker_submitted": bool(sub.get("broker_submitted")),
+                                 "reason": sub.get("reason"),
+                                 "error": sub.get("error"),
+                                 "result": sub.get("result"),
+                                 "modify_cancel_result": replace_result}
                 res = sub.get("result") or {}
                 return 200, {"ok": bool(sub.get("ok")), "stage": "submit",
                              "result": res, "broker_order_id": sub.get("broker_order_id"),

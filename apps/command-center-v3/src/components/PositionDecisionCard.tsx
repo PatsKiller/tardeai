@@ -31,6 +31,16 @@ const unwrapApi = (j: any) => (j && typeof j === 'object' && 'data' in j && j.da
 // The REAL failure reason is often nested in result.error (e.g. a Schwab transport error like an expired
 // refresh token) — dig there first so the operator sees the actual cause, not a generic "failed".
 const apiReason = (j: any) => j?.result?.error ?? j?.error ?? j?.reason ?? j?.message ?? j?.hint ?? 'request failed'
+const internalBlockMessage = (r: any) => {
+  const reason = r?.reason || apiReason(r)
+  if (r?.broker_submitted === false && (r?.stage === 'evidence_revalidation' || String(reason).includes('no_evidence_bound_approval'))) {
+    return 'Trade AI blocked submit before Schwab: missing evidence-bound approval. No broker order was sent.'
+  }
+  if (r?.broker_submitted === false) {
+    return `Trade AI blocked submit before Schwab: ${reason}. No broker order was sent.`
+  }
+  return null
+}
 
 function Metric({ label, value, color = TEXT0, title }: any) {
   return <div style={metric} title={title}><div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', fontWeight: 850, letterSpacing: '.05em' }}>{label}</div><div style={{ fontSize: 13, color, fontWeight: 900, marginTop: 3, cursor: title ? 'help' : undefined }}>{value}</div></div>
@@ -165,8 +175,11 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       }
       // approval accepted but the broker submit did NOT confirm (e.g. Schwab token expired) — DO NOT claim
       // success; show the real cause (result.error) so the operator knows exactly what to fix.
+      else if (r?.mode === 'blocked' || r?.broker_submitted === false) {
+        setStopMsg(`⛔ ${internalBlockMessage(r) ?? apiReason(r)}`)
+      }
       else if (r?.stage === 'submit' && (ostatus === 'error' || r?.ok === false)) {
-        setStopMsg(`⛔ approved, but Schwab rejected the submit: ${apiReason(r)}`)
+        setStopMsg(`⛔ Schwab rejected the submitted order: ${apiReason(r)}`)
       }
       else if (r?.ok && r?.fully_approved === true && !oid && !submitted) {
         setStopMsg('✅ approval accepted, but submit result was not returned — refresh broker orders / stop monitor to verify before retrying')
@@ -257,7 +270,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             </div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>② or enter the 6-digit code (Telegram / email)</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              <input value={stopCode} onChange={e => setStopCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric"
+              <input value={stopCode} onChange={e => setStopCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" inputMode="numeric"
                 style={{ flex: 1, fontSize: 14, padding: '8px 10px', borderRadius: 6, border: `1px solid ${codeOk ? '#22c55e' : 'rgba(148,163,184,.3)'}`, background: '#1e293b', color: TEXT0, letterSpacing: 3, ...({ fontFamily: 'monospace' } as any) }} />
               <button onClick={() => _confirmStop('telegram')} disabled={stopBusy || !codeOk} style={{ fontSize: 11, fontWeight: 800, padding: '7px 12px', borderRadius: 6, border: 'none', cursor: (stopBusy || !codeOk) ? 'not-allowed' : 'pointer', background: codeOk ? '#b45309' : '#334155', color: codeOk ? '#fff' : '#64748b', whiteSpace: 'nowrap' }}>approve + submit</button>
             </div>
@@ -277,7 +290,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
           <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
             {stopMsg && !stopDone && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
             <button onClick={_resetStop} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
-            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : isMarketSell ? RED : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? (isMarketSell ? 'REQUEST LIVE SELL' : 'REQUEST LIVE STOP') : 'BUILD TICKET'}</button>}
+            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : isMarketSell ? RED : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? (isMarketSell ? 'Request Schwab sell via 2FA' : 'Request Schwab stop via 2FA') : 'Create Fidelity manual ticket'}</button>}
           </div>
         </div>
       </div>

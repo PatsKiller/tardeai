@@ -65,7 +65,27 @@ def submit_fully_approved(intent_id: str) -> dict:
             except Exception:
                 return {"ok": False, "error": f"unsupported intent type for auto-submit (strategy_id={marker!r})"}
     except Exception as e:
-        return {"ok": False, "stage": "submit", "error": str(e)[:240]}
+        msg = str(e)[:240]
+        if "EVIDENCE_REVALIDATION BLOCK:" in msg:
+            reason = msg.split("EVIDENCE_REVALIDATION BLOCK:", 1)[1].strip() or "evidence_revalidation_failed"
+            return {
+                "ok": False,
+                "mode": "blocked",
+                "stage": "evidence_revalidation",
+                "broker_submitted": False,
+                "reason": reason,
+                "error": f"Trade AI blocked submit before Schwab: {reason}. No broker order was sent.",
+            }
+        if "EXECUTION_READINESS BLOCK:" in msg:
+            return {
+                "ok": False,
+                "mode": "blocked",
+                "stage": "execution_readiness",
+                "broker_submitted": False,
+                "reason": msg.split("EXECUTION_READINESS BLOCK:", 1)[1].strip() or "execution_readiness_block",
+                "error": f"Trade AI blocked submit before Schwab: {msg}. No broker order was sent.",
+            }
+        return {"ok": False, "stage": "submit", "broker_submitted": False, "error": msg}
 
     ok_status = res.get("status") in ("submitted", "filled", "monitored_armed")
     if ok_status and marker == PROTECTIVE_STOP_MARKER:

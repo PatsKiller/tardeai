@@ -181,7 +181,7 @@ def _confirmed_approval_context(intent_id: str) -> dict:
     cur = conn.cursor()
     try:
         cur.execute(
-            """SELECT channel, confirmed_at, expires_at
+            """SELECT channel, code, confirmed_at, expires_at
                FROM trade_approvals
                WHERE intent_id=%s AND status='confirmed'
                ORDER BY confirmed_at DESC NULLS LAST, id DESC LIMIT 1""",
@@ -192,11 +192,14 @@ def _confirmed_approval_context(intent_id: str) -> dict:
         return {}
     if not row:
         return {}
+    proof = str(row[1] or "")
     return {
         "approval_channel": row[0] or "web",
         "operator_user": "operator",
-        "confirmed_at": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1] or ""),
-        "expires_at": row[2].isoformat() if hasattr(row[2], "isoformat") else str(row[2] or ""),
+        "ticker_code_proof_hash": _hash_one({"channel": row[0] or "web", "proof": proof}),
+        "proof_type": "typed_ticker" if row[0] == "web" else "six_digit_code",
+        "confirmed_at": row[2].isoformat() if hasattr(row[2], "isoformat") else str(row[2] or ""),
+        "expires_at": row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3] or ""),
     }
 
 
@@ -241,14 +244,19 @@ def create_order_evidence_approval(
         "stop_price": ev.get("stop_price") or order_spec.get("stopPrice"),
         "limit_price": ev.get("limit_price") or order_spec.get("price"),
         "trail_pct": ev.get("trail_pct") or order_spec.get("stopPriceOffset"),
+        "time_in_force": order_spec.get("duration"),
         "current_price": ev.get("current_price"),
         "held_qty": ev.get("held_qty"),
+        "residual_qty": ev.get("residual_qty"),
+        "approval_channel": approval_channel or ctx.get("approval_channel") or "web",
+        "proof_type": ctx.get("proof_type"),
+        "ticker_code_proof_hash": ctx.get("ticker_code_proof_hash"),
         "order_spec_hash": spec_hash,
         "order_spec": order_spec,
     }
     if quote_snapshot is None and ev.get("current_price") is not None:
         quote_snapshot = {"price": ev.get("current_price"), "symbol": proposal_snapshot["symbol"]}
-    return create_evidence_approval(
+    res = create_evidence_approval(
         intent_id=iid,
         proposal_id=ev.get("proposal_id"),
         correlation_id=proposal_snapshot["correlation_id"] or None,
@@ -266,6 +274,11 @@ def create_order_evidence_approval(
             f"spec={spec_hash}"
         ),
     )
+    if res.get("approval_id") is not None:
+        res["evidence_id"] = res.get("approval_id")
+    if res.get("hashes"):
+        res["order_spec_hash"] = spec_hash
+    return res
 
 
 def fetch_approval(intent_id: str) -> dict | None:

@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""Dry-run Schwab protective-stop 2FA/evidence preflight.
+
+This proves the evidence-bound approval path without calling Schwab. It builds
+the same intent/order JSON used by the live protective STOP / STOP_LIMIT /
+TRAILING_STOP flow, simulates a typed-ticker approval row, creates the
+evidence-bound approval, revalidates the exact order spec hash, and stops before
+any broker transport.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import math
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+def _conn():
+    from db_adapter import _get_conn
+    return _get_conn()
+
+
+def _holding_truth(account: str, symbol: str) -> tuple[float | None, float | None]:
+    try:
+        import api_v2
+        qty, price = api_v2._protective_holding_truth(account, symbol)
+        if qty is not None or price is not None:
+            return qty, price
+    except Exception:
+        pass
+    for path in (
+        PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json",
+        PROJECT_ROOT.parent / "trade-ai-v12-rebuild" / "data" / "portfolios" / "state" / "holdings.json",
+    ):
+        try:
+            d = json.loads(path.read_text())
+            for row in d.get("holdings") or []:
+                if str(row.get("symbol") or "").upper() != symbol.upper():
+                    continue
+                if str(row.get("account") or row.get("account_id") or "") != account:
+                    continue
+                qty = row.get("shares") or row.get("quantity") or row.get("qty")
+                price = row.get("current_price") or row.get("price")
+                return (float(qty) if qty is not None else None,
+                        float(price) if price is not None else None)
+        except Exception:
+            pass
+    return None, None
+
+
+def _simulate_typed_ticker_approval(intent) -> dict:
+    from brokers import approval_service
+    conn = _conn()
+    if not conn:
+        return {"ok": False, "missing_field": "postgres_connection", "error": "db_unavailable"}
+    cur = conn.cursor()
+    approval_service._ensure_intent_persisted(cur, intent)
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+    cur.execute("""UPDATE trade_approvals SET status='superseded'
+                   WHERE intent_id=%s AND status IN ('pending','confirmed')""", (intent.intent_id,))
+    cur.execute("""INSERT INTO trade_approvals
+                     (intent_id, correlation_id, channel, code, status, expires_at, confirmed_at)
+                   VALUES (%s,%s,'web',%s,'confirmed',%s,NOW())""",
+                (intent.intent_id, intent.correlation_id, intent.instrument.symbol.upper(), expires))
+    conn.commit()
+    return {"ok": True, "channel": "web", "proof": "typed_ticker", "expires_at": expires.isoformat()}
+
+
+def run_preflight(
+    *,
+    symbol: str,
+    account: str,
+    order_kind: str,
+    trail_pct: float | None,
+    stop_price: float | None,
+    limit_price: float | None,
+    qty: float | None,
+    current_price: float | None,
+    dry_run: bool,
+) -> dict:
+    if not dry_run:
+        return {"ok": False, "error": "preflight_requires_dry_run"}
+    from brokers import protective_stop_pilot as psp
+    from brokers.evidence_approval import (
+        create_order_evidence_approval,
+        order_spec_hash,
+        revalidate_before_submit,
+    )
+    from brokers.execution_readiness import evaluate_execution_readiness
+
+    sym = symbol.upper().strip()
+    held_qty, broker_price = _holding_truth(account, sym)
+    qty = float(qty if qty is not None else held_qty if held_qty is not None else 0)
+    current_price = float(current_price if current_price is not None else broker_price if broker_price is not None else 0)
+    if qty <= 0:
+        return {"ok": False, "missing_field": "qty", "error": "quantity unavailable; pass --qty or refresh holdings DB"}
+    whole_qty = math.floor(qty)
+    residual_qty = round(qty - whole_qty, 6)
+    if whole_qty < 1:
+        return {"ok": False, "missing_field": "whole_qty", "error": "Schwab protective stops require at least one whole share"}
+    ot = psp.normalize_kind(order_kind)
+    if ot not in {"STOP", "STOP_LIMIT", "TRAILING_STOP"}:
+        return {"ok": False, "missing_field": "order_kind", "error": f"unsupported order kind {order_kind!r}"}
+    if ot in {"STOP", "STOP_LIMIT"} and stop_price is None:
+        return {"ok": False, "missing_field": "stop_price", "error": "STOP/STOP_LIMIT preflight requires --stop-price"}
+    if ot == "TRAILING_STOP" and trail_pct is None:
+        return {"ok": False, "missing_field": "trail_pct", "error": "TRAILING_STOP preflight requires --trail-pct"}
+
+    intent = psp.build_intent(
+        account, sym, whole_qty, ot,
+        stop_price=stop_price if stop_price is not None else current_price,
+        limit_price=limit_price,
+        trail_pct=trail_pct,
+        advised_stop=stop_price,
+        current_price=current_price,
+        held_qty=qty,
+    )
+    # Attach residual evidence without changing the broker order quantity.
+    ev = getattr(getattr(intent, "meta", None), "signal_evidence", None) or {}
+    ev["residual_qty"] = residual_qty
+    order_spec = psp.spec_from_intent(intent)
+    submit_hash = order_spec_hash(order_spec)
+
+    approval = _simulate_typed_ticker_approval(intent)
+    if not approval.get("ok"):
+        return {"ok": False, **approval}
+
+    readiness = evaluate_execution_readiness(
+        {"intent_id": intent.intent_id, "correlation_id": intent.correlation_id,
+         "account_key": account, "signal_evidence": ev},
+        asset_class="equity", broker="schwab", account_key=account, mode="submit",
+    )
+    if not readiness.get("ok"):
+        return {"ok": False, "stage": "execution_readiness", "error": "execution readiness blocked",
+                "hard_blocks": readiness.get("hard_blocks"), "broker_submitted": False}
+
+    evidence = create_order_evidence_approval(intent, order_spec, readiness_snapshot=readiness)
+    if not evidence.get("ok"):
+        return {"ok": False, "stage": "create_evidence", "missing_field": evidence.get("error"),
+                "error": evidence.get("error") or evidence.get("reason"), "broker_submitted": False}
+    rev = revalidate_before_submit(
+        intent.intent_id,
+        current_readiness=readiness,
+        current_order_spec=order_spec,
+        kill_switch_check=False,
+    )
+    approved_hash = evidence.get("order_spec_hash") or submit_hash
+    return {
+        "ok": bool(rev.get("ok") and approved_hash == submit_hash),
+        "stage": "preflight",
+        "broker_submitted": False,
+        "symbol": sym,
+        "account": account,
+        "order_type": ot,
+        "whole_qty": whole_qty,
+        "residual_qty": residual_qty,
+        "trail_pct": trail_pct,
+        "stop_price": stop_price,
+        "time_in_force": order_spec.get("duration"),
+        "intent_id": intent.intent_id,
+        "evidence_id": evidence.get("evidence_id"),
+        "evidence_hash": evidence.get("evidence_hash"),
+        "approved_order_spec_hash": approved_hash,
+        "submit_order_spec_hash": submit_hash,
+        "hashes_match": approved_hash == submit_hash,
+        "revalidation": rev,
+        "order_spec": order_spec,
+        "message": "PASS: evidence-bound approval revalidated; no Schwab broker request sent"
+        if rev.get("ok") and approved_hash == submit_hash else
+        f"FAIL: {rev.get('reason') or 'order_spec_hash_mismatch'}",
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Dry-run Schwab protective stop evidence-bound 2FA preflight.")
+    ap.add_argument("--symbol", required=True)
+    ap.add_argument("--account", required=True)
+    ap.add_argument("--order-kind", required=True)
+    ap.add_argument("--trail-pct", type=float)
+    ap.add_argument("--stop-price", type=float)
+    ap.add_argument("--limit-price", type=float)
+    ap.add_argument("--qty", type=float)
+    ap.add_argument("--current-price", type=float)
+    ap.add_argument("--dry-run", action="store_true", required=True)
+    args = ap.parse_args()
+    out = run_preflight(
+        symbol=args.symbol,
+        account=args.account,
+        order_kind=args.order_kind,
+        trail_pct=args.trail_pct,
+        stop_price=args.stop_price,
+        limit_price=args.limit_price,
+        qty=args.qty,
+        current_price=args.current_price,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(out, indent=2, default=str))
+    sys.exit(0 if out.get("ok") else 1)
+
+
+if __name__ == "__main__":
+    main()
