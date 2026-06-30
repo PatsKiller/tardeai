@@ -21,6 +21,38 @@ T0 holdings ALLOW, T1 cap, T2 needs-trigger, duplicate→DEFER, expiry, no broke
   dominated by pre-guard activity; the guard now DEFERs duplicates and METADATA_ONLYs broad names going
   forward. Synthesis/source-curation tables (`watchlist_final_synthesis`, `source_*`, `rec_source_quality`)
   still lack the provenance vocabulary — a follow-up if their research is to be tier-governed too.
+## 2026-06-29 - Stop methodology: family-floor enforcement, free-lane fallback, doc
+
+Audit of SCHD's stop ($31.16, ~2.4% below — tighter than its 4% income-family floor) surfaced a systemic
+gap: the 20d-swing-low anchor produced sub-floor stops on low-volatility holdings (whipsaw risk on core
+holds). Advisory only — no broker action.
+- **Family-FLOOR enforcement** (`holding_protection_advisor.py`): stops tighter than the family minimum are
+  widened to the floor (income 4% / position 5%), with the widening in the rationale + a `floored` flag in
+  evidence_json. `_sanity_check` now also flags below-floor stops. Full re-sweep widened **9 holdings**
+  (SCHD/BND/JEPI→4%; DIVI/SCHG/ARKX/CSWC/HPE/XLB→5%).
+- **Free-lane resilience**: on a Grok/ChatGPT OAuth 403 the advisor falls back to **local gemma** (free) —
+  never to a paid key (no-paid-fallback). Proven live (Grok proxy was intermittently 403).
+- **Monthly Claude meta-review** now carries the `floored` flag per symbol so widenings are sanity-checked
+  explicitly.
+- **Live stop %** on the Portfolio card (was the stale generation-time string).
+- New `docs/STOP_METHODOLOGY.md` (registered in DOCUMENTATION_INDEX) — the canonical write-up.
+
+## 2026-06-29 - Portfolio v3 holding cards: price/cost, stop status clarity, bigger reports
+
+Operator-requested clarity pass on the Portfolio hub holding cards (advisory display only — no data/API
+or execution change):
+- **Per-share price + cost** — new row `Price $X` (market_value/shares) + `Cost $Y` (cost_basis/shares;
+  "—" for 401k funds without per-lot basis).
+- **Stop status is now unmistakable** — three distinct states: `● STOP LIVE` (green, resting broker order),
+  `◉ MONITORED` (purple, software-watched, not a broker order), `○ ADVISORY stop … not placed` (amber,
+  recommendation only). Previously a proposed advisory stop looked the same as an active one.
+- **Larger / more visible** — stop chip + live-stop line enlarged; protection explainer (fixed-vs-trailing)
+  and fund-description text bumped from 8.5/9px to 10.5/11px; report links enlarged to 30x26 with text
+  labels (📕 PDF / 📘 Word / 📄 Generate) and a larger timestamp.
+
+Files: `apps/command-center-v3/src/pages/PortfolioHub.tsx`,
+`apps/command-center-v3/src/components/HoldingProtectionActions.tsx`,
+`apps/command-center-v3/src/components/HoldingReportLinks.tsx`. v3 build (tsc+vite) passes.
 
 ## 2026-06-29 - Hermes research scope audit + budget governance (tiering + caps)
 
