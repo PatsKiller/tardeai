@@ -6,6 +6,8 @@ Integration branch: `fix/stop-execution-journal-reentry-integration`.
 
 This branch stacks the DB timeout guard, holding quote timestamp fix, OCO DD hardening, stop-management UI decision layer, and stop lock-in trailing advisory. It does not enable Schwab OCO brackets.
 
+Draft PR: https://github.com/PatsKiller/tardeai/pull/33
+
 ## Guardrails
 
 - `OCO_BRACKETS_SCHWAB` remains unset/off.
@@ -81,3 +83,27 @@ HPE-like losses are flagged for initial-risk review when the stop was about 10% 
 - kill switches clear
 
 OCO is not ready until those are clean. This task does not enable an OCO canary.
+
+## Validation Snapshot
+
+Last local validation on the integration branch:
+
+- `npm run build` in `apps/command-center-v3`: passed with existing Vite bundle-size/script warnings.
+- Requested pytest group: `73 passed`.
+- Focused evidence/manual-ticket/activity tests: `37 passed`.
+- `python3 scripts/validate_schwab_write_policy.py`: `24/26`, fail-closed because PostgreSQL was unavailable in the session.
+- DB role timeout verification could not run because PostgreSQL was unavailable.
+- `python3 scripts/execution_state.py --json`: command ran, but reported `operator_live_via_2fa_allowed=false` and `kill_switch_db_unavailable`.
+- `python3 scripts/oco_readiness_report.py`: `ready_for_oco_one_share_canary=false`.
+
+## Remaining Blockers Before Any OCO Canary
+
+- PostgreSQL available and DB role defaults verified:
+  - `lock_timeout=3s`
+  - `idle_in_transaction_session_timeout=120s`
+  - `statement_timeout=180s`
+- `validate_schwab_write_policy.py` passes cleanly with DB available.
+- Execution state shows operator-approved 2FA live path clean and kill switches clear.
+- A basic Schwab protective STOP canary passes with evidence-bound approval and broker read-back.
+- A Schwab trailing STOP canary passes with evidence-bound approval and broker read-back.
+- OCO readiness report has no blockers.
