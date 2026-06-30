@@ -45,6 +45,29 @@ the live-stop request buttons.
   the `ET` format the frontend already handles); cash rows correctly carry none. Was 38/38 stale.
 - Advisory/display only — no change to stop placement, broker writes, 2FA, or gates.
 
+## 2026-06-30 - Stock-management due-diligence: paper OCO hardened before any Schwab canary
+
+Closed the paper-side OCO gaps that had to be airtight before a one-share Schwab OCO canary. **No change to
+live Schwab submit enablement; `OCO_BRACKETS_SCHWAB` stays OFF; 2FA / operator gates untouched; no live
+broker writes.**
+
+- **Stop-never-absent is now crash-safe.** `convert_to_oco` (`scripts/alpaca_stop_manager.py`) sets
+  `bracket_state='OCO_REPLACING'` and persists the last-known stop price **before** canceling the standalone
+  stop, so a process death mid-convert leaves a recoverable marker, not a silently naked position. Added
+  **read-back verification** after every OCO POST (re-reads broker orders; if it can't confirm an OCO it
+  rolls back to a standalone stop instead of declaring `OCO_ACTIVE`).
+- **Repair supervisor** `repair_oco_replacing()` (`--repair-oco`): scans `OCO_REPLACING` rows and reconciles
+  to broker truth — OCO present → `OCO_ACTIVE`; standalone stop → `STOP_ONLY` restored; **neither (naked) →
+  immediately re-place a stop at the last-known price + alert**; broker unreadable → leave it, never guess.
+- **Reconciler split.** `alpaca_paper_reconciler.py --fix` is now **DB-metadata-only** — the OCO auto-bracket
+  (a broker write) moved behind the explicit `--apply-oco-retrofit` flag and no longer rides along on `--fix`
+  (and is not auto-scheduled).
+- **`qty_available` fails closed.** `apply_paper_protection_adjustment.py` no longer assumes `avail=shares`
+  on a failed position read; unreadable qty → `BROKER_QTY_UNKNOWN` / `DEFER_RECHECK` (no order placed) with a
+  bounded recheck cap (6) that turns terminal instead of looping the ATM pass.
+- **Tests:** new `tests/test_oco_dd_gaps.py` **14/14**. Existing `test_schwab_oco_bracket` 12, 
+  `test_protective_policy_oco` 6, `test_no_broker_write_bypass` 9 green; Schwab no-write validator 27/27.
+
 ## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored
 
 Re-audit after the budget guard went live (deployed 13:01 ET). **Broad-universe LLM research is confirmed

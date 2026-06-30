@@ -87,6 +87,67 @@ def _place_simple_stop(env, symbol, qty, stop_price):
         "stop_price": str(round(float(stop_price), 2)), "time_in_force": "gtc"})
 
 
+def _set_bracket_state(conn, symbol, state, last_stop=None):
+    """Persist bracket_state (and optionally the last-known stop price) for the open row(s) of `symbol`.
+    Committed on its own so the marker survives a crash on the very next broker call. Best-effort."""
+    if conn is None:
+        return
+    try:
+        cur = conn.cursor()
+        if last_stop is not None:
+            cur.execute("UPDATE paper_trades SET bracket_state=%s, stop_loss_price=%s, stop_loss=%s, "
+                        "updated_at=NOW() WHERE (lifecycle_state='open' OR status='open') AND symbol=%s",
+                        (state, round(float(last_stop), 2), round(float(last_stop), 2), symbol))
+        else:
+            cur.execute("UPDATE paper_trades SET bracket_state=%s, updated_at=NOW() "
+                        "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s", (state, symbol))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
+
+def _open_sell_orders(env, symbol):
+    """Return open SELL orders for `symbol` with their nested legs flattened. Read-only (GET)."""
+    out = []
+    try:
+        orders = _alpaca_req(env, "/v2/orders?status=open&nested=true&limit=500") or []
+    except Exception:
+        return None   # broker unreadable — caller must NOT assume "no orders"
+    for o in orders:
+        if str(o.get("symbol", "")).upper() != str(symbol).upper():
+            continue
+        for leg in [o] + (o.get("legs") or []):
+            if str(leg.get("side", "")).lower() == "sell":
+                out.append(leg)
+    return out
+
+
+def _classify_broker_protection(env, symbol, group_id=None):
+    """Read broker truth for `symbol`: does an OCO bracket exist, and/or a standalone stop?
+    Returns {'readable': bool, 'has_oco': bool, 'has_stop': bool, 'stop_id', 'tp_id', 'group_id'}.
+    readable=False means the broker could not be read — the caller must fail closed (never assume naked)."""
+    legs = _open_sell_orders(env, symbol)
+    if legs is None:
+        return {"readable": False, "has_oco": False, "has_stop": False}
+    has_oco = has_stop = False
+    stop_id = tp_id = grp = ""
+    for leg in legs:
+        oc = str(leg.get("order_class", "") or "").lower()
+        typ = str(leg.get("type", "")).lower()
+        is_oco_member = oc in ("oco", "oto", "bracket") or bool(leg.get("legs"))
+        if group_id and str(leg.get("id")) == str(group_id):
+            is_oco_member = True
+        if "stop" in typ:
+            if is_oco_member:
+                has_oco = True; stop_id = stop_id or str(leg.get("id") or ""); grp = grp or str(leg.get("id") or "")
+            else:
+                has_stop = True; stop_id = stop_id or str(leg.get("id") or "")
+        elif typ == "limit" and is_oco_member:
+            has_oco = True; tp_id = tp_id or str(leg.get("id") or "")
+    return {"readable": True, "has_oco": has_oco, "has_stop": has_stop,
+            "stop_id": stop_id, "tp_id": tp_id, "group_id": grp}
+
+
 def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id, conn=None):
     """Replace a standalone SELL stop with a SELL OCO (stop + take-profit) on the same shares.
 
@@ -100,11 +161,17 @@ def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id,
     if not (qty > 0 and tp > sp):
         res.update({"status": "BLOCKED", "reason": f"invalid OCO params (need qty>0 and tp>{sp}, got tp={tp})"})
         return res
+    # 0. Mark the conversion IN-FLIGHT before touching the broker. A crash AFTER the cancel and BEFORE the
+    # OCO is acknowledged would otherwise leave the position naked with no recoverable marker. OCO_REPLACING
+    # + the persisted last-known stop price let repair_oco_replacing() detect the half-done state and re-place
+    # a standalone stop. Committed on its own (see _set_bracket_state).
+    _set_bracket_state(conn, symbol, "OCO_REPLACING", last_stop=sp)
     # 1. cancel the existing standalone stop (frees the shares). If cancel fails, leave the stop intact.
     if old_stop_id:
         try:
             _alpaca_req(env, f"/v2/orders/{old_stop_id}", method="DELETE")
         except Exception as e:
+            _set_bracket_state(conn, symbol, "STOP_ONLY", last_stop=sp)   # nothing changed at the broker
             res.update({"status": "BLOCKED", "reason": f"cancel_failed: {str(e)[:80]} — stop left intact, no change"})
             return res
     # 2. place the OCO (same proven shape as the bracket exit pair in alpaca_paper_adapter.submit_entry)
@@ -126,7 +193,7 @@ def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id,
         if conn is not None:
             try:
                 cur = conn.cursor()
-                cur.execute("UPDATE paper_trades SET stop_order_id=%s, updated_at=NOW() "
+                cur.execute("UPDATE paper_trades SET stop_order_id=%s, bracket_state='STOP_ONLY', updated_at=NOW() "
                             "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s", (new_stop_id, symbol))
                 conn.commit()
             except Exception:
@@ -142,6 +209,40 @@ def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id,
     stop_id = str((stop_leg or {}).get("id") or "")
     tp_id = str((tp_leg or {}).get("id") or "")
     group_id = str(oco.get("id") or "")
+    # 4a. READ-BACK VERIFY — never trust the POST response alone. Re-read broker open orders and confirm the
+    # OCO actually exists. If the read-back cannot confirm an OCO (broker unreadable, or only a bare stop/no
+    # protection came back), DO NOT declare OCO_ACTIVE — roll the position back to a standalone stop so it is
+    # never left in a falsely-"protected" state. The OCO_REPLACING marker is still set, so even if THIS process
+    # dies here, the supervisor will reconcile it.
+    rb_state = _classify_broker_protection(env, symbol, group_id)
+    if not (rb_state.get("readable") and rb_state.get("has_oco")):
+        try:
+            # cancel whatever half-formed OCO legs may exist, then re-place a clean standalone stop
+            for _lid in {stop_id, tp_id, group_id, rb_state.get("stop_id", ""), rb_state.get("tp_id", "")}:
+                if _lid:
+                    try: _alpaca_req(env, f"/v2/orders/{_lid}", method="DELETE")
+                    except Exception: pass
+            rb = _place_simple_stop(env, symbol, qty, sp)
+            new_stop_id = str((rb or {}).get("id") or "")
+            _set_bracket_state(conn, symbol, "STOP_ONLY", last_stop=sp)
+            if conn is not None and new_stop_id:
+                try:
+                    cur = conn.cursor()
+                    cur.execute("UPDATE paper_trades SET stop_order_id=%s, updated_at=NOW() "
+                                "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s", (new_stop_id, symbol))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+            reason = ("readback_unreadable" if not rb_state.get("readable") else "readback_no_oco")
+            res.update({"status": "ROLLED_BACK", "stop_order_id": new_stop_id,
+                        "reason": f"{reason} after OCO POST — standalone stop re-placed (protected)"})
+            _audit(symbol, "OCO_READBACK_ROLLBACK", res["reason"])
+            return res
+        except Exception as e2:
+            res.update({"status": "CRITICAL", "naked": True,
+                        "reason": f"readback failed AND stop_replace_failed: {str(e2)[:80]} — left OCO_REPLACING for supervisor"})
+            _audit(symbol, "OCO_READBACK_CRITICAL", res["reason"])
+            return res
     if conn is not None:
         try:
             cur = conn.cursor()
@@ -228,6 +329,89 @@ def run_oco_retrofit(apply: bool = False) -> dict:
         else:
             action["status"] = "would_convert_to_oco"
         report["actions"].append(action)
+    return report
+
+
+def repair_oco_replacing(apply: bool = False) -> dict:
+    """Supervisor: reconcile any open paper position stuck in bracket_state='OCO_REPLACING' (an interrupted
+    convert_to_oco) against BROKER TRUTH. Stop-never-absent recovery:
+      • OCO present at broker        → mark OCO_ACTIVE (record leg ids).
+      • standalone stop present      → mark STOP_ONLY (rollback / restored).
+      • NEITHER (position is NAKED)  → immediately re-place a standalone stop at the last-known stop price + ALERT.
+      • broker UNREADABLE            → leave OCO_REPLACING untouched, report it; never guess "naked".
+    DRY-RUN by default; --apply performs the naked re-place + state writes. Paper account only (Alpaca paper API)."""
+    import alpaca_paper_reconciler as apr
+    from db_adapter import _get_conn
+    env = apr.get_env()
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""SELECT symbol, shares, COALESCE(stop_loss_price, stop_loss) AS stop, stop_order_id
+                   FROM paper_trades
+                   WHERE bracket_state='OCO_REPLACING' AND (lifecycle_state='open' OR status='open')""")
+    rows = cur.fetchall()
+    report = {"mode": "APPLIED" if apply else "DRY-RUN", "scanned": len(rows), "oco_confirmed": 0,
+              "stop_restored": 0, "naked_fixed": 0, "unreadable": 0, "errors": 0, "repaired": []}
+
+    def _upd(sql, params):
+        try:
+            c2 = conn.cursor(); c2.execute(sql, params); conn.commit(); return True
+        except Exception:
+            conn.rollback(); return False
+
+    for sym, shares, stop_px, stop_oid in rows:
+        sym = str(sym).upper(); stop_px = _f(stop_px); qty = int(shares or 0)
+        st = _classify_broker_protection(env, sym)
+        entry = {"symbol": sym, "last_stop": stop_px}
+        if not st.get("readable"):
+            entry["resolution"] = "broker_unreadable — left OCO_REPLACING (no guess)"; report["unreadable"] += 1
+        elif st.get("has_oco"):
+            entry["resolution"] = "oco_confirmed → OCO_ACTIVE"; report["oco_confirmed"] += 1
+            if apply and not _upd(
+                    "UPDATE paper_trades SET bracket_state='OCO_ACTIVE', "
+                    "stop_order_id=COALESCE(NULLIF(%s,''),stop_order_id), "
+                    "take_profit_order_id=COALESCE(NULLIF(%s,''),take_profit_order_id), "
+                    "protection_status='PROTECTED_TRACKED', updated_at=NOW() "
+                    "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s",
+                    (st.get("stop_id", ""), st.get("tp_id", ""), sym)):
+                report["errors"] += 1
+            _audit(sym, "REPAIR_OCO_CONFIRMED", "OCO present at broker — marked OCO_ACTIVE")
+        elif st.get("has_stop"):
+            entry["resolution"] = "standalone_stop_present → STOP_ONLY (restored)"; report["stop_restored"] += 1
+            if apply:
+                _set_bracket_state(conn, sym, "STOP_ONLY", last_stop=stop_px)
+                if st.get("stop_id"):
+                    _upd("UPDATE paper_trades SET stop_order_id=%s, updated_at=NOW() "
+                         "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s", (st["stop_id"], sym))
+            _audit(sym, "REPAIR_STOP_RESTORED", "standalone stop present — marked STOP_ONLY")
+        else:
+            # NAKED — no OCO and no standalone stop. Re-place a protective stop at the last-known price NOW.
+            entry["naked"] = True
+            if not stop_px or qty <= 0:
+                entry["resolution"] = "NAKED but missing last_stop/qty — CANNOT auto-repair (operator review)"
+                report["errors"] += 1
+                _audit(sym, "REPAIR_NAKED_BLOCKED", "naked, missing stop_px/qty — operator review")
+            elif apply:
+                try:
+                    rb = _place_simple_stop(env, sym, qty, stop_px)
+                    nsid = str((rb or {}).get("id") or "")
+                    _set_bracket_state(conn, sym, "STOP_ONLY", last_stop=stop_px)
+                    _upd("UPDATE paper_trades SET stop_order_id=%s, updated_at=NOW() "
+                         "WHERE (lifecycle_state='open' OR status='open') AND symbol=%s", (nsid, sym))
+                    entry["resolution"] = f"NAKED → re-placed standalone stop ${stop_px} (#{nsid})"; entry["new_stop_id"] = nsid
+                    report["naked_fixed"] += 1
+                    _audit(sym, "REPAIR_NAKED_REPLACED", f"re-placed protective stop ${stop_px} qty {qty} #{nsid}")
+                except Exception as e:
+                    entry["resolution"] = f"NAKED re-place FAILED: {str(e)[:60]}"; report["errors"] += 1
+                    _audit(sym, "REPAIR_NAKED_FAILED", str(e)[:120])
+            else:
+                entry["resolution"] = "NAKED → would re-place standalone stop (run --apply)"
+            try:   # naked is critical — alert regardless of apply
+                from telegram_alert import send_telegram
+                send_telegram(f"🛑 NAKED paper position {sym}: OCO convert interrupted (OCO_REPLACING) and NO stop "
+                              f"exists at the broker. " + (f"Re-placed stop ${stop_px}." if (apply and stop_px and qty > 0)
+                                                           else "Run alpaca_stop_manager.py --repair-oco --apply to re-place."))
+            except Exception:
+                pass
+        report["repaired"].append(entry)
     return report
 
 
@@ -351,8 +535,13 @@ def main():
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--retrofit-oco", action="store_true",
                     help="convert standalone stops on open paper positions into OCO brackets (stop + take-profit)")
+    ap.add_argument("--repair-oco", action="store_true",
+                    help="supervisor: reconcile OCO_REPLACING (interrupted convert) rows vs broker truth; "
+                         "re-place a standalone stop for any naked position (--apply to act)")
     a = ap.parse_args()
-    if a.retrofit_oco:
+    if a.repair_oco:
+        print(json.dumps(repair_oco_replacing(apply=a.apply), indent=2, default=str))
+    elif a.retrofit_oco:
         print(json.dumps(run_oco_retrofit(apply=a.apply), indent=2, default=str))
     else:
         print(json.dumps(run(apply=a.apply), indent=2, default=str))
