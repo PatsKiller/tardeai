@@ -1,28 +1,10 @@
 {
-  "date": "2026-06-28",
-  "timestamp": "2026-06-28T08:16:42.503094+00:00",
-  "embedding_recommendations": [
-    {
-      "id": 5773,
-      "symbol": "DPRO",
-      "type": "ticker_thesis_challenge",
-      "confidence": 0.85,
-      "has_url": false,
-      "reason": "staged, has evidence, not embedded"
-    }
-  ],
-  "promotion_recommendations": [
-    {
-      "id": 5773,
-      "symbol": "DPRO",
-      "type": "ticker_thesis_challenge",
-      "confidence": 0.85,
-      "has_url": false,
-      "reason": "staged, high conf, has evidence"
-    }
-  ],
+  "date": "2026-06-29",
+  "timestamp": "2026-06-29T08:15:24.776345+00:00",
+  "embedding_recommendations": [],
+  "promotion_recommendations": [],
   "rejected": [],
-  "total_staged_non_backlog": 1,
+  "total_staged_non_backlog": 0,
   "embeddings_created": 0,
   "promotions_created": 0
 }

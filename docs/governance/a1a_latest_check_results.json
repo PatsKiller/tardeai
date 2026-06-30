@@ -1,22 +1,9 @@
 {
-  "generated_at": "2026-06-28T22:00:42.744906+00:00",
-  "git_head": "af22c25e",
-  "files_checked": 21,
-  "findings_count": 2,
-  "by_severity": {
-    "P2": 2
-  },
-  "status": "warning",
-  "findings": [
-    {
-      "severity": "P2",
-      "check": "stale_facts",
-      "message": "System facts 58h old (>48h)"
-    },
-    {
-      "severity": "P2",
-      "check": "deployment_log_stale",
-      "message": "Code changed but deployment log not updated"
-    }
-  ]
+  "generated_at": "2026-06-29T11:40:00.505505+00:00",
+  "git_head": "7aaf3c11",
+  "files_checked": 1,
+  "findings_count": 0,
+  "by_severity": {},
+  "status": "healthy",
+  "findings": []
 }

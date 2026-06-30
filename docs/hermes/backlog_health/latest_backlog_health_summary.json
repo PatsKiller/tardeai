@@ -1,6 +1,6 @@
 {
-  "date": "2026-06-28",
-  "timestamp": "2026-06-28T06:45:43.951581+00:00",
+  "date": "2026-06-29",
+  "timestamp": "2026-06-29T06:45:05.947098+00:00",
   "checks": {
     "total_backlog": 2494,
     "open_count": 0,
@@ -215,11 +215,6 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 89,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 90,
         "duplicate_of": 32,
         "key": "NULL:unknown"
@@ -230,12 +225,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 92,
+        "id": 89,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 93,
+        "id": 92,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -245,12 +240,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 96,
+        "id": 93,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 95,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 96,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -275,7 +275,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 100,
+        "id": 101,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -285,7 +285,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 101,
+        "id": 100,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -295,12 +295,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 104,
+        "id": 105,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 105,
+        "id": 104,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -310,17 +310,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 107,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 106,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 111,
+        "id": 107,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -335,7 +330,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 113,
+        "id": 111,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -350,7 +345,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 116,
+        "id": 113,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -360,17 +355,12 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 116,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 117,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 118,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 120,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -380,7 +370,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 122,
+        "id": 120,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 118,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 123,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -390,7 +390,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 123,
+        "id": 122,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -410,11 +410,6 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 128,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 127,
         "duplicate_of": 32,
         "key": "NULL:unknown"
@@ -425,7 +420,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 131,
+        "id": 128,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 130,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -435,7 +435,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 130,
+        "id": 131,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -455,17 +455,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 138,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 137,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 136,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 138,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -515,17 +515,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 149,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 150,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 148,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 149,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -740,7 +740,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 194,
+        "id": 195,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -750,7 +750,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 195,
+        "id": 194,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -775,17 +775,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 199,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 200,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 204,
+        "id": 199,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 202,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -795,7 +795,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 202,
+        "id": 204,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11150,6 +11150,11 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3287,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3289,
         "duplicate_of": 32,
         "key": "NULL:unknown"
@@ -11160,12 +11165,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3287,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3291,
+        "id": 3290,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11175,12 +11175,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3290,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3295,
+        "id": 3291,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11190,7 +11185,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3295,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3293,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 3297,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11205,17 +11210,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3297,
+        "id": 3305,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 3304,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3305,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11230,17 +11230,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3309,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3307,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3311,
+        "id": 3309,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11255,7 +11250,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3314,
+        "id": 3311,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11270,7 +11265,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3317,
+        "id": 3314,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11280,7 +11275,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3317,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3318,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 3320,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11291,11 +11296,6 @@
       },
       {
         "id": 3321,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3320,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11315,12 +11315,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3326,
+        "id": 3327,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3327,
+        "id": 3326,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11330,12 +11330,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3329,
+        "id": 3328,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3328,
+        "id": 3329,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11345,7 +11345,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3332,
+        "id": 3331,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11355,7 +11355,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3331,
+        "id": 3332,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11390,22 +11390,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3340,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3342,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3341,
+        "id": 3340,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3344,
+        "id": 3341,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11416,6 +11411,11 @@
       },
       {
         "id": 3345,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 3344,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11435,6 +11435,11 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3352,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3351,
         "duplicate_of": 32,
         "key": "NULL:unknown"
@@ -11445,17 +11450,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3352,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3356,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3357,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11465,7 +11460,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3361,
+        "id": 3357,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11475,12 +11470,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3361,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3360,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3363,
+        "id": 3362,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11490,7 +11490,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3362,
+        "id": 3363,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11540,7 +11540,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3376,
+        "id": 3374,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11550,12 +11550,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3374,
+        "id": 3376,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3378,
+        "id": 3379,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11565,7 +11565,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3379,
+        "id": 3378,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11590,17 +11590,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3383,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3384,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3387,
+        "id": 3383,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11611,6 +11606,11 @@
       },
       {
         "id": 3386,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 3387,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11735,12 +11735,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3415,
+        "id": 3413,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3413,
+        "id": 3415,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11750,7 +11750,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3418,
+        "id": 3417,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11760,7 +11760,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3417,
+        "id": 3418,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11780,7 +11780,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3422,
+        "id": 3423,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11790,7 +11790,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3423,
+        "id": 3422,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -11825,6 +11825,11 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3439,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3437,
         "duplicate_of": 32,
         "key": "NULL:unknown"
@@ -11835,22 +11840,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3439,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3446,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3444,
+        "id": 3445,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3445,
+        "id": 3444,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -12155,17 +12155,17 @@
         "key": "NULL:unknown"
       },
       {
+        "id": 3550,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 3552,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 3551,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 3550,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -12200,17 +12200,17 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3561,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 3559,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
         "id": 3560,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 3561,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -12230,12 +12230,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3572,
+        "id": 3570,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 3570,
+        "id": 3572,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -12390,12 +12390,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 5275,
+        "id": 5274,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 5274,
+        "id": 5275,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -12443,12 +12443,12 @@
     "oldest_item": {
       "id": 23,
       "created": "2026-05-31 21:36:31",
-      "age_days": 27
+      "age_days": 28
     },
     "newest_item": {
       "id": 5478,
       "created": "2026-06-26 10:05:04",
-      "age_days": 1
+      "age_days": 2
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
