@@ -153,7 +153,7 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 click-preflight-validate 2026-06-30" in src
+    assert "cc-v3 preflight-ux-2a3a5a 2026-06-30" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
@@ -163,8 +163,20 @@ def test_17_click_preflight_validates_before_2fa_and_manual():
     assert "preflightAndConfirm" in src
     assert "protective-stop/refresh-quote" in src
     assert "holdings/live-stops" in src
+    assert "portfolio/llm-coverage" in src
     assert "preflight-changed" in src
+    assert "preflight-diff" in src
+    assert "onPreflightUpdate" in src
+    assert "buildPreflightDiff" in src
     assert "Validating" in src
+
+
+def test_18_portfolio_hub_merges_preflight_holding_patches():
+    src = read(PORTFOLIO)
+    assert "holdingPatches" in src
+    assert "protectionPatches" in src
+    assert "mergeHolding" in src
+    assert "onPreflightUpdate" in src
 
 
 def test_16_live_stops_endpoint_and_review_tooltips():

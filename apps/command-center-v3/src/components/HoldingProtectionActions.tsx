@@ -24,22 +24,57 @@ const BROKER_URL: Record<string, string> = {
   schwab: 'https://www.schwab.com/client-home',
 }
 
-export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, onRefresh }: {
-  h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null; onRefresh?: () => void
+type PreflightField<T> = { before: T; after: T }
+type PreflightDiff = {
+  price?: PreflightField<number | null>
+  decision?: PreflightField<string>
+  action?: PreflightField<string>
+  state?: PreflightField<string>
+  advisoryStop?: PreflightField<number | null>
+  liveStop?: PreflightField<string>
+  blockers?: { added: string[]; removed: string[] }
+}
+
+const fmtPx = (v: number | null | undefined) => v != null ? `$${v.toFixed(2)}` : 'none'
+const fmtLiveStop = (lg: StopLogic) => lg.liveStopIsTrailing && lg.liveTrailPct != null
+  ? `TRAILING ${lg.liveTrailPct}%` + (lg.liveStop != null ? ` (~$${lg.liveStop.toFixed(2)})` : '')
+  : lg.liveStop != null ? `$${lg.liveStop.toFixed(2)}` : 'none'
+
+function buildPreflightDiff(before: StopLogic, after: StopLogic): PreflightDiff | null {
+  const diff: PreflightDiff = {}
+  if (Math.abs((before.currentPrice ?? 0) - (after.currentPrice ?? 0)) > 0.02) {
+    diff.price = { before: before.currentPrice, after: after.currentPrice }
+  }
+  if (before.stop_action_decision !== after.stop_action_decision) {
+    diff.decision = { before: before.stop_action_decision, after: after.stop_action_decision }
+  }
+  if (before.primary_operator_action !== after.primary_operator_action) {
+    diff.action = { before: before.primary_operator_action, after: after.primary_operator_action }
+  }
+  if (before.state !== after.state) diff.state = { before: before.state, after: after.state }
+  if (Math.abs((before.advisoryStop ?? 0) - (after.advisoryStop ?? 0)) > 0.02) {
+    diff.advisoryStop = { before: before.advisoryStop, after: after.advisoryStop }
+  }
+  const liveBefore = fmtLiveStop(before)
+  const liveAfter = fmtLiveStop(after)
+  if (liveBefore !== liveAfter) diff.liveStop = { before: liveBefore, after: liveAfter }
+  const bCodes = new Set(before.blockers.map(b => b.code))
+  const aCodes = new Set(after.blockers.map(b => b.code))
+  const added = after.blockers.filter(b => !bCodes.has(b.code)).map(b => b.message)
+  const removed = before.blockers.filter(b => !aCodes.has(b.code)).map(b => b.message)
+  if (added.length || removed.length) diff.blockers = { added, removed }
+  return Object.keys(diff).length ? diff : null
+}
+
+export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, onRefresh, onPreflightUpdate }: {
+  h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null
+  onRefresh?: () => void
+  onPreflightUpdate?: (symbol: string, account: string, patch: { holding?: Record<string, unknown>; protection?: Record<string, unknown> }) => void
 }) {
   const acct = String(h.account ?? '')
   const sym = String(h.symbol ?? '').toUpperCase()
   const isSchwab = acct.startsWith('schwab')
   const isFidelity = acct.startsWith('fidelity') && acct !== 'fidelity_401k'
-  const stop = Number(pr?.stop_price) || null
-  const price = Number(pr?.price) || Number(h.current_price) || null
-  const qty = Number(h.shares) || 0
-  const isFractional = isSchwab && qty > 0 && Math.abs(qty - Math.round(qty)) > 1e-9
-  const needsSellAll = isSchwab && qty > 0 && qty < SCHWAB_SELL_ALL_MAX_SHARES
-  const sellAllTif = isFractional ? 'DAY' : 'GTC'
-  const trail = resolvedTrailPct(pr)
-  const trailPct = trail?.pct ?? null
-  const stopDist = trail?.stopDistPct ?? pr?.stop_distance_pct
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [ticket, setTicket] = useState('')
@@ -51,21 +86,30 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [wholeShareConfirmed, setWholeShareConfirmed] = useState(false)
   const [afterHoursAck, setAfterHoursAck] = useState(false)
   const [activeApproval, setActiveApproval] = useState<any>(null)
+  const [readiness, setReadiness] = useState<any>(null)
+  const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [preflightDiff, setPreflightDiff] = useState<PreflightDiff | null>(null)
+  const [advisoryOverride, setAdvisoryOverride] = useState<any>(null)
+  const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
+  const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
+  const effectivePr = advisoryOverride ? { ...pr, ...advisoryOverride } : pr
+  const stop = Number(effectivePr?.stop_price) || null
+  const price = Number(effectivePr?.price) || Number(h.current_price) || null
+  const qty = Number(h.shares) || 0
+  const isFractional = isSchwab && qty > 0 && Math.abs(qty - Math.round(qty)) > 1e-9
+  const needsSellAll = isSchwab && qty > 0 && qty < SCHWAB_SELL_ALL_MAX_SHARES
+  const sellAllTif = isFractional ? 'DAY' : 'GTC'
+  const trail = resolvedTrailPct(effectivePr)
+  const trailPct = trail?.pct ?? null
+  const stopDist = trail?.stopDistPct ?? effectivePr?.stop_distance_pct
 
   const needsReauth = isSchwab && tokenHealth?.needs_reauth === true
   useEffect(() => {
     if (!isSchwab || !intentId || tokenHealth) return
     fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth(unwrapApi(j))).catch(() => {})
   }, [isSchwab, intentId, tokenHealth])
-
-  // Live-stop readiness snapshot (read-only; no broker calls, no evidence writes) for the Schwab canary panel.
-  const [readiness, setReadiness] = useState<any>(null)
-  const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [validating, setValidating] = useState(false)
-  const [preflightNote, setPreflightNote] = useState('')
-  const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
-  const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
   const baseQuoteTs = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
   const quoteTsForReadiness = refreshedQuote?.quote_time_normalized ?? baseQuoteTs
   useEffect(() => {
@@ -95,14 +139,14 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [selectedKind, setSelectedKind] = useState<StopOrderKind>('STOP')
   const priceTimestamp = refreshedQuote?.quote_time_normalized ?? refreshedQuote?.quote_time_raw
     ?? h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
-  const advisoryTimestamp = pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
+  const advisoryTimestamp = effectivePr?.source_timestamp ?? effectivePr?.quote_at ?? effectivePr?.at ?? null
   const effectivePrice = refreshedQuote?.quote_price ?? price
   const effectiveConfirmed = liveStopOverride ?? confirmedStop
   const liveResolved = resolveLiveStop(effectiveConfirmed, monitored, effectivePrice)
   const liveStop = liveResolved.price
   const confirmedIsTrailing = isTrailingBrokerStop(effectiveConfirmed, monitored)
   const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
-  const preferTrail = !confirmedIsFixed && Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
+  const preferTrail = !confirmedIsFixed && Boolean(effectivePr?.trail_recommended || trail?.matchesStopWidth)
 
   const computeLogic = (orderKind: StopOrderKind = selectedKind, overrides?: {
     quotePrice?: number | null; quoteTs?: string | null; liveStop?: any
@@ -112,7 +156,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     const conf = overrides?.liveStop ?? effectiveConfirmed
     return buildStopLogic({
       h: { ...h, current_price: px, price: px, source_timestamp: ts },
-      pr: { ...pr, price: px },
+      pr: { ...effectivePr, price: px },
       monitored,
       confirmedStop: conf,
       trailPct,
@@ -124,16 +168,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const logic = computeLogic(selectedKind)
 
-  /** Click-time preflight: refresh quote, live broker stop, readiness — recalc before 2FA / manual ticket. */
+  /** Click-time preflight: refresh quote, advisory, live broker stop, readiness — recalc before 2FA / manual ticket. */
   const runClickPreflight = async (orderKind: StopOrderKind) => {
     const before = computeLogic(orderKind)
     setValidating(true)
-    setPreflightNote('')
+    setPreflightDiff(null)
     setPendingAction(null)
-    setMsg('⏳ Validating quote + stop logic…')
+    setMsg('⏳ Validating quote + advisory + stop logic…')
     let quoteSnap: any = null
     let readinessSnap: any = null
     let liveSnap: any = effectiveConfirmed
+    let advisorySnap: any = null
     try {
       const qRaw = await fetch('/api/v2/holdings/protective-stop/refresh-quote', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -142,6 +187,15 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       quoteSnap = unwrapApi(qRaw)
       setRefreshedQuote(quoteSnap)
       const qTs = quoteSnap?.quote_time_normalized ?? quoteSnap?.quote_time_raw ?? priceTimestamp
+      try {
+        const covRaw = await fetch('/api/v2/portfolio/llm-coverage').then(x => x.json())
+        const cov = unwrapApi(covRaw)
+        advisorySnap = cov?.protection?.[sym] ?? null
+        if (advisorySnap) {
+          const merged = { ...advisorySnap, price: quoteSnap?.quote_price ?? advisorySnap.price }
+          setAdvisoryOverride(merged)
+        }
+      } catch { /* advisory refresh is best-effort */ }
       if (isSchwab) {
         const rRaw = await fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(qTs ?? ''))}`)
           .then(x => x.json())
@@ -155,6 +209,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         const row = ls?.by_key?.[key]
         if (row) { liveSnap = row; setLiveStopOverride(row) }
       } catch { /* optional */ }
+      const qPx = quoteSnap?.quote_price
+      if (qPx != null) {
+        const holdingPatch: Record<string, unknown> = {
+          current_price: qPx,
+          source_timestamp: qTs ?? null,
+          price_as_of: qTs ?? null,
+        }
+        if (qty > 0) holdingPatch.market_value = Number(qPx) * qty
+        const protPatch = advisorySnap ? { ...advisorySnap, price: qPx } : undefined
+        onPreflightUpdate?.(sym, acct, { holding: holdingPatch, protection: protPatch })
+      }
       onRefresh?.()
     } catch (e: any) {
       return { ok: false, error: String(e.message || e).slice(0, 120), before, after: before }
@@ -163,7 +228,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     }
     const qPx = quoteSnap?.quote_price ?? effectivePrice
     const qTs = quoteSnap?.quote_time_normalized ?? quoteSnap?.quote_time_raw ?? priceTimestamp
-    const after = computeLogic(orderKind, { quotePrice: qPx, quoteTs: qTs, liveStop: liveSnap })
+    const afterPr = advisorySnap ? { ...effectivePr, ...advisorySnap, price: qPx } : { ...effectivePr, price: qPx }
+    const after = buildStopLogic({
+      h: { ...h, current_price: qPx, price: qPx, source_timestamp: qTs },
+      pr: afterPr,
+      monitored,
+      confirmedStop: liveSnap,
+      trailPct,
+      orderKind,
+      wholeShareConfirmed,
+      sourceTimestamp: qTs,
+    })
     const quoteBlockers = (quoteSnap?.blockers ?? []) as string[]
     const readinessBlocked = isSchwab && readinessSnap && (
       readinessSnap.quote_parse_ok === false || readinessSnap.quote_fresh === false
@@ -176,13 +251,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     const ok = isFidelity
       ? !after.blockers.some(b => hardCodes.has(b.code)) && quoteSnap?.ok !== false
       : after.canRequestLive && blockers.length === 0 && quoteSnap?.ok !== false
-    const changed = before.stop_action_decision !== after.stop_action_decision
-      || before.primary_operator_action !== after.primary_operator_action
-      || Math.abs((before.currentPrice ?? 0) - (after.currentPrice ?? 0)) > 0.02
-    const diff = changed
-      ? `Decision: ${before.stop_action_decision.replace(/_/g, ' ')} → ${after.stop_action_decision.replace(/_/g, ' ')} · ${before.primary_operator_action.slice(0, 60)} → ${after.primary_operator_action.slice(0, 60)}`
-      : ''
-    return { ok, before, after, quoteSnap, readinessSnap, liveSnap, changed, diff, blockers }
+    const diffObj = buildPreflightDiff(before, after)
+    const changed = diffObj != null
+    return { ok, before, after, quoteSnap, readinessSnap, liveSnap, advisorySnap, changed, diffObj, blockers }
   }
 
   if (!qty) return null
@@ -216,7 +287,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         trail_pct: kind === 'TRAILING' ? trailPct : null,
         advised_stop: stop,
         current_price: effectivePrice,
-        source_broker: pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account,
+        source_broker: effectivePr?.source_broker ?? effectivePr?.broker ?? effectivePr?.account ?? effectivePr?.source_account,
         instrument_type: nextLogic.instrumentType,
         quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
@@ -287,8 +358,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       setMsg(`⛔ Validation failed — ${pf.blockers?.join(' · ') || pf.error || 'resolve blockers above'}`)
       return
     }
-    if (pf.changed && pf.diff) {
-      setPreflightNote(pf.diff)
+    if (pf.changed && pf.diffObj) {
+      setPreflightDiff(pf.diffObj)
       setPendingAction({ kind: 'request', orderKind: kind })
       setMsg(`⚠️ Logic changed since page load — review below, then confirm to proceed.`)
       return
@@ -303,8 +374,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       setMsg(`⛔ Cannot submit — ${pf.blockers?.join(' · ') || 'validation failed'}`)
       return
     }
-    if (pf.changed && pf.diff) {
-      setPreflightNote(pf.diff)
+    if (pf.changed && pf.diffObj) {
+      setPreflightDiff(pf.diffObj)
       setPendingAction({ kind: 'confirm', channel })
       setMsg(`⚠️ Logic changed — confirm again to submit to Schwab.`)
       return
@@ -407,13 +478,13 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const fidelityTicketLabel = logic.liveStop != null ? 'Create modify ticket' : 'Create Fidelity manual ticket'
   const fidelityReviewDisabled = logic.blockers.some(b => b.code === 'source_mismatch')
   const reviewTip = stopReviewTooltip({
-    advisoryAt: pr?.at, advisoryModel: pr?.model,
+    advisoryAt: effectivePr?.at, advisoryModel: effectivePr?.model,
     priceAt: priceTimestamp ?? advisoryTimestamp,
     brokerFetchedAt: confirmedStop?.fetched_at ?? brokerStopsFetchedAt,
     brokerOrderId: confirmedStop?.order_id,
     confirmedAt: confirmedStop?.confirmed_at,
   })
-  const reviewStamp = formatReviewStamp(confirmedStop?.fetched_at ?? brokerStopsFetchedAt ?? pr?.at)
+  const reviewStamp = formatReviewStamp(confirmedStop?.fetched_at ?? brokerStopsFetchedAt ?? effectivePr?.at)
 
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 10, padding: '12px 13px', borderRadius: 8, background: 'rgba(15,23,42,.74)', border: `1px solid ${statusColor}55`, boxShadow: `inset 3px 0 0 ${statusColor}` }}>
@@ -456,9 +527,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         ))}
       </div>
 
-      {(pr?.rationale || pr?.reason || pr?.rec) && (
+      {(effectivePr?.rationale || effectivePr?.reason || effectivePr?.rec) && (
         <div style={{ marginTop: 8, fontSize: 12, color: MUTED, lineHeight: 1.45 }}>
-          Analyst note: {String(pr?.rationale ?? pr?.reason ?? pr?.rec).slice(0, 180)}
+          Analyst note: {String(effectivePr?.rationale ?? effectivePr?.reason ?? effectivePr?.rec).slice(0, 180)}
         </div>
       )}
       {logic.blockers.length > 0 && (
@@ -630,22 +701,51 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         </label>
       )}
 
-      {pendingAction && preflightNote && (
+      {pendingAction && preflightDiff && (
         <div data-testid="preflight-changed" style={{ marginTop: 10, padding: '10px 11px', borderRadius: 8, background: 'rgba(245,158,11,.12)', border: `1px solid ${AMBER}` }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: AMBER, marginBottom: 4 }}>Logic changed after live validation</div>
-          <div style={{ fontSize: 11.5, color: TEXT0, lineHeight: 1.45 }}>{preflightNote}</div>
+          <div style={{ fontSize: 12, fontWeight: 900, color: AMBER, marginBottom: 6 }}>Logic changed after live validation</div>
+          <div data-testid="preflight-diff" style={{ display: 'grid', gap: 5, fontSize: 11.5, color: TEXT0, lineHeight: 1.45 }}>
+            {preflightDiff.price && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Price: </span>{fmtPx(preflightDiff.price.before)} → <b>{fmtPx(preflightDiff.price.after)}</b></div>
+            )}
+            {preflightDiff.decision && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Decision: </span>{preflightDiff.decision.before.replace(/_/g, ' ')} → <b>{preflightDiff.decision.after.replace(/_/g, ' ')}</b></div>
+            )}
+            {preflightDiff.state && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Status: </span>{preflightDiff.state.before} → <b>{preflightDiff.state.after}</b></div>
+            )}
+            {preflightDiff.advisoryStop && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Advisor stop: </span>{fmtPx(preflightDiff.advisoryStop.before)} → <b>{fmtPx(preflightDiff.advisoryStop.after)}</b></div>
+            )}
+            {preflightDiff.liveStop && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Broker stop: </span>{preflightDiff.liveStop.before} → <b>{preflightDiff.liveStop.after}</b></div>
+            )}
+            {preflightDiff.action && (
+              <div><span style={{ color: MUTED, fontWeight: 800 }}>Recommendation: </span>{preflightDiff.action.before} → <b>{preflightDiff.action.after}</b></div>
+            )}
+            {preflightDiff.blockers && (preflightDiff.blockers.added.length > 0 || preflightDiff.blockers.removed.length > 0) && (
+              <div>
+                {preflightDiff.blockers.added.map((m, i) => (
+                  <div key={`add-${i}`} style={{ color: RED }}>+ {m}</div>
+                ))}
+                {preflightDiff.blockers.removed.map((m, i) => (
+                  <div key={`rm-${i}`} style={{ color: GREEN }}>− {m}</div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button onClick={e => {
               e.stopPropagation()
               const pa = pendingAction
-              setPendingAction(null); setPreflightNote('')
+              setPendingAction(null); setPreflightDiff(null)
               if (pa?.kind === 'request') requestOrder(pa.orderKind, { skipPreflight: true })
               else if (pa?.kind === 'confirm') confirmOrder(pa.channel, true)
             }} disabled={busy || validating}
               style={{ fontSize: 12, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${GREEN}`, background: `${GREEN}22`, color: GREEN, cursor: 'pointer' }}>
               Proceed anyway
             </button>
-            <button onClick={e => { e.stopPropagation(); setPendingAction(null); setPreflightNote(''); setMsg('') }}
+            <button onClick={e => { e.stopPropagation(); setPendingAction(null); setPreflightDiff(null); setMsg('') }}
               style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.35)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>
               Cancel
             </button>
@@ -735,7 +835,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       )}
 
       {trail && showProtect && (
-        <div style={{ fontSize: 12, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>{protectionExplain(pr, trail, { brokerFixedActive: confirmedIsFixed })}</div>
+        <div style={{ fontSize: 12, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>{protectionExplain(effectivePr, trail, { brokerFixedActive: confirmedIsFixed })}</div>
       )}
       {msg && <div style={{ fontSize: 12, marginTop: 7, color: msg.startsWith('✅') ? GREEN : msg.startsWith('⛔') ? RED : AMBER }}>{msg}</div>}
       {ticket && (

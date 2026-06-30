@@ -90,6 +90,17 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [gapDesign, setGapDesign] = useState<any>(null)
   const [gapBusy, setGapBusy] = useState(false)
   const [gapPropose, setGapPropose] = useState<Record<string, string>>({})
+  const [holdingPatches, setHoldingPatches] = useState<Record<string, Record<string, unknown>>>({})
+  const [protectionPatches, setProtectionPatches] = useState<Record<string, Record<string, unknown>>>({})
+  const mergeHolding = (h: any) => {
+    const key = `${(h.symbol || '').toUpperCase()}:${h.account}`
+    const patch = holdingPatches[key]
+    return patch ? { ...h, ...patch } : h
+  }
+  const mergeProtection = (sym: string, base?: any) => {
+    const patch = protectionPatches[sym.toUpperCase()]
+    return patch ? { ...(base ?? {}), ...patch } : base
+  }
   async function designFill() {
     setGapBusy(true); setGapDesign(null)
     try {
@@ -306,7 +317,8 @@ export default function PortfolioHub({ onDrill }: Props) {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
-              {pageRows.map((h: any) => {
+              {pageRows.map((rawH: any) => {
+                const h = mergeHolding(rawH)
                 const { dollars: pl$, pct: pl } = plMetrics(h)
                 const zc = rsiZoneColor(h.rsi_status)
                 const sc = signalColor(h.signal)
@@ -362,7 +374,8 @@ export default function PortfolioHub({ onDrill }: Props) {
                     {/* per-share current price + purchase (cost-basis) price — operator: show larger */}
                     {(() => {
                       const sh = Number(h.shares) || 0
-                      const cur = sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null
+                      const cur = h.current_price != null ? Number(h.current_price)
+                        : sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null
                       const buy = sh > 0 && h.cost_basis != null && Number(h.cost_basis) > 0 ? Number(h.cost_basis) / sh : null
                       if (cur == null) return null
                       return (
@@ -389,7 +402,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                           RSI {Math.round(h.rsi)}{h.proxy ? '*' : ''} {h.rsi_status === 'oversold' ? 'buy zone' : h.rsi_status === 'overbought' ? 'caution' : 'neutral'}</span>
                       )}
                       {(() => {
-                        const pr = protection[(h.symbol || '').toUpperCase()]
+                        const pr = mergeProtection((h.symbol || '').toUpperCase(), protection[(h.symbol || '').toUpperCase()])
                         const stopKey = `${(h.symbol || '').toUpperCase()}:${h.account}`
                         const liveConf = mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey])
                         const stopTip = stopReviewTooltip({
@@ -421,12 +434,13 @@ export default function PortfolioHub({ onDrill }: Props) {
                       </div>
                     )}
                     {(() => {
-                      const pr = protection[(h.symbol || '').toUpperCase()] ?? {}
+                      const symU = (h.symbol || '').toUpperCase()
+                      const pr = mergeProtection(symU, protection[symU]) ?? {}
                       const sh = Number(h.shares) || 0
                       const acct = String(h.account ?? '')
                       const schwabSmall = acct.startsWith('schwab') && sh > 0 && sh < 40
                       if (!pr?.stop_price && !schwabSmall) return null
-                      const key = `${(h.symbol || '').toUpperCase()}:${h.account}`
+                      const key = `${symU}:${h.account}`
                       const mon = monitoredByKey[key]
                       const conf = mergeLiveStop(confirmedByKey[key], liveStopsByKey[key])
                       return (
@@ -437,6 +451,11 @@ export default function PortfolioHub({ onDrill }: Props) {
                           confirmedStop={conf}
                           brokerStopsFetchedAt={brokerStopsFetchedAt}
                           onRefresh={() => refetchMonitored?.()}
+                          onPreflightUpdate={(symbol, account, patch) => {
+                            const hk = `${symbol}:${account}`
+                            if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
+                            if (patch.protection) setProtectionPatches(p => ({ ...p, [symbol]: { ...(p[symbol] ?? {}), ...patch.protection } }))
+                          }}
                         />
                       )
                     })()}
