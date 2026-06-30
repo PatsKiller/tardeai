@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-30 - Click-time stop preflight (2FA + Fidelity manual)
+
+- `HoldingProtectionActions`: clicking Schwab 2FA or Fidelity manual ticket now runs live preflight first — refresh-quote (Schwab/Finviz), live-stops re-read, stop-readiness, recalc `buildStopLogic`; shows diff + "Proceed anyway" if decision changed; 2FA approve also re-validates before broker submit.
+
 ## 2026-06-30 - Fix false stale-quote blocks on after-hours Portfolio stops
 
 - `stopManagement.ts`: session-aware freshness (15m regular / **60m after-hours & pre-market**) matching `brokers/quote_time.py`; naive `YYYY-MM-DD HH:MM:SS` timestamps parsed as **America/New_York** (Finviz after-hours).

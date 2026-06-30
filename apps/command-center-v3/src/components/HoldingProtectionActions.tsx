@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
-import { buildStopLogic, isTrailingBrokerStop, resolveLiveStop, type StopOrderKind } from '../lib/stopManagement'
+import { buildStopLogic, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a855f7', RED = '#ef4444'
@@ -40,8 +40,6 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const trail = resolvedTrailPct(pr)
   const trailPct = trail?.pct ?? null
   const stopDist = trail?.stopDistPct ?? pr?.stop_distance_pct
-  const liveResolved = resolveLiveStop(confirmedStop, monitored, price)
-  const liveStop = liveResolved.price
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [ticket, setTicket] = useState('')
@@ -64,6 +62,10 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [readiness, setReadiness] = useState<any>(null)
   const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [preflightNote, setPreflightNote] = useState('')
+  const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
+  const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
   const baseQuoteTs = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
   const quoteTsForReadiness = refreshedQuote?.quote_time_normalized ?? baseQuoteTs
   useEffect(() => {
@@ -87,25 +89,101 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
-  const confirmedIsTrailing = isTrailingBrokerStop(confirmedStop, monitored)
-  const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
-  const preferTrail = !confirmedIsFixed && Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
   const trailLabel = trailPct != null
     ? (Math.abs(trailPct - Math.round(trailPct)) < 0.15 ? String(Math.round(trailPct)) : trailPct.toFixed(1))
     : ''
   const [selectedKind, setSelectedKind] = useState<StopOrderKind>('STOP')
-  const priceTimestamp = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
+  const priceTimestamp = refreshedQuote?.quote_time_normalized ?? refreshedQuote?.quote_time_raw
+    ?? h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
   const advisoryTimestamp = pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
-  const logic = buildStopLogic({
-    h,
-    pr,
-    monitored,
-    confirmedStop,
-    trailPct,
-    orderKind: selectedKind,
-    wholeShareConfirmed,
-    sourceTimestamp: priceTimestamp ?? advisoryTimestamp,
-  })
+  const effectivePrice = refreshedQuote?.quote_price ?? price
+  const effectiveConfirmed = liveStopOverride ?? confirmedStop
+  const liveResolved = resolveLiveStop(effectiveConfirmed, monitored, effectivePrice)
+  const liveStop = liveResolved.price
+  const confirmedIsTrailing = isTrailingBrokerStop(effectiveConfirmed, monitored)
+  const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
+  const preferTrail = !confirmedIsFixed && Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
+
+  const computeLogic = (orderKind: StopOrderKind = selectedKind, overrides?: {
+    quotePrice?: number | null; quoteTs?: string | null; liveStop?: any
+  }): StopLogic => {
+    const px = overrides?.quotePrice ?? effectivePrice
+    const ts = overrides?.quoteTs ?? priceTimestamp ?? advisoryTimestamp
+    const conf = overrides?.liveStop ?? effectiveConfirmed
+    return buildStopLogic({
+      h: { ...h, current_price: px, price: px, source_timestamp: ts },
+      pr: { ...pr, price: px },
+      monitored,
+      confirmedStop: conf,
+      trailPct,
+      orderKind,
+      wholeShareConfirmed,
+      sourceTimestamp: ts,
+    })
+  }
+
+  const logic = computeLogic(selectedKind)
+
+  /** Click-time preflight: refresh quote, live broker stop, readiness — recalc before 2FA / manual ticket. */
+  const runClickPreflight = async (orderKind: StopOrderKind) => {
+    const before = computeLogic(orderKind)
+    setValidating(true)
+    setPreflightNote('')
+    setPendingAction(null)
+    setMsg('⏳ Validating quote + stop logic…')
+    let quoteSnap: any = null
+    let readinessSnap: any = null
+    let liveSnap: any = effectiveConfirmed
+    try {
+      const qRaw = await fetch('/api/v2/holdings/protective-stop/refresh-quote', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, account: acct, order_kind: orderKind, trail_pct: trailPct }),
+      }).then(x => x.json())
+      quoteSnap = unwrapApi(qRaw)
+      setRefreshedQuote(quoteSnap)
+      const qTs = quoteSnap?.quote_time_normalized ?? quoteSnap?.quote_time_raw ?? priceTimestamp
+      if (isSchwab) {
+        const rRaw = await fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(qTs ?? ''))}`)
+          .then(x => x.json())
+        readinessSnap = unwrapApi(rRaw)
+        setReadiness(readinessSnap)
+      }
+      try {
+        const lsRaw = await fetch('/api/v2/holdings/live-stops').then(x => x.json())
+        const ls = unwrapApi(lsRaw)
+        const key = `${sym}:${acct}`
+        const row = ls?.by_key?.[key]
+        if (row) { liveSnap = row; setLiveStopOverride(row) }
+      } catch { /* optional */ }
+      onRefresh?.()
+    } catch (e: any) {
+      return { ok: false, error: String(e.message || e).slice(0, 120), before, after: before }
+    } finally {
+      setValidating(false)
+    }
+    const qPx = quoteSnap?.quote_price ?? effectivePrice
+    const qTs = quoteSnap?.quote_time_normalized ?? quoteSnap?.quote_time_raw ?? priceTimestamp
+    const after = computeLogic(orderKind, { quotePrice: qPx, quoteTs: qTs, liveStop: liveSnap })
+    const quoteBlockers = (quoteSnap?.blockers ?? []) as string[]
+    const readinessBlocked = isSchwab && readinessSnap && (
+      readinessSnap.quote_parse_ok === false || readinessSnap.quote_fresh === false
+      || readinessSnap.canary_state === 'BLOCKED'
+    )
+    const blockers = [...after.blockers.map(b => b.message)]
+    if (quoteBlockers.length) blockers.push(...quoteBlockers)
+    if (readinessBlocked && readinessSnap?.canary_blocker) blockers.push(readinessSnap.canary_blocker)
+    const hardCodes = new Set(['stale_quote', 'missing_quote', 'source_mismatch', 'stop_not_protective'])
+    const ok = isFidelity
+      ? !after.blockers.some(b => hardCodes.has(b.code)) && quoteSnap?.ok !== false
+      : after.canRequestLive && blockers.length === 0 && quoteSnap?.ok !== false
+    const changed = before.stop_action_decision !== after.stop_action_decision
+      || before.primary_operator_action !== after.primary_operator_action
+      || Math.abs((before.currentPrice ?? 0) - (after.currentPrice ?? 0)) > 0.02
+    const diff = changed
+      ? `Decision: ${before.stop_action_decision.replace(/_/g, ' ')} → ${after.stop_action_decision.replace(/_/g, ' ')} · ${before.primary_operator_action.slice(0, 60)} → ${after.primary_operator_action.slice(0, 60)}`
+      : ''
+    return { ok, before, after, quoteSnap, readinessSnap, liveSnap, changed, diff, blockers }
+  }
 
   if (!qty) return null
   if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null) return null
@@ -122,12 +200,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const resetApprove = () => { setIntentId(''); setApproveTk(''); setApproveCode(''); setSellAllDone(false) }
 
-  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: { label?: string }) => {
+  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: { label?: string; skipPreflight?: boolean }) => {
     setSelectedKind(kind)
-    const nextLogic = buildStopLogic({
-      h, pr, monitored, confirmedStop, trailPct, orderKind: kind, wholeShareConfirmed,
-      sourceTimestamp: priceTimestamp ?? advisoryTimestamp,
-    })
+    const nextLogic = computeLogic(kind)
     if (kind !== 'MARKET' && !nextLogic.canRequestLive && isSchwab) {
       setMsg(`⛔ ${nextLogic.blockers.map(b => b.message).join(' ')}`)
       return
@@ -140,12 +215,13 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         stop_price: kind === 'MARKET' ? null : stop,
         trail_pct: kind === 'TRAILING' ? trailPct : null,
         advised_stop: stop,
-        current_price: price,
+        current_price: effectivePrice,
         source_broker: pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account,
-        instrument_type: logic.instrumentType,
+        instrument_type: nextLogic.instrumentType,
         quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
         after_hours_ack: afterHoursAck,
+        preflight_at: new Date().toISOString(),
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -203,8 +279,45 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     }
   }
 
-  const confirmOrder = async (channel: 'web' | 'telegram') => {
+  type RequestKind = 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET'
+  const preflightAndRequest = async (kind: RequestKind, opts?: { label?: string }) => {
+    if (kind === 'MARKET') { requestOrder(kind, opts); return }
+    const pf = await runClickPreflight(kind)
+    if (!pf.ok) {
+      setMsg(`⛔ Validation failed — ${pf.blockers?.join(' · ') || pf.error || 'resolve blockers above'}`)
+      return
+    }
+    if (pf.changed && pf.diff) {
+      setPreflightNote(pf.diff)
+      setPendingAction({ kind: 'request', orderKind: kind })
+      setMsg(`⚠️ Logic changed since page load — review below, then confirm to proceed.`)
+      return
+    }
+    setMsg('✓ Validated — proceeding…')
+    await requestOrder(kind, { ...opts, skipPreflight: true })
+  }
+
+  const preflightAndConfirm = async (channel: 'web' | 'telegram') => {
+    const pf = await runClickPreflight(selectedKind)
+    if (!pf.ok) {
+      setMsg(`⛔ Cannot submit — ${pf.blockers?.join(' · ') || 'validation failed'}`)
+      return
+    }
+    if (pf.changed && pf.diff) {
+      setPreflightNote(pf.diff)
+      setPendingAction({ kind: 'confirm', channel })
+      setMsg(`⚠️ Logic changed — confirm again to submit to Schwab.`)
+      return
+    }
+    await confirmOrder(channel, true)
+  }
+
+  const confirmOrder = async (channel: 'web' | 'telegram', skipPreflight = false) => {
     if (!intentId) { setMsg('⛔ no active intent — request the order first'); return }
+    if (!skipPreflight) {
+      await preflightAndConfirm(channel)
+      return
+    }
     setBusy(true)
     try {
       const code = channel === 'web' ? approveTk.trim().toUpperCase() : approveCode.trim()
@@ -236,7 +349,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     }
   }
 
-  const armStop = (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT') => requestOrder(kind)
+  const armStop = (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT') => preflightAndRequest(kind)
   const requestSellAll = () => {
     if (!window.confirm(`Sell ALL ${qty} ${sym} @ MARKET (${sellAllTif}) on ${acct}? Requires 2FA before submit.`)) return
     requestOrder('MARKET', { label: `Sell all ${qty} sh @ MARKET ${sellAllTif}` })
@@ -263,7 +376,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
                       : null
   ) : null
   const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
-  const liveBlocked = !logic.canRequestLive || backendHardBlock != null
+  const liveBlocked = validating || !logic.canRequestLive || backendHardBlock != null
   const statusColor = logic.state === 'LIVE BROKER STOP' || logic.state === 'FIDELITY STOP VERIFIED' || logic.state === 'FIDELITY STOP RECORDED — MANUAL' ? GREEN
     : logic.state === 'MONITORED — SOFTWARE ONLY' ? PURPLE
       : logic.state === 'SOURCE MISMATCH — BLOCKED' || logic.state === 'ACTION REQUIRED' ? RED
@@ -278,7 +391,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const btn = (label: string, kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT', highlight = false) => (
     <button
       onClick={e => { e.stopPropagation(); armStop(kind) }}
-      disabled={busy || liveBlocked}
+      disabled={busy || validating || liveBlocked}
       title={liveBlocked
         ? `Disabled — ${disabledReasonHuman ?? 'resolve the blockers listed above'}`
         : enabledTitle(kind)}
@@ -288,7 +401,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         background: liveBlocked ? 'rgba(15,23,42,.5)' : highlight ? 'rgba(245,158,11,.18)' : 'rgba(15,23,42,.66)',
         color: liveBlocked ? MUTED : highlight ? AMBER : TEXT0, whiteSpace: 'nowrap',
       }}
-    >{busy ? '…' : label}</button>
+    >{validating ? 'Validating…' : busy ? '…' : label}</button>
   )
 
   const fidelityTicketLabel = logic.liveStop != null ? 'Create modify ticket' : 'Create Fidelity manual ticket'
@@ -517,6 +630,29 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         </label>
       )}
 
+      {pendingAction && preflightNote && (
+        <div data-testid="preflight-changed" style={{ marginTop: 10, padding: '10px 11px', borderRadius: 8, background: 'rgba(245,158,11,.12)', border: `1px solid ${AMBER}` }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: AMBER, marginBottom: 4 }}>Logic changed after live validation</div>
+          <div style={{ fontSize: 11.5, color: TEXT0, lineHeight: 1.45 }}>{preflightNote}</div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={e => {
+              e.stopPropagation()
+              const pa = pendingAction
+              setPendingAction(null); setPreflightNote('')
+              if (pa?.kind === 'request') requestOrder(pa.orderKind, { skipPreflight: true })
+              else if (pa?.kind === 'confirm') confirmOrder(pa.channel, true)
+            }} disabled={busy || validating}
+              style={{ fontSize: 12, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${GREEN}`, background: `${GREEN}22`, color: GREEN, cursor: 'pointer' }}>
+              Proceed anyway
+            </button>
+            <button onClick={e => { e.stopPropagation(); setPendingAction(null); setPreflightNote(''); setMsg('') }}
+              style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.35)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {showProtect && (
         <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
@@ -533,15 +669,15 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           )}
           {isFidelity && (
             <button
-              onClick={e => { e.stopPropagation(); requestOrder(logic.liveStop != null ? 'STOP_LIMIT' : 'STOP') }}
-              disabled={busy || liveBlocked || fidelityReviewDisabled}
+              onClick={e => { e.stopPropagation(); preflightAndRequest(logic.liveStop != null ? 'STOP_LIMIT' : 'STOP') }}
+              disabled={busy || validating || liveBlocked || fidelityReviewDisabled}
               title={liveBlocked ? 'Refresh quote / resolve blockers before creating a Fidelity manual ticket' : 'Generate manual Fidelity ticket only; Trade AI does not submit to Fidelity'}
               style={{
                 fontSize: 12, fontWeight: 900, minHeight: 34, padding: '7px 10px', borderRadius: 6,
                 border: `1px solid ${PURPLE}`, background: 'rgba(168,85,247,.16)', color: (busy || liveBlocked) ? MUTED : PURPLE,
                 cursor: (busy || liveBlocked || fidelityReviewDisabled) ? 'not-allowed' : 'pointer',
               }}
-            >{busy ? '…' : fidelityTicketLabel}</button>
+            >{validating ? 'Validating…' : busy ? '…' : fidelityTicketLabel}</button>
           )}
           {brokerUrl && (
             <a href={brokerUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
@@ -568,7 +704,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             <input value={approveTk} onChange={e => setApproveTk(e.target.value.toUpperCase())} placeholder={sym}
               onClick={e => e.stopPropagation()}
               style={{ flex: 1, fontSize: 10, padding: '4px 6px', borderRadius: 4, border: `1px solid ${tkOk ? GREEN : 'rgba(148,163,184,.3)'}`, background: 'rgba(15,23,42,.6)', color: TEXT0 }} />
-            <button onClick={e => { e.stopPropagation(); confirmOrder('web') }} disabled={busy || !tkOk}
+            <button onClick={e => { e.stopPropagation(); preflightAndConfirm('web') }} disabled={busy || validating || !tkOk}
               style={{ fontSize: 12, fontWeight: 800, minHeight: 34, padding: '4px 10px', borderRadius: 4, border: 'none', cursor: (busy || !tkOk) ? 'not-allowed' : 'pointer', background: tkOk ? AMBER : '#334155', color: tkOk ? '#fff' : MUTED }}>
               approve
             </button>
@@ -577,7 +713,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             <input value={approveCode} onChange={e => setApproveCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" inputMode="numeric"
               onClick={e => e.stopPropagation()}
               style={{ flex: 1, fontSize: 10, padding: '4px 6px', borderRadius: 4, border: `1px solid ${codeOk ? GREEN : 'rgba(148,163,184,.3)'}`, background: 'rgba(15,23,42,.6)', color: TEXT0, letterSpacing: 2, fontFamily: 'monospace' }} />
-            <button onClick={e => { e.stopPropagation(); confirmOrder('telegram') }} disabled={busy || !codeOk}
+            <button onClick={e => { e.stopPropagation(); preflightAndConfirm('telegram') }} disabled={busy || validating || !codeOk}
               style={{ fontSize: 12, fontWeight: 800, minHeight: 34, padding: '4px 10px', borderRadius: 4, border: 'none', cursor: (busy || !codeOk) ? 'not-allowed' : 'pointer', background: codeOk ? AMBER : '#334155', color: codeOk ? '#fff' : MUTED }}>
               approve
             </button>
