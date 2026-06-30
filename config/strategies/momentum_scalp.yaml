@@ -197,11 +197,28 @@ entry_criteria:
     operator: lte
     value: 720   # 12:00 ET in minutes-from-midnight (matches intraday_execution.trading_window_et.end)
 exit_rules:
-  stop_method: fixed_pct
-  stop_max_pct: 0.15
-  target_method: trailing
+  # Layered stop methodology — MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY (2026-06-29).
+  # Executable stop comes from the proposal/screener; broker_strategy_resolver only fills a MISSING stop.
+  stop_method: level_based        # L1 = structure-anchored (resolver: stop below support); was fixed_pct
+  stop_max_pct: 0.08              # fallback cap only (no structural stop) — tightened 0.15->0.08 for scalps
+  target_method: trailing         # TARGET trail (profit target), NOT the protective stop trail (L3, off below)
   intraday_exit_required: true
   no_overnight_hold: true
+  # ── Layered methodology (L1/L2 active; L3 protective trailing GATED OFF — advisory/monitoring) ──
+  layered_stop:
+    layer1_initial:
+      method: atr_structure_hybrid   # recent swing structure OR 0.8-1.5x ATR(14), whichever tighter
+      max_atr_mult: 1.5
+      max_initial_risk_r: 1.2
+    layer2_breakeven:
+      enabled: true
+      trigger_r: 1.2                 # move stop to breakeven at +1.0-1.5R (mandatory)
+      offset_r: 0.0
+    layer3_trailing:
+      enabled: false                 # GATED OFF — backtest + 27-config sweep net-negative for momentum
+      reason: "Chandelier/ATR trailing truncates the momentum fat tail (delta -0.13..-0.87R) — policy section 2"
+      method: chandelier             # params kept for advisory/replay (Stop Intelligence panel) only
+      activation_r: 1.5
 lifecycle:
   # P0-3: intraday_execution.proposal_ttl_minutes is the SINGLE SOURCE OF TRUTH for proposal TTL.
   # The old proposal_expiry_hours:4 contradicted the 30-minute scalp TTL and is removed.
@@ -214,6 +231,11 @@ risk:
   max_position_size: 2000
   max_daily_trades: 3
   target_rr: 2.0
+  # MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY section 7 — kill switches (consumed by the monitoring layer)
+  max_initial_risk_r: 1.2
+  max_concurrent_scalps: 3
+  daily_loss_limit_r: 3.0
+  portfolio_heat_kill_pct: 4.5
 co_enables:
   promotes_to:
     - swing_breakout
