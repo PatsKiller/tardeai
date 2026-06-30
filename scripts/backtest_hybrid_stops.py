@@ -195,6 +195,73 @@ def run(symbols, years, strategy, algos=("ma_trend_filter", "chandelier", "dynam
     return rows, {"v23": _metrics(agg["v23"]), "v24": _metrics(agg["v24"])}
 
 
+# ── Phase 2 (2026-06-29): CONTEXT-AWARE LAYERED policy re-test ───────────────────────────────────────
+# STOP-V2.4 tested the PLAIN chandelier overlay and HELD. The MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY adds
+# things STOP-V2.4 never tested: L2 breakeven, DELAYED trail activation (+act_r, not immediate), and a
+# REGIME-aware multiplier. This re-test isolates the trailing contribution: baseline (L1 stop + L2 breakeven,
+# NO trail) vs ctx (L1 + L2 + L3 regime-aware Chandelier). Gate metric = Δexpectancy (ctx − baseline); the
+# policy's 4.5 gate wants ≥ +0.25R. NOTE: daily bars on liquid names — this tests the LAYERING MECHANICS,
+# not the intraday micro-cap scalp regime (that is the §6 paper-trade gate). Advisory; no orders/config.
+CTX_DEFAULTS = {"init_mult": 1.5, "be_r": 1.0, "activate_r": 1.5,
+                "mult_trend": 3.0, "mult_mid": 2.0, "mult_range": 1.5}
+
+
+def _simulate_ctx(df, ind, params, trail_enabled):
+    import math
+    closes = df["close"].values; highs = df["high"].values; lows = df["low"].values
+    bo = ind["bo"].values; atr = ind["atr"].values
+    adx = ind["adx"].values if ind["adx"] is not None else None
+    im = params["init_mult"]; be_r = params["be_r"]; act_r = params["activate_r"]
+    trades = []; i = 55; n = len(df)
+    while i < n - 1:
+        if math.isnan(bo[i]) or math.isnan(atr[i]) or closes[i] <= bo[i] or atr[i] <= 0:
+            i += 1; continue
+        entry = float(closes[i]); risk = im * float(atr[i]); stop = entry - risk
+        if risk <= 0:
+            i += 1; continue
+        be_done = trail_on = False; hh = entry; exit_reason = "time"; rR = None; ei = i; j = i + 1
+        while j < n:
+            if lows[j] <= stop:
+                rR = (stop - entry) / risk; exit_reason = ("stop_be" if be_done else "stop"); break
+            px = float(closes[j]); hh = max(hh, float(highs[j])); R = (px - entry) / risk
+            if not be_done and R >= be_r:                         # L2 breakeven
+                stop = max(stop, entry); be_done = True
+            if trail_enabled and be_done and R >= act_r:          # L3 delayed activation
+                trail_on = True
+            if trail_on:
+                a = float(atr[j]) if not math.isnan(atr[j]) else float(atr[i])
+                adv = adx[j] if (adx is not None and not math.isnan(adx[j])) else None
+                mult = (params["mult_trend"] if (adv is not None and adv > 25)
+                        else params["mult_range"] if (adv is not None and adv < 20) else params["mult_mid"])
+                ts = hh - mult * a
+                if ts > stop and ts < px:
+                    stop = ts
+            if j - ei >= MAX_HOLD:
+                rR = (px - entry) / risk; exit_reason = "time"; break
+            j += 1
+        if rR is None:
+            rR = (float(closes[-1]) - entry) / risk; exit_reason = "eod"; j = n - 1
+        whip = bool(rR <= 0 and any(highs[k] > entry for k in range(j, min(j + WHIPSAW_LOOKAHEAD, n))))
+        trades.append({"realized_R": round(rR, 3), "exit_reason": exit_reason, "hold": j - ei,
+                       "whipsaw": whip, "trail_on": trail_on})
+        i = j + 1
+    return trades
+
+
+def run_ctx(symbols, years, strategy, params):
+    agg = {"base": [], "ctx": []}; rows = []
+    for sym in symbols:
+        df = _fetch(sym, years)
+        if df is None:
+            rows.append((sym, None, None)); continue
+        ind = _indicators(df, {"atr_period": 14, "chandelier_lookback": 22})
+        tb = _simulate_ctx(df, ind, params, trail_enabled=False)   # L1+L2, no trail (the gate baseline)
+        tc = _simulate_ctx(df, ind, params, trail_enabled=True)    # L1+L2+L3 regime-aware trail
+        agg["base"] += tb; agg["ctx"] += tc
+        rows.append((sym, _metrics(tb), _metrics(tc)))
+    return rows, {"base": _metrics(agg["base"]), "ctx": _metrics(agg["ctx"])}
+
+
 def _fmt(m):
     if not m or m.get("trades", 0) == 0:
         return "   (no trades)"
@@ -210,8 +277,45 @@ def main():
     ap.add_argument("--algos", default="ma_trend_filter,chandelier,dynamic_multiplier",
                     help="comma list of overlay algos to enable")
     ap.add_argument("--base-atr-mult", type=float, default=3.0)
+    ap.add_argument("--mode", default="hybrid", choices=["hybrid", "ctx"],
+                    help="hybrid = STOP-V2.4 overlay A/B; ctx = context-aware layered policy re-test (Phase 2)")
+    ap.add_argument("--init-mult", type=float, default=CTX_DEFAULTS["init_mult"])
+    ap.add_argument("--be-r", type=float, default=CTX_DEFAULTS["be_r"])
+    ap.add_argument("--activate-r", type=float, default=CTX_DEFAULTS["activate_r"])
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
+
+    if a.mode == "ctx":
+        params = {**CTX_DEFAULTS, "init_mult": a.init_mult, "be_r": a.be_r, "activate_r": a.activate_r}
+        print(f"\nCONTEXT-AWARE LAYERED re-test — {a.strategy} · init={params['init_mult']}xATR · "
+              f"BE@+{params['be_r']}R · trail@+{params['activate_r']}R · regime mult "
+              f"{params['mult_range']}/{params['mult_mid']}/{params['mult_trend']} · {a.years}y\n"
+              f"baseline = L1 stop + L2 breakeven (NO trail) · ctx = + L3 regime Chandelier\n")
+        rows, totals = run_ctx(syms, a.years, a.strategy, params)
+        for sym, mb, mc in rows:
+            print(f"── {sym}")
+            if mb is None:
+                print("   (no data)"); continue
+            print(f"   base: {_fmt(mb)}")
+            print(f"   ctx : {_fmt(mc)}")
+        print("\n══ AGGREGATE ═════════════════════════════════════════════════════════════════")
+        b, c = totals["base"], totals["ctx"]
+        print(f"   baseline (no trail): {_fmt(b)}")
+        print(f"   ctx (regime trail) : {_fmt(c)}")
+        if b.get("trades") and c.get("trades"):
+            de = c["expectancy_R"] - b["expectancy_R"]
+            dd_ok = c["max_dd_R"] >= b["max_dd_R"] - 0.01
+            pf_ok = c["profit_factor"] >= b["profit_factor"] - 0.01
+            gate = de >= 0.25 and dd_ok and pf_ok      # the policy §6 gate: ≥ +0.25R from trailing
+            verdict = ("PASS GATE — layered trailing adds ≥ +0.25R; clears the §6 trailing gate (still "
+                       "needs the intraday paper sample)" if gate else
+                       f"FAIL GATE — trailing Δ={de:+.3f}R < +0.25R; keep Layer-3 OFF (confirms STOP-V2.4 prior)")
+            print(f"\n   Δexpectancy (ctx − baseline) = {de:+.3f}R/trade · drawdown_ok={dd_ok} · pf_ok={pf_ok}")
+            print(f"   §6 GATE (≥ +0.25R): {verdict}")
+        print("\n   Daily bars on liquid names — tests the LAYERING mechanics, NOT the intraday micro-cap")
+        print("   scalp regime. Real validation = the 150-trade paper gate (policy §6). Advisory only.\n")
+        return
+
     algos = tuple(s.strip() for s in a.algos.split(",") if s.strip())
     print(f"\nSTOP-V2.4 (hybrid) vs V2.3 (R-multiple) — {a.strategy} · algos={algos} · "
           f"mult={a.base_atr_mult} · {a.years}y · 20d-breakout entries\n")
