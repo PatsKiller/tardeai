@@ -75,6 +75,16 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   if (!qty) return null
   if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null) return null
 
+  // Lock-in advisory: you hold a LIVE FIXED stop, but a trailing stop at the advised width would sit
+  // ABOVE that fixed trigger right now — so switching to trailing locks a HIGHER floor and keeps
+  // ratcheting up as price rises. Advisory only; execution routes through the existing Switch action
+  // (Schwab = API + 2FA, Fidelity = manual Active Trader ticket).
+  const liveFixedStopPx = confirmedIsFixed && liveStop != null ? liveStop : null
+  const trailingFloorNow = (trailPct != null && price != null && price > 0) ? price * (1 - trailPct / 100) : null
+  const lockInTrail = Boolean(liveFixedStopPx != null && trailingFloorNow != null && trailingFloorNow > liveFixedStopPx + 0.01)
+  const lockInGapPct = liveFixedStopPx != null && trailingFloorNow != null
+    ? ((trailingFloorNow - liveFixedStopPx) / liveFixedStopPx) * 100 : null
+
   const resetApprove = () => { setIntentId(''); setApproveTk(''); setApproveCode(''); setSellAllDone(false) }
 
   const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: { label?: string }) => {
@@ -281,6 +291,27 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           <input type="checkbox" checked={wholeShareConfirmed} onChange={e => setWholeShareConfirmed(e.target.checked)} />
           Confirm whole-share Schwab order: SELL {logic.wholeQty} {sym}; residual {logic.residualQty.toFixed(4)} shares remain monitored.
         </label>
+      )}
+
+      {/* LOCK-IN PROFITS — fixed stop is live, but trailing now locks a HIGHER floor → advise the switch */}
+      {lockInTrail && liveFixedStopPx != null && trailingFloorNow != null && (
+        <div style={{ fontSize: 11, color: GREEN, fontWeight: 700, marginBottom: 6, padding: '5px 8px', borderRadius: 6, background: `${GREEN}12`, border: `1px solid ${GREEN}45`, lineHeight: 1.45 }}>
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>📈 Lock in profits — switch to {trailLabel}% trailing</div>
+          A {trailLabel}% trailing stop now sits at <b style={{ fontFamily: 'monospace' }}>${trailingFloorNow.toFixed(2)}</b>
+          {' '}— <b>{lockInGapPct != null ? `${lockInGapPct.toFixed(1)}%` : ''}</b> above your live fixed stop
+          {' '}<b style={{ fontFamily: 'monospace' }}>${liveFixedStopPx.toFixed(2)}</b>. It keeps ratcheting up as price rises.
+          <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={e => { e.stopPropagation(); requestOrder('TRAILING') }}
+              disabled={busy || needsReauth}
+              title={isFidelity
+                ? `Fidelity has no trading API — arms a software-monitored ${trailLabel}% trailing stop + a manual Active Trader ticket to replace the fixed stop`
+                : `Submit a ${trailLabel}% trailing stop via the Schwab API (per-order 2FA) to replace the fixed stop`}
+              style={{ fontSize: 9.5, fontWeight: 900, padding: '4px 10px', borderRadius: 5, cursor: (busy || needsReauth) ? 'not-allowed' : 'pointer', border: `1px solid ${GREEN}`, background: `${GREEN}1e`, color: GREEN, whiteSpace: 'nowrap' }}
+            >{busy && !intentId ? '…' : isFidelity ? `Switch manually @ Fidelity` : `Switch @ Schwab (API · 2FA)`}</button>
+            {needsReauth && <span style={{ fontSize: 8.5, color: RED, fontWeight: 700 }}>Schwab re-auth required</span>}
+          </div>
+        </div>
       )}
 
       {needsSellAll && (
