@@ -4,6 +4,7 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
 import { useProAnalystMap } from './ProAnalystPill'
 import PositionDecisionCard from './PositionDecisionCard'
+import { formatReviewStamp } from '../lib/stopReviewTooltip'
 
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const sel = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: '#f8fafc' } as const
@@ -114,7 +115,7 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
       {shown.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <PositionDecisionCard key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
     </div>
     {shown.length === 0 && <div style={{ ...panel, color: MUTED, textAlign: 'center' }}>No positions match the current filters.</div>}
-    <div style={{ fontSize: 9, color: MUTED }}>Source: /api/v2/open-trades/intelligence (read-only) · price {summary.last_price_update ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}</div>
+    <div style={{ fontSize: 9, color: MUTED }}>Source: /api/v2/open-trades/intelligence (read-only, 60s) · price {summary.last_price_update ?? '—'} · broker stops {formatReviewStamp(summary.broker_stops_fetched_at) ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}</div>
   </div>
 }
 

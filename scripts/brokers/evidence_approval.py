@@ -59,9 +59,34 @@ def _hash_one(snapshot: Any) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def order_spec_hash(order_spec: dict | None) -> str:
-    """Canonical hash for the exact broker order payload submitted after approval."""
-    return _hash_one(order_spec or {})
+def protective_order_binding(intent=None, order_spec: dict | None = None) -> dict | None:
+    """Canonical binding fields for a protective-stop canary: symbol/account/qty/residual/order_kind/trail/TIF.
+
+    Included in order_spec_hash so roth (130/10%) and rollover (201/8.7%) can never be conflated."""
+    if intent is None:
+        return None
+    ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+    inst = getattr(intent, "instrument", None)
+    spec = order_spec or {}
+    return {
+        "account_key": getattr(intent, "account_key", None),
+        "symbol": (getattr(inst, "symbol", "") or "").upper(),
+        "qty": getattr(getattr(intent, "quantity", None), "qty", None),
+        "residual_qty": ev.get("residual_qty"),
+        "order_kind": ev.get("order_type") or spec.get("orderType"),
+        "trail_pct": ev.get("trail_pct") if ev.get("trail_pct") is not None else spec.get("stopPriceOffset"),
+        "time_in_force": spec.get("duration"),
+    }
+
+
+def order_spec_hash(order_spec: dict | None, *, binding: dict | None = None) -> str:
+    """Canonical hash for the exact broker order payload submitted after approval.
+
+    When ``binding`` is provided (protective-stop path), account/residual/order_kind/trail/TIF are
+    hashed together with the Schwab order JSON so distinct canary targets cannot share a hash."""
+    if binding is None:
+        return _hash_one(order_spec or {})
+    return _hash_one({"order_spec": order_spec or {}, "binding": binding})
 
 
 def compute_bundle_hashes(
@@ -232,7 +257,8 @@ def create_order_evidence_approval(
     inst = getattr(intent, "instrument", None)
     ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
     ctx = _confirmed_approval_context(iid)
-    spec_hash = order_spec_hash(order_spec)
+    binding = protective_order_binding(intent, order_spec)
+    spec_hash = order_spec_hash(order_spec, binding=binding)
     proposal_snapshot = {
         "intent_id": iid,
         "correlation_id": str(getattr(intent, "correlation_id", "") or ""),
@@ -321,6 +347,7 @@ def revalidate_before_submit(
     current_risk: dict | None = None,
     current_chain: dict | None = None,
     current_order_spec: dict | None = None,
+    current_binding: dict | None = None,
     kill_switch_check: bool = True,
     require_readiness: bool = True,
 ) -> dict:
@@ -353,7 +380,20 @@ def revalidate_before_submit(
         if current_order_spec is None:
             return {"ok": False, "reason": "order_spec_bundle_unavailable_fail_closed",
                     "hard_block": True, "checks": checks}
-        new_order_spec_hash = order_spec_hash(current_order_spec)
+        stored_binding = None
+        if isinstance(proposal, dict) and proposal.get("account_key"):
+            stored_binding = {
+                "account_key": proposal.get("account_key"),
+                "symbol": (proposal.get("symbol") or "").upper(),
+                "qty": proposal.get("qty"),
+                "residual_qty": proposal.get("residual_qty"),
+                "order_kind": proposal.get("order_type"),
+                "trail_pct": proposal.get("trail_pct"),
+                "time_in_force": proposal.get("time_in_force"),
+            }
+        bind_for_new = current_binding if current_binding is not None else stored_binding
+        new_order_spec_hash = order_spec_hash(
+            current_order_spec, binding=bind_for_new if stored_binding else None)
         checks.append({"bundle": "order_spec", "kind": "hash",
                        "match": new_order_spec_hash == stored_order_spec_hash})
         if new_order_spec_hash != stored_order_spec_hash:

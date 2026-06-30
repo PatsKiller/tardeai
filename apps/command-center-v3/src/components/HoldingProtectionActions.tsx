@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
-import { buildStopLogic, type StopOrderKind } from '../lib/stopManagement'
+import { buildStopLogic, isTrailingBrokerStop, resolveLiveStop, type StopOrderKind } from '../lib/stopManagement'
+import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a855f7', RED = '#ef4444'
 const SCHWAB_SELL_ALL_MAX_SHARES = 40
 const unwrapApi = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
+const resolveSchwabAcct = (a: string) => a === 'schwab_roth' ? 'schwab_roth_ira' : a
 const apiReason = (j: any) => j?.result?.error ?? j?.error ?? j?.reason ?? j?.message ?? 'request failed'
 const internalBlockMessage = (r: any) => {
   const reason = r?.reason || apiReason(r)
@@ -22,8 +24,8 @@ const BROKER_URL: Record<string, string> = {
   schwab: 'https://www.schwab.com/client-home',
 }
 
-export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, onRefresh }: {
-  h: any; pr: any; monitored?: any; confirmedStop?: any; onRefresh?: () => void
+export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, onRefresh }: {
+  h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null; onRefresh?: () => void
 }) {
   const acct = String(h.account ?? '')
   const sym = String(h.symbol ?? '').toUpperCase()
@@ -38,9 +40,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const trail = resolvedTrailPct(pr)
   const trailPct = trail?.pct ?? null
   const stopDist = trail?.stopDistPct ?? pr?.stop_distance_pct
-  const liveStop = confirmedStop?.stop_price != null ? Number(confirmedStop.stop_price)
-    : monitored?.status === 'armed' ? Number(monitored.effective_stop ?? monitored.stop_price)
-    : null
+  const liveResolved = resolveLiveStop(confirmedStop, monitored, price)
+  const liveStop = liveResolved.price
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [ticket, setTicket] = useState('')
@@ -86,10 +87,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
-  const confNote = String(confirmedStop?.note ?? '')
-  const confirmedIsTrailing = /trailing|trail\s+\d/i.test(confNote)
-    || monitored?.order_type === 'TRAILING_STOP'
-  const confirmedIsFixed = Boolean(confirmedStop?.stop_price != null && !confirmedIsTrailing)
+  const confirmedIsTrailing = isTrailingBrokerStop(confirmedStop, monitored)
+  const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
   const preferTrail = !confirmedIsFixed && Boolean(pr?.trail_recommended || trail?.matchesStopWidth)
   const trailLabel = trailPct != null
     ? (Math.abs(trailPct - Math.round(trailPct)) < 0.15 ? String(Math.round(trailPct)) : trailPct.toFixed(1))
@@ -252,14 +251,14 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
   // + backend evidence revalidation enforce them at submit; we never silently rely on the frontend for safety.
   const backendHardBlock: string | null = isSchwab && readiness ? (
-    readiness.account_api_write_enabled === false ? `${acct} is not armed for live API writes (ticket mode). The live-stop canary runs on an api_write-enabled Schwab account (e.g. schwab_rollover_ira), not this one.`
+    readiness.account_api_write_enabled === false ? `${acct} is not armed for live API writes (ticket mode). Set broker_accounts.api_write_enabled=TRUE for ${resolveSchwabAcct(acct)}.`
       : readiness.other_account_canary ? `Another ${sym} canary is already active on ${readiness.other_account_canary}. Only one ${sym} canary may be armed at a time.`
         : readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
           : !readiness.quote_fresh ? 'Blocked: quote is stale or after-hours freshness is not valid. Refresh latest quote first.'
             : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
               : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
                 : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
-                  : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours: first live canary is restricted to a regular session. After-hours override available only with explicit acknowledgement; not recommended for first canary.'
+                  : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours: restricted to next regular session unless SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1 is enabled and you acknowledge after-hours GTC.'
                     : (readiness.requires_after_hours_ack && !afterHoursAck) ? 'Check the after-hours GTC acknowledgement below to proceed.'
                       : null
   ) : null
@@ -294,12 +293,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const fidelityTicketLabel = logic.liveStop != null ? 'Create modify ticket' : 'Create Fidelity manual ticket'
   const fidelityReviewDisabled = logic.blockers.some(b => b.code === 'source_mismatch')
+  const reviewTip = stopReviewTooltip({
+    advisoryAt: pr?.at, advisoryModel: pr?.model,
+    priceAt: priceTimestamp ?? advisoryTimestamp,
+    brokerFetchedAt: confirmedStop?.fetched_at ?? brokerStopsFetchedAt,
+    brokerOrderId: confirmedStop?.order_id,
+    confirmedAt: confirmedStop?.confirmed_at,
+  })
+  const reviewStamp = formatReviewStamp(confirmedStop?.fetched_at ?? brokerStopsFetchedAt ?? pr?.at)
 
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 10, padding: '12px 13px', borderRadius: 8, background: 'rgba(15,23,42,.74)', border: `1px solid ${statusColor}55`, boxShadow: `inset 3px 0 0 ${statusColor}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 15, color: statusColor, fontWeight: 900, letterSpacing: 0.2 }}>STOP STATUS: {logic.state}</div>
+        <div title={reviewTip} style={{ fontSize: 15, color: statusColor, fontWeight: 900, letterSpacing: 0.2, cursor: 'help' }}>STOP STATUS: {logic.state}</div>
         <span style={{ fontSize: 12, color: MUTED }}>{logic.stop_action_decision.replace(/_/g, ' ')}</span>
+        {reviewStamp && <span title={reviewTip} style={{ fontSize: 10, color: MUTED, cursor: 'help' }}>last reviewed {reviewStamp}</span>}
       </div>
 
       <div style={{ marginBottom: 10, padding: '9px 10px', borderRadius: 7, background: 'rgba(2,6,23,.38)', border: `1px solid ${statusColor}44` }}>
@@ -318,8 +326,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Current</span><br /><b>{logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'}</b></div>
         <div><span style={{ color: MUTED }}>Account + broker</span><br /><b>{acct}</b> · {logic.broker}</div>
         <div><span style={{ color: MUTED }}>Instrument</span><br /><b>{logic.instrumentType.replace(/_/g, ' ')}</b></div>
-        <div><span style={{ color: MUTED }}>{isFidelity ? 'Current stop' : 'Broker live stop'}</span><br /><b style={{ color: logic.liveStop != null ? GREEN : MUTED }}>{logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
-        <div><span style={{ color: MUTED }}>Advisor fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
+        <div title={reviewTip}><span style={{ color: MUTED }}>{isFidelity ? 'Current stop' : 'Broker live stop'}</span><br /><b style={{ color: logic.liveStop != null || logic.liveStopIsTrailing ? GREEN : MUTED }}>{logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopIsTrailing && logic.liveStop != null ? ` (~$${logic.liveStop.toFixed(2)} now)` : ''}{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
+        <div title={reviewTip}><span style={{ color: MUTED }}>Advisor fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
         <div><span style={{ color: MUTED }}>Optional trail</span><br /><b>{trailPct != null ? `${trailLabel}%` : 'none'}</b></div>
         <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b style={{ color: logic.floor_math_consistent ? TEXT0 : RED }}>{logic.familyFloorLabel}</b></div>
         <div><span style={{ color: MUTED }}>Price timestamp</span><br /><b>{String(priceTimestamp ?? 'missing').slice(0, 19)}</b></div>
@@ -496,7 +504,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
       {/* After-hours acknowledgement — a GTC stop is valid 24/7 (rests until triggered), but after-hours the
           operator must acknowledge that trigger behavior depends on regular-market conditions. */}
-      {isSchwab && showProtect && readiness?.requires_after_hours_ack && !readiness?.after_hours_stops_disabled && (
+      {isSchwab && showProtect && readiness?.requires_after_hours_ack && (
         <label
           onClick={e => e.stopPropagation()}
           style={{ marginTop: 8, marginBottom: 2, display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, color: TEXT0,

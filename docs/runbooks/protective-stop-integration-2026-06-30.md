@@ -141,6 +141,28 @@ backend revalidates evidence, and the UI shows `LIVE BROKER STOP` only after bro
 For the **V** Schwab rollover IRA canary the only blocker was `fractional_qty` (201.4412 sh, residual 0.4412,
 whole-share unchecked). With confirmation checked and all gates clean, V is `READY_FOR_OPERATOR`.
 
+## Live Broker Stops & Last-Reviewed Tooltips
+
+Portfolio and Open Trades must show **current** broker protective-stop state, not a stale advisory overlay.
+
+- **`GET /api/v2/holdings/live-stops`** — read-only Schwab/Alpaca SELL stops (60s cache), keyed
+  `SYMBOL:account` (holdings account labels, e.g. `schwab_roth` not `schwab_roth_ira`). Returns `by_key`,
+  `fetched_at`, `cache_ttl_sec`. No broker writes.
+- **Portfolio** (`PortfolioHub.tsx`): polls `/api/v2/holdings/live-stops` every **60s** and merges into
+  `confirmedStop` via `mergeLiveStop()` before `HoldingProtectionActions` renders.
+- **Open Trades** (`open_trades_intelligence.py`): each `broker_stop` on a position carries `fetched_at`; summary
+  includes `broker_stops_fetched_at`.
+- **Trailing live stops**: Schwab trailing orders often have `stop_price=null`. UI treats `trail_offset` +
+  `order_type=TRAILING_STOP` as `LIVE BROKER STOP`; estimated floor = `price × (1 − trail%)`.
+- **Last-reviewed tooltips** (`stopReviewTooltip.ts`): hover STOP STATUS, 🛡 badge, broker/advisor fields, and
+  Open Trades “PROTECTED” banner for:
+  - Broker stop last read (Schwab API `fetched_at`)
+  - Protection advisory last reviewed (`protection.at` + model)
+  - Quote as-of
+  - Operator confirmed stop (`confirmed_at`, Fidelity manual)
+- Inline label on Portfolio stop panel: `last reviewed {timestamp}` beside STOP STATUS.
+- Build marker after this change: `cc-v3 live-stops-review-ts 2026-06-30`.
+
 ## Quote Timestamp Normalization & After-Hours Policy
 
 The quote feeds emit several timestamp shapes (`...T...-04:00`, `...Z`, `YYYY-MM-DD HH:MM:SS`, and
@@ -176,7 +198,16 @@ triggered. (During the dead overnight window the quote will be stale → `BLOCKE
 
 ## Validation Snapshot
 
-Last validation after deploying PR #33 into the runtime checkout:
+Last validation on integration branch `fix/stop-execution-journal-reentry-integration`:
+
+- `tests/test_stop_fixed_trailing_validation.py`: fixed vs trailing math/UI/backend parity (distance %, trail
+  alignment 0.35%, floor mismatch, live trailing `stop_price=null`, Schwab order-spec shape).
+- `tests/test_stop_management_decision_logic.py` + `tests/test_stop_management_ui_hardening.py` (incl.
+  test_16 live-stops + review tooltips): all pass.
+- `python3 scripts/verify_protective_stop_submit_flow.py --json`: PASS (`no_submit_performed=true`).
+- Build marker: `cc-v3 live-stops-review-ts 2026-06-30`.
+
+Prior validation after deploying PR #33 into the runtime checkout:
 
 - `npm run build` in `apps/command-center-v3`: passed with existing Vite bundle-size/script warnings.
 - Requested pytest group after the V trailing-stop incident fix: `66 passed`.

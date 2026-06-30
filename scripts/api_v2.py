@@ -175,25 +175,33 @@ def _cached_schwab_validator():
 
 def _after_hours_override_enabled():
     """Is the explicit after-hours OVERRIDE policy enabled? Default OFF — the first live canary is restricted
-    to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). A GTC stop is technically valid 24/7, but
-    after-hours submission is opt-in only via SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1."""
+    to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). AFTER_HOURS_GTC requires this override
+    (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND operator after_hours_ack."""
     import os as _os
     return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
 
 
 def _after_hours_ack(body=None):
     """After-hours / pre-market submission is permitted ONLY when the override policy is enabled AND the
-    operator explicitly acknowledges it (the GTC order rests until triggered; trigger behavior depends on
-    regular-market conditions). Default: blocked → next regular session. Never relaxes any other gate (fresh
-    quote / evidence-bound approval / whole-share / 2FA / read-back)."""
+    operator explicitly acknowledges it (GTC rests until triggered). Default: blocked → next regular session.
+    Never relaxes quote freshness / evidence-bound approval / whole-share / 2FA / read-back."""
     return _after_hours_override_enabled() and bool((body or {}).get("after_hours_ack"))
 
 
-def _one_v_canary_conflict(symbol, account):
-    """One protective-stop canary per symbol at a time. Returns the conflicting account if an active
-    evidence-bound approval (or armed broker stop) for this symbol exists on a DIFFERENT account, else None.
+def _resolve_protective_account_key(account_key: str) -> str:
+    """Holdings may label schwab_roth; broker_accounts uses schwab_roth_ira."""
+    try:
+        from brokers.protective_stop_pilot import resolve_account_key
+        return resolve_account_key(account_key)
+    except Exception:
+        return (account_key or "").strip()
+
+
+def _one_symbol_canary_conflict(symbol, account):
+    """One protective-stop canary per symbol at a time (any ticker). Returns the conflicting account if an
+    active evidence-bound approval for this symbol exists on a DIFFERENT account, else None.
     Prevents simultaneous rollover+roth canaries on the same symbol. Read-only."""
-    s = (symbol or "").upper(); a = (account or "")
+    s = (symbol or "").upper(); a = _resolve_protective_account_key(account or "")
     try:
         rows = _db_query("""SELECT COALESCE(proposal_snapshot_json->>'symbol', readiness_snapshot_json->>'symbol') sym,
                                    COALESCE(proposal_snapshot_json->>'account', readiness_snapshot_json->>'account') acct
@@ -303,7 +311,7 @@ def _protective_stop_refresh_quote(body=None):
         "quote_source": source, "quote_time_raw": str(raw_ts) if raw_ts else None,
         "quote_time_normalized": to_iso(raw_ts), "quote_parse_ok": parsed is not None,
         "session": session, "quote_age_sec": int(age) if age is not None else None, "quote_fresh": fresh,
-        "after_hours_ack_required": bool(quote is not None and parsed and session != "regular"),
+        "after_hours_ack_required": bool(quote is not None and parsed and session != "regular" and override),
         "after_hours_override_enabled": override,
         "can_submit_gtc_after_hours": bool(override and fresh and session != "regular"),
         "blockers": blockers,
@@ -325,7 +333,7 @@ def _stop_live_readiness(query=None):
     import os as _os
     q = query or {}
     sym = str(q.get("symbol", "")).upper().strip()
-    acct = str(q.get("account", "")).strip()
+    acct = _resolve_protective_account_key(str(q.get("account", "")).strip())
     out = {"build_marker": _STOP_READINESS_BUILD, "symbol": sym, "account": acct,
            "broker_submit": "disabled_until_2fa_approval", "broker_request_sent": False}
     # execution state (read-only)
@@ -392,23 +400,22 @@ def _stop_live_readiness(query=None):
     # System-side canary readiness. READY_FOR_OPERATOR never means "submit" — the operator must still click +
     # per-order 2FA, and the backend revalidates evidence at submit.
     ex = out.get("execution") or {}
-    # Per-account live-write arming (broker_accounts.api_write_enabled). schwab_roth is NOT armed (ticket mode);
-    # only rollover_ira / taxable are. This is the rollover-vs-roth distinction — the roth card can never arm a
-    # live API canary, preventing the operator from confusing it with the armed rollover account.
+    # Per-account live-write arming (broker_accounts.api_write_enabled). Holdings schwab_roth → schwab_roth_ira.
     out["account_api_write_enabled"] = _protective_account_api_write(acct) if acct.startswith("schwab") else False
+    out["account_key_resolved"] = _resolve_protective_account_key(acct) if acct.startswith("schwab") else acct
     system_ready = bool(
         out.get("db_available") and out.get("evidence_store_available")
         and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
         and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass")
         and out.get("account_api_write_enabled"))
     # GTC stops are valid 24/7 (rest until triggered). A fresh, parseable quote + clean backend gates → ready,
-    # but after-hours/pre-market is RESTRICTED by default to the next regular session — after-hours GTC is
-    # opt-in only (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) and requires the operator acknowledgement at submit.
+    # but after-hours/pre-market is RESTRICTED by default to the next regular session — AFTER_HOURS_GTC is
+    # opt-in only (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) and requires operator after_hours_ack at submit.
     # Unparseable / stale → BLOCKED. Never READY while the quote is stale/unparseable.
     out["after_hours_override_enabled"] = _after_hours_override_enabled()
     out["requires_after_hours_ack"] = False
     # One-V-canary discipline: a conflicting canary on another account blocks this one.
-    conflict_acct = _one_v_canary_conflict(sym, acct)
+    conflict_acct = _one_symbol_canary_conflict(sym, acct)
     out["other_account_canary"] = conflict_acct
     if not out.get("quote_parse_ok"):
         out["canary_state"] = "BLOCKED"
@@ -423,8 +430,8 @@ def _stop_live_readiness(query=None):
                                  "canary may be armed at a time — complete or reject it first.")
     elif acct.startswith("schwab") and not out.get("account_api_write_enabled"):
         out["canary_state"] = "BLOCKED"
-        out["canary_blocker"] = (f"{acct} is not armed for live API writes (ticket mode). The live-stop canary "
-                                 "runs on an api_write-enabled Schwab account (e.g. schwab_rollover_ira), not this one.")
+        out["canary_blocker"] = (f"{acct} is not armed for live API writes (ticket mode). "
+                                 "Set broker_accounts.api_write_enabled=TRUE for this Schwab account.")
     elif not system_ready:
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "A backend readiness gate is not satisfied."
@@ -436,7 +443,6 @@ def _stop_live_readiness(query=None):
         out["canary_note"] = ("After-hours GTC stop: the order rests until triggered. Requires the operator "
                               "after-hours acknowledgement; trigger behavior depends on regular-market conditions.")
     else:
-        # default: after-hours restricted to the next regular session; override available but not recommended
         out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
         out["canary_blocker"] = ("After-hours quote: first live canary is restricted to a regular session. "
                                  "After-hours override available only with explicit acknowledgement; not "
@@ -803,10 +809,11 @@ def _reports_analyst_symbols(query=None):
 
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
-    Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
+    Resolves holdings aliases (schwab_roth → schwab_roth_ira). Fail closed on any error."""
     try:
+        canon = _resolve_protective_account_key(account_key)
         rows = _db_query("SELECT api_write_enabled FROM broker_accounts WHERE account_key=%s",
-                         (account_key,), fetch="one")
+                         (canon,), fetch="one")
         return bool(rows and rows.get("api_write_enabled") is True)
     except Exception:
         return False
@@ -21793,6 +21800,9 @@ def _portfolio_llm_coverage(query=None):
         elif dist is not None and float(dist) >= 3:
             suggested_trail = round(float(dist), 1)
             trail_matches_stop = not trail_rec
+        _fb = ev.get("family_bounds") if isinstance(ev.get("family_bounds"), dict) else {}
+        _floor_pct = _fb.get("stop_min_pct")
+        _fam = ev.get("family") or ""
         protection[sym] = {"rec": p["thesis"], "rationale": p["summary"], "model": p["model_used"],
                            "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
                            "stop_price": stop, "trail_recommended": trail_rec,
@@ -21800,7 +21810,10 @@ def _portfolio_llm_coverage(query=None):
                            "suggested_trail_pct": suggested_trail, "trail_matches_stop": trail_matches_stop,
                            "price": _json_clean(px), "stop_distance_pct": dist,
                            "sanity": ev.get("sanity"),   # advisory self-consistency verdict + issues
-                           "family": ev.get("family"), "family_source": ev.get("family_source")}
+                           "family": _fam, "family_source": ev.get("family_source"),
+                           "family_bounds": _fb,
+                           "family_floor_pct": _floor_pct,
+                           "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None}
     # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
     cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
                       FROM hermes_external_research
@@ -21825,11 +21838,49 @@ def _portfolio_llm_coverage(query=None):
             "confirmed_at": _json_clean(cr.get("stop_confirmed_at")),
             "note": (cr.get("stop_exception_reason") or "")[:200] or None,
         }
+    # Overlay live Schwab broker protective stops (API source of truth). Trailing orders often have
+    # stop_price=null — trail_offset + order_type carry the live protection state for the UI.
+    _broker_fetched_at = None
+    try:
+        import open_trades_intelligence as _oti
+        _holdings = _load_json(STATE_DIR / "holdings.json") or {}
+        _acct_labels = {}
+        _broker_accts = []
+        for _h in _holdings.get("holdings", []):
+            _raw = str(_h.get("account") or "")
+            if not _raw:
+                continue
+            _canon = _resolve_protective_account_key(_raw)
+            _acct_labels[_oti._norm_acct(_canon)] = _raw
+            _acct_labels[_oti._norm_acct(_raw)] = _raw
+            _broker_accts.append(_canon)
+        for (_acct_norm, _sym), _bs in (_oti._broker_protective_stops(sorted(set(_broker_accts))) or {}).items():
+            _hold_acct = _acct_labels.get(_acct_norm) or str(_bs.get("account") or _acct_norm)
+            if not str(_hold_acct).startswith("schwab"):
+                continue
+            _key = f"{_sym}:{_hold_acct}"
+            _otype = str(_bs.get("order_type") or "").upper()
+            confirmed_stops[_key] = {
+                "symbol": _sym, "account": _hold_acct,
+                "stop_price": _bs.get("stop_price"),
+                "trail_offset": _bs.get("trail_offset"),
+                "trail_link": _bs.get("trail_link"),
+                "order_type": _bs.get("order_type"),
+                "order_id": _bs.get("order_id"),
+                "source": "broker", "broker_verified": True,
+                "fetched_at": _bs.get("fetched_at") or _oti.broker_stops_fetched_at(),
+                "note": f"Live {_otype.replace('_', ' ').lower()} order {_bs.get('order_id') or ''}".strip(),
+            }
+        _broker_fetched_at = _oti.broker_stops_fetched_at()
+    except Exception:
+        pass
     return _json_clean({"coverage": cov, "protection": protection, "claude_verdicts": claude_verdicts,
-                        "confirmed_stops": confirmed_stops, "window_days": 30,
+                        "confirmed_stops": confirmed_stops,
+                        "broker_stops_fetched_at": _broker_fetched_at,
+                        "window_days": 30,
                         "note": "advisory research provenance — structured stop/trail fields + live "
                                 "distance-to-stop; confirmed_stops = operator-verified broker stops "
-                                "(Fidelity manual / no API order feed)"})
+                                "(Fidelity manual / no API order feed) + live Schwab API protective orders"})
 
 
 def _broker_orders_shadow_recon(query=None):
@@ -22909,6 +22960,50 @@ def _fee_efficiency(query=None):
         return _json_clean(_fa.analyze())
     except Exception as e:
         return {"positions": [], "findings": [], "total_annual_fee_usd": None, "error": str(e)[:160]}
+
+
+def _holdings_live_stops(query=None):
+    """GET /api/v2/holdings/live-stops — live Schwab/Alpaca protective SELL stops (60s cache, read-only).
+    Keyed by SYMBOL:account (holdings account labels). Used by Portfolio stop panels for current broker truth."""
+    try:
+        import open_trades_intelligence as _oti
+        _holdings = _load_json(STATE_DIR / "holdings.json") or {}
+        _acct_labels: dict[str, str] = {}
+        _broker_accts: list[str] = []
+        for _h in _holdings.get("holdings", []):
+            _raw = str(_h.get("account") or "")
+            if not _raw:
+                continue
+            _canon = _resolve_protective_account_key(_raw)
+            _acct_labels[_oti._norm_acct(_canon)] = _raw
+            _acct_labels[_oti._norm_acct(_raw)] = _raw
+            if _raw.startswith("schwab") or "alpaca" in _raw.lower():
+                _broker_accts.append(_canon)
+        bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
+        fetched_at = _oti.broker_stops_fetched_at()
+        by_key = {}
+        for (_acct_norm, _sym), _bs in bmap.items():
+            _hold_acct = _acct_labels.get(_acct_norm) or str(_bs.get("account") or _acct_norm)
+            _key = f"{_sym}:{_hold_acct}"
+            by_key[_key] = _json_clean({
+                "symbol": _sym, "account": _hold_acct,
+                "stop_price": _bs.get("stop_price"),
+                "trail_offset": _bs.get("trail_offset"),
+                "trail_link": _bs.get("trail_link"),
+                "order_type": _bs.get("order_type"),
+                "order_id": _bs.get("order_id"),
+                "status": _bs.get("status"),
+                "qty": _bs.get("qty"),
+                "source": "broker", "broker_verified": True,
+                "fetched_at": _bs.get("fetched_at") or fetched_at,
+                "note": f"Live {_bs.get('order_type', 'stop')} order {_bs.get('order_id') or ''}".strip(),
+            })
+        return _json_clean({
+            "by_key": by_key, "fetched_at": fetched_at, "cache_ttl_sec": 60,
+            "note": "Live broker protective stops — Schwab API read (60s cache). Advisory stops remain on llm-coverage.",
+        })
+    except Exception as e:
+        return {"by_key": {}, "fetched_at": None, "error": str(e)[:160]}
 
 
 def _fidelity_monitored_stops_list(query=None):
@@ -24397,6 +24492,7 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
+    "/api/v2/holdings/live-stops": lambda: _holdings_live_stops(_current_query),
     "/api/v2/holdings/monitored-stops": lambda: _fidelity_monitored_stops_list(_current_query),
     "/api/v2/fee-efficiency": _fee_efficiency,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
@@ -25003,7 +25099,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 b = body or {}
                 sym = str(b.get("symbol") or "").strip().upper()
-                acct = str(b.get("account") or "").strip()
+                acct = _resolve_protective_account_key(str(b.get("account") or "").strip())
                 qty = b.get("qty")
                 kind = str(b.get("order_kind") or "STOP").upper()
                 stop_price = b.get("stop_price")
@@ -25196,6 +25292,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                limit_price=limit_price, trail_pct=trail_pct,
                                                advised_stop=advised_stop, current_price=current_price,
                                                held_qty=held_qty, replace_order_id=replace_order_id)
+                    # Stamp residual_qty on the intent so the evidence-bound order_spec_hash binds
+                    # account+qty+residual+order_kind+trail+TIF (roth 130/10% ≠ rollover 201/8.7%).
+                    try:
+                        _hq = float(held_qty if held_qty is not None else qty)
+                        _wq = float(qty)
+                        _res = round(max(0.0, _hq - _wq), 6)
+                        _ev = getattr(getattr(intent, "meta", None), "signal_evidence", None)
+                        if _ev is not None:
+                            _ev["residual_qty"] = _res
+                    except Exception:
+                        pass
                     # dry gate check FIRST — fail before messaging if the protective envelope blocks or the
                     # pilot is disarmed. The ONLY reason we proceed past here is the expected "2FA missing"
                     # denial (gate + standing locks all green, only the per-order approval remains).

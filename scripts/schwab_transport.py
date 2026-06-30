@@ -62,6 +62,11 @@ def _pilot_preconditions(account_key, kind="canary"):
     order family: canary writes are taxable-only (pilot_caps); protective stops use the protective policy's
     effective allowlist (taxable always, + the two Schwab IRAs ONLY when IRA_PROTECTIVE_ENABLED is committed
     True). With the IRA flag off, IRA keys can never reach a write here either."""
+    try:
+        from brokers.protective_stop_pilot import resolve_account_key
+        account_key = resolve_account_key(account_key)
+    except Exception:
+        account_key = (account_key or "").strip()
     if kind == "protective_stop":
         from brokers.protective_stop_policy import effective_account_allowlist
         allow = effective_account_allowlist()
@@ -122,11 +127,12 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         blocks = "; ".join(b.get("reason", "") for b in readiness.get("hard_blocks", [])[:3])
         raise ExecutionBlocked(f"EXECUTION_READINESS BLOCK: {blocks}")
     try:
-        from brokers.evidence_approval import revalidate_before_submit
+        from brokers.evidence_approval import revalidate_before_submit, protective_order_binding
         rev = revalidate_before_submit(
             intent.intent_id,
             current_readiness=readiness,
             current_order_spec=order_spec,
+            current_binding=protective_order_binding(intent, order_spec) if kind == "protective_stop" else None,
         )
         if not rev.get("ok"):
             from brokers.execution_guard import ExecutionBlocked

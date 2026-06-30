@@ -25,6 +25,13 @@ export type StopBlocker = {
   message: string
 }
 
+export type LiveStopResolution = {
+  price: number | null
+  isTrailing: boolean
+  trailPct: number | null
+  hasLiveBrokerOrder: boolean
+}
+
 export type StopLogic = {
   state: StopState
   broker: string
@@ -32,6 +39,8 @@ export type StopLogic = {
   currentPrice: number | null
   advisoryStop: number | null
   liveStop: number | null
+  liveStopIsTrailing: boolean
+  liveTrailPct: number | null
   liveStopDistancePct: number | null
   distancePct: number | null
   familyFloorPct: number | null
@@ -106,6 +115,58 @@ export function quoteAgeSeconds(sourceTimestamp?: string | null, nowMs = Date.no
   return Math.max(0, Math.round((nowMs - ts) / 1000))
 }
 
+export function isTrailingBrokerStop(stop?: any, monitored?: any): boolean {
+  if (!stop && !monitored) return false
+  const ot = String(stop?.order_type ?? stop?.orderType ?? monitored?.order_type ?? '').toUpperCase()
+  if (ot.includes('TRAILING')) return true
+  if (finiteNum(stop?.trail_offset) != null || finiteNum(stop?.trail_pct) != null) return true
+  if (finiteNum(monitored?.trail_offset) != null || finiteNum(monitored?.trail_pct) != null) return true
+  return /trailing|trail\s+\d/i.test(String(stop?.note ?? ''))
+}
+
+export function hasLiveBrokerStopOrder(stop?: any, monitored?: any): boolean {
+  if (!stop && !monitored) return false
+  if (stop?.source === 'broker' || stop?.verified === true || stop?.broker_verified === true) return true
+  if (isTrailingBrokerStop(stop, monitored)) return true
+  if (finiteNum(stop?.stop_price) != null) return true
+  if (String(stop?.order_id ?? '').trim()) return true
+  return false
+}
+
+/** Resolve the effective live stop for display/decisions — fixed price, trailing estimate, or monitored level. */
+export function resolveLiveStop(
+  confirmedStop?: any,
+  monitored?: any,
+  currentPrice?: number | null,
+): LiveStopResolution {
+  const trailing = isTrailingBrokerStop(confirmedStop, monitored)
+  const trailPct = finiteNum(confirmedStop?.trail_offset)
+    ?? finiteNum(confirmedStop?.trail_pct)
+    ?? finiteNum(monitored?.trail_offset)
+    ?? finiteNum(monitored?.trail_pct)
+  const fixedPrice = finiteNum(confirmedStop?.stop_price)
+  const hasLiveBrokerOrder = hasLiveBrokerStopOrder(confirmedStop, monitored)
+
+  if (trailing) {
+    const est = trailPct != null && currentPrice != null && currentPrice > 0
+      ? currentPrice * (1 - trailPct / 100)
+      : fixedPrice
+    return { price: est, isTrailing: true, trailPct, hasLiveBrokerOrder }
+  }
+  if (fixedPrice != null) {
+    return { price: fixedPrice, isTrailing: false, trailPct: null, hasLiveBrokerOrder }
+  }
+  if (monitored?.status === 'armed') {
+    return {
+      price: finiteNum(monitored?.effective_stop ?? monitored?.stop_price),
+      isTrailing: false,
+      trailPct: null,
+      hasLiveBrokerOrder: false,
+    }
+  }
+  return { price: null, isTrailing: false, trailPct: null, hasLiveBrokerOrder }
+}
+
 export function parseTimestampMs(sourceTimestamp?: string | null): number {
   if (!sourceTimestamp) return NaN
   const raw = String(sourceTimestamp).trim()
@@ -137,7 +198,8 @@ export function buildStopLogic(input: {
   const sourceBroker = accountBroker(String(pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account ?? h?.stop_source_account ?? ''))
   const currentPrice = finiteNum(pr?.price) ?? finiteNum(h?.current_price) ?? finiteNum(h?.price) ?? null
   const advisoryStop = finiteNum(pr?.stop_price)
-  const liveStop = finiteNum(confirmedStop?.stop_price) ?? (monitored?.status === 'armed' ? finiteNum(monitored?.effective_stop ?? monitored?.stop_price) : null)
+  const liveResolved = resolveLiveStop(confirmedStop, monitored, currentPrice)
+  const liveStop = liveResolved.price
   const stopVerified = confirmedStop?.source === 'broker' || confirmedStop?.verified === true || confirmedStop?.broker_verified === true
   const qty = Math.max(0, finiteNum(h?.shares) ?? 0)
   const wholeQty = Math.floor(qty)
@@ -184,8 +246,8 @@ export function buildStopLogic(input: {
   let state: StopState
   if (isFundLike) state = 'NOT APPLICABLE'
   else if (blockers.some(b => b.code === 'source_mismatch')) state = 'SOURCE MISMATCH — BLOCKED'
-  else if (confirmedStop?.stop_price != null && broker === 'fidelity') state = stopVerified ? 'FIDELITY STOP VERIFIED' : 'FIDELITY STOP RECORDED — MANUAL'
-  else if (confirmedStop?.stop_price != null) state = 'LIVE BROKER STOP'
+  else if (liveResolved.hasLiveBrokerOrder && broker === 'fidelity') state = stopVerified ? 'FIDELITY STOP VERIFIED' : 'FIDELITY STOP RECORDED — MANUAL'
+  else if (liveResolved.hasLiveBrokerOrder) state = 'LIVE BROKER STOP'
   else if (monitored?.status === 'armed') state = 'MONITORED — SOFTWARE ONLY'
   else if (blockers.length) state = 'ACTION REQUIRED'
   else state = 'ADVISORY ONLY — NOT PLACED'
@@ -234,6 +296,8 @@ export function buildStopLogic(input: {
     currentPrice,
     advisoryStop,
     liveStop,
+    liveStopIsTrailing: liveResolved.isTrailing,
+    liveTrailPct: liveResolved.trailPct,
     liveStopDistancePct,
     distancePct,
     familyFloorPct,
@@ -356,7 +420,11 @@ function buildWhy(pr: any, liveStop: number | null, advisoryStop: number | null,
 }
 
 function extractFamilyFloorPct(pr: any): number | null {
-  const direct = finiteNum(pr?.family_floor_pct) ?? finiteNum(pr?.floor_pct) ?? finiteNum(pr?.min_stop_distance_pct)
+  const bounds = pr?.family_bounds
+  const direct = finiteNum(pr?.family_floor_pct)
+    ?? finiteNum(bounds?.stop_min_pct)
+    ?? finiteNum(pr?.floor_pct)
+    ?? finiteNum(pr?.min_stop_distance_pct)
   if (direct != null) return direct
   const text = String(pr?.family_floor ?? pr?.floor_label ?? pr?.family_floor_label ?? '').toLowerCase()
   const pct = text.match(/(\d+(?:\.\d+)?)\s*%/)

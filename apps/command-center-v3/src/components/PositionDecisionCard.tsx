@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
 import { resolvedTrailPct } from '../lib/protectionTrail'
+import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
 const TEXT0 = '#f8fafc'
 const TEXT1 = '#dbeafe'
@@ -189,6 +190,12 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   }
   // FULL STOP MONITORING — the live broker stop now showing on this card, + cancel ("remove") control.
   const _bstop = (p as any).broker_stop as any
+  const _stopReviewTip = stopReviewTooltip({
+    advisoryAt: protectionRec?.at, advisoryModel: protectionRec?.model,
+    priceAt: p.price_updated_at,
+    brokerFetchedAt: _bstop?.fetched_at,
+    brokerOrderId: _bstop?.order_id,
+  })
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelMsg, setCancelMsg] = useState('')
   const _cancelStop = async () => {
@@ -323,8 +330,8 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
 
     {(_bstop || protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
       {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
-      {_bstop && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker</span>
+      {_bstop && <div title={_stopReviewTip} style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', cursor: 'help' }}>
+        <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker{_bstop.fetched_at ? ` · read ${formatReviewStamp(_bstop.fetched_at)}` : ''}</span>
         <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {_bstop.qty ?? p.shares} {p.symbol} {String(_bstop.order_type || '').replace('_', ' ')} {_bstop.stop_price != null ? `$${Number(_bstop.stop_price).toFixed(2)}` : _bstop.trail_offset != null ? (_bstop.trail_link === 'PERCENT' ? `${_bstop.trail_offset}%` : `$${_bstop.trail_offset}`) : ''} GTC</span>
         <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.18)', color: '#22c55e' }}>{String(_bstop.status || 'working')}</span>
         <span style={{ fontSize: 9, color: MUTED }}>#{_bstop.order_id}</span>
@@ -353,7 +360,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
         const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c). Schwab taxable submits LIVE via API after per-order 2FA (type the ticker OR a code sent to Telegram + email — either confirms); the pilot must be ARMED. Accounts with no API (IRAs / Fidelity-401k) return an exact thinkorswim ticket to place manually. POC envelope is committed (DRS, taxable, sub-$1k) until the proof passes.'
         return <>
-          <div title={`${protectionRec.rationale ?? ''}\nanalyzed ${String(protectionRec.at).slice(0, 10)} by ${protectionRec.model} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <div title={`${_stopReviewTip}\n\n${protectionRec.rationale ?? ''} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
             {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
             {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>{mf ? 'ref level' : 'stop'} <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
@@ -427,7 +434,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       <Metric label="Market Value" value={fmt$(p.market_value ?? 0, 0)} color={TEXT0} />
       <Metric label="Basis" value={basis} color={BASIS_C[p.basis_quality] || TEXT2} />
       <Metric label="Now" value={num(p.current_price)} color={TEXT0} />
-      <Metric label="Stop" title={p.stop_price == null && _advStop != null ? 'Advised stop (no protective stop placed at the broker yet)' : undefined}
+      <Metric label="Stop" title={_stopReviewTip || (p.stop_price == null && _advStop != null ? 'Advised stop (no protective stop placed at the broker yet)' : undefined)}
         value={p.stop_price != null ? num(p.stop_price) : _advStop != null ? `${num(_advStop)}*` : '—'}
         color={p.stop_price != null ? RED : _advStop != null ? AMBER : MUTED} />
       <Metric label="R multiple"

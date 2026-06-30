@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-06-30 - Live broker stops (60s) + fixed/trailing validation + last-reviewed tooltips
+
+Portfolio and Open Trades now show **current** Schwab protective-stop state with explicit review timestamps.
+
+- **`GET /api/v2/holdings/live-stops`** (`_holdings_live_stops`): read-only live Schwab/Alpaca SELL stops,
+  keyed `SYMBOL:account`, 60s cache. Portfolio polls every 60s and merges into `confirmedStop` (broker truth
+  overrides stale llm-coverage overlay).
+- **`open_trades_intelligence._broker_protective_stops`**: each broker stop carries `fetched_at` (ISO UTC);
+  summary includes `broker_stops_fetched_at`.
+- **`llm-coverage`**: exposes `family_floor_pct` / `family_bounds` for floor-mismatch UI; broker overlay
+  includes `fetched_at`.
+- **`stopManagement.ts`**: `resolveLiveStop()` / `isTrailingBrokerStop()` — trailing orders with
+  `stop_price=null` + `trail_offset` resolve to `LIVE BROKER STOP` (estimated floor = price × (1 − trail%)).
+- **`stopReviewTooltip.ts`**: multi-line tooltips — broker last read, advisory last reviewed, quote as-of,
+  operator confirmed. Wired into Portfolio `HoldingProtectionActions`, Open Trades `PositionDecisionCard`,
+  and the 🛡 stop badge.
+- **Tests**: `tests/test_stop_fixed_trailing_validation.py` (fixed vs trailing math/UI/backend parity);
+  `test_stop_management_ui_hardening.py` test_16 for live-stops + review tooltips.
+- Build marker: `cc-v3 live-stops-review-ts 2026-06-30`. Safety unchanged: per-order 2FA, evidence binding,
+  no autonomous submit, OCO OFF, Fidelity manual-only.
+
 ## 2026-06-30 - Schwab live-stop: latest-quote refresh + after-hours GTC override + explicit canary target
 
 Reconciles the after-hours policy and adds the operator's refresh-quote path. After-hours GTC is supported

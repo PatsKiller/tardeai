@@ -49,6 +49,16 @@ def normalize_kind(order_kind: str) -> str:
     return _KIND_ALIASES.get((order_kind or "").strip().upper(), "")
 
 
+# Holdings.json uses schwab_roth; broker_accounts / transport use schwab_roth_ira.
+SCHWAB_ACCOUNT_ALIASES: dict[str, str] = {"schwab_roth": "schwab_roth_ira"}
+
+
+def resolve_account_key(account_key: str | None) -> str:
+    """Map holdings labels to canonical broker_accounts.account_key."""
+    k = (account_key or "").strip()
+    return SCHWAB_ACCOUNT_ALIASES.get(k, k)
+
+
 def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
                      limit_price=None, trail_pct=None) -> dict:
     """Exact Schwab order JSON for a protective SELL stop. Single-leg, EQUITY, SINGLE strategy, GTC."""

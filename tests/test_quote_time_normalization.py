@@ -138,20 +138,20 @@ def test_14_refresh_quote_is_read_only_no_broker_write():
     assert '"broker_request_sent": False' in fn
 
 
-def test_15_roth_not_armed_blocks_and_rollover_distinct():
-    """schwab_roth is not armed for live writes (ticket mode); rollover is — they are distinct canary targets."""
+def test_15_schwab_roth_alias_resolves_and_all_accounts_can_arm():
+    """holdings schwab_roth maps to broker_accounts schwab_roth_ira for api_write checks."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import api_v2
-    assert api_v2._protective_account_api_write("schwab_roth") is False
-    assert api_v2._protective_account_api_write("schwab_rollover_ira") is True
+    assert api_v2._resolve_protective_account_key("schwab_roth") == "schwab_roth_ira"
+    assert api_v2._resolve_protective_account_key("schwab_rollover_ira") == "schwab_rollover_ira"
     api = API.read_text(encoding="utf-8")
     assert "account_api_write_enabled" in api
-    assert "not armed for live API writes" in api
+    assert "_resolve_protective_account_key" in api
 
 
-def test_16_one_v_canary_only_and_target_binds_fields():
+def test_16_one_symbol_canary_only_and_target_binds_fields():
     api = API.read_text(encoding="utf-8")
-    assert "_one_v_canary_conflict" in api and "Only one" in api
+    assert "_one_symbol_canary_conflict" in api and "Only one" in api
     pf = PF.read_text(encoding="utf-8")
     # the canary_target binds account/qty/residual/order_kind/trail/TIF/session/quote into the evidence path
     assert "canary_target" in pf

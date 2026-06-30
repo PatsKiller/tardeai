@@ -112,6 +112,7 @@ def run_preflight(
     from brokers.evidence_approval import (
         create_order_evidence_approval,
         order_spec_hash,
+        protective_order_binding,
         revalidate_before_submit,
         supersede_approval,
     )
@@ -151,9 +152,14 @@ def run_preflight(
         q_class = "after_hours_gtc_acknowledged"
     else:
         q_class = "after_hours_gtc_ack_required"
+    try:
+        import api_v2 as _api
+        ah_override = _api._after_hours_override_enabled()
+    except Exception:
+        ah_override = False
     operator_readiness = ("BLOCKED_STALE_QUOTE" if not q_fresh
                           else "READY_FOR_OPERATOR" if q_session == "regular"
-                          else "READY_FOR_OPERATOR_AFTER_HOURS_GTC" if allow_after_hours_gtc
+                          else "READY_FOR_OPERATOR_AFTER_HOURS_GTC" if (ah_override or allow_after_hours_gtc)
                           else "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION")
     held_qty, broker_price = _holding_truth(account, sym)
     qty = float(qty if qty is not None else held_qty if held_qty is not None else 0)
@@ -185,7 +191,8 @@ def run_preflight(
     ev = getattr(getattr(intent, "meta", None), "signal_evidence", None) or {}
     ev["residual_qty"] = residual_qty
     order_spec = psp.spec_from_intent(intent)
-    submit_hash = order_spec_hash(order_spec)
+    binding = protective_order_binding(intent, order_spec)
+    submit_hash = order_spec_hash(order_spec, binding=binding)
 
     approval = _simulate_typed_ticker_approval(intent)
     if not approval.get("ok"):
@@ -208,6 +215,7 @@ def run_preflight(
         intent.intent_id,
         current_readiness=readiness,
         current_order_spec=order_spec,
+        current_binding=binding,
         kill_switch_check=False,
     )
     approved_hash = evidence.get("order_spec_hash") or submit_hash
