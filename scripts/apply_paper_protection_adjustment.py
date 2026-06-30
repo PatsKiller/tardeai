@@ -52,6 +52,29 @@ def audit(rec):
     return f
 
 
+# Fail-closed qty guard: a broker position read that fails must DEFER (never assume it is safe to place a
+# sell). DEFER_RECHECK is bounded — after this many unreadable passes the proposal is marked terminal
+# (BROKER_QTY_UNKNOWN) so it cannot loop the ATM pass forever (the AGNC-style retry storm).
+_MAX_QTY_RECHECKS = 6
+
+
+def _bump_qty_recheck(conn, proposal_id):
+    """Increment and return the qty-recheck attempt count for a proposal (additive column, idempotent)."""
+    try:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE paper_protection_adjustment_proposals "
+                    "ADD COLUMN IF NOT EXISTS qty_recheck_attempts int DEFAULT 0")
+        cur.execute("UPDATE paper_protection_adjustment_proposals "
+                    "SET qty_recheck_attempts = COALESCE(qty_recheck_attempts,0)+1 "
+                    "WHERE id=%s RETURNING qty_recheck_attempts", (proposal_id,))
+        n = cur.fetchone()[0]
+        conn.commit()
+        return int(n)
+    except Exception:
+        conn.rollback()
+        return 0
+
+
 def fresh_quote_age(sym):
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     from market_quote_provider import get_best_quote
@@ -265,13 +288,40 @@ def _apply_take_profit(result, conn, p, t, q, proposal_id, confirm):
     # stop+limit OCO), which we do NOT do automatically: it would momentarily leave the position unprotected,
     # violating the engine's "stop never absent" invariant. So skip the doomed order and (when applying) mark
     # the proposal terminal (NOT_APPLICABLE) so it is not retried; surface it for operator OCO review.
-    avail = shares
+    # FAIL CLOSED: if qty_available cannot be read (network error, non-200, or missing field), do NOT assume
+    # the shares are free — placing a sell here could 403 ("insufficient qty") or, worse, double-commit shares.
+    # DEFER_RECHECK (bounded) instead of proceeding. Previously this defaulted avail=shares on any failure,
+    # which silently PROCEEDED — a fail-open hole closed 2026-06-30.
+    avail = None
+    qty_known = False
     try:
         posr = requests.get(f"{PAPER_BASE}/v2/positions/{p['symbol']}", headers=_headers(), timeout=20)
         if posr.status_code == 200:
-            avail = int(float((posr.json() or {}).get("qty_available")))
+            _qa = (posr.json() or {}).get("qty_available")
+            if _qa is not None:
+                avail = int(float(_qa)); qty_known = True
     except Exception:
-        avail = shares
+        qty_known = False
+    if not qty_known:
+        attempts = _bump_qty_recheck(conn, proposal_id) if confirm else 0
+        terminal = bool(confirm and attempts >= _MAX_QTY_RECHECKS)
+        result.update({"status": "BROKER_QTY_UNKNOWN",
+                       "action": "GIVE_UP_OPERATOR_REVIEW" if terminal else "DEFER_RECHECK",
+                       "block_reason": "qty_available_unreadable", "qty_recheck_attempts": attempts,
+                       "advisory": ("Alpaca position qty_available could not be read — NOT placing a take-profit "
+                                    "(fail-closed). " + (f"Reached the {_MAX_QTY_RECHECKS}-recheck cap — marked "
+                                    "terminal for operator review." if terminal
+                                    else "Will recheck on a later ATM pass (bounded)."))})
+        if terminal:
+            # terminal status removes it from the PROPOSED set the ATM pass retries — cannot loop forever
+            wc = conn.cursor()
+            wc.execute("update paper_protection_adjustment_proposals set status='BROKER_QTY_UNKNOWN' where id=%s",
+                       (proposal_id,))
+            conn.commit()
+        audit(result)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return result
     if avail < shares:
         result.update({"status": "NOT_APPLICABLE", "block_reason": "shares_held_by_existing_stop",
                        "qty_available": avail, "shares": shares,

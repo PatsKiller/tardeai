@@ -17,11 +17,16 @@ Detects mismatches between DB and broker:
 - Closed paper_trades that Alpaca still holds
 
 Usage:
-    .venv/bin/python scripts/alpaca_paper_reconciler.py
-    .venv/bin/python scripts/alpaca_paper_reconciler.py --fix
+    .venv/bin/python scripts/alpaca_paper_reconciler.py                     # audit (read-only)
+    .venv/bin/python scripts/alpaca_paper_reconciler.py --fix               # DB-metadata-only fixes
+    .venv/bin/python scripts/alpaca_paper_reconciler.py --apply-oco-retrofit  # the ONLY broker-mutating mode
     .venv/bin/python scripts/alpaca_paper_reconciler.py --json
 
-Does NOT place orders or change positions. --fix only corrects DB metadata.
+--fix is DB-METADATA-ONLY: it overwrites paper_trades fields FROM the broker and NEVER places, cancels,
+or modifies an order. The OCO auto-bracket retrofit (which cancels a standalone stop and places an OCO on
+the Alpaca paper account) is a BROKER MUTATION and is therefore gated behind the explicit, separate
+--apply-oco-retrofit flag — it never runs as a side effect of --fix. Both modes are PAPER-ONLY (Alpaca
+paper API); nothing here ever touches a real/Schwab account. Design: docs/design/OCO_ATM_UNIFICATION_DESIGN.md.
 """
 
 import argparse
@@ -89,7 +94,7 @@ def get_alpaca_orders(env, status="open"):
         return json.loads(resp.read())
 
 
-def reconcile(apply_fixes=False):
+def reconcile(apply_fixes=False, apply_oco_retrofit=False):
     env = get_env()
     conn = get_db_connection()
     cur = conn.cursor()
@@ -247,14 +252,16 @@ def reconcile(apply_fixes=False):
 
     conn.close()
 
-    # ── P2: auto-attach OCO bracket at fill ──────────────────────────────────────────────────────────────
+    # ── P2: auto-attach OCO bracket at fill (BROKER MUTATION — explicit flag only) ────────────────────────
     # Bracket-path entries (limit/RTH) already get their stop+take-profit OCO from Alpaca at fill. Market /
     # extended-hours entries submit a simple buy + a standalone stop, so they hold a stop but NO take-profit.
-    # Here we convert any such filled position into an OCO bracket (stop + take-profit), so every filled paper
-    # position ends up bracketed. Idempotent — run_oco_retrofit skips positions already on an OCO / with a
-    # take-profit — and reuses the P1 stop-never-absent rollback. Design: OCO_ATM_UNIFICATION_DESIGN.md P2.
-    oco = {"converted": 0}
-    if apply_fixes:
+    # Converting such a position into an OCO bracket CANCELS the standalone stop and PLACES an OCO — i.e. it
+    # writes to the (paper) broker. That is NOT metadata reconciliation, so it must NEVER ride along on --fix.
+    # It runs only under the explicit, separate --apply-oco-retrofit flag. Idempotent — run_oco_retrofit skips
+    # positions already on an OCO / with a take-profit — and reuses the P1 stop-never-absent rollback +
+    # read-back verify. Design: OCO_ATM_UNIFICATION_DESIGN.md P2.
+    oco = {"converted": 0, "mode": "SKIPPED (no --apply-oco-retrofit)"}
+    if apply_oco_retrofit:
         try:
             import alpaca_stop_manager as asm
             oco = asm.run_oco_retrofit(apply=True)
@@ -280,12 +287,17 @@ def reconcile(apply_fixes=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Reconcile paper_trades vs Alpaca")
-    parser.add_argument("--fix", action="store_true", help="Auto-fix entry price and broker status")
+    parser.add_argument("--fix", action="store_true",
+                        help="DB-metadata-only: overwrite paper_trades fields FROM the broker. Never places, "
+                             "cancels, or modifies an order.")
+    parser.add_argument("--apply-oco-retrofit", action="store_true", dest="apply_oco_retrofit",
+                        help="BROKER MUTATION (paper only): convert standalone stops on filled positions into "
+                             "OCO brackets. Explicit + separate from --fix; never runs as a side effect of --fix.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     log("Alpaca Paper Trade Reconciliation")
-    result = reconcile(apply_fixes=args.fix)
+    result = reconcile(apply_fixes=args.fix, apply_oco_retrofit=args.apply_oco_retrofit)
 
     if result.get("error"):
         log(f"FAILED: {result['error']}")

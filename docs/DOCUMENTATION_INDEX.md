@@ -62,7 +62,7 @@
 | `docs/BROKER_PROPOSALS_UI.md` | **Broker Proposals live desk** — thesis validity bar, refresh/recalibrate, account picker, cloud oversight | Active (2026-06-24) |
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | **Risk visualization layer** — Recharts components, hub integration map, library roadmap | Active (2026-06-24) |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-24) |
-| `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill | **Partially implemented (2026-06-29)** — paper P1+P2 live; Schwab P3 staged inert (flag off); P4/P5 pending |
+| `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill; §11 DD hardening (OCO_REPLACING + read-back + repair supervisor, reconciler `--fix` DB-only vs `--apply-oco-retrofit`, qty fail-closed) | **Partially implemented** — paper P1+P2 live + DD-hardened (2026-06-30); Schwab P3 staged inert (`OCO_BRACKETS_SCHWAB` off); P4/P5 pending |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
