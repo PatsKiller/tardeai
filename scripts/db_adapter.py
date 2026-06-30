@@ -92,15 +92,22 @@ def _get_conn():
             connect_timeout=10,
         )
         conn.autocommit = False
-        # Idle-in-transaction safety net (2026-06-29): code that runs a read via _get_conn().cursor() without
-        # an explicit commit/rollback leaves the transaction open holding locks — which blocked a DDL migration
-        # on paper_trades (an idle-in-txn connection held an AccessShareLock for minutes). Auto-abort any
-        # transaction left idle > 2 min so it can NEVER hold a lock indefinitely; legitimate transactions
-        # commit well within that, and the _execute path recovers via its except→rollback. This enforces the
-        # "commit-per-request" intent at the DB level without changing write atomicity (autocommit stays off).
+        # Per-connection safety nets (2026-06-29 idle; lock/stmt added 2026-06-30 after a server hang).
+        # The dashboard hung when an additive ALTER on a hot table queued behind an idle-in-transaction
+        # AccessShareLock holder, cascading every query on that table and blocking the server's request
+        # threads. Three guards so no single connection can wedge the box:
+        #   • idle_in_transaction_session_timeout — a read left uncommitted can't hold a lock forever.
+        #   • lock_timeout — a query waiting on a lock FAILS FAST (3s) instead of queuing the table behind a
+        #     blocked DDL/lock (this is the anti-cascade guard; lock_timeout was 0/unbounded before).
+        #   • statement_timeout — a runaway query is killed (180s) rather than pinning a thread indefinitely.
+        # NOTE: these only cover db_adapter connections. Raw psycopg2.connect() callers are covered by the
+        # role-level `ALTER ROLE trade_ai SET lock_timeout/idle_in_transaction_session_timeout/statement_timeout`
+        # (see docs/runbooks/DB_HANG_PREVENTION.md) — the universal backstop.
         try:
             with conn.cursor() as _c:
                 _c.execute("SET idle_in_transaction_session_timeout = '120s'")
+                _c.execute("SET lock_timeout = '3s'")
+                _c.execute("SET statement_timeout = '180s'")
             conn.commit()
         except Exception:
             try:
