@@ -58,6 +58,14 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth(unwrapApi(j))).catch(() => {})
   }, [isSchwab, intentId, tokenHealth])
 
+  // Live-stop readiness snapshot (read-only; no broker calls, no evidence writes) for the Schwab canary panel.
+  const [readiness, setReadiness] = useState<any>(null)
+  useEffect(() => {
+    if (!isSchwab) return
+    fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}`)
+      .then(x => x.json()).then(j => setReadiness(unwrapApi(j))).catch(() => {})
+  }, [isSchwab, sym, acct])
+
   const brokerKey = isFidelity ? 'fidelity' : isSchwab ? 'schwab' : ''
   const brokerUrl = brokerKey ? BROKER_URL[brokerKey] : null
   const confNote = String(confirmedStop?.note ?? '')
@@ -220,24 +228,40 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const codeOk = approveCode.trim().length === 6
   const inApprove = !!intentId && !sellAllDone
   const showProtect = stop != null && !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1)
-  const liveBlocked = !logic.canRequestLive
+  // Hard backend gates surfaced from the read-only readiness snapshot. These genuinely prevent a safe live
+  // request, so they ALSO disable the button (with a clear reason) — not just the data gates in buildStopLogic.
+  // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
+  // + backend evidence revalidation enforce them at submit; we never silently rely on the frontend for safety.
+  const backendHardBlock: string | null = isSchwab && readiness ? (
+    readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
+      : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
+        : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
+          : null
+  ) : null
+  const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
+  const liveBlocked = !logic.canRequestLive || backendHardBlock != null
   const statusColor = logic.state === 'LIVE BROKER STOP' || logic.state === 'FIDELITY STOP VERIFIED' || logic.state === 'FIDELITY STOP RECORDED — MANUAL' ? GREEN
     : logic.state === 'MONITORED — SOFTWARE ONLY' ? PURPLE
       : logic.state === 'SOURCE MISMATCH — BLOCKED' || logic.state === 'ACTION REQUIRED' ? RED
         : logic.state === 'NOT APPLICABLE' ? MUTED
           : AMBER
 
+  // A disabled live-stop button must ALWAYS explain itself: the tooltip carries the primary blocker reason,
+  // and an inline reason line is rendered under the button row (see below). Never a silent gray-out.
+  const enabledTitle = (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT') => kind === 'TRAILING'
+    ? `Request ${trailPct}% trailing stop via 2FA — operator-approved, whole-share, evidence-bound`
+    : `Request fixed stop at $${stop != null ? stop.toFixed(2) : '—'} via 2FA — operator-approved, whole-share, evidence-bound`
   const btn = (label: string, kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT', highlight = false) => (
     <button
       onClick={e => { e.stopPropagation(); armStop(kind) }}
       disabled={busy || liveBlocked}
-      title={kind === 'TRAILING'
-        ? `Arm ${trailPct}% trailing — same width as ${stopDist != null ? `${Number(stopDist).toFixed(1)}%` : 'advised'} fixed stop, ratchets up`
-        : `Arm fixed stop at $${stop!.toFixed(2)} (${stopDist != null ? `${Number(stopDist).toFixed(1)}%` : ''} below) — does not rise`}
+      title={liveBlocked
+        ? `Disabled — ${disabledReasonHuman ?? 'resolve the blockers listed above'}`
+        : enabledTitle(kind)}
       style={{
         fontSize: 12, fontWeight: 800, minHeight: 34, padding: '7px 10px', borderRadius: 6, cursor: (busy || liveBlocked) ? 'not-allowed' : 'pointer',
-        border: `1px solid ${highlight ? AMBER : 'rgba(148,163,184,.35)'}`,
-        background: highlight ? 'rgba(245,158,11,.18)' : 'rgba(15,23,42,.66)',
+        border: `1px solid ${liveBlocked ? 'rgba(148,163,184,.25)' : highlight ? AMBER : 'rgba(148,163,184,.35)'}`,
+        background: liveBlocked ? 'rgba(15,23,42,.5)' : highlight ? 'rgba(245,158,11,.18)' : 'rgba(15,23,42,.66)',
         color: liveBlocked ? MUTED : highlight ? AMBER : TEXT0, whiteSpace: 'nowrap',
       }}
     >{busy ? '…' : label}</button>
@@ -298,13 +322,6 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           ))}
         </div>
       )}
-      {isSchwab && logic.residualQty > 1e-6 && showProtect && (
-        <label style={{ marginTop: 8, display: 'flex', gap: 7, alignItems: 'center', fontSize: 12, color: TEXT0 }}>
-          <input type="checkbox" checked={wholeShareConfirmed} onChange={e => setWholeShareConfirmed(e.target.checked)} />
-          Confirm whole-share Schwab order: SELL {logic.wholeQty} {sym}; residual {logic.residualQty.toFixed(4)} shares remain monitored.
-        </label>
-      )}
-
       {/* LOCK-IN PROFITS — fixed stop is live, but trailing now locks a HIGHER floor → advise the switch */}
       {lockInTrail && liveFixedStopPx != null && trailingFloorNow != null && (
         <div style={{ fontSize: 11, color: GREEN, fontWeight: 700, marginBottom: 6, padding: '5px 8px', borderRadius: 6, background: `${GREEN}12`, border: `1px solid ${GREEN}45`, lineHeight: 1.45 }}>
@@ -351,12 +368,82 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         </div>
       )}
 
+      {/* LIVE STOP READINESS — compact gate panel for the Schwab live-stop canary (read-only). */}
+      {isSchwab && showProtect && (() => {
+        const quoteFresh = !logic.blockers.some(b => b.code === 'stale_quote' || b.code === 'missing_quote')
+        const rd = readiness || {}
+        const exec = rd.execution || {}
+        const ap = rd.active_approval || {}
+        const sv = rd.schwab_validator || {}
+        const ICON = (s: 'ok' | 'warn' | 'block') => s === 'ok' ? '✅' : s === 'warn' ? '⚠️' : '⛔'
+        const rows: { label: string; status: 'ok' | 'warn' | 'block'; value: string }[] = [
+          { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-evidence PR33 2026-06-30' },
+          { label: 'Quote', status: quoteFresh ? 'ok' : 'block', value: quoteFresh ? 'fresh' : 'stale — refresh price' },
+          { label: 'DB / evidence store', status: (rd.db_available && rd.evidence_store_available) ? 'ok' : 'block', value: rd.db_available == null ? 'checking…' : (rd.db_available && rd.evidence_store_available) ? 'available' : 'unavailable' },
+          { label: 'Schwab validator', status: sv.pass ? 'ok' : (sv.summary ? 'block' : 'warn'), value: sv.summary || 'checking…' },
+          { label: 'Execution state', status: exec.operator_live_via_2fa_allowed ? 'ok' : 'block', value: exec.operator_live_via_2fa_allowed ? 'operator 2FA live allowed' : (exec.error || 'blocked') },
+          { label: 'Active approval', status: ap.exists ? 'warn' : 'ok', value: ap.exists ? `existing lock${ap.expires_at ? `, expires ${String(ap.expires_at).slice(0, 19)}` : ''}` : 'none' },
+          { label: 'Whole-share confirmation', status: logic.residualQty > 1e-6 ? (wholeShareConfirmed ? 'ok' : 'warn') : 'ok', value: logic.residualQty > 1e-6 ? (wholeShareConfirmed ? 'checked' : 'unchecked') : 'whole position' },
+          { label: 'Preflight', status: rd.preflight_status === 'approval_present' ? 'ok' : 'warn', value: rd.preflight_status === 'approval_present' ? 'evidence approval present' : 'not run — operator runs dry-run preflight' },
+          { label: 'OCO', status: rd.oco_brackets_schwab_off === false ? 'block' : 'ok', value: rd.oco_brackets_schwab_off === false ? 'ON (must be off!)' : 'off' },
+          { label: 'Broker submit', status: 'warn', value: 'disabled until per-order 2FA approval' },
+        ]
+        return (
+          <div data-testid="live-stop-readiness" style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(2,6,23,.45)', border: '1px solid rgba(148,163,184,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: MUTED, fontWeight: 900, letterSpacing: 0.3 }}>LIVE STOP READINESS</div>
+              {rd.canary_state && (() => {
+                const ready = rd.canary_state === 'READY_FOR_OPERATOR' && quoteFresh && (logic.residualQty <= 1e-6 || wholeShareConfirmed)
+                return (
+                  <span data-testid="canary-state" style={{ fontSize: 11, fontWeight: 900, padding: '2px 8px', borderRadius: 999,
+                    color: ready ? GREEN : AMBER, background: ready ? `${GREEN}1e` : `${AMBER}1e`, border: `1px solid ${ready ? GREEN : AMBER}` }}>
+                    {ready ? '✅ READY_FOR_OPERATOR' : '⚠️ BLOCKED — resolve gates'}
+                  </span>
+                )
+              })()}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 4 }}>
+              {rows.map(r => (
+                <div key={r.label} style={{ fontSize: 11.5, display: 'flex', gap: 6, alignItems: 'baseline', color: r.status === 'block' ? RED : r.status === 'warn' ? AMBER : TEXT0 }}>
+                  <span>{ICON(r.status)}</span>
+                  <span style={{ color: MUTED }}>{r.label}:</span>
+                  <span style={{ fontWeight: 700 }}>{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Whole-share confirmation — placed IMMEDIATELY above the action buttons so the operator sees exactly
+          what unblocks them. When this is the only blocker, checking it enables the Schwab live-stop buttons. */}
+      {isSchwab && logic.residualQty > 1e-6 && showProtect && (
+        <label
+          onClick={e => e.stopPropagation()}
+          style={{ marginTop: 10, marginBottom: 2, display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, color: TEXT0,
+                   fontWeight: 700, padding: '10px 11px', borderRadius: 8, cursor: 'pointer',
+                   background: wholeShareConfirmed ? 'rgba(34,197,94,.12)' : 'rgba(245,158,11,.14)',
+                   border: `1px solid ${wholeShareConfirmed ? GREEN : AMBER}` }}>
+          <input type="checkbox" checked={wholeShareConfirmed} onChange={e => setWholeShareConfirmed(e.target.checked)}
+                 style={{ width: 18, height: 18, marginTop: 1, accentColor: wholeShareConfirmed ? GREEN : AMBER, flexShrink: 0 }} />
+          <span>{wholeShareConfirmed ? '✅ ' : '⚠️ '}I confirm this Schwab stop will sell {logic.wholeQty} whole shares of {sym}; residual {logic.residualQty.toFixed(4)} shares remain monitored.</span>
+        </label>
+      )}
+
       {showProtect && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
           {isSchwab && btn(`Request Schwab fixed stop via 2FA`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
           {isSchwab && trailPct != null && btn(`Request Schwab trailing stop via 2FA`, 'TRAILING', preferTrail)}
           {isSchwab && btn('Request Schwab stop-limit via 2FA', 'STOP_LIMIT')}
+          {/* A disabled Schwab live-stop button is NEVER silent — the reason sits right beside it. */}
+          {isSchwab && liveBlocked && disabledReasonHuman && (
+            <div data-testid="schwab-stop-disabled-reason"
+                 style={{ flexBasis: '100%', fontSize: 12, color: AMBER, fontWeight: 700, marginTop: 4 }}>
+              ⛔ Disabled: {disabledReasonHuman}
+              {logic.disabledReason === 'fractional_qty' ? ' — check the whole-share confirmation above to enable.' : ''}
+            </div>
+          )}
           {isFidelity && (
             <button
               onClick={e => { e.stopPropagation(); requestOrder(logic.liveStop != null ? 'STOP_LIMIT' : 'STOP') }}

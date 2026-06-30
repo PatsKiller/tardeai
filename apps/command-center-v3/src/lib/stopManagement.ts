@@ -54,7 +54,19 @@ export type StopLogic = {
   why: { label: string; value: string }[]
   blockers: StopBlocker[]
   isFundLike: boolean
+  // The single highest-priority reason the live-stop request is disabled (null when it can be requested).
+  // The UI must surface this on every disabled Schwab action button — a disabled button is never silent.
+  disabledReason: string | null
+  disabledReasonHuman: string | null
 }
+
+// Blocker priority — the first present is the one shown as the primary disabled reason. Whole-share
+// confirmation (fractional_qty) is intentionally LAST among hard blockers so a genuine data problem
+// (stale quote, source mismatch, non-protective stop) is reported before the operator-confirmable one.
+const BLOCKER_PRIORITY = [
+  'instrument_not_applicable', 'source_mismatch', 'missing_quote', 'stale_quote',
+  'stop_not_protective', 'trail_start_mismatch', 'floor_mismatch', 'fractional_qty',
+]
 
 const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
 const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT', 'OCO'])
@@ -192,6 +204,14 @@ export function buildStopLogic(input: {
     })
   }
 
+  // Order blockers by priority so the UI lists them most-important-first, and pick the primary reason the
+  // live-stop request is disabled (shown on the disabled button itself — never a silent gray-out).
+  blockers.sort((a, b) => {
+    const ia = BLOCKER_PRIORITY.indexOf(a.code); const ib = BLOCKER_PRIORITY.indexOf(b.code)
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+  })
+  const primaryBlocker = blockers[0] ?? null
+
   const decision = decideStopAction({
     broker,
     advisoryStop,
@@ -236,6 +256,8 @@ export function buildStopLogic(input: {
     why: buildWhy(pr, liveStop, advisoryStop, trailPct, decision, familyFloorLabel, floorMathConsistent),
     blockers,
     isFundLike,
+    disabledReason: primaryBlocker?.code ?? null,
+    disabledReasonHuman: primaryBlocker?.message ?? null,
   }
 }
 

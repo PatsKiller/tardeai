@@ -148,6 +148,95 @@ def _get_stop_overrides() -> set:
         return _override_cache["symbols"]
 
 
+_STOP_READINESS_BUILD = "cc-v3 stop-evidence PR33 2026-06-30"
+_SCHWAB_VALIDATOR_CACHE = {"ts": 0.0, "result": None}
+
+
+def _cached_schwab_validator():
+    """validate_schwab_write_policy result, cached 5 min (the source scan is slow). READ-ONLY."""
+    import time as _t
+    import subprocess
+    import re as _re
+    import sys as _sys
+    if _t.time() - _SCHWAB_VALIDATOR_CACHE["ts"] < 300 and _SCHWAB_VALIDATOR_CACHE["result"]:
+        return _SCHWAB_VALIDATOR_CACHE["result"]
+    res = {"pass": False, "summary": "unknown"}
+    try:
+        p = subprocess.run([_sys.executable, str(PROJECT_ROOT / "scripts" / "validate_schwab_write_policy.py")],
+                           capture_output=True, text=True, timeout=90)
+        m = _re.search(r"(\d+)/(\d+) guards green", p.stdout)
+        res = {"pass": bool(p.returncode == 0 and m and m.group(1) == m.group(2)),
+               "summary": (m.group(0) if m else "no summary"), "returncode": p.returncode}
+    except Exception as e:
+        res = {"pass": False, "summary": f"error: {str(e)[:60]}"}
+    _SCHWAB_VALIDATOR_CACHE.update(ts=_t.time(), result=res)
+    return res
+
+
+def _stop_live_readiness(query=None):
+    """GET /api/v2/holdings/stop-readiness?symbol=&account= — READ-ONLY readiness snapshot for the Schwab
+    live-stop canary panel. No broker calls, no evidence writes, no order placement, no preflight side effects."""
+    import os as _os
+    q = query or {}
+    sym = str(q.get("symbol", "")).upper().strip()
+    acct = str(q.get("account", "")).strip()
+    out = {"build_marker": _STOP_READINESS_BUILD, "symbol": sym, "account": acct,
+           "broker_submit": "disabled_until_2fa_approval", "broker_request_sent": False}
+    # execution state (read-only)
+    try:
+        import execution_state as _es
+        st = _es.build_state()
+        out["execution"] = {
+            "operator_live_via_2fa_allowed": bool(st.get("operator_live_via_2fa_allowed")),
+            "operator_approved_live_submit_possible": bool(st.get("operator_approved_live_submit_possible")),
+            "autonomous_live_submit_allowed": bool(st.get("autonomous_live_submit_allowed")),
+            "blockers": st.get("current_blockers") or [],
+        }
+    except Exception as e:
+        out["execution"] = {"error": str(e)[:120]}
+    out["oco_brackets_schwab_off"] = _os.environ.get("OCO_BRACKETS_SCHWAB") in (None, "", "0", "false", "False")
+    # DB + evidence store availability
+    try:
+        r = _db_query("SELECT 1 AS ok", fetch="one")
+        out["db_available"] = bool(r and r.get("ok") == 1)
+    except Exception:
+        out["db_available"] = False
+    try:
+        _db_query("SELECT 1 FROM evidence_bound_approvals LIMIT 1")
+        out["evidence_store_available"] = True
+    except Exception:
+        out["evidence_store_available"] = False
+    # Active approval lock (non-expired, non-used, approved) — symbol-filtered via the snapshot when possible
+    try:
+        rows = _db_query("""SELECT id, intent_id, operator_user, expires_at,
+                              COALESCE(proposal_snapshot_json->>'symbol', readiness_snapshot_json->>'symbol') AS sym
+                            FROM evidence_bound_approvals
+                            WHERE status='approved' AND used_at IS NULL
+                              AND (expires_at IS NULL OR expires_at > NOW())""") or []
+        locks = [r for r in rows if (not sym or str(r.get("sym") or "").upper() == sym)]
+        out["active_approval"] = ({"exists": True, "id": locks[0]["id"], "intent_id": locks[0].get("intent_id"),
+                                   "operator": locks[0].get("operator_user"),
+                                   "expires_at": str(locks[0].get("expires_at"))}
+                                  if locks else {"exists": False})
+    except Exception as e:
+        out["active_approval"] = {"error": str(e)[:80]}
+    out["schwab_validator"] = _cached_schwab_validator()
+    # Preflight has side effects (evidence write) → never auto-run from a GET. Report whether a valid approval
+    # already exists for this symbol; otherwise the operator must run the dry-run preflight explicitly.
+    out["preflight_status"] = "approval_present" if (out.get("active_approval") or {}).get("exists") else "not_run"
+    # System-side canary readiness. Quote-freshness and whole-share confirmation are frontend/operator gates and
+    # are combined client-side; this reflects the BACKEND gates only. READY_FOR_OPERATOR never means "submit" —
+    # the operator must still click + per-order 2FA, and the backend revalidates evidence at submit.
+    ex = out.get("execution") or {}
+    system_ready = bool(
+        out.get("db_available") and out.get("evidence_store_available")
+        and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
+        and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass"))
+    out["canary_state"] = "READY_FOR_OPERATOR" if system_ready else "BLOCKED"
+    out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
+    return out
+
+
 def _protective_holding_truth(account_key: str, symbol: str):
     """Server truth for the gate-critical fields of a protective-stop request: (held_shares, current_price)
     for this symbol in this account, read from canonical holdings.json. Returns (None, None) if not held —
@@ -23846,6 +23935,7 @@ ROUTES = {
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
+    "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
