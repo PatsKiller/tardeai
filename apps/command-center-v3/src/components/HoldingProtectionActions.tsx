@@ -64,7 +64,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [readiness, setReadiness] = useState<any>(null)
   const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const baseQuoteTs = h?.price_as_of ?? h?.source_timestamp ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
+  const baseQuoteTs = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
   const quoteTsForReadiness = refreshedQuote?.quote_time_normalized ?? baseQuoteTs
   useEffect(() => {
     if (!isSchwab) return
@@ -94,7 +94,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     ? (Math.abs(trailPct - Math.round(trailPct)) < 0.15 ? String(Math.round(trailPct)) : trailPct.toFixed(1))
     : ''
   const [selectedKind, setSelectedKind] = useState<StopOrderKind>('STOP')
-  const priceTimestamp = h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
+  const priceTimestamp = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
   const advisoryTimestamp = pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
   const logic = buildStopLogic({
     h,

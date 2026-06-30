@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-30 - Fix false stale-quote blocks on after-hours Portfolio stops
+
+- `stopManagement.ts`: session-aware freshness (15m regular / **60m after-hours & pre-market**) matching `brokers/quote_time.py`; naive `YYYY-MM-DD HH:MM:SS` timestamps parsed as **America/New_York** (Finviz after-hours).
+- `HoldingProtectionActions` / `PortfolioHub`: prefer `source_timestamp` (quote fetch time) over `price_as_of` for the stop gate.
+- Added missing `scripts/brokers/quote_time.py` to main repo (backend already imported it).
+
 ## 2026-06-30 - Stop management wired + docs sync (runtime branch)
 
 - Ported live-stop integration from `fix/stop-execution-journal-reentry-integration` onto `runtime/pr33-stop-evidence-deploy`: `stopManagement.ts` (fixed + trailing `resolveLiveStop`), `stopReviewTooltip.ts`, `HoldingProtectionActions`, `PortfolioHub` (`/api/v2/holdings/live-stops` 60s refresh), `PositionDecisionCard`, `OpenTradesIntelligence`, `api_v2.py` live-stops overlay.
