@@ -173,14 +173,20 @@ def _cached_schwab_validator():
     return res
 
 
-def _after_hours_stop_override(body=None):
-    """Explicit after-hours override for a Schwab live-stop canary. Default OFF — the first live canary is
-    restricted to a regular session. Requires BOTH an approved policy flag AND an operator acknowledgement in
-    the request; never enabled silently. Never relaxes any other gate (fresh quote / evidence / 2FA / read-back)."""
+def _after_hours_stops_disabled():
+    """Optional kill-switch to forbid after-hours stop submission entirely (default: allowed 24/7 with ack)."""
     import os as _os
-    policy_on = str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
-    operator_ack = bool((body or {}).get("after_hours_ack"))
-    return policy_on and operator_ack
+    return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOPS_DISABLED", "")).lower() in ("1", "true", "yes")
+
+
+def _after_hours_ack(body=None):
+    """After-hours / pre-market GTC protective-stop submission is valid 24/7 (the order is Good-Till-Cancel and
+    rests until triggered), but requires an explicit operator acknowledgement that trigger behavior depends on
+    regular-market conditions. Returns True only if acknowledged AND not disabled by the kill-switch. Never
+    relaxes any other gate (fresh quote / evidence-bound approval / whole-share / 2FA / read-back)."""
+    if _after_hours_stops_disabled():
+        return False
+    return bool((body or {}).get("after_hours_ack"))
 
 
 def _stop_live_readiness(query=None):
@@ -260,8 +266,10 @@ def _stop_live_readiness(query=None):
         out.get("db_available") and out.get("evidence_store_available")
         and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
         and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass"))
-    # After-hours policy: a clean regular-session fresh quote is required for the first canary. After-hours →
-    # READY_FOR_OPERATOR_NEXT_REGULAR_SESSION (never auto-armed). Unparseable / stale → BLOCKED.
+    # GTC stops are valid 24/7 (rest until triggered). A fresh, parseable quote + clean backend gates → ready,
+    # but after-hours/pre-market additionally require the operator after-hours acknowledgement at submit.
+    # Unparseable / stale → BLOCKED; the kill-switch disables after-hours entirely.
+    out["after_hours_stops_disabled"] = _after_hours_stops_disabled()
     if not out.get("quote_parse_ok"):
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "Quote timestamp could not be parsed; refresh quote."
@@ -273,10 +281,15 @@ def _stop_live_readiness(query=None):
         out["canary_blocker"] = "A backend readiness gate is not satisfied."
     elif out.get("quote_session") == "regular":
         out["canary_state"] = "READY_FOR_OPERATOR"
+        out["requires_after_hours_ack"] = False
+    elif out.get("after_hours_stops_disabled"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "After-hours stop submission is disabled by policy (kill-switch on)."
     else:
-        out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
-        out["canary_blocker"] = ("After-hours quote detected. First live canary is restricted to a regular "
-                                 "session. Retry next market session after a fresh quote.")
+        out["canary_state"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+        out["requires_after_hours_ack"] = True
+        out["canary_note"] = ("After-hours GTC stop: valid 24/7 (rests until triggered). Requires the operator "
+                              "after-hours acknowledgement; trigger behavior depends on regular-market conditions.")
     out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
     return out
 
@@ -24943,13 +24956,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                              "error": "Quote is stale; refresh price before requesting a live stop.",
                                              "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
                                              "ticket": ticket, "account": acct}
-                            # After-hours policy: a Schwab live-stop canary requires a REGULAR-session quote unless an
-                            # explicit, operator-acknowledged after-hours override is approved (default: blocked).
+                            # After-hours policy: a GTC protective stop is valid 24/7 (it rests until triggered),
+                            # so an after-hours quote does NOT block submission — but the operator must acknowledge
+                            # that trigger behavior depends on regular-market conditions. Allowed with after_hours_ack;
+                            # an optional kill-switch (SCHWAB_AFTER_HOURS_STOPS_DISABLED) can forbid it entirely.
                             session = classify_session(ts)
-                            if acct.startswith("schwab") and session != "regular" and not _after_hours_stop_override(b):
-                                return 200, {"ok": False, "mode": "blocked", "gate": "after_hours_blocked",
-                                             "error": ("After-hours quote. Live stop canary requires a regular-session "
-                                                       "quote or an explicit after-hours override."),
+                            if acct.startswith("schwab") and session != "regular" and not _after_hours_ack(b):
+                                gate = "after_hours_disabled" if _after_hours_stops_disabled() else "after_hours_ack_required"
+                                err = ("After-hours stop submission is disabled by policy." if _after_hours_stops_disabled()
+                                       else "After-hours quote. This GTC stop is valid 24/7 and rests until triggered, but "
+                                            "trigger behavior depends on regular-market conditions — acknowledge after-hours "
+                                            "to proceed.")
+                                return 200, {"ok": False, "mode": "blocked", "gate": gate, "error": err,
                                              "session": session, "quote_at_normalized": ts.isoformat(),
                                              "ticket": ticket, "account": acct}
                         else:

@@ -50,6 +50,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [sellAllDone, setSellAllDone] = useState(false)
   const [tokenHealth, setTokenHealth] = useState<any>(null)
   const [wholeShareConfirmed, setWholeShareConfirmed] = useState(false)
+  const [afterHoursAck, setAfterHoursAck] = useState(false)
   const [activeApproval, setActiveApproval] = useState<any>(null)
 
   const needsReauth = isSchwab && tokenHealth?.needs_reauth === true
@@ -129,6 +130,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         instrument_type: logic.instrumentType,
         quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
+        after_hours_ack: afterHoursAck,
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -238,8 +240,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
         : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
           : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
-            : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours quote — first live canary is restricted to a regular session. Retry next market session.'
-              : null
+            : readiness.after_hours_stops_disabled ? 'After-hours stop submission is disabled by policy.'
+              : (readiness.requires_after_hours_ack && !afterHoursAck) ? 'After-hours GTC stop: check the after-hours acknowledgement below to proceed (the order rests until triggered).'
+                : null
   ) : null
   const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
   const liveBlocked = !logic.canRequestLive || backendHardBlock != null
@@ -405,9 +408,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
               <div style={{ fontSize: 12, color: MUTED, fontWeight: 900, letterSpacing: 0.3 }}>LIVE STOP READINESS</div>
               {rd.canary_state && (() => {
                 const cs = rd.canary_state
-                const fullReady = cs === 'READY_FOR_OPERATOR' && quoteFresh && (logic.residualQty <= 1e-6 || wholeShareConfirmed)
-                const label = fullReady ? '✅ READY_FOR_OPERATOR'
-                  : cs === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? '⚠️ READY — NEXT REGULAR SESSION'
+                const wholeOk = logic.residualQty <= 1e-6 || wholeShareConfirmed
+                const ackOk = cs !== 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' || afterHoursAck
+                const fullReady = (cs === 'READY_FOR_OPERATOR' || cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC') && quoteFresh && wholeOk && ackOk
+                const label = fullReady
+                  ? (cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '✅ READY — AFTER-HOURS GTC' : '✅ READY_FOR_OPERATOR')
+                  : cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '⚠️ READY — ACKNOWLEDGE AFTER-HOURS'
                     : '⛔ BLOCKED — resolve gates'
                 const col = fullReady ? GREEN : RED
                 return (
@@ -427,10 +433,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             </div>
             {/* Human-readable readiness message — never a raw parse error. */}
             <div data-testid="readiness-message" style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700,
-              color: rd.canary_state === 'READY_FOR_OPERATOR' ? GREEN : RED }}>
+              color: (rd.canary_state === 'READY_FOR_OPERATOR' || rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC') ? GREEN : RED }}>
               {!quoteParseOk ? 'Quote timestamp could not be parsed; refresh quote.'
-                : rd.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION'
-                  ? 'After-hours quote detected. First live canary is restricted to regular session. Try next market session after a fresh quote.'
+                : rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC'
+                  ? (afterHoursAck ? 'After-hours GTC stop — acknowledged. Valid 24/7; rests until triggered.'
+                    : (rd.canary_note || 'After-hours GTC stop: valid 24/7. Check the after-hours acknowledgement to proceed.'))
                   : rd.canary_state === 'READY_FOR_OPERATOR' ? 'Quote fresh.'
                     : (rd.canary_blocker || 'Resolve the gates above before requesting a live stop.')}
             </div>
@@ -450,6 +457,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           <input type="checkbox" checked={wholeShareConfirmed} onChange={e => setWholeShareConfirmed(e.target.checked)}
                  style={{ width: 18, height: 18, marginTop: 1, accentColor: wholeShareConfirmed ? GREEN : AMBER, flexShrink: 0 }} />
           <span>{wholeShareConfirmed ? '✅ ' : '⚠️ '}I confirm this Schwab stop will sell {logic.wholeQty} whole shares of {sym}; residual {logic.residualQty.toFixed(4)} shares remain monitored.</span>
+        </label>
+      )}
+
+      {/* After-hours acknowledgement — a GTC stop is valid 24/7 (rests until triggered), but after-hours the
+          operator must acknowledge that trigger behavior depends on regular-market conditions. */}
+      {isSchwab && showProtect && readiness?.requires_after_hours_ack && !readiness?.after_hours_stops_disabled && (
+        <label
+          onClick={e => e.stopPropagation()}
+          style={{ marginTop: 8, marginBottom: 2, display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, color: TEXT0,
+                   fontWeight: 700, padding: '10px 11px', borderRadius: 8, cursor: 'pointer',
+                   background: afterHoursAck ? 'rgba(34,197,94,.12)' : 'rgba(245,158,11,.14)',
+                   border: `1px solid ${afterHoursAck ? GREEN : AMBER}` }}>
+          <input type="checkbox" checked={afterHoursAck} onChange={e => setAfterHoursAck(e.target.checked)}
+                 style={{ width: 18, height: 18, marginTop: 1, accentColor: afterHoursAck ? GREEN : AMBER, flexShrink: 0 }} />
+          <span>{afterHoursAck ? '✅ ' : '⚠️ '}I understand this is after-hours; Schwab may accept the GTC order but trigger behavior depends on regular-market conditions.</span>
         </label>
       )}
 

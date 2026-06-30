@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-06-30 - Schwab live-stop: after-hours works 24/7 via GTC + operator acknowledgement
+
+Supersedes the regular-session-only after-hours policy below. A protective stop is submitted **GTC**
+(`GOOD_TILL_CANCEL`) and rests until triggered, so it is valid to place 24/7 — an after-hours quote should
+not hard-block the canary. The discipline becomes an **operator acknowledgement**, not a session block.
+
+- **`api_v2`**: the after-hours gate no longer requires a regular session / env override. After-hours /
+  pre-market submission is allowed with the operator `after_hours_ack` (gate `after_hours_ack_required` until
+  acknowledged). Optional kill-switch `SCHWAB_AFTER_HOURS_STOPS_DISABLED=1` forbids it entirely. The readiness
+  endpoint returns `canary_state=READY_FOR_OPERATOR_AFTER_HOURS_GTC` + `requires_after_hours_ack` for a fresh
+  after-hours quote (was `…_NEXT_REGULAR_SESSION`).
+- **`protective_stop_2fa_preflight`**: `--after-hours-ack`; reports `operator_readiness=READY_FOR_OPERATOR_
+  AFTER_HOURS_GTC` and `quote_freshness_class=after_hours_gtc_ack_required|after_hours_gtc_acknowledged`.
+- **UI**: an after-hours acknowledgement checkbox ("I understand this is after-hours; Schwab may accept the
+  GTC order but trigger behavior depends on regular-market conditions") appears when the quote is after-hours;
+  checking it (plus whole-share confirmation) enables the trailing-stop button. Three-state badge now shows
+  `READY — AFTER-HOURS GTC` / `ACKNOWLEDGE AFTER-HOURS`.
+- **Unchanged discipline:** fresh+parseable quote, evidence-bound approval, whole-share qty, per-order 2FA,
+  read-back; no broad stops from an after-hours canary. Stale/unparseable still BLOCK. `OCO_BRACKETS_SCHWAB`
+  OFF; Fidelity manual-only. 60 tests pass; validator 27/27; V dry-run preflight PASS (`broker_submitted=false`).
+
 ## 2026-06-30 - Schwab live-stop: ET-aware quote timestamp normalization + after-hours canary policy
 
 The V trailing-stop canary was blocked by `Quote validation failed: Invalid isoformat string: '2026-06-30

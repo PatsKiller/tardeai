@@ -154,20 +154,25 @@ previously surfaced `Quote validation failed: Invalid isoformat string` to the o
 - Used by the `api_v2` protective-stop quote gate, the `/api/v2/holdings/stop-readiness` panel, and
   `protective_stop_2fa_preflight` (which now reports `quote_session`, `quote_freshness_class`, and
   `operator_readiness`, and FAILS on an unparseable quote).
-- **After-hours policy:** a Schwab live-stop canary requires a **regular-session** quote (Mon–Fri
-  09:30–16:00 ET). After-hours with a fresh quote → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION` (never
-  auto-armed). Override is opt-in only: BOTH `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` AND an operator
-  `after_hours_ack` in the request (`_after_hours_stop_override`); default OFF. The override relaxes only the
-  session gate — fresh quote, evidence-bound approval, whole-share qty, per-order 2FA, and read-back still
-  apply, and broad stops are never enabled from an after-hours canary.
+- **After-hours policy (24/7 GTC):** a protective stop is submitted **GTC** (`GOOD_TILL_CANCEL`) and rests
+  until triggered, so it is valid to place **24/7**. An after-hours / pre-market quote does **not** block the
+  canary — it requires the operator **after-hours acknowledgement** (`after_hours_ack`): *"I understand this
+  is after-hours; Schwab may accept the GTC order but trigger behavior depends on regular-market conditions."*
+  Readiness reports `READY_FOR_OPERATOR_AFTER_HOURS_GTC` + `requires_after_hours_ack` for a fresh after-hours
+  quote. An optional kill-switch `SCHWAB_AFTER_HOURS_STOPS_DISABLED=1` forbids after-hours submission entirely
+  (default: allowed with ack). The ack relaxes **only** the session gate — fresh+parseable quote,
+  evidence-bound approval, whole-share qty, per-order 2FA, and read-back still apply, and broad stops are
+  never enabled from an after-hours canary. (Regular session needs no ack.)
 - **UI:** the readiness panel shows Quote (parsed/fresh), Session, raw→normalized timestamp, a three-state
-  canary badge, and a human readiness message. After-hours / unparseable also disable the live-stop button
-  with their reason. The raw `Invalid isoformat string` is never shown.
+  canary badge (`READY_FOR_OPERATOR` / `READY — AFTER-HOURS GTC` / `BLOCKED`), and a human readiness message.
+  An after-hours acknowledgement checkbox appears when the quote is after-hours; checking it (plus whole-share
+  confirmation) enables the trailing-stop button. The raw `Invalid isoformat string` is never shown.
 
-**Operator instruction:** retry the V trailing-stop canary during the **next regular session**
-(09:30–16:00 ET, Mon–Fri) once the readiness panel shows `Session: regular`, `Quote: fresh`, and
-`READY_FOR_OPERATOR`; then check whole-share confirmation, click *Request Schwab trailing stop via 2FA* once,
-and complete per-order 2FA.
+**Operator instruction:** the V trailing-stop canary can be placed **any time a fresh quote is available
+(24/7)**. When the readiness panel shows `Quote: fresh` and the badge is green: (1) check whole-share
+confirmation; (2) if `Session` is after-hours/pre-market, also check the after-hours acknowledgement; (3)
+click *Request Schwab trailing stop via 2FA* **once** and complete per-order 2FA. The GTC order rests until
+triggered. (During the dead overnight window the quote will be stale → `BLOCKED`; wait for a fresh tick.)
 
 ## Validation Snapshot
 

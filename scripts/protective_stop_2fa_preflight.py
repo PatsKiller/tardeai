@@ -101,7 +101,7 @@ def run_preflight(
     current_price: float | None,
     dry_run: bool,
     quote_at: str | None = None,
-    after_hours_override: bool = False,
+    after_hours_ack: bool = False,
 ) -> dict:
     if not dry_run:
         return {"ok": False, "error": "preflight_requires_dry_run"}
@@ -128,13 +128,19 @@ def run_preflight(
         return {"ok": False, "stage": "quote_validation", "broker_submitted": False, "symbol": sym,
                 "quote_raw": raw_quote, "quote_session": "unknown", "quote_freshness_class": "unparseable",
                 "error": "Quote timestamp could not be parsed; refresh quote before requesting a live stop."}
+    # GTC protective stops are valid 24/7 (rest until triggered). After-hours requires an operator
+    # acknowledgement at submit; readiness reflects it as the AFTER_HOURS_GTC state, not a block.
     if q_session == "regular":
         q_class = "regular_session_fresh" if q_fresh else "regular_session_stale"
+    elif not q_fresh:
+        q_class = "after_hours_stale"
+    elif after_hours_ack:
+        q_class = "after_hours_gtc_acknowledged"
     else:
-        q_class = "after_hours_override" if after_hours_override else "after_hours_blocked"
-    operator_readiness = ("READY_FOR_OPERATOR" if (q_session == "regular" and q_fresh)
-                          else "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" if (q_fresh and not after_hours_override)
-                          else "READY_FOR_OPERATOR" if after_hours_override else "BLOCKED_STALE_QUOTE")
+        q_class = "after_hours_gtc_ack_required"
+    operator_readiness = ("BLOCKED_STALE_QUOTE" if not q_fresh
+                          else "READY_FOR_OPERATOR" if q_session == "regular"
+                          else "READY_FOR_OPERATOR_AFTER_HOURS_GTC")
     held_qty, broker_price = _holding_truth(account, sym)
     qty = float(qty if qty is not None else held_qty if held_qty is not None else 0)
     current_price = float(current_price if current_price is not None else broker_price if broker_price is not None else 0)
@@ -209,7 +215,8 @@ def run_preflight(
         "quote_age_sec": int(q_age) if q_age is not None else None,
         "quote_freshness_class": q_class,
         "operator_readiness": operator_readiness,
-        "after_hours_override": bool(after_hours_override),
+        "after_hours_ack": bool(after_hours_ack),
+        "requires_after_hours_ack": q_session != "regular",
         "symbol": sym,
         "account": account,
         "order_type": ot,
@@ -243,8 +250,8 @@ def main() -> None:
     ap.add_argument("--qty", type=float)
     ap.add_argument("--current-price", type=float)
     ap.add_argument("--quote-at", help="quote timestamp (ISO / 'YYYY-MM-DD HH:MM:SS ET'); default from holdings")
-    ap.add_argument("--after-hours-override", action="store_true",
-                    help="explicit operator-acknowledged after-hours override (default off; first canary is regular-session only)")
+    ap.add_argument("--after-hours-ack", action="store_true",
+                    help="operator after-hours acknowledgement (GTC stop valid 24/7; trigger behavior depends on regular-market conditions)")
     ap.add_argument("--dry-run", action="store_true", required=True)
     args = ap.parse_args()
     out = run_preflight(
@@ -258,7 +265,7 @@ def main() -> None:
         current_price=args.current_price,
         dry_run=args.dry_run,
         quote_at=args.quote_at,
-        after_hours_override=args.after_hours_override,
+        after_hours_ack=args.after_hours_ack,
     )
     print(json.dumps(out, indent=2, default=str))
     sys.exit(0 if out.get("ok") else 1)

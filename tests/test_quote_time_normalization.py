@@ -69,44 +69,63 @@ def test_07_api_gate_uses_normalizer_not_bare_fromisoformat():
     assert "_dt.datetime.fromisoformat(raw_ts)" not in api
 
 
-def test_08_after_hours_policy_present_and_default_off():
+def test_08_after_hours_is_24_7_gtc_with_ack():
     api = API.read_text(encoding="utf-8")
-    assert "after_hours_blocked" in api
-    assert "_after_hours_stop_override" in api
-    assert "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" in api
-    # override requires BOTH a policy flag AND an operator ack — never silent
-    fn = api.split("def _after_hours_stop_override")[1].split("\ndef ")[0]
-    assert "SCHWAB_AFTER_HOURS_STOP_OVERRIDE" in fn and "after_hours_ack" in fn
-    assert "policy_on and operator_ack" in fn
+    # GTC stop is valid 24/7: after-hours requires an ACK, not a regular-session block
+    assert "after_hours_ack_required" in api
+    assert "_after_hours_ack" in api
+    assert "READY_FOR_OPERATOR_AFTER_HOURS_GTC" in api
+    assert "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" not in api
+    fn = api.split("def _after_hours_ack")[1].split("\ndef ")[0]
+    assert "after_hours_ack" in fn and "_after_hours_stops_disabled" in fn  # ack gate + optional kill-switch
 
 
-def test_09_override_helper_default_blocks(monkeypatch):
+def test_09_after_hours_ack_gate(monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
     import api_v2
-    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", raising=False)
-    assert api_v2._after_hours_stop_override({"after_hours_ack": True}) is False   # no policy flag
-    monkeypatch.setenv("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "1")
-    assert api_v2._after_hours_stop_override({}) is False                          # no ack
-    assert api_v2._after_hours_stop_override({"after_hours_ack": True}) is True    # both -> allowed
+    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", raising=False)
+    assert api_v2._after_hours_ack({}) is False                          # no ack -> blocked
+    assert api_v2._after_hours_ack({"after_hours_ack": True}) is True     # ack -> allowed 24/7
+    monkeypatch.setenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", "1")
+    assert api_v2._after_hours_ack({"after_hours_ack": True}) is False    # kill-switch forbids
 
 
-def test_10_ui_shows_session_and_no_raw_parse_error():
+def test_10_ui_shows_session_ack_and_no_raw_parse_error():
     src = UI.read_text(encoding="utf-8")
     assert "Session" in src and "Quote raw / normalized" in src
     assert "quote_session" in src and "quote_normalized" in src
-    assert "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION" in src
+    assert "READY_FOR_OPERATOR_AFTER_HOURS_GTC" in src
+    assert "after_hours_ack" in src  # the ack checkbox state + request body
+    assert "trigger behavior depends on regular-market conditions" in src
     assert "Quote timestamp could not be parsed" in src
-    assert "After-hours quote detected" in src
-    # never surface the python parse error to the operator
-    assert "Invalid isoformat string" not in src
+    assert "Invalid isoformat string" not in src   # never surface the python parse error
 
 
 def test_11_preflight_classifies_quote_and_fails_on_unparseable():
     pf = PF.read_text(encoding="utf-8")
     assert "from brokers.quote_time import parse_quote_ts" in pf
     assert "quote_freshness_class" in pf and "operator_readiness" in pf
-    assert "after_hours_blocked" in pf and "regular_session_fresh" in pf
+    assert "after_hours_gtc" in pf and "regular_session_fresh" in pf
+    assert "READY_FOR_OPERATOR_AFTER_HOURS_GTC" in pf
     assert "Quote timestamp could not be parsed" in pf
+
+
+def test_13_readiness_after_hours_fresh_is_ready_gtc_not_blocked(monkeypatch):
+    """A fresh after-hours quote must be READY (24/7 GTC, ack required), not blocked for the session."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import api_v2, datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        fresh = _dt.datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S ET")
+    except Exception:
+        import pytest
+        pytest.skip("zoneinfo unavailable")
+    monkeypatch.delenv("SCHWAB_AFTER_HOURS_STOPS_DISABLED", raising=False)
+    r = api_v2._stop_live_readiness({"symbol": "V", "account": "schwab_rollover_ira", "quote_at": fresh})
+    # only meaningful when the synthetic quote actually lands after-hours; otherwise it's regular/ready
+    if r.get("quote_session") in ("after_hours", "pre_market") and r.get("quote_fresh"):
+        assert r.get("canary_state") == "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+        assert r.get("requires_after_hours_ack") is True
 
 
 def test_12_no_broker_write_in_normalizer_or_preflight_quote_path():
