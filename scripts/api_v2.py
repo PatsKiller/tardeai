@@ -24636,6 +24636,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 limit_price = b.get("limit_price")
                 trail_pct = b.get("trail_pct")
                 advised_stop = b.get("advised_stop")
+                source_broker = str(b.get("source_broker") or "").strip().lower()
+                instrument_type = str(b.get("instrument_type") or "").strip().lower()
+                quote_at = b.get("quote_at")
+                whole_share_confirmed = bool(b.get("whole_share_confirmed"))
                 replace_order_id = b.get("replace_order_id")   # MODIFY: cancel this existing stop, then place the new one (one 2FA)
                 if not (sym and acct and qty):
                     return 400, {"ok": False, "error": "symbol, account and qty are required"}
@@ -24647,11 +24651,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ot = _psp.normalize_kind(kind)
                 if not ot:
                     return 400, {"ok": False, "error": f"unknown order_kind {kind!r}"}
+                acct_broker = "schwab" if acct.startswith("schwab") else "fidelity" if acct.startswith("fidelity") else "alpaca" if acct.startswith("alpaca") else ""
+                if source_broker:
+                    sb = "schwab" if source_broker.startswith("schwab") else "fidelity" if source_broker.startswith("fidelity") else "alpaca" if source_broker.startswith("alpaca") else source_broker
+                    if acct_broker and sb and sb != acct_broker:
+                        return 200, {"ok": False, "mode": "blocked",
+                                     "error": f"SOURCE MISMATCH — stop source is {sb}, account broker is {acct_broker}.",
+                                     "account": acct, "symbol": sym}
+                if instrument_type in ("mutual_fund", "money_market_fund", "money_market", "cash") or sym in ("FCNTX", "SPAXX"):
+                    return 200, {"ok": False, "mode": "blocked",
+                                 "error": f"NOT APPLICABLE — {sym} is {instrument_type or 'fund/cash-like'}; live stop orders are hidden/blocked.",
+                                 "account": acct, "symbol": sym}
                 # FRACTIONAL-SHARE GUARD (operator 2026-06-21): Schwab rejects STOP/STOP_LIMIT/TRAILING orders
                 # on fractional quantities ("As of May 21, 2025, fractional orders ... must use Market/Limit").
-                # MARKET sell-all keeps the FULL qty (fractional OK — DAY TIF). Stops floor to whole shares.
+                # MARKET sell-all keeps the FULL qty (fractional OK — DAY TIF). Stops require an explicit
+                # whole-share confirmation before the server floors qty; no silent broker-write path.
                 qty_note = None
-                if acct.startswith("schwab") and ot != "MARKET":
+                if acct.startswith("schwab") and ot in ("STOP", "TRAILING_STOP", "STOP_LIMIT", "OCO"):
                     try:
                         _qf = float(qty); _qi = int(_qf)   # floor (positive long qty)
                         if _qi != _qf:
@@ -24659,6 +24675,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                 return 200, {"ok": False, "mode": "blocked",
                                              "error": f"{sym} is {_qf:g} share (under 1 whole share) — Schwab does not "
                                                       "accept fractional STOP orders. Use Sell all @ Market instead.",
+                                             "account": acct}
+                            if not whole_share_confirmed:
+                                return 200, {"ok": False, "mode": "blocked", "gate": "fractional_qty",
+                                             "error": (f"Schwab stop orders require whole shares. Suggested: SELL {_qi} {sym}. "
+                                                       f"Residual {_qf - _qi:.4f} shares remain monitored."),
+                                             "suggested_whole_qty": _qi, "residual_qty": round(_qf - _qi, 6),
                                              "account": acct}
                             qty_note = (f"Schwab rejects fractional STOP orders — protecting {_qi} whole "
                                         f"share{'s' if _qi > 1 else ''}; the {_qf - _qi:.4f} fractional remainder "
@@ -24684,6 +24706,47 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 held_qty, current_price = _protective_holding_truth(acct, sym)
                 if current_price is None:
                     current_price = b.get("current_price")
+                try:
+                    if ot != "MARKET":
+                        if current_price is None:
+                            return 200, {"ok": False, "mode": "blocked", "gate": "missing_quote",
+                                         "error": "Missing current quote; live stop request blocked.",
+                                         "ticket": ticket, "account": acct}
+                        cp = float(current_price)
+                        if not cp or cp <= 0:
+                            return 200, {"ok": False, "mode": "blocked", "gate": "missing_quote",
+                                         "error": "Invalid current quote; live stop request blocked.",
+                                         "ticket": ticket, "account": acct}
+                        if quote_at:
+                            import datetime as _dt
+                            raw_ts = str(quote_at).replace("Z", "+00:00")
+                            ts = _dt.datetime.fromisoformat(raw_ts)
+                            if ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=_dt.timezone.utc)
+                            age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
+                            if age > 15 * 60:
+                                return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
+                                             "error": "Quote is stale; refresh price before requesting a live stop.",
+                                             "quote_age_sec": int(age), "ticket": ticket, "account": acct}
+                        else:
+                            return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
+                                         "error": "Quote timestamp missing; refresh price before requesting a live stop.",
+                                         "ticket": ticket, "account": acct}
+                        if stop_price is not None and float(stop_price) >= cp:
+                            return 200, {"ok": False, "mode": "blocked", "gate": "stop_not_protective",
+                                         "error": f"Advisory stop ${float(stop_price):.2f} is at/above current price ${cp:.2f}.",
+                                         "ticket": ticket, "account": acct}
+                        if ot == "TRAILING_STOP" and trail_pct is not None and stop_price is not None:
+                            expected = cp * (1 - float(trail_pct) / 100.0)
+                            if abs(expected - float(stop_price)) / cp * 100.0 > 0.35:
+                                return 200, {"ok": False, "mode": "blocked", "gate": "trail_start_mismatch",
+                                             "error": (f"Trailing stop start estimate ${expected:.2f} does not match "
+                                                       f"advisory stop ${float(stop_price):.2f}; recalculate first."),
+                                             "ticket": ticket, "account": acct}
+                except ValueError as ve:
+                    return 200, {"ok": False, "mode": "blocked", "gate": "quote_validation",
+                                 "error": f"Quote validation failed: {str(ve)[:120]}",
+                                 "ticket": ticket, "account": acct}
                 is_schwab = acct.startswith("schwab")
                 api_write = _protective_account_api_write(acct)
                 fidelity_live = False
@@ -24751,9 +24814,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                      "ticket": ticket, "account": acct}
                     req = _psp.request_2fa(intent)
                     if not req.get("ok"):
+                        active = None
+                        try:
+                            from brokers import approval_service as _ap
+                            holders = req.get("holder_intent_ids") or []
+                            if holders:
+                                active = _ap.active_approval_detail(str(holders[0]))
+                        except Exception:
+                            active = None
                         return 200, {"ok": False, "mode": "blocked",
                                      "error": req.get("reason") or "could not request approval",
                                      "holder_intent_ids": req.get("holder_intent_ids"),
+                                     "active_approval": active,
                                      "ticket": ticket, "account": acct}
                     return 200, {"ok": True, "mode": "awaiting_approval", "intent_id": intent.intent_id,
                                  "order": summ, "account": acct, "channels": req.get("channels"),
@@ -24770,6 +24842,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                           if is_fidelity and not fidelity_live else
                                           "(This account has no trading API — ticket only.)" if not is_schwab
                                           else "(Account write not enabled — ticket only.)")}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/protective-stop/reject-intent":
+            # Reject/cancel a pending 2FA approval lock. This only supersedes approval rows; it never submits
+            # or modifies a broker order.
+            try:
+                b = body or {}
+                intent_id = str(b.get("intent_id") or "").strip()
+                if not intent_id:
+                    return 400, {"ok": False, "error": "intent_id required"}
+                from brokers import approval_service
+                res = approval_service.reject(intent_id)
+                return 200, {"ok": bool(res.get("ok")), "result": res,
+                             "note": "approval rejected; no broker order submitted"}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

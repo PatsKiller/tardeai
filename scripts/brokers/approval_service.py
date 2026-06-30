@@ -314,6 +314,37 @@ def intent_action_summary_for_id(intent_id: str) -> dict:
     return intent_action_summary(intent)
 
 
+def active_approval_detail(intent_id: str) -> dict:
+    """Operator-facing owner for the one-order-at-a-time 2FA lock."""
+    summ = intent_action_summary_for_id(intent_id)
+    expires_at = None
+    try:
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("""SELECT MAX(expires_at) FROM trade_approvals
+                       WHERE intent_id=%s AND status IN ('pending','confirmed')""", (intent_id,))
+        r = cur.fetchone()
+        expires_at = r[0] if r else None
+    except Exception:
+        expires_at = None
+    expires_et = None
+    if expires_at:
+        try:
+            import zoneinfo
+            et = expires_at.astimezone(zoneinfo.ZoneInfo("America/New_York"))
+            expires_et = et.strftime("%H:%M ET")
+        except Exception:
+            expires_et = str(expires_at)
+    return {
+        "intent_id": intent_id,
+        "symbol": summ.get("symbol"),
+        "action": summ.get("action"),
+        "headline": summ.get("headline"),
+        "detail": summ.get("detail"),
+        "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else expires_at,
+        "expires_et": expires_et,
+    }
+
+
 def _execution_notice(intent) -> str:
     """Truthful execution-gate state for THIS intent (replaces the old blanket 'DISABLED this phase' line,
     which went stale once Stage-2c protective/trailing stops were gate-removed 2026-06-19 + DB-authorized —
