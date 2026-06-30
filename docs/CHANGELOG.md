@@ -29,6 +29,22 @@ Fidelity activity requires `scripts/snaptrade_activity_ingest.py --apply`.
   the raw description for reconciliation.
 - This remains read-only against SnapTrade/Fidelity and does not enable Fidelity API trading.
 
+## 2026-06-30 - Fix: protective-stop panel falsely "BLOCKED STALE QUOTE" on every holding
+
+The real-account stop panel showed `BLOCKED STALE QUOTE · Price timestamp: missing` for **every** holding
+even though prices were live. Root cause: `portfolio_holdings()` (`/api/v2/portfolio/holdings`) resolved a
+live price + source but never attached a **timestamp**, so the frontend freshness gate
+(`stopManagement.ts` → `quoteAgeSeconds`) saw `null` and conservatively marked every quote stale, blocking
+the live-stop request buttons.
+
+- Each holding now carries `source_timestamp`, stamped from the source it actually used: `market_quotes` →
+  that symbol's `fetched_at`; `finviz` → the cache `last_fetched`; broker-synced (`schwab`/`holdings`/
+  `snaptrade`) → the freshest live tick we hold for the symbol (the same source the reprice draws from),
+  falling back to `last_repriced` → `updated_at` → `as_of`.
+- Verified live: **34/34 non-cash holdings now resolve FRESH (≤15 min)** with parseable timestamps (ISO or
+  the `ET` format the frontend already handles); cash rows correctly carry none. Was 38/38 stale.
+- Advisory/display only — no change to stop placement, broker writes, 2FA, or gates.
+
 ## 2026-06-29 - Hermes governance: post-deployment verification + LOCAL_LLM policy restored
 
 Re-audit after the budget guard went live (deployed 13:01 ET). **Broad-universe LLM research is confirmed
