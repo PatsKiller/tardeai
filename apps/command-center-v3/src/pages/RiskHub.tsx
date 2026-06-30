@@ -6,6 +6,7 @@ import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AskAgents from '../components/AskAgents'
 import RiskContributionBars from '../components/risk/RiskContributionBars'
 import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
+import ScalpStopMonitorCard from '../components/ScalpStopMonitorCard'
 import { riskContributionRows } from '../lib/riskMath'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
@@ -115,6 +116,7 @@ export default function RiskHub({ onDrill }: Props) {
   return (
     <div>
       <AskAgents examples={["Am I over-concentrated? What's my biggest single-name risk?", "What's the R:R if I trim my largest position 5%?"]} />
+      <div style={{ marginBottom: 14 }}><ScalpStopMonitorCard /></div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Risk Hub</div>

@@ -23955,6 +23955,10 @@ ROUTES = {
     "/api/v2/correlation": correlation,
     "/api/v2/rebalance": rebalance,
     "/api/v2/scalp/live": lambda: _scalp_live_poll(),
+    # Momentum-scalp stop policy (advisory/read-only): open-trade stop/risk monitor + replay what-if.
+    "/api/v2/scalp/stop-monitor": lambda: __import__("scalp_stop_monitor").run(),
+    "/api/v2/scalp/stop-intelligence": lambda q=None: __import__("scalp_stop_intelligence").whatif(
+        int((q or {}).get("trade_id") or 0)) if (q or {}).get("trade_id") else {"error": "trade_id required"},
     "/api/v2/strategy-desk": lambda: _strategy_desk(),
     "/api/v2/open-trade-monitor": lambda: _open_trade_monitor_api(),
     "/api/v2/paper-trade-analysis": lambda: _paper_trade_analysis_api(),
