@@ -28,8 +28,10 @@ SNAPTRADE_ORDER_MAP = {"STOP": "Stop", "STOP_LIMIT": "StopLimit", "TRAILING_STOP
 
 def evaluate(*, account_key: str | None, instruction: str, order_type: str,
              stop_price: float | None, advised_stop: float | None, current_price: float | None,
-             qty: float | None, held_qty: float | None, symbol: str | None = None) -> tuple[bool, list[str]]:
-    """Pure pass/fail. MONITORED path uses this envelope; broker API path adds snaptrade_trade envelope."""
+             qty: float | None, held_qty: float | None, symbol: str | None = None,
+             take_profit: float | None = None) -> tuple[bool, list[str]]:
+    """Pure pass/fail. MONITORED path uses this envelope; broker API path adds snaptrade_trade envelope.
+    take_profit is accepted for signature parity with the Schwab OCO path (Fidelity has no OCO) and ignored."""
     if not MONITORED_ENABLED and not BROKER_API_ENABLED:
         return (False, ["Fidelity/SnapTrade stop policy DISABLED (commit MONITORED_ENABLED or "
                         "BROKER_API_ENABLED after operator approval)"])

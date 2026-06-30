@@ -29,7 +29,7 @@ ENABLED = True                                   # ← MASTER GATE (commit to fl
 # below (one-line revert; all gate logic is retained, just bypassed).
 GATES_REMOVED = True
 PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)   # base: taxable only (IRAs wired-but-off below)
-ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP")   # native trailing per operator 2026-06-14
+ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP", "OCO")   # OCO = protective stop + take-profit (P3)
 ALLOWED_INSTRUCTION = "SELL"                     # sell-to-close a long; never SELL_SHORT
 MAX_STOP_DRIFT_PCT = 8.0                          # placed stop must be within ±8% of the advised stop
 MAX_POSITION_NOTIONAL_USD = 250_000.0            # full-envelope per-order ceiling (a held lot's value)
@@ -84,7 +84,8 @@ def _poc_window_open() -> bool:
 
 def evaluate(*, account_key: str | None, instruction: str, order_type: str,
              stop_price: float | None, advised_stop: float | None, current_price: float | None,
-             qty: float | None, held_qty: float | None, symbol: str | None = None) -> tuple[bool, list[str]]:
+             qty: float | None, held_qty: float | None, symbol: str | None = None,
+             take_profit: float | None = None) -> tuple[bool, list[str]]:
     """Pure pass/fail + reasons. Fail closed on anything unexpected. ENABLED gates everything; while
     POC_MODE the tighter proof envelope (symbol allowlist + session date + sub-$1k notional) also applies."""
     reasons: list[str] = []
@@ -119,6 +120,16 @@ def evaluate(*, account_key: str | None, instruction: str, order_type: str,
                 reasons.append(f"notional ${cp*float(qty):,.0f} exceeds ${notional_cap:,.0f} cap")
         if qty is not None and held_qty is not None and float(qty) > float(held_qty) + 1e-6:
             reasons.append(f"qty {qty:g} exceeds held shares {held_qty:g} (would open a short)")
+
+        # ── OCO (P3): the stop leg is validated exactly as a protective STOP above (sp<cp, drift, notional,
+        #    qty<=held). ALSO require the take-profit leg to be a sell-to-close ABOVE market (a real profit
+        #    target) — else it would fill at/through market. Both legs are sell-to-close, the safe direction. ──
+        if (order_type or "").upper() == "OCO":
+            tp = float(take_profit) if take_profit is not None else None
+            if tp is None:
+                reasons.append("OCO requires a take_profit (the limit leg)")
+            elif cp is not None and tp <= cp:
+                reasons.append(f"take-profit ${tp:g} at/below price ${cp:g} — not a protective profit target above market")
 
         # ── POC proof layer: single committed symbol, valid-through-deadline window (auto-expiry) ──
         if POC_MODE:
