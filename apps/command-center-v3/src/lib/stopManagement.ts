@@ -1,5 +1,7 @@
 export type StopState =
   | 'LIVE BROKER STOP'
+  | 'FIDELITY STOP RECORDED — MANUAL'
+  | 'FIDELITY STOP VERIFIED'
   | 'ADVISORY ONLY — NOT PLACED'
   | 'MONITORED — SOFTWARE ONLY'
   | 'NOT APPLICABLE'
@@ -7,6 +9,16 @@ export type StopState =
   | 'ACTION REQUIRED'
 
 export type StopOrderKind = 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'OCO' | 'MARKET'
+
+export type StopActionDecision =
+  | 'KEEP_EXISTING_STOP'
+  | 'PLACE_NEW_STOP'
+  | 'MODIFY_EXISTING_STOP'
+  | 'CONSIDER_TRAILING_STOP'
+  | 'MANUAL_REVIEW_REQUIRED'
+  | 'NOT_APPLICABLE'
+  | 'BLOCKED_STALE_QUOTE'
+  | 'BLOCKED_SOURCE_MISMATCH'
 
 export type StopBlocker = {
   code: string
@@ -20,12 +32,26 @@ export type StopLogic = {
   currentPrice: number | null
   advisoryStop: number | null
   liveStop: number | null
+  liveStopDistancePct: number | null
   distancePct: number | null
+  familyFloorPct: number | null
+  familyFloorLabel: string
+  floorMathConsistent: boolean
   wholeQty: number
   residualQty: number
   canRequestLive: boolean
   actionLabel: string
   nextAction: string
+  stop_action_decision: StopActionDecision
+  action_summary: string
+  primary_operator_action: string
+  secondary_operator_actions: string[]
+  stop_delta_amount: number | null
+  stop_delta_pct: number | null
+  existing_stop_is_tighter_than_advisory: boolean
+  advisory_stop_is_tighter_than_existing: boolean
+  floor_math_consistent: boolean
+  why: { label: string; value: string }[]
   blockers: StopBlocker[]
   isFundLike: boolean
 }
@@ -34,6 +60,8 @@ const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
 const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT', 'OCO'])
 const QUOTE_MAX_AGE_SEC = 15 * 60
 const TRAIL_TOLERANCE = 0.35
+const STOP_MATCH_TOLERANCE_DOLLARS = 0.05
+const FLOOR_TOLERANCE_PCT = 0.15
 
 export function accountBroker(account: string): string {
   const a = String(account || '').toLowerCase()
@@ -61,9 +89,23 @@ export function isFundLikeInstrument(h: any): boolean {
 
 export function quoteAgeSeconds(sourceTimestamp?: string | null, nowMs = Date.now()): number | null {
   if (!sourceTimestamp) return null
-  const ts = Date.parse(sourceTimestamp)
+  const ts = parseTimestampMs(sourceTimestamp)
   if (!Number.isFinite(ts)) return null
   return Math.max(0, Math.round((nowMs - ts) / 1000))
+}
+
+export function parseTimestampMs(sourceTimestamp?: string | null): number {
+  if (!sourceTimestamp) return NaN
+  const raw = String(sourceTimestamp).trim()
+  const direct = Date.parse(raw)
+  if (Number.isFinite(direct)) return direct
+  const et = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2})?)\s+E[DS]?T$/i)
+  if (et) {
+    const month = Number(et[1].slice(5, 7))
+    const offset = month >= 3 && month <= 11 ? '-04:00' : '-05:00'
+    return Date.parse(`${et[1]}T${et[2]}${offset}`)
+  }
+  return NaN
 }
 
 export function buildStopLogic(input: {
@@ -84,6 +126,7 @@ export function buildStopLogic(input: {
   const currentPrice = finiteNum(pr?.price) ?? finiteNum(h?.current_price) ?? finiteNum(h?.price) ?? null
   const advisoryStop = finiteNum(pr?.stop_price)
   const liveStop = finiteNum(confirmedStop?.stop_price) ?? (monitored?.status === 'armed' ? finiteNum(monitored?.effective_stop ?? monitored?.stop_price) : null)
+  const stopVerified = confirmedStop?.source === 'broker' || confirmedStop?.verified === true || confirmedStop?.broker_verified === true
   const qty = Math.max(0, finiteNum(h?.shares) ?? 0)
   const wholeQty = Math.floor(qty)
   const residualQty = Math.max(0, qty - wholeQty)
@@ -91,6 +134,9 @@ export function buildStopLogic(input: {
   const isFundLike = isFundLikeInstrument(h)
   const blockers: StopBlocker[] = []
   const quoteAge = quoteAgeSeconds(input.sourceTimestamp ?? pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null, input.nowMs)
+  const staleQuote = quoteAge == null || quoteAge > QUOTE_MAX_AGE_SEC
+  const familyFloorPct = extractFamilyFloorPct(pr)
+  const familyFloorLabel = String(pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'not provided')
 
   if (isFundLike) {
     blockers.push({ code: 'instrument_not_applicable', message: `${symbol} is ${instrumentType.replace(/_/g, ' ')}; live stop execution controls are not applicable.` })
@@ -101,7 +147,7 @@ export function buildStopLogic(input: {
   if (currentPrice == null || currentPrice <= 0) {
     blockers.push({ code: 'missing_quote', message: 'Missing current quote; live stop request blocked.' })
   }
-  if (quoteAge == null || quoteAge > QUOTE_MAX_AGE_SEC) {
+  if (staleQuote) {
     blockers.push({ code: 'stale_quote', message: 'Quote is stale or timestamp is missing; refresh price before requesting a live stop.' })
   }
   if (advisoryStop != null && currentPrice != null && advisoryStop >= currentPrice) {
@@ -126,6 +172,7 @@ export function buildStopLogic(input: {
   let state: StopState
   if (isFundLike) state = 'NOT APPLICABLE'
   else if (blockers.some(b => b.code === 'source_mismatch')) state = 'SOURCE MISMATCH — BLOCKED'
+  else if (confirmedStop?.stop_price != null && broker === 'fidelity') state = stopVerified ? 'FIDELITY STOP VERIFIED' : 'FIDELITY STOP RECORDED — MANUAL'
   else if (confirmedStop?.stop_price != null) state = 'LIVE BROKER STOP'
   else if (monitored?.status === 'armed') state = 'MONITORED — SOFTWARE ONLY'
   else if (blockers.length) state = 'ACTION REQUIRED'
@@ -134,18 +181,31 @@ export function buildStopLogic(input: {
   const distancePct = advisoryStop != null && currentPrice != null && currentPrice > 0
     ? ((currentPrice - advisoryStop) / currentPrice) * 100
     : null
+  const liveStopDistancePct = liveStop != null && currentPrice != null && currentPrice > 0
+    ? ((currentPrice - liveStop) / currentPrice) * 100
+    : null
+  const floorMathConsistent = familyFloorPct == null || distancePct == null || distancePct + FLOOR_TOLERANCE_PCT >= familyFloorPct
+  if (!floorMathConsistent) {
+    blockers.push({
+      code: 'floor_mismatch',
+      message: `Floor mismatch: displayed stop is inside the ${familyFloorPct.toFixed(1)}% floor.`,
+    })
+  }
+
+  const decision = decideStopAction({
+    broker,
+    advisoryStop,
+    liveStop,
+    staleQuote,
+    isFundLike,
+    sourceMismatch: blockers.some(b => b.code === 'source_mismatch'),
+    trailPct,
+  })
   const actionLabel = broker === 'schwab'
     ? 'Request Schwab stop'
     : broker === 'fidelity'
-      ? 'Manual Fidelity ticket'
+      ? (liveStop != null ? 'Review Fidelity stop' : 'Create Fidelity manual ticket')
       : 'Not applicable'
-  const nextAction = isFundLike
-    ? 'Not applicable; advisory monitoring only'
-    : broker === 'schwab'
-      ? (blockers.length ? 'Resolve blockers before requesting Schwab stop' : 'Request Schwab stop')
-      : broker === 'fidelity'
-        ? 'Manual Fidelity ticket'
-        : 'Not applicable'
 
   return {
     state,
@@ -154,15 +214,143 @@ export function buildStopLogic(input: {
     currentPrice,
     advisoryStop,
     liveStop,
+    liveStopDistancePct,
     distancePct,
+    familyFloorPct,
+    familyFloorLabel,
+    floorMathConsistent,
     wholeQty,
     residualQty,
     canRequestLive: !isFundLike && blockers.length === 0,
     actionLabel,
-    nextAction,
+    nextAction: decision.primary_operator_action,
+    stop_action_decision: decision.stop_action_decision,
+    action_summary: decision.action_summary,
+    primary_operator_action: decision.primary_operator_action,
+    secondary_operator_actions: decision.secondary_operator_actions,
+    stop_delta_amount: decision.stop_delta_amount,
+    stop_delta_pct: decision.stop_delta_pct,
+    existing_stop_is_tighter_than_advisory: decision.existing_stop_is_tighter_than_advisory,
+    advisory_stop_is_tighter_than_existing: decision.advisory_stop_is_tighter_than_existing,
+    floor_math_consistent: floorMathConsistent,
+    why: buildWhy(pr, liveStop, advisoryStop, trailPct, decision, familyFloorLabel, floorMathConsistent),
     blockers,
     isFundLike,
   }
+}
+
+function decideStopAction(input: {
+  broker: string
+  advisoryStop: number | null
+  liveStop: number | null
+  staleQuote: boolean
+  isFundLike: boolean
+  sourceMismatch: boolean
+  trailPct: number | null
+}): Pick<StopLogic,
+  'stop_action_decision' | 'action_summary' | 'primary_operator_action' | 'secondary_operator_actions' |
+  'stop_delta_amount' | 'stop_delta_pct' | 'existing_stop_is_tighter_than_advisory' |
+  'advisory_stop_is_tighter_than_existing'> {
+  const { broker, advisoryStop, liveStop, staleQuote, isFundLike, sourceMismatch, trailPct } = input
+  if (isFundLike) {
+    return decision('NOT_APPLICABLE', 'Not applicable for live stop execution.', 'Review allocation/rebalance instead.', [], null, null, false, false)
+  }
+  if (sourceMismatch) {
+    return decision('BLOCKED_SOURCE_MISMATCH', 'Stop source does not match the account broker.', 'Resolve source mismatch before action.', [], null, null, false, false)
+  }
+  if (liveStop != null && advisoryStop != null) {
+    const delta = liveStop - advisoryStop
+    const deltaAbs = roundMoney(Math.abs(delta))
+    const deltaPct = advisoryStop > 0 ? roundPct((delta / advisoryStop) * 100) : null
+    const secondary = staleQuote
+      ? ['Refresh quote before modifying or placing any order.']
+      : trailPct != null
+        ? [`Consider ${formatPct(trailPct)} trailing stop only after review.`]
+        : []
+    if (delta > STOP_MATCH_TOLERANCE_DOLLARS) {
+      const action = `Keep existing $${liveStop.toFixed(2)} stop; it is $${deltaAbs.toFixed(2)} tighter than advisor stop.`
+      return decision('KEEP_EXISTING_STOP', action, stalePrefix(staleQuote, action), secondary, deltaAbs, deltaPct, true, false)
+    }
+    if (delta < -STOP_MATCH_TOLERANCE_DOLLARS) {
+      const brokerPhrase = broker === 'fidelity' ? 'Create modify ticket' : 'Modify existing stop'
+      const action = `Advisor suggests tightening stop from $${liveStop.toFixed(2)} to $${advisoryStop.toFixed(2)}.`
+      return decision('MODIFY_EXISTING_STOP', action, stalePrefix(staleQuote, action), [brokerPhrase, ...secondary], deltaAbs, deltaPct, false, true)
+    }
+    const action = 'Existing stop matches advisor recommendation.'
+    return decision('KEEP_EXISTING_STOP', action, stalePrefix(staleQuote, action), secondary, deltaAbs, deltaPct, false, false)
+  }
+  if (staleQuote) {
+    const action = 'Recommendation based on stale quote — refresh required before action.'
+    return decision('BLOCKED_STALE_QUOTE', action, action, ['Refresh quote'], null, null, false, false)
+  }
+  if (advisoryStop != null) {
+    const action = broker === 'fidelity'
+      ? `Create Fidelity manual ticket for advisor stop $${advisoryStop.toFixed(2)}.`
+      : `Place new stop at $${advisoryStop.toFixed(2)}.`
+    return decision('PLACE_NEW_STOP', action, action, trailPct != null ? [`Optional ${formatPct(trailPct)} trailing stop review`] : [], null, null, false, false)
+  }
+  return decision('MANUAL_REVIEW_REQUIRED', 'Manual review required; no actionable stop recommendation.', 'Manual review required.', [], null, null, false, false)
+}
+
+function decision(
+  stop_action_decision: StopActionDecision,
+  action_summary: string,
+  primary_operator_action: string,
+  secondary_operator_actions: string[],
+  stop_delta_amount: number | null,
+  stop_delta_pct: number | null,
+  existing_stop_is_tighter_than_advisory: boolean,
+  advisory_stop_is_tighter_than_existing: boolean,
+) {
+  return {
+    stop_action_decision,
+    action_summary,
+    primary_operator_action,
+    secondary_operator_actions,
+    stop_delta_amount,
+    stop_delta_pct,
+    existing_stop_is_tighter_than_advisory,
+    advisory_stop_is_tighter_than_existing,
+  }
+}
+
+function stalePrefix(staleQuote: boolean, action: string): string {
+  return staleQuote ? `Recommendation based on stale quote — refresh required before action. ${action}` : action
+}
+
+function buildWhy(pr: any, liveStop: number | null, advisoryStop: number | null, trailPct: number | null, decisionInfo: ReturnType<typeof decideStopAction>, familyFloorLabel: string, floorOk: boolean): { label: string; value: string }[] {
+  const anchor = String(pr?.anchor ?? pr?.stop_anchor ?? pr?.support_label ?? '20d swing low')
+  const policy = floorOk ? familyFloorLabel : `${familyFloorLabel}; floor mismatch`
+  const mode = trailPct != null ? `fixed stop; ${formatPct(trailPct)} trailing optional` : 'fixed stop'
+  const reason = liveStop != null && advisoryStop != null
+    ? decisionInfo.action_summary
+    : String(pr?.reason_short ?? pr?.reason ?? pr?.rationale ?? 'Advisor stop policy')
+  return [
+    { label: 'Anchor', value: anchor },
+    { label: 'Policy', value: policy },
+    { label: 'Mode', value: mode },
+    { label: 'Reason to act', value: reason },
+  ]
+}
+
+function extractFamilyFloorPct(pr: any): number | null {
+  const direct = finiteNum(pr?.family_floor_pct) ?? finiteNum(pr?.floor_pct) ?? finiteNum(pr?.min_stop_distance_pct)
+  if (direct != null) return direct
+  const text = String(pr?.family_floor ?? pr?.floor_label ?? pr?.family_floor_label ?? '').toLowerCase()
+  const pct = text.match(/(\d+(?:\.\d+)?)\s*%/)
+  return pct ? Number(pct[1]) : null
+}
+
+function formatPct(v: number): string {
+  return Math.abs(v - Math.round(v)) < 0.15 ? `${Math.round(v)}%` : `${v.toFixed(1)}%`
+}
+
+function roundMoney(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
+function roundPct(v: number): number {
+  return Math.round(v * 100) / 100
 }
 
 function finiteNum(v: any): number | null {

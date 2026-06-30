@@ -951,14 +951,18 @@ def portfolio_holdings():
     #   fidelity_*   → SnapTrade is positions/basis only (prices lag hours); use market_quotes
     #                  (Alpaca ingest) → finviz_quote_cache → technical snapshot — NOT SnapTrade.
     _live_mq: dict[str, float] = {}
+    _live_mq_ts: dict[str, str] = {}
     _live_fv: dict[str, float] = {}
-    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price
+    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price, fetched_at
                             FROM market_quotes ORDER BY symbol, fetched_at DESC""") or []):
         try:
-            _live_mq[( _qr.get("symbol") or "").upper()] = float(_qr["price"])
+            _qsu = (_qr.get("symbol") or "").upper()
+            _live_mq[_qsu] = float(_qr["price"])
+            _live_mq_ts[_qsu] = _json_clean(_qr.get("fetched_at"))
         except (TypeError, ValueError, KeyError):
             pass
     _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
+    _fv_meta = _fv.get("_meta") or {}
     _fv_day: dict[str, float] = {}
     for _fsym, _fvrow in _fv.items():
         if not isinstance(_fvrow, dict):
@@ -1026,8 +1030,16 @@ def portfolio_holdings():
             try:
                 _px = float(_tp) if _tp is not None else 0.0
             except (TypeError, ValueError):
-                _px = 0.0
+            _px = 0.0
             _px_source = "technical_snapshot"
+        if _px_source == "finviz":
+            _price_as_of = _fv_meta.get("last_updated", "")
+        elif _px_source == "market_quotes":
+            _price_as_of = _live_mq_ts.get(_su, "")
+        elif _px_source in ("schwab", "holdings", "snaptrade"):
+            _price_as_of = h.get("last_repriced", "") or h.get("as_of", "")
+        else:
+            _price_as_of = _json_clean(t_snap.get("as_of") or e_cache.get("as_of") or "")
         _px_live = _px_source in ("market_quotes", "finviz") and _px > 0
         _mv = round(_shares * _px, 2) if (_px > 0 and _shares > 0 and not p.get("is_cash")) else float(p.get("market_value") or 0)
         _cb = basis_map.get((sym, p.get("account", "")), p.get("cost_basis"))
@@ -1054,6 +1066,7 @@ def portfolio_holdings():
             "price": _px,
             "current_price": _px,
             "price_source": _px_source,
+            "price_as_of": _price_as_of,
             "price_live": _px_live,
             "market_value": _mv,
             "portfolio_pct": _ppct or 0,
@@ -1161,7 +1174,6 @@ def portfolio_holdings():
 
     _priced_total = round(sum(r.get("market_value") or 0 for r in rows), 2)
     _day_total = round(sum(r.get("day_change") or 0 for r in rows), 2)
-    _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
     _mq_as_of = None
     try:
         _mqr = _db_query("SELECT MAX(fetched_at) AS ts FROM market_quotes", fetch="one") or {}
