@@ -96,13 +96,39 @@ def fetch_best(symbol, start, end, fine, fine_days):
     return fetch_bars(symbol, start, end, INTERVAL), INTERVAL
 
 
+def sane_bars(bars, entry=None):
+    """Drop corrupt OHLC before storing (2026-06-29). yfinance occasionally returns split-glitch /
+    wrong-symbol bars — e.g. an entire ~$6 series for an NVDA $218 trade — which poisons the replay what-if.
+    Reference = the TRADE ENTRY when known (catches whole-series scale mismatches), else the median close.
+    Keep bars within 0.3x..3x of the reference with high>=low>0 and open/close in [low,high]."""
+    import statistics
+    closes = [float(b["close"]) for b in bars if b.get("close") not in (None, 0)]
+    if not closes:
+        return []
+    try:
+        ref = float(entry) if (entry and float(entry) > 0) else statistics.median(closes)
+    except Exception:
+        ref = statistics.median(closes)
+    lo, hi = 0.3 * ref, 3.0 * ref
+    out = []
+    for b in bars:
+        try:
+            o, h, l, c = float(b["open"]), float(b["high"]), float(b["low"]), float(b["close"])
+        except Exception:
+            continue
+        if l <= 0 or h < l or not (lo <= l and h <= hi) or not (l <= o <= h and l <= c <= h):
+            continue
+        out.append(b)
+    return out
+
+
 def run(apply, all_closed, fine=False, fine_days=FINE_DAYS):
     load_env()
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     where = "c.measurable" if all_closed else "c.measurable AND c.winner"
     cur.execute(f"""
-        SELECT c.trade_instance_id, c.symbol, c.entry_time, c.exit_time, ti.side, c.winner
+        SELECT c.trade_instance_id, c.symbol, c.entry_time, c.exit_time, ti.side, c.winner, ti.entry_price
         FROM trade_profit_capture_analysis c JOIN trade_instances ti ON ti.id = c.trade_instance_id
         WHERE {where} AND c.entry_time IS NOT NULL AND c.exit_time IS NOT NULL
         ORDER BY c.entry_time
@@ -148,6 +174,15 @@ def run(apply, all_closed, fine=False, fine_days=FINE_DAYS):
             time.sleep(SLEEP_BETWEEN); continue
         if not bars:
             rec["status"] = "no_bars"; rec["note"] = "yfinance returned no bars in window"
+            counts["no_bars"] += 1; results.append(rec); log_status(rec)
+            time.sleep(SLEEP_BETWEEN); continue
+
+        _n0 = len(bars); bars = sane_bars(bars, t.get("entry_price")); _drop = _n0 - len(bars)   # drop corrupt OHLC
+        if _drop:
+            rec["bars_dropped_corrupt"] = _drop
+            counts["bars_dropped_corrupt"] = counts.get("bars_dropped_corrupt", 0) + _drop
+        if not bars:
+            rec["status"] = "no_bars"; rec["note"] = f"all {_n0} bars failed OHLC sanity (corrupt)"
             counts["no_bars"] += 1; results.append(rec); log_status(rec)
             time.sleep(SLEEP_BETWEEN); continue
 
