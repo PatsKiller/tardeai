@@ -148,6 +148,324 @@ def _get_stop_overrides() -> set:
         return _override_cache["symbols"]
 
 
+_STOP_READINESS_BUILD = "cc-v3 stop-evidence PR33 2026-06-30"
+_SCHWAB_VALIDATOR_CACHE = {"ts": 0.0, "result": None}
+
+
+def _cached_schwab_validator():
+    """validate_schwab_write_policy result, cached 5 min (the source scan is slow). READ-ONLY."""
+    import time as _t
+    import subprocess
+    import re as _re
+    import sys as _sys
+    if _t.time() - _SCHWAB_VALIDATOR_CACHE["ts"] < 300 and _SCHWAB_VALIDATOR_CACHE["result"]:
+        return _SCHWAB_VALIDATOR_CACHE["result"]
+    res = {"pass": False, "summary": "unknown"}
+    try:
+        p = subprocess.run([_sys.executable, str(PROJECT_ROOT / "scripts" / "validate_schwab_write_policy.py")],
+                           capture_output=True, text=True, timeout=90)
+        m = _re.search(r"(\d+)/(\d+) guards green", p.stdout)
+        res = {"pass": bool(p.returncode == 0 and m and m.group(1) == m.group(2)),
+               "summary": (m.group(0) if m else "no summary"), "returncode": p.returncode}
+    except Exception as e:
+        res = {"pass": False, "summary": f"error: {str(e)[:60]}"}
+    _SCHWAB_VALIDATOR_CACHE.update(ts=_t.time(), result=res)
+    return res
+
+
+def _after_hours_override_enabled():
+    """Is the explicit after-hours OVERRIDE policy enabled? Default OFF — the first live canary is restricted
+    to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). AFTER_HOURS_GTC requires this override
+    (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND operator after_hours_ack."""
+    import os as _os
+    return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
+
+
+def _after_hours_ack(body=None):
+    """After-hours / pre-market submission is permitted ONLY when the override policy is enabled AND the
+    operator explicitly acknowledges it (GTC rests until triggered). Default: blocked → next regular session.
+    Never relaxes quote freshness / evidence-bound approval / whole-share / 2FA / read-back."""
+    return _after_hours_override_enabled() and bool((body or {}).get("after_hours_ack"))
+
+
+def _resolve_protective_account_key(account_key: str) -> str:
+    """Holdings may label schwab_roth; broker_accounts uses schwab_roth_ira."""
+    try:
+        from brokers.protective_stop_pilot import resolve_account_key
+        return resolve_account_key(account_key)
+    except Exception:
+        return (account_key or "").strip()
+
+
+def _one_symbol_canary_conflict(symbol, account):
+    """One protective-stop canary per symbol at a time (any ticker). Returns the conflicting account if an
+    active evidence-bound approval for this symbol exists on a DIFFERENT account, else None.
+    Prevents simultaneous rollover+roth canaries on the same symbol. Read-only."""
+    s = (symbol or "").upper(); a = _resolve_protective_account_key(account or "")
+    try:
+        rows = _db_query("""SELECT COALESCE(proposal_snapshot_json->>'symbol', readiness_snapshot_json->>'symbol') sym,
+                                   COALESCE(proposal_snapshot_json->>'account', readiness_snapshot_json->>'account') acct
+                            FROM evidence_bound_approvals
+                            WHERE status='approved' AND used_at IS NULL
+                              AND (expires_at IS NULL OR expires_at > NOW())""") or []
+        for r in rows:
+            if str(r.get("sym") or "").upper() == s and str(r.get("acct") or "") and str(r.get("acct")) != a:
+                return str(r.get("acct"))
+    except Exception:
+        pass
+    return None
+
+
+def _protective_stop_refresh_quote(body=None):
+    """POST /api/v2/holdings/protective-stop/refresh-quote — fetch the LATEST available quote (read-only,
+    highest-trust source first) for a live-stop readiness check, persist it, and return a readiness object.
+    NEVER submits, modifies, or cancels a broker order (broker_request_sent=false)."""
+    import datetime as _dt
+    from brokers.quote_time import (parse_quote_ts, classify_session, to_iso, quote_age_seconds,
+                                    fresh_max_age_for, is_fresh)
+    b = body or {}
+    sym = str(b.get("symbol", "")).upper().strip()
+    acct = str(b.get("account", "")).strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required", "broker_request_sent": False}
+    # Gather quote candidates from every available source, then pick the FRESHEST parseable one (highest trust
+    # breaks ties). After-hours, Finviz/Schwab extended-hours prints are newer than Alpaca paper (which stops
+    # at the 16:00 close), so "latest available" must compare timestamps, not just take a fixed priority. All
+    # reads are READ-ONLY — no broker order is placed.
+    candidates = []  # (trust, parsed_ts, price, bid, ask, source, raw_ts)
+
+    def _add(price, src, raw_ts, trust, bid=None, ask=None):
+        try:
+            if price is None:
+                return
+            p = parse_quote_ts(raw_ts)
+            if p is None:
+                return
+            candidates.append((trust, p, float(price), bid, ask, src, raw_ts))
+        except Exception:
+            pass
+
+    if acct.startswith("schwab"):                      # Schwab extended-hours quote (read-only, best-effort)
+        try:
+            from schwab_transport import get_quote as _sq
+            sq = _sq(acct, sym) or {}
+            qtl = sq.get("quoteTimeInLong") or sq.get("quote_time_in_long")
+            sts = sq.get("quote_time") or sq.get("timestamp") or sq.get("quoteTime")
+            if sts is None and qtl:
+                sts = _dt.datetime.fromtimestamp(int(qtl) / 1000, tz=_dt.timezone.utc)
+            _add(sq.get("last_price") or sq.get("last") or sq.get("price") or sq.get("mark"),
+                 "schwab", sts, trust=3, bid=sq.get("bid"), ask=sq.get("ask"))
+        except Exception:
+            pass
+    try:
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(sym) or {}
+        _add(q.get("last_price"), q.get("provider") or "market_provider", q.get("quote_timestamp"),
+             trust=2, bid=q.get("bid"), ask=q.get("ask"))
+    except Exception:
+        pass
+    r = _db_query("SELECT price, source, fetched_at FROM market_quotes WHERE symbol=%s AND source NOT LIKE 'refresh:%%' "
+                  "ORDER BY fetched_at DESC LIMIT 1", (sym,), fetch="one")
+    if r:
+        _add(r.get("price"), r.get("source") or "market_quotes", r.get("fetched_at"), trust=1)
+    try:
+        fv = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get(sym) or {}
+        _add(fv.get("price"), "finviz", fv.get("last_fetched") or fv.get("last_updated"), trust=0)
+    except Exception:
+        pass
+
+    candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)   # freshest first; trust breaks ties
+    if candidates:
+        _, parsed, price, bid, ask, source, raw_ts = candidates[0]
+        quote = {"price": price, "bid": bid, "ask": ask}
+    else:
+        quote = parsed = source = raw_ts = None
+        bid = ask = None
+
+    session = classify_session(raw_ts)
+    age = quote_age_seconds(raw_ts)
+    fresh = is_fresh(raw_ts)
+    # persist the refreshed quote (advisory record; never touches a broker order)
+    if quote and parsed:
+        try:
+            _db_query("INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
+                      (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)), fetch=None)
+        except Exception:
+            pass
+    override = _after_hours_override_enabled()
+    blockers = []
+    if quote is None:
+        blockers.append("No quote available from any source.")
+    elif not parsed:
+        blockers.append("Quote timestamp could not be parsed.")
+    elif not fresh:
+        blockers.append(f"Quote is stale ({int(age) // 60}m old) — outside the {fresh_max_age_for(session) // 60}m "
+                        f"{session.replace('_', '-')} freshness window.")
+    if quote is not None and parsed and session != "regular" and not override:
+        blockers.append("After-hours override is not enabled (regular session required by default).")
+    out = {
+        "ok": quote is not None and parsed is not None, "symbol": sym, "account": acct,
+        "broker_request_sent": False,
+        "quote_price": quote["price"] if quote else None,
+        "quote_bid": quote.get("bid") if quote else None, "quote_ask": quote.get("ask") if quote else None,
+        "quote_source": source, "quote_time_raw": str(raw_ts) if raw_ts else None,
+        "quote_time_normalized": to_iso(raw_ts), "quote_parse_ok": parsed is not None,
+        "session": session, "quote_age_sec": int(age) if age is not None else None, "quote_fresh": fresh,
+        "after_hours_ack_required": bool(quote is not None and parsed and session != "regular" and override),
+        "after_hours_override_enabled": override,
+        "can_submit_gtc_after_hours": bool(override and fresh and session != "regular"),
+        "blockers": blockers,
+    }
+    if quote is None or not parsed or not fresh:
+        out["operator_readiness"] = "BLOCKED"
+    elif session == "regular":
+        out["operator_readiness"] = "READY_FOR_OPERATOR"
+    elif override:
+        out["operator_readiness"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+    else:
+        out["operator_readiness"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+    return out
+
+
+def _stop_live_readiness(query=None):
+    """GET /api/v2/holdings/stop-readiness?symbol=&account= — READ-ONLY readiness snapshot for the Schwab
+    live-stop canary panel. No broker calls, no evidence writes, no order placement, no preflight side effects."""
+    import os as _os
+    q = query or {}
+    sym = str(q.get("symbol", "")).upper().strip()
+    acct = _resolve_protective_account_key(str(q.get("account", "")).strip())
+    out = {"build_marker": _STOP_READINESS_BUILD, "symbol": sym, "account": acct,
+           "broker_submit": "disabled_until_2fa_approval", "broker_request_sent": False}
+    # execution state (read-only)
+    try:
+        import execution_state as _es
+        st = _es.build_state()
+        out["execution"] = {
+            "operator_live_via_2fa_allowed": bool(st.get("operator_live_via_2fa_allowed")),
+            "operator_approved_live_submit_possible": bool(st.get("operator_approved_live_submit_possible")),
+            "autonomous_live_submit_allowed": bool(st.get("autonomous_live_submit_allowed")),
+            "blockers": st.get("current_blockers") or [],
+        }
+    except Exception as e:
+        out["execution"] = {"error": str(e)[:120]}
+    out["oco_brackets_schwab_off"] = _os.environ.get("OCO_BRACKETS_SCHWAB") in (None, "", "0", "false", "False")
+    # DB + evidence store availability
+    try:
+        r = _db_query("SELECT 1 AS ok", fetch="one")
+        out["db_available"] = bool(r and r.get("ok") == 1)
+    except Exception:
+        out["db_available"] = False
+    try:
+        _db_query("SELECT 1 FROM evidence_bound_approvals LIMIT 1")
+        out["evidence_store_available"] = True
+    except Exception:
+        out["evidence_store_available"] = False
+    # Active approval lock (non-expired, non-used, approved) — symbol-filtered via the snapshot when possible
+    try:
+        rows = _db_query("""SELECT id, intent_id, operator_user, expires_at,
+                              COALESCE(proposal_snapshot_json->>'symbol', readiness_snapshot_json->>'symbol') AS sym
+                            FROM evidence_bound_approvals
+                            WHERE status='approved' AND used_at IS NULL
+                              AND (expires_at IS NULL OR expires_at > NOW())""") or []
+        locks = [r for r in rows if (not sym or str(r.get("sym") or "").upper() == sym)]
+        out["active_approval"] = ({"exists": True, "id": locks[0]["id"], "intent_id": locks[0].get("intent_id"),
+                                   "operator": locks[0].get("operator_user"),
+                                   "expires_at": str(locks[0].get("expires_at"))}
+                                  if locks else {"exists": False})
+    except Exception as e:
+        out["active_approval"] = {"error": str(e)[:80]}
+    out["schwab_validator"] = _cached_schwab_validator()
+    # Preflight has side effects (evidence write) → never auto-run from a GET. Report whether a valid approval
+    # already exists for this symbol; otherwise the operator must run the dry-run preflight explicitly.
+    out["preflight_status"] = "approval_present" if (out.get("active_approval") or {}).get("exists") else "not_run"
+    # Quote freshness + session classification (ET-aware; the failing ' ET' shape now normalizes cleanly).
+    try:
+        from brokers.quote_time import parse_quote_ts, classify_session, to_iso, quote_age_seconds, is_fresh
+        raw_q = q.get("quote_at")
+        if not raw_q:
+            raw_q = _holding_source_timestamp(sym, acct)
+        out["quote_raw"] = raw_q
+        parsed = parse_quote_ts(raw_q)
+        out["quote_parse_ok"] = parsed is not None
+        out["quote_normalized"] = to_iso(raw_q)
+        out["quote_session"] = classify_session(raw_q)
+        age = quote_age_seconds(raw_q)
+        out["quote_fresh"] = is_fresh(raw_q)   # session-aware (regular 15m / extended 60m)
+        out["quote_age_sec"] = int(age) if age is not None else None
+    except Exception as e:
+        out["quote_parse_ok"] = False
+        out["quote_session"] = "unknown"
+        out["quote_fresh"] = False
+        out["quote_error"] = str(e)[:80]
+    # System-side canary readiness. READY_FOR_OPERATOR never means "submit" — the operator must still click +
+    # per-order 2FA, and the backend revalidates evidence at submit.
+    ex = out.get("execution") or {}
+    # Per-account live-write arming (broker_accounts.api_write_enabled). Holdings schwab_roth → schwab_roth_ira.
+    out["account_api_write_enabled"] = _protective_account_api_write(acct) if acct.startswith("schwab") else False
+    out["account_key_resolved"] = _resolve_protective_account_key(acct) if acct.startswith("schwab") else acct
+    system_ready = bool(
+        out.get("db_available") and out.get("evidence_store_available")
+        and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
+        and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass")
+        and out.get("account_api_write_enabled"))
+    # GTC stops are valid 24/7 (rest until triggered). A fresh, parseable quote + clean backend gates → ready,
+    # but after-hours/pre-market is RESTRICTED by default to the next regular session — AFTER_HOURS_GTC is
+    # opt-in only (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) and requires operator after_hours_ack at submit.
+    # Unparseable / stale → BLOCKED. Never READY while the quote is stale/unparseable.
+    out["after_hours_override_enabled"] = _after_hours_override_enabled()
+    out["requires_after_hours_ack"] = False
+    # One-V-canary discipline: a conflicting canary on another account blocks this one.
+    conflict_acct = _one_symbol_canary_conflict(sym, acct)
+    out["other_account_canary"] = conflict_acct
+    if not out.get("quote_parse_ok"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "Quote timestamp could not be parsed; refresh quote."
+    elif not out.get("quote_fresh"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = ("Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
+                                 "regular market hours before arming live canary.")
+    elif conflict_acct:
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = (f"Another {sym} canary is already active on {conflict_acct}. Only one {sym} "
+                                 "canary may be armed at a time — complete or reject it first.")
+    elif acct.startswith("schwab") and not out.get("account_api_write_enabled"):
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = (f"{acct} is not armed for live API writes (ticket mode). "
+                                 "Set broker_accounts.api_write_enabled=TRUE for this Schwab account.")
+    elif not system_ready:
+        out["canary_state"] = "BLOCKED"
+        out["canary_blocker"] = "A backend readiness gate is not satisfied."
+    elif out.get("quote_session") == "regular":
+        out["canary_state"] = "READY_FOR_OPERATOR"
+    elif out.get("after_hours_override_enabled"):
+        out["canary_state"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
+        out["requires_after_hours_ack"] = True
+        out["canary_note"] = ("After-hours GTC stop: the order rests until triggered. Requires the operator "
+                              "after-hours acknowledgement; trigger behavior depends on regular-market conditions.")
+    else:
+        out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+        out["canary_blocker"] = ("After-hours quote: first live canary is restricted to a regular session. "
+                                 "After-hours override available only with explicit acknowledgement; not "
+                                 "recommended for first canary.")
+    out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
+    return out
+
+
+def _holding_source_timestamp(symbol: str, account: str):
+    """Read a holding's price source_timestamp from canonical holdings.json (read-only) for session/freshness."""
+    try:
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        s = (symbol or "").upper(); a = (account or "")
+        # prefer the ET reprice time / per-holding ISO updated_at over the date-only as_of (which has no
+        # time and would misclassify the session). The frontend normally passes the live quote_at directly.
+        for r in (h.get("holdings", []) or []):
+            if str(r.get("symbol", "")).upper() == s and str(r.get("account", "")) == a:
+                return h.get("last_repriced") or r.get("updated_at") or r.get("as_of")
+        return h.get("last_repriced")
+    except Exception:
+        return None
+
+
 def _protective_holding_truth(account_key: str, symbol: str):
     """Server truth for the gate-critical fields of a protective-stop request: (held_shares, current_price)
     for this symbol in this account, read from canonical holdings.json. Returns (None, None) if not held —
@@ -491,10 +809,11 @@ def _reports_analyst_symbols(query=None):
 
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
-    Everything else (IRAs, Fidelity-401k, disabled) → ticket mode. Fail closed on any error."""
+    Resolves holdings aliases (schwab_roth → schwab_roth_ira). Fail closed on any error."""
     try:
+        canon = _resolve_protective_account_key(account_key)
         rows = _db_query("SELECT api_write_enabled FROM broker_accounts WHERE account_key=%s",
-                         (account_key,), fetch="one")
+                         (canon,), fetch="one")
         return bool(rows and rows.get("api_write_enabled") is True)
     except Exception:
         return False
@@ -21481,6 +21800,9 @@ def _portfolio_llm_coverage(query=None):
         elif dist is not None and float(dist) >= 3:
             suggested_trail = round(float(dist), 1)
             trail_matches_stop = not trail_rec
+        _fb = ev.get("family_bounds") if isinstance(ev.get("family_bounds"), dict) else {}
+        _floor_pct = _fb.get("stop_min_pct")
+        _fam = ev.get("family") or ""
         protection[sym] = {"rec": p["thesis"], "rationale": p["summary"], "model": p["model_used"],
                            "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
                            "stop_price": stop, "trail_recommended": trail_rec,
@@ -21488,7 +21810,10 @@ def _portfolio_llm_coverage(query=None):
                            "suggested_trail_pct": suggested_trail, "trail_matches_stop": trail_matches_stop,
                            "price": _json_clean(px), "stop_distance_pct": dist,
                            "sanity": ev.get("sanity"),   # advisory self-consistency verdict + issues
-                           "family": ev.get("family"), "family_source": ev.get("family_source")}
+                           "family": _fam, "family_source": ev.get("family_source"),
+                           "family_bounds": _fb,
+                           "family_floor_pct": _floor_pct,
+                           "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None}
     # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
     cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
                       FROM hermes_external_research
@@ -21513,11 +21838,49 @@ def _portfolio_llm_coverage(query=None):
             "confirmed_at": _json_clean(cr.get("stop_confirmed_at")),
             "note": (cr.get("stop_exception_reason") or "")[:200] or None,
         }
+    # Overlay live Schwab broker protective stops (API source of truth). Trailing orders often have
+    # stop_price=null — trail_offset + order_type carry the live protection state for the UI.
+    _broker_fetched_at = None
+    try:
+        import open_trades_intelligence as _oti
+        _holdings = _load_json(STATE_DIR / "holdings.json") or {}
+        _acct_labels = {}
+        _broker_accts = []
+        for _h in _holdings.get("holdings", []):
+            _raw = str(_h.get("account") or "")
+            if not _raw:
+                continue
+            _canon = _resolve_protective_account_key(_raw)
+            _acct_labels[_oti._norm_acct(_canon)] = _raw
+            _acct_labels[_oti._norm_acct(_raw)] = _raw
+            _broker_accts.append(_canon)
+        for (_acct_norm, _sym), _bs in (_oti._broker_protective_stops(sorted(set(_broker_accts))) or {}).items():
+            _hold_acct = _acct_labels.get(_acct_norm) or str(_bs.get("account") or _acct_norm)
+            if not str(_hold_acct).startswith("schwab"):
+                continue
+            _key = f"{_sym}:{_hold_acct}"
+            _otype = str(_bs.get("order_type") or "").upper()
+            confirmed_stops[_key] = {
+                "symbol": _sym, "account": _hold_acct,
+                "stop_price": _bs.get("stop_price"),
+                "trail_offset": _bs.get("trail_offset"),
+                "trail_link": _bs.get("trail_link"),
+                "order_type": _bs.get("order_type"),
+                "order_id": _bs.get("order_id"),
+                "source": "broker", "broker_verified": True,
+                "fetched_at": _bs.get("fetched_at") or _oti.broker_stops_fetched_at(),
+                "note": f"Live {_otype.replace('_', ' ').lower()} order {_bs.get('order_id') or ''}".strip(),
+            }
+        _broker_fetched_at = _oti.broker_stops_fetched_at()
+    except Exception:
+        pass
     return _json_clean({"coverage": cov, "protection": protection, "claude_verdicts": claude_verdicts,
-                        "confirmed_stops": confirmed_stops, "window_days": 30,
+                        "confirmed_stops": confirmed_stops,
+                        "broker_stops_fetched_at": _broker_fetched_at,
+                        "window_days": 30,
                         "note": "advisory research provenance — structured stop/trail fields + live "
                                 "distance-to-stop; confirmed_stops = operator-verified broker stops "
-                                "(Fidelity manual / no API order feed)"})
+                                "(Fidelity manual / no API order feed) + live Schwab API protective orders"})
 
 
 def _broker_orders_shadow_recon(query=None):
@@ -22597,6 +22960,50 @@ def _fee_efficiency(query=None):
         return _json_clean(_fa.analyze())
     except Exception as e:
         return {"positions": [], "findings": [], "total_annual_fee_usd": None, "error": str(e)[:160]}
+
+
+def _holdings_live_stops(query=None):
+    """GET /api/v2/holdings/live-stops — live Schwab/Alpaca protective SELL stops (60s cache, read-only).
+    Keyed by SYMBOL:account (holdings account labels). Used by Portfolio stop panels for current broker truth."""
+    try:
+        import open_trades_intelligence as _oti
+        _holdings = _load_json(STATE_DIR / "holdings.json") or {}
+        _acct_labels: dict[str, str] = {}
+        _broker_accts: list[str] = []
+        for _h in _holdings.get("holdings", []):
+            _raw = str(_h.get("account") or "")
+            if not _raw:
+                continue
+            _canon = _resolve_protective_account_key(_raw)
+            _acct_labels[_oti._norm_acct(_canon)] = _raw
+            _acct_labels[_oti._norm_acct(_raw)] = _raw
+            if _raw.startswith("schwab") or "alpaca" in _raw.lower():
+                _broker_accts.append(_canon)
+        bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
+        fetched_at = _oti.broker_stops_fetched_at()
+        by_key = {}
+        for (_acct_norm, _sym), _bs in bmap.items():
+            _hold_acct = _acct_labels.get(_acct_norm) or str(_bs.get("account") or _acct_norm)
+            _key = f"{_sym}:{_hold_acct}"
+            by_key[_key] = _json_clean({
+                "symbol": _sym, "account": _hold_acct,
+                "stop_price": _bs.get("stop_price"),
+                "trail_offset": _bs.get("trail_offset"),
+                "trail_link": _bs.get("trail_link"),
+                "order_type": _bs.get("order_type"),
+                "order_id": _bs.get("order_id"),
+                "status": _bs.get("status"),
+                "qty": _bs.get("qty"),
+                "source": "broker", "broker_verified": True,
+                "fetched_at": _bs.get("fetched_at") or fetched_at,
+                "note": f"Live {_bs.get('order_type', 'stop')} order {_bs.get('order_id') or ''}".strip(),
+            })
+        return _json_clean({
+            "by_key": by_key, "fetched_at": fetched_at, "cache_ttl_sec": 60,
+            "note": "Live broker protective stops — Schwab API read (60s cache). Advisory stops remain on llm-coverage.",
+        })
+    except Exception as e:
+        return {"by_key": {}, "fetched_at": None, "error": str(e)[:160]}
 
 
 def _fidelity_monitored_stops_list(query=None):
@@ -23846,6 +24253,7 @@ ROUTES = {
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
+    "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
@@ -24084,6 +24492,7 @@ ROUTES = {
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
+    "/api/v2/holdings/live-stops": lambda: _holdings_live_stops(_current_query),
     "/api/v2/holdings/monitored-stops": lambda: _fidelity_monitored_stops_list(_current_query),
     "/api/v2/fee-efficiency": _fee_efficiency,
     "/api/v2/broker-orders/capabilities": _broker_orders_capabilities,
@@ -24690,7 +25099,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 b = body or {}
                 sym = str(b.get("symbol") or "").strip().upper()
-                acct = str(b.get("account") or "").strip()
+                acct = _resolve_protective_account_key(str(b.get("account") or "").strip())
                 qty = b.get("qty")
                 kind = str(b.get("order_kind") or "STOP").upper()
                 stop_price = b.get("stop_price")
@@ -24780,15 +25189,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "ticket": ticket, "account": acct}
                         if quote_at:
                             import datetime as _dt
-                            raw_ts = str(quote_at).replace("Z", "+00:00")
-                            ts = _dt.datetime.fromisoformat(raw_ts)
-                            if ts.tzinfo is None:
-                                ts = ts.replace(tzinfo=_dt.timezone.utc)
-                            age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
-                            if age > 15 * 60:
+                            from brokers.quote_time import parse_quote_ts, classify_session, fresh_max_age_for
+                            ts = parse_quote_ts(quote_at)
+                            if ts is None:
+                                # Never surface a raw "Invalid isoformat string" — block with a human message.
+                                return 200, {"ok": False, "mode": "blocked", "gate": "quote_unparseable",
+                                             "error": "Quote timestamp could not be parsed; refresh quote before "
+                                                      "requesting a live stop.",
+                                             "quote_raw": str(quote_at)[:40], "ticket": ticket, "account": acct}
+                            age = (_dt.datetime.now(_dt.timezone.utc) - ts.astimezone(_dt.timezone.utc)).total_seconds()
+                            if age > fresh_max_age_for(classify_session(ts)):
                                 return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                              "error": "Quote is stale; refresh price before requesting a live stop.",
-                                             "quote_age_sec": int(age), "ticket": ticket, "account": acct}
+                                             "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
+                                             "ticket": ticket, "account": acct}
+                            # After-hours policy: default is regular-session-only for the first live canary. A GTC
+                            # stop rests until triggered, so after-hours is technically valid, but it is opt-in ONLY
+                            # via the explicit override (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND the operator
+                            # after-hours acknowledgement. Without both → blocked to the next regular session.
+                            session = classify_session(ts)
+                            if acct.startswith("schwab") and session != "regular" and not _after_hours_ack(b):
+                                if _after_hours_override_enabled():
+                                    gate, err = "after_hours_ack_required", (
+                                        "After-hours GTC stop: trigger behavior depends on regular-market conditions — "
+                                        "check the after-hours acknowledgement to proceed.")
+                                else:
+                                    gate, err = "after_hours_blocked", (
+                                        "Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
+                                        "regular market hours before arming live canary. After-hours override available "
+                                        "only with explicit acknowledgement; not recommended for first canary.")
+                                return 200, {"ok": False, "mode": "blocked", "gate": gate, "error": err,
+                                             "session": session, "quote_at_normalized": ts.isoformat(),
+                                             "ticket": ticket, "account": acct}
                         else:
                             return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                          "error": "Quote timestamp missing; refresh price before requesting a live stop.",
@@ -24860,6 +25292,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                                limit_price=limit_price, trail_pct=trail_pct,
                                                advised_stop=advised_stop, current_price=current_price,
                                                held_qty=held_qty, replace_order_id=replace_order_id)
+                    # Stamp residual_qty on the intent so the evidence-bound order_spec_hash binds
+                    # account+qty+residual+order_kind+trail+TIF (roth 130/10% ≠ rollover 201/8.7%).
+                    try:
+                        _hq = float(held_qty if held_qty is not None else qty)
+                        _wq = float(qty)
+                        _res = round(max(0.0, _hq - _wq), 6)
+                        _ev = getattr(getattr(intent, "meta", None), "signal_evidence", None)
+                        if _ev is not None:
+                            _ev["residual_qty"] = _res
+                    except Exception:
+                        pass
                     # dry gate check FIRST — fail before messaging if the protective envelope blocks or the
                     # pilot is disarmed. The ONLY reason we proceed past here is the expected "2FA missing"
                     # denial (gate + standing locks all green, only the per-order approval remains).
@@ -24905,6 +25348,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                           else "(Account write not enabled — ticket only.)")}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/holdings/protective-stop/refresh-quote":
+            # Fetch the latest available quote (read-only) for a live-stop readiness check. Never submits,
+            # modifies, or cancels a broker order.
+            try:
+                return 200, {"ok": True, **_protective_stop_refresh_quote(body or {})}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200], "broker_request_sent": False}
 
         if base_path == "/api/v2/holdings/protective-stop/reject-intent":
             # Reject/cancel a pending 2FA approval lock. This only supersedes approval rows; it never submits

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-06-24
+**Updated:** 2026-06-30
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -32,7 +32,7 @@
 | `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade monitoring, stop/target rules, after-hours research, overnight pipeline | Active |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc + Ollama setup, model list, GPU memory map | Active |
 | `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, free-lane fallback, monthly Claude meta-review | Active (2026-06-29) |
-| `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | **Momentum-scalp layered stop/trail policy** — initial/breakeven/risk active; Chandelier trailing gated on a fresh backtest (STOP-V2.4 prior); validation gate + monitoring | Active (2026-06-29, paper validation phase) |
+| `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | **Momentum-scalp layered stop/trail policy** — 4-layer methodology (structure+ATR initial stop, breakeven @ +1.0–1.5R, Chandelier trailing **config-OFF** per backtest gate, portfolio heat); §6 validation gate (150 trades); Risk tab monitor + Stop Intelligence replay | Active (2026-06-30, paper validation phase) |
 | `docs/COST_MODEL.md` | Cloud LLM operating cost model, budget gates | Active |
 | `docs/LLM_DATA_DICTIONARY.md` | Data flow to every model call, 6 context types, anti-hallucination spec | Active |
 
@@ -155,6 +155,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-06-30 | Expanded `MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` to full policy text; cross-linked from `STOP_METHODOLOGY.md`. |
 | 2026-06-22 | A1A consolidation: LIVE_SYSTEM_FACTS.md, canonical docs → live pointers, drift detector hardened, DOCS_CONSOLIDATION closeout; runtime YAML/JSON/scripts committed. |
 | 2026-06-22 | Added stabilization + maturity audit docs; open-items updated (overnight LLM cron, KTOS/KBR stops); SYSTEM_FACTS + STATE_OF_REPO regenerated. |
 | 2026-06-19 | Index created + path/status verified against filesystem (14 corrections vs draft). Reflects commits d09a653c (deployment log) / 075bd602 (canary 2026-06-22) / 94e7275d (rotate-gap directives) / 65b3c751 (watchpool gap chip). |

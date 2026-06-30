@@ -4,6 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"
 LEGACY_UI = ROOT / "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+PORTFOLIO = ROOT / "apps/command-center-v3/src/pages/PortfolioHub.tsx"
+OPEN_TRADES = ROOT / "apps/command-center-v3/src/components/OpenTradesIntelligence.tsx"
+REVIEW_TS = ROOT / "apps/command-center-v3/src/lib/stopReviewTooltip.ts"
 LOGIC = ROOT / "apps/command-center-v3/src/lib/stopManagement.ts"
 API = ROOT / "scripts/api_v2.py"
 OCO = ROOT / "scripts/schwab_oco_bracket.py"
@@ -150,4 +153,13 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 stop-evidence PR33 2026-06-30" in src
+    assert "cc-v3 live-stops-review-ts 2026-06-30" in src
+
+
+def test_16_live_stops_endpoint_and_review_tooltips():
+    src = read(API) + read(PORTFOLIO) + read(UI) + read(LEGACY_UI) + read(OPEN_TRADES) + read(REVIEW_TS)
+    assert "/api/v2/holdings/live-stops" in src
+    assert "stopReviewTooltip" in src
+    assert "last reviewed" in src
+    assert "broker_stops_fetched_at" in src
+    assert "fetched_at" in src
