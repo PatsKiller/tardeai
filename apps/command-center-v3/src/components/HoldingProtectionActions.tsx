@@ -31,9 +31,6 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const liveStop = confirmedStop?.stop_price != null ? Number(confirmedStop.stop_price)
     : monitored?.status === 'armed' ? Number(monitored.effective_stop ?? monitored.stop_price)
     : null
-  const liveDistPct = liveStop != null && price != null && price > 0
-    ? ((price - liveStop) / price) * 100 : null
-
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [ticket, setTicket] = useState('')
@@ -62,6 +59,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     ? (Math.abs(trailPct - Math.round(trailPct)) < 0.15 ? String(Math.round(trailPct)) : trailPct.toFixed(1))
     : ''
   const [selectedKind, setSelectedKind] = useState<StopOrderKind>('STOP')
+  const priceTimestamp = h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? null
+  const advisoryTimestamp = pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
   const logic = buildStopLogic({
     h,
     pr,
@@ -70,7 +69,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     trailPct,
     orderKind: selectedKind,
     wholeShareConfirmed,
-    sourceTimestamp: pr?.source_timestamp ?? pr?.quote_at ?? pr?.at,
+    sourceTimestamp: priceTimestamp ?? advisoryTimestamp,
   })
 
   if (!qty) return null
@@ -82,7 +81,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     setSelectedKind(kind)
     const nextLogic = buildStopLogic({
       h, pr, monitored, confirmedStop, trailPct, orderKind: kind, wholeShareConfirmed,
-      sourceTimestamp: pr?.source_timestamp ?? pr?.quote_at ?? pr?.at,
+      sourceTimestamp: priceTimestamp ?? advisoryTimestamp,
     })
     if (kind !== 'MARKET' && !nextLogic.canRequestLive && isSchwab) {
       setMsg(`⛔ ${nextLogic.blockers.map(b => b.message).join(' ')}`)
@@ -99,7 +98,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         current_price: price,
         source_broker: pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account,
         instrument_type: logic.instrumentType,
-        quote_at: pr?.source_timestamp ?? pr?.quote_at ?? pr?.at,
+        quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
@@ -200,7 +199,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const inApprove = !!intentId && !sellAllDone
   const showProtect = stop != null && !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1)
   const liveBlocked = !logic.canRequestLive
-  const statusColor = logic.state === 'LIVE BROKER STOP' ? GREEN
+  const statusColor = logic.state === 'LIVE BROKER STOP' || logic.state === 'FIDELITY STOP VERIFIED' || logic.state === 'FIDELITY STOP RECORDED — MANUAL' ? GREEN
     : logic.state === 'MONITORED — SOFTWARE ONLY' ? PURPLE
       : logic.state === 'SOURCE MISMATCH — BLOCKED' || logic.state === 'ACTION REQUIRED' ? RED
         : logic.state === 'NOT APPLICABLE' ? MUTED
@@ -222,27 +221,52 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     >{busy ? '…' : label}</button>
   )
 
+  const fidelityTicketLabel = logic.liveStop != null ? 'Create modify ticket' : 'Create Fidelity manual ticket'
+  const fidelityReviewDisabled = logic.blockers.some(b => b.code === 'source_mismatch')
+
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 10, padding: '12px 13px', borderRadius: 8, background: 'rgba(15,23,42,.74)', border: `1px solid ${statusColor}55`, boxShadow: `inset 3px 0 0 ${statusColor}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 15, color: statusColor, fontWeight: 900, letterSpacing: 0.2 }}>STOP STATUS: {logic.state}</div>
-        <span style={{ fontSize: 12, color: MUTED }}>{logic.nextAction}</span>
+        <span style={{ fontSize: 12, color: MUTED }}>{logic.stop_action_decision.replace(/_/g, ' ')}</span>
+      </div>
+
+      <div style={{ marginBottom: 10, padding: '9px 10px', borderRadius: 7, background: 'rgba(2,6,23,.38)', border: `1px solid ${statusColor}44` }}>
+        <div style={{ fontSize: 12, color: MUTED, fontWeight: 800, marginBottom: 3 }}>Recommendation</div>
+        <div style={{ fontSize: 15, color: TEXT0, fontWeight: 900, lineHeight: 1.35 }}>{logic.primary_operator_action}</div>
+        {logic.secondary_operator_actions.length > 0 && (
+          <div style={{ marginTop: 5, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {logic.secondary_operator_actions.map((a, i) => (
+              <span key={`${a}-${i}`} style={{ fontSize: 12, color: MUTED, border: '1px solid rgba(148,163,184,.22)', borderRadius: 999, padding: '3px 7px' }}>{a}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 7, fontSize: 12, lineHeight: 1.35, color: TEXT0 }}>
         <div><span style={{ color: MUTED }}>Current</span><br /><b>{logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'}</b></div>
         <div><span style={{ color: MUTED }}>Account + broker</span><br /><b>{acct}</b> · {logic.broker}</div>
         <div><span style={{ color: MUTED }}>Instrument</span><br /><b>{logic.instrumentType.replace(/_/g, ' ')}</b></div>
-        <div><span style={{ color: MUTED }}>Broker live stop</span><br /><b style={{ color: logic.liveStop != null ? GREEN : MUTED }}>{logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b></div>
-        <div><span style={{ color: MUTED }}>Suggested fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
+        <div><span style={{ color: MUTED }}>{isFidelity ? 'Current stop' : 'Broker live stop'}</span><br /><b style={{ color: logic.liveStop != null ? GREEN : MUTED }}>{logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
+        <div><span style={{ color: MUTED }}>Advisor fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
         <div><span style={{ color: MUTED }}>Optional trail</span><br /><b>{trailPct != null ? `${trailLabel}%` : 'none'}</b></div>
-        <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b>{pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'not provided'}</b></div>
-        <div><span style={{ color: MUTED }}>Source timestamp</span><br /><b>{String(pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? 'missing').slice(0, 19)}</b></div>
+        <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b style={{ color: logic.floor_math_consistent ? TEXT0 : RED }}>{logic.familyFloorLabel}</b></div>
+        <div><span style={{ color: MUTED }}>Price timestamp</span><br /><b>{String(priceTimestamp ?? 'missing').slice(0, 19)}</b></div>
+        <div><span style={{ color: MUTED }}>Advisor timestamp</span><br /><b>{String(advisoryTimestamp ?? 'missing').slice(0, 19)}</b></div>
+      </div>
+
+      <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 5, fontSize: 12 }}>
+        {logic.why.map(row => (
+          <div key={row.label} style={{ padding: '6px 7px', borderRadius: 6, background: 'rgba(15,23,42,.46)', border: '1px solid rgba(148,163,184,.14)' }}>
+            <span style={{ color: MUTED, fontWeight: 800 }}>{row.label}: </span>
+            <span style={{ color: TEXT0 }}>{row.value}</span>
+          </div>
+        ))}
       </div>
 
       {(pr?.rationale || pr?.reason || pr?.rec) && (
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)', lineHeight: 1.45 }}>
-          <b style={{ color: TEXT0 }}>Reason:</b> {pr?.rationale ?? pr?.reason ?? pr?.rec}
+        <div style={{ marginTop: 8, fontSize: 12, color: MUTED, lineHeight: 1.45 }}>
+          Analyst note: {String(pr?.rationale ?? pr?.reason ?? pr?.rec).slice(0, 180)}
         </div>
       )}
       {logic.blockers.length > 0 && (
@@ -287,13 +311,25 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       {showProtect && (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
-          {btn(`Fixed ${stopDist != null ? `${Number(stopDist).toFixed(0)}%` : ''}`.trim(), 'STOP', !preferTrail)}
-          {trailPct != null && btn(`Trail ${trailLabel}% ★`, 'TRAILING', preferTrail)}
-          {btn('Stop-limit', 'STOP_LIMIT')}
+          {isSchwab && btn(`Request Schwab fixed stop`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
+          {isSchwab && trailPct != null && btn(`Request Schwab trailing stop`, 'TRAILING', preferTrail)}
+          {isSchwab && btn('Request Schwab stop-limit', 'STOP_LIMIT')}
+          {isFidelity && (
+            <button
+              onClick={e => { e.stopPropagation(); requestOrder(logic.liveStop != null ? 'STOP_LIMIT' : 'STOP') }}
+              disabled={busy || liveBlocked || fidelityReviewDisabled}
+              title={liveBlocked ? 'Refresh quote / resolve blockers before creating a Fidelity manual ticket' : 'Generate manual Fidelity ticket only; Trade AI does not submit to Fidelity'}
+              style={{
+                fontSize: 12, fontWeight: 900, minHeight: 34, padding: '7px 10px', borderRadius: 6,
+                border: `1px solid ${PURPLE}`, background: 'rgba(168,85,247,.16)', color: (busy || liveBlocked) ? MUTED : PURPLE,
+                cursor: (busy || liveBlocked || fidelityReviewDisabled) ? 'not-allowed' : 'pointer',
+              }}
+            >{busy ? '…' : fidelityTicketLabel}</button>
+          )}
           {brokerUrl && (
             <a href={brokerUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
               style={{ fontSize: 12, fontWeight: 800, minHeight: 34, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 6, border: `1px solid ${isFidelity ? PURPLE : BLUE}`, background: `${isFidelity ? PURPLE : BLUE}18`, color: isFidelity ? PURPLE : BLUE, textDecoration: 'none' }}>
-              {isFidelity ? 'Manual Fidelity ticket' : 'Open Schwab'} ↗
+              {isFidelity ? 'Review Fidelity stop' : 'Open Schwab'} ↗
             </a>
           )}
           <a href={`/v3/trading?tab=Open%20Trades&symbol=${sym}`} onClick={e => e.stopPropagation()}

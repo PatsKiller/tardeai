@@ -41,8 +41,8 @@ def test_04_advisory_stop_is_not_rendered_as_live_and_live_stop_distinct():
     assert "ADVISORY ONLY — NOT PLACED" in src
     assert "LIVE BROKER STOP" in src
     assert "Broker live stop" in src
-    assert "Suggested fixed stop" in src
-    assert "Broker live stop</span><br /><b" in src
+    assert "Advisor fixed stop" in src
+    assert "liveStopDistancePct" in src
 
 
 def test_05_active_approval_lock_owner_and_cancel_action():
@@ -75,3 +75,53 @@ def test_08_oco_brackets_schwab_remains_off_and_ui_tests_do_not_write_brokers():
     assert 'os.getenv(OCO_FLAG, "0")' in oco
     assert ("place_" + "order(") not in ui_test
     assert ("submit_" + "oco(") not in ui_test
+
+
+def test_09_stop_action_decision_layer_and_hpe_keep_case():
+    src = read(LOGIC) + read(UI)
+    assert "StopActionDecision" in src
+    assert "KEEP_EXISTING_STOP" in src
+    assert "PLACE_NEW_STOP" in src
+    assert "MODIFY_EXISTING_STOP" in src
+    assert "BLOCKED_STALE_QUOTE" in src
+    assert "stop_action_decision" in src
+    assert "primary_operator_action" in src
+    assert "secondary_operator_actions" in src
+    assert "existing_stop_is_tighter_than_advisory" in src
+    assert "advisory_stop_is_tighter_than_existing" in src
+    assert "Keep existing $" in src
+    assert "it is $" in src and "tighter than advisor stop" in src
+    assert "Recommendation based on stale quote" in src
+
+
+def test_10_existing_stop_not_primary_place_ticket_and_fidelity_manual_wording():
+    src = read(LOGIC) + read(UI)
+    assert "FIDELITY STOP RECORDED — MANUAL" in src
+    assert "FIDELITY STOP VERIFIED" in src
+    assert "Review Fidelity stop" in src
+    assert "Create modify ticket" in src
+    assert "Trade AI does not submit to Fidelity" in src
+    assert "logic.liveStop != null" in src
+    assert "'Review Fidelity stop'" in src and "'Create Fidelity manual ticket'" in src
+    assert "liveStop != null && advisoryStop != null" in src
+
+
+def test_11_stale_quote_disables_modify_place_and_floor_mismatch_flagged():
+    src = read(LOGIC) + read(UI)
+    assert "stale_quote" in src
+    assert "liveBlocked" in src
+    assert "disabled={busy || liveBlocked" in src
+    assert "Floor mismatch: displayed stop is inside the" in src
+    assert "floor_math_consistent" in src
+    assert "familyFloorPct" in src
+    assert "43.93" not in src  # HPE is represented by logic, not a hardcoded symbol-specific special case.
+
+
+def test_12_operator_decision_area_replaces_dense_rationale():
+    src = read(UI) + read(LOGIC)
+    assert "Recommendation" in src
+    assert "Anchor" in src
+    assert "Policy" in src
+    assert "Mode" in src
+    assert "Reason to act" in src
+    assert "Analyst note:" in src
