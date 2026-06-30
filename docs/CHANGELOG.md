@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-30 - Fix: bound lock_timeout/statement_timeout per connection to stop dashboard hangs
+
+The dashboard repeatedly froze (`⟳ Reconnecting to backend… showing last-known data`, all KPIs `—`). The
+server (`portfolio_server.py`, :7777) stayed alive but blocked: an additive `ALTER TABLE` on a hot table
+(`paper_trade_proposals`) queued behind an idle-in-transaction `AccessShareLock` holder, and with
+`lock_timeout = 0` (unbounded) it waited indefinitely — every subsequent query on that table piled up
+behind it, blocking the server's request threads.
+
+- `db_adapter._get_conn()` now sets **`lock_timeout='3s'`** (the anti-cascade guard — a lock wait fails fast
+  instead of queuing the table) and **`statement_timeout='180s'`** (kills runaways), alongside the existing
+  `idle_in_transaction_session_timeout='120s'`.
+- Added `docs/runbooks/DB_HANG_PREVENTION.md` — diagnosis, recovery steps, and the **role-level** guards
+  (`ALTER ROLE trade_ai SET lock_timeout/idle_in_transaction_session_timeout/statement_timeout`) that cover
+  the ~300 raw-`psycopg2` connection paths `db_adapter` can't reach (run once; covers every connection).
+- Verified: fresh `db_adapter` connections report `lock_timeout=3s` (was `0`); server restarted and serving
+  `/api/v2/overview` 200 in ~0.3s, stable.
+
 ## 2026-06-30 - SnapTrade/Fidelity activity ingest documented
 
 Clarified the SnapTrade/Fidelity data split: `scripts/snaptrade_sync.py` is positions/balances only, while
