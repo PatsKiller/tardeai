@@ -108,6 +108,39 @@ HPE-like losses are flagged for initial-risk review when the stop was about 10% 
 
 OCO is not ready until those are clean. This task does not enable an OCO canary.
 
+## Live Stop Readiness Panel & Disabled-Reason UI
+
+A disabled Schwab live-stop button (`STOP` / `STOP_LIMIT` / `TRAILING_STOP`) is **never silent**. The
+frontend decision path:
+
+- `apps/command-center-v3/src/lib/stopManagement.ts` — `buildStopLogic()` exposes `disabledReason` /
+  `disabledReasonHuman` (the highest-priority blocker). Blocker priority is
+  `instrument_not_applicable → source_mismatch → missing_quote → stale_quote → stop_not_protective →
+  trail_start_mismatch → floor_mismatch → fractional_qty` (whole-share confirmation last, so a genuine
+  data problem is reported before the operator-confirmable one).
+- `apps/command-center-v3/src/components/HoldingProtectionActions.tsx` — every disabled button carries the
+  reason in its tooltip (`Disabled — …`) and an inline `⛔ Disabled: …` line beside the buttons. The
+  whole-share confirmation checkbox is prominent and **immediately above** the action row, labeled
+  `"I confirm this Schwab stop will sell N whole shares of <SYM>; residual … remain monitored."` Checking it
+  clears the `fractional_qty` blocker and enables the button when all other gates are clean. Genuine backend
+  hard-blocks (execution_state blocked / DB-evidence unavailable / OCO on) also disable the button with a
+  clear reason; preflight-not-run and active-approval are surfaced as readiness warnings (the per-order 2FA +
+  backend evidence revalidation enforce them at submit).
+
+**Read-only readiness endpoint:** `GET /api/v2/holdings/stop-readiness?symbol=&account=`
+(`api_v2._stop_live_readiness`). No broker calls, no evidence writes, no order placement
+(`broker_request_sent=false`). Returns the gate snapshot — build marker, execution state, db/evidence
+availability, schwab validator (cached 5 min), active approval lock, OCO off, preflight status — plus
+`canary_state` (`READY_FOR_OPERATOR` when the **backend** gates pass; the panel flips to ✅ only after the
+operator also checks whole-share confirmation and the quote is fresh). The "LIVE STOP READINESS" card renders
+these with ✅ ready / ⚠️ needs action / ⛔ blocked icons.
+
+`READY_FOR_OPERATOR` never means "submit": the operator must manually click and complete per-order 2FA, the
+backend revalidates evidence, and the UI shows `LIVE BROKER STOP` only after broker read-back confirms.
+
+For the **V** Schwab rollover IRA canary the only blocker was `fractional_qty` (201.4412 sh, residual 0.4412,
+whole-share unchecked). With confirmation checked and all gates clean, V is `READY_FOR_OPERATOR`.
+
 ## Validation Snapshot
 
 Last validation after deploying PR #33 into the runtime checkout:

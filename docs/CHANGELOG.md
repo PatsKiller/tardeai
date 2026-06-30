@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-30 - Schwab live-stop: expose disabled reason + live-stop readiness panel (PR #33 canary prep)
+
+A disabled Schwab `STOP` / `STOP_LIMIT` / `TRAILING_STOP` button no longer grays out silently. The V Schwab
+rollover IRA trailing button was disabled solely by the `fractional_qty` blocker (201.4412 sh, residual
+0.4412, whole-share confirmation unchecked) — but the tooltip only described the action, never the reason.
+
+- `stopManagement.ts`: `buildStopLogic()` now exposes `disabledReason` / `disabledReasonHuman` (priority-
+  ordered blockers; whole-share confirmation last).
+- `HoldingProtectionActions.tsx`: disabled buttons show the reason (tooltip `Disabled — …` + inline
+  `⛔ Disabled: …`); the whole-share checkbox is prominent and immediately above the action row, relabeled
+  `"I confirm this Schwab stop will sell N whole shares of <SYM>; residual … remain monitored."`; checking it
+  enables the button when all gates are clean. Backend hard-blocks (execution_state / DB-evidence / OCO on)
+  also disable with a clear reason.
+- New **read-only** `GET /api/v2/holdings/stop-readiness` (`broker_request_sent=false`; no broker calls /
+  evidence writes / order placement) + a "LIVE STOP READINESS" panel (build marker, quote, db/evidence,
+  validator, execution, active approval, whole-share, preflight, OCO off, broker submit) with ✅/⚠️/⛔ icons
+  and a `READY_FOR_OPERATOR` / `BLOCKED` badge.
+- Validation: build clean; **60 tests pass** (48 existing + 12 new `tests/test_stop_canary_readiness_ui.py`);
+  `validate_schwab_write_policy` 27/27; V dry-run preflight PASS (`broker_submitted=false`).
+- Safety unchanged: no live order submitted; `OCO_BRACKETS_SCHWAB` OFF; Fidelity manual-ticket only; Schwab
+  stays operator-approved + per-order 2FA + evidence-bound + whole-share + read-back.
+
 ## 2026-06-30 - Protective stop integration + Fidelity activity lifecycle
 
 - Created the `fix/stop-execution-journal-reentry-integration` stack to combine DB timeout guards, holding quote timestamps, OCO DD hardening, stop-card decision UI, and lock-in trailing advisory before any OCO canary.
