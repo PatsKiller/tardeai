@@ -148,7 +148,7 @@ def _get_stop_overrides() -> set:
         return _override_cache["symbols"]
 
 
-_STOP_READINESS_BUILD = "cc-v3 stop-audit-sync 2026-07-01"
+_STOP_READINESS_BUILD = "cc-v3 stop-lifecycle-close 2026-07-01"
 _SCHWAB_VALIDATOR_CACHE = {"ts": 0.0, "result": None}
 
 
@@ -631,6 +631,38 @@ def _stops_audit_api(query=None):
     return {"events": [{k: _json_clean(v) for k, v in e.items()} for e in events],
             "counts": counts, "total": len(events),
             "note": "read-only: evidence-bound 2FA stop requests + operator confirmations / Fidelity manual tickets"}
+
+
+def _stops_reentry_watch_api(query=None):
+    """GET /api/v2/stops/reentry-watch — advisory stop-out reviews + re-entry watch rows from journal lifecycle.
+    Powers Stop Management → Audit re-entry panel. Never routes orders."""
+    q = query or {}
+    account = (q.get("account") or [None])[0] if isinstance(q.get("account"), list) else q.get("account")
+    days_raw = (q.get("days") or [365])[0] if isinstance(q.get("days"), list) else q.get("days")
+    try:
+        days = int(days_raw) if days_raw else 365
+    except (TypeError, ValueError):
+        days = 365
+    try:
+        from stop_out_reentry_watch import build_stop_out_reviews, build_reentry_watch
+        from journal_ticker_lifecycle import aggregate_ticker_activity, load_from_db
+        lifecycle = aggregate_ticker_activity(load_from_db(account, days))
+        reviews = build_stop_out_reviews(lifecycle)
+        watch = build_reentry_watch(reviews)
+        return {
+            "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in reviews],
+            "reentry_watch": [{k: _json_clean(v) for k, v in w.items()} for w in watch],
+            "advisory_only": True,
+            "account": account,
+            "days": days,
+            "total_reviews": len(reviews),
+            "total_watch": len(watch),
+        }
+    except Exception as e:
+        return {
+            "reviews": [], "reentry_watch": [], "advisory_only": True,
+            "account": account, "days": days, "error": str(e)[:200],
+        }
 
 
 def _f_or_none(v):
@@ -24782,6 +24814,7 @@ ROUTES = {
     "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
+    "/api/v2/stops/reentry-watch": lambda q=None: _stops_reentry_watch_api(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,

@@ -318,12 +318,18 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
 // Audit sub-tab — read-only trail of protective-stop actions (2FA requests + operator confirmations).
 function AuditView() {
   const [d, setD] = useState<any>(null)
+  const [rw, setRw] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    fetch('/api/v2/stops/audit').then(x => x.json()).then(j => setD(unwrap(j))).catch(() => setD(null)).finally(() => setLoading(false))
+    Promise.all([
+      fetch('/api/v2/stops/audit').then(x => x.json()).then(j => unwrap(j)).catch(() => null),
+      fetch('/api/v2/stops/reentry-watch?days=365').then(x => x.json()).then(j => unwrap(j)).catch(() => null),
+    ]).then(([audit, watch]) => { setD(audit); setRw(watch) }).finally(() => setLoading(false))
   }, [])
   const events = d?.events ?? []
   const counts = d?.counts ?? {}
+  const watchRows: any[] = rw?.reentry_watch ?? []
+  const reviewRows: any[] = rw?.reviews ?? []
   // Accurate per-row action label. Schwab positions are API/2FA-eligible, so an unconfirmed Schwab row is
   // "Schwab 2FA (pending)" — NOT manual (only Fidelity, which has no trading API, is truly manual).
   const actionFor = (e: any): { label: string; color: string } => {
@@ -342,6 +348,8 @@ function AuditView() {
         <Card label="Audit events" value={String(d?.total ?? 0)} />
         <Card label="2FA stop requests" value={String(counts['2fa_stop_request'] ?? 0)} color={BLUE} />
         <Card label="Confirmations / pending" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
+        <Card label="Stop-out reviews" value={String(rw?.total_reviews ?? 0)} color={AMBER} sub="advisory · journal lifecycle" />
+        <Card label="Re-entry watch" value={String(rw?.total_watch ?? 0)} color={PURPLE} sub="WAIT status" />
       </div>
       <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -371,6 +379,42 @@ function AuditView() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div style={{ marginTop: 18, padding: '12px 14px', borderRadius: 9, background: `${PURPLE}10`, border: `1px solid ${PURPLE}44` }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: PURPLE, marginBottom: 6 }}>Stop-out re-entry watch — advisory only</div>
+        <div style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.45 }}>
+          Loss round-trips from journal lifecycle. Does not route orders — use triggers as a checklist before re-entering.
+          {rw?.advisory_only ? ' · advisory_only=true' : ''}{rw?.error ? ` · ${rw.error}` : ''}
+        </div>
+        <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
+                {['Symbol', 'Exit', 'P&L', 'Why stopped', 'Triggers', 'Status'].map(h =>
+                  <th key={h} style={{ padding: '8px 9px', fontWeight: 800, whiteSpace: 'nowrap' }}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {watchRows.map((w: any, i: number) => {
+                const rev = reviewRows.find((r: any) => r.symbol === w.symbol)
+                return (
+                  <tr key={`${w.symbol}-${i}`} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
+                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}><b>{w.symbol}</b>{rev?.account ? <div style={{ fontSize: 10, color: MUTED }}>{rev.account}</div> : null}</td>
+                    <td style={{ padding: '7px 9px', fontFamily: 'monospace' }}>{fmtStop(w.exit_price)}</td>
+                    <td style={{ padding: '7px 9px', color: (w.realized_pnl ?? 0) < 0 ? RED : GREEN, fontWeight: 700 }}>{w.realized_pnl != null ? `$${Number(w.realized_pnl).toFixed(2)}` : '—'}</td>
+                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 280 }}>{w.why_stopped || rev?.policy_quality || '—'}</td>
+                    <td style={{ padding: '7px 9px', fontSize: 10, color: MUTED, maxWidth: 220 }}>{(w.triggers ?? []).slice(0, 4).join(' · ')}{(w.triggers?.length ?? 0) > 4 ? ' …' : ''}</td>
+                    <td style={{ padding: '7px 9px', fontWeight: 800, color: w.status === 'WAIT' ? AMBER : GREEN }}>{w.status || '—'}</td>
+                  </tr>
+                )
+              })}
+              {!loading && watchRows.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: MUTED }}>No stop-out re-entry watch rows in the last {rw?.days ?? 365} days.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   )

@@ -26,7 +26,7 @@ import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import AdvisorChangesHub from './pages/AdvisorChangesHub'
 import HealthHub from './pages/HealthHub'
 
-const BUILD_MARKER = 'cc-v3 stop-audit-sync 2026-07-01'
+const BUILD_MARKER = 'cc-v3 stop-lifecycle-close 2026-07-01'
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()

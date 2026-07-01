@@ -38,6 +38,14 @@ def test_hpe_and_gcts_create_stop_out_reviews():
     assert by_symbol["GCTS"]["realized_pnl"] == -1370.10
 
 
+def test_api_route_registered_for_reentry_watch():
+    api = (ROOT / "scripts/api_v2.py").read_text(encoding="utf-8")
+    assert '"/api/v2/stops/reentry-watch"' in api
+    assert "def _stops_reentry_watch_api" in api
+    assert "build_stop_out_reviews" in api
+    assert "build_reentry_watch" in api
+
+
 def test_reentry_watch_is_wait_and_advisory_only():
     sw = load(WATCH, "stop_out_reentry_watch")
     watch = sw.build_reentry_watch(sw.build_stop_out_reviews(lifecycle()))

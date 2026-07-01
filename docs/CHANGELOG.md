@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-01 - Stop lifecycle closure (#5 Open Trades preflight + #7 re-entry watch API/UI)
+
+- **#5 Open Trades preflight parity:** extracted `protectiveStopPreflight.ts` + `PreflightChangedPanel`; `PositionDecisionCard` now runs the same click-time preflight chain (refresh-quote → llm-coverage → live-stops → stop-readiness → `buildStopLogic`) before request and 2FA confirm, with structured amber diff + Proceed anyway / Cancel.
+- **#7 Re-entry watch:** `GET /api/v2/stops/reentry-watch?account=&days=` wraps `stop_out_reentry_watch.py`; Stop Management → Audit sub-tab shows stop-out reviews + re-entry watch table (`advisory_only=true`).
+- **Build marker:** `cc-v3 stop-lifecycle-close 2026-07-01`. Tests: stop suite + reentry API registration.
+
 ## 2026-07-01 - Stop audit hygiene (markers, tests, docs sync — no behavior change)
 
 - **Unified build marker:** `cc-v3 stop-audit-sync 2026-07-01` across `App.tsx`, `api_v2.py` stop-readiness, `HoldingProtectionActions` fallback, tests, and docs (replaces `stop-mgmt-v3`, `preflight-ux-2a3a5a`, `stop-evidence PR33`).
