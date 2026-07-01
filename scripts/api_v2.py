@@ -23454,17 +23454,30 @@ def _holdings_live_stops(query=None):
                 _broker_accts.append(_canon)
         bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
         fetched_at = _oti.broker_stops_fetched_at()
+        # Which live orders were placed BY THE APP (pilot)? Only those can be API-cancelled for a one-2FA
+        # in-app Replace (P2). A manually-placed (ToS) order isn't in schwab_pilot_orders → its replace
+        # must happen in ToS (P3). cancel_order refuses non-pilot orders.
+        _pilot_ids = set()
+        try:
+            for _pr in (_db_query("SELECT broker_order_id FROM schwab_pilot_orders WHERE broker_order_id IS NOT NULL "
+                                  "AND status NOT IN ('canceled','cancelled','rejected','expired','error_reconcile_required')") or []):
+                if _pr.get("broker_order_id"):
+                    _pilot_ids.add(str(_pr["broker_order_id"]))
+        except Exception:
+            pass
         by_key = {}
         for (_acct_norm, _sym), _bs in bmap.items():
             _hold_acct = _acct_labels.get(_acct_norm) or str(_bs.get("account") or _acct_norm)
             _key = f"{_sym}:{_hold_acct}"
+            _oid = _bs.get("order_id")
             by_key[_key] = _json_clean({
                 "symbol": _sym, "account": _hold_acct,
                 "stop_price": _bs.get("stop_price"),
                 "trail_offset": _bs.get("trail_offset"),
                 "trail_link": _bs.get("trail_link"),
                 "order_type": _bs.get("order_type"),
-                "order_id": _bs.get("order_id"),
+                "order_id": _oid,
+                "pilot_placed": (str(_oid) in _pilot_ids) if _oid else False,
                 "status": _bs.get("status"),
                 "qty": _bs.get("qty"),
                 "source": "broker", "broker_verified": True,

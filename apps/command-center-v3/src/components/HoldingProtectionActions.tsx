@@ -151,6 +151,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const effectiveConfirmed = liveStopOverride ?? confirmedStop
   const liveResolved = resolveLiveStop(effectiveConfirmed, monitored, effectivePrice)
   const liveStop = liveResolved.price
+  // P2 — the existing broker order. Only an app-placed (pilot) order can be API-cancelled for a one-2FA
+  // in-app Replace; a manually-placed (ToS) order routes to P3 (cancel in ToS).
+  const existingOrderId = String((effectiveConfirmed as any)?.order_id ?? '').trim() || null
+  const existingIsPilot = Boolean((effectiveConfirmed as any)?.pilot_placed)
+  const canReplaceInApp = Boolean(isSchwab && liveResolved.hasLiveBrokerOrder && existingIsPilot && existingOrderId)
   const confirmedIsTrailing = isTrailingBrokerStop(effectiveConfirmed, monitored)
   const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
   const preferTrail = !confirmedIsFixed && Boolean(effectivePr?.trail_recommended || trail?.matchesStopWidth)
@@ -300,6 +305,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         whole_share_confirmed: wholeShareConfirmed,
         after_hours_ack: afterHoursAck,
         preflight_at: new Date().toISOString(),
+        // P2 — replace an existing APP-placed stop: confirm path cancels it, then places the new one, one 2FA.
+        ...(canReplaceInApp && kind !== 'MARKET' ? { replace_order_id: existingOrderId } : {}),
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -546,15 +553,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           ))}
         </div>
       )}
-      {/* P3 — existing live broker stop: placing a SECOND stop is blocked (duplicate/over-sell guard).
-          Changing it means cancel-then-place; a manually-placed (ToS) order can't be cancelled via API. */}
-      {liveResolved.hasLiveBrokerOrder && (
+      {/* P2/P3 — existing live broker stop. App-placed (pilot) → Replace in one 2FA (cancel-then-place).
+          Manually-placed (ToS) → can't API-cancel; must modify in ToS. Guard blocks any naked duplicate. */}
+      {liveResolved.hasLiveBrokerOrder && canReplaceInApp && (
+        <div style={{ fontSize: 11.5, color: GREEN, marginBottom: 6, padding: '7px 9px', borderRadius: 6, background: `${GREEN}12`, border: `1px solid ${GREEN}45`, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>🔄 Replace mode — existing app stop {fmtLiveStop(logic)}</div>
+          This stop was placed here, so requesting a new one will <b>cancel it and place the replacement in a single 2FA</b> —
+          no duplicate. (Order #{existingOrderId})
+        </div>
+      )}
+      {liveResolved.hasLiveBrokerOrder && !canReplaceInApp && (
         <div style={{ fontSize: 11.5, color: AMBER, marginBottom: 6, padding: '7px 9px', borderRadius: 6, background: `${AMBER}12`, border: `1px solid ${AMBER}45`, lineHeight: 1.5 }}>
-          <div style={{ fontWeight: 900, marginBottom: 2 }}>⚠️ This position already has a live broker stop ({fmtLiveStop(logic)})</div>
-          Placing a <b>second</b> stop is blocked — two SELL stops on the same shares can over-sell. To <b>change</b> it,
-          cancel or modify the existing order {isFidelity ? 'in Fidelity' : 'in ToS'} first, then place the new one here.
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>⚠️ Existing {existingOrderId ? 'manual ' : ''}broker stop ({fmtLiveStop(logic)}) — modify it {isFidelity ? 'in Fidelity' : 'in ToS'}</div>
+          Placing a <b>second</b> stop is blocked (two SELL stops can over-sell). {existingOrderId ? 'This order was not placed here, so Trade AI can’t cancel it via API. ' : ''}
+          Cancel or modify the existing order {isFidelity ? 'in Fidelity' : 'in ToS'} first, then place here.
           {!isFidelity && brokerUrl ? <> <a href={brokerUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: BLUE, fontWeight: 700 }}>Open ToS ↗</a></> : null}
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>(One-click in-app Replace — cancel-then-place in a single 2FA — is coming.)</div>
         </div>
       )}
       {/* LOCK-IN PROFITS — fixed stop is live, but trailing now locks a HIGHER floor → advise the switch */}
