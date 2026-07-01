@@ -199,6 +199,23 @@ def _parse(text):
         return None
 
 
+def _weekly_drain_clause(sym_ref: str) -> str:
+    """SQL predicate: TRUE when `sym_ref` needs (re)planning under the WEEKLY-with-catalyst-override
+    cadence (operator 2026-07-01: "doesn't need daily grok — once weekly unless technicals drastically
+    change or catalyst"). A name is held (predicate FALSE) only while it has a plan < 7 days old AND no
+    non-'other' catalyst_event newer than that plan. A newer catalyst — news_momentum/short_squeeze for
+    big technical moves, earnings/M&A/analyst/etc. for fundamentals — flips it back to TRUE (re-plan now).
+    Unplanned names are always TRUE. `sym_ref` is the outer query's symbol column (e.g. wi.symbol)."""
+    return f"""NOT EXISTS (
+                    SELECT 1 FROM watchlist_entry_plans ep
+                    WHERE ep.symbol = {sym_ref}
+                      AND ep.created_at > now() - interval '7 days'
+                      AND NOT EXISTS (SELECT 1 FROM catalyst_events ce
+                                      WHERE upper(ce.symbol) = upper({sym_ref})
+                                        AND ce.catalyst_type <> 'other'
+                                        AND COALESCE(ce.published_at, ce.created_at) > ep.created_at))"""
+
+
 def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
     if scope == "proposals":
         # operator 2026-06-12: "same should be done for strategy proposals" — validate each PENDING
@@ -225,20 +242,20 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                            WHERE upper(symbol) IN %s AND status <> 'removed'
                            ORDER BY symbol, hermes_composite_score DESC NULLS LAST""", (want,))
             return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
-        # PRIORITY 1: directive-watch + active names. The NOT EXISTS drain filter (2026-07-01, matches
-        # Priority 2's cadence) skips names that already have a fresh (<3d) plan so each capped run reaches
-        # the NEXT batch of unplanned/stale directive names by rank — instead of re-planning the same top
-        # ~`limit` every night, which starved lower-ranked directive names (e.g. MRLN #76 never got a plan:
-        # too low for the P1 cut, and P2 excludes directive/active names). Plans older than 3d refresh too.
-        cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
+        # PRIORITY 1: directive-watch + active names. WEEKLY re-plan cadence with a catalyst override
+        # (operator 2026-07-01: "doesn't need daily grok — once weekly unless technicals drastically change
+        # or catalyst"). A name is HELD (skipped) only while it has a plan < 7 days old AND no NEW catalyst
+        # since that plan; a non-'other' catalyst_event newer than the plan (news_momentum/short_squeeze
+        # capture big technical moves, earnings/M&A/analyst/etc. capture fundamentals) forces an earlier
+        # re-plan. Unplanned names always plan. This also drains the list by rank instead of re-planning the
+        # same top ~`limit` every run (which starved low-ranked directive names like MRLN #76).
+        cur.execute(f"""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
                          NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
                        FROM watchlist_items
-                       WHERE symbol ~ '^[A-Z]{1,5}$' AND status <> 'removed'
+                       WHERE symbol ~ '^[A-Z]{{1,5}}$' AND status <> 'removed'
                          AND (in_directive_watch=true OR status='active')
-                         AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
-                                         WHERE ep.symbol = watchlist_items.symbol
-                                           AND ep.created_at > now() - interval '3 days')
+                         AND {_weekly_drain_clause('watchlist_items.symbol')}
                        ORDER BY symbol, hermes_composite_score DESC NULLS LAST""")
         rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
         if symbols:
@@ -252,19 +269,19 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         # those cards never show a blank entry plan. ANY status: this now includes directive/active buy
         # names too (previously excluded, which starved directive buy names below Priority 1's rank cap,
         # e.g. MRLN). Deduped against Priority 1 (`have`) so nothing is planned twice. NOT planned in the
-        # last 3 days → the overnight cron DRAINS the qualifying set resumably (buy_rated_cap = per-run
-        # batch size, cron sets 250 which exceeds the standing gap). Skipped only under a --symbols filter.
-        # run() routes every one of these through the OAuth lane (they're _buy_rated).
+        # WEEKLY re-plan cadence with catalyst override (see _weekly_drain_clause) → the cron DRAINS the
+        # qualifying set resumably (buy_rated_cap = per-run batch size, cron sets 400). Skipped only under a
+        # --symbols filter. run() routes every one of these through the OAuth lane (they're _buy_rated).
         if buy_rated_cap > 0 and not symbols:
             have = {r["symbol"] for r in rows}
-            cur.execute("""SELECT * FROM (
+            cur.execute(f"""SELECT * FROM (
                              SELECT DISTINCT ON (wi.symbol) wi.symbol, wi.hermes_composite_score,
                                wi.hermes_rank, wi.trend, NULL::int AS proposal_id,
                                NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
                                NULL::numeric AS proposed_target1, NULL::text AS strategy_id,
                                (COALESCE(wi.in_directive_watch,false) OR wi.status='active') AS _displayed
                              FROM watchlist_items wi
-                             WHERE wi.symbol ~ '^[A-Z]{1,5}$' AND wi.status <> 'removed'
+                             WHERE wi.symbol ~ '^[A-Z]{{1,5}}$' AND wi.status <> 'removed'
                                AND (
                                  EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol = wi.symbol
                                          AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
@@ -277,9 +294,7 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                      WHERE yat.symbol = wi.symbol ORDER BY yat.created_at DESC LIMIT 1)
                                      IN ('strong_buy','buy')
                                )
-                               AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
-                                               WHERE ep.symbol = wi.symbol
-                                                 AND ep.created_at > now() - interval '3 days')
+                               AND {_weekly_drain_clause('wi.symbol')}
                              ORDER BY wi.symbol, wi.hermes_composite_score DESC NULLS LAST
                            ) t
                            -- displayed conviction (directive/active + top-rank — what the operator actually
