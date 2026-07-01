@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import HoldingProtectionActions from './HoldingProtectionActions'
+import { mergeLiveStop } from '../lib/stopReviewTooltip'
 
 // Portfolio → Stop Management. Aggregates broker-actual + advisor-planned stops with Yellow/Amber/Red alerts,
 // plus an Audit sub-tab (2FA stop requests + operator confirmations). Read-only view; live adjustments route
 // through the holding's existing gated 2FA panel (Schwab) or manual ticket (Fidelity) via onFocusHolding.
 // See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md.
 
-const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa'
+const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a855f7'
 const unwrap = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
 const LEVEL_COLOR: Record<string, string> = { red: RED, amber: AMBER, yellow: '#eab308' }
 const SRC_LABEL: Record<string, string> = { broker: 'broker live', confirmed: 'confirmed', broker_snapshot: 'broker (last read)', monitored: 'monitored', planned: 'planned', none: '—' }
@@ -21,6 +23,8 @@ type Row = {
   divergence: string | null; distance_pct: number | null; distance_atr: number | null; distance_r: number | null
   dollars_at_risk: number; unrealized_dollars: number | null; has_active_stop: boolean
   is_trailing: boolean; trailing_should_be_active: boolean; heat_contribution_pct: number | null
+  trail_pct: number | null; trailing_trigger: number | null
+  trail_recommended: boolean; rec_source: string | null; rec_model: string | null; rec_rationale: string | null
   alert_level: 'red' | 'amber' | 'yellow' | null; alert_reasons: string[]
 }
 
@@ -136,6 +140,17 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     </td>
                     <td style={{ padding: '7px 9px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                       <span style={{ color: r.broker_stop != null ? GREEN : MUTED }}>{fmtStop(r.broker_stop)}</span> / <span style={{ color: AMBER }}>{fmtStop(r.planned_stop)}</span>
+                      {r.trailing_trigger != null && (
+                        <div style={{ fontSize: 10, color: GREEN }} title="Trailing stop: ratchets up with price; shown at the current-equivalent trigger">
+                          trail {r.trail_pct}% (≈{fmtStop(r.trailing_trigger)})
+                        </div>
+                      )}
+                      {r.rec_source ? (
+                        <div style={{ fontSize: 9.5, color: /grok|gpt|claude/i.test(r.rec_model || '') ? PURPLE : MUTED }}
+                          title={r.rec_rationale || undefined}>
+                          rec: {r.trail_recommended ? 'trail' : 'fixed'} · {r.rec_source.split(' · ')[0]}
+                        </div>
+                      ) : null}
                       {r.divergence ? <div style={{ fontSize: 10, color: r.has_active_stop ? RED : MUTED }}>{r.divergence}</div> : null}
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontSize: 11 }}>
@@ -175,53 +190,71 @@ export default function StopManagement({ onFocusHolding }: Props) {
 // (Schwab → per-order 2FA request; Fidelity → manual ticket). No stop is submitted from here.
 function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () => void; onFocusHolding?: (s: string, a: string) => void }) {
   const isFidelity = row.account.startsWith('fidelity')
-  const jump = () => { onFocusHolding?.(row.symbol, row.account); onClose() }
-  const lockIn = row.trailing_should_be_active   // advisor methodology: P&L ≥ family threshold AND price > 50d SMA
-  const trailing = { label: 'Trailing stop', why: lockIn ? 'Advisor-recommended — ratchets up with price to lock in profit, never lowers' : 'Ratchets up with price (optional)', route: '2FA', recommended: lockIn }
-  const schwabTypes = lockIn
-    ? [trailing,
-       { label: 'Fixed stop', why: 'Non-moving trigger; advisor default for core holds', route: '2FA' },
-       { label: 'Stop-limit', why: 'Stop with a limit floor to cap slippage', route: '2FA' }]
-    : [{ label: 'Fixed stop', why: 'Non-moving trigger; advisor default for core holds', route: '2FA' },
-       trailing,
-       { label: 'Stop-limit', why: 'Stop with a limit floor to cap slippage', route: '2FA' }]
+  const recKind = row.trail_recommended ? 'TRAILING' : 'FIXED'
+  // Assemble the exact props the holding card passes, so the inline panel renders identical live-stop state
+  // (never a false "none"). Sources: portfolio/holdings, portfolio/llm-coverage (protection + confirmed_stops),
+  // holdings/live-stops (by_key), holdings/monitored-stops (by_key). Then reuse the same protective-stop panel.
+  const [pack, setPack] = useState<{ h: any; pr: any; mon: any; conf: any; fetchedAt: any } | null>(null)
+  const [perr, setPerr] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    const key = `${row.symbol.toUpperCase()}:${row.account}`
+    Promise.all([
+      fetch('/api/v2/portfolio/holdings').then(x => x.json()).catch(() => null),
+      fetch('/api/v2/portfolio/llm-coverage').then(x => x.json()).catch(() => null),
+      fetch('/api/v2/holdings/live-stops').then(x => x.json()).catch(() => null),
+      fetch('/api/v2/holdings/monitored-stops').then(x => x.json()).catch(() => null),
+    ]).then(([hj, cj, lj, mj]) => {
+      if (cancelled) return
+      const hd = unwrap(hj) ?? {}
+      const arr: any[] = Array.isArray(hd) ? hd : (hd.holdings ?? [])
+      const h = arr.find(x => String(x.symbol).toUpperCase() === row.symbol.toUpperCase() && String(x.account) === row.account)
+      const cov = unwrap(cj) ?? {}
+      const pr = (cov.protection ?? {})[row.symbol.toUpperCase()] ?? {}
+      const ls = unwrap(lj) ?? {}
+      const conf = mergeLiveStop((cov.confirmed_stops ?? {})[key], (ls.by_key ?? {})[key])
+      const mon = (unwrap(mj)?.by_key ?? {})[key]
+      const fetchedAt = ls.fetched_at ?? cov.broker_stops_fetched_at ?? null
+      if (h) setPack({ h, pr, mon, conf, fetchedAt }); else setPerr('holding not found for this symbol/account')
+    }).catch(() => setPerr('could not load holding data'))
+    return () => { cancelled = true }
+  }, [row.symbol, row.account, reloadKey])
+
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 480, maxWidth: '92vw', background: 'var(--bg1, #0f172a)', border: '1px solid rgba(148,163,184,.3)', borderRadius: 12, padding: 18 }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '4vh 0', overflow: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 760, maxWidth: '94vw', maxHeight: '92vh', overflow: 'auto', background: 'var(--bg1, #0f172a)', border: '1px solid rgba(148,163,184,.3)', borderRadius: 12, padding: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 900, color: TEXT0 }}>Adjust stop — {row.symbol}</div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: TEXT0 }}>Manage stop — {row.symbol}</div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
         </div>
-        <div style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.6, marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.6, marginBottom: 10 }}>
           <b>{row.account}</b> · {row.route} · <span style={{ color: isFidelity ? AMBER : BLUE }}>{isFidelity ? 'Fidelity (manual)' : 'Schwab (2FA)'}</span><br />
-          Price <b>{fmtStop(row.current_price)}</b> · Active stop <b style={{ color: row.broker_stop != null ? GREEN : AMBER }}>{row.broker_stop != null ? `${fmtStop(row.broker_stop)} (${SRC_LABEL[row.stop_source] || row.stop_source})` : 'none'}</b> · Advised <b style={{ color: AMBER }}>{fmtStop(row.planned_stop)}</b><br />
+          Price <b>{fmtStop(row.current_price)}</b> · Active stop <b style={{ color: row.broker_stop != null ? GREEN : AMBER }}>{row.broker_stop != null ? `${fmtStop(row.broker_stop)} (${SRC_LABEL[row.stop_source] || row.stop_source})` : 'none'}</b> · Advised fixed <b style={{ color: AMBER }}>{fmtStop(row.planned_stop)}</b>{row.trailing_trigger != null ? <> · Trail <b style={{ color: GREEN }}>{row.trail_pct}% (≈{fmtStop(row.trailing_trigger)})</b></> : null}<br />
           Distance {row.distance_pct}%{row.distance_atr != null ? ` · ${row.distance_atr}ATR` : ''} · $ at risk <b>{fmt$(row.dollars_at_risk)}</b>
         </div>
 
-        <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>SELECT STOP TYPE TO REQUEST</div>
-        <div style={{ display: 'grid', gap: 7, marginBottom: 12 }}>
-          {(isFidelity
-            ? [{ label: 'Manual ticket', why: 'Fidelity has no trading API — arm a software-monitored stop + place the order at Fidelity Active Trader', route: 'MANUAL' }]
-            : schwabTypes
-          ).map((s: any) => (
-            <button key={s.label} onClick={jump} style={{ textAlign: 'left', padding: '9px 11px', borderRadius: 8, cursor: 'pointer',
-              background: s.recommended ? `${GREEN}14` : 'rgba(15,23,42,.5)', border: `1px solid ${s.recommended ? GREEN : (isFidelity ? AMBER : BLUE) + '55'}` }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>{s.label}
-                <span style={{ fontSize: 10, fontWeight: 800, color: isFidelity ? AMBER : BLUE, marginLeft: 8, border: `1px solid ${isFidelity ? AMBER : BLUE}`, borderRadius: 5, padding: '1px 6px' }}>{s.route === 'MANUAL' ? 'MANUAL TICKET' : 'PER-ORDER 2FA'}</span>
-                {s.recommended && <span style={{ fontSize: 10, fontWeight: 800, color: GREEN, marginLeft: 6, border: `1px solid ${GREEN}`, borderRadius: 5, padding: '1px 6px' }}>🔒 RECOMMENDED</span>}
-              </div>
-              <div style={{ fontSize: 11, color: MUTED }}>{s.why}</div>
-            </button>
-          ))}
+        {/* Recommendation attribution — who (system vs external LLM) recommends fixed vs trailing */}
+        <div style={{ fontSize: 12, padding: '8px 11px', borderRadius: 8, marginBottom: 12,
+          background: row.trail_recommended ? `${GREEN}12` : 'rgba(15,23,42,.5)',
+          border: `1px solid ${row.trail_recommended ? GREEN : 'rgba(148,163,184,.3)'}` }}>
+          <b style={{ color: row.trail_recommended ? GREEN : AMBER }}>Recommended: {recKind} stop</b>
+          {row.rec_source ? <span style={{ color: MUTED }}> · by <b style={{ color: row.rec_model && /grok|gpt|claude/i.test(row.rec_model) ? PURPLE : BLUE }}>{row.rec_source}</b>{row.rec_model ? ` (${row.rec_model})` : ''}</span> : null}
+          {row.rec_rationale ? <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{row.rec_rationale}</div> : null}
         </div>
 
-        <div style={{ fontSize: 11.5, color: isFidelity ? AMBER : BLUE, marginBottom: 10 }}>
-          {isFidelity
-            ? 'ⓘ Fidelity stops are always manual/monitored. Selecting opens the holding card to create the ticket + arm the software monitor.'
-            : 'ⓘ Selecting opens the holding card, where the request goes through quote-freshness, whole-share, preflight, and per-order 2FA gating with broker read-back. Nothing submits automatically.'}
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={jump} style={{ fontSize: 13, fontWeight: 800, padding: '7px 14px', borderRadius: 7, border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, cursor: 'pointer' }}>Open holding controls →</button>
+        {/* Inline gated 2FA / manual panel — the SAME verified holding panel; nothing submits without per-order 2FA */}
+        {perr ? (
+          <div style={{ fontSize: 12, color: RED, padding: 10 }}>⛔ {perr}. <button onClick={() => { onFocusHolding?.(row.symbol, row.account); onClose() }} style={{ color: BLUE, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open full holding card ↗</button></div>
+        ) : !pack ? (
+          <div style={{ fontSize: 12, color: MUTED, padding: 14 }}>Loading stop controls…</div>
+        ) : (
+          <HoldingProtectionActions h={pack.h} pr={pack.pr} monitored={pack.mon} confirmedStop={pack.conf}
+            brokerStopsFetchedAt={pack.fetchedAt} onRefresh={() => setReloadKey(k => k + 1)} />
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button onClick={() => { onFocusHolding?.(row.symbol, row.account); onClose() }} style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 7, border: `1px solid ${BLUE}55`, background: 'transparent', color: BLUE, cursor: 'pointer' }}>Open full holding card ↗</button>
           <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, padding: '7px 14px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Close</button>
         </div>
       </div>

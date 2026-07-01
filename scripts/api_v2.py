@@ -266,7 +266,7 @@ def _stops_management_api(query=None):
     advised = {}
     try:
         for _row in (_db_query(
-                "SELECT DISTINCT ON (symbol) symbol, evidence_json FROM hermes_research_intelligence "
+                "SELECT DISTINCT ON (symbol) symbol, evidence_json, model_used FROM hermes_research_intelligence "
                 "WHERE research_type='protection_advisory' AND created_at > now()-interval '5 days' "
                 "ORDER BY symbol, created_at DESC") or []):
             sym = _row.get("symbol"); ev = _row.get("evidence_json")
@@ -276,7 +276,9 @@ def _stops_management_api(query=None):
             advised[str(sym).upper()] = {
                 "stop": _f(rec.get("stop_price")), "trail": rec.get("trail_recommended"),
                 "trail_offset": _f(rec.get("trail_offset")), "atr": _f(inp.get("atr")),
-                "family": ev.get("family"), "basis": _f(inp.get("basis_ps"))}
+                "family": ev.get("family"), "basis": _f(inp.get("basis_ps")),
+                "rec_model": _row.get("model_used"), "rec_lane": ev.get("lane"),
+                "rationale": rec.get("rationale")}
     except Exception:
         pass
     # 4. strategy/route per symbol
@@ -392,6 +394,18 @@ def _stops_management_api(query=None):
         total_open_risk += max(dist_dollars, 0)
 
         _monitored = stop_source == "monitored"
+        # Trailing proposal: width % (advisor trail_offset) + the current-equivalent trigger price.
+        # A trailing stop's trigger ratchets up with price, so we surface both the width and where it
+        # would sit if armed at the current price (px × (1 − width%)), not a static number.
+        _to = adv.get("trail_offset")
+        _trail_pct = float(_to) if (_to not in (None, 0)) else None
+        _trail_trigger = round(px * (1 - _trail_pct / 100.0), 2) if (_trail_pct and px) else None
+        # Who recommended fixed vs trailing (the advisory is produced by an LLM lane; model_used says which).
+        _rm = str(adv.get("rec_model") or "").lower()
+        _rec_source = ("Grok · external LLM" if "grok" in _rm
+                       else "ChatGPT · external LLM" if ("gpt" in _rm or "chatgpt" in _rm)
+                       else "Claude · external LLM" if "claude" in _rm
+                       else "System · local advisor" if _rm else None)
         rows.append({
             "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ("fidelity" if is_fidelity else "")),
             "route": route.get(sym, "core-hold"),
@@ -404,6 +418,9 @@ def _stops_management_api(query=None):
             "dollars_at_risk": round(max(dist_dollars, 0), 2),
             "unrealized_dollars": unreal_dollars, "unrealized_r": unreal_r,
             "is_trailing": is_trailing, "trailing_should_be_active": should_trail,
+            "trail_pct": _trail_pct, "trailing_trigger": _trail_trigger,
+            "trail_recommended": bool(adv.get("trail")), "rec_source": _rec_source,
+            "rec_model": adv.get("rec_model"), "rec_rationale": adv.get("rationale"),
             "heat_contribution_pct": heat_contrib, "regime_now": regime_now,
             "alert_level": level, "alert_reasons": reasons,
             "lifecycle": ls.get("lifecycle"), "health": ls.get("health"), "flags": ls.get("flags"),
