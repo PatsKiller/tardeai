@@ -397,6 +397,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                       )}
                       {(() => {
                         const pr = protection[(h.symbol || '').toUpperCase()]
+                        if (!pr) return null
                         const stopKey = `${(h.symbol || '').toUpperCase()}:${h.account}`
                         const liveConf = mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey])
                         const stopTip = stopReviewTooltip({
@@ -406,14 +407,14 @@ export default function PortfolioHub({ onDrill }: Props) {
                           brokerOrderId: liveConf?.order_id,
                           confirmedAt: liveConf?.confirmed_at,
                         })
-                        return pr ? (
+                        return (
                           <span title={`${stopTip}\n\n${pr.rec}\n${pr.rationale ?? ''} · ADVISORY ONLY`}
                             style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
                               background: 'rgba(168,85,247,.16)', border: '1px solid rgba(168,85,247,.35)', color: '#a855f7', cursor: 'help' }}>
                             🛡 {pr.stop_price != null
                               ? `stop $${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` (${Number(pr.stop_distance_pct).toFixed(1)}% below)` : ''}`
                               : String(pr.rec).split('·')[0].trim()}</span>
-                        ) : null
+                        )
                       })()}
                       <span style={{ flex: 1 }} />
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
