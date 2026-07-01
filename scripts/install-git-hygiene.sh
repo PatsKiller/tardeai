@@ -13,9 +13,13 @@ mkdir -p "$HOOKS_DIR"
 for h in pre-commit pre-rebase post-checkout; do
   src="$PROJECT_ROOT/scripts/githooks/$h"
   dst="$HOOKS_DIR/$h"
+  # Preserve a pre-existing NON-hygiene hook (e.g. the secret scanner) under a stable name so our hook
+  # can CHAIN to it. Only do this once — never clobber an already-saved chained hook on reinstall.
   if [ -e "$dst" ] && ! grep -q "git_hygiene_guard" "$dst" 2>/dev/null; then
-    echo "⚠️  $dst exists and isn't ours — backing up to $dst.pre-hygiene"
-    cp "$dst" "$dst.pre-hygiene"
+    if [ ! -e "$dst.chained" ]; then
+      cp "$dst" "$dst.chained"; chmod +x "$dst.chained"
+      echo "preserved existing $h → $dst.chained (our hook will chain to it)"
+    fi
   fi
   install -m 0755 "$src" "$dst"
   echo "installed hook: $dst"

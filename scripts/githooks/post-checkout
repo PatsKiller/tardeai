@@ -2,12 +2,15 @@
 # git-hygiene hook: git has no pre-checkout hook, so if a branch switch DID happen in the live primary
 # tree (e.g. from a session that hasn't sourced the git wrapper), warn loudly and log it — the live
 # dashboard is now serving whatever is on disk. $3=1 means a branch checkout (not a file checkout).
-[ "$3" = "1" ] || exit 0
-source "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/git_hygiene_guard.sh" 2>/dev/null || exit 0
-if _gh_is_primary_tree && _gh_server_live; then
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-  msg="git-hygiene WARN: primary live tree switched to '$branch' at $(date -u +%FT%TZ) — server now serves this branch's code"
-  echo "⚠️  $msg" >&2
-  echo "$msg" >> "$GIT_HYGIENE_PROJECT_ROOT/logs/git_hygiene.log" 2>/dev/null || true
+if [ "$3" = "1" ] && source "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/git_hygiene_guard.sh" 2>/dev/null; then
+  if _gh_is_primary_tree && _gh_server_live; then
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    msg="git-hygiene WARN: primary live tree switched to '$branch' at $(date -u +%FT%TZ) — server now serves this branch's code"
+    echo "⚠️  $msg" >&2
+    echo "$msg" >> "$GIT_HYGIENE_PROJECT_ROOT/logs/git_hygiene.log" 2>/dev/null || true
+  fi
 fi
+# chain to any pre-existing hook the installer preserved
+chained="$(git rev-parse --git-common-dir)/hooks/post-checkout.chained"
+[ -x "$chained" ] && exec "$chained" "$@"
 exit 0

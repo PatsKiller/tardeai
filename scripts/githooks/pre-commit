@@ -3,6 +3,7 @@
 # Committing on main/master here is allowed (the hermes-daily / CHANGELOG automations do that); the
 # hazard is a session committing onto a FEATURE branch checked out in the shared tree — that's the
 # cross-session clobber we saw 2026-07-01. Do feature work in a worktree: scripts/new-worktree.sh <name>.
+# After the guard, chains to any pre-existing hook the installer preserved (e.g. the secret scanner).
 source "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/git_hygiene_guard.sh" 2>/dev/null || exit 0
 if _gh_guard_active; then
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -13,4 +14,6 @@ if _gh_guard_active; then
     exit 1
   fi
 fi
+chained="$(git rev-parse --git-common-dir)/hooks/pre-commit.chained"
+[ -x "$chained" ] && exec "$chained"
 exit 0
