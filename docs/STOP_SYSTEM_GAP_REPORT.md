@@ -100,6 +100,21 @@ tab. They do not affect the real stops you place via 2FA.
 
 ---
 
+## 5b. Stop modify / cancel-replace (duplicate-stop prevention) — 2026-07-01
+
+Triggered by the ARKQ case (adjusting a position that already had a manual ToS stop risked a *second*
+live SELL stop = over-sell). Phased, operator-approved:
+
+| Phase | What | Status |
+|---|---|---|
+| **P1** | Hard duplicate guard in `schwab_transport.place_order`: refuse a SELL stop if the broker already shows a live SELL stop on that symbol, unless it is the `replace_order_id` being replaced. Fails **closed** (degraded read → block). | **DONE** `9cf1d680` |
+| **P2** | In-app **Replace** for app-placed (pilot) stops: tag `pilot_placed`; when set, the request sends `replace_order_id` → confirm path cancels-then-places in **one 2FA**. | **DONE** `79057255` |
+| **P3** | Manual (ToS) stops can't be API-cancelled → modal shows "modify in ToS" + link; narrative says cancel-first. | **DONE** `9cf1d680` |
+| **P4** | Un-fence Schwab **atomic replace** (removes the cancel→place naked window). | **Deferred** (fence is deliberate; separate risk review) |
+
+Net: two live SELL stops on the same shares is now structurally impossible. App-placed stops replace in
+one click; manually-placed stops route to ToS.
+
 ## 6. Bottom line
 
 The stop system is **largely built and now aligned**. The real-holdings execution path works. The one
