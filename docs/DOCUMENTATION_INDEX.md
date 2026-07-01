@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-06-30
+**Updated:** 2026-07-01
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -31,7 +31,8 @@
 |----------|---------|--------|
 | `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade monitoring, stop/target rules, after-hours research, overnight pipeline | Active |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc + Ollama setup, model list, GPU memory map | Active |
-| `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, session-aware quote freshness, click-time preflight UX (1A–5A), free-lane fallback, monthly Claude meta-review | Active (2026-06-30) |
+| `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, session-aware quote freshness, click-time preflight UX (1A–5A), free-lane fallback, monthly Claude meta-review | Active (2026-07-01) |
+| `docs/STOP_SYSTEM_GAP_REPORT.md` | **Stop system alignment / gap report** — two-domain split (holdings vs scalp), L3 config-OFF verdict, shipped vs pending gaps, validation checklist | Active (2026-07-01) |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | **Momentum-scalp layered stop/trail policy** — 4-layer methodology (structure+ATR initial stop, breakeven @ +1.0–1.5R, Chandelier trailing **config-OFF** per backtest gate, portfolio heat); §6 validation gate (150 trades); Risk tab monitor + Stop Intelligence replay | Active (2026-06-30, paper validation phase) |
 | `docs/COST_MODEL.md` | Cloud LLM operating cost model, budget gates | Active |
 | `docs/LLM_DATA_DICTIONARY.md` | Data flow to every model call, 6 context types, anti-hallucination spec | Active |
@@ -42,7 +43,7 @@
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | Fleet architecture — process types, GPU lifecycle, phased rollout, overnight routing | Canonical |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator runbook — phase gates, rollback triggers | Active |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | **DB-induced dashboard hang** — root cause (ALTER queued behind idle-in-txn lock holder), per-connection + role-level `lock_timeout`/`statement_timeout`/idle guards, recovery steps | Active (2026-06-30) |
-| `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP flow, click-time preflight UX (1A–5A), session-aware quote freshness, Fidelity manual-ticket policy, SnapTrade activity lifecycle aggregation, stop-out re-entry watch, OCO readiness blockers | Active (2026-06-30) |
+| `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP flow, Stop Management tab, click-time preflight UX (1A–5A), duplicate-stop guard (P1–P3), session-aware quote freshness, Fidelity manual-ticket policy, SnapTrade activity lifecycle, OCO readiness blockers | Active (2026-07-01) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
 

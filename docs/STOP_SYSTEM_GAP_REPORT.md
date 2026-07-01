@@ -74,12 +74,12 @@ risk than the methodology recommends. → Tighten to \$121.97. Projection: open 
 | 1 | L4 **regime-shift auto-tighten** (Trending→Ranging → tighten 0.5×ATR) | Scalp (Risk tab) | Med | **DONE 2026-07-01** — advisory alert + suggestion (`a34951fe`) |
 | 2 | **"Tighten All Trails"** one-click when heat > 3.5% | Scalp (Risk tab) | Med | **DONE 2026-07-01** — `POST /api/v2/scalp/tighten-all` + button (paper) |
 | 3 | ATR-distance + **Trail-Tightness Score** in `ScalpStopMonitorCard` | Scalp (Risk tab) | Low-Med | **DONE 2026-07-01** — added to monitor + card |
-| 4 | Candlestick **`structure_type`** surfacing (engulfing_low, prev_bar_low…) | Scalp advisory | Low | Open — enhancement; hybrid already respects structure |
+| 4 | Candlestick **`structure_type`** surfacing (engulfing_low, prev_bar_low…) | Scalp advisory | Low | **PARTIAL** `93a9a0f7` — tagged at monitor time; not stamped at paper entry |
 | 5 | Long/Short mirrored UI treatment | Scalp only | Low | N/A for real holdings (all long); `direction` tag added |
 
-**Update 2026-07-01:** gaps 1–3 shipped (`a34951fe`) — Layer-4 dynamic automation is now operational
-in advisory/paper mode. Layer-3 trailing execution remains **config-OFF** (unchanged; deliberate). Only
-gap 4 (candlestick structure tagging) remains, and it is a low-value enhancement.
+**Update 2026-07-01:** gaps 1–3 shipped (`a34951fe`) — Layer-4 dynamic automation is operational in
+advisory/paper mode. Layer-3 trailing execution remains **config-OFF** (unchanged; deliberate). Gap 4
+is partial (monitor-time tagging only).
 
 Also shipped 2026-07-01 on the **real-holdings** Stop Management tab (`2fa8da07`): inline plain-English
 narrative + next-action + 2FA trade projection per row, and a top-3 "Next actions" banner.
@@ -92,7 +92,7 @@ tab. They do not affect the real stops you place via 2FA.
 ## 5. Validation checklist (policy §6 + institutional)
 
 - [ ] Open a +1.3R paper long → breakeven suggestion appears (L2). *Blocked: needs paper sample.*
-- [ ] Simulate portfolio heat > 3.5% → global tighten + pause entries fires (L4 #2). *PENDING build.*
+- [x] Simulate portfolio heat > 3.5% → global tighten + pause entries fires (L4 #2). **DONE** (`a34951fe` — paper Tighten-All API + Risk tab button).
 - [ ] AI Critique contains the 4 required stop-quality questions. **PASS.**
 - [ ] Short scalp trailing mirrors long logic. *Scalp-domain; unverified (paper sample ~3).*
 - [ ] Real-holding stop placed via 2FA shows LIVE BROKER STOP + narrative. **PASS (today).**
@@ -117,8 +117,17 @@ one click; manually-placed stops route to ToS.
 
 ## 6. Bottom line
 
-The stop system is **largely built and now aligned**. The real-holdings execution path works. The one
-thing your request asked for that we should **refuse** is enforcing Layer-3 trailing — the data killed it.
-The concrete, high-value work remaining is the L4 automation (regime-shift tighten + tighten-all) on the
-scalp Risk tab, which is genuinely pending. Recommend building that next; hold L3 in advisory until the
-paper sample validates it.
+The stop system is **largely built and aligned** on `main` (HEAD `552fb0bd`). Real-holdings execution
+(2FA, duplicate guard, Stop Management tab, preflight UX) works. L4 scalp automation shipped. **Refuse**
+enforcing Layer-3 Chandelier trailing — backtest and policy both say no (~3/150 paper sample).
+
+**Remaining (requires operator approval before implementation):**
+
+| # | Gap | Domain |
+|---|-----|--------|
+| 1 | Open Trades preflight parity (`PositionDecisionCard` bypasses click-time preflight) | Real holdings |
+| 2 | `stop_out_reentry_watch` → API + Journal UI (stop-fill → re-entry watch) | Lifecycle closure |
+| 3 | P4 atomic Schwab replace (un-fence `replace_order`) | Execution |
+| 4 | `structure_type` stamped at paper entry (not just monitor-time) | Scalp |
+
+Build marker (unified 2026-07-01 hygiene pass): `cc-v3 stop-audit-sync 2026-07-01`.

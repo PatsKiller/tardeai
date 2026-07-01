@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-01 - Stop audit hygiene (markers, tests, docs sync — no behavior change)
+
+- **Unified build marker:** `cc-v3 stop-audit-sync 2026-07-01` across `App.tsx`, `api_v2.py` stop-readiness, `HoldingProtectionActions` fallback, tests, and docs (replaces `stop-mgmt-v3`, `preflight-ux-2a3a5a`, `stop-evidence PR33`).
+- **Tests aligned to current logic:** `trail_start_mismatch` only when trail >3% looser than advisory floor; family-floor reconciliation widens sub-floor advisories (no `floor_mismatch` block); HPE delta uses reconciled advisory. **40 passed** on stop suite.
+- **Docs:** `STOP_SYSTEM_GAP_REPORT.md` indexed in `DOCUMENTATION_INDEX.md`; gap report §4/§5/§6 refreshed; runbook validation snapshot updated.
+- **Not changed (requires operator approval):** Open Trades preflight parity (`PositionDecisionCard`); `stop_out_reentry_watch` API/UI wiring.
+
+## 2026-07-01 - Stop Management tab + execution hardening (main sprint)
+
+- **Stop Management tab** on Portfolio (`StopManagement.tsx`): aggregation table, Audit sub-tab, Adjust modal with shared `HoldingProtectionActions`, plain-English narrative + top-3 next-actions banner (`2fa8da07`).
+- **2FA evidence-hash fix** (`5506d216`): deterministic readiness hash — approve→submit revalidation no longer drifts on wall-clock `generated_at`. Verified live on V trailing + SCHG fixed.
+- **Duplicate-stop prevention** (`9cf1d680`, `79057255`): P1 hard guard in `schwab_transport`; P2 in-app Replace (cancel-then-place, one 2FA); P3 manual ToS path. P4 atomic replace still deferred.
+- **One-click apply** (`1bc99a78`): 🔒 row buttons auto-stage advised stop to 2FA.
+- **Family-floor drift reconciliation** (`63c95216`): widen sub-floor advised stop to family floor at current price (live, not hard-block).
+- **Phantom-stop fix** (`a64b5610`): don't resurrect stale confirmations when broker read is healthy.
+- **Scalp L4** (`a34951fe`): regime-shift tighten alert, heat-tier tighten, `POST /api/v2/scalp/tighten-all` + Risk tab button (paper).
+- **Candlestick structure_type** (`93a9a0f7`): policy §3 L1 tagging at monitor time.
+- **Gap report:** `docs/STOP_SYSTEM_GAP_REPORT.md` (2026-07-01).
+
 ## 2026-06-30 - Preflight UX 2A/3A/5A (structured diff, advisory refresh, holding patch)
 
 Operator UX choices locked in and implemented on `runtime/pr33-stop-evidence-deploy` (`df269ed2`):

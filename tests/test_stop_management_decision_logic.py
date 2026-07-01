@@ -62,11 +62,11 @@ def test_hpe_like_existing_stop_tighter_keeps_current_stop_and_flags_floor_misma
     assert result["stop_action_decision"] == "KEEP_EXISTING_STOP"
     assert result["existing_stop_is_tighter_than_advisory"] is True
     assert result["advisory_stop_is_tighter_than_existing"] is False
-    assert result["stop_delta_amount"] == 0.4
+    assert result["stop_delta_amount"] == 0.86  # live 42.59 vs floor-reconciled advisory 41.73
     assert result["primary_operator_action"].startswith("Recommendation based on stale quote")  # 2.5h > any freshness window
     assert "Keep existing $42.59 stop" in result["primary_operator_action"]
-    assert result["floor_math_consistent"] is False
-    assert any(b["code"] == "floor_mismatch" for b in result["blockers"])
+    assert result["floor_math_consistent"] is True  # advisory widened to 5% floor at current price
+    assert not any(b["code"] == "floor_mismatch" for b in result["blockers"])
     assert any(b["code"] == "stale_quote" for b in result["blockers"])
     assert result["canRequestLive"] is False
 
