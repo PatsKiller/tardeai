@@ -83,7 +83,7 @@ Before any Schwab 2FA submit or Fidelity manual ticket, `HoldingProtectionAction
 
 **Holding card sync (5A):** `PortfolioHub` merges preflight quote into the holding row (`current_price`, `market_value`, timestamps) and protection chip without a full holdings refetch.
 
-Build marker: `cc-v3 stop-audit-sync 2026-07-01`.
+Build marker: `cc-v3 stop-lifecycle-close 2026-07-01`.
 
 ## 9b. Data-integrity guards (2026-07-01)
 

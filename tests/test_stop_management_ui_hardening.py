@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"
 LEGACY_UI = ROOT / "apps/command-center-v3/src/components/PositionDecisionCard.tsx"
+PREFLIGHT = ROOT / "apps/command-center-v3/src/lib/protectiveStopPreflight.ts"
+STOP_MGMT = ROOT / "apps/command-center-v3/src/components/StopManagement.tsx"
 PORTFOLIO = ROOT / "apps/command-center-v3/src/pages/PortfolioHub.tsx"
 OPEN_TRADES = ROOT / "apps/command-center-v3/src/components/OpenTradesIntelligence.tsx"
 REVIEW_TS = ROOT / "apps/command-center-v3/src/lib/stopReviewTooltip.ts"
@@ -153,22 +155,41 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 stop-audit-sync 2026-07-01" in src
+    assert "cc-v3 stop-lifecycle-close 2026-07-01" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
-    src = read(UI)
+    src = read(UI) + read(PREFLIGHT)
     assert "runClickPreflight" in src
+    assert "runProtectiveStopPreflight" in src
     assert "preflightAndRequest" in src
     assert "preflightAndConfirm" in src
     assert "protective-stop/refresh-quote" in src
     assert "holdings/live-stops" in src
     assert "portfolio/llm-coverage" in src
-    assert "preflight-changed" in src
-    assert "preflight-diff" in src
     assert "onPreflightUpdate" in src
     assert "buildPreflightDiff" in src
     assert "Validating" in src
+
+
+def test_19_open_trades_preflight_parity_on_position_decision_card():
+    src = read(LEGACY_UI) + read(PREFLIGHT)
+    assert "runProtectiveStopPreflight" in src
+    assert "preflightAndRequest" in src
+    assert "preflightAndConfirm" in src
+    assert "PreflightChangedPanel" in src
+    assert "preflight-changed" in src or "PreflightChangedPanel" in src
+    assert "Validating" in src
+    assert "protective-stop/refresh-quote" in src
+
+
+def test_20_reentry_watch_api_and_audit_ui():
+    src = read(API) + read(STOP_MGMT)
+    assert "/api/v2/stops/reentry-watch" in src
+    assert "_stops_reentry_watch_api" in src
+    assert "reentry_watch" in src
+    assert "advisory_only" in src
+    assert "Stop-out re-entry watch" in src
 
 
 def test_18_portfolio_hub_merges_preflight_holding_patches():

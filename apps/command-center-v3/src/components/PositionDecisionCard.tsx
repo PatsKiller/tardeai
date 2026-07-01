@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { fmt$ } from '../lib/format'
 import ProAnalystPill from './ProAnalystPill'
+import PreflightChangedPanel from './PreflightChangedPanel'
 import { resolvedTrailPct } from '../lib/protectionTrail'
+import { runProtectiveStopPreflight, unwrapApi, type PreflightDiff } from '../lib/protectiveStopPreflight'
+import { buildStopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
 const TEXT0 = '#f8fafc'
@@ -26,9 +29,6 @@ const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED
 const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
 const SCHWAB_SELL_ALL_MAX_SHARES = 40
 
-// Tolerate both raw top-level and {ok,data}-wrapped API responses (the protective-stop endpoints return
-// raw, but the generic dispatcher may wrap — unwrap defensively so neither shape silently breaks parsing).
-const unwrapApi = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
 // The REAL failure reason is often nested in result.error (e.g. a Schwab transport error like an expired
 // refresh token) — dig there first so the operator sees the actual cause, not a generic "failed".
 const apiReason = (j: any) => j?.result?.error ?? j?.error ?? j?.reason ?? j?.message ?? j?.hint ?? 'request failed'
@@ -71,7 +71,9 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
 
   // Protective-stop order placement (Stage 2c). Schwab accounts can submit via API; Fidelity = ToS ticket.
   const _acct = String(p.account ?? '')
+  const _sym = String(p.symbol ?? '').toUpperCase()
   const _isSchwab = _acct.startsWith('schwab')
+  const _isFidelity = _acct.startsWith('fidelity') && _acct !== 'fidelity_401k'
   const [stopOrder, setStopOrder] = useState<any>(null)   // {kind, qty, stop, trailPct, label}
   const [stopTk, setStopTk] = useState('')                // type-the-ticker (web 2FA channel)
   const [stopCode, setStopCode] = useState('')            // telegram/email one-time code (other channel)
@@ -80,6 +82,54 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
   const [stopIntent, setStopIntent] = useState<string>('')   // intent_id once 2FA requested (approve phase)
   const [stopTicket, setStopTicket] = useState<string>('')   // ticket string when account has no API
   const [stopDone, setStopDone] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [preflightDiff, setPreflightDiff] = useState<PreflightDiff | null>(null)
+  const [pendingAction, setPendingAction] = useState<{ kind: 'request' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
+  const [advisoryOverride, setAdvisoryOverride] = useState<any>(null)
+  const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
+  const effectiveProtectionRec = advisoryOverride ? { ...protectionRec, ...advisoryOverride } : protectionRec
+  const _bstop = (p as any).broker_stop as any
+  const effectiveBrokerStop = liveStopOverride ?? _bstop
+  const _trailRes = resolvedTrailPct(effectiveProtectionRec)
+  const _trailPct = _trailRes?.pct ?? null
+  const _priceTs = p.price_updated_at ?? effectiveProtectionRec?.source_timestamp ?? effectiveProtectionRec?.at ?? null
+  const _effectivePrice = Number(effectiveProtectionRec?.price) || Number(p.current_price) || null
+  const computeLogic = (orderKind: StopOrderKind, overrides?: {
+    quotePrice?: number | null; quoteTs?: string | null; liveStop?: any; advisorySnap?: any
+  }) => {
+    const px = overrides?.quotePrice ?? _effectivePrice
+    const ts = overrides?.quoteTs ?? _priceTs
+    const conf = overrides?.liveStop ?? effectiveBrokerStop
+    const snap = overrides?.advisorySnap
+    const pr = snap ? { ...effectiveProtectionRec, ...snap, price: px } : { ...effectiveProtectionRec, price: px }
+    return buildStopLogic({
+      h: { ...p, symbol: _sym, account: _acct, current_price: px, price: px, source_timestamp: ts },
+      pr,
+      monitored: null,
+      confirmedStop: conf,
+      trailPct: _trailPct,
+      orderKind,
+      wholeShareConfirmed: false,
+      sourceTimestamp: ts,
+    })
+  }
+  const runClickPreflight = async (orderKind: StopOrderKind) => {
+    setValidating(true)
+    setPreflightDiff(null)
+    setPendingAction(null)
+    setStopMsg('⏳ Validating quote + advisory + stop logic…')
+    const pf = await runProtectiveStopPreflight({
+      sym: _sym, acct: _acct, orderKind, trailPct: _trailPct, isSchwab: _isSchwab, isFidelity: _isFidelity,
+      priceTimestamp: _priceTs, effectivePrice: _effectivePrice, effectiveConfirmed: effectiveBrokerStop,
+      computeLogic,
+    })
+    if (pf.advisorySnap) {
+      setAdvisoryOverride({ ...pf.advisorySnap, price: pf.quoteSnap?.quote_price ?? pf.advisorySnap.price })
+    }
+    if (pf.liveSnap && pf.liveSnap !== effectiveBrokerStop) setLiveStopOverride(pf.liveSnap)
+    setValidating(false)
+    return pf
+  }
   // Schwab OAuth token health — surfaced UP FRONT so a dead/expired refresh token shows "re-auth needed"
   // BEFORE an order attempt (the freshness timestamp alone can read healthy while Schwab has revoked it).
   const [tokenHealth, setTokenHealth] = useState<any>(null)
@@ -88,7 +138,10 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     if (!_isSchwab || !stopOrder || tokenHealth) return
     fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth(unwrapApi(j))).catch(() => {})
   }, [_isSchwab, stopOrder, tokenHealth])
-  const _resetStop = () => { setStopOrder(null); setStopTk(''); setStopCode(''); setStopMsg(''); setStopIntent(''); setStopTicket(''); setStopDone(false) }
+  const _resetStop = () => {
+    setStopOrder(null); setStopTk(''); setStopCode(''); setStopMsg(''); setStopIntent(''); setStopTicket(''); setStopDone(false)
+    setValidating(false); setPreflightDiff(null); setPendingAction(null); setAdvisoryOverride(null); setLiveStopOverride(null)
+  }
   // "Ignore stop for a week" — operator acknowledgement granting a 7-day grace period. Suppresses the stop
   // ALERT (stop_snooze table); advisory only — does NOT change or cancel the protective stop at the broker.
   const [snoozeBusy, setSnoozeBusy] = useState(false)
@@ -124,8 +177,43 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       setSynthMsg(r?.ok ? `✓ Synthetic stop armed @ $${Number(level).toFixed(2)} on full ${_shares} sh — on breach you'll get a Market-Day sell-all 2FA (nothing placed at the broker)` : `⛔ ${apiReason(r)}`)
     } catch (e: any) { setSynthMsg('⛔ ' + e.message) } finally { setSynthBusy(false) }
   }
+  const preflightAndRequest = async () => {
+    if (!stopOrder) return
+    const kind = stopOrder.kind as StopOrderKind
+    if (kind === 'MARKET') { _requestStop(); return }
+    const pf = await runClickPreflight(kind)
+    if (!pf.ok) {
+      setStopMsg(`⛔ Validation failed — ${pf.blockers?.join(' · ') || pf.error || 'resolve blockers above'}`)
+      return
+    }
+    if (pf.changed && pf.diffObj) {
+      setPreflightDiff(pf.diffObj)
+      setPendingAction({ kind: 'request' })
+      setStopMsg('⚠️ Logic changed since page load — review below, then confirm to proceed.')
+      return
+    }
+    setStopMsg('✓ Validated — proceeding…')
+    await _requestStop(true)
+  }
+  const preflightAndConfirm = async (channel: 'web' | 'telegram') => {
+    if (!stopOrder) return
+    const kind = stopOrder.kind as StopOrderKind
+    const pf = await runClickPreflight(kind)
+    if (!pf.ok) {
+      setStopMsg(`⛔ Cannot submit — ${pf.blockers?.join(' · ') || 'validation failed'}`)
+      return
+    }
+    if (pf.changed && pf.diffObj) {
+      setPreflightDiff(pf.diffObj)
+      setPendingAction({ kind: 'confirm', channel })
+      setStopMsg('⚠️ Logic changed — confirm again to submit to Schwab.')
+      return
+    }
+    await _confirmStop(channel, true)
+  }
   // STEP 1 — request: builds the order + (Schwab/armed) requests per-order 2FA, or returns a ToS ticket.
-  const _requestStop = async () => {
+  const _requestStop = async (skipPreflight = false) => {
+    if (!skipPreflight) { await preflightAndRequest(); return }
     setStopBusy(true); setStopMsg('requesting…')
     try {
       const body = { symbol: p.symbol, account: p.account, qty: stopOrder.qty, order_kind: stopOrder.kind,
@@ -153,8 +241,9 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
   // STEP 2 — confirm the per-order 2FA (EITHER channel) and submit LIVE.
-  const _confirmStop = async (channel: 'web' | 'telegram') => {
+  const _confirmStop = async (channel: 'web' | 'telegram', skipPreflight = false) => {
     if (!stopIntent) { setStopMsg('⛔ no active stop intent — click REQUEST LIVE STOP first'); return }
+    if (!skipPreflight) { await preflightAndConfirm(channel); return }
     setStopBusy(true); setStopMsg(channel === 'web' ? 'confirming by ticker…' : 'confirming by code…')
     try {
       const code = channel === 'web' ? stopTk.trim().toUpperCase() : stopCode.trim()
@@ -189,40 +278,39 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     } catch (e: any) { setStopMsg('⛔ ' + e.message) } finally { setStopBusy(false) }
   }
   // FULL STOP MONITORING — the live broker stop now showing on this card, + cancel ("remove") control.
-  const _bstop = (p as any).broker_stop as any
   const _stopReviewTip = stopReviewTooltip({
     advisoryAt: protectionRec?.at, advisoryModel: protectionRec?.model,
     priceAt: p.price_updated_at,
-    brokerFetchedAt: _bstop?.fetched_at,
-    brokerOrderId: _bstop?.order_id,
+    brokerFetchedAt: effectiveBrokerStop?.fetched_at,
+    brokerOrderId: effectiveBrokerStop?.order_id,
   })
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelMsg, setCancelMsg] = useState('')
   const _cancelStop = async () => {
-    if (!_bstop?.order_id) return
-    if (!window.confirm(`Cancel the live ${_bstop.order_type} on ${p.symbol} (#${_bstop.order_id}) at the broker?`)) return
+    if (!effectiveBrokerStop?.order_id) return
+    if (!window.confirm(`Cancel the live ${effectiveBrokerStop.order_type} on ${p.symbol} (#${effectiveBrokerStop.order_id}) at the broker?`)) return
     setCancelBusy(true); setCancelMsg('cancelling…')
     try {
-      const r = await fetch('/api/v2/holdings/protective-stop/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: p.account, broker_order_id: _bstop.order_id, symbol: p.symbol }) }).then(x => x.json())
+      const r = await fetch('/api/v2/holdings/protective-stop/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: p.account, broker_order_id: effectiveBrokerStop.order_id, symbol: p.symbol }) }).then(x => x.json())
       if (r?.ok) setCancelMsg(`✅ cancel sent (${r.status}) — refreshing…`)
       else setCancelMsg(`⛔ ${r?.error ?? r?.hint ?? 'cancel failed'}`)
     } catch (e: any) { setCancelMsg('⛔ ' + e.message) } finally { setCancelBusy(false) }
   }
   // MODIFY = cancel the existing stop + place a new one at the current advised level, in one 2FA step.
   const _openModify = () => {
-    if (!_bstop) return
-    const rec: any = protectionRec || {}
-    const advStop = Number(rec.stop_price) || (Number(_bstop.stop_price) || null)
+    if (!effectiveBrokerStop) return
+    const rec: any = effectiveProtectionRec || {}
+    const advStop = Number(rec.stop_price) || (Number(effectiveBrokerStop.stop_price) || null)
     const recPrice = Number(rec.price) || (Number(p.current_price) || null)
     const off = rec.trail_recommended ? Number(rec.trail_offset) : null
-    const isTrail = !!rec.trail_recommended || String(_bstop.order_type || '').includes('TRAILING')
+    const isTrail = !!rec.trail_recommended || String(effectiveBrokerStop.order_type || '').includes('TRAILING')
     const trailPct = off == null ? null : rec.trail_type === 'PERCENT' ? off : (recPrice ? off / recPrice * 100 : null)
     const kind = isTrail && trailPct != null ? 'TRAILING' : 'STOP'
     const label = kind === 'TRAILING'
       ? `MODIFY → SELL ${p.shares} ${p.symbol} TRAILING STOP ${trailPct?.toFixed(0)}% GTC`
       : `MODIFY → SELL ${p.shares} ${p.symbol} STOP $${(advStop ?? 0).toFixed(2)} GTC`
     _resetStop()
-    setStopOrder({ kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label, advised: advStop, cur: recPrice, replace_order_id: _bstop.order_id })
+    setStopOrder({ kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label, advised: advStop, cur: recPrice, replace_order_id: effectiveBrokerStop.order_id })
   }
 
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>
@@ -294,10 +382,25 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
               : 'This account has no trading API — you’ll get the exact ToS ticket to place manually.'}
           </div>}
 
+          {pendingAction && preflightDiff && (
+            <PreflightChangedPanel
+              diff={preflightDiff}
+              busy={stopBusy}
+              validating={validating}
+              onProceed={() => {
+                const pa = pendingAction
+                setPendingAction(null); setPreflightDiff(null)
+                if (pa?.kind === 'request') _requestStop(true)
+                else if (pa?.kind === 'confirm') _confirmStop(pa.channel, true)
+              }}
+              onCancel={() => { setPendingAction(null); setPreflightDiff(null); setStopMsg('') }}
+            />
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 13, justifyContent: 'flex-end', alignItems: 'center' }}>
             {stopMsg && !stopDone && <span style={{ fontSize: 10, flex: 1, color: stopMsg.startsWith('✅') ? '#22c55e' : stopMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{stopMsg}</span>}
-            <button onClick={_resetStop} disabled={stopBusy} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
-            {!stopDone && !inApprove && !stopTicket && <button onClick={_requestStop} disabled={stopBusy || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : isMarketSell ? RED : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? (isMarketSell ? 'Request Schwab sell via 2FA' : 'Request Schwab stop via 2FA') : 'Create Fidelity manual ticket'}</button>}
+            <button onClick={_resetStop} disabled={stopBusy || validating} style={{ fontSize: 11, padding: '7px 12px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>{stopDone ? 'close' : 'cancel'}</button>
+            {!stopDone && !inApprove && !stopTicket && <button onClick={preflightAndRequest} disabled={stopBusy || validating || _needsReauth} title={_needsReauth ? 'Schwab re-auth required before placing a live order' : undefined} style={{ fontSize: 12, fontWeight: 800, padding: '7px 18px', borderRadius: 6, border: 'none', cursor: (stopBusy || validating || _needsReauth) ? 'not-allowed' : 'pointer', background: _needsReauth ? '#334155' : isMarketSell ? RED : '#b45309', color: _needsReauth ? '#64748b' : '#fff' }}>{validating ? 'Validating…' : stopBusy ? '…' : _needsReauth ? 'RE-AUTH NEEDED' : _isSchwab ? (isMarketSell ? 'Request Schwab sell via 2FA' : 'Request Schwab stop via 2FA') : 'Create Fidelity manual ticket'}</button>}
           </div>
         </div>
       </div>
@@ -328,13 +431,13 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
 
     <ScaleControl p={p} />
 
-    {(_bstop || protectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
+    {(effectiveBrokerStop || effectiveProtectionRec || Object.keys(lanes).length > 0) && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.28)' }}>
       {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
-      {_bstop && <div title={_stopReviewTip} style={{ marginBottom: protectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', cursor: 'help' }}>
-        <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker{_bstop.fetched_at ? ` · read ${formatReviewStamp(_bstop.fetched_at)}` : ''}</span>
-        <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {_bstop.qty ?? p.shares} {p.symbol} {String(_bstop.order_type || '').replace('_', ' ')} {_bstop.stop_price != null ? `$${Number(_bstop.stop_price).toFixed(2)}` : _bstop.trail_offset != null ? (_bstop.trail_link === 'PERCENT' ? `${_bstop.trail_offset}%` : `$${_bstop.trail_offset}`) : ''} GTC</span>
-        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.18)', color: '#22c55e' }}>{String(_bstop.status || 'working')}</span>
-        <span style={{ fontSize: 9, color: MUTED }}>#{_bstop.order_id}</span>
+      {effectiveBrokerStop && <div title={_stopReviewTip} style={{ marginBottom: effectiveProtectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.10)', border: '1px solid rgba(34,197,94,.35)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', cursor: 'help' }}>
+        <span style={{ fontSize: 11, fontWeight: 950, color: '#22c55e' }}>✓ PROTECTED — live stop at broker{effectiveBrokerStop.fetched_at ? ` · read ${formatReviewStamp(effectiveBrokerStop.fetched_at)}` : ''}</span>
+        <span style={{ fontSize: 10.5, color: TEXT1, ...({ fontFamily: 'monospace' } as any) }}>SELL {effectiveBrokerStop.qty ?? p.shares} {p.symbol} {String(effectiveBrokerStop.order_type || '').replace('_', ' ')} {effectiveBrokerStop.stop_price != null ? `$${Number(effectiveBrokerStop.stop_price).toFixed(2)}` : effectiveBrokerStop.trail_offset != null ? (effectiveBrokerStop.trail_link === 'PERCENT' ? `${effectiveBrokerStop.trail_offset}%` : `$${effectiveBrokerStop.trail_offset}`) : ''} GTC</span>
+        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.18)', color: '#22c55e' }}>{String(effectiveBrokerStop.status || 'working')}</span>
+        <span style={{ fontSize: 9, color: MUTED }}>#{effectiveBrokerStop.order_id}</span>
         <span style={{ flex: 1 }} />
         {cancelMsg && <span style={{ fontSize: 9.5, color: cancelMsg.startsWith('✅') ? '#22c55e' : cancelMsg.startsWith('⛔') ? '#ef4444' : MUTED }}>{cancelMsg}</span>}
         <button onClick={_openModify} disabled={cancelBusy} title="Cancel this stop + place a new one at the current advised level — one 2FA. Use after the price moves up." style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: `1px solid ${AMBER}`, background: 'rgba(245,158,11,.12)', color: AMBER, cursor: cancelBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>Modify</button>
@@ -342,15 +445,15 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       </div>}
       {/* COVERAGE MISMATCH — a standalone GTC stop does NOT auto-resize when you trim/add. Warn so the
           operator cancels + re-places sized to the shares held now. */}
-      {_bstop && _bstop.coverage === 'oversized' && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.4)', fontSize: 10, fontWeight: 800, color: '#f87171' }}>
-        ⚠ OVERSIZED — stop covers {_bstop.qty} sh but you hold {_bstop.held_qty}. On trigger it may short the extra {Number(_bstop.qty) - Number(_bstop.held_qty)} (margin) or reject (cash). Cancel & re-place at {_bstop.held_qty} sh.
+      {effectiveBrokerStop && effectiveBrokerStop.coverage === 'oversized' && <div style={{ marginBottom: effectiveProtectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.4)', fontSize: 10, fontWeight: 800, color: '#f87171' }}>
+        ⚠ OVERSIZED — stop covers {effectiveBrokerStop.qty} sh but you hold {effectiveBrokerStop.held_qty}. On trigger it may short the extra {Number(effectiveBrokerStop.qty) - Number(effectiveBrokerStop.held_qty)} (margin) or reject (cash). Cancel & re-place at {effectiveBrokerStop.held_qty} sh.
       </div>}
-      {_bstop && _bstop.coverage === 'partial' && <div style={{ marginBottom: protectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.4)', fontSize: 10, fontWeight: 800, color: AMBER }}>
-        ⚠ PARTIAL — stop covers only {_bstop.qty} of {_bstop.held_qty} sh held. {Number(_bstop.held_qty) - Number(_bstop.qty)} sh are unprotected. Re-place at {_bstop.held_qty} sh for full cover.
+      {effectiveBrokerStop && effectiveBrokerStop.coverage === 'partial' && <div style={{ marginBottom: effectiveProtectionRec ? 10 : 0, padding: '6px 9px', borderRadius: 7, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.4)', fontSize: 10, fontWeight: 800, color: AMBER }}>
+        ⚠ PARTIAL — stop covers only {effectiveBrokerStop.qty} of {effectiveBrokerStop.held_qty} sh held. {Number(effectiveBrokerStop.held_qty) - Number(effectiveBrokerStop.qty)} sh are unprotected. Re-place at {effectiveBrokerStop.held_qty} sh for full cover.
       </div>}
-      {protectionRec && (() => {
-        const price = Number(protectionRec.price) || null, stop = Number(protectionRec.stop_price) || null, dist = protectionRec.stop_distance_pct
-        const off = protectionRec.trail_recommended ? Number(protectionRec.trail_offset) : null, isPct = protectionRec.trail_type === 'PERCENT'
+      {effectiveProtectionRec && (() => {
+        const price = Number(effectiveProtectionRec.price) || null, stop = Number(effectiveProtectionRec.stop_price) || null, dist = effectiveProtectionRec.stop_distance_pct
+        const off = effectiveProtectionRec.trail_recommended ? Number(effectiveProtectionRec.trail_offset) : null, isPct = effectiveProtectionRec.trail_type === 'PERCENT'
         const trailDollar = off == null ? null : isPct ? (price ? price * off / 100 : null) : off
         const trailPct = off == null ? null : isPct ? off : (price ? off / price * 100 : null)
         const distColor = dist == null ? MUTED : dist < 0 ? RED : dist < 2 ? RED : dist < 5 ? AMBER : GREEN
@@ -360,9 +463,9 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         const lockBtn = { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 6, border: '1px dashed #64748b', background: 'rgba(100,116,139,.12)', color: MUTED, cursor: 'not-allowed', whiteSpace: 'nowrap' as const }
         const STAGE2C_TIP = 'Protective stops on real holdings (Stage 2c). Schwab taxable submits LIVE via API after per-order 2FA (type the ticker OR a code sent to Telegram + email — either confirms); the pilot must be ARMED. Accounts with no API (IRAs / Fidelity-401k) return an exact thinkorswim ticket to place manually. POC envelope is committed (DRS, taxable, sub-$1k) until the proof passes.'
         return <>
-          <div title={`${_stopReviewTip}\n\n${protectionRec.rationale ?? ''} · confidence ${protectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <div title={`${_stopReviewTip}\n\n${effectiveProtectionRec.rationale ?? ''} · confidence ${effectiveProtectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
-            {protectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{protectionRec.family}</span>}
+            {effectiveProtectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{effectiveProtectionRec.family}</span>}
             {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>{mf ? 'ref level' : 'stop'} <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
             {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}
             {dist != null && <span style={{ fontSize: 10, fontWeight: 900, color: distColor }}>{dist < 0 ? 'price BELOW stop' : `price ${dist.toFixed(1)}% above stop`}</span>}
@@ -377,7 +480,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
             </div>
           )}
           {stop != null && unprotected && !mf && (() => {
-            const trailRes = resolvedTrailPct(protectionRec)
+            const trailRes = resolvedTrailPct(effectiveProtectionRec)
             const effectiveTrailPct = trailRes?.pct ?? ((off != null && trailPct != null) ? trailPct : null)
             const trailReady = effectiveTrailPct != null && stop != null
             const stopTip = `Queue a FIXED sell stop (stop-market) GTC at $${stop.toFixed(2)}. If the price falls to $${stop.toFixed(2)} a MARKET sell fires — it ALWAYS fills, but the fill can slip below $${stop.toFixed(2)} in a fast drop. The trigger does NOT move.\n\n${STAGE2C_TIP}`
@@ -423,7 +526,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
           {snoozeMsg && <div style={{ fontSize: 10.5, color: snoozeMsg.startsWith('✓') ? GREEN : AMBER, marginTop: 5 }}>{snoozeMsg}</div>}
         </>
       })()}
-      {protectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{protectionRec.rationale}</div>}
+      {effectiveProtectionRec?.rationale && <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{effectiveProtectionRec.rationale}</div>}
       <div style={{ display: 'flex', gap: 5, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: 9, color: MUTED }}>reviewed by:</span>{Object.keys(lanes).length === 0 && <span style={{ fontSize: 9, color: MUTED }}>no LLM review in 30d</span>}{Object.entries(lanes).map(([lane, c]: any) => { const m = LANE_META[lane]; return <span key={lane} title={`${c.model} · analyzed ${String(c.last_at).slice(0, 10)} · ${c.n} review${c.n > 1 ? 's' : ''}`} style={{ fontSize: 8.5, fontWeight: 900, padding: '2px 6px', borderRadius: 4, background: m.c + '22', color: m.c, border: `1px solid ${m.c}55` }}>{m.label}</span> })}</div>
     </div>}
 

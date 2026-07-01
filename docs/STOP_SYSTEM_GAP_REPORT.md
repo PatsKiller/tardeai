@@ -121,13 +121,19 @@ The stop system is **largely built and aligned** on `main` (HEAD `552fb0bd`). Re
 (2FA, duplicate guard, Stop Management tab, preflight UX) works. L4 scalp automation shipped. **Refuse**
 enforcing Layer-3 Chandelier trailing — backtest and policy both say no (~3/150 paper sample).
 
-**Remaining (requires operator approval before implementation):**
+**Closed 2026-07-01 (operator approved):**
+
+| # | Gap | Status |
+|---|-----|--------|
+| 5 | Open Trades preflight parity (`PositionDecisionCard`) | **Done** — shared `protectiveStopPreflight.ts`, preflight before request + 2FA confirm |
+| 7 | `stop_out_reentry_watch` → API + UI | **Done** — `GET /api/v2/stops/reentry-watch`, Stop Management Audit panel |
+
+**Remaining:**
 
 | # | Gap | Domain |
 |---|-----|--------|
-| 1 | Open Trades preflight parity (`PositionDecisionCard` bypasses click-time preflight) | Real holdings |
-| 2 | `stop_out_reentry_watch` → API + Journal UI (stop-fill → re-entry watch) | Lifecycle closure |
-| 3 | P4 atomic Schwab replace (un-fence `replace_order`) | Execution |
-| 4 | `structure_type` stamped at paper entry (not just monitor-time) | Scalp |
+| 1 | P4 atomic Schwab replace (un-fence `replace_order`) | Execution |
+| 2 | `structure_type` stamped at paper entry (not just monitor-time) | Scalp |
+| 3 | Stop Management Adjust modal `onPreflightUpdate` (minor UX) | Real holdings |
 
-Build marker (unified 2026-07-01 hygiene pass): `cc-v3 stop-audit-sync 2026-07-01`.
+Build marker: `cc-v3 stop-lifecycle-close 2026-07-01`.
