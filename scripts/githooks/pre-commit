@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# git-hygiene hook: in the LIVE primary working tree, block commits made on a NON-protected branch.
+# Committing on main/master here is allowed (the hermes-daily / CHANGELOG automations do that); the
+# hazard is a session committing onto a FEATURE branch checked out in the shared tree — that's the
+# cross-session clobber we saw 2026-07-01. Do feature work in a worktree: scripts/new-worktree.sh <name>.
+source "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/git_hygiene_guard.sh" 2>/dev/null || exit 0
+if _gh_guard_active; then
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  protected=0
+  for p in $GIT_HYGIENE_PROTECTED_BRANCHES; do [ "$branch" = "$p" ] && protected=1; done
+  if [ "$protected" -eq 0 ]; then
+    _gh_block_msg "commit on feature branch '$branch'"
+    exit 1
+  fi
+fi
+exit 0
