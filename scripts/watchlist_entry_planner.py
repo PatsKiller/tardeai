@@ -205,11 +205,15 @@ def _weekly_drain_clause(sym_ref: str) -> str:
     change or catalyst"). A name is held (predicate FALSE) only while it has a plan < 7 days old AND no
     non-'other' catalyst_event newer than that plan. A newer catalyst — news_momentum/short_squeeze for
     big technical moves, earnings/M&A/analyst/etc. for fundamentals — flips it back to TRUE (re-plan now).
-    Unplanned names are always TRUE. `sym_ref` is the outer query's symbol column (e.g. wi.symbol)."""
+    Unplanned names are always TRUE. `sym_ref` is the outer query's symbol column (e.g. wi.symbol).
+    Operator-STARRED symbols (operator_starred_symbols) refresh on a FASTER 1-day cadence instead of 7
+    (2026-07-01: "starred should update more frequently") — the catalyst override still applies to both."""
     return f"""NOT EXISTS (
                     SELECT 1 FROM watchlist_entry_plans ep
                     WHERE ep.symbol = {sym_ref}
-                      AND ep.created_at > now() - interval '7 days'
+                      AND ep.created_at > now() - (CASE WHEN EXISTS (
+                              SELECT 1 FROM operator_starred_symbols s WHERE upper(s.symbol) = upper({sym_ref}))
+                            THEN interval '1 day' ELSE interval '7 days' END)
                       AND NOT EXISTS (SELECT 1 FROM catalyst_events ce
                                       WHERE upper(ce.symbol) = upper({sym_ref})
                                         AND ce.catalyst_type <> 'other'
@@ -254,7 +258,9 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                          NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
                        FROM watchlist_items
                        WHERE symbol ~ '^[A-Z]{{1,5}}$' AND status <> 'removed'
-                         AND (in_directive_watch=true OR status='active')
+                         AND (in_directive_watch=true OR status='active'
+                              OR EXISTS (SELECT 1 FROM operator_starred_symbols s
+                                         WHERE upper(s.symbol) = upper(watchlist_items.symbol)))
                          AND {_weekly_drain_clause('watchlist_items.symbol')}
                        ORDER BY symbol, hermes_composite_score DESC NULLS LAST""")
         rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
