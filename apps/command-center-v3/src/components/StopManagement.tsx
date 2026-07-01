@@ -161,8 +161,8 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 220 }}>{(r.alert_reasons || []).join(' · ')}</td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
                       {r.trailing_should_be_active && (
-                        <button onClick={() => onFocusHolding?.(r.symbol, r.account)}
-                          title={`Advisor recommends trailing (P&L + >50d SMA) — request a ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} trailing stop to lock in profit`}
+                        <button onClick={() => setAdjust(r)}
+                          title={`Advisor recommends trailing (P&L + >50d SMA) — open the inline ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} panel to request the trailing stop`}
                           style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
                             border: `1px solid ${GREEN}`, background: `${GREEN}20`, color: GREEN, whiteSpace: 'nowrap' }}>
                           🔒 Trail {r.account.startsWith('fidelity') ? 'manual' : '2FA'}
