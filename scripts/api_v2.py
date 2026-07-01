@@ -187,13 +187,74 @@ def _stops_management_api(query=None):
         except (TypeError, ValueError):
             return None
 
-    # 1. broker-actual stops (cached lifecycle snapshot)
+    # 1. broker-actual stops — LIVE Schwab/Alpaca protective stops (60s cache), same source the cards use,
+    #    plus armed Fidelity software-monitored stops. (The stop_lifecycle snapshot lags and under-reports.)
     live_stops = {}
     try:
-        life = _stops_lifecycle_api() or {}
-        for s in (life.get("stops") or []):
-            k = (str(s.get("symbol", "")).upper(), str(s.get("account", "")))
-            live_stops[k] = s
+        ls = _holdings_live_stops() or {}
+        for _key, bs in (ls.get("by_key") or {}).items():
+            sym = str(bs.get("symbol", "")).upper()
+            acct = str(bs.get("account", ""))
+            ot = str(bs.get("order_type") or "").upper()
+            if bs.get("stop_price") is None:
+                continue
+            live_stops[(sym, acct)] = {
+                "stop_price": bs.get("stop_price"), "order_type": ot,
+                "is_trailing": "TRAIL" in ot, "trail_offset": bs.get("trail_offset"),
+                "broker": "schwab" if acct.startswith("schwab") else ("alpaca" if "alpaca" in acct.lower() else ""),
+                "status": bs.get("status"), "order_id": bs.get("order_id"),
+                "coverage": None, "stop_source": "broker",
+            }
+    except Exception:
+        pass
+    # persisted last broker read (stop_lifecycle snapshot) — recovers Schwab stops after-hours when the live
+    # API read returns empty. Fills gaps only; never overwrites the fresher live overlay.
+    try:
+        for s in ((_stops_lifecycle_api() or {}).get("stops") or []):
+            sym = str(s.get("symbol", "")).upper()
+            acct = str(s.get("account", ""))
+            sp = _f(s.get("stop_price"))
+            ot = str(s.get("order_type") or "").upper()
+            if (sym, acct) in live_stops:
+                continue
+            if sp is None and "TRAIL" not in ot:
+                continue
+            live_stops[(sym, acct)] = {
+                "stop_price": sp, "order_type": ot, "is_trailing": bool(s.get("is_trailing")) or "TRAIL" in ot,
+                "broker": s.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
+                "coverage": s.get("coverage"), "lifecycle": s.get("lifecycle"), "health": s.get("health"),
+                "flags": s.get("flags"), "stop_source": "broker_snapshot",
+            }
+    except Exception:
+        pass
+    # operator-confirmed live stops (stop_confirmations) — persists after-hours when the live Schwab read is
+    # empty; the source the cards fall back to. Does not overwrite a fresher live-overlay entry.
+    try:
+        for cr in (_db_query("SELECT symbol, account, stop_price_confirmed FROM stop_confirmations "
+                             "WHERE stop_confirmed = true") or []):
+            sym = str(cr.get("symbol") or "").upper()
+            acct = str(cr.get("account") or "")
+            sp = _f(cr.get("stop_price_confirmed"))
+            if sp is None or (sym, acct) in live_stops:
+                continue
+            live_stops[(sym, acct)] = {
+                "stop_price": sp, "order_type": "STOP", "is_trailing": False,
+                "broker": "schwab" if acct.startswith("schwab") else ("fidelity" if acct.startswith("fidelity") else ""),
+                "coverage": None, "stop_source": "confirmed",
+            }
+    except Exception:
+        pass
+    try:
+        fm = _fidelity_monitored_stops_list({"status": "armed"}) or {}
+        for _key, ms in (fm.get("by_key") or {}).items():
+            sym = str(ms.get("symbol", "")).upper()
+            acct = str(ms.get("account", ""))
+            if ms.get("stop_price") is None or (sym, acct) in live_stops:
+                continue
+            live_stops[(sym, acct)] = {
+                "stop_price": ms.get("stop_price"), "order_type": "MONITORED",
+                "is_trailing": False, "broker": "fidelity", "coverage": None, "stop_source": "monitored",
+            }
     except Exception:
         pass
     # 2. holdings (all accounts)
@@ -275,10 +336,15 @@ def _stops_management_api(query=None):
         should_trail = bool(adv.get("trail")) and not is_trailing
         if should_trail:
             trailing_not_active += 1
+        is_fidelity = acct.startswith("fidelity")
         naked = broker_stop is None and planned_stop is not None
-        divergence = ("no broker stop (planned only)" if naked
+        # broker-aware wording: Fidelity has no trading API, so its stops are manual/monitored, not "at broker"
+        naked_reason = ("manual/monitored stop not armed (Fidelity — no broker API)" if is_fidelity
+                        else "advised stop not placed at broker")
+        divergence = ("planned only — no active stop" if naked
                       else "broker looser than advised" if (broker_stop is not None and planned_stop is not None
                                                             and broker_stop < planned_stop - 0.01) else None)
+        stop_source = ls.get("stop_source") or ("planned" if planned_stop is not None else "none")
         heat_contrib = round((max(dist_dollars, 0) / total_risk * heat_pct), 2) if total_risk else None
 
         # ---- alert level (highest severity wins; see protocol §3) ----
@@ -303,7 +369,7 @@ def _stops_management_api(query=None):
         if dp <= 3.0 or (dist_atr is not None and dist_atr <= 1.0):
             amber.append("within 3% / 1×ATR of stop")
         if naked and is_active_trade:
-            amber.append("active trade: advised stop not placed at broker")
+            amber.append("active trade: " + naked_reason)
         if divergence == "broker looser than advised":
             amber.append(divergence)
         if heat_contrib is not None and heat_contrib >= 1.5:
@@ -314,7 +380,7 @@ def _stops_management_api(query=None):
         if should_trail:
             yellow.append("trailing eligible but not active")
         if naked and not is_active_trade:
-            yellow.append("core hold: advised stop not placed at broker")
+            yellow.append(("core hold: " if not is_fidelity else "") + naked_reason)
         if red:
             level, reasons = "red", red
         elif amber:
@@ -325,10 +391,13 @@ def _stops_management_api(query=None):
             counts[level] += 1
         total_open_risk += max(dist_dollars, 0)
 
+        _monitored = stop_source == "monitored"
         rows.append({
-            "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
+            "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ("fidelity" if is_fidelity else "")),
             "route": route.get(sym, "core-hold"),
-            "stop_type": ("TRAILING" if is_trailing else "HARD") if broker_stop is not None else ("PLANNED" if planned_stop else "NONE"),
+            "stop_type": (("TRAILING" if is_trailing else "MONITORED" if _monitored else "HARD") if broker_stop is not None
+                          else ("PLANNED" if planned_stop else "NONE")),
+            "stop_source": stop_source, "has_active_stop": broker_stop is not None,
             "current_price": px, "qty": qty, "coverage": ls.get("coverage"),
             "broker_stop": broker_stop, "planned_stop": planned_stop, "stop": stop, "divergence": divergence,
             "distance_dollars": dist_dollars, "distance_pct": dist_pct, "distance_atr": dist_atr, "distance_r": dist_r,
@@ -342,13 +411,92 @@ def _stops_management_api(query=None):
 
     order = {"red": 0, "amber": 1, "yellow": 2, None: 3}
     rows.sort(key=lambda r: (order.get(r["alert_level"], 3), -(r["dollars_at_risk"] or 0)))
+    broker_active = sum(1 for r in rows if r.get("has_active_stop"))
     return {
         "generated_at": None, "regime_now": regime_now,
         "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
-                    "trailing_not_active": trailing_not_active, "positions": len(rows)},
+                    "trailing_not_active": trailing_not_active, "positions": len(rows),
+                    "broker_stops_active": broker_active, "no_stop": len(rows) - broker_active},
         "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
     }
+
+
+def _stops_audit_api(query=None):
+    """GET /api/v2/stops/audit — read-only audit trail of protective-stop actions: evidence-bound per-order
+    2FA stop requests/approvals (Schwab) + operator confirmations / Fidelity manual tickets. No writes.
+    Powers the Stop Management → Audit sub-tab. See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md §4/§7."""
+    q = query or {}
+    sym_filter = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+    sym_filter = str(sym_filter).upper() if sym_filter else None
+    events = []
+    # 1. evidence-bound per-order 2FA stop requests/approvals (the Schwab live-stop path)
+    try:
+        for r in (_db_query(
+                "SELECT intent_id, operator_user, approval_channel, approved_at, used_at, status, "
+                "evidence_hash, proposal_snapshot_json, operator_attestation_text, created_at "
+                "FROM evidence_bound_approvals ORDER BY created_at DESC LIMIT 300") or []):
+            snap = r.get("proposal_snapshot_json")
+            if isinstance(snap, str):
+                try:
+                    snap = json.loads(snap)
+                except Exception:
+                    snap = {}
+            snap = snap or {}
+            ot = str(snap.get("order_type") or "")
+            if "STOP" not in ot.upper():   # protective-stop actions only
+                continue
+            sym = str(snap.get("symbol") or "").upper()
+            if sym_filter and sym != sym_filter:
+                continue
+            at = r.get("used_at") or r.get("approved_at") or r.get("created_at")
+            events.append({
+                "kind": "2fa_stop_request", "symbol": sym, "account": snap.get("account"),
+                "broker": snap.get("broker"), "order_type": ot, "stop_price": snap.get("stop_price"),
+                "trail_pct": snap.get("trail_pct"), "qty": snap.get("qty"),
+                "status": r.get("status"), "channel": r.get("approval_channel"),
+                "operator": r.get("operator_user"), "evidence_hash": (r.get("evidence_hash") or "")[:12] or None,
+                "attestation": (r.get("operator_attestation_text") or "")[:160] or None,
+                "at": _json_clean(at),
+            })
+    except Exception:
+        pass
+    # 2. operator-confirmed stops + Fidelity manual tickets + reminders
+    try:
+        for r in (_db_query(
+                "SELECT symbol, account, stop_status, stop_confirmed, stop_price_confirmed, "
+                "stop_confirmation_source, stop_confirmed_at, stop_exception_reason, reminder_count, updated_at "
+                "FROM stop_confirmations ORDER BY COALESCE(stop_confirmed_at, updated_at) DESC LIMIT 200") or []):
+            sym = str(r.get("symbol") or "").upper()
+            if sym_filter and sym != sym_filter:
+                continue
+            events.append({
+                "kind": "confirmation", "symbol": sym, "account": r.get("account"),
+                "broker": ("fidelity" if str(r.get("account") or "").startswith("fidelity")
+                           else "schwab" if str(r.get("account") or "").startswith("schwab") else None),
+                "order_type": "MANUAL/CONFIRMED", "stop_price": _f_or_none(r.get("stop_price_confirmed")),
+                "status": (r.get("stop_status") or ("confirmed" if r.get("stop_confirmed") else "pending")),
+                "channel": r.get("stop_confirmation_source"),
+                "reason": (r.get("stop_exception_reason") or "")[:160] or None,
+                "reminder_count": r.get("reminder_count"),
+                "at": _json_clean(r.get("stop_confirmed_at") or r.get("updated_at")),
+            })
+    except Exception:
+        pass
+    events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
+    counts = {}
+    for e in events:
+        counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+    return {"events": [{k: _json_clean(v) for k, v in e.items()} for e in events],
+            "counts": counts, "total": len(events),
+            "note": "read-only: evidence-bound 2FA stop requests + operator confirmations / Fidelity manual tickets"}
+
+
+def _f_or_none(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _after_hours_override_enabled():
@@ -24446,6 +24594,7 @@ ROUTES = {
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
+    "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
