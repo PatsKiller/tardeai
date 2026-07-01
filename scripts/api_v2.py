@@ -173,6 +173,69 @@ def _cached_schwab_validator():
     return res
 
 
+def _stop_row_narrative(*, sym, is_fidelity, has_active_stop, broker_stop, planned_stop, current_price,
+                        qty, distance_pct, distance_atr, dollars_at_risk, is_trailing,
+                        trailing_should_be_active, trail_pct, trail_trigger, divergence, alert_level,
+                        naked, unrealized_dollars):
+    """Plain-English 'what this means' + the single next action + a 2FA trade PROJECTION for one
+    Stop Management row. Aligned to STOP_METHODOLOGY.md (real-account holdings are LONG; a protective
+    stop is a SELL below price) and the Stop Monitoring Protocol alert tiers. Pure/deterministic —
+    derives only from fields already computed for the row. Returns (narrative, next_action, projection)."""
+    px = float(current_price or 0.0)
+    q = float(qty or 0.0)
+    dp = distance_pct if distance_pct is not None else None
+    at_risk = max(float(dollars_at_risk or 0.0), 0.0)
+    sell_qty = int(q) if q >= 1 else round(q, 4)
+    money = lambda v: f"${abs(v):,.0f}" if v is not None else "$0"
+    narrative = next_action = projection = None
+
+    # 1) Broker stop LOOSER than advised — the one genuinely actionable divergence.
+    if divergence == "broker looser than advised" and broker_stop and planned_stop and px:
+        extra = (planned_stop - broker_stop) * q
+        new_risk = max((px - planned_stop) * q, 0.0)
+        narrative = (f"Your live stop ${broker_stop:.2f} sits below the advised ${planned_stop:.2f} — about "
+                     f"{money(extra)} MORE open risk than the methodology recommends ({dp:.1f}% below price).")
+        next_action = f"Tighten stop to ${planned_stop:.2f} (Adjust → Request Schwab stop via 2FA)."
+        projection = (f"Move ${broker_stop:.2f}→${planned_stop:.2f} on {sell_qty} sh: open risk {money(at_risk)}→"
+                      f"{money(new_risk)} (−{money(extra)}); trigger tightens to {((px-planned_stop)/px*100):.1f}% below price.")
+
+    # 2) NAKED — advisor stop not placed at the broker.
+    elif naked and planned_stop and px:
+        if trailing_should_be_active and trail_pct:
+            trig = trail_trigger or (px * (1 - trail_pct / 100.0))
+            venue = "a Fidelity manual ticket (no broker API)" if is_fidelity else "🔒 Trail 2FA"
+            narrative = (f"In profit and above trend, the methodology wants a {trail_pct:.0f}% TRAILING stop, but none is "
+                         f"at the broker — {money(unrealized_dollars)} of unrealized gain is unprotected.")
+            next_action = f"Place the {trail_pct:.0f}% trailing stop via {venue}."
+            projection = (f"SELL {sell_qty} {sym} TRAILING {trail_pct:.0f}%: initial trigger ≈${trig:.2f} "
+                          f"({(px-trig)/px*100:.1f}% below), ratchets up with price; protects ≈{money(trig*q)} of position value.")
+        else:
+            venue = "a Fidelity manual ticket (no broker API)" if is_fidelity else "🔒 Set 2FA"
+            risk = max((px - planned_stop) * q, 0.0)
+            narrative = (f"Advised ${planned_stop:.2f} stop is NOT at the broker — this position is unprotected "
+                         f"(would sit {(px-planned_stop)/px*100:.1f}% below price).")
+            next_action = f"Place the ${planned_stop:.2f} stop via {venue}."
+            projection = (f"SELL {sell_qty} {sym} STOP ${planned_stop:.2f}: caps downside at {(px-planned_stop)/px*100:.1f}% "
+                          f"({money(risk)} max loss from here); protects ≈{money(planned_stop*q)} of value.")
+
+    # 3) Active stop, price CLOSE to the trigger — protection is ON; just watch.
+    elif has_active_stop and broker_stop and alert_level in ("amber", "yellow") and (dp is not None and dp <= 6.0):
+        kind = "trailing" if is_trailing else "fixed"
+        near = "≤1 ATR" if (distance_atr is not None and distance_atr <= 1.0) else (f"{dp:.1f}%" if dp is not None else "close")
+        narrative = (f"Active {kind} stop ${broker_stop:.2f} is {near} below price — protection is ON and nearby; a normal "
+                     f"pullback could trigger it (only {money(at_risk)} at risk).")
+        next_action = ("Monitor — the trailing stop ratchets up automatically; no action."
+                       if is_trailing else "Monitor — stop is in place; widen only if you want more room.")
+
+    # 4) Active stop, aligned/healthy.
+    elif has_active_stop and broker_stop:
+        kind = "trailing" if is_trailing else "fixed"
+        narrative = f"Active {kind} stop ${broker_stop:.2f} matches the methodology — protection aligned."
+        next_action = "None — monitored."
+
+    return narrative, next_action, projection
+
+
 def _stops_management_api(query=None):
     """GET /api/v2/stops/management — aggregation for the Portfolio → Stop Management tab. Joins broker-actual
     stops (stop_lifecycle) + holdings + advisor planned stops + portfolio heat into per-position rows with
@@ -417,9 +480,19 @@ def _stops_management_api(query=None):
                        else "ChatGPT · external LLM" if ("gpt" in _rm or "chatgpt" in _rm)
                        else "Claude · external LLM" if "claude" in _rm
                        else "System · local advisor" if _rm else None)
+        # Plain-English narrative + single next action + 2FA trade projection (STOP_METHODOLOGY.md-aligned).
+        _narr, _next, _proj = _stop_row_narrative(
+            sym=sym, is_fidelity=is_fidelity, has_active_stop=(broker_stop is not None), broker_stop=broker_stop,
+            planned_stop=planned_stop, current_price=px, qty=qty, distance_pct=dist_pct, distance_atr=dist_atr,
+            dollars_at_risk=round(max(dist_dollars, 0), 2), is_trailing=is_trailing,
+            trailing_should_be_active=should_trail, trail_pct=_trail_pct, trail_trigger=_trail_trigger,
+            divergence=divergence, alert_level=level, naked=naked, unrealized_dollars=unreal_dollars)
         rows.append({
             "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ("fidelity" if is_fidelity else "")),
             "route": route.get(sym, "core-hold"),
+            # Real-account holdings are long; short only if a negative position ever appears (momentum-scalp domain).
+            "direction": "short" if (qty or 0) < 0 else "long",
+            "narrative": _narr, "next_action": _next, "projection": _proj,
             "stop_type": (("TRAILING" if is_trailing else "MONITORED" if _monitored else "HARD") if broker_stop is not None
                           else ("PLANNED" if planned_stop else "NONE")),
             "stop_source": stop_source, "has_active_stop": broker_stop is not None,
@@ -440,12 +513,27 @@ def _stops_management_api(query=None):
     order = {"red": 0, "amber": 1, "yellow": 2, None: 3}
     rows.sort(key=lambda r: (order.get(r["alert_level"], 3), -(r["dollars_at_risk"] or 0)))
     broker_active = sum(1 for r in rows if r.get("has_active_stop"))
+    # Portfolio-level "next actionable thing in English": prioritize real risk reduction —
+    # (1) broker-looser-than-advised (tighten), then (2) naked positions by $ at risk desc. Monitor-only
+    # rows are excluded. Top 3 surface at the tab header so the operator sees what to do without scanning.
+    def _act_priority(r):
+        if r.get("divergence") == "broker looser than advised":
+            return (0, -(r.get("dollars_at_risk") or 0))
+        if r.get("next_action") and not str(r.get("next_action")).startswith(("Monitor", "None")):
+            return (1, -(r.get("dollars_at_risk") or 0))
+        return (9, 0)
+    _actionable = [r for r in rows if _act_priority(r)[0] < 9]
+    _actionable.sort(key=_act_priority)
+    next_actions = [{"symbol": r["symbol"], "account": r["account"], "alert_level": r.get("alert_level"),
+                     "action": r.get("next_action"), "projection": r.get("projection"),
+                     "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:3]]
     return {
         "generated_at": None, "regime_now": regime_now,
         "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
                     "trailing_not_active": trailing_not_active, "positions": len(rows),
-                    "broker_stops_active": broker_active, "no_stop": len(rows) - broker_active},
+                    "broker_stops_active": broker_active, "no_stop": len(rows) - broker_active,
+                    "next_actions": next_actions},
         "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
     }
 

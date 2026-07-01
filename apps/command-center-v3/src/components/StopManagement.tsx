@@ -26,7 +26,9 @@ type Row = {
   trail_pct: number | null; trailing_trigger: number | null
   trail_recommended: boolean; rec_source: string | null; rec_model: string | null; rec_rationale: string | null
   alert_level: 'red' | 'amber' | 'yellow' | null; alert_reasons: string[]
+  direction?: 'long' | 'short'; narrative?: string | null; next_action?: string | null; projection?: string | null
 }
+type NextAction = { symbol: string; account: string; alert_level: Row['alert_level']; action: string | null; projection: string | null; dollars_at_risk: number | null }
 
 function Pill({ level }: { level: string | null }) {
   if (!level) return <span style={{ fontSize: 11, color: GREEN }}>● ok</span>
@@ -100,6 +102,20 @@ export default function StopManagement({ onFocusHolding }: Props) {
             <Card label="Trailing Not Active" value={String(summary.trailing_not_active ?? 0)} color={(summary.trailing_not_active ?? 0) > 0 ? AMBER : TEXT0} />
           </div>
 
+          {/* Next actions — plain-English, prioritized by real risk reduction (STOP_METHODOLOGY.md-aligned) */}
+          {Array.isArray((summary as any).next_actions) && (summary as any).next_actions.length > 0 && (
+            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${BLUE}10`, border: `1px solid ${BLUE}44` }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, textTransform: 'uppercase', letterSpacing: .3, marginBottom: 5 }}>Next actions — what to do now</div>
+              {((summary as any).next_actions as NextAction[]).map((na, i) => (
+                <div key={i} style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.5, display: 'flex', gap: 7, alignItems: 'baseline', marginBottom: 3 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: na.alert_level === 'red' ? RED : na.alert_level === 'amber' ? AMBER : MUTED }}>{i + 1}.</span>
+                  <span><b>{na.symbol}</b> <span style={{ color: MUTED }}>({na.account})</span> — {na.action}
+                    {na.projection ? <span style={{ color: MUTED, fontSize: 11.5 }}> · {na.projection}</span> : null}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Filters */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
             {QUICK.map(qv => (
@@ -158,7 +174,15 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: (r.unrealized_dollars ?? 0) >= 0 ? GREEN : RED }}>{r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}</td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</td>
-                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 220 }}>{(r.alert_reasons || []).join(' · ')}</td>
+                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 300 }}>
+                      {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, lineHeight: 1.45, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons || []).join(' · ')}
+                      {r.next_action ? (
+                        <div style={{ fontSize: 10.5, fontWeight: 700, lineHeight: 1.4,
+                          color: /^(Monitor|None)/.test(r.next_action) ? MUTED : (r.alert_level === 'red' ? RED : r.alert_level === 'amber' ? AMBER : BLUE) }}>
+                          → {r.next_action}
+                        </div>
+                      ) : null}
+                    </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
                       {r.trailing_should_be_active && (
                         <button onClick={() => setAdjust(r)}
@@ -250,6 +274,19 @@ function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () =
           {row.rec_source ? <span style={{ color: MUTED }}> · by <b style={{ color: row.rec_model && /grok|gpt|claude/i.test(row.rec_model) ? PURPLE : BLUE }}>{row.rec_source}</b>{row.rec_model ? ` (${row.rec_model})` : ''}</span> : null}
           {row.rec_rationale ? <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{row.rec_rationale}</div> : null}
         </div>
+
+        {/* Plain-English "what this means" + the projected effect of the 2FA stop trade */}
+        {(row.narrative || row.projection || row.next_action) && (
+          <div style={{ fontSize: 12, padding: '9px 11px', borderRadius: 8, marginBottom: 12, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.25)' }}>
+            {row.narrative ? <div style={{ color: TEXT0, lineHeight: 1.5 }}>{row.narrative}</div> : null}
+            {row.next_action && !/^(Monitor|None)/.test(row.next_action) ? (
+              <div style={{ marginTop: 5, fontWeight: 700, color: row.alert_level === 'red' ? RED : row.alert_level === 'amber' ? AMBER : BLUE }}>→ {row.next_action}</div>
+            ) : null}
+            {row.projection ? (
+              <div style={{ marginTop: 5, fontSize: 11.5, color: MUTED }}><b style={{ color: TEXT0 }}>Projection:</b> {row.projection}</div>
+            ) : null}
+          </div>
+        )}
 
         {/* Inline gated 2FA / manual panel — the SAME verified holding panel; nothing submits without per-order 2FA */}
         {perr ? (
