@@ -25600,10 +25600,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "ticket": ticket, "account": acct}
                         if ot == "TRAILING_STOP" and trail_pct is not None and stop_price is not None:
                             expected = cp * (1 - float(trail_pct) / 100.0)
-                            if abs(expected - float(stop_price)) / cp * 100.0 > 0.35:
+                            # The advised FIXED stop is swing-low-anchored, not current×(1−trail%), so a trail
+                            # start legitimately differs from it by (|stop-dist% − trail%|) + price drift since
+                            # the advisory ran (commonly 1–3%). Keep 3% tolerance to catch a grossly-wrong
+                            # trail (e.g. 20% vs 10%) while allowing the advisor's own recommended trail.
+                            if abs(expected - float(stop_price)) / cp * 100.0 > 3.0:
                                 return 200, {"ok": False, "mode": "blocked", "gate": "trail_start_mismatch",
-                                             "error": (f"Trailing stop start estimate ${expected:.2f} does not match "
-                                                       f"advisory stop ${float(stop_price):.2f}; recalculate first."),
+                                             "error": (f"Trailing stop start ${expected:.2f} (from {trail_pct}% trail) "
+                                                       f"is >3% from the advised stop ${float(stop_price):.2f}; "
+                                                       "re-review the trail width first."),
                                              "ticket": ticket, "account": acct}
                 except ValueError as ve:
                     return 200, {"ok": False, "mode": "blocked", "gate": "quote_validation",
