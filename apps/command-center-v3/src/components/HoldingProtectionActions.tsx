@@ -401,7 +401,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         </div>
       )}
 
-      {/* LIVE STOP READINESS — compact gate panel for the Schwab live-stop canary (read-only). */}
+      {/* LIVE STOP READINESS — compact gate panel for Schwab protective stops (read-only). */}
       {isSchwab && showProtect && (() => {
         const rd = readiness || {}
         const exec = rd.execution || {}
@@ -431,9 +431,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         ]
         return (
           <div data-testid="live-stop-readiness" style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(2,6,23,.45)', border: '1px solid rgba(148,163,184,.2)' }}>
-            {/* EXPLICIT CANARY TARGET — never inferred from the current filter; binds symbol/account/qty/residual. */}
+            {/* Explicit protective-stop preview — never inferred from the current filter; binds symbol/account/qty/residual. */}
             <div data-testid="canary-target" style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'rgba(59,130,246,.1)', border: `1px solid ${BLUE}55` }}>
-              <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>CANARY TARGET</div>
+              <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>PROTECTIVE STOP PREVIEW — NOT SUBMITTED</div>
               <div style={{ fontSize: 13, color: TEXT0, fontWeight: 800, lineHeight: 1.5 }}>
                 Symbol: <b>{sym}</b> · Account: <b>{acct}</b><br />
                 Order: <b>SELL {logic.wholeQty} {sym} {selectedKind === 'TRAILING' ? `TRAILING_STOP ${trailLabel}%` : selectedKind} GTC</b><br />
