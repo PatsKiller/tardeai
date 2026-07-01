@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# git-hygiene hook: block rebase in the LIVE primary working tree (use a worktree instead).
+source "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/git_hygiene_guard.sh" 2>/dev/null || exit 0
+if _gh_guard_active; then _gh_block_msg "rebase"; exit 1; fi
+exit 0
