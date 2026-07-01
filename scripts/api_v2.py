@@ -25832,6 +25832,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/scalp/tighten-all":
+            # MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY §3 Layer-4 / §8 #4 — "Tighten All Trails" one-click.
+            # Applies the 0.5× ATR tighten to OPEN momentum_scalp PAPER trades only (paper is the auto/sim
+            # domain; L3 execution is config-OFF). Never touches real-account holdings or a broker order.
+            # dry_run default TRUE — pass {"apply": true} to actually write the tighter paper stops.
+            try:
+                b = body or {}
+                do_apply = bool(b.get("apply") is True)
+                res = __import__("scalp_stop_monitor").tighten_all(
+                    apply=do_apply, reason=str(b.get("reason") or "operator tighten-all (UI)"),
+                    trigger=b.get("trigger"))
+                return 200, res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200], "broker_request_sent": False}
+
         if base_path == "/api/v2/holdings/protective-stop/refresh-quote":
             # Fetch the latest available quote (read-only) for a live-stop readiness check. Never submits,
             # modifies, or cancels a broker order.
