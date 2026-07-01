@@ -234,7 +234,19 @@ export function buildStopLogic(input: {
   const broker = accountBroker(String(h?.account ?? ''))
   const sourceBroker = accountBroker(String(pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account ?? h?.stop_source_account ?? ''))
   const currentPrice = finiteNum(pr?.price) ?? finiteNum(h?.current_price) ?? finiteNum(h?.price) ?? null
-  const advisoryStop = finiteNum(pr?.stop_price)
+  const familyFloorPctRaw = extractFamilyFloorPct(pr)
+  const rawAdvisoryStop = finiteNum(pr?.stop_price)
+  // Family-floor reconciliation: a FIXED advised stop is frozen at advisory time. If price has since
+  // drifted DOWN, an income stop that was 4% wide can now sit INSIDE the floor (e.g. JEPI $54.22 was 4%
+  // below the advisory-day price, now 3.6% below current). The methodology says respect the floor, so
+  // WIDEN the effective advised stop to the family floor against the CURRENT price instead of hard-
+  // blocking. Only ever widens (lowers a long stop), never tightens. Mirrors holding_protection_advisor's
+  // run-time floor enforcement, applied live so intraday drift doesn't dead-end placement.
+  const _floorLevelStop = (familyFloorPctRaw != null && currentPrice != null && currentPrice > 0)
+    ? Number((currentPrice * (1 - familyFloorPctRaw / 100)).toFixed(2)) : null
+  const advisoryStopWidenedToFloor = rawAdvisoryStop != null && _floorLevelStop != null
+    && rawAdvisoryStop > _floorLevelStop + 0.01
+  const advisoryStop = advisoryStopWidenedToFloor ? _floorLevelStop : rawAdvisoryStop
   const liveResolved = resolveLiveStop(confirmedStop, monitored, currentPrice)
   const liveStop = liveResolved.price
   const stopVerified = confirmedStop?.source === 'broker' || confirmedStop?.verified === true || confirmedStop?.broker_verified === true
@@ -249,8 +261,10 @@ export function buildStopLogic(input: {
   const quoteMaxAge = freshMaxAgeSec(quoteSession)
   const quoteAge = quoteAgeSeconds(quoteTs, input.nowMs)
   const staleQuote = !isQuoteFresh(quoteTs, input.nowMs)
-  const familyFloorPct = extractFamilyFloorPct(pr)
-  const familyFloorLabel = String(pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'not provided')
+  const familyFloorPct = familyFloorPctRaw
+  const familyFloorLabel = advisoryStopWidenedToFloor
+    ? `${String(pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'family')} — advised stop widened to the ${familyFloorPct?.toFixed(1)}% floor (was inside it after price drift)`
+    : String(pr?.family_floor ?? pr?.floor_label ?? pr?.family ?? 'not provided')
 
   if (isFundLike) {
     blockers.push({ code: 'instrument_not_applicable', message: `${symbol} is ${instrumentType.replace(/_/g, ' ')}; live stop execution controls are not applicable.` })

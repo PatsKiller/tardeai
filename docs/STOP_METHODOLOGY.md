@@ -85,5 +85,21 @@ Before any Schwab 2FA submit or Fidelity manual ticket, `HoldingProtectionAction
 
 Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`.
 
+## 9b. Data-integrity guards (2026-07-01)
+
+- **No phantom stops.** The Stop Management aggregation used to resurrect a stale `stop_confirmations`
+  record or `stop_lifecycle` snapshot as a live "active stop" even when the live Schwab order read
+  succeeded. A healthy broker read is now **authoritative** — a confirmed/snapshot stop it does not show
+  is skipped as stale, so an unprotected position never reads as protected. (JEPI showed a $55 stop from a
+  2026-04-22 confirmation with zero live orders; NOC showed a stale snapshot. Both corrected; the JEPI
+  record was set `unconfirmed`.) Fidelity (no broker API) confirmations still stand.
+
+- **Family-floor drift reconciliation.** A FIXED advised stop is frozen at advisory time; if price drifts
+  DOWN, a once-in-band income/position stop can fall INSIDE the family floor (e.g. JEPI $54.22 was 4% below
+  the advisory-day price, 3.6% below current). `buildStopLogic` now **widens the effective advised stop to
+  the family floor against the CURRENT price** (never tightens) instead of hard-blocking on `floor_mismatch`
+  — mirroring `holding_protection_advisor.py`'s run-time floor enforcement, applied live so intraday drift
+  doesn't dead-end placement. The daily advisor re-run re-floors the stored value.
+
 ## 10. Cross-references
 `holding_protection_advisor.py`, `holding_family.py`, `monthly_protection_meta_review.py`, `HoldingProtectionActions.tsx`, `PortfolioHub.tsx`, `stopManagement.ts`, `brokers/quote_time.py`; paper side: `alpaca_stop_manager.py` + `design/OCO_ATM_UNIFICATION_DESIGN.md`; runtime/lane policy: `diligence/current/LOCAL_LLM_RUNTIME_POLICY.md`; integration runbook: `runbooks/protective-stop-integration-2026-06-30.md`.
