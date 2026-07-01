@@ -123,6 +123,8 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [fCio, setFCio] = useState('all')
   const [fList, setFList] = useState('all')
   const [fHeld, setFHeld] = useState(false)   // held-only (currently-owned positions)
+  const [fStarred, setFStarred] = useState(false)   // operator-starred only
+  const [starOverride, setStarOverride] = useState<Record<string, boolean>>({})   // optimistic star state until items refetch
   const [fSector, setFSector] = useState('all')
   const [fAnalyst, setFAnalyst] = useState('all')   // analyst catalyst: upgrade / downgrade
   const [search, setSearch] = useState('')
@@ -132,7 +134,16 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [showDirectives, setShowDirectives] = useState(false)   // Watch Directives chip wall — collapsed by default (it's a long list; the Directive filter dropdown still works)
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const PER_PAGE = 24
-  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fSector, fAnalyst, search])   // reset to page 1 on any filter change
+  const isStarred = (it: any) => starOverride[String(it.symbol).toUpperCase()] ?? !!it.starred
+  // operator star: always-in-window + sorted first (server) + faster entry-plan refresh (server). Optimistic.
+  const toggleStar = (it: any) => {
+    const sym = String(it.symbol).toUpperCase(); const next = !isStarred(it)
+    setStarOverride(o => ({ ...o, [sym]: next }))
+    fetch('/api/v2/watchlist/star', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: sym, starred: next }) })
+      .then(() => setTimeout(refetchWl, 800)).catch(() => setStarOverride(o => ({ ...o, [sym]: !next })))   // revert on failure
+  }
+  const starredCount = useMemo(() => items.filter(isStarred).length, [items, starOverride])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fStarred, fSector, fAnalyst, search])   // reset to page 1 on any filter change
   // named watch lists (directive labels) present across the items, for the List filter
   const listOpts = useMemo(() => Array.from(new Set(
     items.flatMap((i: any) => String(i.watch_lists || '').split(' · ').map(s => s.trim()).filter(Boolean))
@@ -188,6 +199,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       if (fKind !== 'all') { const itp = (it.instrument_type || 'stock').toLowerCase(); const norm = itp === 'inverse_etf' ? 'etf' : itp; if (norm !== fKind) return false }
       if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(symU)) return false
       if (fHeld && !(it.in_portfolio || outMap[symU]?.held)) return false   // held-only (currently owned)
+      if (fStarred && !isStarred(it)) return false   // operator-starred only
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
@@ -206,7 +218,10 @@ export default function WatchlistHub({ onDrill }: Props) {
       if (fAnalyst !== 'all' && it.catalyst_type !== (fAnalyst === 'upgrade' ? 'analyst_upgrade' : 'analyst_downgrade')) return false
       return true
     })
-  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fSector, fAnalyst, search, paMap, advMap, directives, outMap])
+      // starred first (stable — preserves the server's hermes order within each group; also reflects an
+      // optimistic toggle immediately, before the server-ordered refetch lands)
+      .sort((a, b) => (isStarred(b) ? 1 : 0) - (isStarred(a) ? 1 : 0))
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, search, paMap, advMap, directives, outMap])
 
   const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
 
@@ -274,6 +289,7 @@ export default function WatchlistHub({ onDrill }: Props) {
       <div style={{ ...panel, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Status<select style={SEL} value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Active + Researched</option><option value="active">Active only</option><option value="researched">Researched only</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Position<button onClick={() => setFHeld(h => !h)} title="show only currently-held positions (the ● held badge)" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fHeld ? '#ffa726' : 'var(--border)'}`, background: fHeld ? 'rgba(255,167,38,.14)' : 'var(--bg2)', color: fHeld ? '#ffa726' : MUTED, fontWeight: fHeld ? 800 : 500, whiteSpace: 'nowrap' }}>● Held only{heldCount ? ` (${heldCount})` : ''}</button></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Starred<button onClick={() => setFStarred(s => !s)} title="show only operator-starred symbols (★) — they always show first and refresh faster" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fStarred ? '#fbbf24' : 'var(--border)'}`, background: fStarred ? 'rgba(251,191,36,.14)' : 'var(--bg2)', color: fStarred ? '#fbbf24' : MUTED, fontWeight: fStarred ? 800 : 500, whiteSpace: 'nowrap' }}>★ Starred only{starredCount ? ` (${starredCount})` : ''}</button></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Origin<select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable</option><option value="caution">Caution</option><option value="none">None</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
@@ -343,7 +359,8 @@ export default function WatchlistHub({ onDrill }: Props) {
                   style={{ background: hasPlan ? 'linear-gradient(180deg, rgba(22,52,42,.74), rgba(15,32,26,.7))' : 'linear-gradient(180deg, rgba(30,41,59,.74), rgba(15,23,42,.68))', border: hasPlan ? `1px solid ${GREEN}77` : '1px solid rgba(148,163,184,.22)', borderLeft: `4px solid ${it.directive_id ? PURPLE : originColor(it.origin_system)}`, borderRadius: 13, padding: 16, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: hasPlan ? `0 0 0 1px ${GREEN}44, 0 0 22px rgba(34,197,94,.18), 0 10px 28px rgba(0,0,0,.2)` : '0 10px 28px rgba(0,0,0,.18)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {it.hermes_rank != null && <span title={`Hermes composite ${it.hermes_composite_score} · confidence ${it.hermes_score_components?._confidence ?? '—'} · coverage ${it.hermes_score_components?._coverage ?? '—'}`} style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(168,85,247,.22)', color: '#e9d5ff', cursor: 'help' }}>★#{it.hermes_rank} · {Number(it.hermes_composite_score).toFixed(0)}</span>}
+                      <button onClick={e => { e.stopPropagation(); toggleStar(it) }} title={isStarred(it) ? 'operator-starred — shows first + faster refresh; click to unstar' : 'star this symbol — always shows first + faster entry-plan refresh'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 17, padding: 0, lineHeight: 1, color: isStarred(it) ? '#fbbf24' : MUTED }}>{isStarred(it) ? '★' : '☆'}</button>
+                      {it.hermes_rank != null && <span title={`Hermes composite ${it.hermes_composite_score} · confidence ${it.hermes_score_components?._confidence ?? '—'} · coverage ${it.hermes_score_components?._coverage ?? '—'}`} style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(168,85,247,.22)', color: '#e9d5ff', cursor: 'help' }}>#{it.hermes_rank} · {Number(it.hermes_composite_score).toFixed(0)}</span>}
                       <span style={{ fontWeight: 950, color: TEXT0, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
                       {it.private_nontradeable && <span title={it.private_note} style={{ fontSize: 9.5, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,.2)', color: '#fca5a5', border: '1px solid #ef4444', cursor: 'help' }}>⚠ PRIVATE · {it.private_company} — NOT A PUBLIC TICKER</span>}
                       {hasPlan && !it.private_nontradeable && <span title="entry plan ready — limit/stop/exit-ladder set" style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: GREEN + '26', color: '#bbf7d0', border: `1px solid ${GREEN}77` }}>🎯 PLAN</span>}
