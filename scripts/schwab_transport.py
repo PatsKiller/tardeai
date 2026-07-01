@@ -161,6 +161,61 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     except Exception:
         # Never fail-open on a guard error path other than the explicit duplicate block.
         pass
+    # ── P1 duplicate-stop guard (cross-origin) ──────────────────────────────────
+    # The idempotency fence above only catches a re-submit of the SAME intent. It does NOT catch a
+    # SECOND stop when the broker ALREADY has a live SELL stop from a different source (e.g. one placed
+    # manually in ToS — the ARKQ case). Two live SELL stops on the same shares = over-sell / naked risk.
+    # Rule: refuse to place a SELL stop when the broker shows a live SELL stop on this symbol, UNLESS the
+    # only such order is the one this intent explicitly replaces (replace_order_id, already cancelled just
+    # above in the confirm path). Fails CLOSED. Distinguishes pilot- vs manually-placed for the message.
+    _is_sell = str(legs.get("instruction", "")).upper() in ("SELL", "SELL_SHORT")
+    _is_stop = "STOP" in str(order_spec.get("orderType", "")).upper() or "TRAIL" in str(order_spec.get("orderType", "")).upper()
+    if _is_sell and _is_stop and _symbol:
+        try:
+            _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+            _replace_id = str(_ev.get("replace_order_id") or "").strip()
+            _raw = get_orders_raw(account_key)
+            # A degraded read (NOT_PROVEN/error/needs_hash dict) must NOT be read as "no orders" —
+            # that would fail-OPEN. Only a successful order LIST (or {"orders": [...]}) is trusted.
+            if isinstance(_raw, dict) and str(_raw.get("status", "")).upper() in (
+                    "NOT_PROVEN", "ERROR", "NEEDS_ACCOUNT_HASH", "DEGRADED"):
+                raise NotProvenWrite(
+                    f"duplicate_stop_guard_unverified for {_symbol}: broker order read is degraded "
+                    f"({_raw.get('status')}) — refusing to place to avoid a possible duplicate. Retry.")
+            _orders = _raw if isinstance(_raw, list) else ((_raw.get("orders") if isinstance(_raw, dict) else []) or [])
+            _live_states = ("WORKING", "AWAITING_STOP_CONDITION", "PENDING_ACTIVATION", "QUEUED", "ACCEPTED", "AWAITING_MANUAL_REVIEW")
+            _conflicts = []
+            for _o in (_orders if isinstance(_orders, list) else []):
+                _ol = (_o.get("orderLegCollection") or [{}])[0]
+                _oi = (_ol.get("instrument") or {})
+                if (str(_oi.get("symbol", "")).upper() == _symbol.upper()
+                        and str(_ol.get("instruction", "")).upper() in ("SELL", "SELL_SHORT")
+                        and str(_o.get("status", "")).upper() in _live_states
+                        and ("STOP" in str(_o.get("orderType", "")).upper() or "TRAIL" in str(_o.get("orderType", "")).upper())):
+                    _oid = str(_o.get("orderId") or "")
+                    if _oid and _oid == _replace_id:
+                        continue   # the order we are replacing (already cancelled) — allowed
+                    _conflicts.append(_oid)
+            if _conflicts:
+                _oid0 = _conflicts[0]
+                cur.execute("SELECT 1 FROM schwab_pilot_orders WHERE broker_order_id=%s AND account_key=%s LIMIT 1",
+                            (_oid0, account_key))
+                _is_pilot = cur.fetchone() is not None
+                if _is_pilot:
+                    raise NotProvenWrite(
+                        f"duplicate_stop_blocked: {_symbol} already has a live app-placed SELL stop "
+                        f"(order {_oid0}). Replace it (cancel-then-place) rather than adding a second stop.")
+                raise NotProvenWrite(
+                    f"duplicate_stop_blocked: {_symbol} already has a live MANUAL SELL stop (order {_oid0}) "
+                    "placed in ToS — Trade AI cannot cancel a non-pilot order. Modify or cancel it in ToS "
+                    "first, then place here. No order was sent (avoiding a duplicate stop).")
+        except NotProvenWrite:
+            raise
+        except Exception:
+            # Read/parse failure must NOT fail-open on a safety guard — block conservatively.
+            raise NotProvenWrite(
+                f"duplicate_stop_guard_unverified for {_symbol}: could not confirm the broker has no "
+                "existing SELL stop — refusing to place to avoid a possible duplicate. Retry or check ToS.")
     # persist BEFORE any HTTP — Schwab does not dedupe; this row is the reconcile anchor on timeout
     cur.execute("""INSERT INTO schwab_pilot_orders
                      (correlation_id, intent_id, account_key, symbol, side, qty, limit_price, order_spec, status, kind)
