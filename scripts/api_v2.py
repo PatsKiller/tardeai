@@ -542,13 +542,18 @@ def _after_hours_ack(body=None):
     return _after_hours_override_enabled() and bool((body or {}).get("after_hours_ack"))
 
 
+# Holdings label accounts short (schwab_roth); broker_accounts uses the canonical key (schwab_roth_ira).
+# Self-contained on purpose: the previous version imported brokers.protective_stop_pilot.resolve_account_key,
+# which no longer exists — the import raised, the except returned the raw key unresolved, and every
+# schwab_roth position falsely read as "not armed / ticket mode" even though the DB account IS armed.
+_PROTECTIVE_ACCOUNT_ALIASES = {
+    "schwab_roth": "schwab_roth_ira",
+    "schwab_rollover": "schwab_rollover_ira",
+}
 def _resolve_protective_account_key(account_key: str) -> str:
-    """Holdings may label schwab_roth; broker_accounts uses schwab_roth_ira."""
-    try:
-        from brokers.protective_stop_pilot import resolve_account_key
-        return resolve_account_key(account_key)
-    except Exception:
-        return (account_key or "").strip()
+    """Resolve a holdings account label to the canonical broker_accounts.account_key."""
+    raw = (account_key or "").strip()
+    return _PROTECTIVE_ACCOUNT_ALIASES.get(raw.lower(), raw)
 
 
 def _one_symbol_canary_conflict(symbol, account):
