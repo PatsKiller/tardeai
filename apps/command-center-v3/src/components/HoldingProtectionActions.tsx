@@ -647,7 +647,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           : !quoteFresh ? `stale — refresh price${rd.quote_age_sec != null ? ` (${Math.round(rd.quote_age_sec / 60)}m old)` : ''}` : 'fresh'
         const sessionStatus: 'ok' | 'warn' | 'block' = session === 'regular' ? 'ok' : (session === 'after_hours' || session === 'pre_market') ? 'warn' : 'block'
         const rows: { label: string; status: 'ok' | 'warn' | 'block'; value: string }[] = [
-          { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-evidence PR33 2026-06-30' },
+          { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-audit-sync 2026-07-01' },
           { label: 'Quote', status: quoteStatus, value: quoteValue },
           { label: 'Session', status: sessionStatus, value: session.replace(/_/g, '-') },
           { label: 'Quote raw / normalized', status: quoteParseOk ? 'ok' : 'block', value: `${String(rd.quote_raw ?? '—')} → ${String(rd.quote_normalized ?? 'unparseable')}` },

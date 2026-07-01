@@ -148,7 +148,7 @@ def _get_stop_overrides() -> set:
         return _override_cache["symbols"]
 
 
-_STOP_READINESS_BUILD = "cc-v3 stop-evidence PR33 2026-06-30"
+_STOP_READINESS_BUILD = "cc-v3 stop-audit-sync 2026-07-01"
 _SCHWAB_VALIDATOR_CACHE = {"ts": 0.0, "result": None}
 
 

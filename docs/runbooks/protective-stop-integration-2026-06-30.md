@@ -2,11 +2,9 @@
 
 ## Scope
 
-**Runtime branch (deployed UI):** `runtime/pr33-stop-evidence-deploy` — commit `df269ed2` (preflight UX 2A/3A/5A).
+**Deployed branch:** `main` (merged 2026-07-01). Historical integration source: `fix/stop-execution-journal-reentry-integration` (behind `main` — do not merge as-is).
 
-**Integration branch (stack source):** `fix/stop-execution-journal-reentry-integration`.
-
-This branch stacks the DB timeout guard, holding quote timestamp fix, session-aware quote freshness, click-time preflight UX, OCO DD hardening, stop-management UI decision layer, and stop lock-in trailing advisory. It does not enable Schwab OCO brackets.
+Stacks: DB timeout guard, quote timestamps, session-aware freshness, click-time preflight UX (1A–5A), Stop Management tab, duplicate-stop guard (P1–P3), evidence-hash 2FA fix, family-floor reconciliation, OCO DD hardening, lock-in trailing advisory. Does not enable Schwab OCO brackets.
 
 Draft PR: https://github.com/PatsKiller/tardeai/pull/33
 
@@ -191,7 +189,7 @@ Operator UX choices locked **2026-06-30** on `runtime/pr33-stop-evidence-deploy`
 
 **5A holding patch:** `PortfolioHub` `onPreflightUpdate` merges into local state — `current_price`, `source_timestamp`, `price_as_of`, `market_value`, protection chip — so the card above the stop panel reflects the validated quote.
 
-**Build marker:** `cc-v3 preflight-ux-2a3a5a 2026-06-30` (footer of Command Center v3).
+**Build marker:** `cc-v3 stop-audit-sync 2026-07-01` (footer of Command Center v3).
 
 ## Quote Timestamp Normalization & After-Hours Policy
 
@@ -228,15 +226,15 @@ triggered. (During the dead overnight window the quote will be stale → `BLOCKE
 
 ## Validation Snapshot
 
-Last validation on runtime branch `runtime/pr33-stop-evidence-deploy` (commit `df269ed2`):
+Last validation on `main` (2026-07-01 hygiene pass):
 
 - `tests/test_stop_fixed_trailing_validation.py` + `tests/test_stop_management_decision_logic.py` +
-  `tests/test_stop_management_ui_hardening.py` (incl. test_16 live-stops/review tooltips, test_17 click
-  preflight, test_18 PortfolioHub holding patches): **40 passed**.
+  `tests/test_stop_management_ui_hardening.py` (incl. test_16–18): **40 passed**.
 - `npm run build` in `apps/command-center-v3`: passed (tsc + vite).
-- Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`.
-- UI assertions: `portfolio/llm-coverage` in preflight path; `preflight-diff` + `onPreflightUpdate` present;
-  session-aware quote freshness (15m regular / 60m extended).
+- Build marker: `cc-v3 stop-audit-sync 2026-07-01` (unified across App, api_v2, tests, docs).
+- UI assertions: preflight chain (`refresh-quote` → `llm-coverage` → `live-stops` → `stop-readiness`);
+  `preflight-diff` + `onPreflightUpdate`; session-aware quote freshness (15m regular / 60m extended).
+- **Not wired (pending approval):** Open Trades preflight; `stop_out_reentry_watch` API/UI.
 
 Prior validation on integration branch `fix/stop-execution-journal-reentry-integration`:
 

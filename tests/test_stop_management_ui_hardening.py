@@ -153,7 +153,7 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 preflight-ux-2a3a5a 2026-06-30" in src
+    assert "cc-v3 stop-audit-sync 2026-07-01" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():

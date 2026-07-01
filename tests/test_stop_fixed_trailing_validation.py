@@ -143,10 +143,11 @@ def test_trailing_aligned_passes(tmp_path):
     assert r["canRequestLive"] is True
 
 
-def test_trailing_mismatch_blocks(tmp_path):
+def test_trailing_mismatch_blocks_when_trail_looser_than_advisory_floor(tmp_path):
+    """Only block when trail start is >3% below the advisory floor (63e705f6). 10% on 130 → $117 vs $118.7 is OK."""
     js = compile_stop_management(tmp_path)
     now = 1_751_280_000_000
-    r = run_logic(
+    ok = run_logic(
         js,
         f"""m.buildStopLogic({{
           h: {{ symbol: 'V', account: 'schwab_roth', shares: 10, current_price: 130.0 }},
@@ -156,8 +157,19 @@ def test_trailing_mismatch_blocks(tmp_path):
           nowMs: {now}
         }})""",
     )
-    assert any(b["code"] == "trail_start_mismatch" for b in r["blockers"])
-    assert r["canRequestLive"] is False
+    assert not any(b["code"] == "trail_start_mismatch" for b in ok["blockers"])
+    blocked = run_logic(
+        js,
+        f"""m.buildStopLogic({{
+          h: {{ symbol: 'V', account: 'schwab_roth', shares: 10, current_price: 130.0 }},
+          pr: {{ price: 130.0, stop_price: 118.7, source_broker: 'schwab', source_timestamp: '{_fresh_ts(now)}' }},
+          trailPct: 15,
+          orderKind: 'TRAILING',
+          nowMs: {now}
+        }})""",
+    )
+    assert any(b["code"] == "trail_start_mismatch" for b in blocked["blockers"])
+    assert blocked["canRequestLive"] is False
 
 
 def test_trailing_live_broker_null_stop_price_is_live(tmp_path):
@@ -289,8 +301,8 @@ def test_math_trail_start_v_canary_8_7_pct(tmp_path):
     assert not any(b["code"] == "trail_start_mismatch" for b in r["blockers"])
 
 
-def test_math_floor_mismatch_when_stop_tighter_than_family_floor(tmp_path):
-    """HPE-like: 3.96% distance vs 5% position floor → floor_mismatch."""
+def test_math_family_floor_reconciliation_widens_sub_floor_advisory(tmp_path):
+    """HPE-like: frozen advisory 42.19 is inside 5% floor after drift → widen to floor, no floor_mismatch."""
     js = compile_stop_management(tmp_path)
     r = run_logic(
         js,
@@ -304,9 +316,11 @@ def test_math_floor_mismatch_when_stop_tighter_than_family_floor(tmp_path):
           nowMs: {1_751_280_000_000}
         }})""",
     )
-    assert abs(r["distancePct"] - 3.96) < 0.1
-    assert r["floor_math_consistent"] is False
-    assert any(b["code"] == "floor_mismatch" for b in r["blockers"])
+    assert abs(r["advisoryStop"] - 41.73) < 0.02
+    assert abs(r["distancePct"] - 5.0) < 0.15
+    assert r["floor_math_consistent"] is True
+    assert not any(b["code"] == "floor_mismatch" for b in r["blockers"])
+    assert "widened" in r["familyFloorLabel"].lower()
 
 
 def test_math_live_stop_delta_direction_long_position(tmp_path):
