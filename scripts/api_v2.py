@@ -4972,7 +4972,9 @@ def _wl_items(query: dict = None):
     rows = _db_query(f"""
         WITH picked AS MATERIALIZED (
             SELECT * FROM (
-                SELECT DISTINCT ON (wi.symbol) wi.*
+                SELECT DISTINCT ON (wi.symbol) wi.*,
+                       EXISTS (SELECT 1 FROM operator_starred_symbols s
+                               WHERE upper(s.symbol) = upper(wi.symbol)) AS starred
                 FROM watchlist_items wi
                 WHERE {where}
                 ORDER BY wi.symbol,
@@ -4980,7 +4982,8 @@ def _wl_items(query: dict = None):
                          (wi.source = 'personal_watchlist') DESC,
                          wi.first_seen_at ASC
             ) dedup
-            ORDER BY (COALESCE(in_directive_watch, false) = false),
+            ORDER BY (NOT starred),          -- operator-starred always make the top-200 window + sort first
+                     (COALESCE(in_directive_watch, false) = false),
                      (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
                      {sort} LIMIT 200
         )
@@ -5040,7 +5043,8 @@ def _wl_items(query: dict = None):
                    target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
             FROM watchlist_entry_plans wep WHERE wep.symbol = p.symbol
             ORDER BY created_at DESC LIMIT 1) ep ON true
-        ORDER BY (COALESCE(p.in_directive_watch, false) = false),
+        ORDER BY (NOT p.starred),           -- operator-starred first
+                 (COALESCE(p.in_directive_watch, false) = false),
                  (p.status <> 'active'),
                  {sort_p}
     """, params) or []
@@ -27714,6 +27718,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/watch/directives":
         try:
             return _watch_directive_create(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    # Operator star toggle — starred symbols always make the watchlist window, sort first, and get a
+    # faster entry-plan refresh cadence (see watchlist_entry_planner._weekly_drain_clause). Advisory.
+    if method == "POST" and base_path == "/api/v2/watchlist/star":
+        try:
+            sym = str((body or {}).get("symbol", "")).strip().upper()
+            if not sym:
+                return 400, {"ok": False, "error": "symbol required"}
+            starred = bool((body or {}).get("starred", True))
+            _db_query("""CREATE TABLE IF NOT EXISTS operator_starred_symbols (
+                           symbol text PRIMARY KEY, starred_at timestamptz NOT NULL DEFAULT now(),
+                           starred_by text DEFAULT 'operator')""", fetch="none")
+            if starred:
+                _db_query("INSERT INTO operator_starred_symbols(symbol) VALUES (%s) ON CONFLICT (symbol) DO NOTHING",
+                          [sym], fetch="none")
+            else:
+                _db_query("DELETE FROM operator_starred_symbols WHERE upper(symbol)=upper(%s)", [sym], fetch="none")
+            return 200, {"ok": True, "symbol": sym, "starred": starred}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if method == "POST" and base_path == "/api/v2/hermes/curate-top20":
