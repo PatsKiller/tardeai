@@ -1275,8 +1275,21 @@ def portfolio_holdings():
     # Quote-source fetch times — so each holding can carry a source_timestamp the protective-stop gate uses
     # to judge freshness (without it the gate reads "Price timestamp: missing" and blocks every live stop).
     _live_fv_ts: dict[str, str] = {}
-    for _qr in (_db_query("""SELECT DISTINCT ON (symbol) symbol, price, fetched_at
-                            FROM market_quotes ORDER BY symbol, fetched_at DESC""") or []):
+    _holding_symbols = sorted({
+        str(p.get("symbol") or "").upper()
+        for p in holdings
+        if str(p.get("symbol") or "").strip()
+    })
+    _mq_rows = []
+    if _holding_symbols:
+        _mq_rows = _db_query(
+            """SELECT DISTINCT ON (symbol) symbol, price, fetched_at
+               FROM market_quotes
+               WHERE symbol = ANY(%s)
+               ORDER BY symbol, fetched_at DESC""",
+            (_holding_symbols,),
+        ) or []
+    for _qr in _mq_rows:
         try:
             _smq = (_qr.get("symbol") or "").upper()
             _live_mq[_smq] = float(_qr["price"])

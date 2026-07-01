@@ -118,7 +118,7 @@ export default function PortfolioHub({ onDrill }: Props) {
     } catch { setGapPropose(p => ({ ...p, [symbol]: 'error' })) }
   }
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
-  const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
+  const { data: holdings, loading: holdingsLoading, error: holdingsError, stale: holdingsStale } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000)
   const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
@@ -141,6 +141,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const sectorsByAccount = overview?.sectors_by_account ?? {}
   const sectors = (acctFilter && sectorsByAccount[acctFilter]) ? sectorsByAccount[acctFilter] : (overview?.sectors ?? [])
   const allHoldings = holdings?.holdings ?? []
+  const holdingsPending = !holdings && holdingsLoading
+  const holdingsUnavailable = !holdings && !!holdingsError
   const payers = divs?.payers ?? []
 
   // ── Account filter: chips derived from holdings, with per-account counts + value ──
@@ -182,9 +184,14 @@ export default function PortfolioHub({ onDrill }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Portfolio</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{holdingsList.length} holdings · {fmt$(viewTotal, 0)}
-            {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
-            {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
+            {!holdingsPending && !holdingsUnavailable && <>
+              {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
+              {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}
+              {holdingsStale && <span style={{ color: '#f59e0b' }}> · refreshing</span>}
+            </>}
+          </div>
           {priceStamp && (
             <div
               title={holdings?.pricing?.note ?? 'Live price overlay per account: Schwab broker sync; Fidelity Finviz/market_quotes'}
@@ -504,7 +511,9 @@ export default function PortfolioHub({ onDrill }: Props) {
                 )
               })}
             </div>
-            {holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
+            {holdingsPending && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>Loading holdings from /api/v2/portfolio/holdings…</div>}
+            {holdingsUnavailable && <div style={{ padding: 20, color: '#f59e0b', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 10 }}>Holdings request is still retrying: {holdingsError}</div>}
+            {!holdingsPending && !holdingsUnavailable && holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
 
             {/* pagination */}
             {pages > 1 && (
