@@ -4907,82 +4907,110 @@ def _wl_items(query: dict = None):
         params.append(q["status"][0] if isinstance(q["status"], list) else q["status"])
     where = " AND ".join(conditions)
     sort = "updated_at DESC"
+    sort_p = "p.updated_at DESC"
     if q.get("sort"):
         s = (q["sort"][0] if isinstance(q["sort"], list) else q["sort"])
         sort_map = {"score": "score DESC NULLS LAST", "symbol": "symbol", "updated": "updated_at DESC",
                     "hermes": "hermes_rank ASC NULLS LAST, hermes_composite_score DESC NULLS LAST"}
+        # p.-qualified twin used in the enrichment step (where `symbol`/`updated_at`/etc. would otherwise be
+        # ambiguous against the joined tables). Must stay in lock-step with sort_map above.
+        sort_map_p = {"score": "p.score DESC NULLS LAST", "symbol": "p.symbol", "updated": "p.updated_at DESC",
+                      "hermes": "p.hermes_rank ASC NULLS LAST, p.hermes_composite_score DESC NULLS LAST"}
         sort = sort_map.get(s, sort)
+        sort_p = sort_map_p.get(s, sort_p)
 
+    # Two-step so enrichment runs for ONLY the 200 returned symbols, not the whole ~4.4k-name non-removed
+    # universe. The old single-pass shape enriched every row THEN applied LIMIT 200 — the planner can't push
+    # the limit down through DISTINCT ON + the multi-key display sort → it hash-joins the full strategy/
+    # research/synthesis/maturity tables (~17s on the request path). Step 1 (`picked`) is a cheap
+    # base-table-only dedup + display sort + LIMIT 200 (~0.3s). Every dedup/sort column (symbol, status,
+    # source, first_seen_at, in_directive_watch, updated_at, score, hermes_rank, hermes_composite_score)
+    # lives on watchlist_items, so nothing enrichment-derived is needed to pick the window.
+    #
+    # picked is MATERIALIZED (a hard optimization barrier) and ALL enrichment is LEFT JOIN LATERAL, NOT plain
+    # LEFT JOIN. This is deliberate and load-bearing: with plain LEFT JOINs the PG17 planner *still* rebuilds
+    # the enrichment over the full 4.4k universe via hash joins and joins the result to picked (measured 8s,
+    # and raising join_collapse_limit does NOT fix it). LATERAL forces a per-row index lookup driven by the
+    # 200 picked rows → ~0.4s. Every enrichment table is 1:1 on symbol (symbol is the pkey), so LIMIT 1 is
+    # exact. Reversible (pure query shape); identical output schema + row set + order to the old query.
+    #
     # DISTINCT ON (symbol) — one row per symbol (the watchlist is seeded from multiple discovery sources, so a
     # symbol can have several rows). Keep the best row: directive-linked first, then operator-seeded, then the
-    # oldest. The outer query then applies the display sort + directive pin. Reversible (pure query shape).
+    # oldest. Filter columns MUST stay qualified with wi. (see note above).
     rows = _db_query(f"""
-        SELECT * FROM (
-            SELECT DISTINCT ON (wi.symbol) wi.*,
-                   sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
-                   sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
-                   sc.confidence as strategy_confidence, sc.account_fit,
-                   sc.technical_summary, sc.needs_iteration as strategy_needs_iteration,
-                   rc.latest_summary as research_summary, rc.latest_recommendation,
-                   rc.confidence as research_confidence,
-                   am.analysis_stage, am.maria_status, am.steph_status,
-                   am.risk_status, am.tax_status, am.full_chain_status,
-                   am.final_synthesis_status, am.required_agents, am.completed_agents,
-                   am.needs_iteration as maturity_needs_iteration,
-                   am.decision_quality_status, am.actionable as decision_actionable,
-                   sm.in_portfolio,
-                   ep.setup_type AS entry_setup, ep.entry_zone_low, ep.entry_zone_high,
-                   ep.limit_price AS entry_limit, ep.stop_price AS entry_stop,
-                   ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
-                   ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
-                   ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
-                   ep.model_used AS entry_model,
-                   fs.recommendation AS synthesis_recommendation,
-                   fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
-                   fs.model_used AS cio_model_used,
-                   sp.sector AS profile_sector, sp.industry AS profile_industry,
-                   sp.instrument_type AS instrument_type,
-                   sp.expense_ratio AS expense_ratio,
-                   sp.analyst_look_through_pct AS analyst_look_through_pct,
-                   sp.ytd_return_pct AS ytd_return_pct,
-                   sp.dividend_yield_pct AS dividend_yield_pct,
-                   sp.ttm_dividend AS ttm_dividend,
-                   sp.description_1s AS profile_description,
-                   cat.catalyst_type, cat.headline AS catalyst_headline,
-                   cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
-                   cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
-                   (SELECT string_agg(DISTINCT wd.label, ' · ' ORDER BY wd.label)
-                    FROM watch_directives wd
-                    WHERE wd.kind='ticker' AND upper(wd.spec->>'symbol')=upper(wi.symbol)
-                      AND wd.label IS NOT NULL AND wd.label <> upper(wi.symbol)) AS watch_lists
-            FROM watchlist_items wi
-            LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
-            LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
-            LEFT JOIN watchlist_final_synthesis fs ON fs.symbol = wi.symbol
-            LEFT JOIN watchlist_analysis_maturity am ON am.symbol = wi.symbol
-            LEFT JOIN watchlist_symbol_master sm ON sm.symbol = wi.symbol
-            LEFT JOIN symbol_profiles sp ON upper(sp.symbol) = upper(wi.symbol)
-            LEFT JOIN LATERAL (
-                SELECT catalyst_type, headline, severity, impact_score, source_url,
-                       COALESCE(published_at, created_at) AS ts
-                FROM catalyst_events ce
-                WHERE upper(ce.symbol) = upper(wi.symbol) AND ce.catalyst_type <> 'other'
-                  AND COALESCE(ce.published_at, ce.created_at) > now() - interval '45 days'
-                ORDER BY COALESCE(ce.published_at, ce.created_at) DESC LIMIT 1) cat ON true
-            LEFT JOIN LATERAL (
-                SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
-                       target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
-                FROM watchlist_entry_plans wep WHERE wep.symbol = wi.symbol
-                ORDER BY created_at DESC LIMIT 1) ep ON true
-            WHERE {where}
-            ORDER BY wi.symbol,
-                     (COALESCE(wi.in_directive_watch, false) = false),
-                     (wi.source = 'personal_watchlist') DESC,
-                     wi.first_seen_at ASC
-        ) dedup
-        ORDER BY (COALESCE(in_directive_watch, false) = false),
-                 (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
-                 {sort} LIMIT 200
+        WITH picked AS MATERIALIZED (
+            SELECT * FROM (
+                SELECT DISTINCT ON (wi.symbol) wi.*
+                FROM watchlist_items wi
+                WHERE {where}
+                ORDER BY wi.symbol,
+                         (COALESCE(wi.in_directive_watch, false) = false),
+                         (wi.source = 'personal_watchlist') DESC,
+                         wi.first_seen_at ASC
+            ) dedup
+            ORDER BY (COALESCE(in_directive_watch, false) = false),
+                     (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
+                     {sort} LIMIT 200
+        )
+        SELECT p.*,
+               sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
+               sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
+               sc.confidence as strategy_confidence, sc.account_fit,
+               sc.technical_summary, sc.needs_iteration as strategy_needs_iteration,
+               rc.latest_summary as research_summary, rc.latest_recommendation,
+               rc.confidence as research_confidence,
+               am.analysis_stage, am.maria_status, am.steph_status,
+               am.risk_status, am.tax_status, am.full_chain_status,
+               am.final_synthesis_status, am.required_agents, am.completed_agents,
+               am.needs_iteration as maturity_needs_iteration,
+               am.decision_quality_status, am.actionable as decision_actionable,
+               sm.in_portfolio,
+               ep.setup_type AS entry_setup, ep.entry_zone_low, ep.entry_zone_high,
+               ep.limit_price AS entry_limit, ep.stop_price AS entry_stop,
+               ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
+               ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
+               ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
+               ep.model_used AS entry_model,
+               fs.recommendation AS synthesis_recommendation,
+               fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
+               fs.model_used AS cio_model_used,
+               sp.sector AS profile_sector, sp.industry AS profile_industry,
+               sp.instrument_type AS instrument_type,
+               sp.expense_ratio AS expense_ratio,
+               sp.analyst_look_through_pct AS analyst_look_through_pct,
+               sp.ytd_return_pct AS ytd_return_pct,
+               sp.dividend_yield_pct AS dividend_yield_pct,
+               sp.ttm_dividend AS ttm_dividend,
+               sp.description_1s AS profile_description,
+               cat.catalyst_type, cat.headline AS catalyst_headline,
+               cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
+               cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
+               (SELECT string_agg(DISTINCT wd.label, ' · ' ORDER BY wd.label)
+                FROM watch_directives wd
+                WHERE wd.kind='ticker' AND upper(wd.spec->>'symbol')=upper(p.symbol)
+                  AND wd.label IS NOT NULL AND wd.label <> upper(p.symbol)) AS watch_lists
+        FROM picked p
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_strategy_cards t WHERE t.symbol = p.symbol LIMIT 1) sc ON true
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_research_cards t WHERE t.symbol = p.symbol LIMIT 1) rc ON true
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_final_synthesis t WHERE t.symbol = p.symbol LIMIT 1) fs ON true
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_analysis_maturity t WHERE t.symbol = p.symbol LIMIT 1) am ON true
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_symbol_master t WHERE t.symbol = p.symbol LIMIT 1) sm ON true
+        LEFT JOIN LATERAL (SELECT * FROM symbol_profiles t WHERE upper(t.symbol) = upper(p.symbol) LIMIT 1) sp ON true
+        LEFT JOIN LATERAL (
+            SELECT catalyst_type, headline, severity, impact_score, source_url,
+                   COALESCE(published_at, created_at) AS ts
+            FROM catalyst_events ce
+            WHERE upper(ce.symbol) = upper(p.symbol) AND ce.catalyst_type <> 'other'
+              AND COALESCE(ce.published_at, ce.created_at) > now() - interval '45 days'
+            ORDER BY COALESCE(ce.published_at, ce.created_at) DESC LIMIT 1) cat ON true
+        LEFT JOIN LATERAL (
+            SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
+                   target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
+            FROM watchlist_entry_plans wep WHERE wep.symbol = p.symbol
+            ORDER BY created_at DESC LIMIT 1) ep ON true
+        ORDER BY (COALESCE(p.in_directive_watch, false) = false),
+                 (p.status <> 'active'),
+                 {sort_p}
     """, params) or []
     _items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
     # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
