@@ -87,6 +87,19 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const [sigTab, setSigTab] = useState('All')
   const [page, setPage] = useState(0)
+  const [focusKey, setFocusKey] = useState<string | null>(null)
+  // From the Stop Management Adjust modal: jump to a holding's card (its inline gated 2FA / manual-ticket panel).
+  const focusHolding = (symbol: string, account: string) => {
+    setTab('Holdings'); setAcctFilter(account); setSigTab('All'); setPage(0)
+    const key = `${symbol}-${account}`; setFocusKey(key)
+    const tryScroll = (n: number) => {
+      const el = document.getElementById(`hold-${key}`)
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+      else if (n < 12) setTimeout(() => tryScroll(n + 1), 120)
+    }
+    setTimeout(() => tryScroll(0), 60)
+    setTimeout(() => setFocusKey(null), 4000)
+  }
   // Diversification gap-fill: LLM design-for-approval + per-ETF propose state
   const [gapDesign, setGapDesign] = useState<any>(null)
   const [gapBusy, setGapBusy] = useState(false)
@@ -213,7 +226,7 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
       </div>
 
-      {tab === 'Stop Management' && <StopManagement />}
+      {tab === 'Stop Management' && <StopManagement onFocusHolding={focusHolding} />}
 
       {tab === 'Holdings' && (() => {
         const rs = rotation?.summary ?? {}
@@ -334,10 +347,12 @@ export default function PortfolioHub({ onDrill }: Props) {
                 const sc = signalColor(h.signal)
                 const ac = acctColor(h.account ?? 'unknown')
                 const dayPct = h.day_change_pct
+                const _isFocus = focusKey === `${h.symbol}-${h.account}`
                 return (
-                  <div key={`${h.symbol}-${h.account}`}
+                  <div key={`${h.symbol}-${h.account}`} id={`hold-${h.symbol}-${h.account}`}
                     onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
-                    style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: `4px solid ${sc === 'var(--text3)' ? ac : sc}`,
+                    style={{ background: 'var(--bg1)', border: _isFocus ? '1px solid #60a5fa' : '1px solid var(--border)', borderLeft: `4px solid ${sc === 'var(--text3)' ? ac : sc}`,
+                      boxShadow: _isFocus ? '0 0 0 2px rgba(96,165,250,.5)' : 'none',
                       borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
                     {/* header: symbol + signal */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
