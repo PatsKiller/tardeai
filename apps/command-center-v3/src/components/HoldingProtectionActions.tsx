@@ -546,6 +546,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           ))}
         </div>
       )}
+      {/* P3 — existing live broker stop: placing a SECOND stop is blocked (duplicate/over-sell guard).
+          Changing it means cancel-then-place; a manually-placed (ToS) order can't be cancelled via API. */}
+      {liveResolved.hasLiveBrokerOrder && (
+        <div style={{ fontSize: 11.5, color: AMBER, marginBottom: 6, padding: '7px 9px', borderRadius: 6, background: `${AMBER}12`, border: `1px solid ${AMBER}45`, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>⚠️ This position already has a live broker stop ({fmtLiveStop(logic)})</div>
+          Placing a <b>second</b> stop is blocked — two SELL stops on the same shares can over-sell. To <b>change</b> it,
+          cancel or modify the existing order {isFidelity ? 'in Fidelity' : 'in ToS'} first, then place the new one here.
+          {!isFidelity && brokerUrl ? <> <a href={brokerUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: BLUE, fontWeight: 700 }}>Open ToS ↗</a></> : null}
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>(One-click in-app Replace — cancel-then-place in a single 2FA — is coming.)</div>
+        </div>
+      )}
       {/* LOCK-IN PROFITS — fixed stop is live, but trailing now locks a HIGHER floor → advise the switch */}
       {lockInTrail && liveFixedStopPx != null && trailingFloorNow != null && (
         <div style={{ fontSize: 11, color: GREEN, fontWeight: 700, marginBottom: 6, padding: '5px 8px', borderRadius: 6, background: `${GREEN}12`, border: `1px solid ${GREEN}45`, lineHeight: 1.45 }}>

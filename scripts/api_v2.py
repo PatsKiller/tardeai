@@ -195,7 +195,9 @@ def _stop_row_narrative(*, sym, is_fidelity, has_active_stop, broker_stop, plann
         new_risk = max((px - planned_stop) * q, 0.0)
         narrative = (f"Your live stop ${broker_stop:.2f} sits below the advised ${planned_stop:.2f} — about "
                      f"{money(extra)} MORE open risk than the methodology recommends ({dp:.1f}% below price).")
-        next_action = f"Tighten stop to ${planned_stop:.2f} (Adjust → Request Schwab stop via 2FA)."
+        next_action = (f"Tighten to ${planned_stop:.2f} — cancel/modify the existing ${broker_stop:.2f} stop first "
+                       f"({'in ToS if placed manually' if not is_fidelity else 'in Fidelity'}), then place. "
+                       "A second stop is blocked to avoid a duplicate.")
         projection = (f"Move ${broker_stop:.2f}→${planned_stop:.2f} on {sell_qty} sh: open risk {money(at_risk)}→"
                       f"{money(new_risk)} (−{money(extra)}); trigger tightens to {((px-planned_stop)/px*100):.1f}% below price.")
 
