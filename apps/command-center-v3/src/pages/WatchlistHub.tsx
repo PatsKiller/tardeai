@@ -129,6 +129,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
+  const [showDirectives, setShowDirectives] = useState(false)   // Watch Directives chip wall — collapsed by default (it's a long list; the Directive filter dropdown still works)
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const PER_PAGE = 24
   useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fSector, fAnalyst, search])   // reset to page 1 on any filter change
@@ -245,11 +246,11 @@ export default function WatchlistHub({ onDrill }: Props) {
 
       {directives.length > 0 && (
         <div style={{ ...panel, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 14, fontWeight: 900, color: TEXT0 }}>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></div>
-            <span style={{ fontSize: 10, color: MUTED }}>{actionableDirs.length} active · sorted by hits + staged</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: showDirectives ? 8 : 0, flexWrap: 'wrap' }}>
+            <button onClick={() => setShowDirectives(v => !v)} title={showDirectives ? 'collapse the directive list' : 'expand the directive list'} style={{ fontSize: 14, fontWeight: 900, color: TEXT0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 11, color: MUTED }}>{showDirectives ? '▾' : '▸'}</span>Watch Directives <span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>· operator standing instructions</span></button>
+            <span style={{ fontSize: 10, color: MUTED }}>{actionableDirs.length} active · sorted by hits + staged{showDirectives ? '' : ' · click to expand'}</span>
           </div>
-          {(() => {
+          {showDirectives && (() => {
             const renderDir = (d: any) => {
               const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0
               return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color="#22d3ee" tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hit{nHits === 1 ? '' : 's'} · {nStaged} staged</div></div>
