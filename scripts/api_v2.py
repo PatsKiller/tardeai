@@ -487,11 +487,22 @@ def _stops_audit_api(query=None):
             sym = str(r.get("symbol") or "").upper()
             if sym_filter and sym != sym_filter:
                 continue
+            # Route/label accurately: stop_confirmations tracks EVERY position's stop status (Schwab + Fidelity),
+            # so "manual" is only correct for Fidelity (no trading API). Schwab positions are 2FA/API-eligible —
+            # an unconfirmed Schwab row means "2FA stop not placed yet", NOT a manual ticket (e.g. SPCX).
+            _acct = str(r.get("account") or "")
+            _is_fid = _acct.startswith("fidelity")
+            _confirmed = bool(r.get("stop_confirmed")) or (r.get("stop_status") == "confirmed")
+            _route = "fidelity_manual" if _is_fid else "schwab_2fa"
+            _ot = ("CONFIRMED" if _confirmed
+                   else "MANUAL — not placed" if _is_fid
+                   else "SCHWAB 2FA — not placed")
             events.append({
                 "kind": "confirmation", "symbol": sym, "account": r.get("account"),
-                "broker": ("fidelity" if str(r.get("account") or "").startswith("fidelity")
-                           else "schwab" if str(r.get("account") or "").startswith("schwab") else None),
-                "order_type": "MANUAL/CONFIRMED", "stop_price": _f_or_none(r.get("stop_price_confirmed")),
+                "broker": ("fidelity" if _is_fid
+                           else "schwab" if _acct.startswith("schwab") else None),
+                "route": _route, "confirmed": _confirmed,
+                "order_type": _ot, "stop_price": _f_or_none(r.get("stop_price_confirmed")),
                 "status": (r.get("stop_status") or ("confirmed" if r.get("stop_confirmed") else "pending")),
                 "channel": r.get("stop_confirmation_source"),
                 "reason": (r.get("stop_exception_reason") or "")[:160] or None,
