@@ -1,9 +1,17 @@
 {
-  "generated_at": "2026-06-29T11:40:00.505505+00:00",
-  "git_head": "7aaf3c11",
-  "files_checked": 1,
-  "findings_count": 0,
-  "by_severity": {},
-  "status": "healthy",
-  "findings": []
+  "generated_at": "2026-06-30T11:40:00.472855+00:00",
+  "git_head": "765886e6",
+  "files_checked": 12,
+  "findings_count": 1,
+  "by_severity": {
+    "P2": 1
+  },
+  "status": "warning",
+  "findings": [
+    {
+      "severity": "P2",
+      "check": "deployment_log_stale",
+      "message": "Code changed but deployment log not updated"
+    }
+  ]
 }
