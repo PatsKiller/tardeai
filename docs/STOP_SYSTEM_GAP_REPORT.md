@@ -69,13 +69,20 @@ risk than the methodology recommends. → Tighten to \$121.97. Projection: open 
 
 ## 4. Genuine remaining gaps (prioritized, recommended next phase)
 
-| # | Gap | Domain | Value | Recommendation |
+| # | Gap | Domain | Value | Status |
 |---|---|---|---|---|
-| 1 | L4 **regime-shift auto-tighten** (Trending→Ranging → tighten 0.5×ATR) | Scalp (Risk tab) | Med | Build — it's ACTIVE per policy but only PARTIAL |
-| 2 | **"Tighten All Trails"** one-click when heat > 3.5% | Scalp (Risk tab) | Med | Build — §8 item #4 PENDING |
-| 3 | ATR-distance + **Trail-Tightness Score** in `ScalpStopMonitorCard` | Scalp (Risk tab) | Low-Med | Build — §4 metrics PARTIAL |
-| 4 | Candlestick **`structure_type`** surfacing (engulfing_low, prev_bar_low…) | Scalp advisory | Low | Enhancement — hybrid already respects structure |
-| 5 | Long/Short mirrored UI treatment | Scalp only | Low | N/A for real holdings (all long) |
+| 1 | L4 **regime-shift auto-tighten** (Trending→Ranging → tighten 0.5×ATR) | Scalp (Risk tab) | Med | **DONE 2026-07-01** — advisory alert + suggestion (`a34951fe`) |
+| 2 | **"Tighten All Trails"** one-click when heat > 3.5% | Scalp (Risk tab) | Med | **DONE 2026-07-01** — `POST /api/v2/scalp/tighten-all` + button (paper) |
+| 3 | ATR-distance + **Trail-Tightness Score** in `ScalpStopMonitorCard` | Scalp (Risk tab) | Low-Med | **DONE 2026-07-01** — added to monitor + card |
+| 4 | Candlestick **`structure_type`** surfacing (engulfing_low, prev_bar_low…) | Scalp advisory | Low | Open — enhancement; hybrid already respects structure |
+| 5 | Long/Short mirrored UI treatment | Scalp only | Low | N/A for real holdings (all long); `direction` tag added |
+
+**Update 2026-07-01:** gaps 1–3 shipped (`a34951fe`) — Layer-4 dynamic automation is now operational
+in advisory/paper mode. Layer-3 trailing execution remains **config-OFF** (unchanged; deliberate). Only
+gap 4 (candlestick structure tagging) remains, and it is a low-value enhancement.
+
+Also shipped 2026-07-01 on the **real-holdings** Stop Management tab (`2fa8da07`): inline plain-English
+narrative + next-action + 2FA trade projection per row, and a top-3 "Next actions" banner.
 
 **Note:** items 1–4 live in the **Risk tab / scalp paper domain**, not the real-holdings Stop Management
 tab. They do not affect the real stops you place via 2FA.
