@@ -106,13 +106,18 @@ def plan(tiers):
         for r in rows:
             if r["id"] in consumed:
                 continue
+            # Operator-authored directives are NEVER family-merged (operator decision 2026-07-01):
+            # each operator standing instruction stays as its own directive. Only think_tank /
+            # challenger / system-generated near-dups collapse onto a survivor.
+            if r["created_by"] == "operator":
+                continue
             fam = canonical_family(r["label"])
             if fam:
                 fam_members[fam].append(r)
         for fam, members in fam_members.items():
             if len(members) < 2:
                 continue  # nothing to merge
-            # survivor = operator wins, then most hits, then oldest (operator decision 2026-07-01)
+            # survivor = author precedence, then most hits, then oldest (no operator members here)
             survivor = min(members, key=_survivor_key)
             dups = [m for m in members if m["id"] != survivor["id"]]
             actions["merges"].append({"family": fam, "survivor": survivor, "dups": dups})

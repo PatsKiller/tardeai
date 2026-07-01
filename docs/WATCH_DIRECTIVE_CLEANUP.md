@@ -25,14 +25,17 @@ re-pointed at the survivor:
 | 1a | Malformed but working themes (`trend analyst` 367 hits, `trend industry` 118 hits) | **Relabel** (stays active, keeps hits) | 2 |
 | 1b | Bare label duplicating a canonical directive (`Energy` → `sector Energy`) | **Merge** (hits reassigned) | 1 |
 | 2 | `claude_challenger` themes with 0 lifetime hits | Archive | 36 |
-| 3 | Near-dup trend families | **Merge** onto one survivor per family, reassign hits | 72 → 9 |
+| 3 | Near-dup trend families (think_tank / challenger only) | **Merge** onto one survivor per family, reassign hits | 60 → 7 |
 
-**Result: 335 → 226 active trend directives (−109).** All 25,198 hit rows preserved (dup
+**Result: 335 → 238 active trend directives (−97).** All 25,198 hit rows preserved (dup
 directives had distinct `surfaced_at`, so hit reassignment hit zero unique-key collisions).
 
-**Survivor precedence (operator decision):** operator-authored directive wins, then most hits,
-then oldest. This protects explicit operator standing instructions from being archived in favor
-of an LLM-generated one — the symbols/hits still consolidate onto the operator's directive.
+**Operator directives are NEVER family-merged (operator decision 2026-07-01).** Each operator
+standing instruction stays as its own directive — only `think_tank` / `claude_challenger` /
+system-generated near-dups collapse. (An earlier draft merged 9 operator directives into
+survivors, including 5 distinct operator option-strategy lenses into one — the review caught that
+and this rule prevents it.) Survivor among the non-operator members = author precedence
+(system > think_tank > challenger), then most hits, then oldest.
 
 Usage:
 ```
