@@ -82,7 +82,12 @@ const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT'
 /** Match brokers/quote_time.py — regular 15m; extended hours 60m (Finviz/Schwab after-hours update slower). */
 const FRESH_MAX_AGE_SEC = 15 * 60
 const AFTER_HOURS_MAX_AGE_SEC = 60 * 60
-const TRAIL_TOLERANCE = 0.35
+// Tolerance (% of price) between a trailing stop's start (current × (1−trail%)) and the advised FIXED stop.
+// These use different methodologies — the fixed stop is swing-low-anchored while the trail is a whole-number
+// % — so they legitimately differ by (|swing-low-dist% − trail%|) + price drift since the advisory ran
+// (commonly 1–3%). 0.35% falsely blocked the advisor's own recommended trail (e.g. V: 10% trail start
+// $307.49 vs swing-low stop $309.00 = 0.44%). 3% still catches a grossly-wrong trail (e.g. 20% vs 10%).
+const TRAIL_TOLERANCE = 3.0
 const STOP_MATCH_TOLERANCE_DOLLARS = 0.05
 const FLOOR_TOLERANCE_PCT = 0.15
 
