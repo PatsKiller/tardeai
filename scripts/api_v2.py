@@ -196,7 +196,11 @@ def _stops_management_api(query=None):
             sym = str(bs.get("symbol", "")).upper()
             acct = str(bs.get("account", ""))
             ot = str(bs.get("order_type") or "").upper()
-            if bs.get("stop_price") is None:
+            # A TRAILING stop carries no fixed stop_price (only a trail offset), so null price is
+            # EXPECTED for trailing and must NOT drop the row — otherwise a live/manual trailing stop
+            # (e.g. CSWC 5% placed on ToS) silently vanishes from the management table while the cards
+            # show it. Matches the snapshot block below. Only skip a null-price NON-trailing entry.
+            if bs.get("stop_price") is None and "TRAIL" not in ot:
                 continue
             live_stops[(sym, acct)] = {
                 "stop_price": bs.get("stop_price"), "order_type": ot,
@@ -320,6 +324,13 @@ def _stops_management_api(query=None):
         adv = advised.get(sym, {})
         ls = live_stops.get((sym, acct)) or {}
         broker_stop = _f(ls.get("stop_price"))
+        is_trailing = bool(ls.get("is_trailing"))
+        broker_trail_off = _f(ls.get("trail_offset"))
+        # A live/manual TRAILING broker stop carries no fixed stop_price — derive its CURRENT trigger from
+        # the broker's trail % (px × (1 − trail%)) so it registers as an active stop (has_active_stop /
+        # broker_stops_active count / not "naked") and gets a real distance, instead of vanishing.
+        if broker_stop is None and is_trailing and broker_trail_off is not None and px is not None:
+            broker_stop = round(px * (1 - broker_trail_off / 100.0), 2)
         planned_stop = adv.get("stop")
         stop = broker_stop if broker_stop is not None else planned_stop
         if stop is None or px is None or qty <= 0:
@@ -334,7 +345,6 @@ def _stops_management_api(query=None):
         dist_r = round((px - stop) / r_unit, 2) if r_unit else None
         unreal_dollars = round((px - basis) * qty, 2) if basis else None
         unreal_r = round((px - basis) / r_unit, 2) if (basis and r_unit) else None
-        is_trailing = bool(ls.get("is_trailing"))
         should_trail = bool(adv.get("trail")) and not is_trailing
         if should_trail:
             trailing_not_active += 1
@@ -397,7 +407,8 @@ def _stops_management_api(query=None):
         # Trailing proposal: width % (advisor trail_offset) + the current-equivalent trigger price.
         # A trailing stop's trigger ratchets up with price, so we surface both the width and where it
         # would sit if armed at the current price (px × (1 − width%)), not a static number.
-        _to = adv.get("trail_offset")
+        # Prefer the BROKER's actual trail width when a live trailing stop exists; else the advisory's.
+        _to = broker_trail_off if (is_trailing and broker_trail_off) else adv.get("trail_offset")
         _trail_pct = float(_to) if (_to not in (None, 0)) else None
         _trail_trigger = round(px * (1 - _trail_pct / 100.0), 2) if (_trail_pct and px) else None
         # Who recommended fixed vs trailing (the advisory is produced by an LLM lane; model_used says which).
