@@ -15,9 +15,10 @@ import { holdingReportEligible } from '../lib/reportLinks'
 import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 import RiskContributionBars from '../components/risk/RiskContributionBars'
 import DrawdownChart from '../components/risk/DrawdownChart'
+import StopManagement from '../components/StopManagement'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
+const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -211,6 +212,8 @@ export default function PortfolioHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {tab === 'Stop Management' && <StopManagement />}
 
       {tab === 'Holdings' && (() => {
         const rs = rotation?.summary ?? {}
