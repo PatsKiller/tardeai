@@ -11,7 +11,11 @@ export default defineConfig({
     {
       name: 'build-meta',
       closeBundle() {
-        const meta = { ui_version: UI_VERSION, built_at: new Date().toISOString() }
+        // ui_version drives the server's forced client-reload (portfolio_server injects a check
+        // vs sessionStorage). It MUST change every build or browsers never auto-pick-up a new
+        // bundle — append a per-build stamp so every deploy triggers a one-time reload.
+        const stamp = Date.now().toString(36)
+        const meta = { ui_version: `${UI_VERSION}+${stamp}`, base_version: UI_VERSION, built_at: new Date().toISOString() }
         fs.writeFileSync(
           path.resolve(__dirname, 'dist/build-meta.json'),
           JSON.stringify(meta, null, 2),
