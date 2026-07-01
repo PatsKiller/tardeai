@@ -246,34 +246,46 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
             rows = [r for r in rows if r["symbol"] in want]
         rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
         rows = rows[:limit]
-        # PRIORITY 2 (operator 2026-06-18: "entry plan for buy strong buy wait and anything operator
-        # entered ... not all"): plan every buy-side-rated RESEARCHED name — recommendation
-        # BUY/STRONG_BUY/ADD/ADD_ON_PULLBACK ("wait"=pullback) from EITHER the research card OR the CIO
-        # final synthesis. No confidence gate. Operator-entered (directive/active) names are already
-        # covered by Priority 1 above. NOT planned in the last 3 days → the overnight cron DRAINS the
-        # qualifying set resumably (buy_rated_cap = per-run batch size) instead of re-planning. Skipped
-        # only when a --symbols filter is in play.
+        # PRIORITY 2 — CONVICTION COMPLETENESS (operator 2026-07-01: "no info should be missing on strong
+        # buy, buy, or wait"): plan every buy-side-rated name — recommendation BUY/STRONG_BUY/ADD/
+        # ADD_ON_PULLBACK ("wait"=pullback) from EITHER the research card OR the CIO final synthesis — so
+        # those cards never show a blank entry plan. ANY status: this now includes directive/active buy
+        # names too (previously excluded, which starved directive buy names below Priority 1's rank cap,
+        # e.g. MRLN). Deduped against Priority 1 (`have`) so nothing is planned twice. NOT planned in the
+        # last 3 days → the overnight cron DRAINS the qualifying set resumably (buy_rated_cap = per-run
+        # batch size, cron sets 250 which exceeds the standing gap). Skipped only under a --symbols filter.
+        # run() routes every one of these through the OAuth lane (they're _buy_rated).
         if buy_rated_cap > 0 and not symbols:
             have = {r["symbol"] for r in rows}
             cur.execute("""SELECT * FROM (
                              SELECT DISTINCT ON (wi.symbol) wi.symbol, wi.hermes_composite_score,
                                wi.hermes_rank, wi.trend, NULL::int AS proposal_id,
                                NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
-                               NULL::numeric AS proposed_target1, NULL::text AS strategy_id
+                               NULL::numeric AS proposed_target1, NULL::text AS strategy_id,
+                               (COALESCE(wi.in_directive_watch,false) OR wi.status='active') AS _displayed
                              FROM watchlist_items wi
                              WHERE wi.symbol ~ '^[A-Z]{1,5}$' AND wi.status <> 'removed'
-                               AND NOT (wi.in_directive_watch OR wi.status='active')
                                AND (
                                  EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol = wi.symbol
                                          AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
                                  OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs WHERE UPPER(fs.symbol) = UPPER(wi.symbol)
                                             AND UPPER(fs.recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
+                                 -- analyst rating too (2026-07-01): the card's top "strong buy"/"buy" is the
+                                 -- analyst recommendation_key, distinct from research/CIO — names like NTST
+                                 -- (analyst strong buy, no research/CIO buy) were slipping through blank.
+                                 OR (SELECT LOWER(yat.recommendation_key) FROM yahoo_analyst_targets_history yat
+                                     WHERE yat.symbol = wi.symbol ORDER BY yat.created_at DESC LIMIT 1)
+                                     IN ('strong_buy','buy')
                                )
                                AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
                                                WHERE ep.symbol = wi.symbol
                                                  AND ep.created_at > now() - interval '3 days')
                              ORDER BY wi.symbol, wi.hermes_composite_score DESC NULLS LAST
-                           ) t ORDER BY hermes_composite_score DESC NULLS LAST LIMIT %s""",
+                           ) t
+                           -- displayed conviction (directive/active + top-rank — what the operator actually
+                           -- sees) fills the cap FIRST, so a low-hermes directive name (e.g. NTST rank ~918)
+                           -- is never crowded out by a deep researched name.
+                           ORDER BY _displayed DESC, hermes_composite_score DESC NULLS LAST LIMIT %s""",
                         (buy_rated_cap,))
             for r in cur.fetchall():
                 d = dict(zip([dd[0] for dd in cur.description], r))
@@ -287,11 +299,33 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
-    if not llm_lane.available(lane):
-        lane = "local"
-    done = failed = alerts = 0
+    base_lane = lane if llm_lane.available(lane) else "local"
+    # STANDING BEHAVIOR (operator 2026-07-01): buy/strong-conviction names get the OAuth review lane
+    # (Grok) instead of the weak local model — "need oauth review not local". Only kicks in when running
+    # in the default local mode (an explicit --lane grok already routes everything through OAuth); the
+    # low-conviction tail stays local to conserve the OAuth lane. Falls back to local if OAuth is down.
+    oauth_lane = "grok" if llm_lane.available("grok") else None
+    upgrade_conviction = base_lane == "local" and oauth_lane is not None
+    buy_strong_syms = set()
+    if upgrade_conviction:
+        cur.execute("""SELECT DISTINCT upper(symbol) FROM (
+                         SELECT symbol FROM watchlist_research_cards
+                           WHERE upper(latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK')
+                         UNION
+                         SELECT symbol FROM watchlist_final_synthesis
+                           WHERE upper(recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK')
+                         UNION
+                         SELECT symbol FROM (
+                           SELECT DISTINCT ON (symbol) symbol, lower(recommendation_key) rk
+                           FROM yahoo_analyst_targets_history ORDER BY symbol, created_at DESC
+                         ) a WHERE rk IN ('strong_buy','buy')
+                       ) x""")
+        buy_strong_syms = {r[0] for r in cur.fetchall()}
+    done = failed = alerts = oauth_used = 0
     for c in _candidates(cur, limit, symbols, scope, buy_rated_cap):
         sym = c["symbol"]
+        # per-symbol lane: buy/strong (P2 tags _buy_rated; P1/on-demand resolved via the set) → OAuth
+        eff_lane = oauth_lane if (upgrade_conviction and (c.get("_buy_rated") or sym.upper() in buy_strong_syms)) else base_lane
         bars = _bars(sym)
         if not bars:
             failed += 1; continue
@@ -310,13 +344,24 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
                        "your zone/limit may agree or amend it — say which in entry_thesis. The proposal "
                        "stays untouched; this is advisory.")
         try:
-            out = llm_lane.generate(prompt, lane=lane, timeout=120)
+            out = llm_lane.generate(prompt, lane=eff_lane, timeout=120)
         except Exception as e:
-            print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
+            # completeness > lane (operator 2026-07-01: "no info should be missing on buy/strong/wait"):
+            # if the OAuth lane errors/rate-limits, fall back to local so the card is never left blank.
+            if eff_lane != base_lane:
+                try:
+                    out = llm_lane.generate(prompt, lane=base_lane, timeout=120)
+                    eff_lane = base_lane
+                except Exception as e2:
+                    print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; continue
+            else:
+                print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
         p = _parse(out)
         if not p:
             print(f"  {sym}: unparseable"); failed += 1; continue
-        model = "grok-3-mini" if lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "local"
+        model = "grok-3-mini" if eff_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "local"
+        if eff_lane == "grok":
+            oauth_used += 1
         # proximity check: already inside the zone upgrades urgency honestly
         urg = p.get("urgency", "watch")
         if p.get("entry_zone_low") and p.get("entry_zone_high") \
@@ -352,7 +397,8 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
                 if _alert(sym, p, urg, t["price"]):
                     cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
                     conn.commit(); alerts += 1
-    print(json.dumps({"lane": lane, "planned": done, "failed": failed, "alerts": alerts,
+    print(json.dumps({"lane": base_lane, "oauth_upgraded": upgrade_conviction, "planned": done,
+                      "via_oauth": oauth_used, "failed": failed, "alerts": alerts,
                       "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}))
 
 
