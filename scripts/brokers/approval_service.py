@@ -546,6 +546,13 @@ def is_fully_approved(intent_id: str) -> bool:
                          AND expires_at > NOW()""", (intent_id,))
         return (cur.fetchone()[0] or 0) >= REQUIRED_CHANNELS
     except Exception:
+        # Never leave the shared global connection in an aborted-transaction state — a swallowed query
+        # error (e.g. a malformed intent_id) would otherwise poison it and silently fail-close every
+        # subsequent gate/query on that connection. Roll back before failing closed.
+        try:
+            _conn().rollback()
+        except Exception:
+            pass
         return False   # fail closed
 
 

@@ -296,6 +296,12 @@ def evaluate_execution_readiness(
                   "submit creates SUBMIT_REQUESTED; live state requires broker ack",
                   severity="info"))
 
+    # NOTE: the hashed snapshot MUST be deterministic for the same decision state — this evidence_hash is
+    # the like-to-like readiness key that evidence_approval.revalidate_before_submit compares stored-vs-
+    # regenerated at submit time. A wall-clock `generated_at` here made the hash change on EVERY call, so
+    # revalidation ALWAYS failed with readiness_hash_changed → the operator could never submit an approved
+    # stop (orphaned, never-used approvals piled up). generated_at is reported in `out` for display, but is
+    # deliberately excluded from the hash. Keep only stable, decision-relevant fields below.
     snapshots = {
         "gate_results": {k: {"ok": v["ok"], "reason": v["reason"]} for k, v in gate_results.items()},
         "correlation_id": correlation_id,
@@ -303,7 +309,6 @@ def evaluate_execution_readiness(
         "asset_class": asset_class,
         "broker": broker,
         "account_key": account_key,
-        "generated_at": _iso(),
     }
     evidence_hash = _evidence_hash(snapshots)
 
