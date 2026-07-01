@@ -102,7 +102,13 @@ export default function RecommendationIntelligence() {
     } catch (e) { setLin({ ok: false, error: e instanceof Error ? e.message : String(e) }) }
     finally { setLinBusy(false) }
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    // deep-link support: /v3/rec-intel?symbol=XYZ (e.g. a Watchlist card's "Rec-Intel →") auto-loads the ticker
+    const s = new URLSearchParams(window.location.search).get('symbol')
+    if (s) lookup(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const perf = d?.performance_by_source ?? []
   const strat = d?.performance_by_strategy ?? []
