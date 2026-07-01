@@ -40,9 +40,16 @@ const fmtLiveStop = (lg: StopLogic) => lg.liveStopIsTrailing && lg.liveTrailPct 
   ? `TRAILING ${lg.liveTrailPct}%` + (lg.liveStop != null ? ` (~$${lg.liveStop.toFixed(2)})` : '')
   : lg.liveStop != null ? `$${lg.liveStop.toFixed(2)}` : 'none'
 
+// Material price-move threshold for the "logic changed — re-confirm" gate. A stop is a % offset, so
+// sub-% ticks during market hours don't change the protective decision. A tight $0.02 ABSOLUTE threshold
+// forced an endless re-confirm loop on any live tick (e.g. V $342.76→$342.39 = 0.1%). 0.4% of price still
+// re-confirms on a real move while ignoring noise. Decision/state/blocker diffs below still fire on their own.
+const MATERIAL_PRICE_MOVE_PCT = 0.4
 function buildPreflightDiff(before: StopLogic, after: StopLogic): PreflightDiff | null {
   const diff: PreflightDiff = {}
-  if (Math.abs((before.currentPrice ?? 0) - (after.currentPrice ?? 0)) > 0.02) {
+  const pxB = before.currentPrice ?? 0
+  const pxA = after.currentPrice ?? 0
+  if (pxB > 0 && Math.abs(pxB - pxA) / pxB * 100 > MATERIAL_PRICE_MOVE_PCT) {
     diff.price = { before: before.currentPrice, after: after.currentPrice }
   }
   if (before.stop_action_decision !== after.stop_action_decision) {
