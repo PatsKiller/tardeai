@@ -85,14 +85,17 @@ def _load_open_scalps():
     rows = _execute("""SELECT id, symbol, entry_price, current_price,
                           COALESCE(current_stop, stop_loss_price, planned_stop) AS stop,
                           shares, dollar_risk, market_regime, recommendation_to_entry_seconds,
-                          breakeven_trigger_r, max_adverse_excursion, trailing_active, initial_stop_atr
+                          breakeven_trigger_r, max_adverse_excursion, trailing_active, initial_stop_atr,
+                          side, structure_type
                    FROM paper_trades WHERE strategy_id='momentum_scalp'
                      AND (lifecycle_state='open' OR status='open')""", fetch="all") or []
     return [{"id": r["id"], "symbol": r["symbol"], "entry": r["entry_price"], "price": r["current_price"],
              "stop": r["stop"], "shares": r["shares"], "dollar_risk": r["dollar_risk"],
              "entry_regime_raw": r["market_regime"], "freshness_s": r["recommendation_to_entry_seconds"],
              "breakeven_trigger_r": r["breakeven_trigger_r"], "mae": r["max_adverse_excursion"],
-             "trailing_active": r["trailing_active"], "atr": r["initial_stop_atr"]} for r in rows]
+             "trailing_active": r["trailing_active"], "atr": r["initial_stop_atr"],
+             "side": (str(r.get("side") or "long").lower() if isinstance(r, dict) else "long"),
+             "structure_type": r.get("structure_type") if isinstance(r, dict) else None} for r in rows]
 
 
 def _enrich(t, lim, current_regime_raw):
@@ -146,6 +149,28 @@ def run():
             continue
         if s["risk_usd"]:
             open_risk += max(0.0, s["risk_usd"])
+        # ── §3 L1 candlestick structure (advisory tag; symmetric long/short) ──
+        s["structure_type"] = t.get("structure_type")   # recorded at entry, if any
+        s["structure"] = None
+        try:
+            import candlestick_structure as cs
+            st = cs.analyze(s["symbol"], direction=t.get("side", "long"), entry_price=s["entry"])
+            if st.get("available"):
+                s["structure"] = {"structure_type": st["structure_type"], "level": st["structure_level"],
+                                  "recommended_stop": st["recommended_stop"], "source": st["recommended_source"],
+                                  "timeframe": st.get("timeframe"), "note": st["note"]}
+                if not s["structure_type"]:
+                    s["structure_type"] = st["structure_type"]
+                # Advisory: structure implies a materially different stop than the live one (> 0.25× ATR).
+                rec, atr = st["recommended_stop"], s.get("atr")
+                if rec is not None and s["stop"] is not None and atr and abs(rec - s["stop"]) > 0.25 * atr:
+                    tighter = (rec > s["stop"]) if t.get("side", "long") == "long" else (rec < s["stop"])
+                    alerts.append({"level": "yellow", "symbol": s["symbol"], "rule": "structure_stop_divergence",
+                                   "msg": f"{s['symbol']} {st['structure_type']} suggests a {'tighter' if tighter else 'wider'} stop "
+                                          f"${rec:.2f} vs live ${s['stop']:.2f} — {st['note']}",
+                                   "suggested_stop": rec})
+        except Exception:
+            pass
         scalps.append(s)
         # ── §5/§7 per-trade alerts (active layers only) ──
         if s["stop_distance_R"] is not None and 0 <= s["stop_distance_R"] < 0.3:
