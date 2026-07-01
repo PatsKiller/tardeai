@@ -57,30 +57,40 @@ health, flags}`; `/api/v2/stops/management` joins it with holdings, advisories, 
 
 Alert level is the **highest** severity any trigger fires. Rules are advisory — they never move a stop by themselves.
 
+> **Distance metric — what actually drives severity.** The primary distance signal is **percent to stop**
+> (`distance_% = (price − stop) / price × 100`), which is reliable for every position. **ATR** (`(price − stop) / ATR`)
+> adds a volatility-aware Amber signal when an advisor ATR is available. **R** (`(price − stop) / (basis − planned_stop)`)
+> is **displayed for context but not used to set severity** — the advisor `basis_ps` is not a dependable per-lot cost
+> basis, so an R band would misfire. The `%` thresholds below are calibrated so a typical stop (~1R ≈ 3–5% for these
+> families) lands in the intended bucket. "Naked" (advised stop, no active broker/monitored stop) is Amber for active
+> momentum/social trades but only Yellow for long-term core holds (monitored-by-advisory is normal there).
+
 ### 🟡 Yellow — watch
 Any one of:
-- **Distance to stop** between **1.0R and 1.5R** away (comfortable, but worth watching).
-- **Trailing not active**: position is TRAIL-ELIGIBLE but the resting stop is still fixed.
-- **Freshness (scalps)**: last quote/technical older than the scalp freshness SLA but < 2× SLA.
-- **Last-adjusted staleness**: a trailing stop hasn't been re-evaluated in > 1 trading day while price advanced ≥ 0.5R.
+- **Distance to stop ≤ 6%** of price (comfortable, but worth watching).
+- **Trailing not active**: the advisor recommends trailing (P&L ≥ family threshold **and** price > 50d SMA per
+  `STOP_METHODOLOGY.md`) but the resting stop is still fixed — surfaced as the 🔒 Trail action.
+- **Core hold naked**: a long-term core hold has an advised stop but no active broker/monitored stop.
+- *(scalps)* last quote/technical older than the scalp freshness SLA but < 2× SLA.
 
 ### 🟠 Amber — needs attention
 Any one of:
-- **Distance to stop** between **0.5R and 1.0R**, OR price within **1.0×ATR** of the stop.
-- **Broker/planned divergence**: an advised stop exists but **no broker stop is placed** (position effectively naked),
-  or broker stop is looser than the advised family floor.
-- **Regime shift since entry**: risk regime downgraded (e.g. risk-on → neutral/off) since the trade opened.
-- **Portfolio-heat contribution**: this position contributes ≥ 1.5% of portfolio heat and is Amber-or-worse on distance.
-- **Freshness (scalps)**: quote/technical older than **2× the scalp SLA**.
+- **Distance to stop ≤ 3%** of price, **OR** price within **1.0×ATR** of the stop.
+- **Active-trade naked**: a momentum/social trade has an advised stop but **no active stop placed**.
+- **Broker looser than advised**: the resting broker stop sits below the advised family floor.
+- **Portfolio-heat contribution ≥ 1.5%** of portfolio heat.
+- *(scalps)* quote/technical older than **2× the scalp SLA**.
 
 ### 🔴 Red — act now
 Any one of:
-- **Distance to stop ≤ 0.5R** (or price within **0.2R** of the stop) — imminent stop-out.
-- **Naked in a downgraded regime**: no broker stop AND regime is risk-off.
-- **Portfolio-heat breach**: total portfolio heat > the heat cap (default 5%) AND this position is a top contributor.
+- **Distance to stop ≤ 1.5%** of price — imminent stop-out.
+- **Active-trade naked in a downgraded regime**: no active stop AND regime is risk-off.
+- **Portfolio-heat breach**: total portfolio heat > the heat cap (default 5%) AND this position contributes ≥ 1.5%.
 - **Kill-switch / data gaps**: broker unreadable, quote stale + unparseable, or evidence store unavailable (fail-closed).
 
-Alert history (level changes, what fired, timestamp) is kept per position and shown in an expandable row / side panel.
+Distance to stop is sourced from active stops in priority order: **live broker read → last broker snapshot →
+operator-confirmed → Fidelity monitored → advisor-planned** (so after-hours coverage is complete). Alert reasons
+(what fired) are shown inline per row.
 
 ---
 

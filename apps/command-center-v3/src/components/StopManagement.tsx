@@ -144,7 +144,15 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: (r.unrealized_dollars ?? 0) >= 0 ? GREEN : RED }}>{r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}</td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</td>
                     <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 220 }}>{(r.alert_reasons || []).join(' · ')}</td>
-                    <td style={{ padding: '7px 9px' }}>
+                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
+                      {r.trailing_should_be_active && (
+                        <button onClick={() => onFocusHolding?.(r.symbol, r.account)}
+                          title={`Advisor recommends trailing (P&L + >50d SMA) — request a ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} trailing stop to lock in profit`}
+                          style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
+                            border: `1px solid ${GREEN}`, background: `${GREEN}20`, color: GREEN, whiteSpace: 'nowrap' }}>
+                          🔒 Trail {r.account.startsWith('fidelity') ? 'manual' : '2FA'}
+                        </button>
+                      )}
                       <button onClick={() => setAdjust(r)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
                     </td>
                   </tr>
@@ -168,11 +176,15 @@ export default function StopManagement({ onFocusHolding }: Props) {
 function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () => void; onFocusHolding?: (s: string, a: string) => void }) {
   const isFidelity = row.account.startsWith('fidelity')
   const jump = () => { onFocusHolding?.(row.symbol, row.account); onClose() }
-  const schwabTypes = [
-    { label: 'Fixed stop', why: 'Non-moving trigger; advisor default for core holds', route: '2FA' },
-    { label: 'Trailing stop', why: `Ratchets up with price (advised ${row.trailing_should_be_active ? '— eligible now' : 'optional'})`, route: '2FA' },
-    { label: 'Stop-limit', why: 'Stop with a limit floor to cap slippage', route: '2FA' },
-  ]
+  const lockIn = row.trailing_should_be_active   // advisor methodology: P&L ≥ family threshold AND price > 50d SMA
+  const trailing = { label: 'Trailing stop', why: lockIn ? 'Advisor-recommended — ratchets up with price to lock in profit, never lowers' : 'Ratchets up with price (optional)', route: '2FA', recommended: lockIn }
+  const schwabTypes = lockIn
+    ? [trailing,
+       { label: 'Fixed stop', why: 'Non-moving trigger; advisor default for core holds', route: '2FA' },
+       { label: 'Stop-limit', why: 'Stop with a limit floor to cap slippage', route: '2FA' }]
+    : [{ label: 'Fixed stop', why: 'Non-moving trigger; advisor default for core holds', route: '2FA' },
+       trailing,
+       { label: 'Stop-limit', why: 'Stop with a limit floor to cap slippage', route: '2FA' }]
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 480, maxWidth: '92vw', background: 'var(--bg1, #0f172a)', border: '1px solid rgba(148,163,184,.3)', borderRadius: 12, padding: 18 }}>
@@ -191,11 +203,12 @@ function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () =
           {(isFidelity
             ? [{ label: 'Manual ticket', why: 'Fidelity has no trading API — arm a software-monitored stop + place the order at Fidelity Active Trader', route: 'MANUAL' }]
             : schwabTypes
-          ).map(s => (
+          ).map((s: any) => (
             <button key={s.label} onClick={jump} style={{ textAlign: 'left', padding: '9px 11px', borderRadius: 8, cursor: 'pointer',
-              background: 'rgba(15,23,42,.5)', border: `1px solid ${isFidelity ? AMBER : BLUE}55` }}>
+              background: s.recommended ? `${GREEN}14` : 'rgba(15,23,42,.5)', border: `1px solid ${s.recommended ? GREEN : (isFidelity ? AMBER : BLUE) + '55'}` }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>{s.label}
                 <span style={{ fontSize: 10, fontWeight: 800, color: isFidelity ? AMBER : BLUE, marginLeft: 8, border: `1px solid ${isFidelity ? AMBER : BLUE}`, borderRadius: 5, padding: '1px 6px' }}>{s.route === 'MANUAL' ? 'MANUAL TICKET' : 'PER-ORDER 2FA'}</span>
+                {s.recommended && <span style={{ fontSize: 10, fontWeight: 800, color: GREEN, marginLeft: 6, border: `1px solid ${GREEN}`, borderRadius: 5, padding: '1px 6px' }}>🔒 RECOMMENDED</span>}
               </div>
               <div style={{ fontSize: 11, color: MUTED }}>{s.why}</div>
             </button>
