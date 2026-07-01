@@ -436,11 +436,10 @@ export default function WatchlistHub({ onDrill }: Props) {
                       style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${BLUE}66`, background: BLUE + '14', color: '#bfdbfe', cursor: 'pointer' }}>Open card →</button>
                     <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
                       style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${hasPlan ? GREEN : 'var(--border)'}`, background: hasPlan ? GREEN + '16' : 'var(--bg2)', color: hasPlan ? '#bbf7d0' : MUTED, textDecoration: 'none' }}>{hasPlan ? '🎯 Propose →' : 'Propose →'}</a>
-                    <a href="/v3/intelligence" onClick={e => e.stopPropagation()}
-                      style={{ fontSize: 10.5, fontWeight: 700, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, textDecoration: 'none' }}>Intelligence →</a>
+                    <a href={`/v3/rec-intel?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 10.5, fontWeight: 700, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, textDecoration: 'none' }} title={`${it.symbol} recommendation intelligence — lineage, origin source, outcomes`}>Rec-Intel →</a>
                     <button onClick={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
                       style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${PURPLE}66`, background: ensOpen[it.id] ? PURPLE + '22' : 'var(--bg2)', color: '#d8b4fe', cursor: 'pointer' }}>⚖ Ensemble {ensOpen[it.id] ? '▲' : '▾'}</button>
-                    <span style={{ marginLeft: 'auto', fontSize: 10.5, color: BLUE, fontWeight: 800 }}>more intelligence →</span>
                   </div>
                   {ensOpen[it.id] && (
                     <div onClick={e => e.stopPropagation()}>
