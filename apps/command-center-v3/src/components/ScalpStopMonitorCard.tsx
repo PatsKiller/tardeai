@@ -98,7 +98,8 @@ export default function ScalpStopMonitorCard() {
             return [
               <span key={`s${i}`} style={{ fontWeight: 700, color: 'var(--text1)' }}>{s.symbol}
                 {!s.breakeven_secured && <span style={{ color: '#f59e0b', fontSize: 8.5 }}> ·no BE</span>}
-                {s.regime_shifted && <span title="entry Trending → now Ranging" style={{ color: '#ef4444', fontSize: 8.5 }}> ·regime↓</span>}</span>,
+                {s.regime_shifted && <span title="entry Trending → now Ranging" style={{ color: '#ef4444', fontSize: 8.5 }}> ·regime↓</span>}
+                {s.structure_type && <span title={s.structure?.note || 'price-structure the stop respects'} style={{ color: 'var(--text3)', fontSize: 8.5 }}> ·{String(s.structure_type).replace(/_/g, ' ')}{s.structure?.timeframe ? ` (${s.structure.timeframe})` : ''}</span>}</span>,
               <span key={`r${i}`} style={{ textAlign: 'right', fontFamily: 'monospace', color: rCol, fontWeight: 700 }}>{s.current_R ?? '—'}</span>,
               <span key={`d${i}`} style={{ textAlign: 'right', fontFamily: 'monospace', color: nearStop ? '#ef4444' : 'var(--text2)' }}>{s.stop_distance_R ?? '—'}R</span>,
               <span key={`a${i}`} style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text2)' }}>{s.stop_distance_atr ?? '—'}</span>,
