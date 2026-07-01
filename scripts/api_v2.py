@@ -173,6 +173,184 @@ def _cached_schwab_validator():
     return res
 
 
+def _stops_management_api(query=None):
+    """GET /api/v2/stops/management — aggregation for the Portfolio → Stop Management tab. Joins broker-actual
+    stops (stop_lifecycle) + holdings + advisor planned stops + portfolio heat into per-position rows with
+    distance (R/ATR/$), alert level (yellow/amber/red), trailing-not-active, and broker/planned divergence.
+    Read-only: no broker calls, no order placement. See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md."""
+    q = query or {}
+    HEAT_CAP = 5.0
+
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    # 1. broker-actual stops (cached lifecycle snapshot)
+    live_stops = {}
+    try:
+        life = _stops_lifecycle_api() or {}
+        for s in (life.get("stops") or []):
+            k = (str(s.get("symbol", "")).upper(), str(s.get("account", "")))
+            live_stops[k] = s
+    except Exception:
+        pass
+    # 2. holdings (all accounts)
+    try:
+        holds = (portfolio_holdings() or {}).get("holdings") or []
+    except Exception:
+        holds = []
+    # 3. latest advisor planned stop per symbol (family band + swing-low anchor + atr)
+    advised = {}
+    try:
+        for _row in (_db_query(
+                "SELECT DISTINCT ON (symbol) symbol, evidence_json FROM hermes_research_intelligence "
+                "WHERE research_type='protection_advisory' AND created_at > now()-interval '5 days' "
+                "ORDER BY symbol, created_at DESC") or []):
+            sym = _row.get("symbol"); ev = _row.get("evidence_json")
+            ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
+            rec = ev.get("recommendation") or {}
+            inp = ev.get("inputs") or {}
+            advised[str(sym).upper()] = {
+                "stop": _f(rec.get("stop_price")), "trail": rec.get("trail_recommended"),
+                "trail_offset": _f(rec.get("trail_offset")), "atr": _f(inp.get("atr")),
+                "family": ev.get("family"), "basis": _f(inp.get("basis_ps"))}
+    except Exception:
+        pass
+    # 4. strategy/route per symbol
+    route = {}
+    try:
+        for r in (_db_query("SELECT symbol, strategy_type FROM ticker_strategy_classifications WHERE active=TRUE") or []):
+            st = str(r.get("strategy_type") or "")
+            route[str(r.get("symbol") or "").upper()] = (
+                "Social+Momentum" if "social" in st.lower() else "Pure Momentum" if "momentum_scalp" in st else st or "core-hold")
+    except Exception:
+        pass
+    # 5. portfolio heat + regime
+    heat_pct = total_risk = 0.0
+    try:
+        rm = _risk_metrics() if "_risk_metrics" in globals() else {}
+        heat_pct = _f(rm.get("portfolio_heat_pct")) or 0.0
+        total_risk = _f(rm.get("total_risk_dollars")) or 0.0
+    except Exception:
+        pass
+    regime_now = "unknown"
+    try:
+        rr = _db_query("SELECT regime FROM regime_state ORDER BY created_at DESC LIMIT 1", fetch="one")
+        regime_now = str((rr or {}).get("regime") or "unknown")
+    except Exception:
+        pass
+    risk_off = any(w in regime_now.lower() for w in ("off", "bear", "defensive"))
+
+    rows = []
+    counts = {"yellow": 0, "amber": 0, "red": 0}
+    total_open_risk = 0.0
+    trailing_not_active = 0
+    for h in holds:
+        sym = str(h.get("symbol", "")).upper()
+        acct = str(h.get("account", ""))
+        if h.get("is_cash") or not sym:
+            continue
+        px = _f(h.get("current_price")) or _f(h.get("price"))
+        qty = _f(h.get("shares")) or 0.0
+        adv = advised.get(sym, {})
+        ls = live_stops.get((sym, acct)) or {}
+        broker_stop = _f(ls.get("stop_price"))
+        planned_stop = adv.get("stop")
+        stop = broker_stop if broker_stop is not None else planned_stop
+        if stop is None or px is None or qty <= 0:
+            continue
+        atr = adv.get("atr")
+        basis = adv.get("basis")
+        # distance in $, %, ATR, R
+        dist_dollars = round((px - stop) * qty, 2)
+        dist_pct = round((px - stop) / px * 100, 2) if px else None
+        dist_atr = round((px - stop) / atr, 2) if atr else None
+        r_unit = (basis - planned_stop) if (basis and planned_stop and basis > planned_stop) else None
+        dist_r = round((px - stop) / r_unit, 2) if r_unit else None
+        unreal_dollars = round((px - basis) * qty, 2) if basis else None
+        unreal_r = round((px - basis) / r_unit, 2) if (basis and r_unit) else None
+        is_trailing = bool(ls.get("is_trailing"))
+        should_trail = bool(adv.get("trail")) and not is_trailing
+        if should_trail:
+            trailing_not_active += 1
+        naked = broker_stop is None and planned_stop is not None
+        divergence = ("no broker stop (planned only)" if naked
+                      else "broker looser than advised" if (broker_stop is not None and planned_stop is not None
+                                                            and broker_stop < planned_stop - 0.01) else None)
+        heat_contrib = round((max(dist_dollars, 0) / total_risk * heat_pct), 2) if total_risk else None
+
+        # ---- alert level (highest severity wins; see protocol §3) ----
+        # Distance-to-stop is the primary signal (dist_% is reliable; R/ATR shown when computable). "Naked"
+        # (advised stop, no broker stop) is Amber for active momentum/social trades but only Yellow for
+        # long-term core holds (monitored-by-advisory is normal there).
+        reasons = []
+        level = None
+        is_active_trade = route.get(sym, "core-hold") in ("Pure Momentum", "Social+Momentum")
+        dp = dist_pct if dist_pct is not None else 999
+        red, amber, yellow = [], [], []
+        # Distance-to-stop uses dist_% (reliable). dist_r is displayed but not used for severity (the advisor
+        # basis_ps R-unit is not a dependable cost basis). ATR band adds an Amber signal when available.
+        # RED — imminent stop-out / breach / naked-active-in-risk-off
+        if dp <= 1.5:
+            red.append("within 1.5% of stop")
+        if naked and is_active_trade and risk_off:
+            red.append("active trade naked in risk-off regime")
+        if heat_pct > HEAT_CAP and (heat_contrib or 0) >= 1.5:
+            red.append(f"portfolio heat {heat_pct:.1f}% > {HEAT_CAP}% cap")
+        # AMBER — needs attention
+        if dp <= 3.0 or (dist_atr is not None and dist_atr <= 1.0):
+            amber.append("within 3% / 1×ATR of stop")
+        if naked and is_active_trade:
+            amber.append("active trade: advised stop not placed at broker")
+        if divergence == "broker looser than advised":
+            amber.append(divergence)
+        if heat_contrib is not None and heat_contrib >= 1.5:
+            amber.append(f"{heat_contrib:.1f}% of portfolio heat")
+        # YELLOW — watch
+        if dp <= 6.0:
+            yellow.append("within 6% of stop")
+        if should_trail:
+            yellow.append("trailing eligible but not active")
+        if naked and not is_active_trade:
+            yellow.append("core hold: advised stop not placed at broker")
+        if red:
+            level, reasons = "red", red
+        elif amber:
+            level, reasons = "amber", amber
+        elif yellow:
+            level, reasons = "yellow", yellow
+        if level:
+            counts[level] += 1
+        total_open_risk += max(dist_dollars, 0)
+
+        rows.append({
+            "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
+            "route": route.get(sym, "core-hold"),
+            "stop_type": ("TRAILING" if is_trailing else "HARD") if broker_stop is not None else ("PLANNED" if planned_stop else "NONE"),
+            "current_price": px, "qty": qty, "coverage": ls.get("coverage"),
+            "broker_stop": broker_stop, "planned_stop": planned_stop, "stop": stop, "divergence": divergence,
+            "distance_dollars": dist_dollars, "distance_pct": dist_pct, "distance_atr": dist_atr, "distance_r": dist_r,
+            "dollars_at_risk": round(max(dist_dollars, 0), 2),
+            "unrealized_dollars": unreal_dollars, "unrealized_r": unreal_r,
+            "is_trailing": is_trailing, "trailing_should_be_active": should_trail,
+            "heat_contribution_pct": heat_contrib, "regime_now": regime_now,
+            "alert_level": level, "alert_reasons": reasons,
+            "lifecycle": ls.get("lifecycle"), "health": ls.get("health"), "flags": ls.get("flags"),
+        })
+
+    order = {"red": 0, "amber": 1, "yellow": 2, None: 3}
+    rows.sort(key=lambda r: (order.get(r["alert_level"], 3), -(r["dollars_at_risk"] or 0)))
+    return {
+        "generated_at": None, "regime_now": regime_now,
+        "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
+                    "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
+                    "trailing_not_active": trailing_not_active, "positions": len(rows)},
+        "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+    }
+
+
 def _after_hours_override_enabled():
     """Is the explicit after-hours OVERRIDE policy enabled? Default OFF — the first live canary is restricted
     to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). AFTER_HOURS_GTC requires this override
@@ -24267,6 +24445,7 @@ ROUTES = {
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
+    "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,

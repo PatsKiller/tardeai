@@ -9,6 +9,8 @@
 
 > **Scope split:** This policy governs `momentum_scalp` and Social Route **paper trades**. Real-account **holdings** protective stops are governed separately by [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md). Options spreads use the options desk policy.
 
+> **Monitoring & alerting:** Once a stop is placed (paper or real), its lifecycle, Yellow/Amber/Red alerting, and readjustment workflow are governed by [`MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md`](MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md), surfaced in the Portfolio → **Stop Management** tab (`/api/v2/stops/management`).
+
 > **Reconciliation note (2026-06-29):** Layer 3 (Chandelier/ATR trailing) remains **config-OFF for execution** pending paper validation. Our own backtests show trailing truncates the momentum fat tail (see §2). Layers 1–2 and 4 are **active**.
 
 ---
