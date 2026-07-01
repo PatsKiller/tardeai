@@ -25605,15 +25605,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "ticket": ticket, "account": acct}
                         if ot == "TRAILING_STOP" and trail_pct is not None and stop_price is not None:
                             expected = cp * (1 - float(trail_pct) / 100.0)
-                            # The advised FIXED stop is swing-low-anchored, not current×(1−trail%), so a trail
-                            # start legitimately differs from it by (|stop-dist% − trail%|) + price drift since
-                            # the advisory ran (commonly 1–3%). Keep 3% tolerance to catch a grossly-wrong
-                            # trail (e.g. 20% vs 10%) while allowing the advisor's own recommended trail.
-                            if abs(expected - float(stop_price)) / cp * 100.0 > 3.0:
+                            # An X% trailing order triggers X% below current BY DEFINITION — internally
+                            # consistent. The advised FIXED stop is a SEPARATE swing-low-anchored fallback,
+                            # so when the swing low is far from price the two legitimately diverge (e.g. ARKG:
+                            # 8% trail start $39.65 vs $37.01 fixed floor). Only block when the trail start is
+                            # materially LOOSER (further below) than the advised floor — that means the trail%
+                            # gives less protection than intended. A trail start AT/ABOVE the floor is tighter
+                            # and always safe. Matches the UI check in stopManagement.ts.
+                            looser_than_floor = (float(stop_price) - expected) / cp * 100.0
+                            if looser_than_floor > 3.0:
                                 return 200, {"ok": False, "mode": "blocked", "gate": "trail_start_mismatch",
                                              "error": (f"Trailing stop start ${expected:.2f} (from {trail_pct}% trail) "
-                                                       f"is >3% from the advised stop ${float(stop_price):.2f}; "
-                                                       "re-review the trail width first."),
+                                                       f"is >3% below the advised floor ${float(stop_price):.2f}; "
+                                                       "the trail is looser than the advised stop — re-review the "
+                                                       "trail width first."),
                                              "ticket": ticket, "account": acct}
                 except ValueError as ve:
                     return 200, {"ok": False, "mode": "blocked", "gate": "quote_validation",

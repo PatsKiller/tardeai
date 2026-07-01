@@ -279,11 +279,18 @@ export function buildStopLogic(input: {
     })
   }
   if (orderKind === 'TRAILING' && trailPct != null && currentPrice != null && advisoryStop != null) {
+    // The initial trigger of an X% trailing order is, by definition, X% below the current price —
+    // internally consistent. advisoryStop is the SEPARATE fixed fallback (swing-low anchored, family-
+    // floor capped), so when the swing low sits far from price the two legitimately diverge (e.g. ARKG:
+    // 8% trail start $39.65 vs $37.01 fixed floor). Only flag when the trail start is materially LOOSER
+    // (further below) than the advisory floor — that means the trail% gives less protection than the
+    // advisor intends. A trail start AT/ABOVE the floor is tighter protection and always safe.
     const expected = currentPrice * (1 - trailPct / 100)
-    if (Math.abs(expected - advisoryStop) / currentPrice * 100 > TRAIL_TOLERANCE) {
+    const looserThanFloorPct = ((advisoryStop - expected) / currentPrice) * 100
+    if (looserThanFloorPct > TRAIL_TOLERANCE) {
       blockers.push({
         code: 'trail_start_mismatch',
-        message: `Trailing start estimate $${expected.toFixed(2)} does not match advisory stop $${advisoryStop.toFixed(2)} for ${trailPct}% trail.`,
+        message: `Trailing start estimate $${expected.toFixed(2)} is more than ${TRAIL_TOLERANCE}% below the advisory floor $${advisoryStop.toFixed(2)} for a ${trailPct}% trail — the trail is looser than the advised stop.`,
       })
     }
   }
