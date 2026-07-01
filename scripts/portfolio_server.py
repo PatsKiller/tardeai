@@ -67,15 +67,25 @@ def _get_api_v2():
     except Exception:
         _rm = 0.0
     if _m != _api_v2_mtime[0] or _rm != _api_rp_mtime[0]:
-        with _api_v2_lock:
-            if _m != _api_v2_mtime[0] or _rm != _api_rp_mtime[0]:
-                if _rm != _api_rp_mtime[0]:
-                    if "reports_portal" in sys.modules:
-                        importlib.reload(sys.modules["reports_portal"])
-                    _api_rp_mtime[0] = _rm
-                if _m != _api_v2_mtime[0]:
-                    importlib.reload(_mod)
-                    _api_v2_mtime[0] = _m
+        # NON-BLOCKING acquire (2026-07-01): only the ONE thread that wins the lock reloads; every other
+        # request thread serves the current module immediately instead of blocking here. Reloading the
+        # ~28k-line api_v2 is slow, and _api_v2_mtime[0] isn't updated until it finishes — so a blocking
+        # `with _api_v2_lock` queued EVERY concurrent request behind that one slow reload (a git pull under
+        # load → 200+ threads stuck, CLOSE-WAIT pileup, dashboard wedged). Serving briefly-stale code for
+        # the sub-second reload window is strictly better than wedging a live trading dashboard.
+        if _api_v2_lock.acquire(blocking=False):
+            try:
+                if _m != _api_v2_mtime[0] or _rm != _api_rp_mtime[0]:
+                    if _rm != _api_rp_mtime[0]:
+                        if "reports_portal" in sys.modules:
+                            importlib.reload(sys.modules["reports_portal"])
+                        _api_rp_mtime[0] = _rm
+                    if _m != _api_v2_mtime[0]:
+                        importlib.reload(_mod)
+                        _api_v2_mtime[0] = _m
+            finally:
+                _api_v2_lock.release()
+        # else: another thread is mid-reload → return the current module now, pick up the new one next request
     return _mod
 
 # Phase P1: Load .env into os.environ so db_adapter sees DB_* keys when run as systemd service
