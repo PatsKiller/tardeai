@@ -74,7 +74,7 @@ const Metric = ({ label, value, color = TEXT0 }: { label: string; value: any; co
 const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
 export default function WatchlistHub({ onDrill }: Props) {
-  const { data: wl, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
+  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -299,7 +299,15 @@ export default function WatchlistHub({ onDrill }: Props) {
             </div>
           )}
         </div>
-        {visible.length === 0 ? (() => {
+        {visible.length === 0 && (wlLoading || wl == null) && items.length === 0 ? (
+          // First load of /watchlist/items enriches the full universe and can take several seconds — show a
+          // real loading state so an empty grid doesn't read as "no matches / data outage" while it resolves.
+          <div style={{ color: MUTED, fontSize: 12, padding: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ display: 'inline-block', width: 12, height: 12, border: `2px solid ${MUTED}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'wl-spin 0.8s linear infinite' }} />
+            Loading watchlist…
+            <style>{`@keyframes wl-spin { to { transform: rotate(360deg) } }`}</style>
+          </div>
+        ) : visible.length === 0 ? (() => {
           const sd = fDir !== 'all' ? directives.find((d: any) => String(d.id) === fDir) : null
           const nh = (sd?.hit_symbols ?? []).length
           const resetAll = () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setSearch('') }
