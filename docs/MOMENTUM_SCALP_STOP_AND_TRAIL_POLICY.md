@@ -237,9 +237,9 @@ To pass from Maturity 4.4 → 4.5, the following must be demonstrated via paper 
 |---|--------|--------|
 | 1 | Add journal fields listed in §5 | **Done** — `migrate_momentum_scalp_stop_tagging.py` |
 | 2 | Build **Stop Intelligence** panel (Trade Detail / Replay) | **Done** — `scalp_stop_intelligence.py`, `StopIntelligencePanel.tsx`, `/api/v2/scalp/stop-intelligence` |
-| 3 | Wire regime detection + freshness into trail adjustment logic | **Partial** — freshness + heat alerts in monitor; regime-shift tighten pending |
-| 4 | Add "Tighten All Trails" one-click action in Risk dashboard when heat is high | **Pending** |
-| 5 | Monitoring metrics + alerts (§4) in Risk tab | **Partial** — `scalp_stop_monitor.py`, `ScalpStopMonitorCard.tsx` on RiskHub |
+| 3 | Wire regime detection + freshness into trail adjustment logic | **Done (advisory)** — 2026-07-01: `scalp_stop_monitor.py` reads `market_regime_snapshots.regime_label`; entry-Trending→now-Ranging emits a regime-shift **amber** alert + a 0.5× ATR tighten SUGGESTION (`layer4_dynamic.regime_shift_tighten_atr`) |
+| 4 | Add "Tighten All Trails" one-click action in Risk dashboard when heat is high | **Done (paper)** — 2026-07-01: `POST /api/v2/scalp/tighten-all` (`scalp_stop_monitor.tighten_all`) + button in `ScalpStopMonitorCard`; dry-run→confirm→apply; PAPER momentum_scalp only, advisory for non-paper, no broker order. Heat tier at `portfolio_heat_tighten_pct: 3.5` (§4 Red) distinct from the 4.5% kill |
+| 5 | Monitoring metrics + alerts (§4) in Risk tab | **Done** — 2026-07-01: added stop-distance-ATR + Trail-Tightness Score (% price→stop) + regime-shift flag + pause-new-entries to `scalp_stop_monitor.py` / `ScalpStopMonitorCard.tsx` |
 | 6 | `momentum_scalp.yaml` exit_rules → layered methodology | **Done** — L3 behind `enabled: false` gate |
 | 7 | Re-backtest harness (context-aware multipliers) | **Done** — FAIL gate; see §2.1 |
 | 8 | Validation Tracker (§6 metrics) | **Done** — `scalp_stop_validation_tracker.py` |
