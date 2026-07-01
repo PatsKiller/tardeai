@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
 import { buildStopLogic, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
@@ -73,8 +73,9 @@ function buildPreflightDiff(before: StopLogic, after: StopLogic): PreflightDiff 
   return Object.keys(diff).length ? diff : null
 }
 
-export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, onRefresh, onPreflightUpdate }: {
+export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, autoStageKind, onRefresh, onPreflightUpdate }: {
   h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null
+  autoStageKind?: 'STOP' | 'TRAILING' | null
   onRefresh?: () => void
   onPreflightUpdate?: (symbol: string, account: string, patch: { holding?: Record<string, unknown>; protection?: Record<string, unknown> }) => void
 }) {
@@ -381,6 +382,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     setMsg('✓ Validated — proceeding…')
     await requestOrder(kind, { ...opts, skipPreflight: true })
   }
+
+  // One-click apply: opened via a 🔒 row button (autoStageKind set) on a NAKED position → auto-fire the
+  // advised order so the operator lands straight on the 2FA approve step (Schwab) or a manual ticket
+  // (Fidelity). Fires ONCE, only when there is no existing stop (existing → manual Replace/ToS) and an
+  // advised stop exists. Blockers still surface normally (preflightAndRequest handles them).
+  const autoStagedRef = useRef(false)
+  useEffect(() => {
+    if (autoStagedRef.current || !autoStageKind) return
+    if (liveResolved.hasLiveBrokerOrder) return
+    if (!stop) return
+    if (intentId || pendingAction) return
+    autoStagedRef.current = true
+    void preflightAndRequest(autoStageKind, { label: 'Applying advised stop' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStageKind, liveResolved.hasLiveBrokerOrder, stop])
 
   const preflightAndConfirm = async (channel: 'web' | 'telegram') => {
     const pf = await runClickPreflight(selectedKind)
