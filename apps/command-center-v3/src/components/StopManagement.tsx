@@ -56,6 +56,10 @@ export default function StopManagement({ onFocusHolding }: Props) {
   const [acct, setAcct] = useState('All')
   const [level, setLevel] = useState('All')
   const [adjust, setAdjust] = useState<Row | null>(null)
+  const [autoStage, setAutoStage] = useState(false)
+  // One-click apply: the 🔒 buttons open the modal AND auto-stage the advised stop straight to 2FA;
+  // "Adjust stop" opens in manual mode (no auto-stage).
+  const openAdjust = (r: Row, auto: boolean) => { setAutoStage(auto); setAdjust(r) }
 
   const load = () => {
     setLoading(true)
@@ -185,22 +189,22 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
                       {r.trailing_should_be_active && (
-                        <button onClick={() => setAdjust(r)}
-                          title={`Advisor recommends trailing (P&L + >50d SMA) — open the inline ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} panel to request the trailing stop`}
+                        <button onClick={() => openAdjust(r, true)}
+                          title={`One-click: stages the advised ${r.trail_pct ?? ''}% trailing stop and goes straight to ${r.account.startsWith('fidelity') ? 'a manual ticket' : '2FA approve'}`}
                           style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
                             border: `1px solid ${GREEN}`, background: `${GREEN}20`, color: GREEN, whiteSpace: 'nowrap' }}>
                           🔒 Trail {r.account.startsWith('fidelity') ? 'manual' : '2FA'}
                         </button>
                       )}
                       {!r.has_active_stop && r.planned_stop != null && !r.trailing_should_be_active && (
-                        <button onClick={() => setAdjust(r)}
-                          title={`Advised ${r.rec_source ? r.rec_source.split(' · ')[0] + ' ' : ''}stop ${fmtStop(r.planned_stop)} not placed — open the inline ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} panel to set it`}
+                        <button onClick={() => openAdjust(r, true)}
+                          title={`One-click: stages the advised ${fmtStop(r.planned_stop)} stop and goes straight to ${r.account.startsWith('fidelity') ? 'a manual ticket' : '2FA approve'}`}
                           style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5, whiteSpace: 'nowrap',
                             border: `1px solid ${AMBER}`, background: `${AMBER}20`, color: AMBER }}>
                           🔒 Set {r.account.startsWith('fidelity') ? 'manual' : '2FA'} {fmtStop(r.planned_stop)}
                         </button>
                       )}
-                      <button onClick={() => setAdjust(r)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
+                      <button onClick={() => openAdjust(r, false)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
                     </td>
                   </tr>
                 ))}
@@ -211,7 +215,7 @@ export default function StopManagement({ onFocusHolding }: Props) {
             </table>
           </div>
 
-          {adjust && <AdjustModal row={adjust} onClose={() => setAdjust(null)} onFocusHolding={onFocusHolding} />}
+          {adjust && <AdjustModal row={adjust} autoStage={autoStage} onClose={() => { setAdjust(null); setAutoStage(false) }} onFocusHolding={onFocusHolding} />}
         </>
       )}
     </div>
@@ -220,9 +224,13 @@ export default function StopManagement({ onFocusHolding }: Props) {
 
 // Adjust modal — broker-aware stop-type selection. Choosing a type jumps to the holding's inline gated panel
 // (Schwab → per-order 2FA request; Fidelity → manual ticket). No stop is submitted from here.
-function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () => void; onFocusHolding?: (s: string, a: string) => void }) {
+function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; autoStage?: boolean; onClose: () => void; onFocusHolding?: (s: string, a: string) => void }) {
   const isFidelity = row.account.startsWith('fidelity')
   const recKind = row.trail_recommended ? 'TRAILING' : 'FIXED'
+  // One-click apply: only auto-stage when the row is genuinely actionable (naked — no active stop). An
+  // existing stop needs manual Replace/ToS, so never auto-fire there.
+  const autoStageKind: 'STOP' | 'TRAILING' | null = (autoStage && !row.has_active_stop)
+    ? (row.trail_recommended ? 'TRAILING' : 'STOP') : null
   // Assemble the exact props the holding card passes, so the inline panel renders identical live-stop state
   // (never a false "none"). Sources: portfolio/holdings, portfolio/llm-coverage (protection + confirmed_stops),
   // holdings/live-stops (by_key), holdings/monitored-stops (by_key). Then reuse the same protective-stop panel.
@@ -295,7 +303,7 @@ function AdjustModal({ row, onClose, onFocusHolding }: { row: Row; onClose: () =
           <div style={{ fontSize: 12, color: MUTED, padding: 14 }}>Loading stop controls…</div>
         ) : (
           <HoldingProtectionActions h={pack.h} pr={pack.pr} monitored={pack.mon} confirmedStop={pack.conf}
-            brokerStopsFetchedAt={pack.fetchedAt} onRefresh={() => setReloadKey(k => k + 1)} />
+            brokerStopsFetchedAt={pack.fetchedAt} autoStageKind={autoStageKind} onRefresh={() => setReloadKey(k => k + 1)} />
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
