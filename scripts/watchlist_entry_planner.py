@@ -225,13 +225,20 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                            WHERE upper(symbol) IN %s AND status <> 'removed'
                            ORDER BY symbol, hermes_composite_score DESC NULLS LAST""", (want,))
             return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
-        # PRIORITY 1: directive-watch + active names (always planned)
+        # PRIORITY 1: directive-watch + active names. The NOT EXISTS drain filter (2026-07-01, matches
+        # Priority 2's cadence) skips names that already have a fresh (<3d) plan so each capped run reaches
+        # the NEXT batch of unplanned/stale directive names by rank — instead of re-planning the same top
+        # ~`limit` every night, which starved lower-ranked directive names (e.g. MRLN #76 never got a plan:
+        # too low for the P1 cut, and P2 excludes directive/active names). Plans older than 3d refresh too.
         cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
                          NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
                        FROM watchlist_items
                        WHERE symbol ~ '^[A-Z]{1,5}$' AND status <> 'removed'
                          AND (in_directive_watch=true OR status='active')
+                         AND NOT EXISTS (SELECT 1 FROM watchlist_entry_plans ep
+                                         WHERE ep.symbol = watchlist_items.symbol
+                                           AND ep.created_at > now() - interval '3 days')
                        ORDER BY symbol, hermes_composite_score DESC NULLS LAST""")
         rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
         if symbols:
