@@ -255,8 +255,15 @@ def _stops_management_api(query=None):
     # 1. broker-actual stops — LIVE Schwab/Alpaca protective stops (60s cache), same source the cards use,
     #    plus armed Fidelity software-monitored stops. (The stop_lifecycle snapshot lags and under-reports.)
     live_stops = {}
+    # Was the live Schwab order read HEALTHY (not degraded/errored)? If so the broker is AUTHORITATIVE —
+    # a confirmed/snapshot stop it does NOT show is STALE (order expired/cancelled) and must not be
+    # resurrected as a phantom "active stop" (that hides an unprotected position AND triggers a false
+    # "modify in ToS"). Only fall back to confirmations/snapshots for Schwab when the live read failed
+    # (after-hours/degraded). Fidelity has no broker API, so its confirmations always stand.
+    _live_read_ok = False
     try:
         ls = _holdings_live_stops() or {}
+        _live_read_ok = bool(not ls.get("error") and ls.get("fetched_at"))
         for _key, bs in (ls.get("by_key") or {}).items():
             sym = str(bs.get("symbol", "")).upper()
             acct = str(bs.get("account", ""))
@@ -286,6 +293,8 @@ def _stops_management_api(query=None):
             ot = str(s.get("order_type") or "").upper()
             if (sym, acct) in live_stops:
                 continue
+            if acct.startswith("schwab") and _live_read_ok:
+                continue   # broker authoritative — don't resurrect a stale snapshot it doesn't show
             if sp is None and "TRAIL" not in ot:
                 continue
             live_stops[(sym, acct)] = {
@@ -306,6 +315,9 @@ def _stops_management_api(query=None):
             sp = _f(cr.get("stop_price_confirmed"))
             if sp is None or (sym, acct) in live_stops:
                 continue
+            if acct.startswith("schwab") and _live_read_ok:
+                continue   # healthy broker read shows no such order → confirmation is stale (e.g. JEPI
+                           # $55 confirmed 2026-04-22 with 0 live orders); do not resurrect as a phantom
             live_stops[(sym, acct)] = {
                 "stop_price": sp, "order_type": "STOP", "is_trailing": False,
                 "broker": "schwab" if acct.startswith("schwab") else ("fidelity" if acct.startswith("fidelity") else ""),
