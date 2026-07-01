@@ -168,6 +168,14 @@ export default function StopManagement({ onFocusHolding }: Props) {
                           🔒 Trail {r.account.startsWith('fidelity') ? 'manual' : '2FA'}
                         </button>
                       )}
+                      {!r.has_active_stop && r.planned_stop != null && !r.trailing_should_be_active && (
+                        <button onClick={() => setAdjust(r)}
+                          title={`Advised ${r.rec_source ? r.rec_source.split(' · ')[0] + ' ' : ''}stop ${fmtStop(r.planned_stop)} not placed — open the inline ${r.account.startsWith('fidelity') ? 'manual' : '2FA'} panel to set it`}
+                          style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5, whiteSpace: 'nowrap',
+                            border: `1px solid ${AMBER}`, background: `${AMBER}20`, color: AMBER }}>
+                          🔒 Set {r.account.startsWith('fidelity') ? 'manual' : '2FA'} {fmtStop(r.planned_stop)}
+                        </button>
+                      )}
                       <button onClick={() => setAdjust(r)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
                     </td>
                   </tr>
@@ -271,9 +279,16 @@ function AuditView() {
   }, [])
   const events = d?.events ?? []
   const counts = d?.counts ?? {}
-  const KIND: Record<string, { label: string; color: string }> = {
-    '2fa_stop_request': { label: '2FA stop request', color: BLUE },
-    'confirmation': { label: 'confirmation / manual', color: GREEN },
+  // Accurate per-row action label. Schwab positions are API/2FA-eligible, so an unconfirmed Schwab row is
+  // "Schwab 2FA (pending)" — NOT manual (only Fidelity, which has no trading API, is truly manual).
+  const actionFor = (e: any): { label: string; color: string } => {
+    if (e.kind === '2fa_stop_request') return { label: '2FA stop request', color: BLUE }
+    if (e.kind === 'confirmation') {
+      if (e.confirmed) return { label: 'confirmed', color: GREEN }
+      if (e.route === 'fidelity_manual') return { label: 'manual ticket (pending)', color: AMBER }
+      return { label: 'Schwab 2FA (pending)', color: BLUE }
+    }
+    return { label: e.kind, color: MUTED }
   }
   const STATUS_COLOR: Record<string, string> = { confirmed: GREEN, approved: GREEN, consumed: GREEN, pending: AMBER, superseded: MUTED, expired: MUTED, rejected: RED }
   return (
@@ -281,7 +296,7 @@ function AuditView() {
       <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
         <Card label="Audit events" value={String(d?.total ?? 0)} />
         <Card label="2FA stop requests" value={String(counts['2fa_stop_request'] ?? 0)} color={BLUE} />
-        <Card label="Confirmations / manual" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
+        <Card label="Confirmations / pending" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
       </div>
       <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -293,7 +308,7 @@ function AuditView() {
           </thead>
           <tbody>
             {events.map((e: any, i: number) => {
-              const k = KIND[e.kind] || { label: e.kind, color: MUTED }
+              const k = actionFor(e)
               return (
                 <tr key={i} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
                   <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: MUTED }}>{fmtTime(e.at)}</td>
