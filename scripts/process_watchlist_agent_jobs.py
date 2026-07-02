@@ -19,6 +19,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from watchlist_priority import WATCHLIST_TOP_N, holdings_list, is_off_hours_et
 from cio_agent_contract import (
     AGENT_JSON_CONTRACT_VERSION,
     GLOBAL_RULES_G1_G10,
@@ -1850,17 +1851,50 @@ def process_jobs(limit: int = 10):
     if adopted:
         print(f"[watchlist-agent] Adopted {len(adopted)} 'pending' jobs → queued")
 
-    # Get queued jobs — PRIORITIZED (operator 2026-06-14): the names that matter jump the 3,000-name
-    # tail so 12b's slower analysis stays fresh where it counts. Tier 0 directive · 1 active · 2
-    # BUY-rated · 3 the long tail; within a tier, the existing priority + FIFO order. EXISTS avoids
-    # row multiplication from duplicate watchlist_items rows.
-    cur.execute("""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'
+    holdings = holdings_list(PROJECT_ROOT)
+    off_hours = is_off_hours_et()
+    if off_hours:
+        # Shed aged tail backlog so decision-feeding jobs concentrate on top-N + holdings.
+        cur.execute("""UPDATE watchlist_agent_jobs j SET status='expired', completed_at=NOW(),
+                         note=COALESCE(note,'') || ' [off-hours tail deprioritized]'
+                       WHERE j.status IN ('queued','pending')
+                         AND j.created_at < NOW() - INTERVAL '2 hours'
+                         AND NOT (
+                           EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.in_directive_watch)
+                           OR j.symbol = ANY(%s)
+                           OR EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.status='active')
+                           OR EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol
+                                      AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s)
+                         )
+                       RETURNING id""", (holdings, WATCHLIST_TOP_N))
+        expired = cur.fetchall()
+        conn.commit()
+        if expired:
+            print(f"[watchlist-agent] Off-hours: expired {len(expired)} aged tail jobs (rank>{WATCHLIST_TOP_N})")
+
+    # Get queued jobs — PRIORITIZED: directive · holdings · Hermes top-N · active · BUY · tail.
+    scope_sql = ""
+    scope_params: list = []
+    if off_hours:
+        scope_sql = """ AND (
+            EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.in_directive_watch)
+            OR j.symbol = ANY(%s)
+            OR EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.status='active')
+            OR EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol
+                       AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s)
+        )"""
+        scope_params = [holdings, WATCHLIST_TOP_N]
+    cur.execute(f"""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'{scope_sql}
         ORDER BY (CASE
             WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.in_directive_watch) THEN 0
-            WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.status='active') THEN 1
+            WHEN j.symbol = ANY(%s) THEN 1
+            WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol
+                         AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s) THEN 2
+            WHEN EXISTS (SELECT 1 FROM watchlist_items wi WHERE wi.symbol=j.symbol AND wi.status='active') THEN 3
             WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol=j.symbol
-                         AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY')) THEN 2
-            ELSE 3 END), priority, created_at LIMIT %s""", (limit,))
+                         AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY')) THEN 4
+            ELSE 5 END), priority, created_at LIMIT %s""",
+                (*scope_params, holdings, WATCHLIST_TOP_N, limit))
     jobs = cur.fetchall()
 
     if not jobs:

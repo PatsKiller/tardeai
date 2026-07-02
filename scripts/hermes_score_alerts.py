@@ -17,6 +17,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from watchlist_priority import rank_alert_worthy, rank_in_scope
 
 SCORE_DELTA = 8.0
 RANK_JUMP = 20
@@ -75,22 +77,25 @@ def run(send=False):
             continue
         cur_s, prev_s = snaps[0], snaps[1]
         ts = cur_s["scored_at"].strftime("%Y%m%d%H%M")
-        # composite spike/drop
-        if cur_s["composite_score"] is not None and prev_s["composite_score"] is not None:
+        cur_rank = cur_s.get("rank")
+        prev_rank = prev_s.get("rank")
+        in_scope = rank_in_scope(cur_rank) or rank_alert_worthy(cur_rank, prev_rank)
+        # composite spike/drop (top-N only — tail churn is not actionable)
+        if in_scope and cur_s["composite_score"] is not None and prev_s["composite_score"] is not None:
             delta = float(cur_s["composite_score"]) - float(prev_s["composite_score"])
             if abs(delta) >= SCORE_DELTA:
                 arrow = "📈" if delta > 0 else "📉"
                 txt = f"{arrow} {sym} Hermes score {'spiked' if delta > 0 else 'dropped'} {delta:+.0f} → {float(cur_s['composite_score']):.0f}"
                 if _alert(cur, f"hermes_score_{sym}_{ts}", "hermes_score_move", sym, "info" if delta > 0 else "warning", txt):
                     new_alerts.append(txt)
-        # rank surge
-        if cur_s["rank"] and prev_s["rank"] and (prev_s["rank"] - cur_s["rank"]) >= RANK_JUMP:
+        # rank surge (suppress #2000+ tail noise)
+        if rank_alert_worthy(cur_rank, prev_rank) and cur_rank and prev_rank and (prev_rank - cur_rank) >= RANK_JUMP:
             txt = f"⤴ {sym} jumped to Hermes rank #{cur_s['rank']} (from #{prev_s['rank']})"
             if _alert(cur, f"hermes_rank_{sym}_{ts}", "hermes_rank_surge", sym, "info", txt):
                 new_alerts.append(txt)
-        # analyst divergence flip
+        # analyst divergence flip (top-N only)
         dc, dp = _div(cur_s["components"]), _div(prev_s["components"])
-        if dc and dp and dc != dp:
+        if in_scope and dc and dp and dc != dp:
             txt = f"⚠ {sym} analyst view flipped {dp} → {dc} vs Street"
             if _alert(cur, f"hermes_divflip_{sym}_{ts}", "hermes_divergence_flip", sym, "warning", txt):
                 new_alerts.append(txt)
@@ -98,7 +103,7 @@ def run(send=False):
         for f in ("sector_strength", "setup_quality"):
             cf = (cur_s["components"] or {}).get(f, {}).get("score")
             pf = (prev_s["components"] or {}).get(f, {}).get("score")
-            if cf is not None and pf is not None and abs(float(cf) - float(pf)) >= FACTOR_DELTA:
+            if in_scope and cf is not None and pf is not None and abs(float(cf) - float(pf)) >= FACTOR_DELTA:
                 txt = f"↻ {sym} {f.replace('_', ' ')} shifted {float(pf):.0f}→{float(cf):.0f}"
                 if _alert(cur, f"hermes_{f}_{sym}_{ts}", "hermes_factor_shift", sym, "info", txt):
                     new_alerts.append(txt)
