@@ -4,11 +4,18 @@ Provides stock-level insights, ETF look-through, and specific recommendations.
 Refreshes monthly. Daily runs use cached analysis.
 """
 from __future__ import annotations
-import json, os, time
+import json, os, sys, time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import (
+    build_portfolio_brief_json_schema,
+    format_portfolio_brief_display,
+    parse_portfolio_brief_result,
+)
 
 def _get_api_key():
     key = os.getenv("ANTHROPIC_API_KEY","").strip()
@@ -780,7 +787,7 @@ Net to rebalance: ${rebalancing.get('total_to_rebalance',0):,.0f}
 
 # ── Section 1: Executive Summary ──────────────────────────────────────────────
 
-def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: Dict = None) -> str:
+def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: Dict = None) -> tuple:
     """Daily executive summary enriched with market intelligence."""
     if personal is None:
         personal = {}
@@ -818,8 +825,14 @@ Write a portfolio brief a wealth manager would send. Include:
 1. Portfolio health summary (2-3 sentences)
 2. Key news/catalyst impacts on holdings (reference specific tickers and news if available)
 3. Most important action item considering Roth strategy, tax situation, and any agent alerts
-4. Any holdings the AI flagged as WATCH or CONCERN with reasoning"""
-    return _ai(prompt, max_tokens=400)
+4. Any holdings the AI flagged as WATCH or CONCERN with reasoning
+
+{build_portfolio_brief_json_schema()}"""
+    raw = _ai(prompt, max_tokens=500)
+    parsed = parse_portfolio_brief_result(raw)
+    if parsed:
+        return format_portfolio_brief_display(parsed), parsed
+    return raw, None
 
 
 def _roth_conversion_analysis(portfolio: Dict, personal: Dict = None) -> str:
@@ -1208,7 +1221,10 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
 
     # Daily: executive summary (Haiku, cheap)
     print(f"  [ai] Executive summary ({'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Haiku'})...")
-    results["executive_summary"] = _exec_summary(portfolio, analysis, rebalancing, personal)
+    exec_text, exec_structured = _exec_summary(portfolio, analysis, rebalancing, personal)
+    results["executive_summary"] = exec_text
+    if exec_structured:
+        results["executive_summary_structured"] = exec_structured
     if _freshness_warning:
         results["executive_summary"] = _freshness_warning + results["executive_summary"]
         results["_freshness_warning"] = _freshness_warning

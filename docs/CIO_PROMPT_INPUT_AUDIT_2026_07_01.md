@@ -112,3 +112,9 @@ synthesis `cio_synth_v6_structured_agent_evidence_2026-07-02`, `SYNTHESIS_VERSIO
 - `_parse_result` / `full_result` JSON persist structured fields; CIO synthesis prompt renders tagged
   evidence per analyst and instruction #9 reconciles structured claims before prose.
 - Maria two-pass pass-2 schema updated; combined output merges catalyst/headlines into tagged evidence.
+
+**Fleet parity phase 1 SHIPPED** (2026-07-02, operator-approved) — shared `scripts/lib/cio_agent_contract.py`:
+- Contract module extracted from watchlist worker; `process_watchlist_agent_jobs.py` imports shared helpers.
+- **Proposal review** (`proposal_agent_review.py`, `proposal_intelligence_analyzer.py`, `proposal_llm_reviewer.py`) wired to `cio_agent_v2` evidence + `data_i_doubt` schema; structured fields stored in DB payloads.
+- **Portfolio analysis** (`portfolio_ai_analyst.py` daily executive summary) uses same contract; `executive_summary_structured` JSON alongside formatted prose.
+- Phase 2 (Hermes external, strategy cards, remaining lanes) deferred until observation window on proposal/portfolio outputs.
