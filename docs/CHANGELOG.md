@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-02 - CIO Stage 2b (F2 structured agent evidence)
+
+Implements Stage 2b of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`.
+
+- **F2** committee JSON contract: `evidence` (tagged fact/technical/risk bullets) + `data_i_doubt`; stored in `full_result` and surfaced in CIO synthesis narratives.
+- Synthesis bumped to **`cio_synth_v6_structured_agent_evidence_2026-07-02`** (`SYNTHESIS_VERSION_NUM=6`); new critical instruction #9 reconciles structured claims.
+- Maria two-pass pass-2 schema aligned; tests: `tests/test_cio_stage2b_agent_evidence.py`.
+
 ## 2026-07-02 - Post-reboot recovery, site validation, OAuth proxy systemd, docs sync
 
 After the Python 3.14 OS upgrade on `ms01-openclaw`, restored full Command Center health without SQL migrations.

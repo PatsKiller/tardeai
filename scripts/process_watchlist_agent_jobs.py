@@ -174,8 +174,11 @@ _llm._last_cost = 0
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
 # one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
 # back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
-SYNTHESIS_PROMPT_VERSION = "cio_synth_v5_dq_specifics_2026-07-01"   # descriptive (prompt stamp / audit)
-SYNTHESIS_VERSION_NUM = 5                                    # integer for the synthesis_version column (bump on prompt/method change)
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v6_structured_agent_evidence_2026-07-02"   # prompt stamp / audit
+SYNTHESIS_VERSION_NUM = 6                                    # integer for the synthesis_version column (bump on prompt/method change)
+# F2 (Stage 2b): committee agents emit tagged evidence + data_i_doubt (CIO audit 2026-07-01).
+AGENT_JSON_CONTRACT_VERSION = "cio_agent_v2_structured_evidence_2026-07-02"
+_EVIDENCE_TAGS = frozenset({"fact", "technical", "risk"})
 
 # Local-lane control tokens (gemma/qwen '/no_think') are meaningless noise on cloud lanes — strip
 # before any Grok/ChatGPT call; the local fallback keeps the original prompt (F3, CIO audit 2026-07-01).
@@ -769,11 +772,14 @@ G7 ESCALATION: Auto-escalate to Alex when: agent conflict (BUY vs SELL same symb
 G10 NO DIRECT EXECUTION: No trade executes without human approval.
 === END GLOBAL RULES ==="""
 
-    base_instruction = f"""Respond in JSON format with these fields:
+    base_instruction = f"""[agent_contract: {AGENT_JSON_CONTRACT_VERSION}]
+Respond in JSON format with these fields:
 - "summary": 1-2 sentence executive summary
 - "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
 - "recommendation": one of BUY, HOLD, AVOID, ADD, TRIM, SELL, NEUTRAL, RESEARCH_MORE
 - "confidence": decimal 0.0-1.0
+- "evidence": array of 3-5 objects — each {{"tag": "fact"|"technical"|"risk", "text": "specific verifiable claim"}} (tag fact=ownership/yield/catalyst/SEC; technical=RSI/MA/support; risk=stop/heat/concentration)
+- "data_i_doubt": string — which inputs may be stale, missing, or unreliable (use "none" if confident)
 - "reason_codes": array of short reason tags (e.g. ["strong_dividend", "overvalued", "technical_support"])
 - "next_action": what should happen next
 
@@ -1009,7 +1015,8 @@ Respond in JSON only:
   "confidence": 0-100,
   "reasoning": "1-2 sentence reasoning",
   "income_critical": false,
-  "evidence": ["key fact 1", "key fact 2"]}}"""
+  "evidence": [{{"tag": "fact", "text": "key fact"}}, {{"tag": "risk", "text": "key risk"}}],
+  "data_i_doubt": "none or what you distrust"}}"""
 
     # Route: always local first — never burn cloud budget for Maria Pass 2
     pass2_raw = _llm(pass2_prompt, max_tokens=400, task_type="agent_narrative", high_impact=False)
@@ -1046,16 +1053,70 @@ Respond in JSON only:
     reasoning = pass2_data.get("reasoning", "")
     headlines = pass1_data.get("key_headlines", [])
 
+    _maria_evidence = _normalize_evidence(pass2_data.get("evidence"))
+    if catalyst and catalyst != "No catalyst identified":
+        _maria_evidence.insert(0, {"tag": "fact", "text": f"Catalyst: {catalyst}"})
+    for h in (headlines or [])[:2]:
+        _maria_evidence.append({"tag": "fact", "text": f"Headline: {h}"})
+    _maria_evidence = _maria_evidence[:5]
+    _maria_doubt = _normalize_data_i_doubt(pass2_data.get("data_i_doubt"))
+
     combined = json.dumps({
         "summary": f"{symbol}: {sentiment} sentiment, {signal} signal. {catalyst}. {reasoning}",
         "full_narrative": f"## News Analysis (Pass 1)\nSentiment: {sentiment} ({news_conf}% conf)\nCatalyst: {catalyst}\nHeadlines: {'; '.join(headlines)}\n\n## Fundamental Analysis (Pass 2)\nSignal: {signal} ({fund_conf}% conf)\nThesis intact: {pass2_data.get('thesis_intact', '?')}\nReasoning: {reasoning}\n\nModels: P1={pass1_model}, P2={pass2_model}",
         "recommendation": recommendation,
         "confidence": combined_conf,
+        "evidence": _maria_evidence,
+        "data_i_doubt": _maria_doubt,
         "reason_codes": [f"news_{sentiment}", f"fund_{signal.lower()}", f"thesis_{pass2_data.get('thesis_intact', 'unknown')}"],
         "next_action": f"{'Review catalyst timing' if catalyst and catalyst != 'No catalyst identified' else 'Monitor for new developments'}",
     })
     print(f"  [maria-final] {symbol}: {recommendation} conf={combined_conf:.0%} (news={news_conf}% fund={fund_conf}%)")
     return combined
+
+
+def _normalize_evidence(raw) -> list:
+    """F2: normalize tagged evidence bullets from agent JSON."""
+    out = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw[:5]:
+        if isinstance(item, dict):
+            tag = str(item.get("tag") or "fact").lower().strip()
+            text = str(item.get("text") or "").strip()
+            if tag not in _EVIDENCE_TAGS:
+                tag = "fact"
+        elif isinstance(item, str) and item.strip():
+            tag, text = "fact", item.strip()
+        else:
+            continue
+        if text:
+            out.append({"tag": tag, "text": text[:300]})
+    return out
+
+
+def _normalize_data_i_doubt(raw) -> str:
+    if raw is None:
+        return "none"
+    if isinstance(raw, list):
+        parts = [str(x).strip() for x in raw if str(x).strip()]
+        return "; ".join(parts)[:500] if parts else "none"
+    s = str(raw).strip()
+    return s[:500] if s else "none"
+
+
+def _format_evidence_for_synthesis(parsed: dict) -> str:
+    """Render structured agent output for the CIO synthesis prompt."""
+    lines = []
+    for ev in parsed.get("evidence") or []:
+        lines.append(f"  - [{ev.get('tag', 'fact')}] {ev.get('text', '')}")
+    doubt = parsed.get("data_i_doubt") or "none"
+    block = ""
+    if lines:
+        block += "Structured evidence:\n" + "\n".join(lines) + "\n"
+    if doubt and doubt.lower() != "none":
+        block += f"Data doubt: {doubt}\n"
+    return block
 
 
 def _parse_result(raw: str) -> dict:
@@ -1078,6 +1139,8 @@ def _parse_result(raw: str) -> dict:
                             "full_narrative": str(parsed.get("full_narrative", parsed.get("summary", "")))[:3000],
                             "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
                             "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+                            "evidence": _normalize_evidence(parsed.get("evidence")),
+                            "data_i_doubt": _normalize_data_i_doubt(parsed.get("data_i_doubt")),
                             "reason_codes": parsed.get("reason_codes", []) if isinstance(parsed.get("reason_codes"), list) else [],
                             "next_action": str(parsed.get("next_action", ""))[:200],
                         }
@@ -1109,6 +1172,8 @@ def _parse_result(raw: str) -> dict:
         "full_narrative": full_narrative,
         "recommendation": recommendation,
         "confidence": confidence,
+        "evidence": [],
+        "data_i_doubt": "none",
         "reason_codes": reason_codes,
         "next_action": "",
     }
@@ -1518,7 +1583,8 @@ def run_synthesis(conn, symbol: str):
 
     # Get all completed narratives
     cur.execute("""
-        SELECT agent, full_narrative, summary, recommendation, confidence, reason_codes, created_at
+        SELECT agent, full_narrative, summary, recommendation, confidence, reason_codes,
+               full_result, created_at
         FROM watchlist_agent_results
         WHERE symbol = %s AND status = 'completed'
         ORDER BY created_at DESC
@@ -1544,6 +1610,17 @@ def run_synthesis(conn, symbol: str):
     for r in results:
         narratives += f"\n--- {r['agent'].upper()} ({r['created_at'].strftime('%Y-%m-%d') if r.get('created_at') else '?'}) ---\n"
         narratives += f"Recommendation: {r.get('recommendation', '?')}, Confidence: {r.get('confidence', '?')}\n"
+        _agent_struct = {"evidence": [], "data_i_doubt": "none"}
+        try:
+            _fr = json.loads(r.get("full_result") or "{}")
+            if isinstance(_fr, dict):
+                _agent_struct["evidence"] = _fr.get("evidence") or []
+                _agent_struct["data_i_doubt"] = _fr.get("data_i_doubt") or "none"
+        except Exception:
+            pass
+        _ev_block = _format_evidence_for_synthesis(_agent_struct)
+        if _ev_block:
+            narratives += _ev_block
         narratives += f"Narrative: {r.get('full_narrative') or r.get('summary', 'No narrative')}\n"
         if r.get('reason_codes'):
             narratives += f"Reason codes: {', '.join(r['reason_codes'])}\n"
@@ -1654,6 +1731,7 @@ CRITICAL INSTRUCTIONS:
    - Your recommendation (based on all three, not just history)
    Do NOT use "it returned X% before" as the sole rationale. Instead reference current fundamentals, payout quality, and strategy fit.
 8. INPUT CONTRADICTION RULE: If input sources conflict on a material fact (ownership, position size, income), the PORTFOLIO POSITION block is the live-holdings ground truth — prefer it over analyst narratives (which may be older snapshots). State the contradiction in "conflicts", lower confidence proportionally, and still produce a verdict; do NOT let a stale-narrative conflict alone collapse confidence below 0.4.
+9. STRUCTURED AGENT EVIDENCE: Each analyst block includes tagged evidence ([fact]/[technical]/[risk]) and optional "Data doubt". Reconcile these structured claims first — weight [risk] and "Data doubt" heavily when they flag stale/missing inputs; do not let free-form narrative override tagged [fact] claims that contradict PORTFOLIO POSITION.
 
 Respond in JSON format:
 - "recommendation": one of BUY, HOLD, SELL, ADD, ADD_ON_PULLBACK, TRIM, REBALANCE_TRIM, AVOID, IGNORE
@@ -2013,7 +2091,13 @@ def process_jobs(limit: int = 10):
               parsed["summary"][:500], parsed["full_narrative"][:3000],
               parsed["recommendation"], parsed["reason_codes"],
               parsed.get("next_action", ""),
-              json.dumps({"raw": raw, "model": OLLAMA_MODEL}),
+              json.dumps({
+                  "raw": raw,
+                  "model": OLLAMA_MODEL,
+                  "agent_contract": AGENT_JSON_CONTRACT_VERSION,
+                  "evidence": parsed.get("evidence", []),
+                  "data_i_doubt": parsed.get("data_i_doubt", "none"),
+              }),
               OLLAMA_MODEL, prompt_hash,
               json.dumps(context["snapshot"], default=str),
               raw,
