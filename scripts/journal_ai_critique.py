@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import journal_trade_in_view as tiv
 import ohlc_charts
 
-PROMPT_VERSION = "ai_critique_v2"
+PROMPT_VERSION = "ai_critique_v3_hermes"  # v3: Hermes intelligence block appended (Phase 6)
 _HISTORY_MAX = 10
 
 
@@ -779,6 +779,17 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
             be_secured=("yes" if trade.get("breakeven_trigger_r") is not None else "not tagged"),
             r_vs_stop=trade.get("final_r_vs_planned_stop") if trade.get("final_r_vs_planned_stop") is not None else "—",
         )
+        # Phase 6 (2026-07-02): the critique now CONSUMES Hermes intelligence (score/rank,
+        # graded research, external-lane opinions) instead of only writing research back.
+        # Advisory context — the deterministic facts above remain the ground truth.
+        try:
+            from hermes_data_access import hermes_prompt_block
+            _hb = hermes_prompt_block(trade["symbol"])
+            if _hb:
+                prompt += ("\n\nHERMES INTELLIGENCE for this symbol (advisory context — weigh "
+                           "against the facts above, do not parrot):\n" + _hb[:1200])
+        except Exception:
+            pass
         try:
             llm_raw = llm_lane.generate(prompt, lane=lane, timeout=90)
             llm_parsed = _parse_llm(llm_raw)

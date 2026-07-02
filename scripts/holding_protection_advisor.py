@@ -28,7 +28,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-PROMPT_VERSION = "protection_advisor_v1"
+PROMPT_VERSION = "protection_advisor_v2_hermes"  # v2: Hermes intel block appended (Phase 6)
 
 # ── CURATED PROMPT (operator: "prompts well curated for the best answers") ─────────────────────
 # Structure: role → hard rules → labeled inputs → exact output contract. Identical for local and
@@ -284,6 +284,16 @@ def run(lane="grok", symbols=None, limit=12):
             family_label=fb["label"], family_hold=fb["hold"], stop_min_pct=fb["stop_min_pct"],
             stop_max_pct=fb["stop_max_pct"], trail_min_pct=fb["trail_min_pct"],
             trail_max_pct=fb["trail_max_pct"], trail_rule=trail_rule, **_analyst(cur, sym))
+        # Phase 6 (2026-07-02): stop advisory now CONSUMES Hermes intelligence. Kept short so the
+        # curated prompt stays bounded, and explicitly subordinate to the HARD RULES above.
+        try:
+            from hermes_data_access import hermes_prompt_block
+            _hb = hermes_prompt_block(sym)
+            if _hb:
+                prompt += ("\nHERMES INTEL (advisory color for the rationale ONLY — it never "
+                           "overrides the HARD RULES or the family band):\n" + _hb[:700])
+        except Exception:
+            pass
         # 401k funds can't hold stop ORDERS — reframe as NAV alert/trim levels (proxy-based when noted)
         if str(c.get("account", "")).startswith("fidelity") or bars[0].get("_proxy"):
             proxy_note = f" Technicals are from the {bars[0].get('_proxy', 'fund NAV')} asset-class proxy." \

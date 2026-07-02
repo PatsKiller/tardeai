@@ -168,9 +168,16 @@ goes through the config-proposal channel (loop 8).
 - **Real consumers:** `hermes_data_access.py` (quality-ranked top-3 per symbol → all LLM prompts),
   `analyst_report_builder` (quality-ordered), news bridge (`strategy_tags[0]` →
   `news_articles.strategy_type`), directive discovery (tag text search), maturity gates.
-- **Honest non-consumers:** AI Trade Critique, Stop Management, and the Validation Tracker
-  currently **write** research but do **not** read tags back — wiring tag context into those
-  surfaces is open Phase-6 work, not a claimed capability.
+- **Phase 6 consumers (2026-07-02) — the former write-only surfaces now read back:**
+  **AI Trade Critique** (`journal_ai_critique.py`, `ai_critique_v3_hermes`) appends the symbol's
+  Hermes block (score/rank, graded research, lane opinions) to the coach prompt — advisory,
+  deterministic facts stay ground truth; **Stop Management advisory**
+  (`holding_protection_advisor.py`, `protection_advisor_v2_hermes`) gets a 700-char Hermes block
+  for rationale color, explicitly subordinate to the HARD RULES / family bands;
+  **Validation Tracker** (`momentum_scalp_validation_tracker.py`) reports
+  `hermes_context` — share of confirmed trades with prior Hermes research (first reading: **0/2**,
+  a real coverage finding) + scalp-relevant tag efficacy incl. `avg_realized_r`. All three
+  fail-open (a Hermes outage never blocks a critique/stop/validation run).
 
 ## Resource efficiency — measured before/after (2026-07-02 cutover)
 

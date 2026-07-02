@@ -71,6 +71,32 @@ def build() -> dict:
     }
     gate_met = all(p["met"] for p in progress.values())
 
+    # Phase 6 (2026-07-02): the tracker now CONSUMES Hermes context — how many confirmed trades
+    # had prior Hermes research, and what the scalp-relevant tags measure against outcomes.
+    hermes_ctx = {}
+    try:
+        cur = conn.cursor()
+        ids = attr.get("confirmed_trade_ids") or []
+        if ids:
+            cur.execute("""SELECT count(*) FILTER (WHERE claim='trade:with_hermes_context'), count(*)
+                           FROM hermes_outcome_ledger l
+                           JOIN trade_instances ti ON ti.id = l.subject_id
+                           WHERE l.subject_type='trade' AND ti.source_trade_id::text = ANY(%s::text[])""",
+                        ([str(i) for i in ids],))
+            w, t = cur.fetchone()
+            hermes_ctx["confirmed_with_prior_hermes_research"] = f"{w}/{t}" if t else "0/0"
+        cur.execute("""SELECT tag, n, hit_rate, lift, trade_n, avg_realized_r
+                       FROM hermes_tag_efficacy
+                       WHERE tag IN ('momentum_scalp','social_route','large_float_social_scout','catalyst')
+                       ORDER BY n DESC""")
+        hermes_ctx["tag_efficacy"] = [
+            {"tag": r0, "n": r1, "hit_rate": float(r2) if r2 is not None else None,
+             "lift": float(r3) if r3 is not None else None, "trade_n": r4,
+             "avg_realized_r": float(r5) if r5 is not None else None}
+            for r0, r1, r2, r3, r4, r5 in cur.fetchall()]
+    except Exception as e:
+        hermes_ctx = {"unavailable": str(e)[:80]}
+
     if closed == 0:
         headline = "No confirmed sample yet — 0 confirmed closed momentum_scalp paper trades."
     else:
@@ -94,6 +120,7 @@ def build() -> dict:
         "progress": progress,
         "gate": GATE,
         "gate_met": gate_met,
+        "hermes_context": hermes_ctx,
         "live_ready": False,
         "headline": headline,
         "next_actions": [

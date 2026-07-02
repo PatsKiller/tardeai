@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-02 - Hermes Phase 6: consumption gap closed (critique / stops / validation read Hermes back)
+
+The audit + external review both flagged AI Trade Critique, Stop Management, and the Validation
+Tracker as write-only surfaces (they produced research; nothing read Hermes back). All three now
+consume via the canonical `hermes_data_access.hermes_prompt_block` path, fail-open:
+
+- `journal_ai_critique.py` (`ai_critique_v3_hermes`): Hermes block appended to the coach prompt;
+  deterministic facts remain ground truth.
+- `holding_protection_advisor.py` (`protection_advisor_v2_hermes`): ≤700-char Hermes block for
+  rationale color, explicitly subordinate to the HARD RULES / family bands.
+- `momentum_scalp_validation_tracker.py`: new `hermes_context` report section — confirmed trades
+  with prior Hermes research (first reading 0/2 — a real coverage finding) + scalp-tag efficacy
+  incl. `avg_realized_r`.
+
+Also in this drop (review-gap fixes, commit f970ea8f): per-tag `trade_n`/`avg_realized_r` in
+`hermes_tag_efficacy`, `trend_vs_7d` on the maturity board, closed-loop map + resource
+before/after + tagging metrics sections in HERMES_INTELLIGENCE_ENGINE, implemented-gates table in
+the design doc.
+
 ## 2026-07-02 - Hermes Maturity-5 program: phases 0-5 (commit dfa09163)
 
 Full implementation of `docs/design/HERMES_MATURITY_5_DESIGN.md` — from the same-day audit
