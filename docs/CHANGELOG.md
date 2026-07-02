@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-01 - Synthesis-zombie reaper extension (maturity-table coverage)
+
+Discovered while checking batch progress: **19 symbols stuck in `watchlist_analysis_maturity.final_synthesis_status='processing'`** (worst: CEPO 34 days) — `_check_synthesis_ready` skips `processing`, so they were silently excluded from CIO-view refreshes. Same worker-death zombie pattern as the 2026-06-29 job-queue incident, but the reaper only covered `watchlist_agent_jobs`.
+
+- **`reset_stuck_agent_jobs.py`**: `find_stuck_synthesis()` + `reset_synthesis()` — `processing`>30m (via `updated_at`, which this table has) → `pending`, picked up by `_check_pending_synthesis` on the next worker run. One `--apply` reaps both tables, so the existing allowlisted remediation command covers it.
+- **`health_agent.py`**: new `synthesis_processing_stuck` finding (warning <10, critical ≥10, reports worst age) in `collect_infra_optimization_health`.
+- **`config/health_agent_policy.json`**: `synthesis_processing_stuck` added to `auto_remediate.finding_types` + `remediation_map` (same safe reaper command).
+- Tests: 6 new checks in `test_job_schedule_prioritization.py`. Docs: reaper row + monitoring section in `JOB_SCHEDULE_TIERED_PRIORITIZATION.md`.
+- One-time data fix applied live before this change (operator-approved): 19 rows reset to `pending`.
+
 ## 2026-07-01 - CIO input tightness Stage 2a (audit F4 + max_tokens, synthesis v5)
 
 Implements Stage 2a of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md`; prompt version **`cio_synth_v5_dq_specifics_2026-07-01`** (`synthesis_version=5`). F2 (structured agent evidence) intentionally held for the observation window.

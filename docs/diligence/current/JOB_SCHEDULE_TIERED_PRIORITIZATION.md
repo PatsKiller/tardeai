@@ -34,7 +34,7 @@ writes, operator/2FA untouched, no gate weakened. LLMs remain advisory only._
 | **LLM priority guard** | `llm_priority_guard.sh` + `apply_llm_priority_guard_to_crontab.py` | 13 frequent T3 LLM jobs defer 06:00–12:00 ET; market-window LLM contention 20–26 → **12–16** |
 | **Monday worker-gap fix** | crontab (`0-5 2-6` → `1-6`) | 4am-enqueued proposal_review jobs always have a drainer |
 | **Embed timeout** 30s → 90s | `rag_retrieval.py` | proposal-review worker stops spinning on cold-embed timeouts |
-| **Zombie reaper** | `reset_stuck_agent_jobs.py` | resets `processing`>30m jobs → `queued` (the worker died mid-job; no `updated_at` to age them) |
+| **Zombie reaper** | `reset_stuck_agent_jobs.py` | resets `processing`>30m jobs → `queued` (the worker died mid-job; no `updated_at` to age them) AND `final_synthesis_status='processing'`>30m maturity rows → `pending` (2026-07-01: 19 symbols silently excluded from CIO-view refresh, worst 34 days) |
 | **Cloud-OAuth usage monitor** | `cloud_oauth_usage_monitor.py` | per-lane calls/day + auth-fail + **paid-fallback** detection (Grok :8645 / ChatGPT :8646) |
 
 See `LLM_ROUTING_MATRIX.md` for the local-vs-cloud routing + the **"gemma4:31b is the wrong local
@@ -48,6 +48,10 @@ auto-remediates safely:
 * **`agent_jobs_processing_stuck`** — zombie `processing` jobs → **auto-remediated** by
   `reset_stuck_agent_jobs.py --apply` (added to the auto-remediation **safety allowlist** + policy
   `remediation_map`; source/DB-state only, no broker writes; cooldown + circuit-breaker apply).
+* **`synthesis_processing_stuck`** — zombie `final_synthesis_status='processing'` maturity rows
+  (same worker-death failure mode; `_check_synthesis_ready` skips `processing`, so the symbol is
+  silently excluded from CIO-view refreshes) → **auto-remediated** by the same reaper `--apply`
+  (reset → `pending`, picked up by `_check_pending_synthesis` on the next worker run).
 * **`cloud_oauth_*`** — lane unreachable / **paid-fallback (critical)** / auth-failures / overuse.
 * **`llm_market_window_contention`** — alerts if an unguarded T3 LLM job creeps back into 06:00–12:00 ET
   (re-run the guard applier).
