@@ -108,7 +108,7 @@ def _build_risk_prompt(data_summary, analysis):
 {data_summary}
 Prior analysis: {json.dumps(analysis, default=str)[:200]}
 JSON only:
-{{"position_size_assessment":"...","correlation_risk":"...","max_drawdown_scenario":"...","risk_mitigation":"...","risk_grade":"A|B|C|D|F"}}"""
+{{"position_size_assessment":"...","correlation_risk":"...","max_drawdown_scenario":"...","risk_mitigation":"...","risk_grade":"A|B|C|D|F"}}{build_llm_chunk_evidence_footer()}"""
 
 
 def _build_catalyst_prompt(data_summary, analysis):
@@ -117,7 +117,7 @@ def _build_catalyst_prompt(data_summary, analysis):
 {data_summary}
 Prior analysis: {json.dumps(analysis, default=str)[:200]}
 JSON only:
-{{"catalyst_type":"company_specific|sector|macro|technical|none","catalyst_freshness":"fresh|stale|unknown","catalyst_uniqueness":"unique|common|generic","catalyst_timing":"imminent|near_term|distant|expired","catalyst_grade":"A|B|C|D|F"}}"""
+{{"catalyst_type":"company_specific|sector|macro|technical|none","catalyst_freshness":"fresh|stale|unknown","catalyst_uniqueness":"unique|common|generic","catalyst_timing":"imminent|near_term|distant|expired","catalyst_grade":"A|B|C|D|F"}}{build_llm_chunk_evidence_footer()}"""
 
 
 # Chunk stage progression: each stage depends on prior
@@ -130,7 +130,7 @@ def _build_review_prompt(proposal, technical, backtest, stock_history):
     return f"""Paper trade review. Be brief. Use evidence only.
 {data_summary}
 JSON only:
-{{"setup_summary":"...","technical_condition":"...","catalyst_quality":"...","bull_case":"...","bear_case":"...","risk_reward_quality":"...","confidence_score":0-100,"decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT"}}"""
+{{"setup_summary":"...","technical_condition":"...","catalyst_quality":"...","bull_case":"...","bear_case":"...","risk_reward_quality":"...","confidence_score":0-100,"decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT"}}{build_llm_chunk_evidence_footer()}"""
 
 
 def _deterministic_review(proposal, technical, backtest, stock_history):

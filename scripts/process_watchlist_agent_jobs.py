@@ -23,10 +23,13 @@ from cio_agent_contract import (
     AGENT_JSON_CONTRACT_VERSION,
     GLOBAL_RULES_G1_G10,
     build_base_json_instruction,
+    build_synthesis_json_schema,
     format_evidence_for_synthesis,
+    merge_structured_into_result,
     normalize_data_i_doubt,
     normalize_evidence,
     parse_agent_result,
+    parse_synthesis_result,
 )
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
@@ -184,8 +187,8 @@ _llm._last_cost = 0
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
 # one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
 # back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
-SYNTHESIS_PROMPT_VERSION = "cio_synth_v6_structured_agent_evidence_2026-07-02"   # prompt stamp / audit
-SYNTHESIS_VERSION_NUM = 6                                    # integer for the synthesis_version column (bump on prompt/method change)
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v7_synthesis_evidence_2026-07-02"   # prompt stamp / audit
+SYNTHESIS_VERSION_NUM = 7                                    # integer for the synthesis_version column (bump on prompt/method change)
 # F2 (Stage 2b): committee agents emit tagged evidence + data_i_doubt (CIO audit 2026-07-01).
 # Contract constants/helpers live in scripts/lib/cio_agent_contract.py (fleet parity).
 
@@ -1016,7 +1019,7 @@ Respond in JSON only:
             import re
             json_match = re.search(r'\{[^{}]*\}', pass2_raw, re.DOTALL)
             if json_match:
-                pass2_data = json.loads(json_match.group())
+                pass2_data = merge_structured_into_result(json.loads(json_match.group()))
         except Exception:
             pass
     print(f"  [maria-p2] {symbol}: signal={pass2_data.get('fundamental_signal')} thesis={pass2_data.get('thesis_intact')} conf={pass2_data.get('confidence')} model={pass2_model}")
@@ -1624,40 +1627,23 @@ CRITICAL INSTRUCTIONS:
 8. INPUT CONTRADICTION RULE: If input sources conflict on a material fact (ownership, position size, income), the PORTFOLIO POSITION block is the live-holdings ground truth — prefer it over analyst narratives (which may be older snapshots). State the contradiction in "conflicts", lower confidence proportionally, and still produce a verdict; do NOT let a stale-narrative conflict alone collapse confidence below 0.4.
 9. STRUCTURED AGENT EVIDENCE: Each analyst block includes tagged evidence ([fact]/[technical]/[risk]) and optional "Data doubt". Reconcile these structured claims first — weight [risk] and "Data doubt" heavily when they flag stale/missing inputs; do not let free-form narrative override tagged [fact] claims that contradict PORTFOLIO POSITION.
 
-Respond in JSON format:
-- "recommendation": one of BUY, HOLD, SELL, ADD, ADD_ON_PULLBACK, TRIM, REBALANCE_TRIM, AVOID, IGNORE
-- "confidence": 0.0-1.0
-- "action": specific next action with price levels and share counts where possible
-- "account_action": which account to act in and why (e.g. "Add in IRA for tax-deferred income")
-- "income_goal_impact": how this action affects the $55K income target (e.g. "Maintains $4,438/yr income stream")
-- "reason_codes": array of reason tags
-- "conflicts": array of disagreements between analysts (empty if none)
-- "unresolved": array of questions that still need answers
-- "what_changes_view": what new information would change this recommendation
-- "synthesis_narrative": 2-3 paragraph final assessment explaining the weighting
-- "next_review_date": ISO date for when to re-review
+{build_synthesis_json_schema()}
 """
 
     prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
     # max_tokens applies to the LOCAL gemma fallback only (cloud lanes send no cap); 1000 truncated the
     # ~11-field JSON contract mid-narrative on the fallback lane (measured: 1/1 local rows truncated).
     raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
-    parsed = _parse_result(raw)
-
-    # Extract synthesis-specific fields
-    try:
-        j = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
-        conflicts = j.get("conflicts", []) if isinstance(j.get("conflicts"), list) else []
-        unresolved = j.get("unresolved", []) if isinstance(j.get("unresolved"), list) else []
-        action = str(j.get("action", ""))[:200]
-        next_review = j.get("next_review_date")
-        synthesis_narrative = str(j.get("synthesis_narrative", parsed["full_narrative"]))[:3000]
-    except (json.JSONDecodeError, ValueError):
-        conflicts = []
-        unresolved = []
-        action = parsed.get("next_action", "")
-        next_review = None
-        synthesis_narrative = parsed["full_narrative"]
+    syn = parse_synthesis_result(raw)
+    parsed = syn
+    conflicts = list(syn.get("conflicts") or [])
+    unresolved = list(syn.get("unresolved") or [])
+    action = syn.get("action") or syn.get("next_action", "")
+    next_review = syn.get("next_review_date")
+    synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
+    dual_meta["agent_contract"] = AGENT_JSON_CONTRACT_VERSION
+    dual_meta["structured_evidence"] = syn.get("evidence", [])
+    dual_meta["data_i_doubt"] = syn.get("data_i_doubt", "none")
 
     # ── DUAL-CONSENSUS reconciliation: apply the Grok+ChatGPT verdict BEFORE gating. On disagreement we
     # already chose the more cautious recommendation + lowered confidence; surface it as a conflict. ──

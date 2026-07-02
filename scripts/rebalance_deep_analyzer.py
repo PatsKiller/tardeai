@@ -18,6 +18,9 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_rebalance_json_schema, extract_json_object, merge_structured_into_result
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -167,21 +170,7 @@ TARGET ALLOCATIONS:
 RECENT CIO DECISIONS:
 {chr(10).join(cio_lines) if cio_lines else '  None'}
 
-Respond with JSON:
-{{
-  "yaml_health_score": 0-100,
-  "executive_summary": "3-4 sentence overview",
-  "recommendations": [
-    {{"account": "account_name", "symbol": "TICKER", "action": "BUY|SELL|TRIM|HOLD|CONVERT",
-      "shares_or_dollars": "amount", "rationale": "why", "urgency": "HIGH|MEDIUM|LOW",
-      "tax_impact": "none|minimal|moderate|significant"}}
-  ],
-  "v_concentration_plan": "Visa trimming strategy with tax considerations",
-  "bond_ballast_assessment": "fixed income adequacy assessment",
-  "yaml_gaps": [{{"category": "name", "target_pct": X, "actual_pct": Y, "action_needed": "desc"}}],
-  "income_gap_plan": "plan to close income gap",
-  "top_3_actions": ["most important", "second", "third"]
-}}
+{build_rebalance_json_schema()}
 
 CONSTRAINTS: Never sell V in large blocks (embedded gains). Roth conversions near $35K limit.
 Prioritize income in tax-deferred. Max 3% per position on new buys."""
@@ -215,15 +204,18 @@ def run_analysis(conn, queue_id=None, dry_run=False):
         return {"error": "No LLM response", "elapsed": elapsed}
 
     # Parse JSON from response
-    parsed = {}
-    try:
-        match = re.search(r"\{.+\}", response, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group())
-        else:
-            parsed = {"parse_error": "No JSON found", "raw_response": response[:3000]}
-    except Exception as e:
-        parsed = {"parse_error": str(e), "raw_response": response[:3000]}
+    parsed = extract_json_object(response)
+    if parsed:
+        parsed = merge_structured_into_result(parsed)
+    else:
+        try:
+            match = re.search(r"\{.+\}", response, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group())
+            else:
+                parsed = {"parse_error": "No JSON found", "raw_response": response[:3000]}
+        except Exception as e:
+            parsed = {"parse_error": str(e), "raw_response": response[:3000]}
 
     # Save to DB
     cur = conn.cursor()

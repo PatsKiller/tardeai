@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from cio_agent_contract import AGENT_JSON_CONTRACT_VERSION, build_deep_research_json_schema, merge_structured_into_result
 LOCK = Path("/tmp/hermes_deep_research_local.lock")
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"   # live kill-switch (NOT the retired sidecar path)
 AGENT = "deep_research_local"
@@ -76,12 +78,7 @@ Recent closed trades (strategy, account, pnl, status, close_date):
 Prior research notes:
 {research}
 
-Return ONLY valid JSON with keys:
-  "summary": 3-6 sentence specific deep-research synthesis (mention {sym}, the trade outcomes, and a concrete lesson),
-  "thesis": the current bull/bear thesis in 1-2 sentences,
-  "risks": key risks in 1-2 sentences,
-  "limitations": array of 1-3 short strings naming what this analysis cannot know / its caveats,
-  "confidence_score": a number 0.0-0.8.
+{build_deep_research_json_schema(sym)}
 Be specific and grounded in the data above. Do not recommend executing any trade."""
 
 
@@ -95,7 +92,7 @@ def run_one(conn, sym, model, apply):
         req = urllib.request.Request(OLLAMA, data=payload, headers={"Content-Type": "application/json"})
         from llm_net import urlopen_retry
         content = json.loads(urlopen_retry(req, timeout=600, attempts=2, base=2.0)).get("message", {}).get("content", "")
-        out = json.loads(content)
+        out = merge_structured_into_result(json.loads(content))
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -112,6 +109,9 @@ def run_one(conn, sym, model, apply):
         out["confidence_score"] = 0.5
     ej = {k: out.pop(k) for k in ("thesis", "risks") if k in out}
     ej["context_recent_trades"] = ctx["recent_trades"]; ej["lane"] = "internal_deep_research_local"
+    ej["cio_evidence"] = out.pop("evidence", [])
+    ej["data_i_doubt"] = out.pop("data_i_doubt", "none")
+    ej["agent_contract"] = out.pop("agent_contract", AGENT_JSON_CONTRACT_VERSION)
     # required by validate_payload: non-empty limitations + source_views
     lims = out.pop("limitations", None)
     ej["limitations"] = lims if (isinstance(lims, list) and lims) else \

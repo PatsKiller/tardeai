@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-02 - CIO fleet parity phase 2 (Hermes + synthesis + remaining lanes)
+
+Extended `scripts/lib/cio_agent_contract.py` to Hermes external lanes, CIO synthesis, holdings health, cloud review, rebalance, and stop curation.
+
+- **Contract module:** new schemas/parsers — `build_synthesis_json_schema`, `parse_synthesis_result`, `build_hermes_research_json_footer`, `build_external_research_json_schema`, `parse_external_research_result`, `normalize_hermes_evidence`, holdings/cloud/topic/rebalance/stop builders.
+- **CIO synthesis:** `process_watchlist_agent_jobs.py` synthesis bumped to **`cio_synth_v7_synthesis_evidence_2026-07-02`** (`SYNTHESIS_VERSION_NUM=7`); structured evidence in `dual_consensus_json`; Maria pass-2 normalized via contract.
+- **Hermes:** `hermes_research_prompt.py`, `hermes_external_researcher.py`, `hermes_top20_external_intel.py`, `hermes_discovery.py`, `hermes_deep_research_local.py`, `topic_research_synthesizer.py`, `inference_hermes_query.py`.
+- **Portfolio/proposal gaps:** `holdings_llm_refresh.py`, `proposal_quality_reviewer.py`, `proposal_llm_reviewer.py` (chunks 3–4), `cloud_review.py`, `rebalance_deep_analyzer.py`, `grok_stop_review.py`.
+- Tests: `test_cio_agent_contract_fleet.py` (13 checks); stage2b synthesis version test updated to v7.
+
 ## 2026-07-02 - CIO fleet parity phase 1 (shared cio_agent_v2 contract)
 
 Extracted the Stage 2b structured-evidence contract into `scripts/lib/cio_agent_contract.py` and wired it into proposal review + portfolio analysis (phase 1 of fleet-wide LLM methodology parity).

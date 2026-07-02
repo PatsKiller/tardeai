@@ -25,6 +25,9 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 import sys
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+
+from cio_agent_contract import extract_json_object, merge_structured_into_result
 
 log = logging.getLogger("inference_hermes_query")
 
@@ -101,11 +104,16 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
     llm_cfg = cfg.get("llm", {}) or {}
     threshold = (cfg.get("proactive", {}) or {}).get("salience_threshold", 0.65)
     instruction = prompt
-    if want_keys:
-        instruction += ("\n\nReturn ONLY one JSON object with keys: "
-                        + ", ".join(want_keys)
-                        + ". Include a numeric \"confidence\" 0.0-1.0 and a "
-                          "\"reasoning\" array of short steps. No prose outside JSON.")
+    keys = list(want_keys or ["answer", "confidence", "reasoning"])
+    for req in ("evidence", "data_i_doubt"):
+        if req not in keys:
+            keys.append(req)
+    instruction += ("\n\nReturn ONLY one JSON object with keys: "
+                    + ", ".join(keys)
+                    + ". Include numeric \"confidence\" 0.0-1.0, "
+                      "\"reasoning\" array of short steps, "
+                      "\"evidence\" array of {tag: fact|technical|risk, text}, "
+                      "and \"data_i_doubt\" string. No prose outside JSON.")
 
     chosen = None
     if force_lane and force_lane != "local":
@@ -124,7 +132,8 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
     if not raw:
         raw = llm_text(instruction, caller=caller, timeout=llm_cfg.get("timeout", timeout))
 
-    parsed = extract_json(raw) or {}
+    parsed = extract_json_object(raw) or extract_json(raw) or {}
+    parsed = merge_structured_into_result(parsed)
     parsed.setdefault("confidence", 0.5)
     parsed["_lane"] = lane
     parsed["_raw_len"] = len(raw)

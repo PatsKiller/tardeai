@@ -19,6 +19,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+
+from cio_agent_contract import build_holdings_health_json_schema, parse_holdings_health_result
 
 os.environ.setdefault("DOTENV_LOADED", "0")
 if os.environ["DOTENV_LOADED"] == "0":
@@ -203,8 +206,7 @@ Tech:{tech_str}
 News:{news_str[:200]}
 Social:{social_str[:150]}
 Agents:{agent_str[:200]}
-JSON only:
-{{"health":"STRONG|STABLE|WATCH|CONCERN|EXIT","confidence":0-100,"thesis_intact":"yes|weakening|broken","catalyst_outlook":"positive|neutral|negative","risk_flag":"none|earnings|sector_rotation|momentum_loss|overvalued","action":"HOLD|ADD|TRIM|EXIT","reasoning":"1-2 sentences"}}"""
+{build_holdings_health_json_schema()}"""
 
 
 def refresh_one(conn, holding, dry_run=False):
@@ -226,12 +228,9 @@ def refresh_one(conn, holding, dry_run=False):
         if not raw:
             return {'symbol': symbol, 'status': 'empty'}
 
-        start = raw.find('{')
-        end = raw.rfind('}') + 1
-        if start < 0 or end <= start:
+        result = parse_holdings_health_result(raw)
+        if not result:
             return {'symbol': symbol, 'status': 'parse_error'}
-
-        result = json.loads(raw[start:end])
         health = result.get('health', 'STABLE')
         action = result.get('action', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))

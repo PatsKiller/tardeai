@@ -18,6 +18,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_cloud_review_json_schema, parse_cloud_review_result
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,26 +52,33 @@ def _build_prompt(task, local_output, context):
         f"Task the local model performed: {task}\n\n"
         "What the LOCAL model concluded:\n\"\"\"\n" + str(local_output)[:4000] + "\n\"\"\"" + ctx + "\n\n"
         "Review it as a second opinion. Is the local model's conclusion sound given the facts, or is it "
-        "over/under-reacting, missing context, or internally inconsistent? Reply with ONLY valid JSON:\n"
-        '{"verdict":"AGREE|CAUTION|DISAGREE","assessment":"1-3 sentence judgment",'
-        '"concerns":["..."],"corrections":["a concrete fix if the local model got something wrong"]}')
+        "over/under-reacting, missing context, or internally inconsistent?\n"
+        + build_cloud_review_json_schema()
+    )
 
 
 def _parse(raw):
+    obj = parse_cloud_review_result(raw)
+    if obj:
+        return {"verdict": obj.get("verdict", "UNKNOWN"), "assessment": obj.get("assessment", ""),
+                "concerns": obj.get("concerns", []), "corrections": obj.get("corrections", []),
+                "evidence": obj.get("evidence", []), "data_i_doubt": obj.get("data_i_doubt"),
+                "agent_contract": obj.get("agent_contract")}
     txt = str(raw or "").strip()
-    obj = None
     m = re.search(r"\{.*\}", txt, re.DOTALL)
     if m:
         try:
-            obj = json.loads(m.group(0))
+            legacy = json.loads(m.group(0))
         except Exception:
-            obj = None
-    if isinstance(obj, dict):
-        v = str(obj.get("verdict", "")).upper()
+            legacy = None
+    else:
+        legacy = None
+    if isinstance(legacy, dict):
+        v = str(legacy.get("verdict", "")).upper()
         verdict = next((x for x in ("DISAGREE", "CAUTION", "AGREE") if x in v), "UNKNOWN")
-        return {"verdict": verdict, "assessment": str(obj.get("assessment", ""))[:600],
-                "concerns": [str(c)[:240] for c in (obj.get("concerns") or [])][:8],
-                "corrections": [str(c)[:240] for c in (obj.get("corrections") or [])][:8]}
+        return {"verdict": verdict, "assessment": str(legacy.get("assessment", ""))[:600],
+                "concerns": [str(c)[:240] for c in (legacy.get("concerns") or [])][:8],
+                "corrections": [str(c)[:240] for c in (legacy.get("corrections") or [])][:8]}
     up = txt.upper()
     verdict = next((x for x in ("DISAGREE", "CAUTION", "AGREE") if x in up), "UNKNOWN")
     return {"verdict": verdict, "assessment": txt[:600], "concerns": [], "corrections": []}

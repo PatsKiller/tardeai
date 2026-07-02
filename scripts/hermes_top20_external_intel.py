@@ -14,6 +14,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from cio_agent_contract import contract_header
 FRESH_HOURS = 12
 
 
@@ -60,7 +62,8 @@ def _question(r):
         "(2) the 2-3 most important catalysts or risks we may be missing; "
         "(3) is the current trade setup valid — better entry / invalidation level; "
         "(4) any competitive or sector dynamic that changes the picture. "
-        "End with a single line: VERDICT: <bullish|neutral|bearish> | CONVICTION: <high|med|low>."
+        "End with a single line: VERDICT: <bullish|neutral|bearish> | CONVICTION: <high|med|low>. "
+        f"{contract_header()} External researcher will parse tagged evidence + data_i_doubt from your analysis."
     )
 
 

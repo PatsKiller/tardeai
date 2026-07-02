@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_topic_research_json_schema, parse_hermes_topic_result
 from db_adapter import _get_conn
 
 
@@ -38,13 +40,10 @@ def _prompt(topic, context, articles=None):
     return (
         f'Research this topic for an individual investor and write a concise, factual briefing.{ctx}{src}\n\n'
         f'TOPIC: "{topic}"\n\n'
-        'Return ONLY a JSON object, no prose:\n'
-        '{"summary": "120-180 words: what it is, the key facts/numbers, and why it matters for this '
-        'investor", "thesis": "one-sentence actionable takeaway", "considerations": ["3-5 specific points: '
-        'rules, thresholds, trade-offs, or risks"], "confidence": 0.0-1.0}\n'
         'Be specific and current (2026). If it involves tax/Medicare/Medicaid/estate law, note that a '
         'professional (elder-law attorney / tax advisor) should confirm. Do not fabricate exact figures you '
-        'are unsure of — say "verify current figure".'
+        'are unsure of — say "verify current figure".\n\n'
+        + build_topic_research_json_schema()
     )
 
 
@@ -58,10 +57,9 @@ def _synthesize(topic, context, articles=None):
             if not llm_lane.available(lane):
                 continue
             raw = llm_lane.generate(_prompt(topic, context, articles), lane=lane, timeout=70)
-            m = re.search(r"\{.*\}", raw or "", re.S)
-            if not m:
+            d = parse_hermes_topic_result(raw)
+            if not d:
                 continue
-            d = json.loads(m.group())
             summ = (d.get("summary") or "").strip()
             if len(summ) < 60:
                 continue
@@ -72,6 +70,8 @@ def _synthesize(topic, context, articles=None):
             conf = float(conf) if isinstance(conf, (int, float)) and 0 <= conf <= 1 else 0.6
             return {"summary": summ[:1800], "thesis": (d.get("thesis") or "").strip()[:400],
                     "confidence": round(conf, 2), "lane": lane,
+                    "evidence": d.get("evidence", []), "data_i_doubt": d.get("data_i_doubt"),
+                    "agent_contract": d.get("agent_contract"),
                     "grounded_on": [{"title": a["title"][:140], "source": a["source"],
                                      "url": a.get("source_url")} for a in (articles or [])[:8]]}
         except Exception:
@@ -171,6 +171,9 @@ def run(apply=False, max_rows=20, reground=False):
             # catalog the sites that informed this research into evidence_json (source provenance)
             ev["grounded_on"] = res.get("grounded_on") or []
             ev["grounded_count"] = len(ev["grounded_on"])
+            ev["cio_evidence"] = res.get("evidence") or []
+            ev["data_i_doubt"] = res.get("data_i_doubt")
+            ev["agent_contract"] = res.get("agent_contract")
             cur.execute("""UPDATE hermes_research_intelligence
                            SET summary=%s, thesis=%s, confidence_score=%s,
                                model_used=%s, evidence_json=%s, updated_at=now()
