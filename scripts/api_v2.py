@@ -18638,6 +18638,68 @@ def _hermes_agent_runstate():
     }
 
 
+def _hermes_scalp_swarm_status():
+    """GET /api/v2/hermes/scalp-swarm/status — Multi-Hermes Momentum Scalp swarm health + shared state."""
+    import os as _os
+    import time as _time
+    ROOT = str(PROJECT_ROOT)
+    try:
+        import sys as _sys_scalp
+        _sys_scalp.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.momentum_scalp_swarm_state import state_health, read_json
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    def _log_age(name):
+        p = _os.path.join(ROOT, "logs", name)
+        if not _os.path.exists(p):
+            return None
+        return round((_time.time() - _os.path.getmtime(p)) / 3600.0, 2)
+
+    AGENTS = {
+        "scalp_orchestrator": ("file", "logs/hermes_scalp_orchestrator.log"),
+        "live_monitor": ("file", "logs/hermes_scalp_live_monitor.log"),
+        "signal_scout": ("file", "logs/hermes_scalp_signal_scout.log"),
+        "entry_validation": ("file", "logs/hermes_scalp_entry_validation.log"),
+        "stop_adjustment": ("file", "state/momentum_scalp/stop_adjustment_history.json"),
+        "exit_intelligence": ("file", "state/momentum_scalp/stoplight_status.json"),
+        "post_trade_review": ("file", "state/momentum_scalp/validation_tracker.json"),
+    }
+
+    def _agent_state(aid, ev):
+        age = _log_age(ev[1].split("/")[-1]) if ev[0] == "file" and "logs/" in ev[1] else None
+        if age is None:
+            p = _os.path.join(ROOT, ev[1])
+            age = round((_time.time() - _os.path.getmtime(p)) / 3600.0, 2) if _os.path.exists(p) else None
+        if age is None:
+            return "dormant"
+        if age < 0.5:
+            return "live"
+        if age < 24:
+            return "idle"
+        return "dormant"
+
+    agents = [{"id": aid, "live_state": _agent_state(aid, ev), "evidence": ev[1]} for aid, ev in AGENTS.items()]
+    heat = read_json("portfolio_heat.json", {}) or {}
+    pending = read_json("pending_approvals.json", {}) or {}
+    qs = read_json("qualified_signals.json", {}) or {}
+    evq = read_json("entry_validation_queue.json", {}) or {}
+    return {
+        "ok": True,
+        "fleet": "momentum_scalp_swarm",
+        "policy": "docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md",
+        "phase": "4.4_paper_validation",
+        "rollout_phase": "phase_2_signal_entry",
+        "agents": agents,
+        "portfolio_heat": heat,
+        "pending_approvals": len((pending.get("approvals") or [])),
+        "qualified_signals": len([s for s in (qs.get("signals") or []) if s.get("status") == "pending_validation"]),
+        "validated_pending_approval": len(evq.get("validated") or []),
+        "state": state_health(),
+        "docs": "docs/hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md",
+    }
+
+
 def _hermes_research_backlog():
     """GET /api/v2/hermes/research-backlog — read-only research backlog items."""
     rows = _db_query("""
@@ -25821,6 +25883,7 @@ ROUTES = {
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),
     "/api/v2/hermes/agent-runstate": lambda: _hermes_agent_runstate(),
+    "/api/v2/hermes/scalp-swarm/status": lambda: _hermes_scalp_swarm_status(),
     "/api/v2/hermes/infra": lambda: _hermes_infra(),
     "/api/v2/hermes/provenance": lambda: _hermes_provenance(),
     "/api/v2/hermes/sources": lambda: _hermes_sources(),

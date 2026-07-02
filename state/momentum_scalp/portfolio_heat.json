@@ -1,0 +1,12 @@
+{
+  "account_equity": 100000.0,
+  "aggregate_open_risk_dollars": 0.0,
+  "aggregate_open_risk_pct": null,
+  "heat_tier": "green",
+  "kill_switch_active": false,
+  "open_scalp_count": 0,
+  "pause_new_entries": false,
+  "policy_ref": "MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md \u00a73 L4 #2, \u00a77",
+  "schema_version": "1.0",
+  "updated_at": "2026-07-02T22:50:29.446975+00:00"
+}

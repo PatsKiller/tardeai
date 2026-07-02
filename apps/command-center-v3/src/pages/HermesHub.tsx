@@ -7,7 +7,9 @@ import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor
 import { EvidenceBlock } from '../components/EvidenceBlock'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
+const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
 const TABS = ['Overview', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+const SCALP_TABS = ['Overview', 'Workflow', 'Getting Started'] as const
 
 const MATURITY_COLOR: Record<string, string> = {
   full: '#22c55e', mostly: '#84cc16', semi: '#f59e0b', manual: '#ef4444',
@@ -56,6 +58,37 @@ const HERMES_AGENTS: HAgent[] = [
     writes: 'hermes_research_intelligence (staged, when approved)', forbidden: 'Embed, promote, mutate core, broker',
     caps: '2 rows/run (when approved)', targets: ['librarian'], pos: { x: 110, y: 280 } },
 ]
+// Multi-Hermes Momentum Scalp swarm — docs/hermes/momentum_scalp_swarm/
+const SCALP_HERMES_AGENTS: HAgent[] = [
+  { id: 'scalp_orchestrator', label: 'Hermes Orchestrator', state: 'designed', phase: 'PHASE 1 — Orchestrator + Live Monitor (paper 4.4→4.5)', orchestrator: true,
+    mission: 'Central state manager, policy gatekeeper, routes tasks, Telegram HITL via OpenClaw', reads: 'state/momentum_scalp/*, scalp_stop_monitor, portfolio heat, regime_state',
+    writes: 'orchestrator_audit.json, pending_approvals.json', forbidden: 'Broker writes, auto-entries without approval, violate L2 breakeven',
+    caps: 'All material actions require Telegram approval', targets: ['signal_scout', 'entry_validation', 'live_monitor', 'stop_adjustment', 'exit_intelligence', 'post_trade_review'], pos: { x: 400, y: 0 }, readsTradeAI: true },
+  { id: 'signal_scout', label: 'Signal Scout Agent', state: 'designed', phase: 'PHASE 2 — hermes_scalp_signal_scout.py (45s)',
+    mission: 'Detect/qualify momentum + social signals; freshness SLA; conviction score', reads: 'scalp_scan_results, social_route signals, finviz, incubator_universe',
+    writes: 'qualified_signals queue (via orchestrator)', forbidden: 'Direct entries, broker, bypass orchestrator',
+    caps: 'Freshness SLA ≥45s for pure scalp', targets: ['scalp_orchestrator'], pos: { x: 80, y: 90 }, readsTradeAI: true },
+  { id: 'entry_validation', label: 'Entry Validation Agent', state: 'designed', phase: 'PHASE 2 — hermes_scalp_entry_validation.py (60s)',
+    mission: 'Final validation before scalp acceptance; Layer 1 structure+ATR hybrid; max 1.2R', reads: 'open_scalps.json, portfolio_heat.json, momentum_scalp.yaml',
+    writes: 'journal entry + planned stop record (via approval)', forbidden: 'Entries when heat kill active, risk >1.2R, stale freshness',
+    caps: 'Reject if portfolio heat >3.5%', targets: ['scalp_orchestrator'], pos: { x: 200, y: 200 }, readsTradeAI: true },
+  { id: 'live_monitor', label: 'Live Monitor Agent', state: 'designed', phase: 'PHASE 1 — persistent daemon (hermes_scalp_live_monitor.py)',
+    mission: 'Always-on open scalp monitoring; regime detection; dynamic stoplight Y/A/R', reads: 'paper_trades, scalp_stop_monitor, symbol_regime_state, pro_analyst_pills',
+    writes: 'open_scalps.json, stoplight_status.json, regime_state.json, portfolio_heat.json', forbidden: 'Broker writes, unapproved stop mutations',
+    caps: '30s scan interval', targets: ['scalp_orchestrator', 'stop_adjustment'], pos: { x: 400, y: 160 }, readsTradeAI: true },
+  { id: 'stop_adjustment', label: 'Stop Adjustment Agent', state: 'designed', phase: 'PHASE 1 — with Live Monitor',
+    mission: 'Layer 4 stop adjustments: regime shift, heat, freshness decay; full audit history', reads: 'stoplight_status.json, regime_state.json, stop policy',
+    writes: 'stop_adjustment_history.json, paper_trades.current_stop (approval-gated)', forbidden: 'Trail before breakeven secured, broker orders',
+    caps: 'Every change cites policy §section', targets: ['scalp_orchestrator'], pos: { x: 580, y: 200 } },
+  { id: 'exit_intelligence', label: 'Exit Intelligence Agent', state: 'designed', phase: 'PHASE 3',
+    mission: 'Profit extension vs Street consensus; partial take + trail tighten suggestions', reads: 'pro_analyst_pills_latest.json, stoplight_status, open_scalps',
+    writes: 'exit suggestions (via orchestrator)', forbidden: 'Auto-exits without approval',
+    caps: 'Works with Stop Adjustment Agent', targets: ['stop_adjustment', 'scalp_orchestrator'], pos: { x: 720, y: 90 }, readsTradeAI: true },
+  { id: 'post_trade_review', label: 'Post-Trade Review Agent', state: 'designed', phase: 'PHASE 3',
+    mission: 'AI Trade Critique on closed scalps; 4 stop-quality questions; validation tracker', reads: 'paper_trades closed, replay, validation_tracker.json',
+    writes: 'validation_tracker.json, critique feedback loop', forbidden: 'Mutate open trades',
+    caps: 'Every closed scalp gets critique', targets: ['scalp_orchestrator'], pos: { x: 400, y: 320 }, readsTradeAI: true },
+]
 // Map raw finding types/topics → human-readable title + plain-English meaning + where to resolve.
 function describeFinding(item: any): { title: string; meaning: string; resolve: string; severity: 'critical' | 'warning' | 'info'; where?: string } {
   const topic: string = item.topic || item.symbol || ''
@@ -89,8 +122,11 @@ const HSTATE_COLOR: Record<HState, string> = { operational: '#22c55e', live_data
 const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (live)', live_data: 'live data', running_unapproved: 'running — NOT approved', designed: 'designed — no footprint', disabled: 'disabled — not approved', idle: 'idle — ran recently', dormant: 'DORMANT — no recent output' }
 
 export default function HermesHub({ onDrill }: Props) {
+  const [fleet, setFleet] = useState<typeof FLEETS[number]>('Research Fleet')
   const [tab, setTab] = useState<typeof TABS[number]>('Overview')
+  const [scalpTab, setScalpTab] = useState<typeof SCALP_TABS[number]>('Overview')
   const { data: health } = useApi<any>('/api/v2/hermes/health', 120_000)
+  const { data: scalpSwarm } = useApi<any>('/api/v2/hermes/scalp-swarm/status', 60_000)
   const { data: selfLearn } = useApi<any>('/api/v2/hermes/self-learning-overview', 120_000)
   const { data: choices } = useApi<any>('/api/v2/hermes/advisory-choices', 120_000)
   const { data: backlog } = useApi<any>('/api/v2/hermes/research-backlog', 120_000)
@@ -201,6 +237,80 @@ export default function HermesHub({ onDrill }: Props) {
     if (h == null) return ''
     return h < 1 ? `${Math.round(h * 60)}m ago` : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`
   }
+  const scalpLiveById: Record<string, { live_state: string }> =
+    Object.fromEntries((scalpSwarm?.agents || []).map((r: any) => [r.id, r]))
+  const scalpEffState = (a: HAgent): HState => {
+    const live = scalpLiveById[a.id]?.live_state
+    if (live === 'live') return 'operational'
+    if (live === 'idle') return 'idle'
+    if (live === 'dormant') return 'dormant'
+    return a.state
+  }
+  const { scalpWfNodes, scalpWfEdges } = useMemo(() => {
+    const TRADE_AI = 'trade_ai_safe'
+    const STATE_LAYER = 'swarm_state'
+    const nodes: any[] = SCALP_HERMES_AGENTS.map(a => {
+      const es = scalpEffState(a)
+      const col = HSTATE_COLOR[es]
+      const dim = es === 'designed' || es === 'disabled'
+      return {
+        id: a.id, position: a.pos,
+        data: { label: `${a.orchestrator ? '★ ' : ''}${a.label}\n${HSTATE_LABEL[es]}` },
+        style: {
+          background: `${col}${dim ? '0d' : '1f'}`, color: 'var(--text0)', width: 182,
+          border: `${a.orchestrator ? 2.5 : 1.5}px ${dim ? 'dashed' : 'solid'} ${col}`,
+          borderRadius: 8, fontSize: 10, fontWeight: a.orchestrator ? 800 : 600, padding: '8px 10px',
+          opacity: es === 'disabled' ? 0.5 : es === 'designed' ? 0.75 : 1, whiteSpace: 'pre-line', textAlign: 'center',
+        },
+      }
+    })
+    nodes.push({
+      id: TRADE_AI, position: { x: 400, y: 420 },
+      data: { label: 'Trade AI v12\n(paper_trades, journal, replay)' },
+      style: { background: 'var(--bg2)', color: 'var(--text2)', border: '1.5px dotted var(--text3)', borderRadius: 8, fontSize: 10, padding: '8px 10px', width: 190, whiteSpace: 'pre-line', textAlign: 'center' },
+    })
+    nodes.push({
+      id: STATE_LAYER, position: { x: 120, y: 420 },
+      data: { label: 'state/momentum_scalp/\n(JSON shared state)' },
+      style: { background: 'rgba(168,85,247,.1)', color: 'var(--text1)', border: '1.5px solid #a855f7', borderRadius: 8, fontSize: 10, padding: '8px 10px', width: 170, whiteSpace: 'pre-line', textAlign: 'center' },
+    })
+    nodes.push({
+      id: 'telegram_hitl', position: { x: 680, y: 420 },
+      data: { label: 'Telegram / OpenClaw\n(human-in-the-loop)' },
+      style: { background: 'rgba(6,182,212,.1)', color: 'var(--text1)', border: '1.5px solid #06b6d4', borderRadius: 8, fontSize: 10, padding: '8px 10px', width: 170, whiteSpace: 'pre-line', textAlign: 'center' },
+    })
+    const ids = new Set(SCALP_HERMES_AGENTS.map(a => a.id))
+    const edges: any[] = []
+    SCALP_HERMES_AGENTS.forEach(a => a.targets.forEach(t => {
+      if (!ids.has(t)) return
+      edges.push({
+        id: `scalp_${a.id}_${t}`, source: a.id, target: t, animated: scalpEffState(a) === 'operational',
+        label: a.orchestrator ? 'orchestrates' : 'routes',
+        labelStyle: { fontSize: 8, fill: 'var(--text3)' }, labelBgStyle: { fill: 'var(--bg1)' },
+        style: { stroke: a.orchestrator ? '#a855f7' : 'var(--text3)', strokeWidth: 1, strokeDasharray: a.orchestrator ? '2 3' : '5 4', opacity: 0.65 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: a.orchestrator ? '#a855f7' : 'var(--text3)' },
+      })
+    }))
+    SCALP_HERMES_AGENTS.filter(a => a.readsTradeAI).forEach(a => edges.push({
+      id: `scalp_read_${a.id}`, source: TRADE_AI, target: a.id, animated: false,
+      label: 'reads', labelStyle: { fontSize: 8, fill: '#06b6d4' }, labelBgStyle: { fill: 'var(--bg1)' },
+      style: { stroke: '#06b6d4', strokeWidth: 1, strokeDasharray: '1 4', opacity: 0.6 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#06b6d4' },
+    }))
+    ;['live_monitor', 'stop_adjustment', 'scalp_orchestrator'].forEach(aid => edges.push({
+      id: `scalp_state_${aid}`, source: STATE_LAYER, target: aid, animated: false,
+      label: 'state R/W', labelStyle: { fontSize: 8, fill: '#a855f7' }, labelBgStyle: { fill: 'var(--bg1)' },
+      style: { stroke: '#a855f7', strokeWidth: 1, strokeDasharray: '3 3', opacity: 0.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+    }))
+    edges.push({
+      id: 'scalp_tg_orch', source: 'telegram_hitl', target: 'scalp_orchestrator', animated: false,
+      label: 'approvals', labelStyle: { fontSize: 8, fill: '#06b6d4' }, labelBgStyle: { fill: 'var(--bg1)' },
+      style: { stroke: '#06b6d4', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#06b6d4' },
+    })
+    return { scalpWfNodes: nodes, scalpWfEdges: edges }
+  }, [scalpSwarm])
+
   const { wfNodes, wfEdges } = useMemo(() => {
     const TRADE_AI = 'trade_ai_safe'
     const nodes: any[] = HERMES_AGENTS.map(a => {
@@ -263,28 +373,56 @@ export default function HermesHub({ onDrill }: Props) {
     return { wfNodes: nodes, wfEdges: edges }
   }, [staging, promo, backlog, footprint, searxUp, runstate])
 
+  const isScalp = fleet === 'Momentum Scalp Swarm'
+  const activeTabs = isScalp ? SCALP_TABS : TABS
+  const activeTab = isScalp ? scalpTab : tab
+  const setActiveTab = isScalp ? setScalpTab : setTab
+
   return (
     <div>
       {editProfile && <HermesSoulEditor profile={editProfile} onClose={() => setEditProfile(null)} />}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {FLEETS.map(f => (
+          <button key={f} onClick={() => { setFleet(f); setActiveTab('Overview' as any) }} style={{
+            padding: '6px 14px', fontSize: 12, borderRadius: 6, cursor: 'pointer', fontWeight: fleet === f ? 700 : 500,
+            background: fleet === f ? (f.includes('Scalp') ? 'rgba(168,85,247,.15)' : 'rgba(96,165,250,.15)') : 'var(--bg2)',
+            color: fleet === f ? (f.includes('Scalp') ? '#a855f7' : '#60a5fa') : 'var(--text3)',
+            border: `1px solid ${fleet === f ? (f.includes('Scalp') ? 'rgba(168,85,247,.4)' : 'rgba(96,165,250,.4)') : 'var(--border)'}`,
+          }}>{f}</button>
+        ))}
+      </div>
       <div className="hub-title-row">
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Hermes Research Agent Graph</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>
+            {isScalp ? 'Hermes Momentum Scalp Swarm' : 'Hermes Research Agent Graph'}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Trade AI research-agent workflow layer · {staging.hermes_research_intelligence ?? 0} intelligence rows
-            {killSwitch && <span style={{ color: '#ef4444', marginLeft: 8 }}>KILL SWITCH ACTIVE</span>}
+            {isScalp ? (
+              <>Paper phase 4.4→4.5 · policy-enforcing stop lifecycle · {scalpSwarm?.pending_approvals ?? 0} pending approvals
+                · heat {scalpSwarm?.portfolio_heat?.aggregate_open_risk_pct ?? '—'}%</>
+            ) : (
+              <>Trade AI research-agent workflow layer · {staging.hermes_research_intelligence ?? 0} intelligence rows
+                {killSwitch && <span style={{ color: '#ef4444', marginLeft: 8 }}>KILL SWITCH ACTIVE</span>}</>
+            )}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, maxWidth: 720 }}>
-            This is the research-agent workflow layer (separate from the global Hermes profile/chat layer).
-            Global profiles — <b>default · tradeai · tradeai12b · dev · serverops</b> — are managed under <b>System → Hermes</b>.
-            Runs on project <code>.venv</code> + <code>scripts/hermes_*.py</code> (systemd timers); independent of the retired sidecar install.
+            {isScalp ? (
+              <>7-agent hierarchical swarm enforcing <code>MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md</code> (4-layer stops).
+                Phase 1: Orchestrator + Live Monitor + Stop Adjustment. All material actions → Telegram approval.
+                Docs: <code>docs/hermes/momentum_scalp_swarm/</code></>
+            ) : (
+              <>This is the research-agent workflow layer (separate from the global Hermes profile/chat layer).
+                Global profiles — <b>default · tradeai · tradeai12b · dev · serverops</b> — are managed under <b>System → Hermes</b>.
+                Runs on project <code>.venv</code> + <code>scripts/hermes_*.py</code> (systemd timers); independent of the retired sidecar install.</>
+            )}
           </div>
         </div>
         <div className="hub-tabs">
-          {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
+          {activeTabs.map(t => (
+            <button key={t} onClick={() => setActiveTab(t as any)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
+              background: activeTab === t ? (isScalp ? 'rgba(168,85,247,.15)' : 'rgba(96,165,250,.15)') : 'var(--bg2)',
+              color: activeTab === t ? (isScalp ? '#a855f7' : '#60a5fa') : 'var(--text3)', fontWeight: activeTab === t ? 700 : 400,
             }}>{t}</button>
           ))}
         </div>
@@ -323,7 +461,108 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Overview' && (
+      {isScalp && scalpTab === 'Overview' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ background: 'var(--bg1)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Swarm Status</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
+              Phase: <b>{scalpSwarm?.phase ?? '4.4_paper_validation'}</b> · Policy: 4-layer stop methodology
+            </div>
+            {[
+              ['Portfolio heat', `${scalpSwarm?.portfolio_heat?.aggregate_open_risk_pct ?? '—'}% (${scalpSwarm?.portfolio_heat?.heat_tier ?? '—'})`],
+              ['Open scalps', String(scalpSwarm?.portfolio_heat?.open_scalp_count ?? 0)],
+              ['Pending approvals', String(scalpSwarm?.pending_approvals ?? 0)],
+              ['Qualified signals', String(scalpSwarm?.qualified_signals ?? 0)],
+              ['Validated (awaiting TG)', String(scalpSwarm?.validated_pending_approval ?? 0)],
+              ['Pause new entries', scalpSwarm?.portfolio_heat?.pause_new_entries ? 'YES' : 'no'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                <span style={{ color: 'var(--text2)' }}>{k}</span><span style={{ fontWeight: 600, color: 'var(--text0)' }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/scalp-swarm/status</div>
+          </div>
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Roster (7)</div>
+            {SCALP_HERMES_AGENTS.map(a => {
+              const es = scalpEffState(a)
+              return (
+                <div key={a.id} onClick={() => onDrill({
+                  title: a.label, subtitle: a.phase,
+                  endpoint: `docs/hermes/momentum_scalp_swarm/agents/${a.id}.md`,
+                  rows: [{ mission: a.mission, reads: a.reads, writes: a.writes, forbidden: a.forbidden, caps: a.caps, state: HSTATE_LABEL[es] }],
+                })} style={{ display: 'flex', gap: 8, padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: HSTATE_COLOR[es], flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: 'var(--text0)', flex: 1 }}>{a.label}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 9 }}>{HSTATE_LABEL[es]}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ gridColumn: '1 / -1', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Shared State Files</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 8 }}>
+              {Object.entries(scalpSwarm?.state?.files ?? {}).map(([name, meta]: [string, any]) => (
+                <div key={name} style={{ padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6, fontSize: 10 }}>
+                  <div style={{ fontFamily: 'monospace', color: meta.exists ? '#a855f7' : 'var(--text3)' }}>{name}</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 9, marginTop: 2 }}>
+                    {meta.exists ? `${meta.age_hours}h ago · ${meta.size_bytes}B` : 'not initialized'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isScalp && scalpTab === 'Workflow' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 10, color: '#a855f7', padding: '6px 10px', background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 6, fontWeight: 600 }}>
+            Paper phase 4.4→4.5: Layer 2 breakeven is mandatory. Layer 3 trailing is advisory-only (config-OFF). All entries, stop adjustments, and exits require Telegram approval via OpenClaw.
+          </div>
+          <div style={{ height: 520, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>
+            <ReactFlow nodes={scalpWfNodes} edges={scalpWfEdges} fitView proOptions={{ hideAttribution: true }}
+              nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}
+              onNodeClick={(_e, node) => {
+                const a = SCALP_HERMES_AGENTS.find(x => x.id === node.id)
+                if (!a) {
+                  onDrill({ title: node.data?.label?.split('\n')[0] || node.id, subtitle: 'swarm infrastructure',
+                    endpoint: 'docs/hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md', rows: [{ note: node.data?.label }] })
+                  return
+                }
+                onDrill({
+                  title: a.label, subtitle: a.phase,
+                  endpoint: `docs/hermes/momentum_scalp_swarm/agents/${a.id}.md`,
+                  rows: [{ mission: a.mission, reads: a.reads, writes: a.writes, forbidden: a.forbidden, caps: a.caps, targets: a.targets.join(', ') }],
+                })
+              }}>
+              <Background color="var(--border)" gap={20} />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          </div>
+        </div>
+      )}
+
+      {isScalp && scalpTab === 'Getting Started' && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: 20, maxWidth: 820 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Phase 1 — Spin up Orchestrator + Live Monitor</div>
+          <ol style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.7, paddingLeft: 20 }}>
+            <li>Enable Hermes <code>tradeai12b</code> profile with file read/write tools (System → Hermes).</li>
+            <li>Start tmux session: <code>./linux_launchers/hermes_scalp_swarm_tmux.sh start</code></li>
+            <li>Verify API: <code>curl http://127.0.0.1:7777/api/v2/hermes/scalp-swarm/status</code></li>
+            <li>Confirm shared state updates in <code>state/momentum_scalp/</code> every 30s.</li>
+            <li>Open Portfolio → Stop Management — regime + stoplight columns powered by Live Monitor.</li>
+            <li>Material actions queue to <code>pending_approvals.json</code> → Telegram via OpenClaw.</li>
+          </ol>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 16 }}>
+            Full guide: <code>docs/hermes/momentum_scalp_swarm/GETTING_STARTED.md</code> ·
+            Deployment: <code>DEPLOYMENT_OPERATIONS.md</code> ·
+            Validation: <code>VALIDATION_CHECKLIST.md</code>
+          </div>
+        </div>
+      )}
+
+      {!isScalp && tab === 'Overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {/* Staging counts */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -424,7 +663,7 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Workflow' && (
+      {!isScalp && tab === 'Workflow' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 10, color: 'var(--text3)', flexWrap: 'wrap' }}>
             <span>★ = Hermes Coordinator</span>
@@ -481,7 +720,7 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Provenance' && (
+      {!isScalp && tab === 'Provenance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Research provenance: where web research comes from (SearXNG) and how it flows into the core RAG.</div>
           {/* Funnel: SearXNG → staged → promoted → embedded */}
@@ -550,7 +789,7 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Sources' && (() => {
+      {!isScalp && tab === 'Sources' && (() => {
         const stats = sourcesData?.stats ?? {}
         const connectors: any[] = sourcesData?.connectors ?? []
         const newsMaturity: any[] = sourcesData?.news_maturity ?? []
@@ -680,7 +919,7 @@ export default function HermesHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Research' && backlog && (() => {
+      {!isScalp && tab === 'Research' && backlog && (() => {
         const raw = backlog.items ?? []
         // de-dupe identical findings (the raw feed repeats them) + sort by severity
         const seen = new Set<string>(); const items: any[] = []
@@ -722,7 +961,7 @@ export default function HermesHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Dual Opinion' && dualOp && (
+      {!isScalp && tab === 'Dual Opinion' && dualOp && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Dual Opinion Advisory ({dualOp.total ?? 0})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
@@ -744,7 +983,7 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Maturity' && maturity && (() => {
+      {!isScalp && tab === 'Maturity' && maturity && (() => {
         const layers = maturity.layer_scores ?? {}
         const areas: any[] = maturity.areas ?? []
         const gaps: any[] = maturity.gaps ?? []
@@ -878,7 +1117,7 @@ export default function HermesHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Pipeline' && pipeQual && (
+      {!isScalp && tab === 'Pipeline' && pipeQual && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Pipeline Quality ({pipeQual.total ?? 0} findings)</div>
           {pipeQual.advisory_notice && <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 8 }}>{pipeQual.advisory_notice}</div>}
