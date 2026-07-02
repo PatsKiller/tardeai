@@ -83,6 +83,76 @@ def check() -> list[str]:
     except Exception:
         pass
 
+    # 5. scorer alive — the 2026-07-01 psycopg2 crash killed the scorer for a full day and nothing
+    # noticed. hermes_scored_at is touched every run even when the history INSERT is skipped as
+    # unchanged. Cron is 2x/hour; llm_priority_guard can defer it 06:00–12:00 ET, so alert past 8h.
+    try:
+        stale_h = _scalar(cur, "SELECT EXTRACT(epoch FROM NOW() - MAX(hermes_scored_at))/3600 "
+                               "FROM watchlist_items WHERE status IN ('active','researched')")
+        if stale_h is None or float(stale_h) > 8:
+            issues.append(f"watchlist scorer silent for {float(stale_h or 999):.0f}h "
+                          "(cron is 2x/hour — script is crashing or wedged; check logs/hermes_scorer.log)")
+    except Exception as e:
+        issues.append(f"scorer freshness check failed: {str(e)[:80]}")
+
+    # 6. quality-score distribution collapse (Phase 4) — the old rule grade degenerated into two
+    # point masses (0.30/0.62), which silently gutted research ranking. Alert if it re-collapses.
+    try:
+        cur.execute("""SELECT stddev(quality_score), count(DISTINCT quality_score)
+                       FROM hermes_research_intelligence
+                       WHERE quality_score IS NOT NULL AND created_at > NOW() - interval '30 days'""")
+        sd, distinct = cur.fetchone()
+        if sd is not None and (float(sd) < 0.03 or int(distinct or 0) <= 3):
+            issues.append(f"quality_score distribution collapsed (stddev={float(sd):.4f}, "
+                          f"{distinct} distinct values 30d) — grade is no longer discriminating; "
+                          "check hermes_tag_engine quality blend")
+    except Exception:
+        pass
+
+    # ── Phase 5.2 correctness watchdogs (liveness above; wrongness below) ──────
+    # 7. score-write volume anomaly — event-driven scoring should stay ≤~8K rows/day; a spike
+    # means the cap/skip regressed (the exact failure the audit found: 157K/day of duplicates).
+    try:
+        n = _scalar(cur, """SELECT count(*) FROM hermes_score_history
+                            WHERE scored_at > NOW() - interval '24 hours'""")
+        if n is not None and int(n) > 20000:
+            issues.append(f"score-history writes {int(n)}/24h (>20K) — tier cap or no-change skip regressed")
+    except Exception:
+        pass
+    # 8. external error-call burn — the breaker should hold this near zero
+    try:
+        cur.execute("""SELECT count(*) FILTER (WHERE status='error'), count(*)
+                       FROM hermes_external_research WHERE created_at > NOW() - interval '24 hours'""")
+        e, t = cur.fetchone()
+        if t and t >= 20 and e / t > 0.20:
+            issues.append(f"external error-calls {e}/{t} ({e/t*100:.0f}%) in 24h — lane breaker not holding")
+    except Exception:
+        pass
+    # 9. promotion precision collapse — the learned gate should be pushing this UP over time
+    try:
+        cur.execute("""SELECT count(*) FILTER (WHERE verdict='hit'), count(*) FILTER (WHERE verdict='miss')
+                       FROM hermes_outcome_ledger
+                       WHERE subject_type='promotion' AND graded_at > NOW() - interval '30 days'""")
+        h, m = cur.fetchone()
+        if (h + m) >= 50 and h / (h + m) < 0.25:
+            issues.append(f"promotion precision {h}/{h+m} ({h/(h+m)*100:.0f}%) over 30d graded — "
+                          "promotion gates not filtering; review hermes_promotion_thresholds")
+    except Exception:
+        pass
+    # 10. S0 (capital-exposed) scoring coverage — the crowd-out class of failure
+    try:
+        cur.execute("""SELECT count(*) FILTER (WHERE hermes_scored_at > NOW() - interval '6 hours'),
+                              count(*)
+                       FROM (SELECT DISTINCT UPPER(symbol) sym, MAX(hermes_scored_at) hermes_scored_at
+                             FROM watchlist_items WHERE scope_tier='S0'
+                               AND status IN ('active','researched') GROUP BY 1) s""")
+        fresh, tot = cur.fetchone()
+        if tot and fresh < tot * 0.8:
+            issues.append(f"S0 scoring coverage {fresh}/{tot} (<80% fresh 6h) — holdings/positions "
+                          "falling out of the scoring loop (crowd-out regression)")
+    except Exception:
+        pass
+
     conn.close()
     return issues
 
@@ -104,6 +174,24 @@ def main() -> int:
                VALUES (%s,'system_health',NULL,'warning','hermes_pipeline_health',%s,NOW())
                ON CONFLICT (alert_uid) DO NOTHING""",
             (f"hermes_health_{os.popen('date +%Y%m%d%H').read().strip()}", msg), fetch=None,
+        )
+    except Exception:
+        pass
+    # Phase 5.2: correctness breaches open an escalation-queue item (the existing operator/coder
+    # dispatch surface) — one per day, so a persistent breach can't flood the queue.
+    try:
+        from db_adapter import _execute
+        import json as _json
+        from datetime import date as _date
+        _execute(
+            """INSERT INTO escalation_queue (created_at, symbol, severity, category, trigger_rule,
+                                             summary, evidence, status, expires_at)
+               SELECT NOW(), NULL, 2, 'hermes_watchdog', 'hermes_pipeline_health',
+                      %s, %s::jsonb, 'pending', NOW() + interval '7 days'
+               WHERE NOT EXISTS (SELECT 1 FROM escalation_queue
+                                 WHERE category='hermes_watchdog' AND created_at::date = %s)""",
+            (f"Hermes watchdog: {len(issues)} issue(s) — " + "; ".join(i[:90] for i in issues[:3]),
+             _json.dumps({"issues": issues}), _date.today()), fetch=None,
         )
     except Exception:
         pass

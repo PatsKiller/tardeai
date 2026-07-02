@@ -143,7 +143,14 @@ def main():
         yield_pct = round(100 * (a["promoted"] + a["embedded"]) / max(a["total"], 1))
         retired = (a["total"] >= 5 and yield_pct == 0)
         proven = (a["total"] >= 2 and yield_pct >= 30)
-        if proven:
+        # Phase 3 (2026-07-02): an OUTCOME_LEDGER verdict outranks this pipeline-throughput
+        # yield — a domain retired on graded outcomes stays retired until the outcome loop
+        # (hermes_outcome_learning.py) reinstates it, however much of its research the
+        # pipeline promoted/embedded.
+        outcome_markers = re.findall(r"OUTCOME_LEDGER (retired|reinstated)", prior.get(d, ""))
+        if outcome_markers and outcome_markers[-1] == "retired":
+            active, state = False, "outcome-retired"
+        elif proven:
             active, state = True, "active(yield)"
         elif retired:
             active, state = False, "auto-retired"
@@ -165,6 +172,10 @@ def main():
             else:
                 active, state = False, "candidate(pending-LLM)"
         note = f"yield {yield_pct}% ({a['promoted']}p/{a['embedded']}e of {a['total']}) — {state}"
+        # preserve outcome-ledger markers across the note rewrite (they carry the verdict state)
+        prior_outcome = " | ".join(re.findall(r"OUTCOME_LEDGER [^|]+", prior.get(d, "")))
+        if prior_outcome:
+            note = f"{note} | {prior_outcome}"
         if upsert_source(cur, "web", d, yield_pct, active, "web search", note, url=f"https://{d}"):
             new_count += 1
     log.info("web domains scored: %d (%d new, %d LLM-validated) — autonomous, no human flip",

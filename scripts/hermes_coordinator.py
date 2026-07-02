@@ -92,8 +92,15 @@ def auto_promote(conn):
     elif pending > 80:
         effective_cap = max(5, CAP_PROMOTE - 4)
 
-    cur.execute("""SELECT id, symbol, research_type, confidence_score FROM hermes_research_intelligence
-                   WHERE status='staged' ORDER BY confidence_score DESC NULLS LAST LIMIT %s""", (effective_cap,))
+    # Phase 3 (2026-07-02): learned per-type confidence gate from graded promotion outcomes
+    # (hermes_promotion_thresholds, written nightly by hermes_outcome_learning.py). Types with
+    # no measured row keep the ungated directive-B behavior (threshold defaults to 0).
+    cur.execute("""SELECT id, symbol, research_type, confidence_score FROM hermes_research_intelligence hri
+                   WHERE status='staged'
+                     AND COALESCE(confidence_score, 0) >= COALESCE(
+                           (SELECT t.min_confidence FROM hermes_promotion_thresholds t
+                            WHERE t.research_type = COALESCE(hri.research_type,'unknown')), 0)
+                   ORDER BY confidence_score DESC NULLS LAST LIMIT %s""", (effective_cap,))
     rows = cur.fetchall()
     promoted = 0
     enqueued = 0

@@ -1,0 +1,30 @@
+# Hermes outcome grader — Phase 2 of docs/design/HERMES_MATURITY_5_DESIGN.md (2026-07-02).
+# One canonical join from every Hermes claim to money. Zero LLM. Advisory-only.
+
+horizons:
+  short_sessions: 5
+  long_sessions: 20
+
+# Verdict thresholds on direction-adjusted excess return vs SPY (percent) at the LONG horizon.
+# hit  : excess >= hit_pct
+# miss : excess <= miss_pct
+# else neutral. Rows whose long horizon hasn't arrived stay 'pending'.
+verdict:
+  hit_pct: 2.0
+  miss_pct: -2.0
+
+# Research rows are graded on ACTION, not price: did a proposal / trade / directive hit follow
+# within this window of the research being written? (price columns still filled as context)
+research_action_window_days: 14
+
+# A trade "had Hermes context" when symbol research existed in the N days before entry.
+trade_context_lookback_days: 30
+
+# Daily-close cache maintenance: nightly upsert covers this many recent days from market_quotes.
+close_cache_refresh_days: 4
+
+# Benchmark symbol
+benchmark: SPY
+
+# Per-run cap on rows to grade (backstop; backfill passes --max-rows to override)
+max_rows_per_run: 5000

@@ -128,11 +128,56 @@ def load_universe() -> dict:
     for s in uni:
         if uni[s].get("rank") is None:
             uni[s]["rank"] = ranks.get(s)
+
+    # Scope-governor binding (Phase 1 §1.3): one governor owns research scope too. A symbol the
+    # governor archived (scope_tier S3) never holds a T1/T2 research slot — it drops to T3-COLD
+    # (metadata-only under the budget guard) until an event or the governor reactivates it.
+    # T0 (capital exposed) is never downgraded.
+    s3 = {dict(r)["symbol"].upper() for r in _q(
+        """SELECT DISTINCT UPPER(symbol) AS symbol FROM watchlist_items
+           WHERE scope_tier='S3' AND status IN ('active','researched')""")}
+    for s, info in uni.items():
+        if s in s3 and info["tier"] in ("T1-WATCH", "T2-INCUB"):
+            info["tier"] = "T3-COLD"
     return uni
 
 
 def _tier_order(t: str) -> int:
     return ["T0-HOLD", "T0-PROP", "T1-WATCH", "T2-INCUB", "T3-COLD"].index(t)
+
+
+_LANE_ROT_CACHE: dict = {}
+
+
+def _lane_rotation(ext_lanes: list) -> list:
+    """Phase 3: expand the rotation list proportional to each lane's graded outcome hit-rate
+    (hermes_lane_usefulness). Below the sample gate → uniform. A floor weight keeps every
+    lane in rotation so it can still be measured. Cached per process."""
+    key = tuple(sorted(ext_lanes))
+    if key in _LANE_ROT_CACHE:
+        return _LANE_ROT_CACHE[key]
+    rotation = list(ext_lanes)
+    try:
+        import yaml
+        cfg = (yaml.safe_load((ROOT / "config" / "hermes_outcome_learning.yaml").read_text()) or {}).get("lanes", {})
+        min_total = int(cfg.get("min_total_graded", 30))
+        floor = float(cfg.get("min_lane_weight", 0.15))
+        rows = {dict(r)["lane"]: dict(r) for r in _q(
+            "SELECT lane, n, hit_rate FROM hermes_lane_usefulness")}
+        total = sum((rows.get(l) or {}).get("n") or 0 for l in ext_lanes)
+        if total >= min_total:
+            weights = {}
+            for l in ext_lanes:
+                hr = (rows.get(l) or {}).get("hit_rate")
+                weights[l] = max(floor, float(hr) if hr is not None else floor)
+            wsum = sum(weights.values()) or 1.0
+            rotation = []
+            for l in ext_lanes:
+                rotation += [l] * max(1, round(weights[l] / wsum * 10))
+    except Exception:
+        rotation = list(ext_lanes)
+    _LANE_ROT_CACHE[key] = rotation
+    return rotation
 
 
 def last_real(lane: str) -> dict:
@@ -323,9 +368,12 @@ def run(mode, apply, budget):
         # T2/T3 externals only fire on a live catalyst
         if tier in ("T2-INCUB", "T3-COLD") and not catalyst:
             ext_lanes = []
-        # T1 rotates ONE external per refresh; T0 gets all (true cross-check)
+        # T1 rotates ONE external per refresh; T0 gets all (true cross-check).
+        # Phase 3: rotation weighted by graded outcome hit-rate (hermes_lane_usefulness) once
+        # enough external recs have verdicts; uniform below the gate. No lane ever starves
+        # (min weight floor) — a starved lane could never be re-measured.
         if tier == "T1-WATCH" and ext_lanes:
-            ext_lanes = [ext_lanes[ext_rot % len(ext_lanes)]]; ext_rot += 1
+            ext_lanes = [_lane_rotation(ext_lanes)[ext_rot % len(_lane_rotation(ext_lanes))]]; ext_rot += 1
         tag = f"{item.get('score',0):.0f}" if "score" in item else "-"
         # local lanes: always (cheap, queued)
         for lane in local_lanes:

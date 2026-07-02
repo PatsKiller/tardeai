@@ -190,6 +190,72 @@ def _gap_closed_trade_drain(metrics: dict) -> dict:
     }
 
 
+def _build_scalp_kpis(cur) -> dict:
+    """Hermes audit 2026-07-02 — scalp-aligned scope/throughput KPIs for Maturity tab."""
+    watchlist_active = _scalar(
+        cur,
+        "SELECT count(DISTINCT UPPER(symbol)) FROM watchlist_items WHERE status IN ('active','researched')",
+    )
+    watchlist_archived = _scalar(
+        cur,
+        "SELECT count(DISTINCT UPPER(symbol)) FROM watchlist_items WHERE status='archived'",
+    )
+    rank_gt_200 = _scalar(
+        cur,
+        "SELECT count(*) FROM watchlist_items WHERE status IN ('active','researched') AND hermes_rank > 200",
+    )
+    score_inserts_24h = _scalar(
+        cur,
+        "SELECT count(*) FROM hermes_score_history WHERE scored_at > NOW() - INTERVAL '24 hours'",
+    )
+    symbols_scored_24h = _scalar(
+        cur,
+        "SELECT count(DISTINCT symbol) FROM hermes_score_history WHERE scored_at > NOW() - INTERVAL '24 hours'",
+    )
+    tagged = _scalar(
+        cur,
+        """SELECT count(*) FROM hermes_research_intelligence
+           WHERE strategy_tags IS NOT NULL AND cardinality(strategy_tags) > 0""",
+    )
+    research_total = _scalar(cur, "SELECT count(*) FROM hermes_research_intelligence")
+    strategy_tags_pct = _pct(tagged, research_total)
+    stale_jobs = _scalar(
+        cur,
+        "SELECT count(*) FROM watchlist_agent_jobs WHERE status='queued' AND created_at < NOW() - INTERVAL '2 hours'",
+    )
+
+    import os
+    weights_profile = (os.getenv("HERMES_WEIGHTS_PROFILE") or "default").strip().lower()
+    scorer_cap = os.getenv("HERMES_SCORER_ALWAYS_CAP", "1").strip() == "1"
+
+    targets = {
+        "watchlist_active_max": 800,
+        "score_inserts_24h_max": 5000,
+        "strategy_tags_pct_min": 95.0,
+        "stale_jobs_max": 20,
+    }
+    return {
+        "watchlist_active": watchlist_active,
+        "watchlist_archived": watchlist_archived,
+        "watchlist_rank_gt_200": rank_gt_200,
+        "score_inserts_24h": score_inserts_24h,
+        "symbols_scored_24h": symbols_scored_24h,
+        "strategy_tags_populated_pct": strategy_tags_pct,
+        "strategy_tags_populated": tagged,
+        "research_rows_total": research_total,
+        "watchlist_jobs_stale_2h": stale_jobs,
+        "weights_profile": weights_profile,
+        "scorer_always_cap": scorer_cap,
+        "targets": targets,
+        "health": {
+            "watchlist_active_ok": watchlist_active <= targets["watchlist_active_max"],
+            "score_volume_ok": score_inserts_24h <= targets["score_inserts_24h_max"],
+            "strategy_tags_ok": (strategy_tags_pct or 0) >= targets["strategy_tags_pct_min"],
+            "stale_jobs_ok": stale_jobs <= targets["stale_jobs_max"],
+        },
+    }
+
+
 def _gap_taxonomy_iris(metrics: dict) -> dict:
     tagger_ran = metrics.get("taxonomy_tagger_last_ran")
     iris_pending = metrics.get("iris_proposals_pending", 0)
@@ -341,6 +407,7 @@ def build_maturity_report(conn) -> dict:
         per_day = CAP_EMBED * (24 * 60 // COORDINATOR_INTERVAL_MIN)
         embed_catchup_days = round(embed_pending / per_day, 1) if per_day else None
     metrics["embed_catchup_days_at_current_cap"] = embed_catchup_days
+    scalp_kpis = _build_scalp_kpis(cur)
 
     areas = [
         _area("coordinator", "Chief Coordinator", "full", 95,
@@ -400,9 +467,19 @@ def build_maturity_report(conn) -> dict:
     automatable_gaps = [g for g in gaps if g["automatable"] and not g["policy_manual"]]
     policy_gaps = [g for g in gaps if g["policy_manual"]]
 
+    # Phase 5.3 (2026-07-02): the honest board — every gate computed live, 5s persistence-gated.
+    # This is the canonical maturity measure; the legacy areas below keep their UI but their
+    # autonomy_pct measures throughput/self-running-ness, not correctness.
+    try:
+        from hermes_maturity_gates import build_gates
+        maturity_gates = build_gates(cur)
+    except Exception as e:
+        maturity_gates = {"error": str(e)[:120]}
+
     return {
         "ok": True,
         "updated_at": now.isoformat(),
+        "maturity_gates": maturity_gates,
         "kill_switch_active": _kill_switch_active(),
         "directive_b_active": _directive_b_active(),
         "directive_b_note": "Operator Directive B (2026-06-02): live auto-promote + RAG writes enabled (audited + reversible). See docs/hermes/HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md and coordinator header.",
@@ -424,6 +501,7 @@ def build_maturity_report(conn) -> dict:
             "needs_operator_policy_change": len(policy_gaps),
         },
         "live_metrics": metrics,
+        "scalp_kpis": scalp_kpis,
         "consciousness": {
             "mode": consciousness.get("mode"),
             "attention": consciousness.get("attention"),
