@@ -1,9 +1,20 @@
-# Hermes External Researcher Lanes — Status & Routes (2026-06-07)
+# Hermes External Researcher Lanes — Status & Routes (2026-06-07, updated 2026-07-02)
 
 `scripts/hermes_external_researcher.py --lane {claude|chatgpt|grok}`. All advisory-only, redaction-first,
 DRY-RUN by default, manual/escalation, governed by EXTERNAL_LLM_USAGE_POLICY_20260607.md. Audit:
 `hermes_external_research` + `GET /api/v2/hermes/external-research`.
 
+## Live status (2026-07-02)
+| Lane | Route | Cost model | Status | Service / activate |
+|------|-------|-----------|--------|-------------------|
+| **grok** | `grok_oauth_proxy.py` on :8645 (Hermes `xai-oauth`) | **FREE (xAI OAuth)** | **✓ ready** | `grok-oauth-proxy.service` |
+| **chatgpt** | `chatgpt_oauth_proxy.py` on :8646 (Hermes `openai-codex`) | **FREE (ChatGPT subscription)** | **✓ ready** | `chatgpt-oauth-proxy.service` |
+| **claude** | Anthropic API (`api.anthropic.com`, key from env) | metered API | wired; **blocked by credits** | add Anthropic billing credits |
+
+Nous Portal OAuth is logged in for Hermes CLI/portal (`hermes portal status`); external researcher lanes above are Grok + ChatGPT + Claude.
+
+---
+## Historical status (2026-06-07)
 | Lane | Route | Cost model | Status | Activate |
 |------|-------|-----------|--------|----------|
 | **claude** | Anthropic API (`api.anthropic.com`, key from env) | metered API | wired; **blocked by credits** | add Anthropic billing credits |
@@ -17,9 +28,9 @@ lane uses the Hermes one-shot CLI with `--provider openai-codex`, which uses the
 OpenAI API key, no per-call billing. It is `auth_pending` until the operator completes the device-code login.
 (The earlier OpenAI-API wiring was removed.)
 
-## Grok — repointed to the FREE xAI OAuth proxy (2026-06-07)
-Grok now routes through the local xai-oauth proxy (`hermes proxy start --provider xai`, 127.0.0.1:8645) — the
-metered xAI API key route was removed. auth_pending until the operator runs `hermes auth add xai-oauth --type oauth` and starts the proxy. Override the proxy URL with HERMES_XAI_PROXY_URL if needed.
+## Grok — FREE xAI OAuth proxy (2026-07-02)
+Grok routes through `scripts/grok_oauth_proxy.py` on 127.0.0.1:8645, managed by `grok-oauth-proxy.service`.
+Requires `hermes auth add xai-oauth --type oauth`. Override URL with `HERMES_XAI_PROXY_URL` if needed.
 
 ## Safety (all lanes)
 Redaction verified (amounts/account#/keys stripped); API keys/OAuth read at call-time only, never stored/

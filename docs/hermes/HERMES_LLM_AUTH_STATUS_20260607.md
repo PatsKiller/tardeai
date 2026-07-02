@@ -1,10 +1,38 @@
-# Hermes LLM Auth / OAuth — Status & Guided Login (2026-06-07)
+# Hermes LLM Auth / OAuth — Status & Guided Login (2026-06-07, updated 2026-07-02)
 
 Read-only auth status per LLM lane + the exact login commands. **No credentials are entered or stored in
 the app.** External OAuth logins authenticate in your **browser via Google SSO** at the provider's prompt.
-Endpoint: `GET /api/v2/hermes/llm-auth-status`. UI: System → Hermes → "LLM Auth / OAuth" card.
+Endpoint: `GET /api/v2/hermes/llm-auth-status` · `GET /api/v2/llm/oauth-lanes`. UI: System → Hermes → "LLM Auth / OAuth" card.
 
-## Current status (2026-06-07)
+## Current status (2026-07-02 — live on ms01-openclaw)
+| Lane | Type | Status | Login / service |
+|------|------|--------|-----------------|
+| Grok (xAI) | OAuth proxy — free | **✓ ready** | `hermes auth add xai-oauth --type oauth` · `grok-oauth-proxy.service` (:8645) |
+| ChatGPT (Codex) | OAuth — free (ChatGPT subscription) | **✓ ready** | `hermes auth add openai-codex --type oauth` · `chatgpt-oauth-proxy.service` (:8646) |
+| Nous Portal (Hermes lane) | OAuth | **✓ ready** | `hermes auth add nous --type oauth` · or `scripts/nous_portal_login_detach.sh` |
+| Claude (Anthropic) | API key (+credits) | key present; **credits needed** | set ANTHROPIC_API_KEY + add credits |
+| Local (Ollama) | local — always free | **✓ ready** | (none) |
+
+**Command Center free OAuth lanes: 4/4 ready** (Grok, ChatGPT, Hermes/Nous, local). Verify:
+`curl -s http://127.0.0.1:7777/api/v2/llm/oauth-lanes | python3 -m json.tool`
+
+### Proxy systemd (user units, 2026-07-02)
+| Unit | Port | Script |
+|------|------|--------|
+| `grok-oauth-proxy.service` | 8645 | `scripts/grok_oauth_proxy.py` |
+| `chatgpt-oauth-proxy.service` | 8646 | `scripts/chatgpt_oauth_proxy.py` |
+
+Install: `cp config/systemd/*.service ~/.config/systemd/user/` → `systemctl --user daemon-reload` →
+`systemctl --user enable --now grok-oauth-proxy.service chatgpt-oauth-proxy.service`.
+
+Legacy `hermes-xai-proxy.service` (same :8645) — **disable** after migrating to `grok-oauth-proxy` to avoid double-bind on reboot.
+
+### Nous re-login (headless / agent timeout)
+Interactive OAuth can be killed by short agent timeouts. Use detached helper:
+`bash scripts/nous_portal_login_detach.sh` → approve URL from `/tmp/nous_oauth_login.log`.
+
+---
+## Historical status (2026-06-07)
 | Lane | Type | Status | Login (operator, in terminal) |
 |------|------|--------|-------------------------------|
 | ChatGPT (Codex) | OAuth — free (ChatGPT subscription) | **auth pending** | `hermes auth add openai-codex --type oauth` |
@@ -13,8 +41,7 @@ Endpoint: `GET /api/v2/hermes/llm-auth-status`. UI: System → Hermes → "LLM A
 | Claude (Anthropic) | API key (+credits) | key present; **credits needed** | set ANTHROPIC_API_KEY + add credits |
 | Local (Ollama) | local — always free | **✓ ready** | (none) |
 
-**Is all OAuth working? NO** — no external OAuth lane is logged in yet. Local Ollama is the only fully-ready
-LLM. Run the login commands above (Google SSO in browser) to activate the free external lanes.
+**Was all OAuth working? NO** — at that date no external OAuth lane was logged in yet.
 
 ## Safety
 The app never sees/stores credentials. `hermes login` runs device-code/browser OAuth under the operator's
@@ -53,11 +80,12 @@ The proxy currently runs as a foreground process. For durable uptime + auto-rest
 2. `python3 scripts/hermes_external_researcher.py --lane grok --question "..." --apply`
 
 ---
-## xAI proxy now a systemd service (2026-06-07, operator-approved)
-- `hermes-xai-proxy.service` (user): ExecStart=`hermes proxy start --provider xai`, Type=simple,
-  **Restart=always** (RestartSec=10), WantedBy=default.target. active=active, enabled=enabled, listening :8645.
-- Survives shell exit + auto-restarts; Command Center proxy monitor reflects UP/DOWN live.
-- Operate: `systemctl --user status|restart|stop hermes-xai-proxy.service`. Unit in ~/.config/systemd/user (untracked, per convention).
+## xAI/Grok proxy systemd (2026-07-02, canonical)
+- `grok-oauth-proxy.service` (user): ExecStart=`scripts/grok_oauth_proxy.py`, Type=simple,
+  **Restart=always** (RestartSec=5), `GROK_PROXY_PORT=8645`. enabled + active on ms01-openclaw.
+- Legacy `hermes-xai-proxy.service` — same port; **disable** when using `grok-oauth-proxy`.
+- Operate: `systemctl --user status|restart|stop grok-oauth-proxy.service`.
+- ChatGPT mirror: `chatgpt-oauth-proxy.service` on :8646.
 
 ## ChatGPT/Codex login — BLOCKED by ChatGPT workspace policy (2026-06-07)
 The Codex device-code login (`hermes auth add openai-codex --type oauth`) returns:

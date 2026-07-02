@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-02 - Post-reboot recovery, site validation, OAuth proxy systemd, docs sync
+
+After the Python 3.14 OS upgrade on `ms01-openclaw`, restored full Command Center health without SQL migrations.
+
+- **Venv / deps:** `psycopg2-binary` bumped to **2.9.12** (cp314 wheel); full `pip install -r requirements.txt`; RAG `import os` fix in `rag_retrieval.py`.
+- **Stop Management:** Schwab live stops visible again (**12/30** broker stops active); `broker_stops_degraded` banner; regime from `market_regime_snapshots` (not `regime_state`).
+- **API SQL:** `catalyst_quality_results` uses `quality_score`/`grade`; `trade_ai_scans` scan history uses `score` (not `signal_score`).
+- **portfolio-server stability:** removed `fuser` port-guard on startup; `allow_reuse_port=False`; `Restart=on-failure`; watchdog leaves healthy orphans alone. Fixes adopt churn (orphan PPID=1 while `systemctl inactive`).
+- **Site probe:** `scripts/cc_v3_site_health_probe.py` — 94 sequential GET smoke tests; finviz requires `?symbol=`; POST-only `/watch/directives` excluded.
+- **OAuth proxies (systemd user):** `grok-oauth-proxy.service` (:8645) and `chatgpt-oauth-proxy.service` (:8646) enabled; legacy `hermes-xai-proxy` disabled. Nous Portal logged in (`hermes auth add nous`); helper `scripts/nous_portal_login_detach.sh`.
+- **Docs:** `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md`; synced `HERMES_LLM_AUTH_STATUS`, `HERMES_EXTERNAL_LANES_STATUS`, `RESTORE_GUIDE`, `CHEAT_SHEET`, `DOCUMENTATION_INDEX`, `SCHEDULED_JOBS_REFERENCE`.
+
 ## 2026-07-01 - Synthesis-zombie reaper extension (maturity-table coverage)
 
 Discovered while checking batch progress: **19 symbols stuck in `watchlist_analysis_maturity.final_synthesis_status='processing'`** (worst: CEPO 34 days) — `_check_synthesis_ready` skips `processing`, so they were silently excluded from CIO-view refreshes. Same worker-death zombie pattern as the 2026-06-29 job-queue incident, but the reaper only covered `watchlist_agent_jobs`.
@@ -1423,7 +1435,7 @@ names had no card. Fixed:
 - **Monitor + control in the Command Center:** `GET /api/v2/llm/oauth-lanes` (now with last-ok freshness) +
   `POST /api/v2/llm/oauth-lanes/keepalive`. The rotation Independent Oversight panel has a **Free OAuth LLM
   Lanes** control card — per-lane status + last-ok + re-login hint, with **Run keepalive** and **Re-check**
-  buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma. Live: 3/4 ready (Hermes/Nous not logged in).
+  buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma. Live (2026-07-02): **4/4 ready**.
 
 ## 2026-06-17 - ChatGPT OAuth proxy (free openai-codex) — inline ChatGPT lane
 

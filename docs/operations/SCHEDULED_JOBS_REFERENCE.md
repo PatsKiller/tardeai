@@ -1,9 +1,9 @@
 # Trade AI v12 — Scheduled Jobs Reference
 
-**Updated:** 2026-05-31 (verified from live crontab + systemd)
+**Updated:** 2026-07-02 (verified from live crontab + systemd)
 **Server:** ms01-openclaw
-**Active cron jobs:** 187
-**Systemd services:** 2 persistent + 2 timers + 2 Hermes user units
+**Active cron jobs:** 187+
+**Systemd services:** system-level persistent + user-level portfolio/OAuth/Hermes units (see below)
 
 All times are Eastern (America/New_York) unless noted.
 Crontab env: `PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, `PY=$PROJ/.venv/bin/python`
@@ -14,8 +14,18 @@ Crontab env: `PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, `P
 
 | Service | Type | Port | What It Does | Restart |
 |---------|------|------|-------------|---------|
-| `tradeai-portfolio-server` | persistent | :7777 | Central API hub — serves 259+ REST endpoints and React SPA (89 pages). All client traffic routes here. | always, 5s delay |
+| `tradeai-portfolio-server` | persistent (system) | :7777 | Legacy system unit name on some hosts | always |
 | `ollama` | persistent | :11434 | Local LLM inference. GPU-accelerated (Intel Arc B50, Vulkan). KEEP_ALIVE=5m, MAX_LOADED=1, NUM_PARALLEL=1. Binds 0.0.0.0. | managed by systemd |
+
+## Systemd Services (user — johnclaw, ms01-openclaw 2026-07-02)
+
+| Service | Port | What It Does | Restart |
+|---------|------|-------------|---------|
+| `portfolio-server.service` | :7777 | Central API hub — `scripts/portfolio_server.py`. **Canonical** on ms01-openclaw. | on-failure |
+| `grok-oauth-proxy.service` | :8645 | Free Grok xAI-OAuth OpenAI-compatible proxy | always |
+| `chatgpt-oauth-proxy.service` | :8646 | Free ChatGPT openai-codex OAuth proxy | always |
+
+Install units from `config/systemd/` → `~/.config/systemd/user/`. Recovery: `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md`.
 
 ## Systemd Timers (system-level)
 

@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-06-24
+**Last updated:** 2026-07-02
 **Live counts:** `docs/LIVE_SYSTEM_FACTS.md` — `.venv/bin/python3 scripts/generate_system_facts.py`
 
 ---
@@ -194,8 +194,10 @@ PGPASSWORD=$(grep DB_PASSWORD .env | cut -d= -f2) psql -h localhost -U trade_ai 
 ## Common Operator Actions
 
 ```bash
-# Restart portfolio server
-pkill -f portfolio_server.py; sleep 2; nohup .venv/bin/python scripts/portfolio_server.py &
+# Restart portfolio server (systemd user unit — preferred)
+systemctl --user restart portfolio-server.service
+# Clean adopt if orphan holds :7777 while systemctl shows inactive:
+# systemctl --user stop portfolio-server; kill $(pgrep -f scripts/portfolio_server.py); systemctl --user start portfolio-server
 
 # Run orchestrator manually
 .venv/bin/python scripts/trade_ai_orchestrator.py --run-label manual
@@ -213,6 +215,12 @@ cd apps/command-center-v2 && npm run build && cd ../..
 
 # Run system preflight check (23 points)
 .venv/bin/python scripts/system_preflight_check.py
+
+# CC v3 site smoke (94 endpoints — run sequentially, not parallel)
+.venv/bin/python scripts/cc_v3_site_health_probe.py
+
+# OAuth lane status (4 free lanes)
+curl -s http://localhost:7777/api/v2/llm/oauth-lanes | python3 -m json.tool
 
 # Check cron count
 crontab -l | grep -v "^#" | wc -l
@@ -306,8 +314,8 @@ sudo systemctl restart postgresql
 # 2. Ollama (system service with GPU override)
 sudo systemctl restart ollama
 
-# 3. Portfolio Server
-pkill -f portfolio_server.py; sleep 2; nohup .venv/bin/python scripts/portfolio_server.py &
+# 3. Portfolio Server + OAuth proxies (user systemd)
+systemctl --user restart portfolio-server.service grok-oauth-proxy.service chatgpt-oauth-proxy.service
 
 # 4. Verify
 curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
@@ -337,7 +345,7 @@ curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
 |---------|---------|-----|
 | **Finviz cookie expired** | Screener returns 0 results | Manual browser login to Finviz Elite, update cookie in `.env`. **Wrap in single quotes** — value contains `( ) ;` characters |
 | **Ollama GPU fallback to CPU** | Classification takes 300s instead of 15s | `sudo systemctl restart ollama`; verify Vulkan override |
-| **Portfolio server 502** | React SPA shows connection error | `pkill -f portfolio_server.py && nohup .venv/bin/python scripts/portfolio_server.py &` |
+| **Portfolio server 502** | React SPA shows connection error | `systemctl --user restart portfolio-server.service` — if orphan: see `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md` |
 | **DB connection refused** | All API calls fail | `sudo systemctl restart postgresql` |
 | **Stale enrichment data** | Pipeline watchdog alert | Run `finviz_enrichment.py` manually |
 | **LLM toll gate stuck** | Classification jobs queued indefinitely | Check for zombie flock process; remove lock file |

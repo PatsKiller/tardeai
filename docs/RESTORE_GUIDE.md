@@ -186,7 +186,8 @@ cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 python3 scripts/system_preflight_check.py
 ```
 
-Must pass 21+ of 23 checks. Known acceptable fail: portfolio-server (nohup, not systemd).
+Must pass 21+ of 23 checks. `portfolio-server.service` (user systemd on :7777) should be **active** — see
+`docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md` if orphan/adopt churn after OS upgrade.
 
 ## 9. Launcher Scripts
 
