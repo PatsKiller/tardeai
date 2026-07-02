@@ -5,7 +5,25 @@
       "closed_at": "2026-06-01 12:00:02.816320-04:00",
       "final_r_vs_planned_stop": null,
       "initial_stop_vs_mae": "too tight \u2014 MAE only -7.74R (stopped on noise risk)",
-      "mode": "deterministic",
+      "llm_enhanced": true,
+      "llm_improvements": [
+        "Initial stop too tight at -7.74R MAE noise exit",
+        "260.03R left on table",
+        "Breakeven timing unknown"
+      ],
+      "llm_lane": "grok",
+      "llm_strengths": [
+        "Realized 3.125R on momentum_scalp",
+        "Adhered to Layer 3 config-OFF",
+        "Strong verified-catalyst setup"
+      ],
+      "llm_summary": "In this risk_on_trend momentum_scalp with RVOL 381.5x setup the trade realized 3.125R and $309.5 P&L from $3.23 to $3.73. Initial stop was too tight against -7.74R MAE causing noise exit while 260.03R remained on table. Layer 3 trailing stayed correctly config-OFF per backtest gate with breakeven timing unknown.",
+      "llm_takeaways": [
+        "Apply breakeven_trigger_r 1.2 and initial_stop_atr_mult 1.0-1.5",
+        "Keep Layer 3 trailing config-OFF until paper validation",
+        "Widen initial stops for this regime to reduce noise risk"
+      ],
+      "mode": "deterministic+oauth",
       "policy_sections_reviewed": [
         "\u00a73 L1",
         "\u00a73 L2",
@@ -20,6 +38,7 @@
       "recommended_params": {
         "breakeven_trigger_r": 1.2,
         "initial_stop_atr_mult": "1.0-1.5",
+        "llm_note": "breakeven_trigger_r: 1.2, initial_stop_atr_mult: 1.0-1.5, trail_mult: advisory-only do not enable L3 execution for risk_on_trend regime RVOL 381.5x | Float 4M | Gap +66.8% | Verified catalyst | A 51pts | Source screener; Layer 3 stays config-OFF until \u00a76 paper validation",
         "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
         "regime": "risk_on_trend",
         "setup": "RVOL 381.5x | Float 4M | Gap +66.8% | Verified catalyst | A 51pts | Source screener",
@@ -35,7 +54,23 @@
       "closed_at": "2026-06-01 11:30:02.681793-04:00",
       "final_r_vs_planned_stop": null,
       "initial_stop_vs_mae": "unknown \u2014 MAE not tagged",
-      "mode": "deterministic",
+      "llm_enhanced": true,
+      "llm_improvements": [
+        "MAE not tagged blocking Q1 initial stop vs MAE review",
+        "Breakeven timing unknown",
+        "Insufficient MFE/replay data for Q3 R left on table assessment"
+      ],
+      "llm_lane": "grok",
+      "llm_strengths": [
+        "Trade delivered positive $315.69 P&L",
+        "Trail activation correctly remained off matching Layer 3 config-OFF requirement"
+      ],
+      "llm_summary": "The momentum_scalp trade entered at $3.23 and exited at $3.74 realizing $315.69 P&L under risk_on_trend regime. Layer 3 trailing stayed inactive per config-OFF backtest gate. Multiple stop metrics remain unknown due to missing MAE, MFE, and replay data.",
+      "llm_takeaways": [
+        "Maintain Layer 3 trailing config-OFF until \u00a76 paper validation overturns backtest",
+        "Apply recommended params for this setup and regime without enabling execution trailing"
+      ],
+      "mode": "deterministic+oauth",
       "policy_sections_reviewed": [
         "\u00a73 L1",
         "\u00a73 L2",
@@ -50,6 +85,7 @@
       "recommended_params": {
         "breakeven_trigger_r": 1.2,
         "initial_stop_atr_mult": "1.0-1.5",
+        "llm_note": "{\"breakeven_trigger_r\": 1.2, \"initial_stop_atr_mult\": \"1.0-1.5\", \"note\": \"Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest\", \"regime\": \"risk_on_trend\", \"setup\": \"momentum_scalp\", \"trail_mult\": \"advisory-only \u2014 do not enable L3 execution\"}",
         "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
         "regime": "risk_on_trend",
         "setup": "momentum_scalp",
@@ -65,7 +101,23 @@
       "closed_at": "2026-05-13 15:45:01.280570-04:00",
       "final_r_vs_planned_stop": null,
       "initial_stop_vs_mae": "too tight \u2014 MAE only -9.59R (stopped on noise risk)",
-      "mode": "deterministic",
+      "llm_enhanced": true,
+      "llm_improvements": [
+        "Initial stop too tight relative to observed MAE",
+        "Widen initial stop to reduce noise exits"
+      ],
+      "llm_lane": "grok",
+      "llm_strengths": [
+        "Layer 3 trailing correctly remained config-OFF",
+        "Deterministic stop review completed without enabling execution trailing"
+      ],
+      "llm_summary": "The GCTS momentum_scalp trade entered at $1.49 and exited at $1.37 realizing -1.714R and -$225 P&L. Initial stop was too tight against MAE of -9.59R triggering on noise while Layer 3 trailing stayed config-OFF per backtest gate leaving 11.3R on the table. Breakeven timing remains unknown under unknown regime.",
+      "llm_takeaways": [
+        "Maintain Layer 3 OFF until paper validation overturns backtest gate",
+        "Target breakeven trigger at 1.2R",
+        "Apply initial_stop_atr_mult of 1.0-1.5 for momentum_scalp"
+      ],
+      "mode": "deterministic+oauth",
       "policy_sections_reviewed": [
         "\u00a73 L1",
         "\u00a73 L2",
@@ -80,6 +132,7 @@
       "recommended_params": {
         "breakeven_trigger_r": 1.2,
         "initial_stop_atr_mult": "1.0-1.5",
+        "llm_note": "breakeven_trigger_r: 1.2, initial_stop_atr_mult: 1.0-1.5, regime: unknown, setup: momentum_scalp, trail_mult: advisory-only \u2014 do not enable L3 execution, note: Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
         "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
         "regime": "unknown",
         "setup": "momentum_scalp",
@@ -95,7 +148,23 @@
       "closed_at": "2026-05-12 16:00:01.535190-04:00",
       "final_r_vs_planned_stop": null,
       "initial_stop_vs_mae": "unknown \u2014 MAE not tagged",
-      "mode": "deterministic",
+      "llm_enhanced": true,
+      "llm_improvements": [
+        "Tag MAE to enable Q1 initial stop vs MAE comparison",
+        "Capture MFE/replay data to assess R left on table",
+        "Record breakeven timing and realized R for full review"
+      ],
+      "llm_lane": "grok",
+      "llm_strengths": [
+        "Trail remained inactive per explicit Layer 3 config-OFF rule",
+        "Setup matched momentum_scalp parameters without deviation"
+      ],
+      "llm_summary": "The FLYW momentum_scalp trade lost $20.52 from entry 16.75 to exit 16.63 under unknown regime. Trail activation stayed off as required by Layer 3 config-OFF per backtest gate. Stop metrics remain incomplete with MAE untagged, MFE data missing, breakeven timing unknown, and realized R none.",
+      "llm_takeaways": [
+        "Keep Layer 3 trailing config-OFF until paper validation overturns backtest",
+        "Complete data tagging required before deterministic stop review can be finalized"
+      ],
+      "mode": "deterministic+oauth",
       "policy_sections_reviewed": [
         "\u00a73 L1",
         "\u00a73 L2",
@@ -110,6 +179,7 @@
       "recommended_params": {
         "breakeven_trigger_r": 1.2,
         "initial_stop_atr_mult": "1.0-1.5",
+        "llm_note": "breakeven_trigger_r: 1.2, initial_stop_atr_mult: 1.0-1.5, regime: unknown, setup: momentum_scalp, trail_mult: advisory-only \u2014 do not enable L3 execution, note: Layer 3 trailing stays config-OFF until paper validation overturns backtest",
         "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
         "regime": "unknown",
         "setup": "momentum_scalp",
@@ -123,5 +193,5 @@
   ],
   "schema_version": "1.0",
   "total_reviewed": 4,
-  "updated_at": "2026-07-02T22:56:13.319963+00:00"
+  "updated_at": "2026-07-02T22:59:37.596708+00:00"
 }

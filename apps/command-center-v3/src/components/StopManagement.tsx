@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -44,6 +44,52 @@ type Row = {
 const REGIME_COLOR: Record<string, string> = {
   strong_trending_bull: GREEN, strong_trending_bear: RED, trending: BLUE,
   ranging: MUTED, high_volatility: AMBER, regime_shift: PURPLE,
+}
+
+const COLS = 11  // data columns + actions (Reasons moved to sub-row)
+
+function rowHasReasons(r: Row): boolean {
+  return Boolean(
+    r.narrative
+    || (r.alert_reasons?.length ?? 0) > 0
+    || (r.policy_suggestions?.length ?? 0) > 0
+    || r.next_action
+    || (r.rec_evidence?.length ?? 0) > 0
+    || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')
+    || r.stop_curation?.grade
+    || (r.stop_curation?.evidence?.length ?? 0) > 0
+    || (r.holdings_llm_evidence?.length ?? 0) > 0,
+  )
+}
+
+function ReasonsSubRow({ r }: { r: Row }) {
+  return (
+    <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45, maxWidth: '100%' }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 4 }}>Reasons</div>
+      {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons?.length ? <div>{r.alert_reasons.join(' · ')}</div> : null)}
+      {(r.policy_suggestions?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 4, fontWeight: 800, color: PURPLE }}>Policy: {r.policy_suggestions!.join(' · ')}</div>
+      )}
+      {r.next_action ? (
+        <div style={{ marginTop: 4, fontWeight: 700,
+          color: /^(Monitor|None)/.test(r.next_action) ? MUTED : (r.alert_level === 'red' ? RED : r.alert_level === 'amber' ? AMBER : BLUE) }}>
+          → {r.next_action}
+        </div>
+      ) : null}
+      {((r.rec_evidence?.length ?? 0) > 0 || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')) && (
+        <EvidenceBlock title="Stop advisory evidence" evidence={r.rec_evidence} dataIDoubt={r.rec_data_i_doubt} compact maxItems={3} />
+      )}
+      {r.stop_curation && ((r.stop_curation.evidence?.length ?? 0) > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
+        <div style={{ marginTop: 4 }}>
+          {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
+          <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
+        </div>
+      )}
+      {((r.holdings_llm_evidence?.length ?? 0) > 0 || (r.holdings_llm_data_i_doubt && r.holdings_llm_data_i_doubt !== 'none')) && (
+        <EvidenceBlock title={r.holdings_llm_health ? `Holdings health · ${r.holdings_llm_health}` : 'Holdings LLM evidence'} evidence={r.holdings_llm_evidence} dataIDoubt={r.holdings_llm_data_i_doubt} compact maxItems={2} />
+      )}
+    </div>
+  )
 }
 
 function RegimeBadge({ r }: { r: Row }) {
@@ -281,13 +327,14 @@ export default function StopManagement({ onFocusHolding }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
-                  {['Alert', 'Symbol · Account', 'Route', 'Regime', 'Active stop', 'Stop (broker / planned)', 'Street (μ)', 'Distance', 'Unreal.', '$ at risk', 'Reasons', ''].map(h =>
+                  {['Alert', 'Symbol · Account', 'Route', 'Regime', 'Active stop', 'Stop (broker / planned)', 'Street (μ)', 'Distance', 'Unreal.', '$ at risk', ''].map(h =>
                     <th key={h} style={{ padding: '8px 9px', fontWeight: 800, whiteSpace: 'nowrap' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr key={`${r.symbol}-${r.account}-${i}`} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
+                  <Fragment key={`${r.symbol}-${r.account}-${i}`}>
+                  <tr style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
                     <td style={{ padding: '7px 9px' }}><Pill level={r.alert_level} thresholds={r.stoplight_thresholds_used} /></td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}><b>{r.symbol}</b><br /><span style={{ fontSize: 10.5, color: MUTED }}>{r.account}</span></td>
                     <td style={{ padding: '7px 9px', color: MUTED, fontSize: 11 }}>{r.route}</td>
@@ -359,33 +406,7 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: (r.unrealized_dollars ?? 0) >= 0 ? GREEN : RED }}>{r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}</td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</td>
-                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 340 }}>
-                      {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, lineHeight: 1.45, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons || []).join(' · ')}
-                      {(r.policy_suggestions?.length ?? 0) > 0 && (
-                        <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 800, color: PURPLE, lineHeight: 1.4 }}>
-                          Policy: {r.policy_suggestions!.join(' · ')}
-                        </div>
-                      )}
-                      {r.next_action ? (
-                        <div style={{ fontSize: 10.5, fontWeight: 700, lineHeight: 1.4,
-                          color: /^(Monitor|None)/.test(r.next_action) ? MUTED : (r.alert_level === 'red' ? RED : r.alert_level === 'amber' ? AMBER : BLUE) }}>
-                          → {r.next_action}
-                        </div>
-                      ) : null}
-                      {((r.rec_evidence?.length ?? 0) > 0 || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')) && (
-                        <EvidenceBlock title="Stop advisory evidence" evidence={r.rec_evidence} dataIDoubt={r.rec_data_i_doubt} compact maxItems={3} />
-                      )}
-                      {r.stop_curation && ((r.stop_curation.evidence?.length ?? 0) > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
-                        <div style={{ marginTop: 4 }}>
-                          {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
-                          <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
-                        </div>
-                      )}
-                      {((r.holdings_llm_evidence?.length ?? 0) > 0 || (r.holdings_llm_data_i_doubt && r.holdings_llm_data_i_doubt !== 'none')) && (
-                        <EvidenceBlock title={r.holdings_llm_health ? `Holdings health · ${r.holdings_llm_health}` : 'Holdings LLM evidence'} evidence={r.holdings_llm_evidence} dataIDoubt={r.holdings_llm_data_i_doubt} compact maxItems={2} />
-                      )}
-                    </td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                       {r.trailing_should_be_active && (
                         <button onClick={() => openAdjust(r, true)}
                           title={`One-click: stages the advised ${r.trail_pct ?? ''}% trailing stop and goes straight to ${r.account.startsWith('fidelity') ? 'a manual ticket' : '2FA approve'}`}
@@ -405,9 +426,18 @@ export default function StopManagement({ onFocusHolding }: Props) {
                       <button onClick={() => openAdjust(r, false)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
                     </td>
                   </tr>
+                  {rowHasReasons(r) && (
+                    <tr key={`${r.symbol}-${r.account}-${i}-reasons`} style={{ borderTop: 'none', background: 'rgba(15,23,42,.4)' }}>
+                      <td colSpan={COLS - 1} style={{ padding: '2px 9px 8px 24px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
+                        <ReasonsSubRow r={r} />
+                      </td>
+                      <td style={{ padding: '2px 9px 8px', borderBottom: '1px solid rgba(148,163,184,.1)' }} />
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
                 {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: MUTED }}>No positions match this filter.</td></tr>
+                  <tr><td colSpan={COLS} style={{ padding: 20, textAlign: 'center', color: MUTED }}>No positions match this filter.</td></tr>
                 )}
               </tbody>
             </table>
