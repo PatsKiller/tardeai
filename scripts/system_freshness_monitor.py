@@ -46,7 +46,10 @@ MAX_AUTOFIX_PER_DAY = 2
 #   kind 'logfile'       : a logfile must contain `needle` written within max_age_h (cron success)
 # autofix: key into SAFE_REMEDIATION (optional). sev: P0..P3 by blast radius.
 REGISTRY = [
-    {"key": "news_articles",            "kind": "fresh", "table": "news_articles",            "max_age_h": 18, "sev": "P1"},
+    {"key": "news_ingestion_heartbeat", "kind": "logfile",
+     "path": os.path.join(ROOT, "logs", "news_ingestion.log"),
+     "needle": "[news] heartbeat ok", "max_age_h": 20, "sev": "P1"},
+    {"key": "news_articles",            "kind": "fresh", "table": "news_articles",            "max_age_h": 24, "sev": "P1"},
     {"key": "catalyst_events",          "kind": "fresh", "table": "catalyst_events",          "max_age_h": 24, "sev": "P1", "autofix": "news_to_catalyst"},
     {"key": "catalyst_events_vs_news",  "kind": "empty_vs_input", "table": "catalyst_events", "input": "news_articles", "window_h": 24, "sev": "P1", "autofix": "news_to_catalyst"},
     {"key": "sentiment_observations",   "kind": "fresh", "table": "sentiment_observations",   "max_age_h": 24, "sev": "P2"},

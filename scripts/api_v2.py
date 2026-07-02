@@ -7499,7 +7499,7 @@ def _data_product_health():
         "risk_snapshot": {"owner": "risk_manager.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/risk_manager.py", "weekend_ok": True, "category": "market_data"},
         "dividend_calendar": {"owner": "dividend_tracker.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/dividend_tracker.py", "weekend_ok": True, "category": "market_data"},
         "ai_analyst_cache": {"owner": "portfolio_ai_analyst.py", "schedule": "manual", "remediation": ".venv/bin/python scripts/portfolio_ai_analyst.py", "weekend_ok": True, "category": "generated"},
-        "news_articles": {"owner": "news_ingestion.py", "schedule": "*/30 M-F + 06:30/12:30/18:30", "remediation": ".venv/bin/python scripts/news_ingestion.py --priority", "weekend_ok": False, "category": "intelligence"},
+        "news_articles": {"owner": "news_ingestion.py", "schedule": "priority 00:30/06:30/12:30/18:30; tail-rotate Sat/Sun 10/14/18", "remediation": ".venv/bin/python scripts/news_ingestion.py --priority", "weekend_ok": False, "category": "intelligence"},
         "cio_decisions": {"owner": "cio_decision_engine.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/cio_decision_engine.py --run", "weekend_ok": True, "category": "decisions"},
         "agent_jobs_completed": {"owner": "process_watchlist_agent_jobs.py", "schedule": "*/10-15", "remediation": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 5", "weekend_ok": False, "category": "agent_ops"},
     }

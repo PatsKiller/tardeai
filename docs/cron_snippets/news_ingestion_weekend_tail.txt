@@ -1,0 +1,8 @@
+# News ingestion cadence (operator 2026-07-02)
+# Weekday priority (holdings/proposals/buy/start): existing lines + overnight fill
+30 0 * * * cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+30 6 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+30 12 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+30 18 * * * cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+# Weekend staggered tail (~500/slot × 6 slots ≈ full 3.5k classified universe per weekend)
+0 10,14,18 * * 0,6 cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1

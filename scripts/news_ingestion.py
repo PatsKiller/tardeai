@@ -10,90 +10,177 @@ Sources:
 All sources dedup by symbol + title. Scored + tagged via content_scoring.
 Feeds into: news_articles, catalyst_events, sentiment_observations.
 
+Modes:
+  --priority    Weekday cadence: holdings/proposals/buy/active/directives (NEWS_INGEST_MAX, default 60)
+  --tail-rotate Weekend stagger: rotating batch through classified tail (NEWS_TAIL_BATCH, default 500)
+
+Every successful run prints a logfile heartbeat line for system_freshness_monitor.py:
+  [news] heartbeat ok mode=... scanned=N new=M offset=...
+
 Usage:
     python3 scripts/news_ingestion.py --priority [--json]
-    python3 scripts/news_ingestion.py --full [--json]
+    python3 scripts/news_ingestion.py --tail-rotate [--json]
+    python3 scripts/news_ingestion.py --full [--json]   # alias: one-shot full universe head (legacy)
 """
-import json, os, sys, hashlib, urllib.request, xml.etree.ElementTree as ET
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
+ROTATION_FILE = RUNTIME_DIR / "news_ingest_rotation.json"
+HEARTBEAT_NEEDLE = "[news] heartbeat ok"
+
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
 
 def _get_conn():
     import psycopg2
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        if line.startswith("DB_PASSWORD="):
+            pw = line.split("=", 1)[1].strip()
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
-def _get_symbols(priority_only: bool = False) -> list:
-    """Get symbols to scan from DB classifications + incubator ACTIVE symbols."""
-    import psycopg2.extras
-    conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    if priority_only:
-        # Portfolio holdings + high-priority watchlist
-        cur.execute("""
-            SELECT DISTINCT tsc.symbol, tsc.strategy_type
-            FROM ticker_strategy_classifications tsc
-            WHERE tsc.active = TRUE AND tsc.symbol IN (
-                SELECT DISTINCT symbol FROM watchlist_items WHERE status <> 'removed' AND source = 'portfolio'
-            )
-        """)
-    else:
-        cur.execute("SELECT symbol, strategy_type FROM ticker_strategy_classifications WHERE active=TRUE")
-    symbols = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]
+def _strategy_map(conn, symbols: list[str]) -> dict[str, str]:
+    if not symbols:
+        return {}
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT symbol, COALESCE(strategy_type, 'watchlist') FROM ticker_strategy_classifications
+           WHERE symbol = ANY(%s)""",
+        (symbols,),
+    )
+    return {r[0]: r[1] for r in cur.fetchall()}
 
-    # Also include incubator ACTIVE symbols (top 50 by score to avoid overloading)
+
+def _get_actionable_pairs(conn) -> list[tuple[str, str]]:
+    """Holdings, proposals, scans, directives, daily-priority buy/start — always first in --priority."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT DISTINCT UPPER(u.symbol) AS symbol, COALESCE(tsc.strategy_type, 'traded') AS strategy_type
+        FROM (
+            SELECT symbol FROM paper_trades
+             WHERE entry_time > now() - interval '30 days' AND symbol IS NOT NULL
+            UNION SELECT symbol FROM paper_trade_proposals
+             WHERE status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED','BROKER_SUBMITTED')
+               AND symbol IS NOT NULL
+            UNION SELECT symbol FROM trade_ai_scans
+             WHERE run_date >= CURRENT_DATE AND decision IN ('GO','WAIT') AND symbol IS NOT NULL
+            UNION SELECT symbol FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
+            UNION SELECT symbol FROM watchlist_items
+             WHERE in_directive_watch = true AND status <> 'removed' AND symbol IS NOT NULL
+        ) u
+        LEFT JOIN ticker_strategy_classifications tsc ON tsc.symbol = u.symbol
+    """)
+    pairs = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall() if r.get("symbol")]
+    try:
+        from watchlist_priority import load_daily_priority_symbols
+        dcur = conn.cursor()
+        daily = load_daily_priority_symbols(dcur, PROJECT_ROOT)
+        dcur.close()
+        smap = _strategy_map(conn, sorted(daily))
+        seen = {p[0].upper() for p in pairs}
+        for sym in sorted(daily):
+            if sym not in seen:
+                pairs.append((sym, smap.get(sym, "watchlist")))
+                seen.add(sym)
+    except Exception:
+        pass
+    return pairs
+
+
+def _get_full_universe_pairs(conn) -> list[tuple[str, str]]:
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT symbol, COALESCE(strategy_type, 'watchlist') AS strategy_type "
+        "FROM ticker_strategy_classifications WHERE active=TRUE ORDER BY symbol"
+    )
+    symbols = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]
     existing = {s[0] for s in symbols}
     try:
         cur.execute("""
-            SELECT DISTINCT symbol, COALESCE(strategy_id, 'screener') as strategy_type
+            SELECT DISTINCT symbol, COALESCE(strategy_id, 'screener') AS strategy_type
             FROM incubator_universe
             WHERE status = 'ACTIVE' AND latest_score >= 35
-            ORDER BY latest_score DESC
-            LIMIT 50
+            ORDER BY latest_score DESC LIMIT 50
         """)
         for r in cur.fetchall():
             if r["symbol"] not in existing:
                 symbols.append((r["symbol"], r["strategy_type"]))
                 existing.add(r["symbol"])
     except Exception:
-        pass  # non-fatal — incubator table may not exist
-
-    # Actionable/traded universe — ALWAYS cover symbols we actually trade/hold/watch so source attribution +
-    # catalyst calibration have data (closes the news↔trade overlap gap). Prepended (priority-first) so the
-    # per-run cap can never truncate them.
-    try:
-        conn.rollback()  # clear any aborted-transaction state from the optional incubator query above
-        cur.execute("""
-            SELECT DISTINCT u.symbol, COALESCE(tsc.strategy_type, 'traded') AS strategy_type FROM (
-                SELECT symbol FROM paper_trades WHERE entry_time > now() - interval '30 days' AND symbol IS NOT NULL
-                UNION SELECT symbol FROM paper_trade_proposals WHERE status IN ('PENDING','APPROVED') AND symbol IS NOT NULL
-                UNION SELECT symbol FROM trade_ai_scans WHERE run_date >= CURRENT_DATE AND decision IN ('GO','WAIT') AND symbol IS NOT NULL
-                UNION SELECT symbol FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
-                -- operator directives are watch-grade regardless of lifecycle status (2026-06-12:
-                -- directive symbols sat status='researched' -> zero news coverage on the watchlist)
-                UNION SELECT symbol FROM watchlist_items
-                      WHERE in_directive_watch = true AND status <> 'removed' AND symbol IS NOT NULL
-            ) u LEFT JOIN ticker_strategy_classifications tsc ON tsc.symbol = u.symbol
-        """)
-        actionable = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]
-        act_syms = {a[0] for a in actionable}
-        symbols = actionable + [s for s in symbols if s[0] not in act_syms]
-    except Exception:
-        pass  # non-fatal — fall back to base universe
-
-    conn.close()
+        conn.rollback()
     return symbols
 
 
+def _load_rotation() -> dict:
+    try:
+        return json.loads(ROTATION_FILE.read_text())
+    except Exception:
+        return {"offset": 0, "tail_size": 0, "last_mode": None}
+
+
+def _save_rotation(state: dict) -> None:
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    ROTATION_FILE.write_text(json.dumps(state, indent=2, default=str))
+
+
+def select_tail_batch(
+    universe: list[tuple[str, str]],
+    priority_syms: set[str],
+    batch_size: int,
+    offset: int,
+) -> tuple[list[tuple[str, str]], int, int]:
+    """Return (batch pairs, next_offset, tail_len) rotating through non-priority classified names."""
+    stmap = {s: t for s, t in universe}
+    tail = sorted(s for s in stmap if s.upper() not in priority_syms)
+    n = len(tail)
+    if n == 0:
+        return [], 0, 0
+    batch_size = min(batch_size, n)
+    batch = [(tail[(offset + i) % n], stmap[tail[(offset + i) % n]]) for i in range(batch_size)]
+    return batch, (offset + batch_size) % n, n
+
+
+def _priority_symbol_list(conn) -> list[tuple[str, str]]:
+    actionable = _get_actionable_pairs(conn)
+    act_set = {a[0].upper() for a in actionable}
+    rest = _get_full_universe_pairs(conn)
+    merged = actionable + [p for p in rest if p[0].upper() not in act_set]
+    return merged
+
+
+def _resolve_symbols(conn, mode: str) -> tuple[list[tuple[str, str]], dict]:
+    meta = {"mode": mode, "offset": 0, "tail_size": 0}
+    if mode == "priority":
+        return _priority_symbol_list(conn), meta
+    if mode == "tail_rotate":
+        universe = _get_full_universe_pairs(conn)
+        actionable = _get_actionable_pairs(conn)
+        priority_syms = {a[0].upper() for a in actionable}
+        batch_size = int(os.environ.get("NEWS_TAIL_BATCH", "500"))
+        state = _load_rotation()
+        offset = int(state.get("offset") or 0)
+        batch, next_off, tail_n = select_tail_batch(universe, priority_syms, batch_size, offset)
+        meta.update(offset=offset, next_offset=next_off, tail_size=tail_n, batch_size=batch_size)
+        return batch, meta
+    # legacy --full: full universe head (no rotation)
+    return _get_full_universe_pairs(conn), meta
+
+
 def _fetch_yahoo_rss(symbol: str) -> list:
-    """Fetch Yahoo Finance RSS feed for a symbol."""
     articles = []
     try:
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
@@ -101,24 +188,19 @@ def _fetch_yahoo_rss(symbol: str) -> list:
         with urllib.request.urlopen(req, timeout=10) as resp:
             root = ET.fromstring(resp.read())
             for item in root.findall(".//item"):
-                title = item.findtext("title", "")
-                link = item.findtext("link", "")
-                pub = item.findtext("pubDate", "")
-                desc = item.findtext("description", "")
                 articles.append({
-                    "title": title,
-                    "summary": desc[:500] if desc else "",
+                    "title": item.findtext("title", ""),
+                    "summary": (item.findtext("description", "") or "")[:500],
                     "source": "yahoo_rss",
-                    "source_url": link,
-                    "published_at": pub,
+                    "source_url": item.findtext("link", ""),
+                    "published_at": item.findtext("pubDate", ""),
                 })
-    except Exception as e:
-        pass  # Gracefully skip
+    except Exception:
+        pass
     return articles
 
 
 def _fetch_finnhub(symbol: str, api_key: str) -> list:
-    """Fetch Finnhub news if API key available."""
     articles = []
     try:
         from_date = datetime.now().strftime("%Y-%m-%d")
@@ -126,13 +208,14 @@ def _fetch_finnhub(symbol: str, api_key: str) -> list:
         req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-            for item in data[:5]:  # Limit per symbol
+            for item in data[:5]:
                 articles.append({
                     "title": item.get("headline", ""),
-                    "summary": item.get("summary", "")[:500],
+                    "summary": (item.get("summary", "") or "")[:500],
                     "source": "finnhub",
                     "source_url": item.get("url", ""),
-                    "published_at": datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc).isoformat() if item.get("datetime") else None,
+                    "published_at": datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc).isoformat()
+                    if item.get("datetime") else None,
                 })
     except Exception:
         pass
@@ -140,21 +223,16 @@ def _fetch_finnhub(symbol: str, api_key: str) -> list:
 
 
 def _fetch_google_news_rss(symbol: str) -> list:
-    """Fetch Google News RSS — free, captures Benzinga + Seeking Alpha + Motley Fool + all sources."""
     articles = []
     try:
-        import re
-        query = urllib.parse.quote(f"{symbol} stock") if hasattr(urllib, 'parse') else symbol
+        import urllib.parse
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (TradeAI/1.0)"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             root = ET.fromstring(resp.read())
             for item in root.findall(".//item")[:5]:
                 title = item.findtext("title", "")
-                link = item.findtext("link", "")
-                pub = item.findtext("pubDate", "")
                 source_name = item.findtext("source", "")
-                # Map source to our naming
                 src_lower = source_name.lower()
                 if "benzinga" in src_lower:
                     source_tag = "benzinga_rss"
@@ -174,61 +252,48 @@ def _fetch_google_news_rss(symbol: str) -> list:
                     "title": title,
                     "summary": f"[{source_name}] {title}",
                     "source": source_tag,
-                    "source_url": link,
-                    "published_at": pub,
+                    "source_url": item.findtext("link", ""),
+                    "published_at": item.findtext("pubDate", ""),
                 })
     except Exception:
-        pass  # Gracefully skip
+        pass
     return articles
 
 
 def _fetch_benzinga_api(symbol: str, api_key: str) -> list:
-    """Fetch Benzinga news via API — richer data with analyst ratings."""
     articles = []
     try:
+        import re
         from_date = datetime.now().strftime("%Y-%m-%d")
-        url = (f"https://api.benzinga.com/api/v2/news"
-               f"?token={api_key}&tickers={symbol}&dateFrom={from_date}"
-               f"&pageSize=5&displayOutput=full")
+        url = (
+            f"https://api.benzinga.com/api/v2/news?token={api_key}&tickers={symbol}"
+            f"&dateFrom={from_date}&pageSize=5&displayOutput=full"
+        )
         req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
             for item in data[:5]:
-                title = item.get("title", "")
                 body = item.get("body", item.get("teaser", ""))
-                # Clean HTML
-                import re
-                clean_body = re.sub(r'<[^>]+>', '', body or "")[:500]
-                pub_str = item.get("created", item.get("updated", ""))
+                clean_body = re.sub(r"<[^>]+>", "", body or "")[:500]
                 articles.append({
-                    "title": title,
+                    "title": item.get("title", ""),
                     "summary": clean_body,
                     "source": "benzinga_api",
                     "source_url": item.get("url", ""),
-                    "published_at": pub_str,
-                    "benzinga_channels": item.get("channels", []),
-                    "benzinga_stocks": item.get("stocks", []),
+                    "published_at": item.get("created", item.get("updated", "")),
                 })
     except Exception:
-        pass  # Gracefully skip if API key invalid or rate limited
+        pass
     return articles
 
 
 def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, scores: dict, tags: dict):
-    """Feed article into catalyst_events, sentiment_observations, research_insights."""
     cur = conn.cursor()
     title = article.get("title", "")[:500]
     summary = article.get("summary", "")[:1000]
     source = article.get("source", "unknown")
     relevance = scores.get("relevance_score", 0)
-    keywords = scores.get("matched_keywords", [])
 
-    # Catalyst + sentiment — use savepoints to prevent transaction abort
-    # NOTE (2026-06-04 repair): this INSERT previously used columns title/relevance_score
-    # which do NOT exist on catalyst_events (headline/impact_score) — it failed silently on
-    # every article (savepoint rollback + except:pass) and wrote 0 rows for ~5 weeks. Columns
-    # corrected; classify the type (no generic-'news' quality loss) and dedup on (symbol,
-    # headline) so this and the scheduled news_to_catalyst.py classifier can both run safely.
     if relevance > 0.3:
         try:
             from news_to_catalyst import _classify, _severity_from_weight
@@ -248,8 +313,10 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
                  source, article.get("published_at")))
             cur.execute("RELEASE SAVEPOINT ds_cat")
         except Exception:
-            try: cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
-            except Exception: pass
+            try:
+                cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
+            except Exception:
+                pass
 
     try:
         from content_scoring import SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE
@@ -257,9 +324,6 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
         pos = sum(1 for s in SENTIMENT_POSITIVE if s in text_lower)
         neg = sum(1 for s in SENTIMENT_NEGATIVE if s in text_lower)
         sentiment = "positive" if pos > neg else "negative" if neg > pos else "neutral"
-        # 2026-06-04 repair: columns were source/sentiment/score/raw_text which do NOT exist
-        # (table has source_type/overall_sentiment/sentiment_score/raw_text_snippet) — silently
-        # failing (savepoint rollback + except:pass) since the schema migration; frozen 2026-05-10.
         cur.execute("SAVEPOINT ds_sent")
         cur.execute("""INSERT INTO sentiment_observations
                 (symbol, strategy_type, source_type, overall_sentiment, sentiment_score, raw_text_snippet)
@@ -267,39 +331,22 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
             (symbol, strategy_type, source, sentiment, relevance, title[:500]))
         cur.execute("RELEASE SAVEPOINT ds_sent")
     except Exception:
-        try: cur.execute("ROLLBACK TO SAVEPOINT ds_sent")
-        except Exception: pass
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT ds_sent")
+        except Exception:
+            pass
 
 
-def ingest(priority_only: bool = False) -> dict:
-    conn = _get_conn()
-    import psycopg2.extras
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    symbols = _get_symbols(priority_only)
-    finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
-    if not finnhub_key:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("FINNHUB_API_KEY="): finnhub_key = line.split("=", 1)[1].strip()
-
-    # Benzinga API key (optional — RSS works without it)
-    benzinga_key = os.environ.get("BENZINGA_API_KEY", "")
-    if not benzinga_key:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("BENZINGA_API_KEY="): benzinga_key = line.split("=", 1)[1].strip()
-
+def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, benzinga_key: str) -> dict:
     total_new = 0
     total_scanned = 0
-    source_counts = {"yahoo_rss": 0, "finnhub": 0, "benzinga_rss": 0, "benzinga_api": 0}
+    source_counts: dict[str, int] = {}
 
-    _news_max = int(os.environ.get("NEWS_INGEST_MAX", "60"))  # actionable-first; raised from 30 to cover traded universe
-    for sym, strategy_type in symbols[:_news_max]:  # Limit to avoid rate limits
+    for sym, strategy_type in symbols:
         articles = _fetch_yahoo_rss(sym)
         if finnhub_key:
             articles.extend(_fetch_finnhub(sym, finnhub_key))
-        # Google News RSS — captures Benzinga + Seeking Alpha + Motley Fool + all sources
         articles.extend(_fetch_google_news_rss(sym))
-        # Benzinga API — richer data if key exists
         if benzinga_key:
             articles.extend(_fetch_benzinga_api(sym, benzinga_key))
 
@@ -307,27 +354,28 @@ def ingest(priority_only: bool = False) -> dict:
             src = a.get("source", "")
             try:
                 from hermes_source_policy import should_ingest
-                ok, why = should_ingest(src)
+                ok, _why = should_ingest(src)
                 if not ok:
                     continue
             except Exception:
                 pass
-            is_google = src.startswith("google_news:") or src in ("seeking_alpha", "motley_fool", "morningstar", "barrons", "marketwatch", "benzinga_rss")
-            # Dedup: Google News sources dedup by URL only (titles overlap with Yahoo)
-            # Yahoo/Finnhub dedup by symbol + title
+            is_google = src.startswith("google_news:") or src in (
+                "seeking_alpha", "motley_fool", "morningstar", "barrons", "marketwatch", "benzinga_rss"
+            )
             if is_google:
-                if a.get("source_url"):
-                    cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
-                    if cur.fetchone():
-                        continue
-                else:
-                    continue  # Skip Google News without URL
+                if not a.get("source_url"):
+                    continue
+                cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
+                if cur.fetchone():
+                    continue
             else:
-                cur.execute("SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1", (sym, a["title"][:500]))
+                cur.execute(
+                    "SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1",
+                    (sym, a["title"][:500]),
+                )
                 if cur.fetchone():
                     continue
 
-            # Score and tag
             from content_scoring import score_content, tag_content
             _scores = score_content(title=a["title"], text=a.get("summary", ""), source=a["source"], symbols=[sym])
             _tags = tag_content(text=a.get("summary", ""), title=a["title"])
@@ -340,45 +388,101 @@ def ingest(priority_only: bool = False) -> dict:
                   a["source"], a.get("source_url", "")[:500],
                   a.get("published_at"), _scores["relevance_score"],
                   json.dumps(_tags["strategy_tags"]), json.dumps(_tags["agent_tags"])))
-
-            # Feed downstream pipeline
             _feed_downstream(conn, sym, strategy_type, a, _scores, _tags)
-
             source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1
-
         total_scanned += 1
 
+    return {
+        "scanned": total_scanned,
+        "new_articles": total_new,
+        "by_source": {s: c for s, c in source_counts.items() if c > 0},
+    }
+
+
+def _emit_heartbeat(mode: str, scanned: int, new: int, meta: dict) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parts = [HEARTBEAT_NEEDLE, f"mode={mode}", f"scanned={scanned}", f"new={new}", f"ts={ts}"]
+    if meta.get("offset") is not None and mode == "tail_rotate":
+        parts.append(f"offset={meta.get('offset')}")
+        parts.append(f"next_offset={meta.get('next_offset')}")
+        parts.append(f"tail_size={meta.get('tail_size')}")
+    print(" ".join(parts), flush=True)
+
+
+def ingest(mode: str = "priority") -> dict:
+    conn = _get_conn()
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    symbol_pairs, meta = _resolve_symbols(conn, mode)
+    if mode == "priority":
+        cap = int(os.environ.get("NEWS_INGEST_MAX", "60"))
+        symbol_pairs = symbol_pairs[:cap]
+    elif mode == "full":
+        cap = int(os.environ.get("NEWS_INGEST_MAX", "60"))
+        symbol_pairs = symbol_pairs[:cap]
+        mode = "full"
+
+    finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
+    benzinga_key = os.environ.get("BENZINGA_API_KEY", "")
+    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+        if not finnhub_key and line.startswith("FINNHUB_API_KEY="):
+            finnhub_key = line.split("=", 1)[1].strip()
+        if not benzinga_key and line.startswith("BENZINGA_API_KEY="):
+            benzinga_key = line.split("=", 1)[1].strip()
+
+    stats = _scan_symbols(conn, cur, symbol_pairs, finnhub_key, benzinga_key)
     conn.commit()
     conn.close()
 
-    active_sources = [s for s, c in source_counts.items() if c > 0]
-    result = {"scanned": total_scanned, "new_articles": total_new, "sources": active_sources, "by_source": {s: c for s, c in source_counts.items() if c > 0}}
-    print(f"[news] Scanned {total_scanned} symbols, {total_new} new articles — sources: {', '.join(f'{s}:{c}' for s, c in source_counts.items() if c > 0)}")
-    return result
+    if mode == "tail_rotate" and meta.get("next_offset") is not None:
+        _save_rotation({
+            "offset": meta["next_offset"],
+            "tail_size": meta.get("tail_size", 0),
+            "last_mode": mode,
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_scanned": stats["scanned"],
+            "last_new": stats["new_articles"],
+        })
+
+    src_summary = ", ".join(f"{s}:{c}" for s, c in stats.get("by_source", {}).items())
+    print(f"[news] Scanned {stats['scanned']} symbols, {stats['new_articles']} new articles"
+          + (f" — sources: {src_summary}" if src_summary else ""))
+    _emit_heartbeat(mode, stats["scanned"], stats["new_articles"], meta)
+
+    return {**stats, "mode": mode, **{k: meta[k] for k in ("offset", "next_offset", "tail_size") if k in meta}}
 
 
 if __name__ == "__main__":
-    # Pipeline registry heartbeat
     _run_id = None
     try:
         from pipeline_registry import run_start, run_complete, run_fail
-        _run_id = run_start('news_ingestion')
+        _run_id = run_start("news_ingestion")
     except Exception:
         pass
 
     try:
-        priority = "--priority" in sys.argv
-        result = ingest(priority_only=priority)
+        if "--tail-rotate" in sys.argv:
+            run_mode = "tail_rotate"
+        elif "--full" in sys.argv:
+            run_mode = "full"
+        else:
+            run_mode = "priority"
+        result = ingest(mode=run_mode)
         if "--json" in sys.argv:
             print(json.dumps(result, indent=2, default=str))
-        try:
-            if _run_id: run_complete(_run_id, rows_processed=result.get('new_articles', 0))
-        except Exception:
-            pass
+        if _run_id:
+            try:
+                from pipeline_registry import run_complete
+                run_complete(_run_id, rows_processed=result.get("new_articles", 0))
+            except Exception:
+                pass
     except Exception as _e:
-        try:
-            if _run_id: run_fail(_run_id, str(_e))
-        except Exception:
-            pass
+        if _run_id:
+            try:
+                from pipeline_registry import run_fail
+                run_fail(_run_id, str(_e))
+            except Exception:
+                pass
         raise
