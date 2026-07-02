@@ -331,6 +331,11 @@ def assess_broker_trade_plan(
     target = _f(target) or 0.0
 
     row = proposal_row
+    if proposal_id and not row:
+        if conn is None:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+        row = _load_proposal_row(conn, int(proposal_id))
     basis = sizing_basis or {}
     if row:
         basis = basis or _parse_basis(row.get("sizing_basis"))

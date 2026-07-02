@@ -21,6 +21,12 @@ defaults:
     min_classifier_health: 0.0
     whitelist: []
     blacklist: []
+  # Finviz technical gate — same score band as Proposals card (≥60 OK, WEAK/INCOMPLETE block).
+  technical_gate:
+    min_score: 60
+    block_grades:
+    - TECH_WEAK
+    - TECH_INCOMPLETE
   kill_switches:
     daily_loss_pct_hard_pause: 2.5   # Stage 1: was 0.25 (2.5% = $2,500 daily loss cap)
   operating_hours:

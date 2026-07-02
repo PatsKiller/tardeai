@@ -1,0 +1,62 @@
+import { Link } from 'react-router-dom'
+import { useApi } from '../hooks/useApi'
+
+const TYPE_CTA: Record<string, { label: string; to: string; reports?: string }> = {
+  stop: { label: 'Risk', to: '/risk', reports: '/reports?super=ops&category=advisories' },
+  proposal: { label: 'Proposals', to: '/trading?tab=Proposals', reports: '/reports?super=ops&category=paper' },
+  siem: { label: 'System', to: '/system', reports: '/reports?super=ops&category=system' },
+  escalation: { label: 'Agents → Workflow', to: '/agents?tab=workflow', reports: '/reports?super=ops&category=escalations' },
+  cio_review: { label: 'Intelligence', to: '/intelligence', reports: '/reports?super=intel' },
+}
+
+interface Props {
+  compact?: boolean
+  maxItems?: number
+}
+
+export default function OperatorInboxPanel({ compact, maxItems = 8 }: Props) {
+  const { data, loading } = useApi<any>('/api/v2/inbox', 60_000)
+  const items: any[] = data?.items ?? []
+  const shown = items.slice(0, maxItems)
+
+  if (loading && !data) {
+    return <div style={{ fontSize: 11, color: 'var(--text3)', padding: compact ? 6 : 12 }}>Loading operator inbox…</div>
+  }
+
+  const priColor = (p?: string) => p === 'P0' ? '#ef4444' : p === 'P1' ? '#f59e0b' : 'var(--text2)'
+
+  return (
+    <div style={{ background: compact ? undefined : 'var(--bg1)', border: compact ? undefined : '1px solid var(--border)', borderRadius: compact ? 0 : 10, padding: compact ? 0 : 16 }}>
+      {!compact && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Operator Inbox</span>
+          <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+            {data?.count ?? 0} items · P0 {data?.p0_count ?? 0} · stops {data?.stops ?? 0} · proposals {data?.proposals ?? 0} · SIEM {data?.siem ?? 0}
+          </span>
+        </div>
+      )}
+      {shown.length === 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--text3)', padding: compact ? 4 : 8 }}>No P0 actions, escalations, or CIO reviews in the last 14 days.</div>
+      ) : shown.map((it: any, i: number) => {
+        const fallback = TYPE_CTA[it.type] ?? { label: 'Open Health', to: '/health' }
+        const cta = it.cta
+          ? { label: it.cta.label, to: (it.cta.route || '/').replace(/^\/v3/, ''), reports: it.cta.reports?.replace(/^\/v3/, '') }
+          : fallback
+        const color = priColor(it.priority) || (it.type === 'escalation' ? '#ef4444' : it.type === 'cio_review' ? '#a855f7' : 'var(--text2)')
+        return (
+          <div key={`${it.type}-${it.symbol}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 11, flexWrap: 'wrap' }}>
+            {it.priority && <span style={{ fontSize: 8, fontWeight: 800, color: priColor(it.priority), minWidth: 18 }}>{it.priority}</span>}
+            <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--text0)', minWidth: 48 }}>{it.symbol ?? '—'}</span>
+            <span style={{ flex: 1, minWidth: 120, color, lineHeight: 1.35 }} title={it.detail}>
+              {(it.detail ?? '').slice(0, compact ? 60 : 100)}{(it.detail?.length ?? 0) > (compact ? 60 : 100) ? '…' : ''}
+            </span>
+            <span style={{ fontSize: 8, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{it.source}</span>
+            <Link to={cta.to} style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{cta.label} →</Link>
+            {cta.reports && <Link to={cta.reports} style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textDecoration: 'none', whiteSpace: 'nowrap' }}>Reports</Link>}
+          </div>
+        )
+      })}
+      {!compact && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/inbox · P0 = stops, proposals, SIEM</div>}
+    </div>
+  )
+}

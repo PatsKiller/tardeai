@@ -6,6 +6,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+JUN25_CASES = [
+    ("⚡ Trade AI LIVE [09:50]\n🎯 NEW GO — EHGO score=41 RVOL 19.7x", "suppressed"),
+    ("❓ Paper Proposal: GDHG\nStrategy: Sector Rotation\n/ptreject 606", "primary"),
+    ("🚨 STOP_TRIGGERED — CACI\nTrigger: stop_price 475.38", "primary"),
+    ("🔭 Hermes watchlist alerts:\n⤴ AMD jumped to Hermes rank #1471", "suppressed"),
+    ("⚠️ Health Agent: DEGRADED — 84/100\ndata:100", "suppressed"),
+    ("🔍 Investigating 5 escalation(s) via local LLM:", "suppressed"),
+    ("☀️ MORNING COMMAND — Jun 25, 2026\n--- Portfolio ---", "primary"),
+]
+
 CASES = [
     ("ATP REVIEW ALERT -- STOP CROSSED PENDING\nSymbol: ASPN\nApproval: BLOCKED\nPaper mode. No order submitted.", "suppressed"),
     ("ATP REVIEW ALERT -- LARGE MOVE BEFORE REVIEW\nSymbol: NWG\nStatus: PENDING", "suppressed"),
@@ -37,7 +47,8 @@ def main():
     passed = 0
     failed = 0
 
-    for msg, expected in CASES:
+    all_cases = CASES + JUN25_CASES
+    for msg, expected in all_cases:
         would_send = should_send_telegram(msg)
         level = classify_alert(msg)
         actual = "primary" if would_send else "suppressed"
@@ -57,7 +68,7 @@ def main():
             status = "PASS" if ok else "FAIL"
             print(f"  {status} [{level}] {msg[:50]}... → {actual} (expected {expected})")
 
-    report = {"passed": passed, "failed": failed, "total": len(CASES), "results": results}
+    report = {"passed": passed, "failed": failed, "total": len(all_cases), "results": results}
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
@@ -68,12 +79,12 @@ def main():
         Path(args.output_md).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output_md, "w") as f:
             f.write(f"# Alert Routing Simulation\n\n")
-            f.write(f"Passed: {passed}/{len(CASES)}\n\n")
+            f.write(f"Passed: {passed}/{len(all_cases)}\n\n")
             f.write("| Message | Expected | Actual | Level | Pass |\n|---|---|---|---|---|\n")
             for r in results:
                 f.write(f"| {r['message']} | {r['expected']} | {r['actual']} | {r['level']} | {'Y' if r['pass'] else 'N'} |\n")
 
-    print(f"\nSimulation: {passed}/{len(CASES)} passed, {failed} failed")
+    print(f"\nSimulation: {passed}/{len(all_cases)} passed, {failed} failed")
 
 
 if __name__ == "__main__":

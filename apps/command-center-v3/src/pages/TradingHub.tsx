@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
@@ -9,8 +9,7 @@ import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
-// ProposalsRich retired — the old "Proposals" tab now renders the unified <BrokerProposals/>.
-// Kept in the repo (src/components/ProposalsRich.tsx) for reference / fallback; intentionally unused here.
+// ProposalsRich archived (_archive/20260702) — Proposals tab uses <BrokerProposals/> only.
 import BrokerOrders from '../components/BrokerOrders'
 import TimeExitProposals from '../components/TimeExitProposals'
 import ATMControlPanel from '../components/ATMControlPanel'
@@ -21,7 +20,11 @@ import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Manual ToS', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TAB_ALIASES: Record<string, typeof TABS[number]> = {
+  'Manual ToS': 'Entry Desk',
+  'Manual%20ToS': 'Entry Desk',
+}
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -32,9 +35,12 @@ export default function TradingHub({ onDrill }: Props) {
   const [searchParams] = useSearchParams()
   // Proposals unified into a single tab — old "Broker Proposals" deep-links land on "Proposals".
   const rawUrlTab = searchParams.get('tab')
-  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals' : rawUrlTab
+  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals' : (TAB_ALIASES[rawUrlTab ?? ''] ?? rawUrlTab)
   const [tab, setTab] = useState<typeof TABS[number]>(
     (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
+  useEffect(() => {
+    if (urlTab && (TABS as readonly string[]).includes(urlTab)) setTab(urlTab as typeof TABS[number])
+  }, [urlTab])
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT' | 'SCOUT'>('ALL')
@@ -64,7 +70,7 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
-  const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
+  const { data: execQual, loading: execQualLoading, error: execQualError } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
   const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
   const scalpExtMap: Record<string, any[]> = scalpExt?.map ?? {}
@@ -89,7 +95,7 @@ export default function TradingHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Trading</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -101,7 +107,7 @@ export default function TradingHub({ onDrill }: Props) {
             {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -141,8 +147,14 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Proposals' && (
-        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, fontSize: 10, color: '#fbbf24' }}>
-          Path B operator route — P0/validation caps are advisory only. <b>Auto route (2FA)</b> opens trade review (edit size/risk) before Schwab approval.
+        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
+          Path B operator route — P0 validation caps are advisory. <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Auto route (2FA)</span> opens trade review (edit size/risk) before Schwab approval.
+        </div>
+      )}
+      {tab === 'Entry Desk' && (
+        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
+          Path A — manual Thinkorswim. Rating, R:R, and exit ladder are <b>deterministic</b> on this tab; watchlist agent maturity shows when DB has it. <b>Stage 2b + Auto route (2FA)</b> are on{' '}
+          <button type="button" onClick={() => setTab('Proposals')} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Proposals</button>.
         </div>
       )}
 
@@ -463,7 +475,28 @@ export default function TradingHub({ onDrill }: Props) {
         <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />
       )}
 
-      {tab === 'Execution' && execQual && (() => {
+      {tab === 'Execution' && execQualLoading && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Execution Quality</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Loading transaction cost analysis from /api/v2/execution-quality…</div>
+        </div>
+      )}
+      {tab === 'Execution' && !execQualLoading && execQualError && (
+        <div style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 10, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>Execution data unavailable</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>{execQualError}</div>
+          <a href="/v3/journal" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa' }}>Journal closed trades →</a>
+        </div>
+      )}
+      {tab === 'Execution' && !execQualLoading && !execQualError && execQual == null && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>No execution quality data yet</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.5 }}>TCA fills appear after broker orders execute. Check Journal closed trades or Broker Orders.</div>
+          <a href="/v3/journal" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', marginRight: 14 }}>Journal →</a>
+          <a href="/v3/trading?tab=Broker+Orders" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa' }}>Broker Orders →</a>
+        </div>
+      )}
+      {tab === 'Execution' && !execQualLoading && !execQualError && execQual != null && (() => {
         // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──
         const QC = (q?: string) => { const u = (q || '').toUpperCase(); return u === 'EXCELLENT' ? '#22c55e' : u === 'GOOD' ? '#4ade80' : u === 'ACCEPTABLE' ? '#f59e0b' : u === 'POOR' ? '#ef4444' : 'var(--text3)' }
         const ex = execList
@@ -735,7 +768,7 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
         )
       })()}
-      {tab === 'Manual ToS' && <ManualTosDesk />}
+      {tab === 'Entry Desk' && <ManualTosDesk />}
       {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )

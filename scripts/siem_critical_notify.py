@@ -46,15 +46,8 @@ def _save_state(s):
 
 def _send(msg):
     try:
-        import requests
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
-            print("[siem-notify] no Telegram config"); return False
-        for cid in chat_ids:
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=10)
-        return True
+        from telegram_alert import send_telegram
+        return send_telegram(msg)
     except Exception as e:
         print(f"[siem-notify] telegram error: {e}"); return False
 

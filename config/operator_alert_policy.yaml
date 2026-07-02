@@ -13,6 +13,8 @@ levels:
       - execution failure
       - approval-ready GO candidate
       - urgent portfolio risk
+      - SIEM P0/P1 with trading impact
+      - health remediation ineffective
   P1_DIGEST:
     description: "Summarized digest — not repeated alerts"
     examples:
@@ -20,6 +22,8 @@ levels:
       - pre-open top setups
       - end-of-day closed trade lessons
       - watchpool maturity summary
+      - morning command bundle (1× daily)
+      - portfolio intelligence (1× open)
   P2_DASHBOARD_ONLY:
     description: "Dashboard/page only — never Telegram"
     examples:
@@ -29,6 +33,11 @@ levels:
       - raw catalyst/source feed
       - repeated unchanged stop trigger
       - lifecycle/catalog status
+      - Hermes rank-only shifts
+      - Health Agent unchanged score
+      - Trade AI LIVE per-ticker GO (use hourly recap)
+      - escalation investigation start
+      - Incubator promoter stats
   P3_LOG_ONLY:
     description: "Logs/Drive/docs only"
     examples:
@@ -46,20 +55,34 @@ rules:
   suppress_iris_content_gap_telegram: true
   suppress_cron_success_telegram: true
   suppress_drive_sync_success_telegram: true
+  suppress_hermes_telegram: true
+  suppress_escalation_investigating: true
+  suppress_incubator_promoter: true
+  suppress_topic_curator: true
   stop_trigger_dedupe_minutes: 390
   go_signal_dedupe_minutes: 120
   max_trade_ai_live_alerts_per_hour: 3
   max_stop_alerts_per_symbol_per_day: 2
   require_trade_plan_for_go_telegram: true
   require_action_for_telegram: true
+  suppress_health_repeat_minutes: 240
+  max_health_telegram_per_day: 2
+  health_telegram_min_delta: 5
+  health_telegram_max_score: 80
+  portfolio_intelligence_dedupe_minutes: 360
+  bundle_morning_window_minutes: 15
+  hermes_telegram_min_score_delta: 15
+  hermes_telegram_max_rank: 100
 
 destinations:
-  proposals: "/v2/approvals"
-  trade_ai_scanner: "/v2/trade-ai"
-  risk: "/v2/risk"
-  recovery: "/v2/recovery"
-  paper_governance: "/v2/paper-governance"
-  journal: "/v2/paper-journal"
-  system_health: "/v2/paper-governance"
-  iris_library: "/v2/intelligence-sources"
-  watchpool: "/v2/trade-ai"
+  proposals: "/v3/trading"
+  trade_ai_scanner: "/v3/trading"
+  risk: "/v3/risk"
+  recovery: "/v3/risk"
+  paper_governance: "/v3/trading"
+  journal: "/v3/journal"
+  system_health: "/v3/health"
+  iris_library: "/v3/intelligence"
+  watchpool: "/v3/watch"
+  hermes: "/v3/watch"
+  reports: "/v3/reports"

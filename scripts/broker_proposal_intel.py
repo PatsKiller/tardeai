@@ -14,6 +14,14 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
 
 
+def _finviz_letter(score: int | float | None) -> str | None:
+    try:
+        from atm_technical_gate import letter_grade
+        return letter_grade(score) if score is not None else None
+    except Exception:
+        return None
+
+
 def _q(sql, params=None, one=False):
     try:
         cur = _get_conn().cursor()
@@ -213,12 +221,30 @@ def _symbol_card(symbol: str, live_price: float | None = None) -> dict:
     ) or {}
     analyst = _analyst_intel(sym, live_price=live_price)
 
-    news = _q(
-        """SELECT title, source, published_at FROM news_articles
-           WHERE symbol=%s AND published_at > NOW() - INTERVAL '3 days'
-           ORDER BY published_at DESC LIMIT 3""",
-        (sym,),
-    ) or []
+    news: list = []
+    news_window_days = 3
+    for days in (3, 14):
+        news = _q(
+            f"""SELECT title, source, published_at FROM news_articles
+               WHERE symbol=%s AND published_at > NOW() - INTERVAL '{int(days)} days'
+               ORDER BY published_at DESC LIMIT 3""",
+            (sym,),
+        ) or []
+        if news:
+            news_window_days = days
+            break
+
+    news_meta = {
+        "count": len(news),
+        "window_days": news_window_days,
+        "stale": len(news) == 0,
+        "ingest_hint": (
+            "No headlines in DB for this symbol — run news_ingestion --priority "
+            "(proposal symbols are now pinned to the front of the queue)."
+            if not news
+            else None
+        ),
+    }
 
     return {
         "description": prof.get("description_1s"),
@@ -226,6 +252,7 @@ def _symbol_card(symbol: str, live_price: float | None = None) -> dict:
         "industry": prof.get("industry"),
         "instrument_type": prof.get("instrument_type"),
         "analyst": analyst,
+        "news_meta": news_meta,
         "news": [
             {"title": n.get("title"), "source": n.get("source"), "at": str(n.get("published_at") or "")[:19]}
             for n in news
@@ -325,25 +352,88 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
         if "vwap" in sig:
             vwap_dist = sig["vwap"].get("distance_pct")
 
-    tech_parts = []
-    if rsi is not None:
-        tech_parts.append(f"RSI {float(rsi):.1f}")
+    import proposal_enrichment_bridge as peb
+    enrich_tech = peb.enrichment_technicals(sym, live_price=live_px)
+    data_sources: list[str] = []
+
+    if rsi is None and enrich_tech.get("rsi") is not None:
+        rsi = enrich_tech["rsi"]
+        data_sources.append("finviz_enrichment")
+    if not row.get("atr") and enrich_tech.get("atr") is not None:
+        row = dict(row)
+        row["atr"] = enrich_tech["atr"]
+        data_sources.append("finviz_enrichment")
+    if not rvol and enrich_tech.get("rvol") is not None:
+        rvol = enrich_tech["rvol"]
+        data_sources.append("finviz_enrichment")
+    if not gap_pct and enrich_tech.get("gap_pct") is not None:
+        gap_pct = enrich_tech["gap_pct"]
+
+    tech_parts = peb.build_technical_summary(
+        {
+            "rsi": rsi,
+            "atr": row.get("atr") or enrich_tech.get("atr"),
+            "atr_pct": enrich_tech.get("atr_pct"),
+            "rvol": rvol,
+            "gap_pct": gap_pct,
+            "trend": enrich_tech.get("trend"),
+        },
+        adx_regime=row.get("adx_regime"),
+    )
     if vwap_dist is not None:
-        tech_parts.append(f"VWAP {float(vwap_dist):+.1f}%")
-    if row.get("atr"):
-        tech_parts.append(f"ATR ${float(row['atr']):.2f}")
-    if rvol:
-        tech_parts.append(f"RVOL {float(rvol):.1f}x")
-    if gap_pct:
-        tech_parts.append(f"Gap {float(gap_pct):+.1f}%")
-    if row.get("adx_regime"):
-        tech_parts.append(f"ADX {row['adx_regime']}")
+        tech_parts = f"{tech_parts} · VWAP {float(vwap_dist):+.1f}%" if tech_parts else f"VWAP {float(vwap_dist):+.1f}%"
+    if row.get("confluence_tier") and "indicator" not in data_sources:
+        data_sources.append("indicator_engine")
 
     ts = _q(
-        """SELECT rsi_14, atr_14, technical_grade, ema_alignment, opening_range_status
+        """SELECT rsi_14, atr_14, technical_grade, ema_alignment, opening_range_status, computed_at
            FROM proposal_technical_snapshots WHERE proposal_id=%s ORDER BY computed_at DESC LIMIT 1""",
         (pid,), one=True,
     ) or {}
+
+    tech_merged = {
+        "rsi": rsi if rsi is not None else enrich_tech.get("rsi"),
+        "atr": row.get("atr") or enrich_tech.get("atr"),
+        "atr_pct": enrich_tech.get("atr_pct"),
+        "rvol": rvol or enrich_tech.get("rvol"),
+        "gap_pct": gap_pct or enrich_tech.get("gap_pct"),
+        "trend": enrich_tech.get("trend"),
+        "mas": enrich_tech.get("mas"),
+    }
+    tech_grade = ts.get("technical_grade")
+    tech_score = 0
+    tech_concerns: list[str] = []
+    if not tech_grade or tech_grade == "TECH_INCOMPLETE":
+        if enrich_tech.get("available"):
+            tech_grade, tech_score, tech_concerns = peb.grade_from_enrichment(
+                enrich_tech, adx_regime=row.get("adx_regime"),
+            )
+            if "finviz_enrichment" not in data_sources:
+                data_sources.append("finviz_enrichment")
+    else:
+        tech_score, tech_concerns = peb.grade_from_enrichment(
+            enrich_tech, adx_regime=row.get("adx_regime"),
+        )[1:]
+        data_sources.append("proposal_technical_snapshot")
+    graded_at = str(ts.get("computed_at") or enrich_tech.get("cached_at") or "")[:19] or None
+    tech_assessment = peb.build_technical_assessment(
+        {**enrich_tech, **tech_merged},
+        str(tech_grade or "TECH_INCOMPLETE"),
+        int(tech_score or 0),
+        tech_concerns,
+        adx_regime=row.get("adx_regime"),
+        data_sources=list(dict.fromkeys(data_sources)),
+        graded_at=graded_at,
+    )
+
+    ir = row.get("intel_readiness")
+    if ir is None or int(ir or 0) < 50:
+        ir = peb.compute_proposal_intel_readiness(
+            sym, _get_conn(),
+            catalyst=catalyst,
+            catalyst_verified=bool(catalyst_verified),
+            has_technical_snapshot=bool(ts),
+        )
 
     agent_rows = _q(
         """SELECT agent_name, status, vote, confidence, summary, reviewed_by_model
@@ -487,20 +577,40 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
             "social_summary": social_summary,
         },
         "technicals": {
-            "summary": " · ".join(tech_parts) if tech_parts else row.get("technical_summary"),
-            "rsi": float(rsi) if rsi is not None else (float(ts["rsi_14"]) if ts.get("rsi_14") is not None else None),
-            "atr": float(row["atr"]) if row.get("atr") else (float(ts["atr_14"]) if ts.get("atr_14") is not None else None),
-            "rvol": float(rvol) if rvol else None,
-            "gap_pct": float(gap_pct) if gap_pct else None,
+            "summary": tech_parts or row.get("technical_summary"),
+            "rsi": float(tech_merged["rsi"]) if tech_merged.get("rsi") is not None else None,
+            "atr": float(tech_merged["atr"]) if tech_merged.get("atr") is not None else None,
+            "atr_pct": enrich_tech.get("atr_pct"),
+            "rvol": float(tech_merged["rvol"]) if tech_merged.get("rvol") is not None else None,
+            "gap_pct": float(tech_merged["gap_pct"]) if tech_merged.get("gap_pct") is not None else None,
             "change_pct": float(row["change_pct"]) if row.get("change_pct") is not None else None,
             "vwap_distance_pct": float(vwap_dist) if vwap_dist is not None else None,
-            "technical_grade": ts.get("technical_grade"),
-            "confluence_tier": row.get("confluence_tier"),
+            "trend": enrich_tech.get("trend"),
+            "technical_grade": tech_grade,
+            "technical_score": tech_score,
+            "verdict": tech_assessment.get("verdict"),
+            "narrative": tech_assessment.get("narrative"),
+            "action": tech_assessment.get("action"),
+            "concerns": tech_assessment.get("concerns"),
+            "methodology": tech_assessment.get("methodology"),
+            "refresh_cadence": tech_assessment.get("refresh_cadence"),
+            "graded_at": graded_at,
+            "confluence_tier": row.get("confluence_tier") or (
+                "STRONG" if tech_grade == "TECH_STRONG"
+                else "OK" if tech_grade == "TECH_OK"
+                else "WEAK" if tech_grade in ("TECH_WEAK", "TECH_MIXED")
+                else None
+            ),
             "confluence_score": float(row["confluence_score"]) if row.get("confluence_score") is not None else None,
             "grade": row.get("grade"),
             "score": row.get("score"),
+            "data_sources": list(dict.fromkeys(data_sources)) or (["finviz_enrichment"] if enrich_tech.get("available") else []),
+            "enrichment_cached_at": enrich_tech.get("cached_at"),
+            "assessment": tech_assessment,
         },
         "analyst": card.get("analyst"),
+        "news_meta": card.get("news_meta"),
+        "news": card.get("news") or [],
         "why_purchase": {
             "headline": why_parts[0] if why_parts else None,
             "approve_case": row.get("approve_case"),
@@ -511,6 +621,8 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
             "risk_summary": row.get("risk_summary"),
             "rr": float(rr) if rr else None,
             "signal_grade": row.get("grade"),
+            "screener_grade": str(row.get("signal_grade") or "").upper() or None,
+            "finviz_grade": (_finviz_letter(tech_score) if tech_score else None),
         },
         "agent_reviews": [
             {
@@ -523,6 +635,5 @@ def get_intel_packet(proposal_id: int, *, include_oversight: bool = True) -> dic
             }
             for ar in agent_rows
         ],
-        "news": card.get("news") or [],
-        "intel_readiness": float(row["intel_readiness"]) if row.get("intel_readiness") is not None else None,
+        "intel_readiness": float(ir) if ir is not None else None,
     }

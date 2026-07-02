@@ -97,12 +97,12 @@ export default function RetirementHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)' }}>Retirement Intelligence</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Age {ret.current_age ?? '—'} · {accounts.length} accounts · Golden-Window Roth · as of {ret.as_of ?? '—'}</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',

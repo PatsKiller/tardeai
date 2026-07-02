@@ -11,16 +11,21 @@ import { PROPOSAL_STATUS_LABELS, routingPathLabel, unifiedEdgeFromProposal } fro
 import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, resolveTickerContext, tradeEconomics } from '../lib/brokerThesis'
 import { collectCardBlockers, groupBlockers } from '../lib/proposalBlockers'
 import ProposalLifecycleTimeline from './ProposalLifecycleTimeline'
+import BrokerDiligenceStrip from './BrokerDiligenceStrip'
+import ProposalDeskStrip from './ProposalDeskStrip'
+import ProposalLaneGateStrip, { GradeSplitPills } from './ProposalLaneGateStrip'
+import TechnicalAssessmentCard from './TechnicalAssessmentCard'
+import { cardShell, desk, sectionLabel, statusPill } from '../lib/proposalDeskTheme'
 
-const MUTED = '#94a3b8'
-const TEXT0 = '#f8fafc'
-const TEXT1 = '#dbeafe'
-const GREEN = '#22c55e'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a78bfa'
-const RED = '#ef4444'
-const TEAL = '#2dd4bf'
+const MUTED = desk.textDim
+const TEXT0 = desk.text
+const TEXT1 = 'var(--text1)'
+const GREEN = desk.green
+const AMBER = desk.amber
+const BLUE = desk.blue
+const PURPLE = desk.purple
+const RED = desk.red
+const TEAL = '#5b9aa0'
 
 const gateColor = (s: string) => s === 'PASS' ? GREEN : s === 'WARN' ? AMBER : s === 'BLOCK' ? RED : MUTED
 
@@ -146,8 +151,16 @@ export default function BrokerProposalCard({
   const gateBlocked = !operatorRoute && (gate === 'BLOCK' || ovStatus === 'BLOCK')
   const routeBlocked = hardGateViolations.length > 0 || savedShares < 1 || tradePlanBlocked
   // Plain-language reason the Auto-route button is disabled — shown ON the card (not just a tooltip).
+  const tradePlanViolation = (
+    evalData?.trade_plan?.violations?.[0]
+    || p.broker_diligence?.stages?.find((s: any) => s.id === 'trade_plan')?.detail
+    || null
+  )
   const routeBlockReason: string | null = (!routeBlocked && !gateBlocked) ? null
-    : tradePlanBlocked ? 'No authoritative trade plan — auto-route needs a real plan (target is R:R math only / gambling-blocked)'
+    : tradePlanBlocked
+      ? (tradePlanViolation
+        ? String(tradePlanViolation).slice(0, 120)
+        : 'No authoritative trade plan — levels need support/resistance/confluence anchor, not pure 2×risk math')
     : hardGateViolations.length ? String(hardGateViolations[0])
     : (ovStatus === 'BLOCK' || gate === 'BLOCK') ? 'Oversight / gate BLOCK — resolve reviews before auto-route'
     : savedShares < 1 ? 'No routable size on this proposal'
@@ -221,162 +234,129 @@ export default function BrokerProposalCard({
     padding: '8px 10px',
   } as const
 
+  const gateRail = gateBlocked || ovStatus === 'BLOCK' ? RED : ovStatus === 'WARN' || gate === 'WARN' ? AMBER : GREEN
+
   return (
     <article style={{
-      borderRadius: 14,
-      background: 'linear-gradient(180deg, rgba(15,23,42,.75) 0%, rgba(15,23,42,.55) 100%)',
-      border: `1px solid ${gateBlocked ? 'rgba(239,68,68,.35)' : 'rgba(148,163,184,.22)'}`,
-      overflow: 'hidden',
-      boxShadow: gateBlocked ? '0 0 0 1px rgba(239,68,68,.15)' : undefined,
+      ...cardShell(gateBlocked),
+      borderLeft: `3px solid ${gateRail}`,
     }}>
-      {/* Header */}
+      {/* Header — institutional 2-row: identity + price, then status meta */}
       <header style={{
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        padding: '12px 14px',
-        borderBottom: '1px solid rgba(148,163,184,.12)',
-        background: 'rgba(0,0,0,.2)',
+        padding: '12px 14px 10px',
+        borderBottom: `1px solid ${desk.borderSubtle}`,
+        background: desk.bgElevated,
       }}>
-        {selectMode && (
-          <input
-            type="checkbox"
-            checked={!!selected}
-            onChange={onToggleSelected}
-            aria-label={`Select proposal ${p.symbol} #${p.id} for bulk actions`}
-            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: BLUE }}
-          />
-        )}
-        <span style={{
-          fontSize: 18, fontWeight: 900, color: TEXT0, fontFamily: 'ui-monospace, monospace', letterSpacing: '-.02em',
-        }}>{p.symbol}</span>
-        {p.source_kind === 'proposal' && (
-          <span
-            title={`Trade proposal${p.proposal_origin ? ` · origin ${p.proposal_origin}` : ''} — simulation or live broker routing (operator-selected)`}
-            style={{
-              fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.3px',
-              background: 'rgba(45,212,191,.14)', color: TEAL, border: `1px solid ${TEAL}55`, textTransform: 'uppercase',
-            }}
-          >
-            PROPOSAL{p.proposal_origin ? ` · ${p.proposal_origin}` : ''}
-          </span>
-        )}
-        {p.live_submit_path && (
-          <span
-            title={`Submit path: ${routingPathLabel(p.live_submit_path)}`}
-            style={{
-              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
-              background: 'rgba(96,165,250,.12)', color: BLUE, border: '1px solid rgba(96,165,250,.3)',
-            }}
-          >
-            {routingPathLabel(p.live_submit_path)}
-          </span>
-        )}
-        {statusMeta(p.status) && (
-          <span
-            title={statusMeta(p.status)!.title}
-            style={{
-              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 5, letterSpacing: '0.2px',
-              background: `${statusMeta(p.status)!.color}1e`, color: statusMeta(p.status)!.color,
-              border: `1px solid ${statusMeta(p.status)!.color}55`,
-            }}
-          >
-            {statusMeta(p.status)!.label}
-          </span>
-        )}
-        {liveQ.price != null ? (
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }} title={`${liveQ.label} price${liveQ.provider ? ` · ${liveQ.provider}` : ''}`}>
-            <span style={{
-              fontSize: 26, fontWeight: 900, color: liveQ.stale ? MUTED : TEXT0,
-              fontFamily: 'ui-monospace, monospace', letterSpacing: '-.03em', lineHeight: 1,
-            }}>
-              ${liveQ.price.toFixed(2)}
-            </span>
-            {liveQ.driftPct != null && (
-              <span style={{ fontSize: 15, fontWeight: 800, fontFamily: 'ui-monospace, monospace', color: driftColor }}>
-                {liveQ.driftPct >= 0 ? '+' : ''}{liveQ.driftPct.toFixed(2)}%
-              </span>
-            )}
-            <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-              {liveQ.label}
-            </span>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          {selectMode && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onToggleSelected}
+              aria-label={`Select proposal ${p.symbol} #${p.id} for bulk actions`}
+              style={{ width: 16, height: 16, cursor: 'pointer', accentColor: BLUE, marginTop: 4 }}
+            />
+          )}
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 17, fontWeight: 800, color: TEXT0, fontFamily: desk.mono, letterSpacing: '-.02em',
+              }}>{p.symbol}</span>
+              {statusMeta(p.status) && (
+                <span title={statusMeta(p.status)!.title} style={statusPill(statusMeta(p.status)!.color)}>
+                  {statusMeta(p.status)!.label}
+                </span>
+              )}
+              {(() => {
+                const tr: any = p.traded
+                if (!tr?.trade_id) return null
+                const open = tr.status === 'open'
+                const filled = open || tr.broker_status === 'filled'
+                if (!filled && tr.pnl == null) return null
+                const label = open
+                  ? `Paper filled · #${tr.trade_id} open${tr.entry_price != null ? ` @ $${Number(tr.entry_price).toFixed(2)}` : ''}`
+                  : tr.pnl != null
+                    ? `Closed · ${Number(tr.pnl) >= 0 ? 'WIN' : 'LOSS'}`
+                    : `Trade #${tr.trade_id}`
+                return (
+                  <span title="Linked paper execution for this proposal" style={statusPill(open ? GREEN : MUTED)}>
+                    {label}
+                  </span>
+                )
+              })()}
+            </div>
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 3, fontFamily: desk.mono }}>
+              #{p.id}
+              {p.strategy_id ? ` · ${p.strategy_id}` : ''}
+            </div>
           </div>
-        ) : (
-          <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, fontStyle: 'italic' }}>No live price</span>
-        )}
-        <ProposalStrategyBadge proposal={{ ...p, strategy_display_name: tickerCtx.strategyDisplay, strategy_description: tickerCtx.strategyPurpose }} size="md" />
-        {tickerCtx.strategyTypeLabel && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: 'rgba(148,163,184,.12)', color: TEXT1 }}>
-            {tickerCtx.strategyTypeLabel}
-          </span>
-        )}
-        {tickerCtx.signalGrade && (() => {
-          // Stoplight grade pill — bold + green/amber/red so quality reads at a glance.
-          const g = String(tickerCtx.signalGrade).toUpperCase()
-          const gc = g.startsWith('A') ? GREEN : g.startsWith('B') ? TEAL
-            : g.startsWith('C') ? AMBER : RED
-          return (
-            <span style={{
-              fontSize: 14, fontWeight: 900, padding: '3px 10px', borderRadius: 6,
-              background: `${gc}22`, color: gc, border: `1.5px solid ${gc}`, letterSpacing: '.3px',
-            }}>
-              {g} grade
-            </span>
-          )
-        })()}
-        <ProposalSourceBadges proposal={p} size="md" showRoutingLane />
-        <span style={{
-          fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
-          background: fid ? 'rgba(168,85,247,.18)' : 'rgba(96,165,250,.15)',
-          color: fid ? PURPLE : BLUE,
-        }}>{p.execution_label || (fid ? 'Manual · Fidelity FA' : 'Schwab · auto or manual')}</span>
-        {gate && (
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: `${gateColor(gate)}22`, color: gateColor(gate) }}>
-            GATE {gate}
-          </span>
-        )}
-        {ovStatus && (
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: `${gateColor(ovStatus)}18`, color: ovStatus === 'PASS' ? PURPLE : gateColor(ovStatus) }}>
-            AI {ovStatus}
-          </span>
-        )}
-        {oversized && policyCap != null && (
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: 'rgba(239,68,68,.15)', color: RED }}>
-            OVERSIZED · cap {Number(policyCap).toLocaleString()} sh
-          </span>
-        )}
-        {operatorRoute && policyCap != null && savedShares > Number(policyCap) && (
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: 'rgba(245,158,11,.12)', color: AMBER }}>
-            vs policy {Number(policyCap).toLocaleString()} sh
-          </span>
-        )}
-        {(() => {
-          const fv = fvMap[String(p.symbol).toUpperCase()]
-          if (!fv) return null
-          const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
-          const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT1
-          return (
-            <span title="Finviz daily" style={{ display: 'inline-flex', gap: 7, padding: '3px 8px', borderRadius: 5, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)', fontSize: 11, color: MUTED }}>
-              RSI <b style={{ color: rsiC }}>{fv.rsi ?? '—'}</b>
-              W <b style={{ color: pc(fv.perf_week) }}>{fv.perf_week != null ? `${fv.perf_week > 0 ? '+' : ''}${Number(fv.perf_week).toFixed(1)}%` : '—'}</b>
-            </span>
-          )
-        })()}
-        <span style={{ flex: 1 }} />
-        {onValidate && (
-          <ActionButton variant="secondary" size="sm" loading={validateBusy} onClick={onValidate}
-            title="Litmus test: live Schwab quote, thesis band, live R:R, gates, cloud snapshot"
-            style={{ border: '1px solid rgba(34,197,94,.45)', color: GREEN, fontWeight: 800 }}>
-            {validateBusy ? 'Validating…' : '✓ Validate'}
+          {liveQ.price != null ? (
+            <div style={{ textAlign: 'right' }} title={`${liveQ.label} price${liveQ.provider ? ` · ${liveQ.provider}` : ''}`}>
+              <div style={{
+                fontSize: 22, fontWeight: 800, color: liveQ.stale ? MUTED : TEXT0,
+                fontFamily: desk.mono, letterSpacing: '-.03em', lineHeight: 1,
+              }}>
+                ${liveQ.price.toFixed(2)}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2 }}>
+                {liveQ.driftPct != null && (
+                  <span style={{ fontSize: 12, fontWeight: 700, fontFamily: desk.mono, color: driftColor }}>
+                    {liveQ.driftPct >= 0 ? '+' : ''}{liveQ.driftPct.toFixed(2)}%
+                  </span>
+                )}
+                <span style={{ fontSize: 9, fontWeight: 600, color: MUTED, textTransform: 'uppercase' }}>{liveQ.label}</span>
+              </div>
+            </div>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, fontStyle: 'italic' }}>No live price</span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          <ProposalStrategyBadge proposal={{ ...p, strategy_display_name: tickerCtx.strategyDisplay, strategy_description: tickerCtx.strategyPurpose }} size="md" />
+          <GradeSplitPills gradeSplit={p.grade_split} size="md" />
+          <ProposalSourceBadges proposal={p} size="sm" showRoutingLane />
+          {oversized && policyCap != null && (
+            <span style={statusPill(RED)}>Oversized · cap {Number(policyCap).toLocaleString()}</span>
+          )}
+          <span style={{ flex: 1 }} />
+          {onValidate && (
+            <ActionButton variant="secondary" size="sm" loading={validateBusy} onClick={onValidate}
+              title="Litmus: live quote, thesis band, R:R, gates"
+              style={{ border: `1px solid ${desk.border}`, color: desk.green, fontWeight: 700 }}>
+              {validateBusy ? 'Validating…' : 'Validate'}
+            </ActionButton>
+          )}
+          <ActionButton variant="secondary" size="sm" loading={refreshBusy} onClick={onRefresh}
+            style={{ border: `1px solid ${desk.border}`, color: desk.blue, fontWeight: 700 }}>
+            {refreshBusy ? 'Refreshing…' : 'Refresh'}
           </ActionButton>
-        )}
-        <ActionButton variant="secondary" size="sm" loading={refreshBusy} onClick={onRefresh}
-          style={{ border: '1px solid rgba(96,165,250,.4)', color: BLUE, fontWeight: 800 }}>
-          {refreshBusy ? 'Refreshing…' : '↻ Refresh prices + recalibrate'}
-        </ActionButton>
-        <ActionButton variant="secondary" size="sm" onClick={onEdit}
-          style={{ border: '1px solid rgba(245,158,11,.4)', color: AMBER, fontWeight: 800 }}>
-          ✎ Edit trade
-        </ActionButton>
+          <ActionButton variant="secondary" size="sm" onClick={onEdit}
+            style={{ border: `1px solid ${desk.border}`, color: desk.textMuted, fontWeight: 700 }}>
+            Edit
+          </ActionButton>
+        </div>
       </header>
+
+      <ProposalLaneGateStrip routingLane={p.routing_lane} laneGates={p.lane_gates} />
+
+      <ProposalDeskStrip
+        gate={gate}
+        oversight={ovStatus}
+        techGrade={_tech.technical_grade}
+        techScore={_tech.technical_score}
+        techGradedAt={_tech.graded_at}
+        techVerdict={_tech.verdict}
+        techAction={_tech.action}
+        routeBlocked={routeBlocked || gateBlocked}
+        routeBlockReason={routeBlockReason}
+      />
+
+      {(detailLoading || _tech.summary || _tech.narrative || _tech.technical_grade || _tech.action) && (
+        <div style={{ padding: '0 0 4px' }}>
+          <TechnicalAssessmentCard tech={_tech} compact={narrow} gradeInStrip />
+        </div>
+      )}
 
       {/* Expired meta — bold proposed / expired timestamps + trade result (if it became a trade). */}
       {String(p.status || '').toUpperCase() === 'EXPIRED' && (() => {
@@ -386,15 +366,17 @@ export default function BrokerProposalCard({
           return isNaN(d.getTime()) ? iso : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         }
         const tr: any = p.traded
-        const traded = tr && tr.pnl != null
+        const traded = tr && (tr.pnl != null || tr.status === 'open' || tr.broker_status === 'filled')
         const won = traded && Number(tr.pnl) > 0
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, padding: '8px 14px', borderBottom: '1px solid rgba(148,163,184,.14)', background: 'rgba(15,23,42,.65)', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11, color: MUTED }}>Proposed <b style={{ fontSize: 13.5, color: TEXT0 }}>{fmt(p.created_at)}</b></span>
             <span style={{ fontSize: 11, color: MUTED }}>Expired <b style={{ fontSize: 13.5, color: AMBER }}>{fmt(p.updated_at || p.expires_at)}</b></span>
-            <span style={{ fontSize: 11, color: MUTED }}>Result <b style={{ fontSize: 13.5, color: traded ? (won ? GREEN : RED) : MUTED }}>
+            <span style={{ fontSize: 11, color: MUTED }}>Result <b style={{ fontSize: 13.5, color: traded ? (won ? GREEN : tr.status === 'open' ? TEAL : RED) : MUTED }}>
               {traded
-                ? `${won ? 'WIN' : 'LOSS'} ${tr.pnl_pct != null ? `${Number(tr.pnl_pct) > 0 ? '+' : ''}${tr.pnl_pct}%` : ''}${tr.r_multiple != null ? ` (${tr.r_multiple}R)` : ''}`.trim()
+                ? tr.status === 'open'
+                  ? `Open · trade #${tr.trade_id}${tr.entry_price != null ? ` @ $${Number(tr.entry_price).toFixed(2)}` : ''}`
+                  : `${won ? 'WIN' : 'LOSS'} ${tr.pnl_pct != null ? `${Number(tr.pnl_pct) > 0 ? '+' : ''}${tr.pnl_pct}%` : ''}${tr.r_multiple != null ? ` (${tr.r_multiple}R)` : ''}`.trim()
                 : 'Not traded'}
             </b></span>
             {!traded && p.would_have && (() => {
@@ -436,44 +418,66 @@ export default function BrokerProposalCard({
         const journalLabel = !journalAcct ? '—'
           : /alpaca/i.test(journalAcct) ? 'Simulation'
           : journalAcct.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        const chip = (label: string, value: any, color: string = TEXT0) => (
-          <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline', padding: '4px 9px', borderRadius: 6, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.16)' }}>
-            <span style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '.3px' }}>{label}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color }}>{value}</span>
+        const chip = (label: string, value: any, accent?: string) => (
+          <span style={{
+            display: 'inline-flex', gap: 6, alignItems: 'baseline', padding: '4px 10px', borderRadius: desk.radius,
+            background: desk.bgInset, border: `1px solid ${desk.borderSubtle}`,
+          }}>
+            <span style={{ ...sectionLabel, marginBottom: 0, fontSize: 9 }}>{label}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: accent || desk.text, fontFamily: desk.mono }}>{value}</span>
           </span>
         )
+        const chips = [
+          chip('Source', isWatchlist ? 'Watchlist' : 'Automated'),
+          (() => {
+            const edge = unifiedEdgeFromProposal(p)
+            return edge == null ? null : chip('Edge', edge.toFixed(1))
+          })(),
+          chip('Strategy', tickerCtx.strategyDisplay || p.strategy_id || '—'),
+          tf ? chip('Hold', tf) : null,
+          chip('Catalyst', catOk ? 'verified' : `unverified${cconf != null ? ` ${Math.round(cconf)}%` : ''}`, catOk ? desk.text : AMBER),
+          (planRR != null || liveRR != null) ? chip('R:R', `${planRR ?? '—'} plan${liveRR != null ? ` → ${liveRR} live` : ''}`) : null,
+          (() => {
+            const bt: any = p.backtest
+            if (!bt) return chip('Backtest', 'not run', MUTED)
+            const parts = [bt.quality || '—']
+            if (bt.samples != null) parts.push(`${bt.samples} samples`)
+            if (bt.avg_r != null) parts.push(`${bt.avg_r}R`)
+            if (bt.win_rate != null) parts.push(`${Math.round(Number(bt.win_rate) * 100)}% win`)
+            return chip('Backtest', parts.join(' · '))
+          })(),
+          chip('Journals', journalLabel),
+          expLabel ? chip('Expires', expLabel === 'expired' ? 'expired' : `in ${expLabel}`, expLabel === 'expired' ? RED : desk.text) : null,
+          p.live_submit_path ? chip('Route', routingPathLabel(p.live_submit_path)) : null,
+        ].filter(Boolean)
+        const summaryLine = [
+          isWatchlist ? 'Watchlist' : 'Auto',
+          tickerCtx.strategyDisplay || p.strategy_id,
+          catOk ? 'catalyst ✓' : 'catalyst ?',
+          liveRR != null ? `R:R ${liveRR}` : (planRR != null ? `R:R ${planRR}` : null),
+          expLabel ? (expLabel === 'expired' ? 'expired' : `exp ${expLabel}`) : null,
+        ].filter(Boolean).join(' · ')
         return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 14px', borderBottom: '1px solid rgba(148,163,184,.12)', background: 'rgba(2,6,23,.55)' }}>
-            {chip('Source', isWatchlist ? 'Watchlist' : 'Automated', isWatchlist ? BLUE : PURPLE)}
-            {(() => {
-              const edge = unifiedEdgeFromProposal(p)
-              if (edge == null) return null
-              const ec = edge >= 70 ? GREEN : edge >= 50 ? TEAL : edge >= 35 ? AMBER : MUTED
-              return chip('Edge', edge.toFixed(1), ec)
-            })()}
-            {chip('Strategy', tickerCtx.strategyDisplay || p.strategy_id || '—', '#fb923c')}
-            {tf && chip('Hold', tf)}
-            {chip('Catalyst', catOk ? 'verified' : `unverified${cconf != null ? ` ${Math.round(cconf)}%` : ''}`, catOk ? GREEN : AMBER)}
-            {(planRR != null || liveRR != null) && chip('R:R', `${planRR ?? '—'} plan${liveRR != null ? ` → ${liveRR} live` : ''}`, BLUE)}
-            {(() => {
-              const bt: any = p.backtest
-              if (!bt) return chip('Backtest', 'not run', MUTED)
-              const q = String(bt.quality || '').toUpperCase()
-              const qc = (q.includes('STRONG') || q.includes('GOOD')) ? GREEN
-                : (q.includes('INSUFFICIENT') || q.includes('THIN') || q.includes('LOW')) ? AMBER
-                : (q.includes('WEAK') || q.includes('POOR') || q.includes('FAIL')) ? RED : TEXT0
-              const parts = [bt.quality || '—']
-              if (bt.samples != null) parts.push(`${bt.samples} samples`)
-              if (bt.avg_r != null) parts.push(`${bt.avg_r}R`)
-              if (bt.win_rate != null) parts.push(`${Math.round(Number(bt.win_rate) * 100)}% win`)
-              return chip('Backtest', parts.join(' · '), qc)
-            })()}
-            {chip('Journals', journalLabel, TEAL)}
-            {expLabel && chip('Expires', expLabel === 'expired' ? 'expired' : `in ${expLabel}`, expColor)}
-            {p.live_submit_path && chip('Route', routingPathLabel(p.live_submit_path), BLUE)}
-          </div>
+          <details style={{ borderBottom: `1px solid ${desk.borderSubtle}`, background: desk.bg }}>
+            <summary style={{
+              padding: '8px 14px', fontSize: 10, fontWeight: 700, color: desk.textMuted, cursor: 'pointer',
+              listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ ...sectionLabel, marginBottom: 0 }}>Plan context</span>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: desk.text, fontFamily: desk.mono }}>{summaryLine}</span>
+            </summary>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 14px 10px' }}>
+              {chips}
+            </div>
+          </details>
         )
       })()}
+
+      {p.broker_diligence && (
+        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${desk.borderSubtle}`, background: desk.bg }}>
+          <BrokerDiligenceStrip summary={p.broker_diligence} compact />
+        </div>
+      )}
 
       <div style={{ padding: '6px 14px', borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(15,23,42,.35)' }}>
         <EnsembleValidationInline
@@ -499,8 +503,8 @@ export default function BrokerProposalCard({
         )
         const rsiC = mc.rsi == null ? MUTED : mc.rsi >= 70 ? RED : mc.rsi <= 30 ? GREEN : TEXT1
         return (
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(148,163,184,.1)', background: 'rgba(45,212,191,.05)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px' }}>
-            <span style={{ fontSize: 9.5, fontWeight: 900, color: TEAL, textTransform: 'uppercase', letterSpacing: '.4px' }}>Entry helper</span>
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid ${desk.borderSubtle}`, background: desk.bgInset, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px' }}>
+            <span style={{ fontSize: 9.5, fontWeight: 900, color: MUTED, textTransform: 'uppercase', letterSpacing: '.4px' }}>Entry helper</span>
             {(mc.mas || []).map((m: any) => (
               <span key={m.label} style={{ display: 'inline-flex', gap: 4, alignItems: 'baseline' }}
                 title={`Price is ${Math.abs(m.pct_above)}% ${m.above ? 'above' : 'below'} ${m.label} (${m.price != null ? '$' + m.price : 'n/a'})`}>
@@ -541,7 +545,7 @@ export default function BrokerProposalCard({
       }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>Strategy</div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#fb923c' }}>{tickerCtx.strategyDisplay}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{tickerCtx.strategyDisplay}</div>
           {tickerCtx.resolvedStrategyId && (
             <div style={{ fontSize: 10, color: MUTED, marginTop: 2, fontFamily: 'monospace' }}>
               id {tickerCtx.resolvedStrategyId}
@@ -631,26 +635,56 @@ export default function BrokerProposalCard({
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'minmax(0,1.2fr) minmax(0,1fr)', gap: 0 }}>
         <section style={{ padding: '12px 14px', borderRight: narrow ? 'none' : '1px solid rgba(148,163,184,.1)', borderBottom: narrow ? '1px solid rgba(148,163,184,.1)' : 'none' }}>
-          {litmus?.facts?.length > 0 && (
-            <div style={{
-              marginBottom: 10, padding: '8px 10px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.45,
-              background: litmus.verdict === 'GO' ? 'rgba(34,197,94,.08)' : litmus.verdict === 'CAUTION' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)',
-              border: `1px solid ${litmus.verdict === 'GO' ? 'rgba(34,197,94,.28)' : litmus.verdict === 'CAUTION' ? 'rgba(245,158,11,.28)' : 'rgba(239,68,68,.28)'}`,
-            }}>
-              <div style={{ fontWeight: 800, marginBottom: 4, color: litmus.verdict === 'GO' ? GREEN : litmus.verdict === 'CAUTION' ? AMBER : RED }}>
-                Litmus · {litmus.verdict}{litmus.trade_still_good ? ' · trade still good' : ''}
-                {litmus.validated_at ? <span style={{ color: MUTED, fontWeight: 600 }}> · {litmus.validated_at}</span> : null}
-              </div>
-              {litmus.facts.map((f: string, i: number) => (
-                <div key={i} style={{ color: TEXT1 }}>{f}</div>
-              ))}
-              {litmus.cloud_conflict && (
-                <div style={{ color: AMBER, marginTop: 4, fontWeight: 700 }}>
-                  Cloud lane split — re-run Grok+ChatGPT after Validate so models see live price
+          {litmus?.facts?.length > 0 && (() => {
+            const v = String(litmus.verdict || '—').toUpperCase()
+            const vc = v === 'GO' ? GREEN : v === 'CAUTION' ? AMBER : RED
+            const blockers: string[] = litmus.blockers || []
+            return (
+              <div style={{
+                marginBottom: 10, padding: '10px 12px', borderRadius: 10, fontSize: 11.5, lineHeight: 1.45,
+                background: `${vc}0d`, border: `1px solid ${vc}44`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <span style={{
+                    fontSize: 13, fontWeight: 900, padding: '3px 10px', borderRadius: 6,
+                    background: `${vc}22`, color: vc, border: `1.5px solid ${vc}`, letterSpacing: '.4px',
+                  }}>LITMUS {v}</span>
+                  {litmus.trade_still_good != null && (
+                    <span style={{
+                      fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 5,
+                      background: litmus.trade_still_good ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
+                      color: litmus.trade_still_good ? GREEN : RED,
+                    }}>
+                      {litmus.trade_still_good ? 'trade still good' : 'not route-ready'}
+                    </span>
+                  )}
+                  {litmus.validated_at && (
+                    <span style={{ fontSize: 9, color: MUTED, fontWeight: 600 }}>{litmus.validated_at}</span>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+                {blockers.length > 0 && (
+                  <div style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}>
+                    {blockers.map((b: string, i: number) => (
+                      <div key={i} style={{ fontSize: 10.5, color: RED, fontWeight: 700 }}>⛔ {b}</div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {litmus.facts.map((f: string, i: number) => (
+                    <div key={i} style={{ color: TEXT1, fontSize: 11, display: 'flex', gap: 6 }}>
+                      <span style={{ color: vc, flexShrink: 0 }}>·</span>
+                      <span>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                {litmus.cloud_conflict && (
+                  <div style={{ color: AMBER, marginTop: 8, fontWeight: 700, fontSize: 10.5 }}>
+                    ☁ Cloud lane split — re-run Grok+ChatGPT after Validate so models see live price
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           <ThesisValidityBar tv={p.thesis_validity} refreshedAt={p.refreshed_at} quoteProvider={p.quote_provider} showSourceNote />
           {!operatorRoute && (
             <PositionSizingRiskBar

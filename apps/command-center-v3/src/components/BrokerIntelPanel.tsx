@@ -1,10 +1,19 @@
 import { useState } from 'react'
-import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
 import { EnsembleValidationCard, normalizeEnsembleResult } from './EnsembleValidationCard'
 import { EvidenceBlock } from './EvidenceBlock'
+import AgentConsensusPanel from './AgentConsensusPanel'
+import { desk, sectionLabel } from '../lib/proposalDeskTheme'
 
-const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', RED = '#ef4444', PURPLE = '#a78bfa'
-const sec = { fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }
+
+const MUTED = desk.textDim
+const TEXT0 = desk.text
+const TEXT1 = 'var(--text1)'
+const GREEN = desk.green
+const AMBER = desk.amber
+const BLUE = desk.blue
+const RED = desk.red
+const PURPLE = desk.purple
+const sec = { ...sectionLabel, fontSize: 11, fontWeight: 800, letterSpacing: '0.4px', marginBottom: 4 }
 const body = { fontSize: 10, color: TEXT1, lineHeight: 1.45 }
 
 function voteColor(vote: string | null | undefined) {
@@ -240,6 +249,7 @@ export default function BrokerIntelPanel({
   const why = intel.why_purchase || {}
   const reviews: any[] = intel.agent_reviews || []
   const news: any[] = intel.news || []
+  const newsMeta: any = intel.news_meta || {}
   const oversight = intel.oversight || {}
   const ovAgents = oversight.agents || {}
   const localLlm = oversight.local_llm || {}
@@ -260,106 +270,28 @@ export default function BrokerIntelPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 8 : 10 }}>
       {showOversight && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.22)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
-            <div style={{ ...sec, color: PURPLE, marginBottom: 0 }}>AI oversight {ovStatus ? `· ${ovStatus}` : ''}</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {onQueueOversight && (
-                <button type="button" onClick={onQueueOversight} disabled={oversightBusy}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: `1px solid ${BLUE}`, background: 'rgba(96,165,250,.1)', color: BLUE, cursor: oversightBusy ? 'wait' : 'pointer' }}>
-                  {oversightBusy ? 'Queuing…' : 'Queue local reviews'}
-                </button>
-              )}
-              {onRunCloudOversight && (
-                <button type="button" onClick={onRunCloudOversight} disabled={cloudBusy || cloud.status === 'running'}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: `1px solid ${PURPLE}`, background: 'rgba(168,85,247,.12)', color: PURPLE, cursor: (cloudBusy || cloud.status === 'running') ? 'wait' : 'pointer' }}>
-                  {(cloudBusy || cloud.status === 'running') ? 'Cloud running…' : 'Re-run Grok+ChatGPT'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div style={{ fontSize: 11.5, color: TEXT1, marginBottom: 6 }}>
-            Local: <span style={{
-              color: localLlm.status === 'complete' ? GREEN
-                : localLlm.status === 'watchlist_plan' ? BLUE
-                : localLlm.status === 'queued' ? AMBER : MUTED,
-            }}>
-              {localLlmLabel(localLlm.status)}
-            </span>
-            {localLlm.model ? ` (${localLlm.model})` : ''}
-            {' · '}
-            Cloud: <span style={{ color: cloudColor(cloud.status) }}>{cloud.status || 'not_run'}</span>
-            {cloud.ran_at ? (() => {
-              const fmt = formatCloudRanAt(cloud.ran_at)
-              return (
-                <span style={{ color: fmt.stale ? AMBER : MUTED }}>
-                  {` · ${fmt.label}`}
-                  {cloud.fresh_run ? ' · fresh run' : cloud.cached ? ' · cached' : ''}
-                </span>
-              )
-            })() : cloud.status && cloud.status !== 'not_run' ? (
-              <span style={{ color: AMBER }}> · no timestamp</span>
-            ) : null}
-            {(lanes.grok || lanes.chatgpt) && (
-              <span style={{ color: MUTED }}> · lanes: {[lanes.grok && 'Grok', lanes.chatgpt && 'ChatGPT'].filter(Boolean).join(', ')}</span>
-            )}
-          </div>
-
-          {(ovAgents.pending?.length > 0) && (
-            <div style={{ fontSize: 11, color: AMBER, marginBottom: 4 }}>Pending agents: {ovAgents.pending.join(', ')}</div>
-          )}
-
-          {reviews.map((r, i) => {
-            const pending = !r.verdict && (r.status === 'pending' || !r.status)
-            return (
-            <div key={i} style={{ fontSize: 11.5, marginBottom: 4, paddingLeft: 6, borderLeft: `2px solid ${voteColor(r.verdict || (pending ? 'PENDING' : ''))}` }}>
-              <b style={{ color: TEXT0 }}>{r.agent}</b>
-              <span style={{ color: pending ? AMBER : MUTED }}> · {r.status || (pending ? 'pending' : '—')}</span>
-              {r.verdict && <span style={{ color: voteColor(r.verdict) }}> · {r.verdict}</span>}
-              {r.model && <span style={{ color: MUTED }}> · {r.model}</span>}
-              {r.summary && <div style={{ color: TEXT1, marginTop: 2 }}>{r.summary}</div>}
-              <EvidenceBlock evidence={r.evidence} dataIDoubt={r.data_i_doubt} compact maxItems={4} />
-            </div>
-          )})}
-
-          {(localLlm.evidence?.length > 0 || (localLlm.data_i_doubt && localLlm.data_i_doubt !== 'none')) && (
-            <EvidenceBlock title="Local LLM evidence" evidence={localLlm.evidence} dataIDoubt={localLlm.data_i_doubt} compact />
-          )}
-
-          {ensembleResult ? (
-            <EnsembleValidationCard result={ensembleResult} onRevalidate={onRunCloudOversight} />
-          ) : cloud.lanes && Object.keys(cloud.lanes).length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-              {Object.entries(cloud.lanes).map(([lane, lr]: [string, any]) => (
-                <div key={lane} style={{ fontSize: 11.5, padding: '4px 8px', borderRadius: 5, background: 'rgba(15,23,42,.5)', borderLeft: `3px solid ${cloudColor(lr?.verdict)}` }}>
-                  <b style={{ color: lane === 'grok' ? '#1d9bf0' : lane === 'chatgpt' ? '#10a37f' : TEXT0 }}>
-                    {lane === 'grok' ? 'Grok' : lane === 'chatgpt' ? 'ChatGPT' : lane}
-                  </b>
-                  <span style={{ color: cloudColor(lr?.verdict), marginLeft: 6, fontWeight: 800 }}>
-                    {lr?.ok ? (lr?.verdict || '—') : 'unavailable'}
-                  </span>
-                  {lr?.assessment && <div style={{ color: TEXT1, marginTop: 2 }}>{String(lr.assessment).slice(0, compact ? 120 : 220)}</div>}
-                  <EvidenceBlock evidence={lr?.evidence} dataIDoubt={lr?.data_i_doubt} compact maxItems={3} />
-                  {(lr?.concerns?.length > 0) && (
-                    <div style={{ color: AMBER, marginTop: 2 }}>⚠ {lr.concerns.slice(0, 2).join(' · ')}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!ensembleResult && cloud.consensus && (
-            <div style={{ fontSize: 11, color: cloudColor(cloud.status), marginTop: 6, fontWeight: 700 }}>
-              Consensus: {cloud.consensus.verdict}
-              {cloud.consensus.lanes_ok != null ? ` · ${cloud.consensus.lanes_ok} lane(s) OK` : ''}
-            </div>
-          )}
-
-          {!suppressViolationList && ovViolations.map((v, i) => <div key={`v${i}`} style={{ fontSize: 11, color: RED, marginTop: 3 }}>⛔ {v}</div>)}
-          {!suppressViolationList && ovWarnings.map((w, i) => <div key={`w${i}`} style={{ fontSize: 11, color: AMBER, marginTop: 3 }}>⚠ {w}</div>)}
-        </div>
+        <AgentConsensusPanel
+          reviews={reviews}
+          oversight={oversight}
+          localLlm={localLlm}
+          cloud={cloud}
+          lanes={lanes}
+          onQueueOversight={onQueueOversight}
+          onRunCloudOversight={onRunCloudOversight}
+          oversightBusy={oversightBusy}
+          cloudBusy={cloudBusy}
+          ovStatus={ovStatus}
+        />
       )}
+      {showOversight && ensembleResult && (
+        <EnsembleValidationCard result={ensembleResult} onRevalidate={onRunCloudOversight} />
+      )}
+      {showOversight && !suppressViolationList && ovViolations.map((v, i) => (
+        <div key={`v${i}`} style={{ fontSize: 10, color: desk.red, marginTop: 3 }}>⛔ {v}</div>
+      ))}
+      {showOversight && !suppressViolationList && ovWarnings.map((w, i) => (
+        <div key={`w${i}`} style={{ fontSize: 10, color: desk.amber, marginTop: 3 }}>⚠ {w}</div>
+      ))}
 
       {!suppressCompanyPurpose && co.description && (
         <div>
@@ -372,11 +304,17 @@ export default function BrokerIntelPanel({
       )}
 
       {(why.headline || why.approve_case || why.strategy_purpose) && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.2)' }}>
-          <div style={{ ...sec, color: GREEN }}>Why purchase</div>
+        <div style={{ padding: '8px 10px', borderRadius: 8, background: desk.bg, border: `1px solid ${desk.border}`, borderLeft: `3px solid ${desk.green}` }}>
+          <div style={sec}>Why purchase</div>
           {why.strategy_purpose && !suppressStrategyPurpose && <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Strategy: {why.strategy_purpose}</div>}
           <div style={body}>{why.headline || why.approve_case || why.summary}</div>
-          {why.rr != null && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>Plan R:R {why.rr}:1{why.signal_grade ? <GradePill grade={`${why.signal_grade} grade`} /> : null}</div>}
+          {why.rr != null && (
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              Plan R:R {why.rr}:1
+              {why.screener_grade ? <GradePill grade={`${why.screener_grade} screener`} prefix="" /> : why.signal_grade ? <GradePill grade={`${why.signal_grade} screener`} prefix="" /> : null}
+              {why.finviz_grade ? <GradePill grade={`${why.finviz_grade} finviz`} prefix="" /> : null}
+            </div>
+          )}
           {why.invalidation && <div style={{ fontSize: 11, color: AMBER, marginTop: 4 }}>Invalidate if: {why.invalidation}</div>}
           {why.reject_case && <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>Bear case: {String(why.reject_case).slice(0, 200)}</div>}
         </div>
@@ -385,7 +323,7 @@ export default function BrokerIntelPanel({
       {/* Detail sections tile into the free width (auto-fit) instead of stacking in one tall column. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8, alignItems: 'start' }}>
         {(cat.text || cat.critic_verdict || cat.critic_reasoning) && (
-          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)' }}>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: desk.bg, border: `1px solid ${desk.border}`, borderLeft: `3px solid ${desk.amber}` }}>
             {(() => {
               // Confidence-aware badge: a 'verified' flag with ~0% confidence is not really verified
               // (TECH showed ✅ over 'Confidence 0%'). Treat low-confidence as unverified for the badge.
@@ -399,27 +337,8 @@ export default function BrokerIntelPanel({
           </div>
         )}
 
-        {(tech.summary || tech.rsi != null) ? (
-          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
-            <div style={sec}>Technicals</div>
-            <div style={{ ...body, fontFamily: 'monospace', fontSize: 10 }}>{tech.summary || '—'}</div>
-            {tech.technical_grade && <div style={{ fontSize: 11, color: MUTED, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>Grade: <GradePill grade={String(tech.technical_grade)} />{tech.confluence_tier ? ` · ${tech.confluence_tier}` : ''}</div>}
-          </div>
-        ) : (
-          // Never silently omit — an empty Technicals block reads as "broken". A watchlist/income
-          // proposal has NO momentum scan by design (its signal is price-vs-thesis-band, not RVOL/gap).
-          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(148,163,184,.06)', border: '1px solid rgba(148,163,184,.18)' }}>
-            <div style={sec}>Technicals</div>
-            <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45 }}>
-              {/watch/i.test(sourceKind)
-                ? 'Watchlist / income setup — no momentum scan run. Signal is price vs thesis band (entry/stop/target), not RVOL/gap. Momentum technicals apply to scanner-sourced ideas only.'
-                : 'No technical snapshot yet — run Enrich on the proposal to compute RVOL / gap / RSI / ATR.'}
-            </div>
-          </div>
-        )}
-
       {an && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.5)', border: '1px solid rgba(148,163,184,.15)' }}>
+        <div style={{ padding: '8px 10px', borderRadius: 8, background: desk.bg, border: `1px solid ${desk.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
             <div style={{ ...sec, marginBottom: 0 }}>
               Analyst consensus
@@ -438,13 +357,26 @@ export default function BrokerIntelPanel({
             {an.mean != null ? ` · score ${an.mean}` : ''}
             {an.primary_source && <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> ({SOURCE_LABELS[an.primary_source] || an.primary_source})</span>}
           </div>
-          <div style={{ fontSize: 10, color: TEXT1, marginTop: 5, fontFamily: 'monospace' }}>
-            {an.target != null && <span>Mean target <b style={{ color: BLUE }}>${an.target}</b></span>}
+          <div style={{ fontSize: 10, color: TEXT1, marginTop: 5, fontFamily: desk.mono }}>
+            {an.target != null && <span>Street mean <b style={{ color: BLUE }}>${an.target}</b></span>}
             {an.upside_pct != null && (
               <span style={{ color: an.upside_pct >= 0 ? GREEN : RED, marginLeft: 8 }}>
                 {an.upside_pct >= 0 ? '+' : ''}{an.upside_pct}% vs current
               </span>
             )}
+            {an.sources?.[0]?.as_of && (
+              <span style={{ color: MUTED, marginLeft: 8, fontSize: 9 }}>
+                · Yahoo {an.sources[0].as_of}
+                {(() => {
+                  const d = new Date(an.sources[0].as_of)
+                  const age = Number.isNaN(d.getTime()) ? null : Math.floor((Date.now() - d.getTime()) / 86_400_000)
+                  return age != null && age > 7 ? ` (${age}d old)` : ''
+                })()}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 9, color: MUTED, marginTop: 4, fontStyle: 'italic' }}>
+            Street target ≠ plan target on the card header — plan uses technical/R:R levels; street is sell-side consensus.
           </div>
           {(an.target_low != null || an.target_high != null) && (
             <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
@@ -489,16 +421,25 @@ export default function BrokerIntelPanel({
       )}
       </div>
 
-      {news.length > 0 && (
-        <div>
-          <div style={sec}>Recent news</div>
-          {news.slice(0, compact ? 2 : 3).map((n, i) => (
-            <div key={i} style={{ fontSize: 11, color: TEXT1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ color: MUTED }}>{n.source} · </span>{n.title}
-            </div>
-          ))}
-        </div>
-      )}
+      <div style={{
+        padding: '8px 10px', borderRadius: desk.radiusLg,
+        background: news.length ? desk.bgInset : desk.amberDim,
+        border: `1px solid ${news.length ? desk.borderSubtle : 'rgba(245,158,11,.2)'}`,
+      }}>
+        <div style={sec}>Recent news{newsMeta.window_days ? ` · last ${newsMeta.window_days}d` : ''}</div>
+        {news.length > 0 ? news.slice(0, compact ? 2 : 3).map((n, i) => (
+          <div key={i} style={{ fontSize: 11, color: TEXT1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: i ? 4 : 0 }}>
+            <span style={{ color: MUTED }}>{n.source} · </span>{n.title}
+            {n.at && <span style={{ color: MUTED, fontSize: 9 }}> · {String(n.at).slice(0, 10)}</span>}
+          </div>
+        )) : (
+          <div style={{ fontSize: 10, color: AMBER, lineHeight: 1.45 }}>
+            No headlines in DB for this symbol
+            {newsMeta.window_days ? ` (checked ${newsMeta.window_days}-day window)` : ''}.
+            {newsMeta.ingest_hint ? ` ${newsMeta.ingest_hint}` : ' Proposal symbols are now pinned first in news_ingestion — refresh after cron or run ingest manually.'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

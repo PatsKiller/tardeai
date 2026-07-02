@@ -7,6 +7,13 @@ import sys
 import urllib.error
 import urllib.request
 BASE = "http://127.0.0.1:7777"
+DEFAULT_TIMEOUT = 20.0
+# Single-threaded API — these endpoints routinely exceed 20s on cold cache.
+SLOW_TIMEOUT = 65.0
+SLOW_PREFIXES = (
+    "/api/v2/broker-proposals",
+    "/api/v2/schwab/accounts-live",
+)
 
 # GET endpoints used on initial page load / hub tabs (read-only smoke)
 ENDPOINTS = [
@@ -108,7 +115,13 @@ ENDPOINTS = [
 ]
 
 
-def probe(path: str, timeout: float = 20.0) -> dict:
+def _timeout_for(path: str) -> float:
+    return SLOW_TIMEOUT if any(path.startswith(p) for p in SLOW_PREFIXES) else DEFAULT_TIMEOUT
+
+
+def probe(path: str, timeout: float | None = None) -> dict:
+    if timeout is None:
+        timeout = _timeout_for(path)
     url = BASE + path
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})

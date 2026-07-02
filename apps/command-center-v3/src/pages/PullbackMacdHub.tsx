@@ -6,7 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 // 52-week high and whose MACD is approaching a bullish cross. Two tiers: trigger / watch.
 // Advisory only — auto-generated proposals require operator approval; nothing auto-executes.
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }
 
@@ -84,7 +84,7 @@ const Metric = ({ label, value, tip }: any) => (
   </div>
 )
 
-export default function PullbackMacdHub({ onDrill }: Props) {
+export default function PullbackMacdHub({ onDrill, embedded }: Props) {
   const { data, loading, error, refetch } = useApi<any>('/api/v2/pullback-macd/candidates', 60_000)
   const cands: any[] = data?.candidates ?? []
   const triggers = cands.filter(c => c.tier === 'trigger')
@@ -112,15 +112,22 @@ export default function PullbackMacdHub({ onDrill }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Pullback / MACD Screener</h1>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            S&P 500 uptrends pulled back 12–28%, earliest recovery confirmed (MACD histogram turning up + above VWAP) ·
-            advisory only, proposals require approval ·
-            {run ? ` last scan ${run.scan_date} (${run.screened} screened)` : ' no scan recorded yet'}
+        {!embedded ? (
+          <div style={{ flex: 1 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Pullback / MACD Screener</h1>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+              S&P 500 uptrends pulled back 12–28%, earliest recovery confirmed (MACD histogram turning up + above VWAP) ·
+              advisory only, proposals require approval ·
+              {run ? ` last scan ${run.scan_date} (${run.screened} screened)` : ' no scan recorded yet'}
+            </div>
+            {msg && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>{msg}</div>}
           </div>
-          {msg && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>{msg}</div>}
-        </div>
+        ) : (
+          <div style={{ flex: 1, fontSize: 11, color: 'var(--text3)' }}>
+            {run ? `Last scan ${run.scan_date} (${run.screened} screened)` : 'No scan recorded yet'}
+            {msg && <span style={{ marginLeft: 8, color: 'var(--text2)' }}>{msg}</span>}
+          </div>
+        )}
         <button style={{ ...btn('var(--accent, #2563eb)'), fontSize: 12, padding: '7px 14px', opacity: busy ? 0.6 : 1 }}
           disabled={busy} onClick={runScan}>{busy ? 'Scanning…' : '↻ Run scan now'}</button>
       </div>

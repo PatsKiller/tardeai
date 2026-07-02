@@ -402,6 +402,15 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Runs all Hermes agents live incl auto-promote + RAG. Kill switch off but checked each tick:
 # touch hermes_sidecar/.hermes/DISABLED to halt. flock prevents overlap.
 */15 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_coordinator.lock $PY scripts/hermes_coordinator.py >> logs/hermes_coordinator.log 2>&1
+# Hermes audit remediation 2026-07-02 — scoped scoring + scalp weights + universe curation
+10,40 * * * * cd $PROJ && HERMES_WEIGHTS_PROFILE=scalp HERMES_SCORER_ALWAYS_CAP=1 flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1
+15 3 * * * cd $PROJ && flock -n /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1
+30 3 * * 0 cd $PROJ && flock -n /tmp/hermes_score_retention.lock $PY scripts/hermes_score_history_retention.py --apply --days 90 >> logs/hermes_score_retention.log 2>&1
+0 6 * * 1-5 cd $PROJ && flock -n /tmp/hermes_tradeai_handshake.lock $PY scripts/hermes_tradeai_handshake.py --apply >> logs/hermes_tradeai_handshake.log 2>&1
+45 18 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_shadow.lock $PY scripts/hermes_scalp_shadow_feeder.py --apply >> logs/hermes_scalp_shadow_feeder.log 2>&1
+0 4 * * * cd $PROJ && flock -n /tmp/hermes_strategy_tags.lock $PY scripts/backfill_hermes_strategy_tags.py --apply --limit 8000 >> logs/hermes_strategy_tags_backfill.log 2>&1
+# Stop over Street consensus mean — alert when protective stop sits above analyst target (advisory)
+45 10,16 * * 1-5 cd $PROJ && flock -n /tmp/stop_over_consensus.lock $PY scripts/stop_over_consensus_monitor.py --send >> logs/stop_over_consensus.log 2>&1
 # Hermes source self-learning (Tracks A+B) — score web sources by yield, discover new sites, register connectors
 30 23 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_source_curation.lock $PY scripts/hermes_source_curation.py >> logs/hermes_source_curation.log 2>&1
 */2 * * * * bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/portfolio_server_watchdog.sh

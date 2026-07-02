@@ -6,7 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 // v3 Sector Monitor — standing view of each GICS sector: ETF, momentum vs SPY, setup counts,
 // watch candidates. Advisory; "+ Watch this sector" stages constituents via the governed path.
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
 const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const momColor = (m?: string) => (({ leading: '#22c55e', lagging: '#ef4444', neutral: '#94a3b8', unknown: 'var(--text3)' } as any)[m || ''] || 'var(--text3)')
@@ -15,7 +15,7 @@ const Pill = ({ text, color, tip }: any) => (
   <span title={tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color + '22', color, border: `1px solid ${color}55`, whiteSpace: 'nowrap' }}>{text}</span>
 )
 
-export default function SectorsHub({ onDrill }: Props) {
+export default function SectorsHub({ onDrill, embedded }: Props) {
   const { data, refetch } = useApi<any>('/api/v2/sectors/monitor', 120_000)
   const { data: secExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=sector', 120_000)
   const secExtMap: Record<string, any[]> = secExt?.map ?? {}
@@ -42,12 +42,14 @@ export default function SectorsHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Sector Monitor</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-          {sectors.length} GICS sectors · momentum vs SPY ({spy != null ? `${Number(spy) >= 0 ? '+' : ''}${Number(spy).toFixed(2)}%` : '—'} today) · advisory — adding a sector stages constituents (governor owns promotion)
+      {!embedded && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Sector Monitor</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {sectors.length} GICS sectors · momentum vs SPY ({spy != null ? `${Number(spy) >= 0 ? '+' : ''}${Number(spy).toFixed(2)}%` : '—'} today) · advisory — adding a sector stages constituents (governor owns promotion)
+          </div>
         </div>
-      </div>
+      )}
 
       {msg && <div style={{ fontSize: 11, color: msg.startsWith('Error') ? '#ef4444' : '#22c55e', marginBottom: 12 }}>{msg}</div>}
 

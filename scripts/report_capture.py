@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """report_capture.py — persist outbound operator reports so the v3 Reports portal can surface them.
 
-Many recurring reports/advisories (Incubator LLM Screen, EOD Open Trades, Auto-Research, Trade AI
-Critique, Strategy Weekly, Alex Review, Portfolio Brief, monthly reports …) are sent straight to
-Telegram and were never stored — so the Reports hub could not show them. This module is called from
-the Telegram send chokepoint (telegram_alert._raw_send_telegram) and writes every *recognized* report
-to the `telegram_outbox` table, classified by report_type. Best-effort: never raises, never blocks a send.
-
-Only messages that classify to a known report_type are stored — transient alerts/briefs that already
-self-log to notification_log / alert_events are intentionally skipped (no duplication).
+Many recurring reports/advisories are sent (or suppressed) via Telegram. This module writes every
+*recognized* message to `telegram_outbox`, classified by report_type. Best-effort: never raises.
 """
 from __future__ import annotations
 
@@ -16,7 +10,16 @@ import re
 
 # header marker → stable report_type (order matters: most specific first)
 _RULES = [
+    ("morning_command",  r"MORNING COMMAND"),
+    ("paper_proposal",   r"Paper Proposal:"),
+    ("trade_ai_live",    r"Trade AI LIVE|Trade AI v12"),
+    ("hermes_alerts",    r"Hermes watchlist alerts"),
+    ("health_agent",     r"Health Agent:"),
+    ("escalations",      r"Investigating \d+ escalation|Escalation analysis"),
+    ("siem_p1",          r"SIEM P[01]:"),
+    ("technical_signals", r"Technical Signal Update|Portfolio Score:"),
     ("incubator_screen", r"Incubator LLM Screen"),
+    ("incubator_promoter", r"Incubator Promoter|Promoted:.*Skipped:"),
     ("auto_research",    r"Auto-?Research Complete|🔍\s*Auto-?Research"),
     ("eod_open_trades",  r"EOD OPEN TRADE|OPEN TRADE REPORT"),
     ("closed_trade_digest", r"Closed Trade Digest"),
@@ -32,9 +35,11 @@ _RULES = [
     ("overnight_brief",  r"OVERNIGHT BRIEF"),
     ("premarket_brief",  r"Pre-?Market Brief|Pre-?Open Brief"),
     ("trade_ai_brief",   r"TRADE AI BRIEF"),
-    ("stop_brief",       r"STOP BRIEF"),
+    ("stop_brief",       r"STOP BRIEF|STOP_TRIGGERED\s*—|STOP TRIGGERED\s*—"),
     ("recovery_reminder", r"Stop Placement Reminder"),
-    ("portfolio_brief",  r"Portfolio Brief"),
+    ("portfolio_brief",  r"PORTFOLIO INTELLIGENCE|Portfolio Brief"),
+    ("dividend_monthly", r"Dividend Payers This Month"),
+    ("topic_curator",    r"Topic Curator:"),
 ]
 _COMPILED = [(t, re.compile(p, re.IGNORECASE)) for t, p in _RULES]
 
@@ -56,7 +61,6 @@ def _title(message: str) -> str:
     """First meaningful line, stripped of markdown/emoji decoration."""
     for raw in (message or "").splitlines():
         line = raw.strip().strip("*_# ").strip()
-        # skip pure-decoration separator lines
         if line and not re.fullmatch(r"[━─=•·\-\s]+", line):
             return line[:200]
     return "(report)"
@@ -81,11 +85,7 @@ def _ensure_table(cur) -> None:
     _ensured = True
 
 
-def capture(message: str, ok: bool = True, channel: str = "telegram") -> str | None:
-    """Store a recognized report in telegram_outbox. Returns the report_type stored, or None if skipped.
-
-    Best-effort: any failure (DB down, classify miss) is swallowed so it can never break a send.
-    """
+def _store(message: str, ok: bool, channel: str) -> str | None:
     conn = None
     try:
         rtype = classify_report(message)
@@ -109,3 +109,14 @@ def capture(message: str, ok: bool = True, channel: str = "telegram") -> str | N
         except Exception:
             pass
         return None
+
+
+def capture(message: str, ok: bool = True, channel: str = "telegram") -> str | None:
+    """Store a recognized report after Telegram send. Returns report_type or None."""
+    return _store(message, ok=ok, channel=channel)
+
+
+def archive_message(message: str, suppressed: bool = False, reason: str = "") -> str | None:
+    """Store recognized messages that were suppressed by the router (Reports archive only)."""
+    ch = "reports_archive" if suppressed else "telegram"
+    return _store(message, ok=not suppressed, channel=ch)

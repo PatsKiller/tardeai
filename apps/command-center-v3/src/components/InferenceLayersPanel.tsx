@@ -28,13 +28,13 @@ const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low:
 const ACTION_FOR: Record<string, { label: string; url: string }[]> = {
   risk: [{ label: 'Open Risk', url: '/v3/risk' }],
   aegis_thesis: [{ label: 'Open Risk', url: '/v3/risk' }, { label: 'Hermes', url: '/v3/hermes' }],
-  opportunity: [{ label: 'Open Watchlist', url: '/v3/watchlist' }, { label: 'Rotation', url: '/v3/rotation' }],
+  opportunity: [{ label: 'Open Watchlist', url: '/v3/watch?tab=watchlist' }, { label: 'Rotation', url: '/v3/rotation' }],
   nav_signal: [{ label: 'Portfolio', url: '/v3/portfolio' }],
   journal_pattern: [{ label: 'Journal', url: '/v3/journal' }],
   regional_impact: [{ label: 'Intelligence', url: '/v3/intelligence' }],
   research_gap: [{ label: 'Research', url: '/v3/intelligence' }],
   market_regime: [{ label: 'Portfolio', url: '/v3/portfolio' }],
-  sector_rotation: [{ label: 'Rotation Desk', url: '/v3/rotation' }, { label: 'Watchlist', url: '/v3/watchlist' }],
+  sector_rotation: [{ label: 'Rotation Desk', url: '/v3/rotation' }, { label: 'Watchlist', url: '/v3/watch?tab=watchlist' }],
 }
 
 function toCard(r: any): ReportCardItem {

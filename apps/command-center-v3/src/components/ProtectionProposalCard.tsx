@@ -1,13 +1,11 @@
 import { fmt$ } from '../lib/format'
 import ProposalSourceBadges from './ProposalSourceBadges'
 import ProposalStrategyBadge from './ProposalStrategyBadge'
+import { desk, sectionLabel } from '../lib/proposalDeskTheme'
 
-const MUTED = '#94a3b8'
-const TEXT0 = '#f8fafc'
-const GREEN = '#22c55e'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a78bfa'
+const MUTED = desk.textDim
+const TEXT0 = desk.text
+const GREEN = desk.green
 
 const ACTION_LABEL: Record<string, string> = {
   MOVE_STOP_TO_BREAKEVEN: 'Breakeven stop',
@@ -17,20 +15,17 @@ const ACTION_LABEL: Record<string, string> = {
   KEEP_CURRENT_STOP: 'Keep current',
 }
 
-const DISP_META: Record<string, { label: string; color: string; tip: string }> = {
+const DISP_META: Record<string, { label: string; tip: string }> = {
   paper_auto_apply: {
     label: 'ATM auto-apply',
-    color: GREEN,
     tip: 'Automated account — ATM will auto-apply this guarded stop-up on the next cycle.',
   },
   advisory: {
     label: 'Advisory',
-    color: AMBER,
     tip: 'Action not in the auto-apply allowlist — stays advisory until operator acts.',
   },
   operator_approval: {
     label: 'Operator approval',
-    color: BLUE,
     tip: 'Real account — requires operator approval and 2FA downstream.',
   },
 }
@@ -42,7 +37,6 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
   const label = ACTION_LABEL[action] || action.replace(/_/g, ' ').toLowerCase()
   const disp = DISP_META[String(p.atm_disposition || '')] || {
     label: 'Protection',
-    color: PURPLE,
     tip: 'ATM-governed protection adjustment.',
   }
   const acct = p.account_display || p.account || '—'
@@ -52,29 +46,32 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
 
   return (
     <div style={{
-      background: 'var(--bg1)',
-      border: '1px solid rgba(168,85,247,.35)',
-      borderRadius: 12,
-      padding: 14,
+      background: desk.bg,
+      border: `1px solid ${desk.border}`,
+      borderRadius: desk.radiusXl,
+      padding: '12px 14px',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: TEXT0, fontFamily: 'monospace' }}>{p.symbol}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: TEXT0, fontFamily: desk.mono }}>{p.symbol}</span>
             <ProposalSourceBadges proposal={p} size="sm" showRoutingLane />
             <ProposalStrategyBadge proposal={p} size="sm" />
-            <span title={disp.tip} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: `${disp.color}18`, color: disp.color, cursor: 'help' }}>
+            <span title={disp.tip} style={{
+              fontSize: 9, padding: '2px 8px', borderRadius: desk.radius,
+              background: desk.bgInset, color: desk.textMuted, border: `1px solid ${desk.borderSubtle}`, cursor: 'help',
+            }}>
               {disp.label}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 4, fontFamily: desk.mono }}>
             #{pid} · {label} · {acct}
           </div>
         </div>
         <span style={{ fontSize: 9, color: MUTED }}>{String(p.created_at || '').slice(0, 16)}</span>
       </div>
 
-      <div style={{ marginTop: 12, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
+      <div style={{ marginTop: 10, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
         {p.current_stop != null && (
           <span style={{ color: MUTED }}>
             Stop: {fmt$(p.current_stop, 2)}
@@ -90,14 +87,14 @@ export default function ProtectionProposalCard({ proposal: p }: Props) {
           <span style={{ color: MUTED }}>{p.shares} sh</span>
         )}
         {action === 'CONVERT_TO_TRAILING_STOP' && trailPct != null && (
-          <span title={trailMeta?.reason || 'Hybrid trail: max(family base %, ATR×family mult)'} style={{ color: PURPLE, cursor: 'help' }}>
+          <span title={trailMeta?.reason || 'Hybrid trail: max(family base %, ATR×family mult)'} style={{ color: desk.textMuted, cursor: 'help' }}>
             Trail {trailPct}% · {trailMeta?.trail_family || '—'} · R≥{trailMeta?.r_threshold ?? '—'}
           </span>
         )}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 9, color: MUTED }}>
-        ATM-governed · no broker route / cloud oversight · auto-apply gated by <code style={{ fontSize: 9 }}>PROTECTION_ATM_AUTO_APPLY_PAPER</code>
+      <div style={{ marginTop: 8, fontSize: 9, color: MUTED, lineHeight: 1.45 }}>
+        <span style={sectionLabel}>ATM</span> No broker route · auto-apply gated by <code style={{ fontSize: 9 }}>PROTECTION_ATM_AUTO_APPLY_PAPER</code>
       </div>
     </div>
   )

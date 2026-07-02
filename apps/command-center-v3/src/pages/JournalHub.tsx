@@ -485,12 +485,12 @@ export default function JournalHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>TradeInView</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Trading journal & performance analytics · {realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',

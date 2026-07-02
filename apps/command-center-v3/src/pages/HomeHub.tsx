@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import RiskGauge from '../components/risk/RiskGauge'
+import OperatorInboxPanel from '../components/OperatorInboxPanel'
+import { healthFindingCta } from '../lib/healthCta'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-
-const TABS = ['Snapshot', 'Morning Command', 'Brief'] as const
 
 // Compact home section card
 function SCard({ title, count, accent, children }: { title: string; count?: any; accent?: string; children: any }) {
@@ -24,7 +24,6 @@ function SCard({ title, count, accent, children }: { title: string; count?: any;
 const Line = ({ children, color }: any) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, color: color ?? 'var(--text2)' }}>{children}</div>
 
 export default function HomeHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('Snapshot')
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
@@ -33,15 +32,11 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
-  const { data: briefData } = useApi<any>('/api/v2/morning-brief', 300_000)
-  const { data: repExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=report', 300_000)
-  // latest report synthesis across lanes (most recent first)
-  const repIntel: any[] = Object.entries(repExt?.map ?? {})
-    .flatMap(([key, arr]: any) => (arr as any[]).map((e: any) => ({ ...e, key })))
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
   const { data: command } = useApi<any>('/api/v2/command', 60_000)
   const { data: hermesHealth } = useApi<any>('/api/v2/hermes/health', 120_000)
+  const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const cmd = command?.data ?? command ?? {}
+  const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
   const pv = overview?.portfolio_value
   const todayChg = overview?.today_change
@@ -91,24 +86,18 @@ export default function HomeHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Home</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
-          ))}
-        </div>
+        <Link to="/reports" style={{
+          padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
+          background: 'rgba(96,165,250,.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.35)',
+        }}>Morning brief → Reports</Link>
       </div>
 
-      {tab === 'Snapshot' && (
-        <>
+      <>
           {/* Command Center header — matches v2 layout */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
@@ -177,10 +166,16 @@ export default function HomeHub({ onDrill }: Props) {
             {/* Alert rail */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {triggered.length > 0 && (
-                <div onClick={() => onDrill({ title: `${triggered.length} Stops Triggered`, subtitle: 'Positions below stop', endpoint: '/api/v2/risk', rows: triggered })}
-                  style={{ padding: '10px 12px', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8, cursor: 'pointer' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>{triggered.length} stops triggered</div>
-                  <div style={{ fontSize: 10, color: '#fca5a5', marginTop: 2 }}>{triggered.map((p: any) => p.symbol).join(' ')}</div>
+                <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8 }}>
+                  <div onClick={() => onDrill({ title: `${triggered.length} Stops Triggered`, subtitle: 'Positions below stop', endpoint: '/api/v2/risk', rows: triggered })}
+                    style={{ cursor: 'pointer' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>{triggered.length} stops triggered</div>
+                    <div style={{ fontSize: 10, color: '#fca5a5', marginTop: 2 }}>{triggered.map((p: any) => p.symbol).join(' ')}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <Link to="/risk" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Risk → Exposure</Link>
+                    <Link to="/trading?tab=Open+Trades" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Trading → Open Trades</Link>
+                  </div>
                 </div>
               )}
               {heat > 5 && (
@@ -202,49 +197,74 @@ export default function HomeHub({ onDrill }: Props) {
                 const lowLink = (er.link_rate_pct ?? 100) < (er.target_link_rate_pct ?? 15)
                 const unrouted = (er.broker_unrouted_48h ?? 0) > 0
                 return (
-                  <div onClick={() => onDrill({
-                    title: 'Proposal Execution Readiness',
-                    subtitle: `${er.link_rate_pct ?? '—'}% link rate · ${er.pending_now ?? 0} pending`,
-                    endpoint: '/api/v2/health/proposals',
-                    rows: [er],
-                  })}
-                    style={{ padding: '10px 12px', background: lowLink || unrouted ? 'rgba(245,158,11,.1)' : 'var(--bg1)',
-                      border: `1px solid ${lowLink || unrouted ? 'rgba(245,158,11,.3)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: lowLink || unrouted ? '#f59e0b' : 'var(--text2)' }}>
-                      Proposals: {er.link_rate_pct ?? '—'}% linked
+                  <div style={{ padding: '10px 12px', background: lowLink || unrouted ? 'rgba(245,158,11,.1)' : 'var(--bg1)',
+                    border: `1px solid ${lowLink || unrouted ? 'rgba(245,158,11,.3)' : 'var(--border)'}`, borderRadius: 8 }}>
+                    <div onClick={() => onDrill({
+                      title: 'Proposal Execution Readiness',
+                      subtitle: `${er.link_rate_pct ?? '—'}% link rate · ${er.pending_now ?? 0} pending`,
+                      endpoint: '/api/v2/health/proposals',
+                      rows: [er],
+                    })} style={{ cursor: 'pointer' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: lowLink || unrouted ? '#f59e0b' : 'var(--text2)' }}>
+                        Proposals: {er.link_rate_pct ?? '—'}% linked
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                        {er.pending_now ?? 0} pending{unrouted ? ` · ${er.broker_unrouted_48h} unrouted >48h` : ''}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
-                      {er.pending_now ?? 0} pending{unrouted ? ` · ${er.broker_unrouted_48h} unrouted >48h` : ''}
-                    </div>
+                    <Link to="/trading?tab=Proposals" style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Trading → Proposals →</Link>
                   </div>
                 )
               })()}
+              {healthFindings.map((f: any, i: number) => {
+                const cta = f.cta ?? healthFindingCta(f)
+                return (
+                  <div key={`${f.type}-${i}`} style={{ padding: '10px 12px', background: f.severity === 'critical' ? 'rgba(239,68,68,.1)' : 'rgba(245,158,11,.08)', border: `1px solid ${f.severity === 'critical' ? 'rgba(239,68,68,.3)' : 'rgba(245,158,11,.25)'}`, borderRadius: 8 }}>
+                    <div onClick={() => onDrill({ title: f.type, subtitle: f.category, endpoint: '/api/v2/health', rows: [f] })} style={{ cursor: 'pointer', fontSize: 11, color: f.severity === 'critical' ? '#ef4444' : '#f59e0b', lineHeight: 1.4 }}>
+                      {f.message?.slice(0, 120)}{(f.message?.length ?? 0) > 120 ? '…' : ''}
+                    </div>
+                    <Link to={cta.route.replace(/^\/v3/, '') || '/health'} style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{cta.label} →</Link>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
           {/* Action inbox */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 14 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 10 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Action Inbox</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>read-only — drill to source, no write controls</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>drill to source · use CTAs to act</span>
             </div>
             {triggered.length > 0 && (
-              <div onClick={() => onDrill({ title: 'Triggered Stops', subtitle: 'Verify broker executed', endpoint: '/api/v2/risk', rows: triggered })}
-                style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: '#ef4444' }}>
-                {triggered.length} triggered stops — verify broker executed
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 8, fontWeight: 800, color: '#ef4444' }}>P0</span>
+                <span onClick={() => onDrill({ title: 'Triggered Stops', subtitle: 'Verify broker executed', endpoint: '/api/v2/risk', rows: triggered })}
+                  style={{ flex: 1, cursor: 'pointer', color: '#ef4444', minWidth: 160 }}>
+                  {triggered.length} triggered stops — verify broker executed
+                </span>
+                <Link to="/risk" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Risk →</Link>
+                <Link to="/reports?super=ops&category=advisories" style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textDecoration: 'none' }}>Reports</Link>
               </div>
             )}
             {pendingCount > 0 && (
-              <div onClick={() => onDrill({ title: 'Pending Proposals', subtitle: `${pendingCount} awaiting review`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: pendingCount }] })}
-                style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
-                {pendingCount} proposals awaiting review
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 8, fontWeight: 800, color: '#ef4444' }}>P0</span>
+                <span onClick={() => onDrill({ title: 'Pending Proposals', subtitle: `${pendingCount} awaiting review`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: pendingCount }] })}
+                  style={{ flex: 1, cursor: 'pointer', color: 'var(--text2)', minWidth: 160 }}>
+                  {pendingCount} proposals awaiting review
+                </span>
+                <Link to="/trading?tab=Proposals" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Proposals →</Link>
+                <Link to="/reports?super=ops&category=paper" style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textDecoration: 'none' }}>Reports</Link>
               </div>
             )}
             {triggered.length === 0 && pendingCount === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text3)', padding: 8 }}>No pending actions</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', padding: 8 }}>No pending stop/proposal actions</div>
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk + /api/v2/paper-proposals</div>
           </div>
+
+          <OperatorInboxPanel />
 
           {/* ===== Command Center sections (v2 parity, v3 themed) ===== */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))', gap: 14, marginTop: 16 }}>
@@ -344,128 +364,7 @@ export default function HomeHub({ onDrill }: Props) {
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/command → llm_intelligence (gemma3:12b daily)</div>
             </div>
           )}
-        </>
-      )}
-
-      {tab === 'Morning Command' && briefData && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Morning Brief</div>
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>Generated: {briefData.generated_at ?? '—'}</div>
-          {repIntel.length > 0 && (
-            <div style={{ marginBottom: 14, padding: '10px 12px', background: 'rgba(29,155,240,.06)', border: '1px solid rgba(29,155,240,.25)', borderRadius: 8 }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Hermes second read · free external LLM</div>
-              {repIntel.slice(0, 2).map((e: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: 'Report — Hermes second read', subtitle: `${e.lane === 'grok' ? 'Grok' : 'ChatGPT'} · ${e.key?.replace('REPORT:', '')}`, endpoint: 'derived', rows: [e], subjectType: 'report', subjectKey: e.key })}
-                  style={{ cursor: 'pointer', marginBottom: i === 0 && repIntel.length > 1 ? 8 : 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>
-                  <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 6 }}>{e.at ? new Date(e.at).toLocaleDateString() : ''}</span>
-                  <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, marginTop: 2 }}>{e.recommendation}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {briefData.action_items && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Action Items</div>
-              {(Array.isArray(briefData.action_items) ? briefData.action_items : []).map((a: any, i: number) => {
-                const label = typeof a === 'string' ? a : (a.message ?? a.title ?? a.action ?? a.code ?? '')
-                const code = typeof a === 'object' ? (a.code ?? null) : null
-                const sev = (typeof a === 'object' ? (a.severity ?? 'info') : 'info').toLowerCase()
-                const sevColor = sev === 'critical' || sev === 'urgent' || sev === 'p1' ? '#ef4444'
-                  : sev === 'warning' || sev === 'warn' || sev === 'p2' ? '#f59e0b' : 'var(--text3)'
-                return (
-                  <div key={i} onClick={() => onDrill({ title: `Action ${i+1}`, subtitle: code ?? '', endpoint: '/api/v2/morning-brief', rows: [typeof a === 'object' ? a : {item: a}] })}
-                    style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: sevColor, minWidth: 44 }}>{sev}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text1)', flex: 1 }}>{label}{code ? <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 9 }}>· {code}</span> : null}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          {briefData.strategy_health && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Strategy Health</div>
-              {(() => {
-                const sh = briefData.strategy_health
-                if (typeof sh === 'string') return <div style={{ fontSize: 10, color: 'var(--text2)' }}>{sh}</div>
-                const stuck = Array.isArray(sh.stuck_strategies) ? sh.stuck_strategies.length : (sh.stuck_strategies ?? 0)
-                const stuckNames = Array.isArray(sh.stuck_strategies) ? sh.stuck_strategies : []
-                const Chip = ({ label, val, color }: any) => (
-                  <div style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: color ?? 'var(--text0)' }}>{val}</div>
-                    <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
-                  </div>
-                )
-                return (
-                  <>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Chip label="Active" val={sh.total_active ?? 0} />
-                      <Chip label="New" val={sh.newly_activated ?? 0} color={sh.newly_activated ? '#10b981' : undefined} />
-                      <Chip label="Stuck" val={stuck} color={stuck > 0 ? '#ef4444' : undefined} />
-                    </div>
-                    {stuckNames.length > 0 && (
-                      <div style={{ fontSize: 9, color: '#ef4444', marginTop: 6 }}>Stuck: {stuckNames.join(', ')}</div>
-                    )}
-                  </>
-                )
-              })()}
-            </div>
-          )}
-          <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/morning-brief</div>
-        </div>
-      )}
-      {tab === 'Morning Command' && !briefData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading morning brief...</div>}
-
-      {tab === 'Brief' && briefData && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Overnight Activity</div>
-          {briefData.overnight_activity ? (
-            typeof briefData.overnight_activity === 'string'
-              ? <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>{briefData.overnight_activity}</div>
-              : (() => {
-                  const oa = briefData.overnight_activity
-                  const rows: [string, any][] = [
-                    ['Proposals created', oa.proposals_created],
-                    ['Proposals approved', oa.proposals_approved],
-                    ['Trades opened', oa.trades_opened],
-                    ['Trades closed', oa.trades_closed],
-                  ]
-                  const blocks = oa.risk_gate_blocks && Object.keys(oa.risk_gate_blocks).length
-                  const allZero = rows.every(([, v]) => !v) && !blocks
-                  return (
-                    <div>
-                      <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Since {oa.since ? new Date(oa.since).toLocaleString() : '—'}</div>
-                      {allZero ? (
-                        <div style={{ fontSize: 11, color: 'var(--text2)' }}>Quiet overnight — no proposals, trades, or risk-gate blocks.</div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          {rows.map(([l, v]) => (
-                            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', background: 'var(--bg2)', borderRadius: 6 }}>
-                              <span style={{ fontSize: 10, color: 'var(--text2)' }}>{l}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: v ? 'var(--text0)' : 'var(--text3)' }}>{v ?? 0}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {blocks ? (
-                        <div style={{ marginTop: 10 }}>
-                          <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>Risk-gate blocks</div>
-                          {Object.entries(oa.risk_gate_blocks).map(([k, v]: any) => (
-                            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text2)', padding: '2px 0' }}>
-                              <span>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })()
-          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>No overnight activity data</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/morning-brief → overnight_activity</div>
-        </div>
-      )}
-      {tab === 'Brief' && !briefData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading brief...</div>}
+      </>
     </div>
   )
 }

@@ -295,6 +295,26 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
     if rsi is not None:
         rsi = float(rsi)
 
+    # Finviz enrichment fallback — same source as Entry helper (watchlist proposals lack indicator cache).
+    enrich_fallback = {}
+    if atr is None or rsi is None or not scan.get('price'):
+        try:
+            import proposal_enrichment_bridge as peb
+            enrich_fallback = peb.enrichment_technicals(symbol, live_price=current_price or None)
+            if rsi is None and enrich_fallback.get('rsi') is not None:
+                rsi = float(enrich_fallback['rsi'])
+            if atr is None and enrich_fallback.get('atr') is not None:
+                atr = float(enrich_fallback['atr'])
+            if not current_price and enrich_fallback.get('available'):
+                try:
+                    from market_quote_provider import get_best_quote
+                    q = get_best_quote(symbol) or {}
+                    current_price = float(q.get('last_price') or q.get('last') or 0) or current_price
+                except Exception:
+                    pass
+        except Exception:
+            enrich_fallback = {}
+
     vwap = signals.get('vwap', {}).get('value') if signals else None
     vwap_dist_raw = signals.get('vwap', {}).get('distance_pct') if signals else None
     if vwap_dist_raw is None and proposal and proposal.get('vwap_distance') is not None:
@@ -307,13 +327,21 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
     avg_volume = signals.get('volume', {}).get('avg') if signals else None
     rvol = proposal.get('rvol') if proposal else None
     rvol = rvol or scan.get('rvol')
+    if rvol is None and enrich_fallback.get('rvol') is not None:
+        rvol = enrich_fallback['rvol']
     float_m = proposal.get('float_m') if proposal else None
     float_m = float_m or scan.get('float_m')
     gap_pct = proposal.get('gap_pct') if proposal else None
     gap_pct = gap_pct or scan.get('gap_pct')
+    if gap_pct is None and enrich_fallback.get('gap_pct') is not None:
+        gap_pct = enrich_fallback['gap_pct']
 
     sma20_dist = signals.get('sma20', {}).get('distance_pct') if signals else None
     sma50_dist = signals.get('sma50', {}).get('distance_pct') if signals else None
+    if sma20_dist is None and enrich_fallback.get('sma20_pct') is not None:
+        sma20_dist = enrich_fallback['sma20_pct']
+    if sma50_dist is None and enrich_fallback.get('sma50_pct') is not None:
+        sma50_dist = enrich_fallback['sma50_pct']
 
     # Classifications
     atr_pct, atr_state = classify_atr(atr, current_price or proposed_entry)

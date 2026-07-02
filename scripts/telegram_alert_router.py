@@ -23,6 +23,10 @@ _suppression_log: list = []
 # Rate limit counters: {hour_key: count}
 _hourly_counts: dict = {}
 
+# Health Agent repeat suppression
+_last_health: dict = {"score": None, "status": None, "ts": 0.0}
+_health_daily_count: dict = {}
+
 
 def _load_policy() -> dict:
     try:
@@ -66,6 +70,12 @@ _P2_PATTERNS = [
     # Lifecycle/catalog status
     (r"Scanner Catalog", "catalog_status"),
     (r"membership.*present.*dropped", "membership_status"),
+    # Telegram hygiene P1-6
+    (r"Hermes watchlist alerts", "hermes_batch"),
+    (r"Investigating \d+ escalation", "escalation_investigating"),
+    (r"Topic Curator:", "topic_curator"),
+    (r"Incubator Promoter|Promoted:\s*\d+\s*\|\s*Skipped:", "incubator_promoter"),
+    (r"Critic:\s*(?:BLOCK|DOWNGRADE)", "critic_block"),
 ]
 
 _P2_SYSTEM_PATTERNS = [
@@ -94,15 +104,32 @@ _P3_PATTERNS = [
 ]
 
 _P0_PATTERNS = [
+    (r"Paper Proposal:", "paper_proposal"),
     (r"APPROVAL.READY|approve/reject|/ptapprove|/ptreject", "proposal_actionable"),
+    (r"STOP_TRIGGERED\s*—|STOP TRIGGERED\s*—", "stop_symbol"),
     (r"execution.*fail|order.*fail|broker.*fail", "execution_failure"),
     (r"STOP.*(?:HIT|TRIGGERED).*action.required", "stop_action_required"),
+    (r"SIEM\s+P[01]:", "siem_critical"),
+    (r"STALELOCK|SYSTEM HEALTH:.*STALE", "stale_lock"),
+    (r"Remediation ineffective \(needs operator\)", "health_remediation_failed"),
     (r"URGENT|CRITICAL", "urgent_system"),
     (r"position.*unprotected|margin.*call", "position_risk"),
 ]
 
 _STOP_PATTERN = re.compile(r"STOP.*(TRIGGERED|HIT|alert)", re.IGNORECASE)
 _GO_PATTERN = re.compile(r"GO.Tier|🎯.*GO|Trade AI v12|Trade AI LIVE", re.IGNORECASE)
+_HEALTH_PATTERN = re.compile(r"Health Agent:\s*(\w+)\s*—\s*(\d+)/100", re.IGNORECASE)
+_PORTFOLIO_INTEL = re.compile(r"PORTFOLIO INTELLIGENCE", re.IGNORECASE)
+
+
+def _parse_health(message: str) -> tuple[str | None, int | None]:
+    m = _HEALTH_PATTERN.search(message)
+    if not m:
+        return None, None
+    try:
+        return m.group(1).lower(), int(m.group(2))
+    except (ValueError, IndexError):
+        return m.group(1).lower(), None
 
 
 def classify_alert(message: str) -> str:
@@ -120,6 +147,19 @@ def classify_alert(message: str) -> str:
         if re.search(pattern, message, re.IGNORECASE):
             return "P3_LOG_ONLY"
 
+    # Health Agent — score/status aware
+    if _HEALTH_PATTERN.search(message):
+        status, score = _parse_health(message)
+        rules = _policy()
+        if status == "unhealthy":
+            return "P1_DIGEST"
+        if status == "degraded":
+            max_score = rules.get("health_telegram_max_score", 80)
+            if score is not None and score < max_score:
+                return "P1_DIGEST"
+            return "P2_DASHBOARD_ONLY"
+        return "P2_DASHBOARD_ONLY"
+
     # Check P2 system noise (health agent, retries, staleness, LLM complete)
     for pattern, _ in _P2_SYSTEM_PATTERNS:
         if re.search(pattern, message, re.IGNORECASE):
@@ -129,7 +169,14 @@ def classify_alert(message: str) -> str:
     rules = _policy()
     for pattern, category in _P2_PATTERNS:
         if re.search(pattern, message, re.IGNORECASE):
-            # Some P2 categories have policy overrides
+            if category == "hermes_batch" and not rules.get("suppress_hermes_telegram", True):
+                return "P1_DIGEST"
+            if category == "escalation_investigating" and not rules.get("suppress_escalation_investigating", True):
+                return "P1_DIGEST"
+            if category == "incubator_promoter" and not rules.get("suppress_incubator_promoter", True):
+                return "P1_DIGEST"
+            if category == "topic_curator" and not rules.get("suppress_topic_curator", True):
+                return "P1_DIGEST"
             if category == "wait_signal" and rules.get("suppress_wait", True):
                 return "P2_DASHBOARD_ONLY"
             if category == "avoid_signal" and rules.get("suppress_avoid", True):
@@ -147,19 +194,24 @@ def classify_alert(message: str) -> str:
                     return "P2_DASHBOARD_ONLY"
             return "P2_DASHBOARD_ONLY"
 
-    # Stop triggers: dedupe-aware
-    if _STOP_PATTERN.search(message):
-        return "P1_DIGEST"  # Stops go to digest unless explicitly actionable (P0 already caught)
+    # Portfolio intelligence digest
+    if _PORTFOLIO_INTEL.search(message):
+        return "P1_DIGEST"
 
-    # Trade AI LIVE messages with GO tickers
+    # Stop batch summary (not per-symbol)
+    if _STOP_PATTERN.search(message):
+        return "P1_DIGEST"
+
+    # Trade AI LIVE — dashboard only unless trade plan present
     if _GO_PATTERN.search(message):
-        # Only P0 if it contains actionable trade plan
         if re.search(r"Entry.*Stop.*Target|R:R\s+\d", message):
             return "P0_INTERRUPT"
-        return "P1_DIGEST"  # GO without trade plan goes to digest
+        if re.search(r"MORNING COMMAND", message, re.IGNORECASE):
+            return "P1_DIGEST"
+        return "P2_DASHBOARD_ONLY"
 
     # Aegis/morning brief
-    if re.search(r"Aegis|Morning Brief|morning brief", message, re.IGNORECASE):
+    if re.search(r"Aegis|Morning Brief|morning brief|MORNING COMMAND", message, re.IGNORECASE):
         return "P1_DIGEST"
 
     # Default: P1 digest (not silent, but not interrupting)
@@ -168,19 +220,31 @@ def classify_alert(message: str) -> str:
 
 def build_dedupe_key(message: str) -> str:
     """Build a deduplication key from message content."""
-    # Extract symbol if present
-    sym_match = re.search(r"\*(\w{1,5})\*", message)
+    sym_match = re.search(r"\*(\w{1,5})\*", message) or re.search(
+        r"STOP_TRIGGERED\s*—\s*(\w+)", message, re.IGNORECASE
+    )
     symbol = sym_match.group(1) if sym_match else ""
 
-    # Extract alert type
-    if _STOP_PATTERN.search(message):
-        return f"stop_{symbol}"
-    if _GO_PATTERN.search(message):
-        return f"go_{symbol}"
-    if re.search(r"Aegis|Morning Brief", message, re.IGNORECASE):
-        return "aegis_brief"
+    status, score = _parse_health(message)
+    if status is not None:
+        return f"health_{status}_{score}"
 
-    # Generic hash for other messages
+    if _PORTFOLIO_INTEL.search(message):
+        return "portfolio_intelligence"
+
+    if re.search(r"Paper Proposal:\s*(\w+)", message, re.IGNORECASE):
+        m = re.search(r"Paper Proposal:\s*(\w+)", message, re.IGNORECASE)
+        return f"paper_proposal_{m.group(1) if m else 'x'}"
+
+    if _STOP_PATTERN.search(message):
+        return f"stop_{symbol}" if symbol else "stop_batch"
+    if _GO_PATTERN.search(message):
+        m = re.search(r"NEW GO\s*—\s*(\w+)", message, re.IGNORECASE)
+        sym = m.group(1) if m else symbol
+        return f"go_{sym or 'live'}"
+    if re.search(r"Aegis|Morning Brief|MORNING COMMAND", message, re.IGNORECASE):
+        return "morning_command"
+
     normalized = re.sub(r"\d{4}-\d{2}-\d{2}|\d{2}:\d{2}|\d+\.\d+%", "", message)
     return hashlib.md5(normalized[:200].encode()).hexdigest()[:12]
 
@@ -191,9 +255,13 @@ def is_deduplicated(message: str, window_minutes: int = None) -> bool:
     rules = _policy()
 
     if window_minutes is None:
-        if "stop" in key:
+        if key.startswith("health_"):
+            window_minutes = rules.get("suppress_health_repeat_minutes", 240)
+        elif key == "portfolio_intelligence":
+            window_minutes = rules.get("portfolio_intelligence_dedupe_minutes", 360)
+        elif "stop" in key:
             window_minutes = rules.get("stop_trigger_dedupe_minutes", 390)
-        elif "go_" in key:
+        elif key.startswith("go_"):
             window_minutes = rules.get("go_signal_dedupe_minutes", 120)
         else:
             window_minutes = 60
@@ -205,10 +273,48 @@ def is_deduplicated(message: str, window_minutes: int = None) -> bool:
     return False
 
 
+def _health_telegram_allowed(message: str) -> bool:
+    """Extra gate for Health Agent: only send on material score/status change."""
+    rules = _policy()
+    status, score = _parse_health(message)
+    if status is None:
+        return True
+
+    day_key = time.strftime("%Y-%m-%d")
+    if _health_daily_count.get(day_key, 0) >= rules.get("max_health_telegram_per_day", 2):
+        return False
+
+    now = time.time()
+    repeat_mins = rules.get("suppress_health_repeat_minutes", 240)
+    if (
+        _last_health.get("score") == score
+        and _last_health.get("status") == status
+        and now - _last_health.get("ts", 0) < repeat_mins * 60
+    ):
+        return False
+
+    last_score = _last_health.get("score")
+    min_delta = rules.get("health_telegram_min_delta", 5)
+    if status == "degraded" and last_score is not None and score is not None:
+        if abs(score - last_score) < min_delta:
+            return False
+
+    return True
+
+
+def _mark_health_sent(message: str):
+    status, score = _parse_health(message)
+    day_key = time.strftime("%Y-%m-%d")
+    _health_daily_count[day_key] = _health_daily_count.get(day_key, 0) + 1
+    _last_health.update({"score": score, "status": status, "ts": time.time()})
+
+
 def mark_sent(message: str):
     """Record that this message was sent (for dedupe tracking)."""
     key = build_dedupe_key(message)
     _dedupe_cache[key] = time.time()
+    if _HEALTH_PATTERN.search(message):
+        _mark_health_sent(message)
 
 
 def apply_rate_limit(message: str) -> dict:
@@ -231,18 +337,19 @@ def should_send_telegram(message: str) -> bool:
     """Main gate: should this message be sent to Telegram?"""
     level = classify_alert(message)
 
-    # P2 and P3 never go to Telegram
     if level in ("P2_DASHBOARD_ONLY", "P3_LOG_ONLY"):
         record_suppressed(message, f"level={level}")
         return False
 
-    # P1 digest: only send if not deduplicated
+    if _HEALTH_PATTERN.search(message) and not _health_telegram_allowed(message):
+        record_suppressed(message, "health_repeat")
+        return False
+
     if level == "P1_DIGEST":
         if is_deduplicated(message):
             record_suppressed(message, "deduplicated")
             return False
 
-    # Rate limit check
     rl = apply_rate_limit(message)
     if not rl["allowed"]:
         record_suppressed(message, rl["reason"])
@@ -259,7 +366,6 @@ def record_suppressed(message: str, reason: str):
         "level": classify_alert(message),
         "preview": message[:100],
     })
-    # Keep only last 500 entries in memory
     if len(_suppression_log) > 500:
         _suppression_log.pop(0)
 
@@ -276,20 +382,21 @@ def route_alert(message: str) -> dict:
     policy = _load_policy()
     destinations = policy.get("destinations", {})
 
-    # Determine dashboard destination
-    dest = "log"
-    if re.search(r"propos|approv", message, re.IGNORECASE):
+    dest = destinations.get("reports", "/v3/reports")
+    if re.search(r"propos|approv|Paper Proposal", message, re.IGNORECASE):
         dest = destinations.get("proposals", "/v3/trading")
     elif re.search(r"stop|risk|position", message, re.IGNORECASE):
         dest = destinations.get("risk", "/v3/risk")
     elif re.search(r"journal|lesson|closed trade", message, re.IGNORECASE):
         dest = destinations.get("journal", "/v3/journal")
+    elif re.search(r"Hermes watchlist", message, re.IGNORECASE):
+        dest = destinations.get("hermes", "/v3/watch")
     elif re.search(r"Iris|library|content gap", message, re.IGNORECASE):
         dest = destinations.get("iris_library", "/v3/intelligence")
     elif re.search(r"scanner|GO|WAIT|AVOID|Trade AI", message, re.IGNORECASE):
         dest = destinations.get("trade_ai_scanner", "/v3/trading")
-    elif re.search(r"governance|system|health", message, re.IGNORECASE):
-        dest = destinations.get("system_health", "/v3/system")
+    elif re.search(r"governance|system|health|SIEM|escalation", message, re.IGNORECASE):
+        dest = destinations.get("system_health", "/v3/health")
 
     return {
         "level": level,

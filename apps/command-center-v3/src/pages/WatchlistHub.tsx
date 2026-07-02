@@ -12,7 +12,7 @@ import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { watchlistReportEligible } from '../lib/reportLinks'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
 const TEXT0 = '#f8fafc'
 const TEXT1 = '#dbeafe'
@@ -24,6 +24,16 @@ const RED = '#ef4444'
 const AMBER = '#f59e0b'
 const BLUE = '#60a5fa'
 const PURPLE = '#a855f7'
+const TEAL = '#14b8a6'
+
+function watchlistNeedsRefresh(it: any, stale: boolean) {
+  if (stale) return true
+  if (it.final_synthesis_status === 'pending') return true
+  return ['maria_status', 'steph_status', 'risk_status'].some(k => {
+    const s = it[k]
+    return s && String(s).toLowerCase() !== 'completed'
+  })
+}
 
 const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }
 const metricBox: React.CSSProperties = { background: 'rgba(15,23,42,.58)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9, padding: '8px 10px', minHeight: 52 }
@@ -74,7 +84,7 @@ const Metric = ({ label, value, color = TEXT0 }: { label: string; value: any; co
 
 const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
-export default function WatchlistHub({ onDrill }: Props) {
+export default function WatchlistHub({ onDrill, embedded }: Props) {
   const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
@@ -134,6 +144,7 @@ export default function WatchlistHub({ onDrill }: Props) {
   const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
   const [showDirectives, setShowDirectives] = useState(false)   // Watch Directives chip wall — collapsed by default (it's a long list; the Directive filter dropdown still works)
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
+  const [refreshBusy, setRefreshBusy] = useState<Record<string, string>>({})   // per-symbol manual refresh status
   const PER_PAGE = 24
   const isStarred = (it: any) => starOverride[String(it.symbol).toUpperCase()] ?? !!it.starred
   // operator star: always-in-window + sorted first (server) + faster entry-plan refresh (server). Optimistic.
@@ -156,6 +167,26 @@ export default function WatchlistHub({ onDrill }: Props) {
   const heldCount = useMemo(() => new Set(items
     .filter((it: any) => it.in_portfolio || outMap[String(it.symbol).toUpperCase()]?.held)
     .map((it: any) => String(it.symbol).toUpperCase())).size, [items, outMap])
+
+  const refreshSymbol = async (sym: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const key = String(sym).toUpperCase()
+    setRefreshBusy(b => ({ ...b, [key]: '…' }))
+    try {
+      const r = await fetch(`/api/v2/watchlist/${key}/refresh`, { method: 'POST' })
+      const j = await r.json()
+      const payload = j?.data ?? j
+      if (payload?.ok) {
+        const n = payload.requeued ?? 0
+        setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+        setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 2500)
+      } else {
+        setRefreshBusy(b => ({ ...b, [key]: 'error' }))
+      }
+    } catch {
+      setRefreshBusy(b => ({ ...b, [key]: 'error' }))
+    }
+  }
 
   const runChatgptTop20 = async () => {
     if (curateRunning) return
@@ -232,14 +263,16 @@ export default function WatchlistHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: TEXT0 }}>Watchlist</div>
-          <div style={{ fontSize: 12, color: MUTED }}>{byStatus.active ?? items.length} active · {byStatus.researched ?? 0} researched · {byStatus.removed ?? 0} removed · larger CIO cards</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: '9px 15px', fontSize: 12, fontWeight: 800, borderRadius: 8, border: '1px solid #10a37f', cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16,163,127,.15)' : 'rgba(16,163,127,.12)', color: '#34d399', opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT running… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ Run ChatGPT on Top 20'}</button>
-          <button onClick={() => setShowAdd(true)} style={{ padding: '9px 17px', fontSize: 12, fontWeight: 800, borderRadius: 8, border: 'none', cursor: 'pointer', background: PURPLE, color: '#fff' }}>+ Add Watch</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: embedded ? 10 : 16 }}>
+        {!embedded && (
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: TEXT0 }}>Watchlist</div>
+            <div style={{ fontSize: 12, color: MUTED }}>{byStatus.active ?? items.length} active · {byStatus.researched ?? 0} researched · {byStatus.removed ?? 0} removed · larger CIO cards</div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: embedded ? 0 : 'auto' }}>
+          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 8, border: '1px solid #10a37f', cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16,163,127,.15)' : 'rgba(16,163,127,.12)', color: '#34d399', opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ ChatGPT Top 20'}</button>
+          <button onClick={() => setShowAdd(true)} style={{ padding: embedded ? '6px 12px' : '9px 17px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 8, border: 'none', cursor: 'pointer', background: PURPLE, color: '#fff' }}>+ Add Watch</button>
         </div>
       </div>
 
@@ -355,6 +388,19 @@ export default function WatchlistHub({ onDrill }: Props) {
               const warns = entry != null || stop != null ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa.upside != null ? Number(pa.upside) : null }) : []
               const hasPlan = entry != null && stop != null   // a real entry/stop plan exists → make it stand out
               const llms = extMap[it.symbol] || []
+              const symKey = String(it.symbol).toUpperCase()
+              const refreshState = refreshBusy[symKey]
+              const needsRefresh = watchlistNeedsRefresh(it, stale)
+              const refreshBtnStyle: React.CSSProperties = {
+                fontSize: 11, fontWeight: 800, padding: '7px 14px', borderRadius: 8,
+                border: `1.5px solid ${needsRefresh ? TEAL : GREEN}`,
+                background: needsRefresh ? 'rgba(20,184,166,.24)' : 'rgba(34,197,94,.16)',
+                color: needsRefresh ? '#5eead4' : '#86efac',
+                cursor: refreshState ? 'wait' : 'pointer',
+                opacity: refreshState ? 0.8 : 1,
+                whiteSpace: 'nowrap',
+                boxShadow: needsRefresh ? '0 0 12px rgba(20,184,166,.35)' : undefined,
+              }
               return (
                 <div key={it.id} onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
                   style={{ background: hasPlan ? 'linear-gradient(180deg, rgba(22,52,42,.74), rgba(15,32,26,.7))' : 'linear-gradient(180deg, rgba(30,41,59,.74), rgba(15,23,42,.68))', border: hasPlan ? `1px solid ${GREEN}77` : '1px solid rgba(148,163,184,.22)', borderLeft: `4px solid ${it.directive_id ? PURPLE : originColor(it.origin_system)}`, borderRadius: 13, padding: 16, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: hasPlan ? `0 0 0 1px ${GREEN}44, 0 0 22px rgba(34,197,94,.18), 0 10px 28px rgba(0,0,0,.2)` : '0 10px 28px rgba(0,0,0,.18)' }}>
@@ -367,7 +413,17 @@ export default function WatchlistHub({ onDrill }: Props) {
                       {hasPlan && !it.private_nontradeable && <span title="entry plan ready — limit/stop/exit-ladder set" style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: GREEN + '26', color: '#bbf7d0', border: `1px solid ${GREEN}77` }}>🎯 PLAN</span>}
                       <ProAnalystPill symbol={it.symbol} map={paMap} compact />
                     </div>
-                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</div>{it.change_pct != null && <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</div>}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                      <button onClick={e => refreshSymbol(it.symbol, e)} disabled={!!refreshState}
+                        title="Refresh Finviz/RSI now + re-queue Maria → Steph → Risk → CIO synthesis (~15 min cron). Advisory-only."
+                        style={refreshBtnStyle}>
+                        {refreshState ? `↻ ${refreshState}` : '↻ Refresh'}
+                      </button>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</div>
+                        {it.change_pct != null && <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</div>}
+                      </div>
+                    </div>
                   </div>
 
                   {fvMap[it.symbol] && (() => {
@@ -491,7 +547,7 @@ export default function WatchlistHub({ onDrill }: Props) {
             <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
-        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>Click a card → full provenance, model reviews, risk/counter-view, catalyst chain, and entry plan. Advisory-only — read-only, never places trades.</div>
+        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>↻ Refresh on each card — Finviz/RSI now + agent requeue. Click card body → full provenance and entry plan. Advisory-only — never places trades.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}

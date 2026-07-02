@@ -22,15 +22,19 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # Order here is the tab order in the UI.
 CATEGORIES = [
     {"key": "morning_briefs", "label": "Morning Briefs", "icon": "🛡", "nl_types": ["aegis_morning_brief"], "ae": None,
-     "ob_types": ["trade_ai_brief"]},
+     "ob_types": ["trade_ai_brief", "morning_command"]},
     {"key": "digests",        "label": "Digests",        "icon": "📰", "nl_types": ["daily_digest"], "ae": None,
      "ob_types": ["overnight_brief", "premarket_brief"]},
-    {"key": "portfolio_briefs", "label": "Portfolio Briefs", "icon": "💼", "nl_types": [], "ae": None, "ob_types": ["portfolio_brief"]},
+    {"key": "portfolio_briefs", "label": "Portfolio Briefs", "icon": "💼", "nl_types": [], "ae": None,
+     "ob_types": ["portfolio_brief", "technical_signals", "dividend_monthly"]},
+    {"key": "trade_ai_live",  "label": "Trade AI LIVE",  "icon": "⚡", "nl_types": [], "ae": None, "ob_types": ["trade_ai_live"]},
+    {"key": "hermes_alerts",  "label": "Hermes Alerts",  "icon": "🔭", "nl_types": [], "ae": None, "ob_types": ["hermes_alerts"]},
     {"key": "monthly",        "label": "Monthly Reports", "icon": "🗓", "nl_types": [], "ae": None,
      "ar_types": ["monthly", "monthly_retirement"], "ob_types": ["monthly_report", "commanders_summary"]},
     {"key": "weekly_reviews", "label": "Weekly Reviews",  "icon": "📆", "nl_types": [], "ae": None,
      "ar_types": ["weekly", "weekly_health"], "ob_types": ["strategy_weekly", "alex_review", "weekly_summary"]},
-    {"key": "incubator",      "label": "Incubator Screen", "icon": "🧪", "nl_types": [], "ae": None, "ob_types": ["incubator_screen"]},
+    {"key": "incubator",      "label": "Incubator Screen", "icon": "🧪", "nl_types": [], "ae": None,
+     "ob_types": ["incubator_screen", "incubator_promoter"]},
     {"key": "research",       "label": "Research & Intel", "icon": "🔬", "nl_types": [], "ae": None,
      "ob_types": ["auto_research", "daily_intel", "cio_summary"]},
     {"key": "eod_trades",     "label": "Trade Reports",   "icon": "📈", "nl_types": [], "ae": None,
@@ -45,9 +49,13 @@ CATEGORIES = [
      "ob_types": ["recovery_reminder"]},
     {"key": "dividends",      "label": "Dividends",      "icon": "💰", "nl_types": ["dividend_alert"], "ae": None},
     {"key": "regime",         "label": "Regime / Rebalance", "icon": "📊", "nl_types": ["regime_change", "rebalance_stale"], "ae": None},
-    {"key": "paper",          "label": "Paper Trading",  "icon": "📝", "nl_types": ["paper_trade_monitor"], "ae": None},
+    {"key": "paper",          "label": "Paper Trading",  "icon": "📝", "nl_types": ["paper_trade_monitor"], "ae": None,
+     "ob_types": ["paper_proposal"]},
+    {"key": "health_agent",   "label": "Health Agent",   "icon": "🩺", "nl_types": [], "ae": None, "ob_types": ["health_agent"]},
+    {"key": "escalations",    "label": "Escalations",    "icon": "🔍", "nl_types": [], "ae": None, "ob_types": ["escalations"]},
     {"key": "system",         "label": "System Health",  "icon": "⚙️", "nl_types": ["api_credits_depleted", "backup_verification", "LLM_WARMUP_FAILED"],
-     "ae": {"alert_type": ["system_health", "data_staleness", "data_integrity"]}},
+     "ae": {"alert_type": ["system_health", "data_staleness", "data_integrity"]},
+     "ob_types": ["siem_p1", "topic_curator"]},
 ]
 _BY_KEY = {c["key"]: c for c in CATEGORIES}
 

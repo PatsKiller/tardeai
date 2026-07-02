@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -117,14 +118,14 @@ export default function RiskHub({ onDrill }: Props) {
     <div>
       <AskAgents examples={["Am I over-concentrated? What's my biggest single-name risk?", "What's the R:R if I trim my largest position 5%?"]} />
       <div style={{ marginBottom: 14 }}><ScalpStopMonitorCard /></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Risk Hub</div>
           <div style={{ fontSize: 11, color: overThreshold ? '#ef4444' : 'var(--text3)' }}>
             heat {heat}%{overThreshold ? ' — over threshold' : ''} · {positions.length} positions
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -261,6 +262,14 @@ export default function RiskHub({ onDrill }: Props) {
               {latest.stale_data && <span style={{ color: '#ef4444', marginLeft: 8 }}>STALE DATA</span>}
             </div>
           )}
+          {(latest?.stale_data || indList.length === 0) && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', fontSize: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ color: '#f59e0b' }}>Regime data may be stale — check producing cron before sizing.</span>
+              <Link to="/reports" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Reports brief →</Link>
+              <Link to="/watch?tab=sectors" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Watch sectors →</Link>
+              <Link to="/strategy" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Strategy planner →</Link>
+            </div>
+          )}
           {/* Indicator grid — grouped by indicator_group */}
           {indList.length === 0 ? (
             <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>No regime indicators available</div>
@@ -324,7 +333,13 @@ export default function RiskHub({ onDrill }: Props) {
           )}
           {/* NxN matrix */}
           {corrSymbols.length === 0 ? (
-            <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>Correlation not yet computed</div>
+            <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>
+              Correlation not yet computed.
+              <div style={{ marginTop: 10, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Link to="/portfolio" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Portfolio holdings →</Link>
+                <Link to="/watch?tab=sectors" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Sector monitor →</Link>
+              </div>
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 9 }}>

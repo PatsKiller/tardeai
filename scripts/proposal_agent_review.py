@@ -32,16 +32,29 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 # ── Strategy -> required agents mapping ────────────────────────────────────
 
-STRATEGY_AGENTS = {
-    "momentum_scalp": ["Maria", "Risk", "Iris", "Aegis"],
-    "gap_and_go": ["Maria", "Risk", "Iris", "Aegis"],
-    "swing_breakout": ["Maria", "Risk", "Steph", "Aegis"],
-    "sector_rotation": ["Risk", "Steph", "Aegis"],
-    "income_add": ["Steph", "Tax", "Alex", "Aegis"],
-    "earnings_catalyst": ["Maria", "Risk", "Iris", "Aegis"],
+# Canonical DB keys match broker_promote_oversight REQUIRED_AGENTS (maria, risk_agent, steph).
+CANONICAL_AGENTS = {
+    "maria": "Maria",
+    "risk_agent": "Risk",
+    "steph": "Steph",
+    "iris": "Iris",
+    "aegis": "Aegis",
+    "tax": "Tax",
+    "alex": "Alex",
 }
 
-DEFAULT_AGENTS = ["Risk", "Aegis"]
+STRATEGY_AGENTS = {
+    "momentum_scalp": ["maria", "risk_agent", "iris", "aegis"],
+    "gap_and_go": ["maria", "risk_agent", "iris", "aegis"],
+    "swing_breakout": ["maria", "risk_agent", "steph", "aegis"],
+    "pullback_macd_reversal": ["maria", "risk_agent", "steph", "aegis"],
+    "sector_rotation": ["risk_agent", "steph", "aegis"],
+    "income_add": ["steph", "tax", "alex", "aegis"],
+    "earnings_catalyst": ["maria", "risk_agent", "iris", "aegis"],
+    "defense_thesis": ["maria", "risk_agent", "steph"],
+}
+
+DEFAULT_AGENTS = ["maria", "risk_agent", "steph"]
 
 AGENT_ROLES = {
     "Maria": "catalyst_news",
@@ -326,13 +339,21 @@ def review_proposal(conn, proposal_id, dry_run=False):
         log.info(f"[dry-run] Would review {symbol} (#{proposal_id}) with agents: {agents}")
         return {"success": True, "dry_run": True, "agents": agents}
 
-    # Load technical context
+    # Load technical context — hydrate from Finviz enrichment when indicator snapshot is empty.
     technical = proposal.get('technical_context')
     if isinstance(technical, str):
         try:
             technical = json.loads(technical)
         except Exception:
             technical = {}
+    if not technical or (technical.get('atr') is None and technical.get('rsi') is None):
+        try:
+            import proposal_enrichment_bridge as peb
+            live_px = proposal.get('proposed_entry')
+            snap = peb.snapshot_from_enrichment(symbol, live_price=float(live_px) if live_px else None)
+            technical = {**(technical or {}), **{k: v for k, v in snap.items() if v is not None}}
+        except Exception:
+            pass
 
     # Load backtest
     backtest = proposal.get('backtest_summary')
@@ -346,30 +367,31 @@ def review_proposal(conn, proposal_id, dry_run=False):
     generate_fn = _get_llm()
     reviews = {}
 
-    for agent_name in agents:
-        role = AGENT_ROLES.get(agent_name, "reviewer")
+    for agent_key in agents:
+        display_name = CANONICAL_AGENTS.get(agent_key, agent_key.replace("_", " ").title())
+        role = AGENT_ROLES.get(display_name, AGENT_ROLES.get(agent_key, "reviewer"))
 
         review = None
         model = "deterministic_fallback"
 
         if generate_fn:
             try:
-                prompt = _build_agent_prompt(agent_name, proposal, technical, backtest)
+                prompt = _build_agent_prompt(display_name, proposal, technical, backtest)
                 raw = generate_fn(prompt, timeout=90, fallback=True, fast=True)
                 if raw:
                     review = parse_proposal_vote_result(raw, valid_votes=frozenset(VALID_VOTES))
                     if review:
                         model = _get_model_name() or "local_llm"
             except Exception as e:
-                log.warning(f"LLM review failed for {agent_name}/{symbol}: {e}")
+                log.warning(f"LLM review failed for {agent_key}/{symbol}: {e}")
 
         if not review:
-            review = _deterministic_review(agent_name, proposal, technical, backtest)
+            review = _deterministic_review(display_name, proposal, technical, backtest)
             model = "deterministic_fallback"
 
-        reviews[agent_name] = review
+        reviews[agent_key] = review
 
-        # Upsert into proposal_agent_reviews
+        # Upsert into proposal_agent_reviews (canonical lowercase keys for oversight gate)
         try:
             now = datetime.now(timezone.utc)
             cur.execute("""
@@ -389,7 +411,7 @@ def review_proposal(conn, proposal_id, dry_run=False):
                     reviewed_at = EXCLUDED.reviewed_at,
                     payload = EXCLUDED.payload
             """, [
-                proposal_id, symbol, strategy_id, agent_name, role,
+                proposal_id, symbol, strategy_id, agent_key, role,
                 review["vote"], review["confidence"], review["summary"],
                 json.dumps(review.get("concerns", [])),
                 json.dumps(review.get("required_followups", [])),
@@ -398,10 +420,10 @@ def review_proposal(conn, proposal_id, dry_run=False):
             ])
             conn.commit()
         except Exception as e:
-            log.warning(f"Failed to persist {agent_name} review: {e}")
+            log.warning(f"Failed to persist {agent_key} review: {e}")
             conn.rollback()
 
-        log.info(f"  {agent_name}: {review['vote']} ({review['confidence']}%) — {review['summary'][:60]}")
+        log.info(f"  {agent_key}: {review['vote']} ({review['confidence']}%) — {review['summary'][:60]}")
 
     # Update proposal agent_review_status
     all_reviewed = all(a in reviews for a in agents)

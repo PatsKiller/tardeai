@@ -25,6 +25,7 @@ export default function SecretsManager() {
   const [vres, setVres] = useState<Record<string, any>>({})
   const [vbusy, setVbusy] = useState(false)
   const selectedConfig = !!secrets.find((s: any) => s.key === key)?.is_config  // config value (not a masked secret)
+  const isCookieKey = key.endsWith('_COOKIE')
 
   const validateAll = async () => {
     setVbusy(true)
@@ -114,9 +115,16 @@ export default function SecretsManager() {
             <input list="secret-keys" value={key} onChange={e => setKey(e.target.value.toUpperCase())} placeholder="ANTHROPIC_API_KEY"
               style={{ width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 12px' }} />
             <datalist id="secret-keys">{secrets.filter((s: any) => !s.read_only).map((s: any) => <option key={s.key} value={s.key} />)}</datalist>
-            <label style={{ fontSize: 10, color: 'var(--text3)' }}>{selectedConfig ? 'Value (config — not masked)' : 'New value'}</label>
-            <input type={selectedConfig ? 'text' : 'password'} value={val} onChange={e => setVal(e.target.value)} placeholder={selectedConfig ? 'https://…/oauth/callback' : 'paste the new key/secret'} autoComplete="new-password"
-              style={{ width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 14px' }} />
+            <label style={{ fontSize: 10, color: 'var(--text3)' }}>{selectedConfig ? 'Value (config — not masked)' : isCookieKey ? 'Cookie string (full browser Cookie header)' : 'New value'}</label>
+            {isCookieKey ? (
+              <textarea value={val} onChange={e => setVal(e.target.value)} placeholder="Paste the full Cookie header from elite.finviz.com (DevTools → Network → any request → Cookie). Must include .ASPXAUTH and .AspNetCore.Session."
+                autoComplete="off" rows={5}
+                style={{ width: '100%', padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 14px', resize: 'vertical' }} />
+            ) : (
+              <input type={selectedConfig ? 'text' : 'password'} value={val} onChange={e => setVal(e.target.value)} placeholder={selectedConfig ? 'https://…/oauth/callback' : 'paste the new key/secret'} autoComplete="new-password"
+                style={{ width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 14px' }} />
+            )}
+            {isCookieKey && <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: -10, marginBottom: 12 }}>Save auto-runs a live Finviz export test. Semicolons/parentheses are OK — stored quoted in .env.</div>}
             {msg && <div style={{ fontSize: 11, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', marginBottom: 12 }}>{msg}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setOpen(false)} style={{ padding: '8px 14px', fontSize: 12, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>Cancel</button>

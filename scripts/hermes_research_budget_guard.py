@@ -156,6 +156,19 @@ def decide(symbol, trigger_source, research_type="research", lane="metadata", ur
                    reason="free-OAuth cloud lane unavailable — DEFER (never fall back to paid or local-heavy)")
         return res
 
+    # --- 7b. External cloud only for T0/T1 (audit: stop OAuth spray on T2/T3) ---
+    if lk == "cloud_free":
+        allowed = pol.get("external_cloud_tiers") or ["T0", "T1"]
+        if tier not in allowed:
+            res.update(decision=DEFER, lane_used="none",
+                       reason=f"{tier}: external cloud reserved for {allowed} — DEFER")
+            return res
+        ext_cap = pol.get("max_external_symbols_per_run")
+        if symbols_this_run is not None and ext_cap is not None and symbols_this_run >= ext_cap:
+            res.update(decision=DEFER, lane_used="none",
+                       reason=f"global external symbol cap {ext_cap}/run reached — DEFER")
+            return res
+
     # --- 8. Duplicate suppression ---
     if dedup_fresh:
         res.update(decision=pol.get("dedup", {}).get("decision_when_fresh", DEFER), lane_used="none",
@@ -194,7 +207,7 @@ def _selftest(pol=None):
         ("unknown source fails closed", dict(symbol="X", trigger_source="who_knows", lane="cloud_grok"), BLOCK),
         ("T0 holdings cloud allowed", dict(symbol="AAPL", trigger_source="holdings", lane="cloud_grok"), ALLOW),
         ("T1 go candidate local allowed", dict(symbol="NVDA", trigger_source="go_candidate", lane="local_fast"), ALLOW),
-        ("T2 directive with trigger allowed", dict(symbol="SMCI", trigger_source="active_directive", lane="cloud_grok", has_active_trigger=True), ALLOW),
+        ("T2 directive with trigger allowed (local)", dict(symbol="SMCI", trigger_source="active_directive", lane="local_fast", has_active_trigger=True), ALLOW),
         ("T2 directive WITHOUT trigger -> metadata only", dict(symbol="SMCI", trigger_source="active_directive", lane="cloud_grok", has_active_trigger=False), METADATA_ONLY),
         ("T3 broad universe LLM -> metadata only", dict(symbol="FOO", trigger_source="broad_universe", lane="cloud_grok"), METADATA_ONLY),
         ("top20_curation broad LLM -> metadata only", dict(symbol="FOO", trigger_source="top20_curation", lane="cloud_chatgpt"), METADATA_ONLY),
@@ -206,6 +219,8 @@ def _selftest(pol=None):
         ("cloud unavailable -> defer", dict(symbol="AAPL", trigger_source="holdings", lane="cloud_grok", cloud_available=False), DEFER),
         ("duplicate -> defer", dict(symbol="AAPL", trigger_source="holdings", lane="cloud_grok", dedup_fresh=True), DEFER),
         ("T1 cap reached -> defer", dict(symbol="NVDA", trigger_source="go_candidate", lane="cloud_grok", calls_today=999), DEFER),
+        ("T2 external cloud -> defer", dict(symbol="SMCI", trigger_source="active_directive", lane="cloud_grok", has_active_trigger=True), DEFER),
+        ("T3 external cloud -> defer", dict(symbol="FOO", trigger_source="broad_universe", lane="cloud_grok"), METADATA_ONLY),
     ]
     results, ok = [], True
     for name, kw, expect in cases:

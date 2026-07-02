@@ -1,0 +1,12 @@
+# Momentum Scalp + Social Route weight profile (Hermes audit 2026-07-02).
+# Activate: HERMES_WEIGHTS_PROFILE=scalp on hermes_watchlist_scorer cron.
+version: 1
+profile: scalp
+weights:
+  technical_momentum: 0.25
+  setup_quality: 0.10
+  analyst: 0.15
+  social_sentiment: 0.20
+  sector_strength: 0.05
+  news_catalyst: 0.20
+  risk_reward: 0.05

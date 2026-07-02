@@ -126,6 +126,11 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
             if not should_send_telegram(message):
                 level = classify_alert(message)
                 print(f"[telegram] Suppressed ({level}): {message[:60]}...")
+                try:
+                    from report_capture import archive_message
+                    archive_message(message, suppressed=True, reason=level)
+                except Exception:
+                    pass
                 return False
             mark_sent(message)
         except ImportError:

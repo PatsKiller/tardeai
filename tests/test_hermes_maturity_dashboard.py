@@ -52,3 +52,13 @@ def test_build_maturity_report_shape():
     assert "areas" in report
     assert len(report["gaps"]) == 4
     assert report["gap_summary"]["total"] == 4
+    assert "scalp_kpis" in report
+    assert "health" in report["scalp_kpis"]
+    assert "targets" in report["scalp_kpis"]
+
+
+if __name__ == "__main__":
+    test_gap_embedding_not_policy_manual()
+    test_gap_closed_trade_is_policy_manual()
+    test_build_maturity_report_shape()
+    print("OK — all hermes_maturity_dashboard tests passed")

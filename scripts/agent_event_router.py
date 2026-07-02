@@ -64,19 +64,12 @@ def _log(msg: str):
 
 def _send_telegram(msg: str):
     try:
-        # Send directly without Markdown parse_mode to avoid formatting errors
-        import urllib.request
-        token = _env("TELEGRAM_BOT_TOKEN")
-        chat_ids = [c.strip() for c in _env("TELEGRAM_CHAT_ID").split(",") if c.strip()]
-        if not token or not chat_ids:
-            _log("  Telegram: no token or chat_id configured")
-            return
-        for cid in chat_ids:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            data = json.dumps({"chat_id": cid, "text": msg}).encode()
-            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-            resp = urllib.request.urlopen(req, timeout=10)
-            _log(f"  Telegram sent to {cid}: {resp.status}")
+        from telegram_alert import send_telegram
+        ok = send_telegram(msg)
+        if ok:
+            _log("  Telegram sent via alert router")
+        else:
+            _log("  Telegram suppressed by alert router")
     except Exception as e:
         _log(f"  Telegram failed: {e}")
 

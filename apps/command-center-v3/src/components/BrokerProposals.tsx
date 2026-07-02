@@ -9,7 +9,10 @@ import BrokerProposalCard from './BrokerProposalCard'
 import ProtectionProposalCard from './ProtectionProposalCard'
 import QueueHealthPanel from './QueueHealthPanel'
 import ProposalQueueSummaryBar from './ProposalQueueSummaryBar'
+import GradingAuditMethodology from './GradingAuditMethodology'
+import DeskAutomationBar from './DeskAutomationBar'
 import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
+import { desk } from '../lib/proposalDeskTheme'
 import type { BrokerAccount } from './BrokerAccountPicker'
 
 // #30 — narrow-screen detection so fixed card grids fall back to single column without restructuring layout.
@@ -38,7 +41,17 @@ const RED = '#ef4444'
 
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
-const btn = (c: string, busy = false) => ({ fontSize: 11, fontWeight: 800, padding: '6px 13px', borderRadius: 7, border: `1px solid ${c}`, background: `${c}1f`, color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
+const btn = (c: string, busy = false, primary = false) => ({
+  fontSize: 11,
+  fontWeight: primary ? 800 : 700,
+  padding: '6px 13px',
+  borderRadius: 7,
+  border: primary ? `1px solid ${c}` : `1px solid ${desk.border}`,
+  background: primary ? `${c}1f` : desk.bgInset,
+  color: primary ? c : desk.text,
+  cursor: busy ? 'not-allowed' as const : 'pointer' as const,
+  whiteSpace: 'nowrap' as const,
+})
 const sel = { ...inp, width: 'auto', minWidth: 110, cursor: 'pointer' } as const
 
 type ListFilters = {
@@ -70,6 +83,31 @@ const isProtectionProposal = (p: { queue_kind?: string; proposal_kind?: string; 
 
 const entryProposalIds = (rows: { id?: number; queue_kind?: string; proposal_kind?: string }[]) =>
   rows.filter(p => !isProtectionProposal(p)).map(p => p.id).filter((id): id is number => typeof id === 'number' && id > 0)
+
+const proposalLaneKey = (p: any) => {
+  const lane = p.routing_lane || p.source_attribution?.routing_lane
+    || (/schwab|fidelity/i.test(String(p.intended_broker || p.account || '')) ? 'live_2fa' : 'paper_atm')
+  return `${String(p.symbol || '').toUpperCase()}:${lane}`
+}
+
+/** One card per symbol × lane — prefer filled trade, else oldest proposal id. */
+const dedupeEntryProposals = (rows: any[]) => {
+  const protection = rows.filter(isProtectionProposal)
+  const entries = rows.filter(p => !isProtectionProposal(p))
+  const best = new Map<string, any>()
+  for (const p of entries) {
+    const key = proposalLaneKey(p)
+    const prev = best.get(key)
+    if (!prev) { best.set(key, p); continue }
+    const pFilled = p.traded?.status === 'open' || p.lane_gates?.paper_atm?.status === 'filled'
+    const prevFilled = prev.traded?.status === 'open' || prev.lane_gates?.paper_atm?.status === 'filled'
+    if (pFilled && !prevFilled) { best.set(key, p); continue }
+    if (!pFilled && prevFilled) continue
+    if ((p.id || 0) < (prev.id || 0)) best.set(key, p)
+  }
+  const kept = new Set([...best.values()].map((p: any) => p.id))
+  return [...protection, ...entries.filter(p => kept.has(p.id))]
+}
 
 const RR_PRESET_SORT: Record<string, string> = {
   best: 'rr_live',
@@ -109,6 +147,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }, [data?.queue_summary])
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const { data: pullbackData } = useApi<any>('/api/v2/pullback-macd/candidates', 60_000)
+  const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
+  const execReady = propHealth?.execution_readiness
   const isNarrow = useIsNarrow(720)
 
   // #31 — stamp last-updated time whenever the list payload changes; derive next auto-refresh (30s poll).
@@ -120,6 +161,8 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const accounts: BrokerAccount[] = data?.accounts ?? []
   const strategies: string[] = data?.strategies ?? []
   const proposals: any[] = data?.proposals ?? []
+  const pullbackTriggers = (pullbackData?.candidates ?? []).filter((c: any) => c.tier === 'trigger')
+  const pullbackPending = pullbackTriggers.filter((c: any) => c.proposal_id)
 
   const [f, setF] = useState<any>({ account: '', symbol: '', shares: '', entry: '', stop: '', target: '', strategy_id: '' })
   const [msg, setMsg] = useState('')
@@ -329,6 +372,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) {
     shown = shown.filter(p => String(p.symbol).toUpperCase() === focus)
   }
+  shown = dedupeEntryProposals(shown)
 
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
 
@@ -843,8 +887,22 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
 
   const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
+  const qs = data?.queue_summary
+  const blockedN = qs?.blocked ?? 0
+  const unrouted48 = execReady?.broker_unrouted_48h ?? 0
+  const lowLink = (execReady?.link_rate_pct ?? 100) < (execReady?.target_link_rate_pct ?? 15)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 1180, marginInline: 'auto' }}>
+      {(blockedN > 0 || unrouted48 > 0 || lowLink) && (
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', fontSize: 11, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>Execution readiness</div>
+          {blockedN > 0 && <div style={{ color: 'var(--text2)' }}>{blockedN} proposal(s) blocked in queue — expand cards for lane gates.</div>}
+          {unrouted48 > 0 && <div style={{ color: 'var(--text2)' }}>{unrouted48} unrouted &gt;48h — link or dismiss stale proposals.</div>}
+          {lowLink && <div style={{ color: 'var(--text2)' }}>Link rate {execReady?.link_rate_pct ?? '—'}% below target {execReady?.target_link_rate_pct ?? 15}%.</div>}
+          <a href="/v3/health" style={{ display: 'inline-block', marginTop: 6, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Health → proposals →</a>
+        </div>
+      )}
       {modalSeed && (
         <ManualExecutionModal seed={modalSeed} onClose={() => setModalSeed(null)} onLogged={refreshAll} />
       )}
@@ -868,6 +926,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
       )}
 
+      <GradingAuditMethodology />
+
+      <DeskAutomationBar
+        automation={data?.desk_automation}
+        queueGeneratedAt={data?.queue_summary?.generated_at}
+      />
+
       <QueueHealthPanel
         autoOpen={data?.queue_summary?.route_ready === 0 && (data?.queue_summary?.blocked ?? 0) > 0}
         onRequeued={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }}
@@ -885,6 +950,46 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         <div style={{ fontSize: 11, marginBottom: 8, color: bulkActionMsg.startsWith('✅') ? GREEN : AMBER }}>{bulkActionMsg}</div>
       )}
 
+      {pullbackTriggers.length > 0 && (
+        <div style={{
+          padding: '10px 12px', borderRadius: 10, marginBottom: 4,
+          background: 'linear-gradient(90deg, rgba(245,158,11,.14), rgba(34,197,94,.06))',
+          border: '1px solid rgba(245,158,11,.45)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: AMBER }}>Pullback / MACD triggers</span>
+            <span style={{ fontSize: 10, color: MUTED }}>
+              {pullbackPending.length} in queue · {pullbackTriggers.length} active trigger{pullbackTriggers.length === 1 ? '' : 's'}
+            </span>
+            <button
+              onClick={() => patchFilters({ source: 'pullback_macd', page: 1, sort: 'priority' })}
+              style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                border: `1px solid ${AMBER}66`, background: `${AMBER}18`, color: AMBER, cursor: 'pointer' }}
+            >
+              Show pullback only
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {pullbackTriggers.map((c: any) => (
+              <button
+                key={c.symbol}
+                onClick={() => patchFilters({ symbol: c.symbol, source: '', page: 1 })}
+                title={c.proposal_id ? `Proposal #${c.proposal_id} · ${c.pullback_pct}% off high` : 'No proposal yet — run monitor'}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                  border: c.proposal_id ? `1px solid ${GREEN}55` : `1px solid ${AMBER}55`,
+                  background: c.proposal_id ? `${GREEN}14` : `${AMBER}10`,
+                  color: c.proposal_id ? GREEN : AMBER,
+                }}
+              >
+                {c.symbol} · {Number(c.pullback_pct).toFixed(1)}%
+                {c.proposal_id ? ` · #${c.proposal_id}` : ' · no proposal'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {!!data?.hygiene?.changed && (
         <div style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', color: AMBER }}>
           Auto-cleared {data.hygiene.changed} stale broker row(s)
@@ -892,28 +997,35 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT0 }}>Proposals — Unified Queue</div>
-          {/* Active / Expired view toggle — Expired = chronological, newest first, paginated. */}
-          <div style={{ display: 'inline-flex', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(148,163,184,.25)' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+        padding: '12px 14px', borderRadius: desk.radiusLg, border: `1px solid ${desk.border}`, background: desk.bg,
+      }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: desk.text, letterSpacing: '-.01em' }}>
+            Path B · Broker proposals
+          </div>
+          <div style={{ fontSize: 10, color: desk.textDim, marginTop: 3, maxWidth: 520, lineHeight: 1.45 }}>
+            Live-route queue with thesis validation, agent consensus, and Litmus pre-check before 2FA.
+            P0 validation caps are advisory — oversight BLOCK still hard-stops auto-route.
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', borderRadius: desk.radius, overflow: 'hidden', border: `1px solid ${desk.border}` }}>
             {(['active', 'expired'] as const).map(v => (
               <button key={v} onClick={() => { setView(v); setListFilters(f => ({ ...f, page: 1 })) }}
                 style={{
-                  padding: '4px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', border: 'none',
-                  background: view === v ? (v === 'expired' ? 'rgba(148,163,184,.22)' : 'rgba(96,165,250,.22)') : 'transparent',
-                  color: view === v ? TEXT0 : MUTED, textTransform: 'capitalize',
+                  padding: '5px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+                  background: view === v ? desk.bgInset : 'transparent',
+                  color: view === v ? desk.text : desk.textDim, textTransform: 'capitalize',
                 }}>
                 {v}
               </button>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: MUTED }}>
-            broker-routed (Path B) <b style={{ color: BLUE }}>+</b> paper <span style={{ color: '#2dd4bf', fontWeight: 700 }}>PROPOSAL</span> · live thesis + cloud oversight before route
-          </div>
-          <details style={{ fontSize: 11 }}>
-            <summary style={{ cursor: 'pointer', color: BLUE, fontWeight: 700, listStyle: 'none', userSelect: 'none' }} title="Path A / Path B execution paths">ⓘ paths</summary>
-            <div style={{ marginTop: 8, maxWidth: 520 }}>
+          <details style={{ fontSize: 10 }}>
+            <summary style={{ cursor: 'pointer', color: desk.blue, fontWeight: 600, listStyle: 'none' }}>Execution paths</summary>
+            <div style={{ marginTop: 8, maxWidth: 480 }}>
               <ExecutionPathsStrip variant="live" />
             </div>
           </details>
@@ -928,7 +1040,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             {loading ? '…' : '↻ Reload queue'}
           </button>
           {shown.length > 0 && (
-            <button onClick={refreshAllPrices} disabled={refreshAllBusy} aria-label="Refresh all prices and recalibrate" style={btn(GREEN, refreshAllBusy)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
+            <button onClick={refreshAllPrices} disabled={refreshAllBusy} aria-label="Refresh all prices and recalibrate" style={btn(GREEN, refreshAllBusy, true)} title="Batch Schwab quotes for this page — updates live R:R and thesis band">
               {refreshAllBusy ? '…' : '↻ Refresh all + recalibrate'}
             </button>
           )}
@@ -1044,6 +1156,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             Source
             <select style={sel} value={listFilters.source} onChange={e => patchFilters({ source: e.target.value })}>
               <option value="">All</option>
+              <option value="pullback_macd">Pullback / MACD</option>
               <option value="watchlist">Watchlist</option>
               <option value="proposal">Proposal</option>
               <option value="both">Both</option>

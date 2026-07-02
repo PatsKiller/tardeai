@@ -3,12 +3,12 @@ import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
-import BacktestPanel from '../components/BacktestPanel'
+
 import StrategyPlanner from '../components/StrategyPlanner'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Leaderboard', 'Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
+const TABS = ['Leaderboard', 'Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf'] as const
 
 export default function StrategyHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Leaderboard')
@@ -101,12 +101,12 @@ export default function StrategyHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Strategy Hub</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{strategies.length} strategies · {topStrats.reduce((a: number, s: any) => a + (s.closed ?? 0), 0)} closed paper trades</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -326,7 +326,7 @@ export default function StrategyHub({ onDrill }: Props) {
       })()}
 
       {tab === 'Planner' && <StrategyPlanner />}
-      {tab === 'Backtest' && <BacktestPanel onDrill={onDrill} />}
+
     </div>
   )
 }
@@ -388,7 +388,8 @@ function StrategyLeaderboard({ data, onDrill, onTab }: any) {
               <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }}>{sn?.recommendation || sn?.assessment || '—'}</td>
               <td style={{ ...td, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                 <span style={{ display: 'flex', gap: 5 }}>
-                  <button style={actBtn} onClick={() => onTab?.('Backtest')} title={`Open the Backtest tab for ${r.strategy_id}`}>Backtest →</button>
+                  <a href="/v3/journal" onClick={(e) => { e.preventDefault(); try { sessionStorage.setItem('journal_tab', 'Backtesting') } catch { /* */ } window.location.href = '/v3/journal' }}
+                    style={{ ...actBtn, textDecoration: 'none', display: 'inline-block' }} title={`Open TradeInView → Backtesting for ${r.strategy_id}`}>Backtest →</a>
                   <button style={actBtn} onClick={() => onTab?.('Plan vs Perf')} title="Open Plan vs Performance">Plan →</button>
                 </span>
               </td>

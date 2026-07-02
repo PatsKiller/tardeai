@@ -235,7 +235,7 @@ export default function OptionsHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+      <div className="hub-title-row" style={{ marginBottom: 14 }}>
         <div>
           <Tip tip={HEADER.desk} style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', display: 'inline-block' }}>
             Options Desk ⓘ
@@ -263,7 +263,7 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Tip tip={HEADER.novice}><NoviceToggle on={novice} onChange={setNovice} /></Tip>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div className="hub-tabs">
           {TABS.map(t => (
             <button
               key={t}

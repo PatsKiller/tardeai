@@ -11,6 +11,10 @@ fail_closed: true            # unknown trigger_source / unknown tier -> BLOCK
 no_paid_fallback: true       # paid models are never a fallback for a free-OAuth or local job
 default_research_ttl_hours: 24
 
+# Hermes audit 2026-07-02: external OAuth lanes only for capital-exposed / actionable tiers.
+external_cloud_tiers: ["T0", "T1"]
+max_external_symbols_per_run: 50
+
 # Market-hours local-GPU policy MUST match docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md.
 market_hours:
   timezone: America/New_York

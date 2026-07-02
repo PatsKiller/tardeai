@@ -154,11 +154,29 @@ def select_tail_batch(
     return batch, (offset + batch_size) % n, n
 
 
+def _proposal_queue_pairs(conn) -> list[tuple[str, str]]:
+    """Active broker/paper proposals — always head of --priority ingest (fixes 60-cap starvation)."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT DISTINCT UPPER(symbol) AS symbol,
+               COALESCE(strategy_id, 'watchlist') AS strategy_type
+        FROM paper_trade_proposals
+        WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'PROPOSED', 'MODIFIED', 'BROKER_SUBMITTED')
+          AND symbol IS NOT NULL
+        ORDER BY symbol
+    """)
+    return [(str(r["symbol"]).upper(), str(r["strategy_type"] or "watchlist")) for r in cur.fetchall() if r.get("symbol")]
+
+
 def _priority_symbol_list(conn) -> list[tuple[str, str]]:
+    proposal_first = _proposal_queue_pairs(conn)
+    prop_set = {p[0].upper() for p in proposal_first}
     actionable = _get_actionable_pairs(conn)
-    act_set = {a[0].upper() for a in actionable}
+    rest_actionable = [p for p in actionable if p[0].upper() not in prop_set]
+    act_set = prop_set | {a[0].upper() for a in rest_actionable}
     rest = _get_full_universe_pairs(conn)
-    merged = actionable + [p for p in rest if p[0].upper() not in act_set]
+    merged = proposal_first + rest_actionable + [p for p in rest if p[0].upper() not in act_set]
     return merged
 
 

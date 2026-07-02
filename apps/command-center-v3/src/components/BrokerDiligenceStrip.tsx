@@ -1,4 +1,6 @@
-const MUTED = '#94a3b8', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a78bfa', TEXT0 = '#f8fafc'
+import { desk } from '../lib/proposalDeskTheme'
+
+const MUTED = desk.textDim, GREEN = desk.green, AMBER = desk.amber, RED = desk.red, BLUE = desk.blue, PURPLE = desk.purple, TEXT0 = desk.text
 
 const STATUS_STYLE: Record<string, { icon: string; color: string; bg: string }> = {
   PASS: { icon: '✓', color: GREEN, bg: 'rgba(34,197,94,.12)' },
@@ -34,9 +36,9 @@ export default function BrokerDiligenceStrip({ stages, summary, compact = false 
   return (
     <div style={{
       padding: compact ? '6px 10px' : '8px 12px',
-      borderRadius: 8,
-      background: 'rgba(15,23,42,.45)',
-      border: `1px solid ${style.color}33`,
+      borderRadius: desk.radiusLg,
+      background: desk.bgInset,
+      border: `1px solid ${desk.borderSubtle}`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: st.length ? 6 : 0 }}>
         <span style={{ fontSize: 9, fontWeight: 800, color: PURPLE, textTransform: 'uppercase', letterSpacing: '0.35px' }}>
@@ -62,8 +64,8 @@ export default function BrokerDiligenceStrip({ stages, summary, compact = false 
         </div>
       )}
 
-      {summary?.blockers && summary.blockers.length > 0 && !st.length && (
-        <div style={{ fontSize: 9, color: RED }}>
+      {summary?.blockers && summary.blockers.length > 0 && (
+        <div style={{ fontSize: 9, color: RED, marginBottom: st.length ? 6 : 0 }}>
           {summary.blockers.map((b, i) => <div key={i}>⛔ {b}</div>)}
         </div>
       )}
