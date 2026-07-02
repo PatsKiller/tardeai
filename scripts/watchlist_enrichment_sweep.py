@@ -74,12 +74,73 @@ def _num(v):
         return None
 
 
-def sweep(limit=None, dry=False):
+def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
+    """Enrich explicit symbols (used by manual watchlist refresh in CC v3)."""
     from finviz_enrichment import enrich_tickers, get_enriched
     from open_trades_intelligence import _trend_label
     from setup_quality_prior import rsi_band
     import directive_promotion as dp
 
+    syms = [str(s).upper().strip() for s in symbols if s and str(s).strip()]
+    syms = list(dict.fromkeys(syms))
+    if not syms:
+        return {"total": 0, "enriched": 0, "symbols": []}
+
+    conn = _conn()
+    cur = conn.cursor()
+    enriched = 0
+    for i in range(0, len(syms), BATCH):
+        batch = syms[i:i + BATCH]
+        try:
+            enrich_tickers(batch, project_root=str(PROJECT_ROOT))
+        except Exception as e:
+            print(f"  [sweep] enrich_tickers batch failed (non-fatal): {str(e)[:80]}")
+        for sym in batch:
+            try:
+                tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
+                rsi = _num(tech.get("rsi"))
+                sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
+                trend = _trend_label(sma50, sma200)
+                floatm, rvol = _num(tech.get("float_m")), _num(tech.get("rvol"))
+                price, chg = _price(conn, sym)
+                if price is not None:
+                    tech["price"] = price
+                band = rsi_band(rsi) if rsi is not None else None
+                advisory = (f"RSI {rsi:.0f} · band {band}" if rsi is not None else "awaiting enrichment")
+
+                score, score_kind = None, None
+                if price is not None:
+                    try:
+                        qual = dp.classify_tradeable(sym, tech)
+                        if qual:
+                            base = min(95, 55 + 8 * len(qual))
+                            score, score_kind = base, "strategy_qualified"
+                    except Exception:
+                        pass
+                if score is None and rsi is not None:
+                    t = {"bullish": 18, "neutral": 8, "bearish": 0}.get(trend, 5)
+                    score, score_kind = round(40 + t + (10 if 40 <= (rsi or 0) <= 60 else 0)), "technical"
+
+                if dry:
+                    print(f"  {sym}: rsi={rsi} trend={trend} price={price} score={score}({score_kind}) {advisory}")
+                    continue
+                cur.execute("""UPDATE watchlist_items SET
+                                 rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
+                                 price=%s, change_pct=%s, float_m=%s, rvol=%s,
+                                 watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
+                               WHERE symbol=%s AND status IN ('active','researched')""",
+                            (rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind, sym))
+                if cur.rowcount:
+                    enriched += 1
+            except Exception as e:
+                print(f"  [sweep] {sym} failed (non-fatal): {str(e)[:80]}")
+        if not dry:
+            conn.commit()
+    conn.close()
+    return {"total": len(syms), "enriched": enriched, "symbols": syms}
+
+
+def sweep(limit=None, dry=False):
     conn = _conn(); cur = conn.cursor()
     # Two-tier selection so the VISIBLE high-rank cards stay fresh (under the 1h stale flag) without
     # starving the long tail. The research pipeline moves items active→researched within hours; the
@@ -124,61 +185,12 @@ def sweep(limit=None, dry=False):
     mode = "off-hours-top%d" % cap if off_hours else "intraday"
     print(f"[sweep] {mode}: selected {len(symbols)}: {len(prio)} priority (holdings/proposals/buy/start/rank<={RANK_PRIORITY})"
           + (f" + {len(tail)} tail rotation" if tail else ""))
+    conn.close()
     if not symbols:
         print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}
 
-    enriched = 0
-    for i in range(0, len(symbols), BATCH):
-        batch = symbols[i:i + BATCH]
-        try:
-            enrich_tickers(batch, project_root=str(PROJECT_ROOT))
-        except Exception as e:
-            print(f"  [sweep] enrich_tickers batch {i} failed (non-fatal): {str(e)[:80]}")
-        for sym in batch:
-            try:
-                tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
-                rsi = _num(tech.get("rsi"))
-                sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
-                trend = _trend_label(sma50, sma200)
-                floatm, rvol = _num(tech.get("float_m")), _num(tech.get("rvol"))
-                price, chg = _price(conn, sym)
-                if price is not None:
-                    tech["price"] = price
-                band = rsi_band(rsi) if rsi is not None else None
-                advisory = (f"RSI {rsi:.0f} · band {band}" if rsi is not None else "awaiting enrichment")
-
-                # Watch score: REAL evaluation (Bucket 2/3 only). Qualified → best classifier confidence;
-                # otherwise a labeled technical score (never a fabricated proposal 50).
-                score, score_kind = None, None
-                if price is not None:
-                    try:
-                        qual = dp.classify_tradeable(sym, tech)  # scalp HARD-excluded inside
-                        if qual:
-                            # classify_tradeable returns (sid, cfg, bucket); confidence isn't passed back,
-                            # so derive a watch score from qualification breadth + trend posture.
-                            base = min(95, 55 + 8 * len(qual))
-                            score, score_kind = base, "strategy_qualified"
-                    except Exception:
-                        pass
-                if score is None and rsi is not None:
-                    # technical watch score: posture only, clearly labeled — NOT a proposal score
-                    t = {"bullish": 18, "neutral": 8, "bearish": 0}.get(trend, 5)
-                    score, score_kind = round(40 + t + (10 if 40 <= (rsi or 0) <= 60 else 0)), "technical"
-
-                if dry:
-                    print(f"  {sym}: rsi={rsi} trend={trend} price={price} score={score}({score_kind}) {advisory}")
-                    continue
-                cur.execute("""UPDATE watchlist_items SET
-                                 rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
-                                 price=%s, change_pct=%s, float_m=%s, rvol=%s,
-                                 watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
-                               WHERE symbol=%s AND status IN ('active','researched')""",
-                            (rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind, sym))
-                enriched += 1
-            except Exception as e:
-                print(f"  [sweep] {sym} failed (non-fatal, prior values kept): {str(e)[:80]}")
-        if not dry:
-            conn.commit()
+    result = enrich_symbols(symbols, dry=dry)
+    enriched = result["enriched"]
     print(f"[sweep] enriched {enriched}/{len(symbols)} active watchlist items")
     return {"total": len(symbols), "enriched": enriched}
 

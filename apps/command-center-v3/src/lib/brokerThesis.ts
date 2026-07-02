@@ -177,6 +177,10 @@ export type TickerContext = {
   industry?: string | null
   instrumentType?: string | null
   signalGrade?: string | null
+  screenerGrade?: string | null
+  screenerScore?: number | null
+  finvizGrade?: string | null
+  finvizScore?: number | null
   companyLine?: string | null
   watchlistSleeve?: string | null
   resolvedStrategyId?: string | null
@@ -212,7 +216,11 @@ export function resolveTickerContext(proposal: Record<string, any> | null | unde
     sector: proposal?.sector || co.sector || null,
     industry: proposal?.industry || co.industry || null,
     instrumentType: proposal?.instrument_type || co.instrument_type || null,
-    signalGrade: tech.grade || why.signal_grade || null,
+    signalGrade: proposal?.grade_split?.finviz?.grade || tech.grade || why.signal_grade || null,
+    screenerGrade: proposal?.grade_split?.screener?.grade || proposal?.signal_grade || why.signal_grade || null,
+    screenerScore: proposal?.grade_split?.screener?.score ?? proposal?.signal_score ?? null,
+    finvizGrade: proposal?.grade_split?.finviz?.grade || tech.grade || null,
+    finvizScore: proposal?.grade_split?.finviz?.score ?? tech.technical_score ?? tech.score ?? null,
     companyLine,
     watchlistSleeve: sleeve,
     resolvedStrategyId: resolvedId || null,

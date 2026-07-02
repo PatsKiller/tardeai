@@ -40,16 +40,8 @@ def _alert(cur, uid, atype, symbol, severity, text):
 
 def _telegram(msg):
     try:
-        import os, requests
-        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if line.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = line.split("=", 1)[1].strip()
-        if not tok:
-            return
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+        from telegram_alert import send_telegram
+        send_telegram(msg)
     except Exception:
         pass
 

@@ -93,6 +93,28 @@ def evaluate_pre_promotion_readiness(candidate: dict) -> dict:
         if not candidate.get("catalyst") and not candidate.get("catalyst_verified"):
             warnings.append("catalyst_missing_for_strategy")
 
+    # 8. Authoritative trade plan — no pure R:R gambling geometry at promotion time
+    sym = str(candidate.get("symbol") or "").upper().strip()
+    if sym and entry > 0 and stop > 0 and target > 0:
+        try:
+            import broker_trade_plan_gate as btpg
+            basis = candidate.get("sizing_basis")
+            if isinstance(basis, str):
+                import json as _json
+                try:
+                    basis = _json.loads(basis)
+                except Exception:
+                    basis = {}
+            gate = btpg.assess_broker_trade_plan(
+                entry, stop, target, sid,
+                sizing_basis=basis if isinstance(basis, dict) else None,
+            )
+            if not gate.get("allowed"):
+                v0 = (gate.get("violations") or ["no_authoritative_trade_plan"])[0]
+                blockers.append(f"no_authoritative_trade_plan: {v0[:120]}")
+        except Exception:
+            pass
+
     # Status
     if blockers:
         status = "blocked"

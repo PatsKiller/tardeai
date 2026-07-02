@@ -9,11 +9,9 @@ import InferenceLayersPanel from '../components/InferenceLayersPanel'
 import IntelligenceNewsTab from '../components/intelligence/IntelligenceNewsTab'
 import IntelligenceResearchTab from '../components/intelligence/IntelligenceResearchTab'
 import IntelligenceSourcesTab from '../components/intelligence/IntelligenceSourcesTab'
-import IntelligenceRotationTab from '../components/intelligence/IntelligenceRotationTab'
-
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Command Center', 'Inferences', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow', 'Rotation'] as const
+const TABS = ['Command Center', 'Inferences', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow'] as const
 type Tab = typeof TABS[number]
 
 const TAB_SLUG: Record<Tab, string> = {
@@ -24,7 +22,6 @@ const TAB_SLUG: Record<Tab, string> = {
   'Research': 'research',
   'Sources': 'sources',
   'Workflow': 'workflow',
-  'Rotation': 'rotation',
 }
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k])) as Record<string, Tab>
 
@@ -37,6 +34,10 @@ export default function IntelligenceHub({ onDrill }: Props) {
 
   useEffect(() => {
     const slug = searchParams.get('tab') ?? ''
+    if (slug === 'rotation') {
+      window.location.replace('/v3/rotation')
+      return
+    }
     const fromUrl = SLUG_TAB[slug]
     if (fromUrl && fromUrl !== tab) setTab(fromUrl)
   }, [searchParams])
@@ -56,7 +57,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Intelligence</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -64,7 +65,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
             {ragPct != null && ` · RAG ${ragPct}%`}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => selectTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -88,7 +89,6 @@ export default function IntelligenceHub({ onDrill }: Props) {
       {tab === 'Research' && <IntelligenceResearchTab onDrill={onDrill} onManageTopics={() => setShowTopics(true)} />}
       {tab === 'Sources' && <IntelligenceSourcesTab onDrill={onDrill} />}
       {tab === 'Workflow' && <IntelligenceWorkflow onDrill={onDrill} />}
-      {tab === 'Rotation' && <IntelligenceRotationTab onDrill={onDrill} />}
     </div>
   )
 }

@@ -1,9 +1,10 @@
-const MUTED = '#94a3b8'
-const TEXT0 = '#f8fafc'
-const GREEN = '#22c55e'
-const AMBER = '#f59e0b'
-const RED = '#ef4444'
-const BLUE = '#60a5fa'
+import { desk } from '../lib/proposalDeskTheme'
+import { fmtDeskTimestamp } from '../lib/fmtTimestamp'
+
+const MUTED = desk.textDim
+const TEXT0 = desk.text
+const AMBER = desk.amber
+const RED = desk.red
 
 type Summary = {
   total?: number
@@ -15,6 +16,7 @@ type Summary = {
   agent_backlog?: Record<string, number>
   blocker_counts?: Record<string, number>
   route_ready_pct?: number
+  generated_at?: string
 }
 
 export default function ProposalQueueSummaryBar({
@@ -39,45 +41,57 @@ export default function ProposalQueueSummaryBar({
   const blocked = summary.blocked ?? 0
   const agentPending = summary.agent_pending ?? 0
   const stephN = summary.agent_backlog?.steph ?? 0
-  const chip = (label: string, n: number, color: string) => (
-    <span key={label} style={{ fontSize: 10, fontWeight: 800, padding: '4px 9px', borderRadius: 6,
-      border: `1px solid ${color}44`, background: `${color}14`, color }}>
-      {label}: <b>{n}</b>
+  const pct = summary.route_ready_pct ?? (summary.total ? Math.round((ready / summary.total) * 100) : 0)
+  const metric = (label: string, value: number | string, accent?: string) => (
+    <span key={label} style={{
+      display: 'inline-flex', gap: 6, alignItems: 'baseline', padding: '4px 10px', borderRadius: desk.radius,
+      background: desk.bgInset, border: `1px solid ${desk.borderSubtle}`,
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '.35px' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, fontFamily: desk.mono, color: accent || TEXT0 }}>{value}</span>
     </span>
   )
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12,
-      padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg1)' }}>
-      <span style={{ fontSize: 11, fontWeight: 800, color: TEXT0 }}>Queue health</span>
-      {chip('Route-ready', ready, GREEN)}
-      {chip('Blocked', blocked, blocked > 0 && ready === 0 ? RED : AMBER)}
-      {agentPending > 0 && chip('Agent pending', agentPending, BLUE)}
-      {(summary.oversized ?? 0) > 0 && chip('Oversized', summary.oversized!, AMBER)}
-      {(summary.invalid_thesis ?? 0) > 0 && chip('Invalid thesis', summary.invalid_thesis!, RED)}
+      padding: '10px 12px', borderRadius: desk.radiusLg, border: `1px solid ${desk.border}`, background: desk.bg }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: TEXT0 }}>Queue health</span>
+      {metric('Route-ready', `${pct}%`, pct > 0 ? TEXT0 : MUTED)}
+      {metric('Ready', ready)}
+      {metric('Blocked', blocked, blocked > 0 ? RED : MUTED)}
+      {agentPending > 0 && metric('Agent pending', agentPending)}
+      {(summary.oversized ?? 0) > 0 && metric('Oversized', summary.oversized!, AMBER)}
+      {(summary.invalid_thesis ?? 0) > 0 && metric('Invalid thesis', summary.invalid_thesis!, RED)}
       <span style={{ flex: 1 }} />
       {stephN > 0 && onQueueAgents && (
         <button onClick={onQueueAgents} disabled={agentBusy}
-          style={{ fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: agentBusy ? 'not-allowed' : 'pointer',
-            border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>
+          style={{ fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: agentBusy ? 'not-allowed' : 'pointer',
+            border: `1px solid ${desk.border}`, background: desk.bgInset, color: desk.text }}>
           {agentBusy ? '…' : `Queue steph (${stephN})`}
         </button>
       )}
       {onReconcile && (
         <button onClick={onReconcile} disabled={reconcileBusy}
-          style={{ fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: reconcileBusy ? 'not-allowed' : 'pointer',
-            border: `1px solid ${AMBER}`, background: `${AMBER}18`, color: AMBER }}>
+          style={{ fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: reconcileBusy ? 'not-allowed' : 'pointer',
+            border: `1px solid ${desk.border}`, background: desk.bgInset, color: desk.text }}>
           {reconcileBusy ? '…' : 'Reconcile sleeves'}
         </button>
       )}
       {onMatureLlm && (
         <button onClick={onMatureLlm} disabled={llmBusy}
-          style={{ fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 6, cursor: llmBusy ? 'not-allowed' : 'pointer',
-            border: `1px solid ${GREEN}`, background: `${GREEN}18`, color: GREEN }}>
+          style={{ fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: llmBusy ? 'not-allowed' : 'pointer',
+            border: `1px solid ${desk.border}`, background: desk.bgInset, color: desk.text }}>
           {llmBusy ? '…' : 'LLM stage 2b'}
         </button>
       )}
-      <span style={{ fontSize: 9, color: MUTED, width: '100%' }}>
-        {summary.total} active · {ready === 0 && blocked > 0 ? '0% route-ready — resolve blockers or bulk reject stale rows' : `${summary.route_ready_pct ?? 0}% route-ready`}
+      <span style={{ fontSize: 9, color: MUTED, width: '100%', lineHeight: 1.45 }}>
+        {summary.total} active · {ready === 0 && blocked > 0
+          ? '0% route-ready — resolve diligence blockers (agents, trade plan, sizing) or bulk reject stale rows'
+          : `${pct}% pass live-route gates (Litmus + diligence + sizing)`}
+        {summary.generated_at && (
+          <span style={{ fontFamily: desk.mono, marginLeft: 8 }}>
+            · computed {fmtDeskTimestamp(summary.generated_at)}
+          </span>
+        )}
       </span>
     </div>
   )

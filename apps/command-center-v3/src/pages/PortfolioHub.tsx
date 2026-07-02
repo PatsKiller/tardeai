@@ -212,7 +212,7 @@ export default function PortfolioHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Portfolio</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -232,7 +232,7 @@ export default function PortfolioHub({ onDrill }: Props) {
             >{priceStamp}</div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',

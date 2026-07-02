@@ -321,8 +321,12 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
     exp_h = int(cfg.get("proposal_expiry_hours", 48))
     cap = int(cfg.get("max_proposals_per_scan", 5))
     lanes = entry_routing_lanes()
-    # Tier-eligible, highest-score first, hard-capped per symbol (both lanes share levels).
-    eligible = sorted([c for c in cands if c["tier"] in tiers], key=lambda x: -x.get("score", 0))
+    # Tier-eligible: trigger tier wins slots over watch at equal-ish score (cap is per-scan).
+    tier_rank = {"trigger": 0, "watch": 1}
+    eligible = sorted(
+        [c for c in cands if c["tier"] in tiers],
+        key=lambda x: (tier_rank.get(x.get("tier"), 9), -float(x.get("score", 0) or 0)),
+    )
     if len(eligible) > cap:
         print(f"  [proposals] capping {len(eligible)} eligible → {cap} (max_proposals_per_scan); "
               f"rest stay on tab/pipeline only")
@@ -339,10 +343,20 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
         _write_trade_plan(c, strat, shares, dollar_size, risk)
         first_pid = None
         for lane_id, target_acct, intended, routing_lane in lanes:
-            dup0 = _db("""SELECT id FROM paper_trade_proposals
-                          WHERE symbol=%s AND status='PENDING'
-                            AND COALESCE(discovery_source,'')='pullback_macd'
-                            AND COALESCE(target_account, proposed_account)=%s""",
+            # One active row per symbol × lane — include APPROVED so monitor refresh does not
+            # spawn a second paper_atm card after ATM fills the first.
+            dup0 = _db("""SELECT p.id FROM paper_trade_proposals p
+                          WHERE p.symbol=%s
+                            AND p.status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
+                            AND COALESCE(p.discovery_source,'')='pullback_macd'
+                            AND COALESCE(p.target_account, p.proposed_account)=%s
+                          ORDER BY
+                            CASE WHEN EXISTS (
+                              SELECT 1 FROM paper_trades t
+                               WHERE t.proposal_id = p.id AND t.status = 'open'
+                            ) THEN 0 ELSE 1 END,
+                            p.id ASC
+                          LIMIT 1""",
                        (c["sym"], target_acct), fetch="one")
             if dup0:
                 _db("""UPDATE paper_trade_proposals
@@ -359,12 +373,14 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
                 continue
             risk_gate = risk_gate_for_lane(routing_lane)
             desc_suffix = " · ATM auto-test" if routing_lane == "paper_atm" else " · live 2FA"
+            hermes = round(min(99.0, max(70.0, float(c.get("score", 75) or 75))), 1)
             basis = {
                 "engine": "pullback_macd_screener",
                 "routing_lane": routing_lane,
                 "routing_lane_id": lane_id,
                 "macd_tier": c["tier"],
                 "pullback_pct": c["pullback_pct"],
+                "hermes_score": hermes,
             }
             data = {
                 "symbol": c["sym"], "strategy_id": strat,
@@ -430,6 +446,43 @@ def _alert_new_triggers(cands: list[dict]) -> None:
         send_telegram("\n".join(lines))
     except Exception:
         pass
+
+
+def _expire_duplicate_lane_proposals() -> int:
+    """Drop extra active pullback rows for the same symbol+account (monitor/ATM race)."""
+    rows = _db("""SELECT id, symbol,
+                         COALESCE(target_account, proposed_account) AS acct
+                    FROM paper_trade_proposals
+                   WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
+                     AND COALESCE(discovery_source,'')='pullback_macd'
+                   ORDER BY symbol, acct, id""", fetch="all") or []
+    groups: dict[tuple[str, str], list[int]] = {}
+    for r in rows:
+        key = (r["symbol"], r["acct"] or "")
+        groups.setdefault(key, []).append(int(r["id"]))
+    retired = 0
+    for _key, ids in groups.items():
+        if len(ids) <= 1:
+            continue
+        keeper = min(ids)
+        for pid in sorted(ids):
+            if _db("""SELECT 1 FROM paper_trades WHERE proposal_id=%s AND status='open' LIMIT 1""",
+                   (pid,), fetch="one"):
+                keeper = pid
+                break
+        else:
+            for pid in sorted(ids):
+                if _db("""SELECT 1 FROM paper_trades WHERE proposal_id=%s LIMIT 1""", (pid,), fetch="one"):
+                    keeper = pid
+                    break
+        for pid in ids:
+            if pid == keeper:
+                continue
+            _db("""UPDATE paper_trade_proposals SET status='EXPIRED', rejected_at=NOW(),
+                   rejection_reason=%s, updated_at=NOW() WHERE id=%s""",
+                (f"pullback duplicate lane — superseded by #{keeper}", pid))
+            retired += 1
+    return retired
 
 
 def _reconcile_proposals(cands: list[dict]) -> int:
@@ -629,6 +682,9 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         # (done inside _emit_proposals), expire those that no longer fit the plan.
         if cfg.get("reconcile_proposals", True):
             retired = _reconcile_proposals(cands)
+        dup_retired = _expire_duplicate_lane_proposals()
+        if dup_retired:
+            print(f"  [proposals] expired {dup_retired} duplicate lane row(s)")
         # While IN a trade: advisory adjustment guidance for open pullback positions (trail / TP / exit).
         if cfg.get("adjust_open_trades", True):
             adjust = _adjust_open_trades(cfg)

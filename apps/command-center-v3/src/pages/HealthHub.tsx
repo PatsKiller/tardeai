@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { StateCard } from '../components/StateCard'
 import { StatusBadge } from '../components/StatusBadge'
@@ -53,7 +54,13 @@ function deltaStr(d: number | null | undefined) {
 }
 
 export default function HealthHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<'overview' | 'coders' | 'history'>('overview')
+  const [searchParams] = useSearchParams()
+  const urlTab = searchParams.get('tab')
+  const [tab, setTab] = useState<'overview' | 'coders' | 'history'>(
+    urlTab === 'coders' || urlTab === 'history' ? urlTab : 'overview')
+  useEffect(() => {
+    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview') setTab(urlTab)
+  }, [urlTab])
   const { data: health, loading, error } = useApi<any>('/api/v2/health', 120_000)
   const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000)
   const { data: dispatches, loading: dispLoading } = useApi<any>('/api/v2/health/dispatches', 60_000)
@@ -104,7 +111,7 @@ export default function HealthHub({ onDrill }: Props) {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div className="hub-title-row" style={{ alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Health Agent</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -114,7 +121,7 @@ export default function HealthHub({ onDrill }: Props) {
             {health?.captured_at && <> · last run {fmtWhen(health.captured_at)}</>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {(['overview', 'coders', 'history'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',

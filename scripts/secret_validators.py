@@ -139,6 +139,28 @@ def _alpaca(k):
     return _ok(r), f"HTTP {r.status_code} (paper endpoint)"
 
 
+def _finviz_cookie(k):
+    import requests
+    # Elite CSV export lives at /export (not /export.ashx — that path returns the HTML shell).
+    # Probe matches live ingestion: prime_setups screener URL from assets/screeners.yaml.
+    url = ("https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,"
+           "sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume"
+           "&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67")
+    ua = _key("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    r = requests.get(url, headers={
+        "User-Agent": ua, "Cookie": k, "Accept": "text/csv,*/*",
+        "Referer": "https://elite.finviz.com/",
+    }, timeout=TIMEOUT)
+    text = r.text or ""
+    body = text[:500].lower()
+    if r.status_code != 200:
+        return False, f"HTTP {r.status_code}"
+    if "login" in body or "sign in" in body or "Ticker" not in text[:400]:
+        return False, "login page or empty export — cookie expired"
+    rows = max(0, len([ln for ln in text.strip().split("\n") if ln.strip()]) - 1)
+    return rows > 0, f"{rows} screener rows"
+
+
 VALIDATORS = {
     "ANTHROPIC_API_KEY": _anthropic, "OPENAI_API_KEY": _openai, "XAI_API_KEY": _xai,
     "GEMINI_API_KEY": _gemini, "TELEGRAM_BOT_TOKEN": _telegram, "FINNHUB_API_KEY": _finnhub,
@@ -146,6 +168,7 @@ VALIDATORS = {
     "NEWSAPI_KEY": _newsapi, "ALPHA_VANTAGE_API_KEY": _alphavantage,
     "BRAVE_SEARCH_API_KEY": _brave, "YOUTUBE_API_KEY": _youtube,
     "TWOCAPTCHA_API_KEY": _twocaptcha, "ALPACA_API_KEY": _alpaca,
+    "FINVIZ_COOKIE": _finviz_cookie,
 }
 NOT_VALIDATABLE = {
     "SCHWAB_APP_KEY": "OAuth flow required — proven by live reads (System→Brokers token health)",
@@ -156,7 +179,6 @@ NOT_VALIDATABLE = {
     "SMTP_PASSWORD": "validated on next email send (no harmless ping available)",
     "TWILIO_AUTH_TOKEN": "validated on next SMS send",
     "FINVIZ_API_TOKEN": "elite-export token — validated by the nightly finviz_enrichment run",
-    "FINVIZ_COOKIE": "session cookie — validated by the nightly finviz_enrichment run",
 }
 
 

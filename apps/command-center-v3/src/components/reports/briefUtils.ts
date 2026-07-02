@@ -1,8 +1,8 @@
 export const SUPER_TABS: { key: string; label: string; categories: string[] }[] = [
   { key: 'briefs', label: 'Briefs & Digests', categories: ['morning_briefs', 'digests', 'portfolio_briefs'] },
   { key: 'cadence', label: 'Cadence', categories: ['weekly_reviews', 'monthly', 'incubator'] },
-  { key: 'intel', label: 'Intel & Trades', categories: ['research', 'eod_trades', 'critique', 'learning'] },
-  { key: 'ops', label: 'Ops & Risk', categories: ['alerts', 'advisories', 'recovery', 'dividends', 'regime', 'paper', 'system'] },
+  { key: 'intel', label: 'Intel & Trades', categories: ['research', 'eod_trades', 'critique', 'learning', 'trade_ai_live', 'hermes_alerts'] },
+  { key: 'ops', label: 'Ops & Risk', categories: ['alerts', 'advisories', 'recovery', 'dividends', 'regime', 'paper', 'health_agent', 'escalations', 'system'] },
 ]
 
 export interface BriefSection { id: string; label: string; body: string }

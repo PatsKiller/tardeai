@@ -1,11 +1,14 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
+import OperatorInboxPanel from '../components/OperatorInboxPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Roster', 'Calibration', 'Workflow', 'Performance', 'Inbox', 'Weekly Learning'] as const
+// Inbox hidden until v3 resolve is wired (was read-only pointer to v2).
+const TABS = ['Roster', 'Calibration', 'Workflow', 'Performance', 'Weekly Learning'] as const
 
 const G = '#22c55e', R = '#ef4444', A = '#f59e0b', B = '#60a5fa'
 // Ground truth: AGENT_ROSTER.md (validated 2026-06-02). Roles are static identity, not in the API.
@@ -40,7 +43,7 @@ const POS: Record<string, { x: number; y: number }> = {
 }
 // Non-roster pipeline endpoints that appear in handoffs but aren't agents — describe them so the drawer is actionable.
 const PIPELINE_NODES: Record<string, { label: string; desc: string; action: string }> = {
-  human_review: { label: 'Human Review — operator escalation queue', desc: 'Escalation sink, not an autonomous agent. Escalated handoffs land here for operator decision.', action: 'Review the escalated items below; resolve in the Inbox / Agent Collaboration.' },
+  human_review: { label: 'Human Review — operator escalation queue', desc: 'Escalation sink, not an autonomous agent. Escalated handoffs land here for operator decision.', action: 'Review escalated items in Home → Operator Inbox or Agents → Workflow.' },
   synthesis: { label: 'Synthesis step', desc: 'Aggregates agent outputs into a synthesized view and routes conflicts/escalations to Human Review.', action: 'No action — pipeline stage. Escalations it raises appear under Human Review.' },
   auto_research: { label: 'Auto-research dispatcher', desc: 'Automated research trigger that fans research tasks out to worker agents (maria/steph/risk).', action: 'No action — pipeline stage feeding the worker agents.' },
 }
@@ -106,7 +109,6 @@ export default function AgentsHub({ onDrill }: Props) {
   const { data: calAgents } = useApi<any>('/api/v2/agent-calibration/agents', 120_000)
   const { data: calWindows } = useApi<any>('/api/v2/agent-calibration/windows', 120_000)
   const { data: pipeline } = useApi<any>('/api/v2/agent-pipeline?limit=50', 120_000)
-  const { data: inbox } = useApi<any>('/api/v2/inbox', 60_000)
   const { data: weekly } = useApi<any>('/api/v2/weekly-learning', 300_000)
 
   const agents: any[] = summary?.agents ?? []
@@ -185,12 +187,12 @@ export default function AgentsHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Agents</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{agents.length} agents · {handoffs.length} recent handoffs · {allowed}/{windows.length} proposal-allowed</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -309,6 +311,10 @@ export default function AgentsHub({ onDrill }: Props) {
       {/* ===== WORKFLOW (React Flow) ===== */}
       {tab === 'Workflow' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Operator Inbox</div>
+            <OperatorInboxPanel compact maxItems={5} />
+          </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 10, color: 'var(--text3)', flexWrap: 'wrap' }}>
             <span>★ = orchestrator (Alex/CIO)</span>
             <span><span style={{ color: G }}>■</span> proposal-allowed</span>
@@ -337,15 +343,15 @@ export default function AgentsHub({ onDrill }: Props) {
                       title: pn.label, subtitle: 'pipeline endpoint — not an agent',
                       endpoint: '/api/v2/agent-pipeline (handoffs)',
                       links: isHumanReview ? [
-                        { label: 'Open Inbox', href: '/v2/inbox', note: 'Review & clear escalations needing operator attention' },
-                        { label: 'Agent Collaboration', href: '/v2/agent-collaboration', note: 'Escalations, handoffs, missions with resolution actions' },
+                        { label: 'Home → Operator Inbox', href: '/v3/', note: 'Escalations + CIO review + pending proposals (last 14d)' },
+                        { label: 'Agents → Workflow', href: '/v3/agents?tab=workflow', note: 'Pipeline graph + handoff drill-down' },
                       ] : undefined,
                       rows: [{
                         what_it_is: pn.desc,
                         items_routed_here: escal.length,
                         escalated: all.filter((h: any) => h.escalated).length,
                         what_to_do: isHumanReview
-                          ? 'These are advisory escalations synthesis raised for a human to look at (e.g. a flagged symbol). The operator action is: open the Inbox or Agent Collaboration (links above), review each flagged symbol, and acknowledge/resolve it there. No trade executes from here — review-only.'
+                          ? 'These are advisory escalations synthesis raised for a human to look at (e.g. a flagged symbol). Open Home → Operator Inbox or stay on Workflow (links above), review each flagged symbol, and route to Trading/Risk as needed. No trade executes from here — review-only.'
                           : pn.action,
                         routed_items: recent.length ? recent : '(none in last 50 handoffs)',
                       }],
@@ -391,7 +397,13 @@ export default function AgentsHub({ onDrill }: Props) {
       {tab === 'Performance' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Performance History ({perf.length})</div>
-          {perf.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16 }}>No performance history recorded.</div> : (
+          {perf.length === 0 ? (
+            <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16, lineHeight: 1.55 }}>
+              No performance history recorded yet. Agent performance rolls up weekly via cron — check{' '}
+              <Link to="/system?tab=jobs" style={{ color: '#60a5fa' }}>System → Jobs</Link> or{' '}
+              <Link to="/health" style={{ color: '#60a5fa' }}>Health</Link> if runs look stuck.
+            </div>
+          ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -416,38 +428,6 @@ export default function AgentsHub({ onDrill }: Props) {
         </div>
       )}
 
-      {/* ===== INBOX (escalations + CIO review + proposals) ===== */}
-      {tab === 'Inbox' && (() => {
-        const ib = inbox?.data ?? inbox ?? {}
-        const items = ib.items ?? []
-        const tc = (t: string) => t === 'escalation' ? '#f59e0b' : t === 'cio_review' ? '#a855f7' : '#60a5fa'
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-              {[['Escalations', ib.escalations, '#f59e0b'], ['CIO review', ib.cio_review, '#a855f7'], ['Proposals', ib.proposals, '#60a5fa']].map(([k, v, c]: any) => (
-                <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: c }}>{v ?? 0}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 460, overflowY: 'auto' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Needs operator review ({items.length})</div>
-              {items.map((it: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.type, subtitle: it.source ?? '', endpoint: '/api/v2/inbox', rows: [it] })}
-                  style={{ display: 'grid', gridTemplateColumns: '70px 0.7fr 1.6fr auto', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${tc(it.type)}` }}>
-                  <span style={{ fontSize: 8, fontWeight: 700, color: tc(it.type), textTransform: 'uppercase' }}>{it.type.replace('_', ' ')}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{it.symbol ?? '—'}</span>
-                  <span style={{ color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.detail}</span>
-                  <span style={{ fontSize: 8, color: 'var(--text3)' }}>{timeAgo(it.at)}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/inbox — escalated handoffs + CIO human-review + pending proposals. Read-only; resolve in v2 Inbox / Agent Collaboration.</div>
-          </div>
-        )
-      })()}
-
       {/* ===== WEEKLY LEARNING ===== */}
       {tab === 'Weekly Learning' && (() => {
         const w = weekly?.data ?? weekly ?? {}
@@ -460,6 +440,13 @@ export default function AgentsHub({ onDrill }: Props) {
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 480, overflowY: 'auto' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Weekly trade reviews</div>
+              {reviews.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.55, padding: '8px 0' }}>
+                  No weekly reviews yet — generated after closed paper trades. See{' '}
+                  <Link to="/journal" style={{ color: '#60a5fa' }}>Journal</Link> or{' '}
+                  <Link to="/system?tab=jobs" style={{ color: '#60a5fa' }}>System → Jobs</Link> for the review cron.
+                </div>
+              )}
               {reviews.map((r: any, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: `Trade #${r.paper_trade_id} · ${r.tier}`, subtitle: r.model_used ?? '', endpoint: '/api/v2/weekly-learning', rows: [r] })}
                   style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>

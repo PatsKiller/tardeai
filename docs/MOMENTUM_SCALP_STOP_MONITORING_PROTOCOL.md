@@ -2,6 +2,7 @@
 
 **Status:** Active (2026-06-30) · **Owner:** operator (advisory system; nothing here auto-submits a broker order)
 **Related:** [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md) ·
+[`MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md`](MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md) ·
 [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md) · [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md)
 
 This protocol governs how the system **monitors** every protective stop from placement to trade close, **alerts**
@@ -154,6 +155,41 @@ holdings, `hermes_research_intelligence` protection advisories, and risk metrics
 | `freshness_sec`, `quote_session` | scalp freshness / session |
 
 Adjustment history rows: `{symbol, account, previous_stop, new_stop, changed_by, changed_at, reason}`.
+
+---
+
+## 6b. Dynamic Regime-Based Stoplight Thresholds (v2.0)
+
+**Effective:** 2026-07-02 · **Config:** `config/momentum_scalp_regime.yaml` · **Code:** `scripts/lib/stoplight_regime_thresholds.py`
+
+Static §3 `%` bands remain the **fallback** when R-units are unavailable. When `distance_r` is computable, **regime-adjusted R thresholds** take precedence (policy §4 context-aware stops).
+
+### Distance-to-stop triggers (in R)
+
+| Regime | Yellow | Amber | Red | Rationale (policy) |
+|--------|--------|-------|-----|-------------------|
+| Strong Trending (Bull/Bear) | ≤ 0.20R | ≤ 0.12R | ≤ 0.08R + high profit | Allow room to run (§3 Layer 3 wide trail) |
+| Trending (Normal) | ≤ 0.30R | ≤ 0.18R | ≤ 0.10R | Baseline scalp book |
+| Ranging / Low Vol | ≤ 0.40R | ≤ 0.25R | ≤ 0.15R | Protect capital aggressively (§3 1.0–1.5× band) |
+| High Volatility | ≤ 0.35R | ≤ 0.20R | ≤ 0.12R + ATR note | Noise allowance |
+| Regime Shift Detected | — | **Immediate Amber** | Force review | Layer 4.1 — tighten 0.5× ATR |
+
+### Secondary modifiers (escalate one level)
+
+| Modifier | Escalation |
+|----------|------------|
+| Portfolio heat contribution ≥ 1.5% | → Amber |
+| Total heat > cap (5%) + row contrib ≥ 1.5% | → Red (never relaxed) |
+| Price > Street mean +5% | → Amber |
+| Price > Street +8% **and** profit ≥ 2.5R | → Red + tighten suggestion |
+| Trail should be active, > +2R, still fixed | → Amber |
+| Regime shift Trending → Ranging | → Amber + **Layer 4 tighten suggestion** |
+
+**Layer 2 breakeven (+1.0–1.5R) is never relaxed by regime.**
+
+### UI contract
+
+Each row exposes `stoplight_thresholds_used` (regime + Y/A/R R-bands) and `policy_suggestions[]` explaining which rule fired. Hover the Alert pill for the active regime thresholds.
 
 ---
 

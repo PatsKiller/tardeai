@@ -44,35 +44,25 @@ def _load_env_from_file(project_root: Path) -> None:
 
 # ── Telegram sender ───────────────────────────────────────────────────────────
 
-def _send_telegram(message: str, project_root: Path) -> bool:
-    """Send message via existing Trade AI Telegram bot."""
-    _load_env_from_file(project_root)
-    bot_token = _env("TELEGRAM_BOT_TOKEN")
-    chat_ids  = _env("TELEGRAM_CHAT_ID", "").split(",")
-
-    if not bot_token or not chat_ids:
-        print("  [alerts] No Telegram config — skipping")
+def _send_telegram(message: str, project_root: Path,
+                   bundle: Optional[Dict[str, str]] = None, bundle_key: Optional[str] = None) -> bool:
+    """Send via central Telegram chokepoint, or defer to morning command bundle."""
+    if not message:
         return False
-
-    success = True
-    for chat_id in chat_ids:
-        chat_id = chat_id.strip()
-        if not chat_id:
-            continue
+    if bundle is not None and bundle_key:
         try:
-            r = requests.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": message,
-                      "parse_mode": "HTML", "disable_web_page_preview": True},
-                timeout=15,
-            )
-            if not r.ok:
-                print(f"  [alerts] Telegram error: {r.text[:100]}")
-                success = False
-        except Exception as e:
-            print(f"  [alerts] Telegram send error: {e}")
-            success = False
-    return success
+            from morning_command_digest import append_section
+            append_section(bundle, bundle_key, message)
+        except Exception:
+            bundle[bundle_key] = message
+        return True
+    _load_env_from_file(project_root)
+    try:
+        from telegram_alert import send_telegram
+        return send_telegram(message)
+    except Exception as e:
+        print(f"  [alerts] Telegram send error: {e}")
+        return False
 
 
 # ── Get portfolio tickers ─────────────────────────────────────────────────────
@@ -382,7 +372,8 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
                          send_earnings: bool = True,
                          send_dividends: bool = True,
                          send_analysts: bool = True,
-                         send_strategic: bool = True) -> Dict[str, int]:
+                         send_strategic: bool = True,
+                         bundle: Optional[Dict[str, str]] = None) -> Dict[str, int]:
     """Run all alert checks and send to Telegram. Returns count of alerts sent."""
     _load_env_from_file(project_root)
     tickers = _get_stock_tickers(portfolio)
@@ -417,9 +408,9 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
                     )
             except Exception as e:
                 print(f"  [alerts] Alert DB write failed (non-fatal): {e}")
-            if msg and _send_telegram(msg, project_root):
+            if msg and _send_telegram(msg, project_root, bundle=bundle, bundle_key="portfolio"):
                 sent["strategic"] = len(strategic)
-                print(f"  [alerts] ✅ Strategic: {len(strategic)} alerts sent")
+                print(f"  [alerts] ✅ Strategic: {len(strategic)} alerts {'bundled' if bundle else 'sent'}")
 
     # 2. Earnings (check Mon/Thu or if any within 2 days)
     if send_earnings:
@@ -553,7 +544,8 @@ def send_monthly_report_telegram(docx_path: "Path", portfolio: dict,
 
 
 def send_technical_alerts(technical: dict, project_root: "Path",
-                           is_escalated: bool = False) -> int:
+                           is_escalated: bool = False,
+                           bundle: Optional[Dict[str, str]] = None) -> int:
     """Send verbose technical signal change alerts to Telegram."""
     if not technical:
         return 0
@@ -575,7 +567,7 @@ def send_technical_alerts(technical: dict, project_root: "Path",
         body += "\n"
     if is_escalated:
         body += "\nEscalated to full analysis — check dashboard."
-    sent = _send_telegram(header + body, project_root)
+    sent = _send_telegram(header + body, project_root, bundle=bundle, bundle_key="technical")
     return len(changes) if sent else 0
 
 

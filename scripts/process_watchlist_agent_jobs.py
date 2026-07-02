@@ -1829,6 +1829,23 @@ CRITICAL INSTRUCTIONS:
     print(f"  \u2605 {symbol}: SYNTHESIS {parsed['recommendation']} conf={parsed['confidence']:.0%}")
 
 
+def _effective_job_limit(explicit_limit: int) -> int:
+    """Raise intraday throughput when queue depth >100 (Hermes audit 2026-07-02)."""
+    if explicit_limit >= 15:
+        return explicit_limit
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM watchlist_agent_jobs WHERE status='queued'")
+        queued = int(cur.fetchone()[0] or 0)
+        conn.close()
+        if queued > 100:
+            return 15
+    except Exception:
+        pass
+    return explicit_limit
+
+
 def process_jobs(limit: int = 10):
     conn = _get_conn()
     cur = conn.cursor()
@@ -2247,5 +2264,8 @@ if __name__ == "__main__":
         parser.add_argument("--limit", type=int, default=10)
         args = parser.parse_args()
         _auto_queue_new_symbols()  # Check for new symbols first
-        process_jobs(args.limit)
+        effective = _effective_job_limit(args.limit)
+        if effective != args.limit:
+            print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
+        process_jobs(effective)
 

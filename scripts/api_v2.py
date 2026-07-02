@@ -435,10 +435,47 @@ def _stops_management_api(query=None):
         pass
     risk_off = any(w in regime_now.lower() for w in ("off", "bear", "defensive"))
 
+    consensus_targets = {}
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from stop_consensus_check import (
+            check_stop_over_consensus, load_consensus_targets,
+            price_vs_consensus_pct, stop_vs_consensus_pct, vs_consensus_dollars,
+        )
+        consensus_targets = load_consensus_targets(project_root=PROJECT_ROOT)
+    except Exception:
+        check_stop_over_consensus = None  # type: ignore
+
     rows = []
     counts = {"yellow": 0, "amber": 0, "red": 0}
+    stop_over_consensus_n = 0
+    price_above_street_n = 0
+    with_street_consensus_n = 0
+    regime_shift_n = 0
     total_open_risk = 0.0
     trailing_not_active = 0
+    _regime_cfg = {}
+    _enrich_all = {}
+    _regime_enabled = False
+    try:
+        import sys as _rsysc
+        _rsysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from momentum_scalp_regime import build_context_from_enrich, detect_regime
+        from momentum_scalp_regime import _load_yaml as _regime_load_yaml
+        from stoplight_regime_thresholds import evaluate_regime_stoplight
+        _regime_cfg = _regime_load_yaml()
+        _enrich_all = _enrich_cache()
+        _regime_enabled = True
+    except Exception:
+        build_context_from_enrich = None  # type: ignore
+        detect_regime = None  # type: ignore
+        evaluate_regime_stoplight = None  # type: ignore
+
+    def _merge_alert_level(a, b):
+        _rank = {"red": 3, "amber": 2, "yellow": 1, None: 0}
+        return a if _rank.get(a, 0) >= _rank.get(b, 0) else b
+
     for h in holds:
         sym = str(h.get("symbol", "")).upper()
         acct = str(h.get("account", ""))
@@ -484,58 +521,86 @@ def _stops_management_api(query=None):
         stop_source = ls.get("stop_source") or ("planned" if planned_stop is not None else "none")
         heat_contrib = round((max(dist_dollars, 0) / total_risk * heat_pct), 2) if total_risk else None
 
-        # ---- alert level (highest severity wins; see protocol §3) ----
-        # Distance-to-stop is the primary signal (dist_% is reliable; R/ATR shown when computable). "Naked"
-        # (advised stop, no broker stop) is Amber for active momentum/social trades but only Yellow for
-        # long-term core holds (monitored-by-advisory is normal there).
+        # ---- alert level: regime-aware stoplight (protocol v2.0) + hard safety overrides ----
+        is_active_trade = route.get(sym, "core-hold") in ("Pure Momentum", "Social+Momentum")
+        _direction = "short" if (qty or 0) < 0 else "long"
         reasons = []
         level = None
-        is_active_trade = route.get(sym, "core-hold") in ("Pure Momentum", "Social+Momentum")
-        dp = dist_pct if dist_pct is not None else 999
-        red, amber, yellow = [], [], []
-        # Distance-to-stop uses dist_% (reliable). dist_r is displayed but not used for severity (the advisor
-        # basis_ps R-unit is not a dependable cost basis). ATR band adds an Amber signal when available.
-        # RED — imminent stop-out / breach / naked-active-in-risk-off
-        if dp <= 1.5:
-            red.append("within 1.5% of stop")
-        if naked and is_active_trade and risk_off:
-            red.append("active trade naked in risk-off regime")
-        if heat_pct > HEAT_CAP and (heat_contrib or 0) >= 1.5:
-            red.append(f"portfolio heat {heat_pct:.1f}% > {HEAT_CAP}% cap")
-        # AMBER — needs attention
-        if dp <= 3.0 or (dist_atr is not None and dist_atr <= 1.0):
-            amber.append("within 3% / 1×ATR of stop")
-        if naked and is_active_trade:
-            amber.append("active trade: " + naked_reason)
-        if divergence == "broker looser than advised":
-            amber.append(divergence)
-        if heat_contrib is not None and heat_contrib >= 1.5:
-            amber.append(f"{heat_contrib:.1f}% of portfolio heat")
-        # YELLOW — watch
-        if dp <= 6.0:
-            yellow.append("within 6% of stop")
-        if should_trail:
-            yellow.append("trailing eligible but not active")
-        if naked and not is_active_trade:
-            yellow.append(("core hold: " if not is_fidelity else "") + naked_reason)
-        if red:
-            level, reasons = "red", red
-        elif amber:
-            level, reasons = "amber", amber
-        elif yellow:
-            level, reasons = "yellow", yellow
-        if level:
-            counts[level] += 1
-        total_open_risk += max(dist_dollars, 0)
+        _policy_suggestions = []
+        _thresholds_used = None
+        _regime_out = {}
 
         _monitored = stop_source == "monitored"
-        # Trailing proposal: width % (advisor trail_offset) + the current-equivalent trigger price.
-        # A trailing stop's trigger ratchets up with price, so we surface both the width and where it
-        # would sit if armed at the current price (px × (1 − width%)), not a static number.
-        # Prefer the BROKER's actual trail width when a live trailing stop exists; else the advisory's.
         _to = broker_trail_off if (is_trailing and broker_trail_off) else adv.get("trail_offset")
         _trail_pct = float(_to) if (_to not in (None, 0)) else None
         _trail_trigger = round(px * (1 - _trail_pct / 100.0), 2) if (_trail_pct and px) else None
+
+        _cons_hit = None
+        _stop_vs_cons = None
+        _price_vs_cons = None
+        _price_vs_cons_usd = None
+        _cons = consensus_targets.get(sym) if consensus_targets else None
+        _cons_mean = (_cons or {}).get("target_mean")
+        if _cons_mean:
+            with_street_consensus_n += 1
+            _price_vs_cons = price_vs_consensus_pct(px, _cons_mean)
+            _price_vs_cons_usd = vs_consensus_dollars(px, _cons_mean)
+            if _price_vs_cons is not None and _price_vs_cons > 0.5:
+                price_above_street_n += 1
+        if check_stop_over_consensus and _cons:
+            _eff = broker_stop if broker_stop is not None else _trail_trigger
+            if _eff is None and planned_stop is not None:
+                _eff = planned_stop
+            _stop_vs_cons = stop_vs_consensus_pct(_eff, _cons_mean)
+            _cons_hit = check_stop_over_consensus(sym, _eff, px, _cons)
+            if _cons_hit:
+                stop_over_consensus_n += 1
+
+        if _regime_enabled and detect_regime and evaluate_regime_stoplight:
+            try:
+                _enr = (_enrich_all or {}).get(sym) or {}
+                _rctx = build_context_from_enrich(_enr, price=px, direction=_direction)
+                _regime_out = detect_regime(sym, _rctx, project_root=PROJECT_ROOT, cfg=_regime_cfg)
+                if _regime_out.get("regime_shift_detected"):
+                    regime_shift_n += 1
+                _eff_regime = "regime_shift" if _regime_out.get("regime_shift_detected") else _regime_out.get("regime")
+                _sl = evaluate_regime_stoplight(
+                    regime=_eff_regime or "trending",
+                    regime_meta=_regime_out,
+                    dist_r=dist_r,
+                    dist_pct=dist_pct,
+                    dist_atr=dist_atr,
+                    modifiers={
+                        "heat_contribution_pct": heat_contrib,
+                        "price_vs_consensus_pct": _price_vs_cons,
+                        "unrealized_r": unreal_r,
+                        "trailing_should_be_active": should_trail,
+                        "naked": naked,
+                        "naked_reason": naked_reason,
+                        "is_active_trade": is_active_trade,
+                        "divergence": divergence,
+                        "risk_off": risk_off,
+                    },
+                    cfg=_regime_cfg,
+                )
+                level = _sl.get("alert_level")
+                reasons = list(_sl.get("alert_reasons") or [])
+                _policy_suggestions = list(_sl.get("policy_suggestions") or [])
+                _thresholds_used = _sl.get("thresholds_used")
+            except Exception:
+                pass
+
+        # Hard safety overrides (never relaxed by regime — protocol §7 kill-switch / heat cap)
+        if naked and not is_active_trade:
+            reasons.append(("core hold: " if not is_fidelity else "") + naked_reason)
+            level = _merge_alert_level(level, "yellow")
+        if heat_pct > HEAT_CAP and (heat_contrib or 0) >= 1.5:
+            reasons.append(f"portfolio heat {heat_pct:.1f}% > {HEAT_CAP}% cap")
+            level = "red"
+
+        if level:
+            counts[level] += 1
+        total_open_risk += max(dist_dollars, 0)
         # Who recommended fixed vs trailing (the advisory is produced by an LLM lane; model_used says which).
         _rm = str(adv.get("rec_model") or "").lower()
         _rec_source = ("Grok · external LLM" if "grok" in _rm
@@ -575,6 +640,28 @@ def _stops_management_api(query=None):
             "holdings_llm_data_i_doubt": h.get("llm_data_i_doubt"),
             "heat_contribution_pct": heat_contrib, "regime_now": regime_now,
             "alert_level": level, "alert_reasons": reasons,
+            "consensus_target_mean": (_cons_hit or {}).get("consensus_target_mean") or _cons_mean,
+            "consensus_target_high": (_cons or {}).get("target_high"),
+            "consensus_target_low": (_cons or {}).get("target_low"),
+            "consensus_analysts": (_cons_hit or {}).get("consensus_analysts") or (_cons or {}).get("n_analysts"),
+            "consensus_stale": (_cons or {}).get("stale"),
+            "price_vs_consensus_pct": _price_vs_cons,
+            "price_vs_consensus_dollars": _price_vs_cons_usd,
+            "price_above_consensus": (_price_vs_cons or 0) > 0.5,
+            "stop_above_consensus": bool(_cons_hit),
+            "consensus_gap_pct": (_cons_hit or {}).get("consensus_gap_pct"),
+            "stop_vs_consensus_pct": _stop_vs_cons,
+            "regime": (_regime_out or {}).get("regime"),
+            "regime_label": (_regime_out or {}).get("regime_label"),
+            "regime_short": (_regime_out or {}).get("regime_short"),
+            "regime_confidence": (_regime_out or {}).get("confidence"),
+            "regime_at_entry": (_regime_out or {}).get("regime_at_entry"),
+            "regime_shift_detected": (_regime_out or {}).get("regime_shift_detected"),
+            "regime_shift_direction": (_regime_out or {}).get("regime_shift_direction"),
+            "regime_explanation": (_regime_out or {}).get("explanation"),
+            "trail_tighten_atr_mult": (_regime_out or {}).get("trail_tighten_atr_mult"),
+            "policy_suggestions": _policy_suggestions,
+            "stoplight_thresholds_used": _thresholds_used,
             "lifecycle": ls.get("lifecycle"), "health": ls.get("health"), "flags": ls.get("flags"),
         })
 
@@ -606,6 +693,10 @@ def _stops_management_api(query=None):
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
                     "trailing_not_active": trailing_not_active, "positions": len(rows),
                     "broker_stops_active": broker_active, "no_stop": len(rows) - broker_active,
+                    "stop_over_consensus": stop_over_consensus_n,
+                    "with_street_consensus": with_street_consensus_n,
+                    "price_above_street": price_above_street_n,
+                    "regime_shifts": regime_shift_n,
                     "next_actions": next_actions},
         "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
     }
@@ -5076,6 +5167,7 @@ def _wl_items(query: dict = None):
                ep.model_used AS entry_model,
                fs.recommendation AS synthesis_recommendation,
                fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
+               fs.decision_safety, fs.actionable AS synthesis_actionable,
                fs.model_used AS cio_model_used,
                fs.dual_consensus_json, fs.synthesis_narrative, fs.conflicts, fs.unresolved,
                sp.sector AS profile_sector, sp.industry AS profile_industry,
@@ -5193,6 +5285,78 @@ def _wl_submit(body: dict):
                       (sym, agent, f"Submitted to {agent} for {request_type}"))
 
     return 200, {"ok": True, "created_jobs": created, "count": len(created)}
+
+
+def _wl_requeue_symbol(sym: str) -> tuple[int, dict]:
+    """Re-queue Maria → Steph → Risk → CIO synthesis for one watchlist symbol."""
+    sym = (sym or "").strip().upper()
+    if not sym or not sym.isalpha() or len(sym) > 5:
+        return 400, {"ok": False, "error": "invalid symbol"}
+
+    reset = _db_query(
+        "UPDATE watchlist_agent_jobs SET status='pending', started_at=NULL, completed_at=NULL "
+        "WHERE symbol=%s RETURNING id", (sym,), fetch="all")
+    n = len(reset or [])
+    if n == 0:
+        ts = datetime.now().strftime("%Y%m%d%H%M%S")
+        for agent in ("maria", "steph", "risk_agent"):
+            job_id = f"requeue-{sym.lower()}-{agent}-{ts}"
+            _db_query(
+                """INSERT INTO watchlist_agent_jobs
+                   (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
+                   VALUES (%s, %s, %s, 'full_analysis', %s, 'pending', 0, 'watchlist_requeue')
+                   ON CONFLICT (id) DO NOTHING""",
+                (job_id, sym, agent, f"Manual requeue {sym}"), fetch="none")
+            n += 1
+    _db_query(
+        "UPDATE watchlist_final_synthesis SET next_review_date=CURRENT_DATE "
+        "WHERE symbol=%s AND COALESCE(superseded,false)=false", (sym,), fetch="none")
+    _db_query("UPDATE watchlist_research_cards SET needs_iteration=true WHERE symbol=%s", (sym,), fetch="none")
+    _db_query(
+        "UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending' WHERE symbol=%s",
+        (sym,), fetch="none")
+    return 200, {"ok": True, "symbol": sym, "requeued": n}
+
+
+def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
+    """Manual refresh: Finviz/RSI enrichment now + agent requeue for CIO resynthesis."""
+    sym = (sym or "").strip().upper()
+    if not sym:
+        return 400, {"ok": False, "error": "symbol required"}
+
+    exists = _db_query(
+        "SELECT 1 FROM watchlist_items WHERE symbol=%s AND status IN ('active','researched') LIMIT 1",
+        (sym,), fetch="one")
+    if not exists:
+        return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
+
+    enriched_n = 0
+    enrich_err = None
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from watchlist_enrichment_sweep import enrich_symbols
+        er = enrich_symbols([sym])
+        enriched_n = int(er.get("enriched") or 0)
+    except Exception as e:
+        enrich_err = str(e)[:200]
+
+    code, rq = _wl_requeue_symbol(sym)
+    if code != 200:
+        return code, rq
+
+    out = {
+        **rq,
+        "enriched": enriched_n > 0,
+        "enriched_rows": enriched_n,
+        "note": (
+            "Technicals refreshed + agent jobs queued (Maria → Steph → Risk → synthesis; "
+            "~15 min cron). Advisory-only."
+        ),
+    }
+    if enrich_err:
+        out["enrich_warning"] = enrich_err
+    return 200, out
 
 
 def _wl_jobs():
@@ -14529,6 +14693,118 @@ def _attach_broker_ticker_context(row: dict, profile: dict | None = None) -> dic
     return row
 
 
+def _attach_lane_gates_and_grades(row: dict) -> dict:
+    """Lane-specific gate status + screener vs Finviz grade split for unified queue cards."""
+    basis = row.get("sizing_basis")
+    if isinstance(basis, str):
+        try:
+            basis = json.loads(basis)
+        except Exception:
+            basis = {}
+    routing_lane = (basis.get("routing_lane") if isinstance(basis, dict) else None)
+    if not routing_lane:
+        br = str(row.get("intended_broker") or row.get("account") or "").lower()
+        routing_lane = "live_2fa" if br.startswith(("schwab", "fidelity")) else "paper_atm"
+    row["routing_lane"] = routing_lane
+
+    screener_grade = str(row.get("signal_grade") or "").upper() or None
+    finviz_grade = finviz_score = finviz_tech = None
+    try:
+        from atm_technical_gate import letter_grade
+        _ts = _db_query(
+            """SELECT technical_grade, technical_score FROM proposal_technical_snapshots
+                WHERE proposal_id=%s ORDER BY computed_at DESC LIMIT 1""",
+            [row.get("id")], fetch="one",
+        )
+        if _ts and _ts.get("technical_grade"):
+            finviz_tech = str(_ts.get("technical_grade"))
+            finviz_score = int(_ts.get("technical_score") or 0)
+            finviz_grade = letter_grade(finviz_score)
+        else:
+            import proposal_enrichment_bridge as peb
+            sym = str(row.get("symbol") or "").upper()
+            _px = row.get("current_price") or row.get("proposed_entry")
+            snap = peb.snapshot_from_enrichment(
+                sym, live_price=float(_px) if _px is not None else None,
+            )
+            finviz_tech = str(snap.get("technical_grade") or "")
+            finviz_score = int(snap.get("technical_score") or 0)
+            finviz_grade = letter_grade(finviz_score)
+    except Exception:
+        pass
+
+    ds = str(row.get("discovery_source") or "").lower()
+    screener_label = (
+        "Pullback" if ds == "pullback_macd"
+        else "Watchlist" if ds == "watchlist" or str(row.get("origin") or "").lower() == "watchlist"
+        else "Screener"
+    )
+    row["grade_split"] = {
+        "screener": {
+            "label": screener_label,
+            "grade": screener_grade,
+            "score": row.get("signal_score"),
+        },
+        "finviz": {
+            "label": "Finviz",
+            "grade": finviz_grade,
+            "score": finviz_score,
+            "technical_grade": finviz_tech,
+        },
+    }
+
+    traded = row.get("traded") or {}
+    pid = row.get("id")
+    lane_gates: dict = {}
+    if routing_lane == "paper_atm":
+        if traded.get("status") == "open" or traded.get("broker_status") == "filled":
+            atm_st = "filled"
+        elif str(row.get("status") or "").upper() == "APPROVED_FOR_PAPER_TEST":
+            atm_st = "approved"
+        elif str(row.get("status") or "").upper() == "PENDING":
+            atm_st = "pending"
+        else:
+            atm_st = str(row.get("status") or "unknown").lower()
+        msg = None
+        if atm_st == "filled" and traded.get("trade_id"):
+            ep = traded.get("entry_price")
+            msg = f"Paper filled · trade #{traded['trade_id']}"
+            if ep is not None:
+                msg += f" @ ${float(ep):.2f}"
+        elif atm_st == "pending":
+            msg = "ATM lane — requires Finviz score ≥60, trade plan, position limits (not Path B agents)"
+        lane_gates["paper_atm"] = {
+            "status": atm_st,
+            "trade_id": traded.get("trade_id"),
+            "entry_price": traded.get("entry_price"),
+            "message": msg,
+        }
+    if routing_lane == "live_2fa":
+        pending_agents: list[str] = []
+        try:
+            ar = _db_query(
+                """SELECT agent_name FROM proposal_agent_reviews
+                    WHERE proposal_id=%s AND status='pending'""",
+                [pid],
+            ) or []
+            pending_agents = [str(a.get("agent_name")) for a in ar if a.get("agent_name")]
+        except Exception:
+            pass
+        path_blocked = bool(pending_agents)
+        msg = (
+            f"BLOCK — agents pending: {', '.join(pending_agents)}"
+            if pending_agents
+            else "Route-eligible — Litmus + sizing + 2FA (agents advisory)"
+        )
+        lane_gates["path_b"] = {
+            "status": "blocked" if path_blocked else "route_eligible",
+            "agents_pending": pending_agents,
+            "message": msg,
+        }
+    row["lane_gates"] = lane_gates
+    return row
+
+
 def _broker_proposal_row_base(
     r: dict,
     quote_map: dict | None = None,
@@ -14566,16 +14842,25 @@ def _broker_proposal_row_base(
         pass
     # Trade outcome — did this proposal become a trade, and how did it do (Expired-view "results").
     try:
-        _trows = _db_query("""SELECT status, pnl, pnl_pct, dollar_risk, exit_reason, exit_time
-                              FROM paper_trades WHERE proposal_id=%s OR source_proposal_id=%s
-                              ORDER BY entry_time DESC LIMIT 1""",
+        _trows = _db_query("""SELECT id, status, broker_status, entry_price, shares,
+                                     pnl, pnl_pct, dollar_risk, exit_reason, exit_time
+                              FROM paper_trades
+                             WHERE (proposal_id=%s OR source_proposal_id=%s)
+                               AND COALESCE(status,'') NOT IN ('superseded_by_fill', 'cancelled')
+                             ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END,
+                                      entry_time DESC NULLS LAST
+                             LIMIT 1""",
                            [row.get("id"), str(row.get("id"))]) if row.get("id") else None
         _tr = _trows[0] if _trows else None
         if _tr:
             _pnl = float(_tr["pnl"]) if _tr.get("pnl") is not None else None
             _risk = float(_tr["dollar_risk"]) if _tr.get("dollar_risk") else None
             row["traded"] = {
+                "trade_id": _tr.get("id"),
                 "status": _tr.get("status"),
+                "broker_status": _tr.get("broker_status"),
+                "entry_price": float(_tr["entry_price"]) if _tr.get("entry_price") is not None else None,
+                "shares": int(_tr["shares"]) if _tr.get("shares") is not None else None,
                 "pnl": _pnl,
                 "pnl_pct": float(_tr["pnl_pct"]) if _tr.get("pnl_pct") is not None else None,
                 "r_multiple": round(_pnl / _risk, 2) if (_pnl is not None and _risk) else None,
@@ -14713,6 +14998,7 @@ def _broker_proposal_row_base(
         pass
     prof = (profiles_map or {}).get(sym) or {}
     _attach_broker_ticker_context(row, prof)
+    _attach_lane_gates_and_grades(row)
     return _attach_source_attribution(row, watchlist_buy_syms)
 
 
@@ -14873,7 +15159,7 @@ def _broker_qp(query, key, default=None):
 
 
 _BROKER_LIST_CACHE: dict[str, tuple[float, dict]] = {}
-_BROKER_LIST_CACHE_TTL = int(os.getenv("BROKER_LIST_CACHE_SEC", "120"))
+_BROKER_LIST_CACHE_TTL = int(os.getenv("BROKER_LIST_CACHE_SEC", "180"))
 _BROKER_LIST_DISK = PROJECT_ROOT / "data" / "runtime" / "broker_list_cache.json"
 BROKER_LIST_LIVE_QUOTES = os.getenv("BROKER_LIST_LIVE_QUOTES", "1").lower() not in ("0", "false", "no")
 
@@ -15104,6 +15390,16 @@ def _broker_proposals(query=None):
             out = dict(cached)
             out["proposals"] = _broker_reprice_proposal_rows(out.get("proposals") or [])
             out["quotes_live"] = True
+            try:
+                import broker_proposal_queue_ops as _bqo
+                out["queue_summary"] = _bqo.compute_queue_summary()
+            except Exception:
+                pass
+            try:
+                import broker_desk_automation as _bda
+                out["desk_automation"] = _bda.get_desk_automation_state()
+            except Exception:
+                pass
             return out
     try:
         page = max(1, int(_broker_qp(query, "page", 1) or 1))
@@ -15196,6 +15492,8 @@ def _broker_proposals(query=None):
             where.append(
                 "(COALESCE(origin,'') <> 'watchlist' AND COALESCE(discovery_source,'') <> 'watchlist')"
             )
+        elif source_f in ("pullback_macd", "pullback"):
+            where.append("COALESCE(discovery_source,'') = 'pullback_macd'")
 
         where_sql = " AND ".join(where)
         total_row = _db_query(
@@ -15204,20 +15502,22 @@ def _broker_proposals(query=None):
         ) or {}
         db_total = int(total_row.get("n") or 0)
 
+        # Pullback/MACD triggers use signal_score when hermes_score is absent — keeps Telegram
+        # alerts visible on page 1 instead of buried behind watchlist bridge rows.
+        _queue_priority = (
+            "CASE WHEN COALESCE(discovery_source,'') = 'pullback_macd' "
+            "THEN GREATEST(COALESCE((sizing_basis->>'hermes_score')::float, 0), "
+            "COALESCE(signal_score, 0), 70) "
+            "ELSE COALESCE((sizing_basis->>'hermes_score')::float, 0) END"
+        )
         order_sql = {
             "symbol": "symbol ASC, id ASC",
             "created": "created_at DESC, id DESC",
             "created_asc": "created_at ASC, id ASC",
             "rr": "COALESCE(proposed_rr, 0) DESC NULLS LAST, created_at DESC",
-            "hermes": "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, symbol ASC",
-            "priority": (
-                "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, "
-                "created_at DESC, id DESC"
-            ),
-        }.get(sort, (
-            "COALESCE((sizing_basis->>'hermes_score')::float, 0) DESC NULLS LAST, "
-            "created_at DESC, id DESC"
-        ))
+            "hermes": f"{_queue_priority} DESC NULLS LAST, symbol ASC",
+            "priority": f"{_queue_priority} DESC NULLS LAST, created_at DESC, id DESC",
+        }.get(sort, f"{_queue_priority} DESC NULLS LAST, created_at DESC, id DESC")
 
         protection_rows: list = []
         prot_count = 0
@@ -15379,9 +15679,16 @@ def _broker_proposals(query=None):
             queue_summary = _bqo.compute_queue_summary()
         except Exception:
             pass
+        desk_automation = None
+        try:
+            import broker_desk_automation as _bda
+            desk_automation = _bda.get_desk_automation_state()
+        except Exception:
+            pass
         result = {
             "proposals": prop_rows,
             "queue_summary": queue_summary,
+            "desk_automation": desk_automation,
             "quotes_live": bool(BROKER_LIST_LIVE_QUOTES),
             "autocal": autocal_meta or None,
             "curator": curator_meta,
@@ -15620,6 +15927,11 @@ def _broker_proposal_detail(body: dict):
     )
     if not row:
         return {"ok": False, "error": f"proposal #{pid} not found"}
+    try:
+        import broker_promote_oversight as _bpo_sync
+        _bpo_sync.sync_proposal_reviews_from_watchlist(pid)
+    except Exception:
+        pass
     sym = str(row.get("symbol") or "").upper()
     quote_map = _broker_batch_live_quotes([sym]) if sym else {}
     if not light or full:
@@ -15963,6 +16275,34 @@ def _advance_broker_diligence(body: dict):
     if not pid:
         return {"ok": False, "error": "proposal_id required"}
     return bpo.advance_broker_diligence(pid)
+
+
+def _entry_desk_automation():
+    """GET /api/v2/entry-desk/automation — schedules + last-run for Entry Desk."""
+    import entry_desk_ops as edo
+    return edo.get_entry_desk_automation()
+
+
+def _entry_desk_promote(body: dict):
+    """POST /api/v2/entry-desk/promote — queue symbol from Entry Desk → broker proposals."""
+    import entry_desk_ops as edo
+    return edo.promote_to_broker_queue(body or {})
+
+
+def _entry_desk_ack_copy(body: dict):
+    """POST /api/v2/entry-desk/ack-copy — web ticker 2FA ack for manual ToS copy (audit only)."""
+    import entry_desk_ops as edo
+    return edo.ack_ticket_copy(body or {})
+
+
+def _entry_desk_technical_grades(body: dict):
+    """POST /api/v2/entry-desk/technical-grades — batch Finviz technical grades."""
+    import entry_desk_ops as edo
+    b = body or {}
+    syms = b.get("symbols") or b.get("symbol") or []
+    if isinstance(syms, str):
+        syms = [syms]
+    return edo.technical_grades_batch(list(syms), live_prices=b.get("live_prices"))
 
 
 def _broker_queue_oversight(body: dict):
@@ -19030,27 +19370,72 @@ def _cron_compression_view():
 
 
 def _inbox():
-    """GET /api/v2/inbox — operator inbox: escalations + CIO human-review + pending proposals."""
+    """GET /api/v2/inbox — operator inbox: P0 actions (stops, proposals, SIEM, health) + escalations + CIO."""
     esc = _db_query("""SELECT symbol, from_agent, to_agent, reason, action_type, created_at
                        FROM agent_handoffs WHERE escalated=TRUE AND created_at > NOW() - INTERVAL '14 days'
                        ORDER BY created_at DESC LIMIT 60""") or []
     cio = _db_query("""SELECT symbol, action, action_class, rationale, priority, created_at
                        FROM cio_decisions WHERE human_review_required=TRUE AND created_at > NOW() - INTERVAL '14 days'
                        ORDER BY created_at DESC LIMIT 40""") or []
-    props = _db_query("""SELECT symbol, strategy_id, status, created_at FROM paper_trade_proposals
+    props = _db_query("""SELECT id, symbol, strategy_id, status, created_at FROM paper_trade_proposals
                          WHERE status IN ('PENDING','APPROVED') ORDER BY created_at DESC LIMIT 30""") or []
+    stops = _db_query("""SELECT symbol, raw_text, created_at FROM alert_events
+                         WHERE (alert_type ILIKE '%%stop%%' OR raw_text ILIKE '%%STOP_TRIGGERED%%')
+                           AND created_at > NOW() - INTERVAL '2 days'
+                           AND COALESCE(lifecycle_state,'active') <> 'resolved'
+                         ORDER BY created_at DESC LIMIT 25""") or []
+    siem = _db_query("""SELECT component, event_type, severity, message, created_at FROM system_health_events
+                        WHERE severity IN ('P0','P1') AND created_at > NOW() - INTERVAL '24 hours'
+                          AND COALESCE(lifecycle_state,'active') <> 'resolved'
+                        ORDER BY created_at DESC LIMIT 15""") or []
     items = []
-    for e in esc:
-        items.append({"type": "escalation", "symbol": e.get("symbol"), "detail": e.get("reason") or e.get("action_type"),
-                      "source": f"{e.get('from_agent')}→{e.get('to_agent')}", "at": _json_clean(e.get("created_at"))})
-    for c in cio:
-        items.append({"type": "cio_review", "symbol": c.get("symbol"), "detail": (c.get("action") or "") + " · " + (c.get("rationale") or "")[:80],
-                      "source": f"CIO · {c.get('priority') or ''}", "at": _json_clean(c.get("created_at"))})
+    for s in stops:
+        items.append({
+            "type": "stop", "symbol": s.get("symbol"), "priority": "P0",
+            "detail": (s.get("raw_text") or "Stop triggered")[:120],
+            "source": "stop_triggered", "at": _json_clean(s.get("created_at")),
+            "cta": {"label": "Risk + Reports", "route": "/v3/risk", "reports": "/v3/reports?super=ops&category=advisories"},
+        })
     for p in props:
-        items.append({"type": "proposal", "symbol": p.get("symbol"), "detail": p.get("status"),
-                      "source": p.get("strategy_id"), "at": _json_clean(p.get("created_at"))})
+        if (p.get("status") or "").upper() != "PENDING":
+            continue
+        items.append({
+            "type": "proposal", "symbol": p.get("symbol"), "priority": "P0",
+            "detail": f"Paper proposal pending · {p.get('strategy_id') or 'review'}",
+            "source": p.get("strategy_id"), "at": _json_clean(p.get("created_at")),
+            "cta": {"label": "Trading → Proposals", "route": "/v3/trading", "reports": "/v3/reports?super=ops&category=paper"},
+            "proposal_id": p.get("id"),
+        })
+    for ev in siem:
+        items.append({
+            "type": "siem", "symbol": None, "priority": ev.get("severity") or "P1",
+            "detail": f"{ev.get('component') or 'system'} — {ev.get('event_type') or 'alert'}",
+            "source": "siem", "at": _json_clean(ev.get("created_at")),
+            "cta": {"label": "System → SIEM", "route": "/v3/system", "reports": "/v3/reports?super=ops&category=system"},
+        })
+    for e in esc:
+        items.append({
+            "type": "escalation", "symbol": e.get("symbol"), "priority": "P1",
+            "detail": e.get("reason") or e.get("action_type"),
+            "source": f"{e.get('from_agent')}→{e.get('to_agent')}", "at": _json_clean(e.get("created_at")),
+            "cta": {"label": "Agents → Workflow", "route": "/v3/agents", "reports": "/v3/reports?super=ops&category=escalations"},
+        })
+    for c in cio:
+        items.append({
+            "type": "cio_review", "symbol": c.get("symbol"), "priority": "P1",
+            "detail": (c.get("action") or "") + " · " + (c.get("rationale") or "")[:80],
+            "source": f"CIO · {c.get('priority') or ''}", "at": _json_clean(c.get("created_at")),
+            "cta": {"label": "Intelligence", "route": "/v3/intelligence", "reports": "/v3/reports?super=intel"},
+        })
     items.sort(key=lambda x: x.get("at") or "", reverse=True)
-    return {"count": len(items), "escalations": len(esc), "cio_review": len(cio), "proposals": len(props), "items": items}
+    items.sort(key=lambda x: 0 if x.get("priority") == "P0" else 1)
+    p0 = sum(1 for i in items if i.get("priority") == "P0")
+    return {
+        "count": len(items), "p0_count": p0,
+        "escalations": len(esc), "cio_review": len(cio),
+        "proposals": sum(1 for p in props if (p.get("status") or "").upper() == "PENDING"),
+        "stops": len(stops), "siem": len(siem), "items": items[:80],
+    }
 
 
 def _weekly_learning():
@@ -25378,6 +25763,7 @@ ROUTES = {
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/execution/current-state": _execution_current_state,
+    "/api/v2/entry-desk/automation": _entry_desk_automation,
     "/api/v2/execution/readiness": _execution_readiness,
     "/api/v2/execution/kill-switches": _kill_switches_status,
     "/api/v2/options/desk/risk": _options_desk_risk,
@@ -27536,39 +27922,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _wl_submit(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/<SYMBOL>/refresh — manual card refresh (technicals + agent requeue)
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/refresh"):
+            sym = base_path[len("/api/v2/watchlist/"):-len("/refresh")].strip("/").upper()
+            if sym:
+                try:
+                    return _wl_refresh_symbol(sym)
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/requeue — re-queue analysis for LLM failures
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/requeue"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/requeue")].strip("/").upper()
             if sym:
                 try:
-                    # RE-RUN: reset this symbol's existing agent jobs to 'pending' so the processor
-                    # re-analyzes (Maria/Steph/Risk → fresh CIO synthesis). The old INSERT was a no-op:
-                    # watchlist_agent_jobs.id has no default, so a column-list INSERT fails and rolls back
-                    # while still reporting success. UPDATE needs no id and works for already-researched names.
-                    reset = _db_query(
-                        "UPDATE watchlist_agent_jobs SET status='pending', started_at=NULL, completed_at=NULL "
-                        "WHERE symbol=%s RETURNING id", (sym,), fetch="all")
-                    n = len(reset or [])
-                    if n == 0:
-                        # brand-new symbol with no prior jobs: insert a fresh set with an explicit id
-                        for agent in ['maria_research', 'steph_allocation', 'risk_agent']:
-                            _db_query(
-                                "INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, task_type, "
-                                "priority, status, submitted_from) VALUES "
-                                "((SELECT COALESCE(MAX(id),0)+1 FROM watchlist_agent_jobs), %s, %s, 'requeue', "
-                                "'high', 'pending', 'watchlist_requeue')", (sym, agent), fetch="none")
-                            n += 1
-                    # clear the synthesis gates so a FULL re-review runs end-to-end: (1) the review-date
-                    # gate, (2) needs_iteration, and (3) final_synthesis_status — without resetting (3) the
-                    # agents re-run but _check_synthesis_ready stays False ('completed') and the CIO verdict
-                    # never refreshes (the half-fix we just hit on SPCX).
-                    _db_query("UPDATE watchlist_final_synthesis SET next_review_date=CURRENT_DATE "
-                              "WHERE symbol=%s AND COALESCE(superseded,false)=false", (sym,), fetch="none")
-                    _db_query("UPDATE watchlist_research_cards SET needs_iteration=true WHERE symbol=%s",
-                              (sym,), fetch="none")
-                    _db_query("UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending' "
-                              "WHERE symbol=%s", (sym,), fetch="none")
-                    return 200, {"ok": True, "symbol": sym, "requeued": n}
+                    return _wl_requeue_symbol(sym)
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/rewrite-note":
@@ -30103,6 +30470,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/paper-proposals/advance-broker-diligence":
         try:
             res = _advance_broker_diligence(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/entry-desk/promote":
+        try:
+            res = _entry_desk_promote(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/entry-desk/ack-copy":
+        try:
+            res = _entry_desk_ack_copy(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/entry-desk/technical-grades":
+        try:
+            res = _entry_desk_technical_grades(body or {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}

@@ -658,6 +658,52 @@ def run_cycle():
                 log.info(f"  {sym}: {decision} ({[r['gate'] for r in reasons]})")
                 continue
 
+        # ── 2e-bis: Authoritative trade plan (no R:R-only gambling geometry) ──
+        try:
+            import broker_trade_plan_gate as btpg
+            import remediate_proposal_trade_plans as rtpr
+            tp_gate = btpg.assess_proposal_trade_plan(pid, conn=conn)
+            if not tp_gate.get("allowed"):
+                rtpr.remediate_symbol(conn, sym, proposal_ids=[pid])
+                tp_gate = btpg.assess_proposal_trade_plan(pid, conn=conn)
+            if not tp_gate.get("allowed"):
+                v0 = (tp_gate.get("violations") or ["no authoritative trade plan"])[0]
+                reasons.append({"gate": "trade_plan_blocked", "detail": str(v0)[:160]})
+                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                             "deferred", reasons, health, pos_open, pos_total,
+                             new_today, new_total, pnl_acct, total_pnl_pct,
+                             b1_flag, config_hash, mode)
+                log.info(f"  {sym}: deferred (trade plan blocked — {v0[:80]})")
+                continue
+        except Exception as _tp_e:
+            log.warning(f"  {sym}: trade plan gate check failed (non-fatal): {_tp_e}")
+
+        # ── 2e-ter: Finviz technical gate (align ATM with Proposals technical grade) ──
+        try:
+            from atm_technical_gate import atm_technical_allowed
+            _lp = None
+            try:
+                _lp = float(p.get("proposed_entry") or 0) or None
+            except Exception:
+                pass
+            _ok, _tg_reason, _tg_meta = atm_technical_allowed(
+                pid, sym, conn=conn, live_price=_lp,
+            )
+            if not _ok:
+                _detail = (
+                    f"{_tg_meta.get('technical_grade')} score={_tg_meta.get('technical_score')} "
+                    f"({_tg_reason})"
+                )
+                reasons.append({"gate": "finviz_technical", "detail": _detail[:160]})
+                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                             "deferred", reasons, health, pos_open, pos_total,
+                             new_today, new_total, pnl_acct, total_pnl_pct,
+                             b1_flag, config_hash, mode)
+                log.info(f"  {sym}: deferred (Finviz technical — {_detail[:80]})")
+                continue
+        except Exception as _ft_e:
+            log.warning(f"  {sym}: Finviz technical gate check failed (non-fatal): {_ft_e}")
+
         # ── 2f: Decision ──
         if mode == "dry_run":
             _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,

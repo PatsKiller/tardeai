@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
 
@@ -77,12 +78,12 @@ export default function SystemHub({ onDrill }: Props) {
   return (
     <div>
       <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setOpTick(t => t + 1)} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>System</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{timers} timers · {cronCount} crons · {services} services · {llmJobs} LLM jobs</div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -231,7 +232,10 @@ export default function SystemHub({ onDrill }: Props) {
                 <span style={{ color: q.status === 'failed' ? '#ef4444' : q.status === 'completed' ? '#22c55e' : '#f59e0b', fontSize: 9 }}>{q.status}</span>
               </div>
             ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/system/queue-control-tower. Read-only — no queue controls.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>
+              Source: /api/v2/system/queue-control-tower. Failed/stuck jobs →{' '}
+              <Link to="/health?tab=coders" style={{ color: '#60a5fa', fontWeight: 700, textDecoration: 'none' }}>Health → Coders</Link> for auto-remediation status.
+            </div>
           </div>
 
           {/* Due next */}

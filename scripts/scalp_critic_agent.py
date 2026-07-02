@@ -307,10 +307,15 @@ def send_telegram_summary(summary: dict):
         lines.append(f"  {c['symbol']}: {c['from']} -> {c['to']} -- {c['reason']}")
     msg = '\n'.join(lines)
 
-    # Central chokepoint: FQDN-normalized + persisted to telegram_outbox for the v3 Reports portal.
+    # Router suppresses generic critique summary on Telegram; always archived to Reports.
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg, bypass_router=True)
+        send_telegram(msg)
+    except Exception:
+        pass
+    try:
+        from report_capture import archive_message
+        archive_message(msg, suppressed=False)
     except Exception:
         pass
 

@@ -1827,7 +1827,7 @@ def _symbol_row_summary(
     rec = str((wl or {}).get("recommendation") or (wl or {}).get("holdings_llm_action") or enrich.get("recommendation") or "Review")
     price = _resolve_price(sym, enrich, holding)
     is_holding = bool(holding)
-    route = f"/v3/portfolio?symbol={sym}" if is_holding else f"/v3/watchlist?symbol={sym}"
+    route = f"/v3/portfolio?symbol={sym}" if is_holding else f"/v3/watch?tab=watchlist&symbol={sym}"
     return {
         "symbol": sym,
         "recommendation": rec,

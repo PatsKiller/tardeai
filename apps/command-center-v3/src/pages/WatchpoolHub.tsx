@@ -5,7 +5,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }
 
@@ -33,7 +33,7 @@ function Field({ label, value, onChange, ph, wide }: any) {
   )
 }
 
-export default function WatchpoolHub({ onDrill }: Props) {
+export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: wp, refetch: refetchWp } = useApi<any>('/api/v2/watchpool', 60_000)
   const [kind, setKind] = useState<'ticker' | 'sector' | 'trend'>('ticker')
@@ -92,10 +92,12 @@ export default function WatchpoolHub({ onDrill }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watchpool &amp; Directives</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{wd?.directive_count ?? 0} directives · {wp?.count ?? 0} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
-      </div>
+      {!embedded && (
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watchpool &amp; Directives</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{wd?.directive_count ?? 0} directives · {wp?.count ?? 0} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
+        </div>
+      )}
 
       {/* Add directive */}
       <div style={card}>

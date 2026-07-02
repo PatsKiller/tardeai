@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
+
+const PAGE_TABS = ['Review', 'Advisor Guide'] as const
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type AmountRange = { low?: number; high?: number; basis?: string; action?: string }
@@ -178,6 +182,17 @@ function SummaryCard({ label, value, color, onClick, active }: { label: string; 
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function RotationIntelligence() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabSlug = searchParams.get('tab') ?? ''
+  const [pageTab, setPageTab] = useState<typeof PAGE_TABS[number]>(
+    tabSlug === 'changelog' || tabSlug === 'advisor-guide' ? 'Advisor Guide' : 'Review')
+  const selectPageTab = (t: typeof PAGE_TABS[number]) => {
+    setPageTab(t)
+    const next = new URLSearchParams(searchParams)
+    if (t === 'Advisor Guide') next.set('tab', 'advisor-guide')
+    else next.delete('tab')
+    setSearchParams(next, { replace: true })
+  }
   const [data, setData] = useState<RotationData | null>(null)
   const [summaryWarn, setSummaryWarn] = useState<string>('')
   const [question, setQuestion] = useState('Should I trim XLB for SPCX? How much should I trim?')
@@ -495,19 +510,36 @@ export default function RotationIntelligence() {
     <div style={{ padding: 4 }}>
       {/* A. Header */}
       <header style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Rotation Intelligence</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
-          Grounded local review + free/OAuth Grok second opinion
+        <div className="hub-title-row" style={{ marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Rotation Intelligence</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
+              Grounded local review + free/OAuth Grok second opinion
+            </div>
+          </div>
+          <div className="hub-tabs">
+            {PAGE_TABS.map(t => (
+              <button key={t} onClick={() => selectPageTab(t)} style={{
+                padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
+                background: pageTab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+                color: pageTab === t ? '#60a5fa' : 'var(--text3)', fontWeight: pageTab === t ? 700 : 400,
+              }}>{t}</button>
+            ))}
+          </div>
         </div>
         <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>
           Advisory only · human review required · no broker action
         </div>
-        {data?.cache_age_sec != null && (
+        {pageTab === 'Review' && data?.cache_age_sec != null && (
           <div style={{ fontSize: 10, color: data?.stale ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
             ⟳ refreshed {data.cache_age_sec < 60 ? `${data.cache_age_sec}s` : `${Math.round(data.cache_age_sec / 60)}m`} ago{data?.stale ? ' · stale, refreshing in background' : ''} · heavy engine pre-warmed every 8 min (no page wait)
           </div>
         )}
       </header>
+
+      {pageTab === 'Advisor Guide' && <AdvisorChangesPanel />}
+
+      {pageTab === 'Review' && (<>
 
       {/* B. Summary cards */}
       {summaryWarn && (
@@ -1191,6 +1223,7 @@ export default function RotationIntelligence() {
           Source: /api/v2/rotation/summary · generated {data.generated_at} · advisory only, no broker action
         </div>
       )}
+      </>)}
     </div>
   )
 }

@@ -1,0 +1,100 @@
+# Momentum Scalp Regime Detection + Dynamic Stoplight Thresholds
+# Aligns with MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md Layer 3 multiplier table + Layer 4.
+# Consumed by scripts/lib/momentum_scalp_regime.py and stoplight_regime_thresholds.py
+
+version: "1.0"
+policy_ref: "docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md"
+
+detection:
+  min_analysts_for_street_modifier: 2
+  hysteresis:
+    confirm_bars: 3          # bars/scans before regime label flips
+    shift_min_confidence: 60 # 0-100; below this → keep prior regime
+  inputs:
+    rvol_strong_min: 1.8     # policy §3 Layer 3 — Strong Trending RVOL
+    rvol_low_max: 1.2
+    adx_strong_min: 25       # stop_trailing_hybrid.yaml adx_trending_above
+    adx_ranging_max: 20      # adx_ranging_below
+    atr_expansion_pct: 25    # ATR% above 20d median → high-vol signal
+    bb_width_ranging_pct: 4  # narrow band proxy when ADX missing
+
+regimes:
+  strong_trending_bull:
+    label: "Strong Trending (Bull)"
+    short: "STR-TREND↑"
+    trail_multiplier_band: [3.0, 4.0]
+  strong_trending_bear:
+    label: "Strong Trending (Bear)"
+    short: "STR-TREND↓"
+    trail_multiplier_band: [3.0, 4.0]
+  trending:
+    label: "Trending (Normal)"
+    short: "TREND"
+    trail_multiplier_band: [2.0, 3.0]
+  ranging:
+    label: "Ranging / Low Vol"
+    short: "RANGE"
+    trail_multiplier_band: [1.0, 1.5]
+  high_volatility:
+    label: "High Vol / Event"
+    short: "HI-VOL"
+    trail_multiplier_band: [1.5, 2.5]
+  regime_shift:
+    label: "Regime Shift"
+    short: "SHIFT"
+    trail_tighten_atr_mult: 0.5   # Layer 4 mandatory 0.5× ATR tighten
+
+# Dynamic stoplight distance-to-stop thresholds (in R-units). Policy §4 + monitoring protocol v2.
+# Fallback % thresholds used when R-unit is unavailable (dist_r null).
+stoplight:
+  strong_trending_bull:
+    yellow_r: 0.20
+    amber_r: 0.12
+    red_r: 0.08
+    yellow_pct: 6.0
+    amber_pct: 3.5
+    red_pct: 2.0
+  strong_trending_bear:
+    yellow_r: 0.20
+    amber_r: 0.12
+    red_r: 0.08
+    yellow_pct: 6.0
+    amber_pct: 3.5
+    red_pct: 2.0
+  trending:
+    yellow_r: 0.30
+    amber_r: 0.18
+    red_r: 0.10
+    yellow_pct: 6.0
+    amber_pct: 3.0
+    red_pct: 1.5
+  ranging:
+    yellow_r: 0.40
+    amber_r: 0.25
+    red_r: 0.15
+    yellow_pct: 5.0
+    amber_pct: 2.5
+    red_pct: 1.2
+  high_volatility:
+    yellow_r: 0.35
+    amber_r: 0.20
+    red_r: 0.12
+    yellow_pct: 5.5
+    amber_pct: 3.0
+    red_pct: 1.5
+  regime_shift:
+    yellow_r: 0.35
+    amber_r: 0.25
+    red_r: 0.15
+    force_amber: true
+    yellow_pct: 5.0
+    amber_pct: 2.5
+    red_pct: 1.2
+
+modifiers:
+  portfolio_heat_contrib_amber: 1.5   # % of book heat → escalate one level
+  portfolio_heat_cap_red: 5.0
+  price_above_street_amber_pct: 5.0
+  price_above_street_red_pct: 8.0
+  profit_r_tighten_suggest: 2.5
+  trail_inactive_amber_r: 2.0         # trail should be active > +2R

@@ -15,6 +15,8 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
+  const { data: health } = useApi<any>('/api/v2/health', 120_000)
+  const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length
 
   const portfolioVal = overview?.portfolio_value
   // Headline win rate = the overall journal win rate (matches the Home card). The paper-readiness
@@ -35,7 +37,6 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayPct = overview?.today_pct
   const journalPnl = overview?.journal?.total_pnl
   const vix = tradeAi?.vix
-  const runLabel = tradeAi?.run_label
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
 
@@ -92,12 +93,6 @@ export default function MetricStrip({ onDrill }: Props) {
       drill: { title: 'Trade Setups', subtitle: 'From /api/v2/trade-ai', endpoint: '/api/v2/trade-ai',
         rows: tradeAi ? [{ go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, run_label: tradeAi.run_label, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
-    {
-      label: 'LAST RUN', value: runLabel ? `${runLabel}` : '—',
-      color: 'var(--text2)',
-      drill: { title: 'Last Trade AI Run', subtitle: 'Latest orchestrator scan', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ run_label: tradeAi.run_label, run_health_status: tradeAi.run_health_status, go_count: tradeAi.go_count, wait_count: tradeAi.wait_count }] : [] },
-    },
   ]
 
   return (
@@ -125,10 +120,18 @@ export default function MetricStrip({ onDrill }: Props) {
       ))}
       {approvals != null && approvals > 0 && (
         <div onClick={() => navigate('/')}
-          title={`${approvals} pending approvals (stop-triggered + governance) — go to Home → Action Inbox to review (read-only drill to source)`}
+          title={`${approvals} pending approvals — Home → Action Inbox has CTAs to Risk and Trading`}
           style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer',
             background: 'rgba(245,158,11,.15)', color: '#f59e0b', marginRight: 8 }}>
           ⚑ {approvals} APPROVALS →
+        </div>
+      )}
+      {healthWarn > 0 && (
+        <div onClick={() => navigate('/health')}
+          title={`${healthWarn} health finding(s) — open Health for remediate + coder dispatch`}
+          style={{ padding: '4px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(239,68,68,.12)', color: '#ef4444', marginRight: 8 }}>
+          ♥ {healthWarn} HEALTH →
         </div>
       )}
       <div

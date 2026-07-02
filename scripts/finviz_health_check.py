@@ -44,15 +44,11 @@ def check():
     try:
         import urllib.request
         # Use a minimal Finviz export URL to test connectivity
-        test_url = "https://finviz.com/export.ashx?v=111&f=sh_avgvol_o2000,sh_price_o5&ft=4&o=-volume"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        test_url = "https://elite.finviz.com/export?v=152&f=sh_price_u5&ft=3&c=0,1,65&o=-price"
+        ua = _env("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        real_headers = {"User-Agent": ua, "Accept": "text/csv,*/*", "Referer": "https://elite.finviz.com/"}
         if cookie:
-            headers["Cookie"] = cookie[:20] + "***REDACTED***"  # Don't log full cookie
-            # Actually use the real cookie for the request
-            real_headers = dict(headers)
             real_headers["Cookie"] = cookie
-        else:
-            real_headers = headers
 
         req = urllib.request.Request(test_url, headers=real_headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -60,7 +56,7 @@ def check():
             lines = [l for l in data.strip().split("\n") if l.strip()]
             row_count = max(0, len(lines) - 1)  # minus header
 
-            if row_count > 0:
+            if row_count > 0 and "Ticker" in data[:400]:
                 result["status"] = "healthy"
                 result["row_count"] = row_count
                 print(f"  [finviz] Healthy: {row_count} rows returned")

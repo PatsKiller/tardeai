@@ -1143,6 +1143,22 @@ def advance_broker_diligence(proposal_id: int) -> dict:
         if cq.get("queued"):
             actions.append("cloud_oversight_queued")
 
+    try:
+        import broker_trade_plan_gate as btpg
+        tp_gate = btpg.assess_proposal_trade_plan(proposal_id)
+        if not tp_gate.get("allowed"):
+            import remediate_proposal_trade_plans as rtpr
+            rem = rtpr.remediate_symbol(
+                _get_conn(), str(row.get("symbol") or "").upper(),
+                proposal_ids=[proposal_id],
+            )
+            if rem.get("cleared"):
+                actions.append("trade_plan_remediated")
+            elif rem.get("error"):
+                actions.append(f"trade_plan_remediate_pending:{rem.get('error')}")
+    except Exception:
+        pass
+
     plan = build_promote_diligence_plan(proposal_id)
     return {
         "ok": True,

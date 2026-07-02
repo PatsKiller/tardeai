@@ -333,7 +333,7 @@ export default function ReportsHub({ onDrill }: Props) {
           <MorningCommandStrip cells={stripCells} />
           {!aegisBrief && !tradeAiBrief ? (
             <div style={{ ...card, padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              No morning brief for today yet. Check Archive → Morning Briefs, or Home → Morning Command.
+              No morning brief for today yet. Check Archive → Morning Briefs, or wait for the daily Aegis cron (System → Jobs).
             </div>
           ) : (
             <>

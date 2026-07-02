@@ -266,7 +266,7 @@ export default function HermesHub({ onDrill }: Props) {
   return (
     <div>
       {editProfile && <HermesSoulEditor profile={editProfile} onClose={() => setEditProfile(null)} />}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+      <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Hermes Research Agent Graph</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -279,7 +279,7 @@ export default function HermesHub({ onDrill }: Props) {
             Runs on project <code>.venv</code> + <code>scripts/hermes_*.py</code> (systemd timers); independent of the retired sidecar install.
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="hub-tabs">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
@@ -750,6 +750,10 @@ export default function HermesHub({ onDrill }: Props) {
         const gaps: any[] = maturity.gaps ?? []
         const lm = maturity.live_metrics ?? {}
         const caps = maturity.coordinator_caps ?? {}
+        const sk = maturity.scalp_kpis ?? {}
+        const skHealth = sk.health ?? {}
+        const skTargets = sk.targets ?? {}
+        const kpiColor = (ok: boolean | undefined) => (ok ? '#22c55e' : '#ef4444')
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {/* Layer scores */}
@@ -766,6 +770,31 @@ export default function HermesHub({ onDrill }: Props) {
                 </div>
               ))}
             </div>
+
+            {sk.watchlist_active != null && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                {[
+                  { l: 'Active watchlist', v: sk.watchlist_active, t: `≤${skTargets.watchlist_active_max ?? 800}`, ok: skHealth.watchlist_active_ok },
+                  { l: 'Rank >200', v: sk.watchlist_rank_gt_200, t: 'tail noise', ok: (sk.watchlist_rank_gt_200 ?? 0) < 100 },
+                  { l: 'Score inserts/24h', v: sk.score_inserts_24h, t: `≤${skTargets.score_inserts_24h_max ?? 5000}`, ok: skHealth.score_volume_ok },
+                  { l: 'Strategy tags', v: sk.strategy_tags_populated_pct != null ? `${sk.strategy_tags_populated_pct}%` : '—', t: `≥${skTargets.strategy_tags_pct_min ?? 95}%`, ok: skHealth.strategy_tags_ok },
+                  { l: 'Stale jobs (>2h)', v: sk.watchlist_jobs_stale_2h, t: `≤${skTargets.stale_jobs_max ?? 20}`, ok: skHealth.stale_jobs_ok },
+                ].map(k => (
+                  <div key={k.l} style={{ background: 'var(--bg1)', border: `1px solid ${kpiColor(k.ok)}33`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: kpiColor(k.ok) }}>{k.v ?? '—'}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 2 }}>{k.l}</div>
+                    <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>target {k.t}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sk.weights_profile && (
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+                Scorer profile: <b style={{ color: sk.weights_profile === 'scalp' ? '#22c55e' : 'var(--text2)' }}>{sk.weights_profile}</b>
+                {sk.scorer_always_cap ? ' · top-200 cap ON' : ' · top-200 cap OFF'}
+                {sk.watchlist_archived != null && ` · ${sk.watchlist_archived} archived`}
+              </div>
+            )}
 
             <div style={{ fontSize: 10, color: 'var(--text3)', padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6 }}>
               Live from DB + coordinator caps · kill switch: <b style={{ color: maturity.kill_switch_active ? '#ef4444' : '#22c55e' }}>{maturity.kill_switch_active ? 'ON' : 'off'}</b>

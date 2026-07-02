@@ -238,6 +238,7 @@ def download_screener_csvs(
         # Try Elite v=152 first, fallback through versions on failure
         resp = None
         used_version = "v=152"
+        csv_ok = False
         rate_limited = False
         for version in _FINVIZ_VERSION_FALLBACKS:
             try_url = export_url.replace("v=152", version) if version != "v=152" else export_url
@@ -267,6 +268,7 @@ def download_screener_csvs(
                 break
             if resp and resp.status_code == 200 and "Ticker" in resp.text[:300]:
                 used_version = version
+                csv_ok = True
                 break
             elif version != "v=111":
                 print(f"  [finviz] {name}: {version} failed (HTTP {resp.status_code if resp else '?'}) → trying next version")
@@ -274,22 +276,29 @@ def download_screener_csvs(
             continue   # next screener; partial run is better than a poisoned frame
         if not resp or resp.status_code != 200:
             raise RuntimeError(f"Finviz download failed for {name} after all version fallbacks")
+        if not csv_ok:
+            # HTTP 200 without a CSV header is often rate-limit / transient HTML — NOT cookie expiry.
+            body = resp.text or ""
+            body_l = body[:800].lower()
+            if "login" in body_l or "sign in" in body_l:
+                _msg = (f"🔴 *FINVIZ COOKIE EXPIRED*\n"
+                        f"Screener `{name}` returned login page instead of CSV.\n\n"
+                        f"To fix, reply:\n`update FINVIZ_COOKIE YOUR_NEW_COOKIE_VALUE`\n\n"
+                        f"Get cookie from browser → elite.finviz.com → DevTools → Application → Cookies")
+                print(f"  [finviz] ❌ Cookie expired! Login page returned for {name}")
+                try:
+                    from telegram_alert import send_telegram
+                    send_telegram(_msg)
+                except Exception:
+                    pass
+                raise RuntimeError(f"Finviz cookie expired — login page returned for screener: {name}")
+            print(f"  [finviz] {name}: no CSV header after version fallbacks (HTTP {resp.status_code}) "
+                  f"— transient/rate-limit, skipping (not cookie expiry)")
+            _RATE_LIMITED_SCREENERS.append(name)
+            continue
         if used_version != "v=152":
             print(f"  [finviz] {name}: fell back to {used_version} (Elite v=152 unavailable)")
-        # Guardrail: detect expired cookie (login page returned instead of CSV)
         content = resp.text
-        if "login" in content.lower()[:500] or "sign in" in content.lower()[:500] or "Ticker" not in content[:200]:
-            _msg = (f"🔴 *FINVIZ COOKIE EXPIRED*\n"
-                    f"Screener `{name}` returned login page instead of CSV.\n\n"
-                    f"To fix, reply:\n`update FINVIZ_COOKIE YOUR_NEW_COOKIE_VALUE`\n\n"
-                    f"Get cookie from browser → elite.finviz.com → DevTools → Application → Cookies")
-            print(f"  [finviz] ❌ Cookie expired! Login page returned for {name}")
-            try:
-                from telegram_alert import send_telegram
-                send_telegram(_msg)
-            except Exception:
-                pass
-            raise RuntimeError(f"Finviz cookie expired — login page returned for screener: {name}")
 
         path = raw_dir / f"{name}_{stamp}.csv"
         path.write_text(content, encoding="utf-8")

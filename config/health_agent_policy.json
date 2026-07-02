@@ -43,6 +43,12 @@
     "check_after_hour": 11,
     "tilt_min": 1.0
   },
+  "proposal_trade_plan": {
+    "_comment": "Broker queue proposals blocked because entry/stop/target are pure R:R math without support/resistance/confluence anchor.",
+    "enabled": true,
+    "blocked_warn": 1,
+    "blocked_critical": 3
+  },
   "proposal_maturity": {
     "_comment": "Monitor proposal volume/quality across Options, Trades, Watchlist, Rotation.",
     "enabled": true,
@@ -127,7 +133,8 @@
       "momentum_scalp_early_lane_error",
       "sec_form4_context_stale",
       "agent_jobs_processing_stuck",
-      "synthesis_processing_stuck"
+      "synthesis_processing_stuck",
+      "proposal_trade_plan_blocked"
     ]
   },
   "remediation_map": {
@@ -157,7 +164,9 @@
     "momentum_scalp_early_lane_error": "flock -n /tmp/tradeai_finviz_momentum_scalp.lock .venv/bin/python scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation --ignore-window >> logs/finviz_momentum_scalp_scan.log 2>&1",
     "sec_form4_context_stale": "flock -n /tmp/tradeai_sec_form4_ctx.lock .venv/bin/python scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1",
     "agent_jobs_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1",
-    "synthesis_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1"
+    "synthesis_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1",
+    "proposal_trade_plan_blocked": ".venv/bin/python scripts/remediate_proposal_trade_plans.py",
+    "proposal_technicals_stale": ".venv/bin/python scripts/enrich_proposal_technicals.py"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

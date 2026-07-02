@@ -46,18 +46,11 @@ def _get_conn():
                             user="trade_ai", password=_env("DB_PASSWORD"))
 
 def _send_telegram(msg):
-    import urllib.request, urllib.parse
-    token = _env("TELEGRAM_BOT_TOKEN")
-    for cid in _env("TELEGRAM_CHAT_ID").split(","):
-        cid = cid.strip()
-        if not cid or not token: continue
-        try:
-            data = urllib.parse.urlencode({"chat_id": cid, "text": msg[:4000]}).encode()
-            urllib.request.urlopen(
-                urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data),
-                timeout=10)
-        except Exception:
-            pass
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+    except Exception:
+        pass
 
 
 # ════════════════════════════════════════════════════════════

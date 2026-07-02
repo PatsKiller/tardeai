@@ -278,7 +278,8 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "snaptrade_sync.py" not in cmd \
                 and "run_finviz_momentum_scalp_scan.py" not in cmd \
                 and "run_sec_form4_momentum_context.py" not in cmd \
-                and "reset_stuck_agent_jobs.py" not in cmd:
+                and "reset_stuck_agent_jobs.py" not in cmd \
+                and "remediate_proposal_trade_plans.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -613,6 +614,19 @@ def collect_risk_protection() -> list[dict]:
         if al and al.get("c", 0) > 0:
             out.append(_f("risk_protection", "stop_alerts", "warning",
                           f"{al['c']} stops in alert state (no synthetic coverage)", count=al["c"]))
+        try:
+            import sys as _sysc
+            from pathlib import Path as _P
+            _root = _P(__file__).resolve().parent.parent
+            _sysc.path.insert(0, str(_root / "scripts" / "lib"))
+            from stop_consensus_check import detect_conflicts
+            _soc = detect_conflicts(project_root=_root)
+            if _soc:
+                syms = ", ".join(c["symbol"] for c in _soc[:5])
+                out.append(_f("risk_protection", "stop_over_consensus", "warning",
+                              f"{len(_soc)} stop(s) above Street mean ({syms})", count=len(_soc)))
+        except Exception:
+            pass
         # recent P0/P1 protection SIEM events — count DISTINCT unresolved issues, not duplicate
         # re-alert rows. The log scraper (and others) can emit the same underlying error every cycle;
         # counting raw rows let one stale-but-fixed traceback read as "26 P0/P1 alerts" and pinned
@@ -922,6 +936,33 @@ WHY = {
 }
 
 
+_CTA_BY_TYPE = {
+    "portfolio_repricer_stale": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
+    "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
+    "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "watchlist_stale": {"label": "Watch → Watchlist", "route": "/v3/watch?tab=watchlist"},
+    "rotation_empty": {"label": "Rotation desk", "route": "/v3/rotation"},
+}
+_CTA_BY_CATEGORY = {
+    "execution_health": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "risk_protection": {"label": "Risk → Exposure", "route": "/v3/risk"},
+    "pipeline_freshness": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "intelligence_quality": {"label": "Hermes", "route": "/v3/hermes"},
+    "retirement_planning": {"label": "Retirement", "route": "/v3/retirement"},
+    "data_quality": {"label": "Health Agent", "route": "/v3/health"},
+}
+
+
+def _attach_cta(f: dict):
+    """One-click operator route for CC v3 UI (Health, Home alert rail, MetricStrip)."""
+    t = f.get("type", "")
+    cta = _CTA_BY_TYPE.get(t) or _CTA_BY_CATEGORY.get(f.get("category", "")) or {
+        "label": "Health Agent", "route": "/v3/health",
+    }
+    f["cta"] = cta
+
+
 def _annotate(f: dict, rmap: dict):
     """Attach why-it-matters + recommended action + actionability to a finding (write-time)."""
     t = f.get("type", "")
@@ -947,6 +988,7 @@ def _annotate(f: dict, rmap: dict):
         f["action_type"] = "review"
         f["recommended_action"] = "Operator review."
         f["actionable"] = True
+    _attach_cta(f)
 
 
 CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
@@ -1615,6 +1657,33 @@ def collect_proposal_oversight_load() -> list[dict]:
     return out
 
 
+def collect_proposal_trade_plan_health() -> list[dict]:
+    """Active broker-queue proposals blocked on gambling geometry / missing authoritative plan."""
+    out = []
+    cfg = (_POLICY.get("proposal_trade_plan") or {})
+    if cfg.get("enabled") is False:
+        return out
+    try:
+        from db_adapter import get_connection
+        import remediate_proposal_trade_plans as rtpr
+        audit = rtpr.audit_blocked_count(get_connection())
+        n = int(audit.get("count") or 0)
+        warn_n = int(cfg.get("blocked_warn", 1))
+        crit_n = int(cfg.get("blocked_critical", 3))
+        if n >= warn_n:
+            syms = ", ".join(sorted((audit.get("by_symbol") or {}).keys())[:8])
+            sev = "critical" if n >= crit_n else "warning"
+            out.append(_f(
+                "execution_health", "proposal_trade_plan_blocked", sev,
+                f"{n} active proposal(s) lack authoritative trade plan (gambling-blocked) — {syms or 'see queue'}",
+                count=n, symbols=audit.get("by_symbol"),
+            ))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"proposal_trade_plan check error: {e}"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_trade_in_view_health,
@@ -1625,6 +1694,7 @@ COLLECTORS = [
     collect_retirement_planning,
     collect_strategy_output,
     collect_proposal_maturity,
+    collect_proposal_trade_plan_health,
     collect_log_errors,
     collect_pipeline_freshness,
     collect_momentum_scalp_source_health,

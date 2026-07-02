@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 AUDIT_PATH = PROJECT_ROOT / "data" / "runtime" / "secrets_admin_audit.jsonl"
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,60}$")
-SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
+SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_COOKIE")
 # Always offered (so the operator can add even if currently absent)
 KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "FINNHUB_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
@@ -42,15 +42,23 @@ def _read_env():
     for l in lines:
         if "=" in l and not l.lstrip().startswith("#"):
             k, _, v = l.partition("=")
-            d[k.strip()] = v.strip()
+            d[k.strip()] = v.strip().strip("'\"")
     return lines, d
 
 
 def _mask(v):
     if not v:
         return None
-    v = v.strip()
+    v = v.strip().strip("'\"")
     return ("••••" + v[-4:]) if len(v) >= 8 else "••••"
+
+
+def _format_env_line(key: str, value: str) -> str:
+    """Quote .env values that break shell parsing (Finviz cookies contain ; ( ) spaces)."""
+    if re.search(r"[;() $&|<>!#'\"\\]", value) or " " in value:
+        escaped = value.replace("'", "'\"'\"'")
+        return f"{key}='{escaped}'"
+    return f"{key}={value}"
 
 
 def list_secrets():
@@ -91,7 +99,7 @@ def set_secret(key, value, actor="operator"):
     if len(value) < 4:
         raise ValueError("value too short")
     lines, _ = _read_env()
-    newline = f"{key}={value}"
+    newline = _format_env_line(key, value)
     out, replaced = [], False
     for l in lines:
         if "=" in l and l.split("=", 1)[0].strip() == key and not l.lstrip().startswith("#"):

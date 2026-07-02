@@ -22,6 +22,11 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     for d in [report_dir, charts_dir, state_dir]: d.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(root/"scripts"))
 
+    from morning_command_digest import bundle_enabled, append_section, send_morning_command_bundle, fetch_hermes_movers
+    _morning_bundle: Dict[str, str] | None = {} if bundle_enabled(run_type) else None
+    if _morning_bundle is not None:
+        print("  [morning-command] Daily bundle mode — deferring morning Telegram sections")
+
     # Load .env so API key is available throughout the pipeline
     import os
     if not os.getenv("ANTHROPIC_API_KEY",""):
@@ -620,11 +625,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                         f"Symbols: {', '.join(_this_month['symbols'][:10])}\n\n"
                         f"Annual income: ${dividend_calendar.get('total_annual', 0):,.0f}/yr"
                     )
-                    try:
-                        from telegram_alert import send_telegram as _div_tg
-                        _div_tg(_div_msg)
-                    except Exception:
-                        pass
+                    if _morning_bundle is not None:
+                        append_section(_morning_bundle, "dividends", _div_msg)
+                    else:
+                        try:
+                            from telegram_alert import send_telegram as _div_tg
+                            _div_tg(_div_msg)
+                        except Exception:
+                            pass
                     save_notification_log_entry({
                         "notification_date": date_str,
                         "notification_type": "dividend_alert",
@@ -816,7 +824,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                                     send_monthly_report_telegram, send_weekly_digest)
     print(f"\n[11/11] Portfolio alerts...")
     try:
-        alert_counts = run_portfolio_alerts(portfolio, analysis, root)
+        alert_counts = run_portfolio_alerts(portfolio, analysis, root, bundle=_morning_bundle)
         total_alerts = sum(alert_counts.values())
         print(f"  ✅ {total_alerts} alert(s) sent → Telegram")
     except Exception as e:
@@ -825,7 +833,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     # Technical signal alerts
     if technical.get("signal_changes"):
         try:
-            n_sig = send_technical_alerts(technical, root)
+            n_sig = send_technical_alerts(technical, root, bundle=_morning_bundle)
             if n_sig: print(f"  [alerts] ✅ {n_sig} technical signals sent → Telegram")
         except Exception as e:
             print(f"  [alerts] Technical alerts error: {e}")
@@ -1512,11 +1520,15 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             )
             _hc_ok = False
             _hc_err = None
-            try:
-                from telegram_alert import send_telegram as _hc_tg
-                _hc_ok = _hc_tg(_hc_msg)
-            except Exception as _hc_tge:
-                _hc_err = str(_hc_tge)
+            if _morning_bundle is not None:
+                append_section(_morning_bundle, "drafts", _hc_msg)
+                _hc_ok = True
+            else:
+                try:
+                    from telegram_alert import send_telegram as _hc_tg
+                    _hc_ok = _hc_tg(_hc_msg)
+                except Exception as _hc_tge:
+                    _hc_err = str(_hc_tge)
             save_notification_log_entry({
                 "notification_date": date_str,
                 "notification_type": "draft_alert",
@@ -1644,14 +1656,18 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 f"Severity: 1 (urgent)\n"
                 f"Data freshness: {_age_h}h"
             )
-            # Send
+            # Send (or defer to morning bundle)
             _send_ok = False
             _send_err = None
-            try:
-                from telegram_alert import send_telegram as _tg_send
-                _send_ok = _tg_send(_msg)
-            except Exception as _tge:
-                _send_err = str(_tge)
+            if _morning_bundle is not None:
+                append_section(_morning_bundle, "stops", _msg)
+                _send_ok = True
+            else:
+                try:
+                    from telegram_alert import send_telegram as _tg_send
+                    _send_ok = _tg_send(_msg)
+                except Exception as _tge:
+                    _send_err = str(_tge)
             # Log
             save_notification_log_entry({
                 "notification_date": date_str,
@@ -1674,6 +1690,16 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             print(f"  [notifications] \u2705 {_notif_sent} urgent alert(s) sent via Telegram")
     except Exception as _ne:
         print(f"  [notifications] Failed (pipeline continues): {_ne}")
+
+    # ── Morning Command bundle (single Telegram replaces 09:28 burst) ─────────
+    if _morning_bundle:
+        try:
+            _hm = fetch_hermes_movers()
+            if _hm:
+                append_section(_morning_bundle, "hermes", _hm)
+            send_morning_command_bundle(_morning_bundle, root)
+        except Exception as _mce:
+            print(f"  [morning-command] Bundle send failed: {_mce}")
 
     # ── Gmail Daily Digest ───────────────────────────────────────────────────
     try:
