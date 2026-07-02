@@ -123,6 +123,69 @@ thesis (recommendation, evidence, counter-view, risks, confidence) in the drawer
 - `migrations/2026-06-09_hermes_score_history.sql` — `hermes_score_history` (append-only) +
   `hermes_weight_calibration`.
 
+## The closed-loop map — every outcome→behavior edge, in one place
+
+Each loop below is **automated** (no human in the loop inside its rails), reads ONLY
+`hermes_outcome_ledger` (graded nightly by `hermes_outcome_grader.py`), is **sample-gated**
+(does nothing but report until its gate clears), and leaves an audit trail:
+
+| # | Outcome signal | What it changes | Where enforced | Audit trail | Gate / state |
+|---|---|---|---|---|---|
+| 1 | 20-session excess return + realized R per factor | live scoring weights (`config/hermes_score_weights.yaml`) | `hermes_outcome_learning.py` → `hermes_autonomous_self_tune.py` graft (additive ±0.02, ≥5 eligible days/14, 0.10 weekly drift cap, shadow-beats-live) | `hermes_weight_calibration` + `hermes_autotune_audit` | n≥10 hi + n≥10 lo graded pairs per factor |
+| 2 | promotion precision per research_type | auto-promote confidence gate | coordinator promote query joins `hermes_promotion_thresholds` | table rows w/ reason + `hermes_promotion_audit` | n≥10/type (live: momentum_catalyst 0.32 → 0.75 gate) |
+| 3 | per-domain actioned yield | `research_sources.active` (research depth by source) | `hermes_outcome_learning.py`; nightly curation cannot override (`OUTCOME_LEDGER` markers) | `notes` markers | n≥10/domain (live: 8 retired) |
+| 4 | per-lane rec hit-rate | external lane rotation weight (grok vs chatgpt) | `research_scheduler._lane_rotation()` (0.15 floor) | `hermes_lane_usefulness` | ≥30 graded recs (pending ~Jul 16) |
+| 5 | per-tag actioned lift + avg realized R | tag vocabulary review (negative-lift tags flagged) + quality prior | `hermes_tag_engine.py` | `hermes_tag_efficacy` (`lift`, `trade_n`, `avg_realized_r`) | n≥15/tag (live: 2 flagged) |
+| 6 | research_type actioned rate | continuous `quality_score` (ranks which research reaches prompts/reports) | `hermes_tag_engine.quality_v2` blend | `quality_score` distribution (health check #6 guards collapse) | live |
+| 7 | trigger freshness / catalyst events | scope tier membership (what gets scored & researched at all) | `hermes_scope_governor.py` + event feeder | `scope_governor_audit` | live, every 30 min + events |
+| 8 | rails-pressure (any loop pinned at its clamp/cap) | **proposals only** — `config_change_proposals` for operator approval | `hermes_config_governor.py` | proposal rows w/ evidence + rollback | live nightly |
+
+**Compounding evidence** is measured, not asserted: `hermes_maturity_gates.py` snapshots all ~21
+gates daily into `hermes_maturity_history` and reports `trend_vs_7d` (score + gates-passed deltas
+per dimension). A maturing system trends up; a wheel-spinner is flat. Dashboard:
+`GET /api/v2/hermes/maturity-dashboard` → `maturity_gates`.
+
+## Scope governance is an active agent, not a policy file
+
+`hermes_scope_governor.py` runs every 30 minutes with **authority to promote/demote any symbol**
+between S0–S3 based on live edge signals — holdings/positions/proposals (S0 pins), composite ≥70,
+catalyst <48h, capped directive hits (S1), incubator/watchpool freshness (S2), TTL expiry and cap
+pressure (demotions) — plus the `*/5` event feeder reactivating archived names within minutes of a
+catalyst/news/Finviz/first-directive/proposal event. Every decision is a `scope_governor_audit`
+row with reason. It converges (0 changes on a quiet re-run) and its rails live in
+`config/hermes_scope_governor.yaml`; when the rails themselves bind, it cannot widen them — that
+goes through the config-proposal channel (loop 8).
+
+## Tagging metrics & downstream consumers (honest ledger)
+
+- **Coverage:** strategy_tags ~99.9%; fallback-only (`general_research`) 49.7% → draining ~400
+  rows/night toward the <15% target (registry-vocabulary retag, capped local-LLM refine).
+- **Tag→outcome correlation** (`hermes_tag_efficacy`, updated nightly): momentum_scalp **+0.042
+  lift** (n=872, z>1.96), swing +0.040 (n=783, significant), catalyst +0.023 (n=934);
+  `general_research` **−0.292 FLAGGED**, `holdings` −0.080 FLAGGED. `avg_realized_r`/`trade_n`
+  per tag joins ledger trades to prior tagged research (sparse today — fills with the validation
+  tracker sample).
+- **Real consumers:** `hermes_data_access.py` (quality-ranked top-3 per symbol → all LLM prompts),
+  `analyst_report_builder` (quality-ordered), news bridge (`strategy_tags[0]` →
+  `news_articles.strategy_type`), directive discovery (tag text search), maturity gates.
+- **Honest non-consumers:** AI Trade Critique, Stop Management, and the Validation Tracker
+  currently **write** research but do **not** read tags back — wiring tag context into those
+  surfaces is open Phase-6 work, not a claimed capability.
+
+## Resource efficiency — measured before/after (2026-07-02 cutover)
+
+| Metric | Before (audit) | After (tier-mode) | Ongoing tracking |
+|---|---|---|---|
+| Score computations/day | ~197K (4,111 syms × 48 runs) | ~8K (tier plans + events) | gate `score_rows_per_day` |
+| `hermes_score_history` writes/day | ~157K (98.6–100% unchanged dupes) | ~3–6K (no-change skip + cap) | same gate, daily snapshot |
+| Table size | 1.85 GB (#2 in DB), unbounded | 21d retention → ~100–200 MB steady | gate `score_history_size_mb` |
+| External LLM calls/day | 6,008 peak (Jun 29), 38% errors | ~130–550, breaker holds errors ≈0 | gates `external_error_rate` / `error_call_rate_7d` |
+| Scored universe | 4,171 flat | 800 governed (87 S0 / ≤400 S1 / ≤320 S2) + event lane | gate `universe_within_cap` |
+| Paid LLM | 39-45 calls/30d (authorized lane only) | unchanged, gated | gate `no_unauthorized_paid_llm` |
+
+The efficiency dimension of the maturity board recomputes these **daily** into
+`hermes_maturity_history` — the trend is queryable, not anecdotal.
+
 ## Near-24/7 cron summary
 ```
 */30 9-15 + 16:15   watchlist_enrichment_sweep   (rsi/trend/score)

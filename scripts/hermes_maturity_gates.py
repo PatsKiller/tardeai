@@ -223,9 +223,28 @@ def build_gates(cur) -> dict:
     }
     streaks = _streaks(cur)
     scores = {d: _score(g, streaks.get(d, 0)) for d, g in dims.items()}
+    # Compounding evidence: score + gates-passed deltas vs the snapshot ~7 days ago. A maturing
+    # system trends up; a wheel-spinner is flat. (Empty until history accumulates.)
+    trend = {}
+    try:
+        cur.execute("""SELECT gates, scores FROM hermes_maturity_history
+                       WHERE snapshot_date <= CURRENT_DATE - 7
+                       ORDER BY snapshot_date DESC LIMIT 1""")
+        row = cur.fetchone()
+        if row:
+            old_gates, old_scores = row
+            for d, g in dims.items():
+                now_pass = sum(1 for v in g.values() if v.get("pass"))
+                then = old_gates.get(d) or {}
+                then_pass = sum(1 for v in then.values() if v.get("pass"))
+                trend[d] = {"score_delta": scores[d] - int((old_scores or {}).get(d, scores[d])),
+                            "gates_passed_delta": now_pass - then_pass}
+    except Exception:
+        pass
     return {"dimensions": dims, "scores": scores,
             "persistence_days_required": PERSISTENCE_DAYS,
             "streak_days": streaks,
+            "trend_vs_7d": trend or None,
             "overall": round(sum(scores.values()) / len(scores), 1),
             "computed_at": datetime.now(timezone.utc).isoformat(),
             "note": "5 requires ALL gates passing for 30 consecutive daily snapshots — earned, not claimed"}

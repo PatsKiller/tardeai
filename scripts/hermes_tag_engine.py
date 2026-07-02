@@ -185,6 +185,8 @@ def tag_efficacy(cur, cfg, apply):
     cur.execute("""CREATE TABLE IF NOT EXISTS hermes_tag_efficacy (
                      tag TEXT PRIMARY KEY, n INT, hits INT, hit_rate NUMERIC,
                      base_rate NUMERIC, lift NUMERIC, flagged BOOLEAN, updated_at TIMESTAMPTZ)""")
+    cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS trade_n INT")
+    cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC")
     cur.execute("""SELECT unnest(hri.strategy_tags) tag,
                           count(*) FILTER (WHERE l.actioned <> 'none') hits, count(*) n
                    FROM hermes_outcome_ledger l
@@ -193,6 +195,18 @@ def tag_efficacy(cur, cfg, apply):
                      AND hri.strategy_tags IS NOT NULL
                    GROUP BY 1""")
     rows = cur.fetchall()
+    # R-multiple by tag: trades in the ledger joined to prior tagged research on the same symbol
+    # (research within 30d before entry). Answers "does research tagged X precede money?"
+    cur.execute("""SELECT tag, count(*) trade_n, avg(realized_r) avg_r FROM (
+                     SELECT DISTINCT lt.subject_id, unnest(hri.strategy_tags) tag, lt.realized_r
+                     FROM hermes_outcome_ledger lt
+                     JOIN hermes_research_intelligence hri
+                       ON UPPER(hri.symbol) = lt.symbol
+                      AND hri.created_at BETWEEN lt.emitted_at - interval '30 days' AND lt.emitted_at
+                     WHERE lt.subject_type='trade' AND lt.realized_r IS NOT NULL
+                       AND hri.strategy_tags IS NOT NULL) x
+                   GROUP BY tag""")
+    r_by_tag = {r[0]: (r[1], float(r[2])) for r in cur.fetchall()}
     tot_h = sum(r[1] for r in rows); tot_n = sum(r[2] for r in rows)
     base = tot_h / tot_n if tot_n else None
     min_n = int(cfg["efficacy"]["min_samples_per_tag"])
@@ -201,16 +215,22 @@ def tag_efficacy(cur, cfg, apply):
         hr = hits / n if n else None
         lift = (hr - base) if (hr is not None and base is not None) else None
         flagged = bool(n >= min_n and lift is not None and lift <= 0)
-        out["tags"].append({"tag": tag, "n": n, "hit_rate": round(hr, 3), "lift": round(lift, 3) if lift is not None else None})
+        tn, avg_r = r_by_tag.get(tag, (0, None))
+        out["tags"].append({"tag": tag, "n": n, "hit_rate": round(hr, 3),
+                            "lift": round(lift, 3) if lift is not None else None,
+                            "trade_n": tn, "avg_realized_r": round(avg_r, 3) if avg_r is not None else None})
         if flagged:
             out["flagged"].append(tag)
         if apply:
-            cur.execute("""INSERT INTO hermes_tag_efficacy (tag, n, hits, hit_rate, base_rate, lift, flagged, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
+            cur.execute("""INSERT INTO hermes_tag_efficacy (tag, n, hits, hit_rate, base_rate, lift,
+                                                            flagged, trade_n, avg_realized_r, updated_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                            ON CONFLICT (tag) DO UPDATE SET n=EXCLUDED.n, hits=EXCLUDED.hits,
                              hit_rate=EXCLUDED.hit_rate, base_rate=EXCLUDED.base_rate,
-                             lift=EXCLUDED.lift, flagged=EXCLUDED.flagged, updated_at=NOW()""",
-                        (tag, n, hits, hr, base, lift, flagged))
+                             lift=EXCLUDED.lift, flagged=EXCLUDED.flagged,
+                             trade_n=EXCLUDED.trade_n, avg_realized_r=EXCLUDED.avg_realized_r,
+                             updated_at=NOW()""",
+                        (tag, n, hits, hr, base, lift, flagged, tn, avg_r))
     return out
 
 
