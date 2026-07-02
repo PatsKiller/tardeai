@@ -124,3 +124,7 @@ synthesis `cio_synth_v6_structured_agent_evidence_2026-07-02`, `SYNTHESIS_VERSIO
 - CIO synthesis contract parity: `cio_synth_v7_synthesis_evidence_2026-07-02` (`SYNTHESIS_VERSION_NUM=7`); structured evidence in `dual_consensus_json`.
 - Remaining lanes: `holdings_llm_refresh`, `proposal_quality_reviewer`, `cloud_review`, `rebalance_deep_analyzer`, `grok_stop_review`, `proposal_llm_reviewer` chunks 3–4.
 - Strategy cards remain deterministic (`materialize_watchlist_strategy_cards.py`); CIO View evidence comes via synthesis path above.
+
+**UI evidence surfacing SHIPPED** (2026-07-02):
+- `EvidenceBlock.tsx` + `extract_evidence_packet()` normalize tagged bullets for API/UI.
+- Surfaces: watchlist CIO card (`synthesis_evidence`), proposal decision packet (`BrokerIntelPanel` / `ProposalsRich`), Hermes hub backlog + drawer (`cio_synthesis`, external intel), portfolio holdings (`llm_evidence` / health chip).

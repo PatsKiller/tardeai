@@ -10,6 +10,7 @@ import { isBrokerRouted, routingColor, routingLabel } from '../lib/proposalRouti
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import ProposalSourceBadges from './ProposalSourceBadges'
 import ProposalStrategyBadge from './ProposalStrategyBadge'
+import { EvidenceBlock } from './EvidenceBlock'
 const ScreenerConfigModal = lazy(() => import('./ScreenerConfigModal'))
 
 // Full v2-parity proposal review surface, ported into v3 (canonical).
@@ -680,10 +681,18 @@ function ProposalCard({ p, act, acting, symCard, onRefetch }: { p: any; act: (id
             <div style={{ marginTop: 8 }}>
               <div style={secLbl}>Agent Reviews ({p.agent_reviews.length})</div>
               {p.agent_reviews.map((ar: any, i: number) => (
-                <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 2 }}>
-                  <strong>{ar.agent_name || ar.agent}</strong>: {ar.verdict || ar.vote} ({ar.confidence}%) -- {(ar.summary || ar.reasoning || '').slice(0, 100)}
+                <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 6 }}>
+                  <strong>{ar.agent_name || ar.agent}</strong>: {ar.verdict || ar.vote} ({ar.confidence}%) — {(ar.summary || ar.reasoning || '').slice(0, 100)}
+                  <EvidenceBlock evidence={ar.evidence} dataIDoubt={ar.data_i_doubt} compact maxItems={4} />
                 </div>
               ))}
+            </div>
+          )}
+
+          {p.llm_analysis && (p.llm_analysis.evidence?.length > 0 || (p.llm_analysis.data_i_doubt && p.llm_analysis.data_i_doubt !== 'none')) && (
+            <div style={{ marginTop: 8 }}>
+              <div style={secLbl}>LLM analysis evidence{p.llm_analysis.model_used ? ` · ${p.llm_analysis.model_used}` : ''}</div>
+              <EvidenceBlock evidence={p.llm_analysis.evidence} dataIDoubt={p.llm_analysis.data_i_doubt} compact />
             </div>
           )}
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
 import { EnsembleValidationCard, normalizeEnsembleResult } from './EnsembleValidationCard'
+import { EvidenceBlock } from './EvidenceBlock'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', TEXT1 = '#dbeafe', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', RED = '#ef4444', PURPLE = '#a78bfa'
 const sec = { fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }
@@ -318,8 +319,13 @@ export default function BrokerIntelPanel({
               {r.verdict && <span style={{ color: voteColor(r.verdict) }}> · {r.verdict}</span>}
               {r.model && <span style={{ color: MUTED }}> · {r.model}</span>}
               {r.summary && <div style={{ color: TEXT1, marginTop: 2 }}>{r.summary}</div>}
+              <EvidenceBlock evidence={r.evidence} dataIDoubt={r.data_i_doubt} compact maxItems={4} />
             </div>
           )})}
+
+          {(localLlm.evidence?.length > 0 || (localLlm.data_i_doubt && localLlm.data_i_doubt !== 'none')) && (
+            <EvidenceBlock title="Local LLM evidence" evidence={localLlm.evidence} dataIDoubt={localLlm.data_i_doubt} compact />
+          )}
 
           {ensembleResult ? (
             <EnsembleValidationCard result={ensembleResult} onRevalidate={onRunCloudOversight} />
@@ -334,6 +340,7 @@ export default function BrokerIntelPanel({
                     {lr?.ok ? (lr?.verdict || '—') : 'unavailable'}
                   </span>
                   {lr?.assessment && <div style={{ color: TEXT1, marginTop: 2 }}>{String(lr.assessment).slice(0, compact ? 120 : 220)}</div>}
+                  <EvidenceBlock evidence={lr?.evidence} dataIDoubt={lr?.data_i_doubt} compact maxItems={3} />
                   {(lr?.concerns?.length > 0) && (
                     <div style={{ color: AMBER, marginTop: 2 }}>⚠ {lr.concerns.slice(0, 2).join(' · ')}</div>
                   )}

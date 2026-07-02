@@ -10,6 +10,7 @@ import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
 import HoldingReportLinks from '../components/HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { watchlistReportEligible } from '../lib/reportLinks'
+import { EvidenceBlock } from '../components/EvidenceBlock'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -407,6 +408,20 @@ export default function WatchlistHub({ onDrill }: Props) {
                     <Metric label="Limit" value={money(it.entry_limit)} color={hasPlan ? GREEN : MUTED} />
                     <Metric label="Stop" value={money(it.entry_stop)} color={RED} />
                   </div>
+
+                  {(it.synthesis_evidence?.length > 0 || (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')) && (
+                    <EvidenceBlock
+                      title="CIO structured evidence"
+                      evidence={it.synthesis_evidence}
+                      dataIDoubt={it.synthesis_data_i_doubt}
+                      compact
+                    />
+                  )}
+                  {it.synthesis_narrative_snip && (
+                    <div style={{ fontSize: 10.5, color: TEXT2, lineHeight: 1.45, fontStyle: 'italic' }}>
+                      {it.synthesis_narrative_snip}
+                    </div>
+                  )}
 
                   {warns.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{warns.map((w, i) => <div key={i} style={{ fontSize: 11, color: w.color, fontWeight: 850 }}>⚠ {w.text}</div>)}</div>}
                   {ladder && <div onClick={e => e.stopPropagation()} style={{ background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10, padding: '9px 11px' }}><div style={{ fontSize: 9.5, color: MUTED, fontWeight: 900, textTransform: 'uppercase' }}>Exit ladder · R = ${ladder.R.toFixed(2)}/sh</div>{ladder.steps.map((s, i) => <div key={i} style={{ fontSize: 11, marginTop: 3 }}><span style={{ color: GREEN, fontWeight: 900, fontFamily: 'monospace' }}>{s.label} {s.px.toFixed(2)}</span><span style={{ color: TEXT2 }}> — {s.action}</span></div>)}<div style={{ fontSize: 9.5, color: MUTED, marginTop: 5 }}>In-trade: {MONITOR_RULES}</div></div>}
