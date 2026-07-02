@@ -1993,7 +1993,8 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     unbounded number of request threads / DB connections under a poll burst; excess connections wait in
     the request_queue_size=128 backlog rather than being dropped."""
     allow_reuse_address = True
-    allow_reuse_port = True
+    # SO_REUSEPORT allowed a second portfolio_server to bind :7777 alongside the first (orphan twins).
+    allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
     _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "16")))
