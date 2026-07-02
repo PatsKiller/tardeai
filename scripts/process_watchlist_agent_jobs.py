@@ -174,8 +174,8 @@ _llm._last_cost = 0
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
 # one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
 # back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
-SYNTHESIS_PROMPT_VERSION = "cio_synth_v4_input_tightness_2026-07-01"   # descriptive (prompt stamp / audit)
-SYNTHESIS_VERSION_NUM = 4                                    # integer for the synthesis_version column (bump on prompt/method change)
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v5_dq_specifics_2026-07-01"   # descriptive (prompt stamp / audit)
+SYNTHESIS_VERSION_NUM = 5                                    # integer for the synthesis_version column (bump on prompt/method change)
 
 # Local-lane control tokens (gemma/qwen '/no_think') are meaningless noise on cloud lanes — strip
 # before any Grok/ChatGPT call; the local fallback keeps the original prompt (F3, CIO audit 2026-07-01).
@@ -189,7 +189,7 @@ def _strip_local_tokens(prompt: str) -> str:
     return out.lstrip()
 
 
-def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
+def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     """Free Grok OAuth → local gemma fallback. Records the ACTUAL model on _llm._last_model so the
     stored model_used is truthful (the old path hard-coded OLLAMA_MODEL regardless of what ran)."""
     try:
@@ -229,7 +229,7 @@ def _rec_from(raw):
         return "", 0.0
 
 
-def _synthesis_dual(prompt: str, max_tokens: int = 1000):
+def _synthesis_dual(prompt: str, max_tokens: int = 2000):
     """Run the CIO final synthesis on BOTH free-OAuth lanes (Grok + ChatGPT) and reconcile. Returns
     (raw_text_for_narrative, dual_meta). dual_meta = {grok, chatgpt, agree, consensus, consensus_confidence}.
     Falls back to Grok-only, then local gemma, when a lane is unavailable. ChatGPT is capped per run."""
@@ -1416,6 +1416,56 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
     }
 
 
+def _build_dq_note(conn, symbol: str, dq_alert_count: int) -> str:
+    """F4 (CIO audit 2026-07-01): enumerate WHICH synthesis inputs are stale and how old, measured
+    directly from the sources the prompt uses (enrichment cache cached_at, ticker_prices date, news
+    recency) — the alert_events count alone almost never fires for real tickers. Thresholds are
+    weekend-safe (price >4d) / refresh-cadence-based (enrichment >2d, daily 06:40 rebuild) / aligned
+    with _check_symbol_data_quality (news 14d). Empty string when everything is fresh."""
+    from datetime import datetime, date
+    stale = []
+    try:
+        enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+        e = enrichment.get(symbol) if isinstance(enrichment.get(symbol), dict) else None
+        if e is None:
+            stale.append("technicals/fundamentals snapshot (RSI, SMA, PE): MISSING from enrichment cache")
+        elif e.get("cached_at"):
+            age_d = (datetime.now() - datetime.fromisoformat(str(e["cached_at"]).split("+")[0])).total_seconds() / 86400
+            if age_d > 2:
+                stale.append(f"technicals/fundamentals snapshot (RSI, SMA, PE): {age_d:.1f} days old")
+    except Exception:
+        pass
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(price_date) FROM ticker_prices WHERE symbol=%s", (symbol,))
+        last_px = (cur.fetchone() or [None])[0]
+        if last_px is None:
+            stale.append("close price: NO price history in DB")
+        else:
+            px_age = (date.today() - last_px).days
+            if px_age > 4:
+                stale.append(f"last close price: {last_px} ({px_age} days old)")
+        cur.execute("SELECT MAX(created_at)::date FROM news_articles WHERE symbol=%s", (symbol,))
+        last_news = (cur.fetchone() or [None])[0]
+        if last_news is None:
+            stale.append("news: none on record")
+        elif (date.today() - last_news).days > 14:
+            stale.append(f"news: newest article {(date.today() - last_news).days} days old")
+        cur.close()
+    except Exception:
+        pass
+    if dq_alert_count > 0:
+        stale.append(f"{dq_alert_count} data-quality alert(s) on this symbol in the last 7 days")
+    if not stale:
+        return ""
+    lines = "\n".join(f"- {s}" for s in stale)
+    return (f"\nDATA QUALITY WARNING — stale/missing inputs (down-weight these SPECIFIC fields, "
+            f"trust fresh fields normally):\n{lines}\n"
+            "If a decision-critical input (price, ownership, income) is stale, cap confidence at 0.5 "
+            "or output RESEARCH_MORE instead of a directional verdict; otherwise still produce a "
+            "recommendation.\n")
+
+
 def _build_layer_status(conn) -> str:
     """Build layer allocation status string for synthesis prompt."""
     import psycopg2.extras
@@ -1544,10 +1594,9 @@ Total portfolio income: ${_tpi:,.0f} — gap: ${_gap:,.0f}
         if port_ctx["has_stop_triggered"]:
             alert_context += "CRITICAL: Stop was triggered — risk assessment should be weighted heavily.\n"
 
-    # Data quality warning
-    dq_note = ""
-    if port_ctx["data_quality_issues"] > 0:
-        dq_note = f"\nDATA QUALITY WARNING: {port_ctx['data_quality_issues']} data quality issue(s) detected in last 7 days. Lower confidence accordingly but still produce a recommendation.\n"
+    # Data quality warning — enumerate WHICH inputs are stale + their age (F4, CIO audit 2026-07-01),
+    # not just a count, so the model can down-weight the specific bad fields.
+    dq_note = _build_dq_note(conn, symbol, port_ctx["data_quality_issues"])
 
     # Strategy rules
     rules_text = "\n".join(f"- {r}" for r in rules)
@@ -1621,7 +1670,9 @@ Respond in JSON format:
 """
 
     prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
-    raw, dual_meta = _synthesis_dual(prompt, max_tokens=1000)   # Grok + ChatGPT dual-consensus, gemma fallback
+    # max_tokens applies to the LOCAL gemma fallback only (cloud lanes send no cap); 1000 truncated the
+    # ~11-field JSON contract mid-narrative on the fallback lane (measured: 1/1 local rows truncated).
+    raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
     parsed = _parse_result(raw)
 
     # Extract synthesis-specific fields
