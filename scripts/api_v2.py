@@ -5007,6 +5007,7 @@ def _wl_items(query: dict = None):
                ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
                ep.model_used AS entry_model,
                fs.recommendation AS synthesis_recommendation,
+               left(fs.synthesis_narrative, 700) AS cio_narrative,
                fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                fs.model_used AS cio_model_used,
                sp.sector AS profile_sector, sp.industry AS profile_industry,
