@@ -4,6 +4,7 @@
 Runs under pytest and standalone.
 """
 import copy
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -98,6 +99,24 @@ def test_coverage_full_is_pass():
         check("full coverage PASS", cov["status"] == "PASS", cov["missing_expected"])
 
 
+def test_repair_chain_after_race():
+    with tempfile.TemporaryDirectory() as td:
+        al = _ledger(td)
+        for i in range(3):
+            al.record_event("e", reason=str(i))
+        lines = al.LEDGER_PATH.read_text().splitlines()
+        # Simulate concurrent-append race: duplicate prev_event_hash on last row.
+        row = json.loads(lines[-1])
+        row2 = json.loads(lines[-2])
+        row["prev_event_hash"] = row2.get("prev_event_hash")
+        lines[-1] = json.dumps(row)
+        al.LEDGER_PATH.write_text("\n".join(lines) + "\n")
+        check("race breaks verify", not al.verify_chain(10).get("ok"))
+        rep = al.repair_chain()
+        check("repair ok", rep.get("ok") and rep.get("repaired", 0) > 0, rep)
+        check("chain verifies after repair", al.verify_chain(10).get("ok"))
+
+
 def test_coverage_live_mode_fails_on_missing_critical():
     with tempfile.TemporaryDirectory() as td:
         al = _ledger(td)
@@ -108,7 +127,8 @@ def test_coverage_live_mode_fails_on_missing_critical():
 
 ALL = [
     test_record_and_chain, test_verify_does_not_mutate_rows, test_tamper_detected,
-    test_partial_window_verifies, test_coverage_report_missing_events_warn,
+    test_partial_window_verifies, test_repair_chain_after_race,
+    test_coverage_report_missing_events_warn,
     test_coverage_full_is_pass, test_coverage_live_mode_fails_on_missing_critical,
 ]
 

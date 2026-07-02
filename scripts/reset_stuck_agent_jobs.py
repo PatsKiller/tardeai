@@ -32,10 +32,11 @@ def find_stuck(conn, minutes: int = STUCK_MINUTES) -> list:
     cur = conn.cursor()
     cur.execute("""
         SELECT id, request_type, symbol,
-               EXTRACT(EPOCH FROM (now() - created_at))/60.0 AS age_min
+               EXTRACT(EPOCH FROM (now() - COALESCE(started_at, created_at)))/60.0 AS age_min
         FROM watchlist_agent_jobs
-        WHERE status = 'processing' AND created_at < now() - interval '%s minutes'
-        ORDER BY created_at
+        WHERE status = 'processing'
+          AND COALESCE(started_at, created_at) < now() - interval '%s minutes'
+        ORDER BY COALESCE(started_at, created_at)
     """ % int(minutes))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
@@ -44,8 +45,9 @@ def find_stuck(conn, minutes: int = STUCK_MINUTES) -> list:
 def reset(conn, minutes: int = STUCK_MINUTES) -> int:
     cur = conn.cursor()
     cur.execute("""
-        UPDATE watchlist_agent_jobs SET status='queued'
-        WHERE status='processing' AND created_at < now() - interval '%s minutes'
+        UPDATE watchlist_agent_jobs SET status='queued', started_at=NULL
+        WHERE status = 'processing'
+          AND COALESCE(started_at, created_at) < now() - interval '%s minutes'
     """ % int(minutes))
     n = cur.rowcount
     conn.commit()
