@@ -28,9 +28,19 @@ Update `validation_tracker.json` and sync with `scripts/scalp_stop_validation_tr
 - `validation_tracker.json`
 - Regime at entry vs exit
 
+## OAuth LLM enrichment
+
+```bash
+.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once --llm --lane grok
+.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once --llm --force-llm  # re-enrich existing
+```
+
+Uses `llm_lane.py` — Grok OAuth (`:8645`), ChatGPT OAuth (`:8646`), local gemma fallback.
+Deterministic facts are computed first; LLM enriches narrative only (does not overwrite computed R/MAE).
+
 ## Writes
 
-- Critique to journal
+- `post_trade_reviews.json` (deterministic + optional `llm_summary`, `llm_lane`)
 - `validation_tracker.json` metrics
 - Learning feedback (optimal trail multipliers by regime/setup)
 

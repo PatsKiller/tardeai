@@ -141,6 +141,17 @@ $ .venv/bin/python3 scripts/hermes_scalp_exit_intelligence.py --once
 }
 ```
 
+### Post-Trade Review + OAuth LLM
+
+```bash
+# Requires Grok OAuth proxy on :8645 (or --lane chatgpt :8646)
+.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once --llm --lane grok --force-llm
+```
+
+Backfills `llm_enhanced`, `llm_summary`, `llm_lane` on existing reviews when no new closed trades.
+
+**Live run (2026-07-02):** `--llm --lane grok --force-llm` → `llm_enriched: 4`, `oauth_lane: grok` (~35s for 4 trades).
+
 ### Post-Trade Review (first run — 4 closed trades critiqued)
 
 ```

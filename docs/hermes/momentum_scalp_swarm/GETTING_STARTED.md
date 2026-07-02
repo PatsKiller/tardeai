@@ -89,7 +89,7 @@ The tmux launcher starts all Phase 1+2 daemons. Qualified signals land in `quali
 
 ```bash
 .venv/bin/python3 scripts/hermes_scalp_exit_intelligence.py --once
-.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once
+.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once --llm --lane grok
 .venv/bin/python3 -m pytest tests/test_hermes_scalp_phase3.py -v
 ```
 
