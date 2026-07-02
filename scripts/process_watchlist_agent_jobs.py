@@ -18,6 +18,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import (
+    AGENT_JSON_CONTRACT_VERSION,
+    GLOBAL_RULES_G1_G10,
+    build_base_json_instruction,
+    format_evidence_for_synthesis,
+    normalize_data_i_doubt,
+    normalize_evidence,
+    parse_agent_result,
+)
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -177,8 +187,7 @@ _llm._last_cost = 0
 SYNTHESIS_PROMPT_VERSION = "cio_synth_v6_structured_agent_evidence_2026-07-02"   # prompt stamp / audit
 SYNTHESIS_VERSION_NUM = 6                                    # integer for the synthesis_version column (bump on prompt/method change)
 # F2 (Stage 2b): committee agents emit tagged evidence + data_i_doubt (CIO audit 2026-07-01).
-AGENT_JSON_CONTRACT_VERSION = "cio_agent_v2_structured_evidence_2026-07-02"
-_EVIDENCE_TAGS = frozenset({"fact", "technical", "risk"})
+# Contract constants/helpers live in scripts/lib/cio_agent_contract.py (fleet parity).
 
 # Local-lane control tokens (gemma/qwen '/no_think') are meaningless noise on cloud lanes — strip
 # before any Grok/ChatGPT call; the local fallback keeps the original prompt (F3, CIO audit 2026-07-01).
@@ -760,33 +769,7 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception:
         pass
 
-    # Global rules G1-G10 (apply to ALL agents — Bible §5)
-    global_rules = """=== GLOBAL RULES (mandatory — apply to every analysis) ===
-G1 DATA FRESHNESS: Never analyze with stale data (news >7d, prices >24h, SEC >30d, FRED >7d). If stale: log stale_data, skip, no recommendation.
-G2 INCOME PROTECTION: NEVER recommend TRIM/SELL on positions where yield × market_value > $11,000/yr or strategies: dividend_growth_compounder, high_yield_income_bdc, tactical_income. If blocked: escalate to Alex with INCOME_CRITICAL.
-G3 SSDI AWARENESS: For IRA/401k positions include: MAGI impact estimate, IRMAA flag if MAGI >$103K (MFS), bracket flag if >$94,300, Medicaid lookback flag if distribution >$50K. If any flag: set ssdi_review=true.
-G4 CONFIDENCE GATING: If confidence <40%: output LOW_CONFIDENCE_SKIP. If only 1 source: skip. Decisions >14 days old: expire.
-G5 LEARNING LOOP: Read outcome lessons below and adjust confidence ±0.05 per past approval/rejection.
-G6 MACRO CONTEXT: Check FRED data in context. VIX >25: elevated volatility. T10Y2Y <0: recession risk. DFF >5%: bonds competitive. DFF <2%: equity premium.
-G7 ESCALATION: Auto-escalate to Alex when: agent conflict (BUY vs SELL same symbol 48h), any Roth conversion rec, income-critical flag, confidence 40-60% on portfolio position.
-G10 NO DIRECT EXECUTION: No trade executes without human approval.
-=== END GLOBAL RULES ==="""
-
-    base_instruction = f"""[agent_contract: {AGENT_JSON_CONTRACT_VERSION}]
-Respond in JSON format with these fields:
-- "summary": 1-2 sentence executive summary
-- "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
-- "recommendation": one of BUY, HOLD, AVOID, ADD, TRIM, SELL, NEUTRAL, RESEARCH_MORE
-- "confidence": decimal 0.0-1.0
-- "evidence": array of 3-5 objects — each {{"tag": "fact"|"technical"|"risk", "text": "specific verifiable claim"}} (tag fact=ownership/yield/catalyst/SEC; technical=RSI/MA/support; risk=stop/heat/concentration)
-- "data_i_doubt": string — which inputs may be stale, missing, or unreliable (use "none" if confident)
-- "reason_codes": array of short reason tags (e.g. ["strong_dividend", "overvalued", "technical_support"])
-- "next_action": what should happen next
-
-{global_rules}
-
-Context:
-{scan_block}
+    context_block = f"""{scan_block}
 {context_text}
 {hermes_block}
 {rag_block}
@@ -800,6 +783,11 @@ Context:
 {strategy_playbook_block}
 {scalp_instructions}
 {sentiment_block}{other_views}{intel}"""
+    base_instruction = build_base_json_instruction(
+        context=context_block,
+        include_global_rules=True,
+        global_rules=GLOBAL_RULES_G1_G10,
+    )
     if note:
         base_instruction += f"Additional note: {note}\n"
 
@@ -1075,108 +1063,11 @@ Respond in JSON only:
     return combined
 
 
-def _normalize_evidence(raw) -> list:
-    """F2: normalize tagged evidence bullets from agent JSON."""
-    out = []
-    if not isinstance(raw, list):
-        return out
-    for item in raw[:5]:
-        if isinstance(item, dict):
-            tag = str(item.get("tag") or "fact").lower().strip()
-            text = str(item.get("text") or "").strip()
-            if tag not in _EVIDENCE_TAGS:
-                tag = "fact"
-        elif isinstance(item, str) and item.strip():
-            tag, text = "fact", item.strip()
-        else:
-            continue
-        if text:
-            out.append({"tag": tag, "text": text[:300]})
-    return out
-
-
-def _normalize_data_i_doubt(raw) -> str:
-    if raw is None:
-        return "none"
-    if isinstance(raw, list):
-        parts = [str(x).strip() for x in raw if str(x).strip()]
-        return "; ".join(parts)[:500] if parts else "none"
-    s = str(raw).strip()
-    return s[:500] if s else "none"
-
-
-def _format_evidence_for_synthesis(parsed: dict) -> str:
-    """Render structured agent output for the CIO synthesis prompt."""
-    lines = []
-    for ev in parsed.get("evidence") or []:
-        lines.append(f"  - [{ev.get('tag', 'fact')}] {ev.get('text', '')}")
-    doubt = parsed.get("data_i_doubt") or "none"
-    block = ""
-    if lines:
-        block += "Structured evidence:\n" + "\n".join(lines) + "\n"
-    if doubt and doubt.lower() != "none":
-        block += f"Data doubt: {doubt}\n"
-    return block
-
-
-def _parse_result(raw: str) -> dict:
-    """Parse LLM response — try JSON first, fall back to text extraction."""
-    # Try JSON parse
-    try:
-        # Find JSON block
-        for start_char in ['{', '```json\n{', '```\n{']:
-            idx = raw.find(start_char)
-            if idx >= 0:
-                end = raw.rfind('}')
-                if end > idx:
-                    candidate = raw[idx:end + 1]
-                    if candidate.startswith('```'):
-                        candidate = candidate.split('\n', 1)[1] if '\n' in candidate else candidate
-                    parsed = json.loads(candidate)
-                    if isinstance(parsed, dict) and "recommendation" in parsed:
-                        return {
-                            "summary": str(parsed.get("summary", ""))[:500],
-                            "full_narrative": str(parsed.get("full_narrative", parsed.get("summary", "")))[:3000],
-                            "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
-                            "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
-                            "evidence": _normalize_evidence(parsed.get("evidence")),
-                            "data_i_doubt": _normalize_data_i_doubt(parsed.get("data_i_doubt")),
-                            "reason_codes": parsed.get("reason_codes", []) if isinstance(parsed.get("reason_codes"), list) else [],
-                            "next_action": str(parsed.get("next_action", ""))[:200],
-                        }
-    except (json.JSONDecodeError, ValueError, KeyError):
-        pass
-
-    # Fallback: text extraction
-    summary = raw[:300]
-    full_narrative = raw[:3000]
-    recommendation = "RESEARCH_MORE"
-    confidence = 0.5
-    reason_codes = []
-
-    for line in raw.split("\n"):
-        l = line.lower()
-        if "recommend" in l:
-            for r in ["STRONG_BUY", "BUY", "HOLD", "AVOID", "TRIM", "ADD", "SELL", "NEUTRAL", "RESEARCH_MORE"]:
-                if r.lower() in l:
-                    recommendation = r
-                    break
-        if "confidence" in l:
-            m = re.search(r'(\d+\.?\d*)', l)
-            if m:
-                v = float(m.group(1))
-                confidence = v if v <= 1 else v / 100
-
-    return {
-        "summary": summary,
-        "full_narrative": full_narrative,
-        "recommendation": recommendation,
-        "confidence": confidence,
-        "evidence": [],
-        "data_i_doubt": "none",
-        "reason_codes": reason_codes,
-        "next_action": "",
-    }
+# Backward-compatible aliases (tests + internal callers)
+_normalize_evidence = normalize_evidence
+_normalize_data_i_doubt = normalize_data_i_doubt
+_format_evidence_for_synthesis = format_evidence_for_synthesis
+_parse_result = parse_agent_result
 
 
 def _update_maturity(conn, symbol: str, agent: str, status: str):

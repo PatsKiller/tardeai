@@ -17,7 +17,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
+from cio_agent_contract import (
+    build_proposal_intelligence_json_schema,
+    merge_structured_into_result,
+    parse_proposal_intelligence_result,
+)
 from session13_db import get_conn
 from local_llm_config import get_local_llm_model
 
@@ -170,8 +176,7 @@ Critic: {p.get('critic_verdict') or 'N/A'} — {str(p.get('critic_reasoning') or
 News: {news_str}
 Missing: {', '.join(missing) if missing else 'None'}
 {trade_history_ctx}
-Answer as JSON:
-{{"setup_narrative":"what this trade is and why it exists (reference numbers)","strategy_fit_assessment":"how well setup matches strategy criteria","technical_assessment":"RSI/VWAP/ATR interpretation for this specific setup","catalyst_assessment":"catalyst quality and expected duration","risk_assessment":"what could go wrong, be specific","kill_conditions":["condition 1 that invalidates in first 30-60 min","condition 2"],"approve_case":"bull case with numbers","reject_case":"bear case with numbers","verdict":"APPROVE_PAPER_TEST or CAUTIOUS_PAPER_TEST or REJECT","conviction":"HIGH or MEDIUM or LOW","confidence":0.0-1.0}}"""
+{build_proposal_intelligence_json_schema()}"""
 
 
 def build_deterministic_analysis(p):
@@ -214,13 +219,13 @@ def build_deterministic_analysis(p):
     if critic == 'BLOCK': confidence = 0.2
     if critic == 'DOWNGRADE': confidence = 0.4
 
-    return {
+    return merge_structured_into_result({
         'summary': summary,
         'approve_case': approve,
         'reject_case': reject,
         'invalidation': 'Price drops below stop before entry or catalyst is invalidated.',
         'confidence': confidence,
-    }
+    })
 
 
 def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
@@ -240,15 +245,11 @@ def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
             prompt = build_prompt(p)
             raw = generate_fn(prompt, timeout=120, fallback=True, fast=False)
             if raw:
-                try:
-                    start = raw.find('{')
-                    end = raw.rfind('}') + 1
-                    if start >= 0 and end > start:
-                        analysis = json.loads(raw[start:end])
-                        model = get_local_llm_model()
-                        narrative_source = 'local_llm'
-                except Exception:
-                    pass
+                parsed = parse_proposal_intelligence_result(raw)
+                if parsed:
+                    analysis = parsed
+                    model = get_local_llm_model()
+                    narrative_source = 'local_llm'
         except Exception as e:
             log.warning(f"LLM failed for {symbol}: {e}")
 
@@ -269,9 +270,22 @@ def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
           analysis.get('summary'), analysis.get('approve_case'),
           analysis.get('reject_case'), analysis.get('invalidation'),
           analysis.get('confidence'),
-          json.dumps({"quality": analysis.get('catalyst_quality')}) if analysis.get('catalyst_quality') else None,
-          json.dumps({"quality": analysis.get('risk_reward_quality')}) if analysis.get('risk_reward_quality') else None,
-          json.dumps({"condition": analysis.get('technical_condition')}) if analysis.get('technical_condition') else None])
+          json.dumps({
+              "assessment": analysis.get('catalyst_assessment'),
+              "agent_contract": analysis.get('agent_contract'),
+              "evidence": analysis.get('evidence', []),
+              "data_i_doubt": analysis.get('data_i_doubt'),
+          }) if analysis.get('catalyst_assessment') or analysis.get('evidence') else None,
+          json.dumps({
+              "assessment": analysis.get('risk_assessment'),
+              "kill_conditions": analysis.get('kill_conditions', []),
+              "agent_contract": analysis.get('agent_contract'),
+          }) if analysis.get('risk_assessment') or analysis.get('kill_conditions') else None,
+          json.dumps({
+              "assessment": analysis.get('technical_assessment'),
+              "strategy_fit": analysis.get('strategy_fit_assessment'),
+              "agent_contract": analysis.get('agent_contract'),
+          }) if analysis.get('technical_assessment') or analysis.get('strategy_fit_assessment') else None])
 
     log.info(f"  {symbol} (#{pid}): {narrative_source} — confidence {analysis.get('confidence')}")
     return {'success': True, 'symbol': symbol, 'source': narrative_source}

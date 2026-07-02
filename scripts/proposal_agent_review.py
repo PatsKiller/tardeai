@@ -18,7 +18,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
+from cio_agent_contract import (
+    build_proposal_vote_json_schema,
+    merge_structured_into_result,
+    parse_proposal_vote_result,
+)
 from session13_db import get_conn
 
 log = logging.getLogger("agent_review")
@@ -163,8 +169,7 @@ Any regulatory or compliance concerns?""",
     return base + f"""
 {instructions}
 
-Answer as JSON:
-{{"vote":"APPROVE_TEST|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT|BLOCK","confidence":0-100,"summary":"...","concerns":["..."],"required_followups":["..."]}}"""
+{build_proposal_vote_json_schema()}"""
 
 
 def _deterministic_review(agent_name, proposal, technical, backtest):
@@ -283,13 +288,13 @@ def _deterministic_review(agent_name, proposal, technical, backtest):
         confidence = 50
         summary = f"{symbol}: generic review — insufficient context for strong opinion."
 
-    return {
+    return merge_structured_into_result({
         "vote": vote,
         "confidence": confidence,
         "summary": summary,
         "concerns": concerns,
         "required_followups": followups,
-    }
+    })
 
 
 def review_proposal(conn, proposal_id, dry_run=False):
@@ -352,20 +357,8 @@ def review_proposal(conn, proposal_id, dry_run=False):
                 prompt = _build_agent_prompt(agent_name, proposal, technical, backtest)
                 raw = generate_fn(prompt, timeout=90, fallback=True, fast=True)
                 if raw:
-                    start = raw.find('{')
-                    end = raw.rfind('}') + 1
-                    if start >= 0 and end > start:
-                        parsed = json.loads(raw[start:end])
-                        vote = parsed.get('vote', 'CAUTIOUS_TEST')
-                        if vote not in VALID_VOTES:
-                            vote = 'CAUTIOUS_TEST'
-                        review = {
-                            "vote": vote,
-                            "confidence": min(100, max(0, int(parsed.get('confidence', 50)))),
-                            "summary": str(parsed.get('summary', ''))[:500],
-                            "concerns": parsed.get('concerns', []),
-                            "required_followups": parsed.get('required_followups', []),
-                        }
+                    review = parse_proposal_vote_result(raw, valid_votes=frozenset(VALID_VOTES))
+                    if review:
                         model = _get_model_name() or "local_llm"
             except Exception as e:
                 log.warning(f"LLM review failed for {agent_name}/{symbol}: {e}")

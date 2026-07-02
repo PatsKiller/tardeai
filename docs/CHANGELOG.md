@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-02 - CIO fleet parity phase 1 (shared cio_agent_v2 contract)
+
+Extracted the Stage 2b structured-evidence contract into `scripts/lib/cio_agent_contract.py` and wired it into proposal review + portfolio analysis (phase 1 of fleet-wide LLM methodology parity).
+
+- **Shared module:** `AGENT_JSON_CONTRACT_VERSION`, G1–G10 global rules, `normalize_evidence` / `normalize_data_i_doubt`, `parse_agent_result`, proposal/portfolio schema builders, `merge_structured_into_result`.
+- **CIO watchlist:** `process_watchlist_agent_jobs.py` refactored to import shared contract (no behavior change; Stage 2b tests still pass).
+- **Proposal stack:** `proposal_agent_review.py`, `proposal_intelligence_analyzer.py`, `proposal_llm_reviewer.py` — prompts require tagged `evidence` + `data_i_doubt`; parsers persist structured fields in `payload` / JSONB summary columns.
+- **Portfolio:** `portfolio_ai_analyst.py` executive summary uses structured JSON contract; `executive_summary_structured` stored alongside prose display.
+- Tests: `tests/test_cio_agent_contract_fleet.py` (7 checks) + existing `test_cio_stage2b_agent_evidence.py`.
+
 ## 2026-07-02 - CIO Stage 2b (F2 structured agent evidence)
 
 Implements Stage 2b of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`.

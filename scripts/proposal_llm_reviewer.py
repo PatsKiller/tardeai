@@ -17,7 +17,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
+from cio_agent_contract import (
+    AGENT_JSON_CONTRACT_VERSION,
+    build_llm_chunk_evidence_footer,
+    extract_json_object,
+    merge_structured_into_result,
+)
 from session13_db import get_conn
 
 log = logging.getLogger("llm_reviewer")
@@ -83,7 +90,7 @@ def _build_analysis_prompt(data_summary):
     return f"""Paper trade review. Be brief (2-3 sentences each field).
 {data_summary}
 JSON only:
-{{"bull_case":"...","bear_case":"...","technical_condition":"...","catalyst_quality":"...","risk_reward_quality":"..."}}"""
+{{"bull_case":"...","bear_case":"...","technical_condition":"...","catalyst_quality":"...","risk_reward_quality":"..."}}{build_llm_chunk_evidence_footer()}"""
 
 
 def _build_decision_prompt(data_summary, analysis):
@@ -92,7 +99,7 @@ def _build_decision_prompt(data_summary, analysis):
 {data_summary}
 Analysis: {json.dumps(analysis, default=str)[:300]}
 JSON only:
-{{"setup_summary":"1 sentence","decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT","confidence_score":0-100,"approval_conditions":"...","invalidation_conditions":"..."}}"""
+{{"setup_summary":"1 sentence","decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT","confidence_score":0-100,"approval_conditions":"...","invalidation_conditions":"..."}}{build_llm_chunk_evidence_footer()}"""
 
 
 def _build_risk_prompt(data_summary, analysis):
@@ -204,7 +211,7 @@ def _deterministic_review(proposal, technical, backtest, stock_history):
     else:
         rr_quality = f"Poor R:R ({rr:.2f}) — risk exceeds reward"
 
-    return {
+    return merge_structured_into_result({
         "setup_summary": f"{symbol} {strategy} proposal. {'Verified' if catalyst_verified else 'Unverified'} catalyst. Critic: {critic or 'N/A'}.",
         "stock_history": hist_summary,
         "technical_condition": tech_cond,
@@ -218,7 +225,7 @@ def _deterministic_review(proposal, technical, backtest, stock_history):
         "invalidation_conditions": f"Price below stop ${proposal.get('proposed_stop', 0)} or catalyst reversed.",
         "confidence_score": confidence,
         "decision": decision,
-    }
+    })
 
 
 def review_proposal(conn, proposal_id):
@@ -265,13 +272,8 @@ def review_proposal(conn, proposal_id):
     narrative_source = "deterministic_fallback"
 
     def _parse_json(raw):
-        if not raw:
-            return None
-        start = raw.find('{')
-        end = raw.rfind('}') + 1
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end])
-        return None
+        parsed = extract_json_object(raw)
+        return merge_structured_into_result(parsed) if parsed else None
 
     # Load prior chunk results (resume from where we left off)
     prior_chunks = {}
@@ -362,6 +364,7 @@ def review_proposal(conn, proposal_id):
                 review['decision'] = decision
                 review['confidence_score'] = min(100, max(0, int(review.get('confidence_score', 50))))
                 review['chunks_completed'] = list(prior_chunks.keys())
+                review['agent_contract'] = AGENT_JSON_CONTRACT_VERSION
                 narrative_source = "local_llm" if decision_result else "local_llm_partial"
 
         except Exception as e:
