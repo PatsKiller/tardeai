@@ -88,9 +88,9 @@ ENDPOINTS = [
     "/api/v2/broker-proposals",
     "/api/v2/time-exit-proposals",
     "/api/v2/tos-watchlists",
-    "/api/v2/watch/directives",
+    # POST-only — GET list is /api/v2/watch-directives
     "/api/v2/watch-directives",
-    "/api/v2/finviz-enrichment",
+    "/api/v2/finviz-enrichment?symbol=RKLB",
     "/api/v2/plan-vs-performance",
     "/api/v2/execution-quality",
     "/api/v2/health/proposals",
