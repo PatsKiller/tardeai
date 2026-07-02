@@ -56,35 +56,75 @@ def _audit(cur, action: str, detail: dict, rows: int = 0):
 
 
 # ───────────────────── self-learning: auto-graft weights ─────────────────────
+# Phase 3 (2026-07-02): the drift-fed multiplicative ratchet is FROZEN. Grafts now come only
+# from OUTCOME_LEDGER-tagged suggestions (hermes_outcome_learning.py — graded 20-session
+# outcomes + realized R), require graft-eligible days over a persistence window, are
+# additively clamped per step, and respect a weekly total-drift cap. Audit trail unchanged.
+GRAFT_MAX_STEP = float(os.getenv("HERMES_GRAFT_MAX_STEP", "0.02"))
+GRAFT_WEEKLY_DRIFT_CAP = float(os.getenv("HERMES_GRAFT_WEEKLY_DRIFT_CAP", "0.10"))
+GRAFT_ELIGIBLE_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_DAYS", "5"))
+GRAFT_ELIGIBLE_WINDOW_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_WINDOW_DAYS", "14"))
+
+
 def auto_graft_weights(cur, apply: bool) -> dict:
-    """Write the latest per-factor calibration suggestion into the live weights yaml."""
+    """Graft outcome-gated calibration suggestions into the live weights yaml — clamped."""
     import yaml
-    cur.execute("""SELECT DISTINCT ON (factor) factor, suggested_weight, current_weight, predictiveness
-                   FROM hermes_weight_calibration ORDER BY factor, id DESC""")
+    # persistence gate: eligible outcome suggestions on >= N distinct days in the window
+    cur.execute("""SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration
+                   WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
+                     AND created_at > NOW() - make_interval(days => %s)""",
+                (GRAFT_ELIGIBLE_WINDOW_DAYS,))
+    eligible_days = cur.fetchone()[0] or 0
+    if eligible_days < GRAFT_ELIGIBLE_DAYS:
+        return {"status": "gated_persistence",
+                "eligible_days": eligible_days, "required": GRAFT_ELIGIBLE_DAYS,
+                "note": "drift-ratchet frozen; grafts require sustained outcome-eligible suggestions"}
+    # weekly drift cap from the audit trail
+    cur.execute("""SELECT COALESCE(SUM((c->>'to')::numeric - (c->>'from')::numeric), 0),
+                          COALESCE(SUM(ABS((c->>'to')::numeric - (c->>'from')::numeric)), 0)
+                   FROM hermes_autotune_audit, jsonb_array_elements(detail->'changes') c
+                   WHERE action='auto_graft_weights_outcome' AND run_at > NOW() - interval '7 days'""")
+    _net, drift_7d = cur.fetchone()
+    if float(drift_7d or 0) >= GRAFT_WEEKLY_DRIFT_CAP:
+        return {"status": "gated_weekly_drift_cap", "drift_7d": float(drift_7d),
+                "cap": GRAFT_WEEKLY_DRIFT_CAP}
+    cur.execute("""SELECT DISTINCT ON (factor) factor, suggested_weight, predictiveness
+                   FROM hermes_weight_calibration
+                   WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
+                   ORDER BY factor, id DESC""")
     rows = cur.fetchall()
     if not rows:
-        return {"status": "no_suggestions"}
+        return {"status": "no_outcome_suggestions"}
     doc = yaml.safe_load(WEIGHTS_FILE.read_text()) or {}
     cur_w = dict(doc.get("weights") or {})
     new_w = dict(cur_w)
     changes = []
-    for factor, sug, cw, pred in rows:
-        if factor in new_w and sug is not None and abs(float(sug) - float(new_w[factor])) > 1e-4:
-            changes.append({"factor": factor, "from": round(float(new_w[factor]), 4),
-                            "to": round(float(sug), 4), "predictiveness": float(pred) if pred is not None else None})
-            new_w[factor] = round(float(sug), 4)
+    for factor, sug, pred in rows:
+        if factor not in new_w or sug is None:
+            continue
+        # additive clamp — never move a weight more than GRAFT_MAX_STEP per graft
+        delta = max(-GRAFT_MAX_STEP, min(GRAFT_MAX_STEP, float(sug) - float(new_w[factor])))
+        if abs(delta) <= 1e-4:
+            continue
+        changes.append({"factor": factor, "from": round(float(new_w[factor]), 4),
+                        "to": round(float(new_w[factor]) + delta, 4),
+                        "predictiveness": float(pred) if pred is not None else None})
+        new_w[factor] = float(new_w[factor]) + delta
     if not changes:
-        return {"status": "no_change"}
-    # renormalize to 1.0 so the scorer's weighting stays well-formed
+        return {"status": "no_change", "eligible_days": eligible_days}
     tot = sum(new_w.values()) or 1.0
     new_w = {k: round(v / tot, 4) for k, v in new_w.items()}
     if apply:
         doc["weights"] = new_w
         doc["version"] = int(doc.get("version") or 1) + 1
         doc["auto_grafted_at"] = datetime.now(timezone.utc).isoformat()
+        doc["graft_source"] = "outcome_ledger"
         WEIGHTS_FILE.write_text(yaml.safe_dump(doc, sort_keys=False))
-        _audit(cur, "auto_graft_weights", {"changes": changes, "new_weights": new_w}, len(changes))
-    return {"status": "applied" if apply else "dry", "changes": changes}
+        _audit(cur, "auto_graft_weights_outcome",
+               {"changes": changes, "new_weights": new_w, "eligible_days": eligible_days,
+                "drift_7d_before": float(drift_7d or 0)}, len(changes))
+    return {"status": "applied" if apply else "dry", "changes": changes,
+            "eligible_days": eligible_days}
 
 
 # ───────────────────── self-purge ─────────────────────

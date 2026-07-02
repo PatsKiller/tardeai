@@ -1,0 +1,37 @@
+# Hermes outcome learning — Phase 3 of docs/design/HERMES_MATURITY_5_DESIGN.md (2026-07-02).
+# Every loop reads ONLY hermes_outcome_ledger. Every loop is gated: below its sample gate it
+# does nothing but report. All rails here; the loops are autonomous inside them.
+
+weights:
+  # per-factor sample gate: need this many high-factor AND low-factor graded pairs
+  min_hi: 10
+  min_lo: 10
+  # additive clamp per suggestion step (weights are ~0.1-0.2 each)
+  max_step: 0.02
+  # weekly total |drift| cap across all factors (self-tune enforces from audit history)
+  weekly_drift_cap: 0.10
+  # shadow must beat live on the top-vs-bottom outcome spread to mark suggestions graft-eligible
+  quantile: 0.30
+  # graft requires eligible suggestions on >= this many distinct days in the last 14
+  eligible_days_required: 5
+  # trades count double (realized money > price drift)
+  trade_weight: 2
+
+promotion:
+  min_samples_per_type: 10       # below this, a research_type keeps the default (ungated) threshold
+  default_min_confidence: 0.0    # preserves operator directive B for unmeasured types
+  precision_floor: 0.40          # below floor -> hard gate
+  floor_min_confidence: 0.75
+  baseline_margin: 0.10          # below (overall baseline - margin) -> soft gate
+  soft_min_confidence: 0.65
+  stale_staged_archive_days: 7   # staged rows blocked by a gate archive after this long
+
+sources:
+  min_samples_per_domain: 10
+  retire_sigma: 1.0              # retire when yield < baseline - sigma*stddev
+  reinstate_margin: 0.0          # reinstate when yield >= baseline
+  scope_source_type: web         # only web domains are outcome-curated (connectors stay manual)
+
+lanes:
+  min_total_graded: 30           # uniform rotation until this many external recs have verdicts
+  min_lane_weight: 0.15          # no lane ever starves entirely (keeps measuring it)

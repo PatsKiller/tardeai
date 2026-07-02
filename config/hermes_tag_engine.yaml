@@ -1,0 +1,51 @@
+# Hermes tag engine — Phase 4 of docs/design/HERMES_MATURITY_5_DESIGN.md (2026-07-02).
+# One vocabulary (strategy_registry.strategy_type), one owner (this engine, nightly cron).
+# Rules decide first (free); the local LLM refines only undecided reachable rows (capped);
+# what's still undecided stays general_research. Tags are graded against the outcome ledger.
+
+vocabulary_source: strategy_registry     # strategy_type slugs, active rows
+
+# Per-strategy synonym cues for the rule pass (checked against topic+summary+thesis+research_type).
+# The slug's own tokens always count as cues too.
+synonyms:
+  momentum_scalp: [scalp, rvol, intraday, halt, premarket runner, low float, gap and go]
+  large_float_social_scout: [social momentum, large float, social scout]
+  meme_squeeze_momentum: [squeeze, short interest, meme, wsb, gamma]
+  swing_breakout: [swing, breakout, base break, range break]
+  pullback_macd_reversal: [pullback, macd, reversal, mean revert]
+  fib_retracement_bounce: [fib, fibonacci, retracement, 61.8]
+  earnings_post_momentum: [earnings beat, post-earnings, earnings momentum, guidance raise]
+  earnings_pre_buildup: [pre-earnings, earnings run-up, into earnings]
+  sector_rotation: [sector rotation, rotate into, sector leadership, sector etf]
+  defense_thesis: [defense, military, nato, missile, drone, war]
+  core_growth_compounder: [compounder, secular growth, moat]
+  core_index: [index fund, spy, voo, broad market etf]
+  dividend_growth_compounder: [dividend growth, dividend aristocrat, payout growth]
+  high_yield_income_bdc: [bdc, high yield, business development]
+  covered_call_income: [covered call, buy-write, jepi, jepq, option income]
+  bond_income: [bond, treasury, duration, fixed income]
+  reit_income: [reit, real estate income]
+  international_dividend: [international dividend, foreign dividend, adr income]
+  tax_loss_harvest: [tax loss, harvest, wash sale]
+  cash_or_stable: [cash, money market, stable value, t-bill]
+
+fallback_tag: general_research
+max_tags: 3
+
+retag:
+  # rows younger than this are eligible for re-tagging when fallback-only
+  backlog_batch: 400            # rule-pass rows per run
+  llm_batch: 40                 # undecided rows sent to the local LLM per run (off-hours cron)
+  llm_timeout_s: 45
+  llm_wall_clock_s: 240          # total wall-clock cap for the LLM refine batch per run
+
+quality:
+  # quality_score v2 = blend of existing rule score and the ledger outcome prior for the row's
+  # research_type (Bayesian-shrunk hit-rate). Continuous by construction; stored 0-1.
+  blend_existing: 0.6
+  blend_outcome_prior: 0.4
+  shrink_k: 10                  # prior weight toward 0.5 while a type's sample is small
+  neutral: 0.5
+
+efficacy:
+  min_samples_per_tag: 15       # below this a tag's lift is reported but not flagged

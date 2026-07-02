@@ -227,6 +227,39 @@ def call_external(lane, model, prompt, max_tokens=1500):
 
 CAP_CACHE = ROOT / "data" / "runtime" / "hermes_llm_capabilities.json"
 
+# Auth-failure circuit breaker: 6,133 Grok HTTP-403 error rows landed in one week because every
+# producer kept re-attempting a lane whose OAuth was rejecting. If the last N stored calls on a
+# lane inside the window are ALL 401/403 errors, skip the call (DEFER) — never fall back to paid.
+BREAKER_N = int(os.environ.get("HERMES_LANE_BREAKER_N", "6"))
+BREAKER_WINDOW_MIN = int(os.environ.get("HERMES_LANE_BREAKER_WINDOW_MIN", "60"))
+
+
+def _load_env():
+    for ln in (ROOT / ".env").read_text().splitlines():
+        if "=" in ln and not ln.strip().startswith("#"):
+            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+
+
+def lane_circuit_open(lane):
+    """True when the lane's recent history is nothing but auth failures. Fails open on any error."""
+    try:
+        import psycopg2
+        _load_env()
+        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
+                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
+        cur = c.cursor()
+        cur.execute("""SELECT status, recommendation FROM hermes_external_research
+                       WHERE lane=%s AND created_at >= NOW() - (%s || ' minutes')::interval
+                       ORDER BY created_at DESC LIMIT %s""", (lane, BREAKER_WINDOW_MIN, BREAKER_N))
+        rows = cur.fetchall()
+        c.close()
+        if len(rows) < BREAKER_N:
+            return False
+        return all(st == "error" and ("HTTP 403" in (rec or "") or "HTTP 401" in (rec or ""))
+                   for st, rec in rows)
+    except Exception:
+        return False
+
 
 def read_capability(lane):
     """Return the cached capability dict for a lane, or {} if absent/unreadable."""
@@ -302,10 +335,25 @@ def main():
         print("\n(dry-run — nothing sent. Re-run with --apply to call the external model.)")
         return
 
+    if lane_circuit_open(args.lane):
+        print(f"\n[circuit-breaker] lane={args.lane} OPEN — last {BREAKER_N} calls in {BREAKER_WINDOW_MIN}m "
+              f"were all HTTP 401/403. Deferring (no call, no row); re-auth the lane "
+              f"(hermes auth add …) and the breaker self-closes on the next non-403 result.")
+        try:
+            from db_adapter import _execute
+            from datetime import datetime as _dt
+            _execute("""INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text, created_at)
+                        VALUES (%s,'system_health',NULL,'warning','hermes_external_researcher',%s,NOW())
+                        ON CONFLICT (alert_uid) DO NOTHING""",
+                     (f"lane_breaker_{args.lane}_{_dt.now().strftime('%Y%m%d%H')}",
+                      f"Hermes lane '{args.lane}' circuit OPEN: {BREAKER_N} consecutive HTTP 401/403 — "
+                      f"external calls deferred until re-auth."), fetch=None)
+        except Exception:
+            pass
+        return
+
     import psycopg2
-    for ln in (ROOT / ".env").read_text().splitlines():
-        if "=" in ln and not ln.strip().startswith("#"):
-            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
+    _load_env()
 
     # Capability-cache gate: don't re-run a known-blocked lane (e.g. Codex headless) on every call.
     cap = read_capability(args.lane)

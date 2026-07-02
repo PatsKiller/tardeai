@@ -1,0 +1,48 @@
+# Hermes scope governor — Phase 1 of docs/design/HERMES_MATURITY_5_DESIGN.md (2026-07-02).
+# The governor is the SOLE owner of watchlist_items.scope_tier. All values here are the
+# rails; the governor is autonomous inside them. Advisory-only — never touches status,
+# orders, gates, or 2FA.
+
+tiers:
+  # S0 pinned: capital exposed or operator-pinned — always scored, never demoted by TTL.
+  # Membership: holdings, open paper positions, live proposals, operator ticker directives.
+  s0:
+    scored: every_run
+  # S1 active: earned a live trigger. Demoted to S2 after ttl_days without a fresh trigger.
+  s1:
+    cap: 400
+    ttl_days: 14
+    entry:
+      composite_min: 70          # hermes_composite_score >= this
+      catalyst_hours: 48         # catalyst_events row newer than this
+      directive_hit_hours: 48    # watch_directive_hits newer than this
+    scored: market_hours
+  # S2 warm: structured pools (incubator / strategy watchpool / capped directive names).
+  # Demoted to S3 after ttl_days without a trigger.
+  s2:
+    cap: 320
+    ttl_days: 30
+    incubator_seen_days: 7       # incubator_universe.last_seen_at recency to qualify
+    watchpool_eval_days: 7       # strategy_watchpool.last_evaluated_at recency to qualify
+    scored: premarket_daily
+  # S3 archived: never scored on the clock; event lane reactivates instantly to S1.
+  s3:
+    scored: on_event_only
+
+# Hard invariants
+total_cap: 800                   # |S0|+|S1|+|S2| must stay <= this; S2 then S1 tails truncate
+directive_top_n: 5               # per active directive, ranked by composite score
+directive_global_cap: 200        # total directive-sourced names across S1/S2
+
+# ai_discovered names get this long to earn a trigger before archiving (roach-motel TTL)
+ai_discovered_grace_days: 14
+
+# Reactivation (S3 -> S1) triggers honored by governor + event feeder
+reactivation:
+  catalyst_hours: 48
+
+# Event feeder scan windows (minutes) — 2x the cron cadence so nothing is missed;
+# the one-pending-event-per-symbol unique index dedups overlap.
+event_feeder:
+  scan_minutes: 20
+  sources: [catalyst, news, finviz, directive_hit, proposal]

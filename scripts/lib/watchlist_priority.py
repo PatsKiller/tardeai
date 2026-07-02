@@ -17,6 +17,8 @@ ET = ZoneInfo("America/New_York")
 
 # Env-tunable: operator-requested off-hours cap (2026-07-02).
 WATCHLIST_TOP_N = int(os.getenv("WATCHLIST_OFF_HOURS_TOP_N", "200"))
+# Hermes audit 2026-07-02: cap market-hours scoring to same window (default on).
+HERMES_SCORER_ALWAYS_CAP = os.getenv("HERMES_SCORER_ALWAYS_CAP", "1").strip() == "1"
 
 # Active broker/paper proposals — always daily-priority.
 PROPOSAL_ACTIVE_STATUSES = (
@@ -65,6 +67,15 @@ def off_hours_top_n(explicit_limit: int | None = None) -> int | None:
     return WATCHLIST_TOP_N if is_off_hours_et() else None
 
 
+def scoring_top_n(explicit_limit: int | None = None) -> int | None:
+    """Cap for hermes_watchlist_scorer: daily-priority + top-N always when HERMES_SCORER_ALWAYS_CAP."""
+    if explicit_limit is not None:
+        return explicit_limit
+    if HERMES_SCORER_ALWAYS_CAP or is_off_hours_et():
+        return WATCHLIST_TOP_N
+    return None
+
+
 def load_holding_symbols(project_root: Path | None = None) -> set[str]:
     root = project_root or Path(__file__).resolve().parent.parent.parent
     path = root / "data" / "portfolios" / "state" / "holdings.json"
@@ -94,10 +105,28 @@ def sql_daily_priority_exists(symbol_sql: str = "j.symbol") -> str:
         {sym} = ANY(%s)
         OR EXISTS (SELECT 1 FROM paper_trade_proposals p
                    WHERE UPPER(p.symbol) = UPPER({sym}) AND p.status = ANY(%s))
-        OR EXISTS (SELECT 1 FROM watchlist_items wi
-                   WHERE UPPER(wi.symbol) = UPPER({sym}) AND wi.in_directive_watch)
-        OR EXISTS (SELECT 1 FROM watchlist_items wi
-                   WHERE UPPER(wi.symbol) = UPPER({sym}) AND wi.status = 'active')
+        OR EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                   WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.in_directive_watch)
+        OR EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                   WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.status = 'active')
+        OR EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                   WHERE UPPER(rc.symbol) = UPPER({sym})
+                     AND UPPER(REPLACE(REPLACE(rc.latest_recommendation, ' ', '_'), '-', '_')) = ANY(%s))
+        OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                   WHERE UPPER(fs.symbol) = UPPER({sym})
+                     AND UPPER(REPLACE(REPLACE(fs.recommendation, ' ', '_'), '-', '_')) = ANY(%s))
+    )"""
+
+
+def sql_scoring_priority_exists(symbol_sql: str = "j.symbol") -> str:
+    """Narrow priority for Hermes scorer cap / scope governor — no blanket status='active'."""
+    sym = symbol_sql
+    return f"""(
+        {sym} = ANY(%s)
+        OR EXISTS (SELECT 1 FROM paper_trade_proposals p
+                   WHERE UPPER(p.symbol) = UPPER({sym}) AND p.status = ANY(%s))
+        OR EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                   WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.in_directive_watch)
         OR EXISTS (SELECT 1 FROM watchlist_research_cards rc
                    WHERE UPPER(rc.symbol) = UPPER({sym})
                      AND UPPER(REPLACE(REPLACE(rc.latest_recommendation, ' ', '_'), '-', '_')) = ANY(%s))
@@ -111,7 +140,8 @@ def daily_priority_sql_params(holdings: list[str] | None = None,
                               project_root: Path | None = None) -> tuple:
     """Standard bind tuple for sql_daily_priority_exists()."""
     h = holdings if holdings is not None else holdings_list(project_root)
-    buy = list(DAILY_PRIORITY_BUY_RECS)
+    # The SQL side compares UPPER(REPLACE(...)) — bind uppercase or the buy tier matches nothing.
+    buy = sorted(r.upper() for r in DAILY_PRIORITY_BUY_RECS)
     return (h, list(PROPOSAL_ACTIVE_STATUSES), buy, buy)
 
 
@@ -120,9 +150,9 @@ def sql_off_hours_scope(symbol_sql: str = "j.symbol") -> str:
     daily = sql_daily_priority_exists(symbol_sql)
     return f"""(
         {daily}
-        OR EXISTS (SELECT 1 FROM watchlist_items wi
-                   WHERE UPPER(wi.symbol) = UPPER({symbol_sql})
-                     AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s)
+        OR EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                   WHERE UPPER(wi_dp.symbol) = UPPER({symbol_sql})
+                     AND wi_dp.hermes_rank IS NOT NULL AND wi_dp.hermes_rank <= %s)
     )"""
 
 
@@ -137,8 +167,8 @@ def sql_job_priority_case(symbol_sql: str = "j.symbol") -> str:
     sym = symbol_sql
     buy = ", ".join(f"'{r}'" for r in DAILY_PRIORITY_BUY_RECS_SQL)
     return f"""(CASE
-        WHEN EXISTS (SELECT 1 FROM watchlist_items wi
-                     WHERE UPPER(wi.symbol) = UPPER({sym}) AND wi.in_directive_watch) THEN 0
+        WHEN EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                     WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.in_directive_watch) THEN 0
         WHEN {sym} = ANY(%s) THEN 1
         WHEN EXISTS (SELECT 1 FROM paper_trade_proposals p
                      WHERE UPPER(p.symbol) = UPPER({sym}) AND p.status = ANY(%s)) THEN 2
@@ -148,11 +178,11 @@ def sql_job_priority_case(symbol_sql: str = "j.symbol") -> str:
         WHEN EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
                      WHERE UPPER(fs.symbol) = UPPER({sym})
                        AND UPPER(fs.recommendation) IN ({buy})) THEN 3
-        WHEN EXISTS (SELECT 1 FROM watchlist_items wi
-                     WHERE UPPER(wi.symbol) = UPPER({sym})
-                       AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s) THEN 4
-        WHEN EXISTS (SELECT 1 FROM watchlist_items wi
-                     WHERE UPPER(wi.symbol) = UPPER({sym}) AND wi.status = 'active') THEN 5
+        WHEN EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                     WHERE UPPER(wi_dp.symbol) = UPPER({sym})
+                       AND wi_dp.hermes_rank IS NOT NULL AND wi_dp.hermes_rank <= %s) THEN 4
+        WHEN EXISTS (SELECT 1 FROM watchlist_items wi_dp
+                     WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.status = 'active') THEN 5
         ELSE 6 END)"""
 
 

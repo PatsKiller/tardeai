@@ -25,12 +25,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+import os
 from watchlist_priority import (
-    WATCHLIST_TOP_N, daily_priority_sql_params, holdings_list, is_off_hours_et, off_hours_top_n,
+    WATCHLIST_TOP_N, daily_priority_sql_params, holdings_list, is_off_hours_et, scoring_top_n,
+    sql_scoring_priority_exists,
     sql_daily_priority_exists,
 )
 PILLS = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
+SCALP_WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights_scalp.yaml"
 SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
               "Consumer Cyclical": "XLY", "Industrials": "XLI", "Consumer Defensive": "XLP",
               "Utilities": "XLU", "Real Estate": "XLRE", "Basic Materials": "XLB",
@@ -45,7 +48,9 @@ def _conn():
 def _weights():
     try:
         import yaml
-        w = (yaml.safe_load(WEIGHTS_FILE.read_text()) or {}).get("weights", {})
+        profile = (os.getenv("HERMES_WEIGHTS_PROFILE") or "").strip().lower()
+        path = SCALP_WEIGHTS_FILE if profile == "scalp" and SCALP_WEIGHTS_FILE.exists() else WEIGHTS_FILE
+        w = (yaml.safe_load(path.read_text()) or {}).get("weights", {})
         return {k: float(v) for k, v in w.items()} if w else {}
     except Exception:
         return {"technical_momentum": .2, "setup_quality": .18, "analyst": .16,
@@ -243,6 +248,40 @@ _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_k
                    WHERE wi.status IN ('active','researched')"""
 
 
+def _tier_plan(now_et=None):
+    """Which scope tiers this run scores (design §1.2). Events are always drained.
+      market hours  : S0 + S1
+      pre-market 7h : S0 + S2 (the daily warm-pool pass; no-change skip absorbs the repeats)
+      pre-market 8-9: S0
+      other off-hrs : S0 once an hour (minute<15), else events only
+    """
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    now = now_et or _dt.now(ZoneInfo("America/New_York"))
+    wd, mins = now.weekday(), now.hour * 60 + now.minute
+    if wd < 5 and 9 * 60 + 30 <= mins < 16 * 60:
+        # S0 every tick (15m); S1 every other tick (30m) on the */15 cron
+        return ["S0", "S1"] if now.minute % 30 < 15 else ["S0"]
+    if wd < 5 and 7 * 60 <= mins < 8 * 60:
+        return ["S0", "S2"]
+    if wd < 5 and 8 * 60 <= mins < 9 * 60 + 30:
+        return ["S0"]
+    return ["S0"] if now.minute < 15 else []
+
+
+def _pending_event_symbols(cur):
+    cur.execute("SELECT symbol FROM hermes_score_event_queue WHERE processed_at IS NULL")
+    return [r[0] for r in cur.fetchall()]
+
+
+def _fetch_tier_rows(cur, tiers, event_symbols, limit=None):
+    """Tier-aware universe: governed scope tiers for this run + event-lane symbols (any tier)."""
+    lim = f" LIMIT {int(limit)}" if limit else ""
+    cur.execute(_BASE_SELECT +
+                " AND (wi.scope_tier = ANY(%s) OR UPPER(wi.symbol) = ANY(%s))" + lim,
+                (tiers or ["_none_"], [s.upper() for s in event_symbols] or ["_NONE_"]))
+
+
 def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
     """Off-hours: daily-priority (holdings/proposals/buy/start) + Hermes top-N; skip ~3k tail."""
     if not off_hours:
@@ -251,13 +290,16 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
         return
     cap = int(limit or WATCHLIST_TOP_N)
     dp = daily_priority_sql_params(project_root=PROJECT_ROOT)
-    daily_sql = sql_daily_priority_exists("wi.symbol")
+    daily_sql = sql_scoring_priority_exists("wi.symbol")
+    # Tier order: holdings and live proposals ahead of in_directive_watch — 989 directive-flagged
+    # names were consuming the whole cap and pushing real-money holdings out of the scoring window.
+    # Within a tier, hermes_rank orders who makes the cut (was an arbitrary 0 for all daily rows).
     cur.execute(f"""WITH daily AS (
-                     SELECT DISTINCT wi.symbol,
-                       MIN(CASE WHEN wi.in_directive_watch THEN 0
-                                WHEN wi.symbol = ANY(%s) THEN 1
+                     SELECT wi.symbol,
+                       MIN(CASE WHEN wi.symbol = ANY(%s) THEN 0
                                 WHEN EXISTS (SELECT 1 FROM paper_trade_proposals p
-                                             WHERE UPPER(p.symbol)=UPPER(wi.symbol) AND p.status=ANY(%s)) THEN 2
+                                             WHERE UPPER(p.symbol)=UPPER(wi.symbol) AND p.status=ANY(%s)) THEN 1
+                                WHEN wi.in_directive_watch THEN 2
                                 WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc
                                              WHERE UPPER(rc.symbol)=UPPER(wi.symbol)
                                                AND UPPER(REPLACE(REPLACE(rc.latest_recommendation,' ','_'),'-','_'))=ANY(%s))
@@ -265,7 +307,8 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                                              WHERE UPPER(fs.symbol)=UPPER(wi.symbol)
                                                AND UPPER(REPLACE(REPLACE(fs.recommendation,' ','_'),'-','_'))=ANY(%s)) THEN 3
                                 WHEN wi.status = 'active' THEN 4
-                                ELSE 5 END) AS tier
+                                ELSE 5 END) AS tier,
+                       MIN(wi.hermes_rank) AS best_rank
                      FROM watchlist_items wi
                      WHERE wi.status IN ('active','researched') AND {daily_sql}
                      GROUP BY wi.symbol
@@ -281,9 +324,15 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                      LIMIT GREATEST(%s - (SELECT COUNT(*) FROM daily), 0)
                    ),
                    candidates AS (
-                     SELECT symbol, tier, 0 AS best_rank FROM daily
-                     UNION ALL
-                     SELECT symbol, 10 AS tier, best_rank FROM ranked
+                     SELECT symbol, tier, best_rank FROM (
+                       SELECT symbol, tier, best_rank,
+                              ROW_NUMBER() OVER (ORDER BY tier, best_rank ASC NULLS LAST) AS rn
+                       FROM (
+                         SELECT symbol, tier, best_rank FROM daily
+                         UNION ALL
+                         SELECT symbol, 10 AS tier, best_rank FROM ranked
+                       ) u
+                     ) capped WHERE rn <= %s
                    )
                    SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
@@ -294,17 +343,35 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                    LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
                    ORDER BY c.tier, c.best_rank ASC NULLS LAST""",
-                (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap))
+                (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap, cap))
 
 
 def run(limit=None):
     conn = _conn(); cur = conn.cursor()
+    off_hours = is_off_hours_et()
+
+    # Tier mode (Phase 1): when the scope governor has populated scope_tier, the universe is
+    # this run's tiers + pending event-lane symbols. Legacy capped fetch remains the fallback
+    # for an ungoverned DB (fresh install / governor never applied).
+    cur.execute("""SELECT count(*) FROM watchlist_items
+                   WHERE scope_tier IS NOT NULL AND status IN ('active','researched')""")
+    tier_mode = (cur.fetchone()[0] or 0) > 0
+    event_syms = _pending_event_symbols(cur) if tier_mode else []
+    tiers = _tier_plan() if tier_mode else []
+    if tier_mode and not tiers and not event_syms:
+        print("[hermes-scorer] tier-plan: nothing due this tick (off-hours, no pending events)")
+        return {"scored": 0, "skipped_unchanged": 0, "top": []}
+
     pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
     vix = _vix(conn)
     weights, _regime = _regime_weights(weights, vix)
-    off_hours = is_off_hours_et()
-    limit = off_hours_top_n(limit)
-    _fetch_watchlist_rows(cur, limit=limit, off_hours=off_hours)
+    if tier_mode:
+        use_capped_fetch = False
+        _fetch_tier_rows(cur, tiers, event_syms, limit=limit)
+    else:
+        limit = scoring_top_n(limit)
+        use_capped_fetch = limit is not None
+        _fetch_watchlist_rows(cur, limit=limit, off_hours=use_capped_fetch)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     scored = []
@@ -341,7 +408,32 @@ def run(limit=None):
         penalized.append((s_, c_, comp_, px_))
     penalized.sort(key=lambda x: -x[1])
     scored = penalized
+    # No-change write skip: 98.6% (market hours) to 100% (off-hours) of history INSERTs were
+    # byte-identical to the prior run. Skip the INSERT when composite+rank are unchanged, but
+    # always write a heartbeat row once per ~20h so per-symbol freshness stays provable.
+    last_hist = {}
+    try:
+        cur.execute("""SELECT DISTINCT ON (symbol) symbol, composite_score, rank, scored_at
+                       FROM hermes_score_history WHERE symbol = ANY(%s)
+                       ORDER BY symbol, scored_at DESC""", ([s for s, *_ in scored],))
+        last_hist = {r[0]: (r[1], r[2], r[3]) for r in cur.fetchall()}
+    except Exception:
+        conn.rollback()  # skip-optimization is best-effort; never block scoring
+    from datetime import timedelta
+    hb_cutoff = datetime.now(timezone.utc) - timedelta(hours=20)
+    skipped = 0
     for rank, (sym, comp, components, px) in enumerate(scored, 1):
+        prev = last_hist.get(sym)
+        if prev is not None and prev[0] is not None and abs(float(prev[0]) - comp) < 0.05 \
+                and (off_hours or prev[1] == rank):
+            prev_at = prev[2]
+            cutoff = hb_cutoff if (prev_at is not None and prev_at.tzinfo) else hb_cutoff.replace(tzinfo=None)
+            if prev_at is not None and prev_at >= cutoff:
+                # unchanged and recent → refresh the live row only, no history append
+                cur.execute("""UPDATE watchlist_items SET hermes_scored_at=NOW(), updated_at=NOW()
+                               WHERE symbol=%s AND status IN ('active','researched')""", (sym,))
+                skipped += 1
+                continue
         if off_hours:
             # Off-hours: refresh composite only — frozen global ranks prevent tail rank-jump spam.
             cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
@@ -360,11 +452,24 @@ def run(limit=None):
             cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
                            VALUES (%s, %s, %s, %s::jsonb, %s)""",
                         (sym, comp, rank, json.dumps(components), px))
+    if tier_mode and event_syms:
+        # drain everything we attempted — an unscoreable symbol must not wedge its queue slot
+        cur.execute("""UPDATE hermes_score_event_queue SET processed_at=NOW()
+                       WHERE processed_at IS NULL AND UPPER(symbol) = ANY(%s)""",
+                    ([s.upper() for s in event_syms],))
     conn.commit()
-    mode = "off-hours-top%d" % (limit or WATCHLIST_TOP_N) if off_hours else "full"
-    print(f"[hermes-scorer] {mode}: scored {len(scored)} watchlist names (top: " +
+    if tier_mode:
+        mode = "tiers[%s]+events(%d)%s" % (",".join(tiers) or "-", len(event_syms),
+                                           "-frozen-ranks" if off_hours else "")
+    elif use_capped_fetch:
+        mode = "capped-top%d%s" % (limit or WATCHLIST_TOP_N, "-frozen-ranks" if off_hours else "")
+    else:
+        mode = "full"
+    print(f"[hermes-scorer] {mode}: scored {len(scored)} watchlist names, "
+          f"{skipped} unchanged (history-skip) (top: " +
           ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")")
-    return {"scored": len(scored), "top": [(s, round(c, 1)) for s, c, *_ in scored[:10]]}
+    return {"scored": len(scored), "skipped_unchanged": skipped,
+            "top": [(s, round(c, 1)) for s, c, *_ in scored[:10]]}
 
 
 def main():
