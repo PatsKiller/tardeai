@@ -261,9 +261,14 @@ def _stops_management_api(query=None):
     # "modify in ToS"). Only fall back to confirmations/snapshots for Schwab when the live read failed
     # (after-hours/degraded). Fidelity has no broker API, so its confirmations always stand.
     _live_read_ok = False
+    _live_stops_meta = {"fetched_at": None, "live_read_ok": False, "error": None, "broker_count": 0}
     try:
         ls = _holdings_live_stops() or {}
         _live_read_ok = bool(not ls.get("error") and ls.get("fetched_at"))
+        _live_stops_meta = {
+            "fetched_at": ls.get("fetched_at"), "live_read_ok": _live_read_ok,
+            "error": ls.get("error"), "broker_count": len(ls.get("by_key") or {}),
+        }
         for _key, bs in (ls.get("by_key") or {}).items():
             sym = str(bs.get("symbol", "")).upper()
             acct = str(bs.get("account", ""))
@@ -381,8 +386,14 @@ def _stops_management_api(query=None):
         pass
     regime_now = "unknown"
     try:
-        rr = _db_query("SELECT regime FROM regime_state ORDER BY created_at DESC LIMIT 1", fetch="one")
-        regime_now = str((rr or {}).get("regime") or "unknown")
+        rr = _db_query(
+            "SELECT regime_label, trend_state, confidence FROM market_regime_snapshots "
+            "ORDER BY created_at DESC LIMIT 1", fetch="one")
+        if rr:
+            _rl = str(rr.get("regime_label") or "unknown").replace("_", " ")
+            _ts = str(rr.get("trend_state") or "").strip()
+            _cf = rr.get("confidence")
+            regime_now = _rl + (f" {_ts}" if _ts else "") + (f" {int(float(_cf) * 100)}%" if _cf is not None else "")
     except Exception:
         pass
     risk_off = any(w in regime_now.lower() for w in ("off", "bear", "defensive"))
@@ -541,8 +552,13 @@ def _stops_management_api(query=None):
     next_actions = [{"symbol": r["symbol"], "account": r["account"], "alert_level": r.get("alert_level"),
                      "action": r.get("next_action"), "projection": r.get("projection"),
                      "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:3]]
+    _schwab_holdings = sum(1 for h in holds if str(h.get("account", "")).startswith("schwab") and not h.get("is_cash"))
+    _broker_degraded = (_schwab_holdings > 0 and not _live_read_ok
+                        and _live_stops_meta.get("broker_count", 0) == 0)
     return {
         "generated_at": None, "regime_now": regime_now,
+        "broker_stops_meta": _live_stops_meta,
+        "broker_stops_degraded": _broker_degraded,
         "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
                     "trailing_not_active": trailing_not_active, "positions": len(rows),
