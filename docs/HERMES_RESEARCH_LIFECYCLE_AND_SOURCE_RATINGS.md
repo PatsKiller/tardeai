@@ -109,6 +109,14 @@ placeholder into a real briefing.
 - **Track A — quality scoring:** each web domain scored by **yield = (promoted+embedded)/total** of the
   research it produced. **Auto-promote** when `total≥2 AND yield≥30%`; **auto-retire** when
   `total≥5 AND yield==0`. Decayed sources self-demote the next run.
+- **Track A½ — OUTCOME yield outranks throughput yield (Phase 3, 2026-07-02):**
+  `hermes_outcome_learning.py` (nightly 03:05) computes each domain's **graded outcome yield**
+  (share of its research actioned per `hermes_outcome_ledger`, n≥10) and retires below
+  `baseline − 1σ` / reinstates at baseline, writing `OUTCOME_LEDGER retired/reinstated` markers to
+  `notes`. Track A **cannot re-activate** an outcome-retired domain (throughput yield is
+  self-referential — it counts promotion, not whether anything came of it); markers survive the
+  nightly note rewrite. First pass retired 8 domains (apnews.com 4%, cnbc.com 8%, … vs 53.5%
+  baseline actioned-yield).
 - **Track B — new-site discovery + LLM validation:** first-seen / not-yet-proven domains are validated by
   an **LLM (free lane: grok→chatgpt→local)** for credibility+relevance and **auto-activated immediately**
   if approved — no waiting for yield, no human flip. Spam/low-value domains are auto-rejected (verified:

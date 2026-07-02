@@ -37,7 +37,17 @@ Every tracked symbol gets the **highest tier it qualifies for**:
 | **T2-INCUB** | incubator / recently-proposed candidates | `paper_trade_proposals` (21d) |
 | **T3-COLD** | rest of the profiled universe (~600) | `symbol_profiles` |
 
-Current split: ~32 holdings · 1 proposal · ~83 watchlist · ~274 incubator · ~584 cold = **974 symbols**.
+**Scope-governor binding (Phase 1, 2026-07-02,** [`docs/design/HERMES_MATURITY_5_DESIGN.md`](design/HERMES_MATURITY_5_DESIGN.md)**):**
+one governor owns research scope too — a symbol the scope governor archived
+(`watchlist_items.scope_tier = 'S3'`) never holds a T1-WATCH / T2-INCUB slot; it drops to T3-COLD
+(metadata-only under the budget guard) until an event or the governor reactivates it. T0 (capital
+exposed) is never downgraded. Measured effect at cutover: T1-WATCH 469→256, T2-INCUB 390→122.
+**External lane rotation is outcome-weighted (Phase 3):** T1's one-external-per-refresh pick is
+weighted by graded hit-rate from `hermes_lane_usefulness` (0.15 floor so no lane starves; uniform
+until ≥30 external recs have ledger verdicts).
+
+Current split: ~32 holdings · 1 proposal · ~83 watchlist · ~274 incubator · ~584 cold = **974 symbols**
+*(pre-binding snapshot — see scope-governor note above for post-cutover tier sizes).*
 
 ## 2. Refresh SLA — "at least X times in Y days", per lane per tier
 

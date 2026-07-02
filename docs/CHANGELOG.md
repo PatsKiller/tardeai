@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-07-02 - Hermes Maturity-5 program: phases 0-5 (commit dfa09163)
+
+Full implementation of `docs/design/HERMES_MATURITY_5_DESIGN.md` — from the same-day audit
+(maturity 2/5: 4.1k-symbol clock scoring with ~99% duplicate writes, drift-fed weight ratchet,
+write-only tagging, zero outcome linkage) to a governed, outcome-graded, self-measuring system.
+
+- **P0 stabilize:** buy-tier case bug (0→1,070 matches), holdings-first capped scoring (4→27/27),
+  no-change history skip + 20h heartbeat, 21d retention cron, 401/403 lane circuit breaker,
+  scorer-liveness check, taxonomy churn-loop fix.
+- **P1 scope:** `scope_tier` S0-S3 ledger owned by `hermes_scope_governor.py` (≤800 live, TTLs,
+  deterministic, audited) + `hermes_score_event_feeder.py` event lane (immediate rescore + S3→S1
+  reactivation; first-ever directive-pair filter); scorer `*/15` tier plans; research scheduler
+  S3→T3-COLD binding. ~197K score computations/day → ~8K.
+- **P2 outcome spine:** `hermes_outcome_ledger` (22,715 claims backfilled) + `daily_close_cache`
+  + `hermes_outcome_grader.py` nightly — promotions/recs graded ±2% 20-session excess vs SPY,
+  research graded on action, trades on realized R; `downstream_outcome` filled (was 100% NULL).
+- **P3 gated learning:** drift calibrator retired; `hermes_outcome_learning.py` — clamped
+  shadow-gated weight suggestions, learned per-type promotion confidence gates (momentum_catalyst
+  0.32 precision → 0.75 gate, wired into coordinator), source retire/reinstate on outcome yield
+  (8 domains retired; outcome verdict outranks throughput yield), lane-usefulness rotation.
+- **P4 falsifiable tagging:** `hermes_tag_engine.py` — strategy-registry vocabulary, continuous
+  quality_score (stddev 0.109 vs binary 0.30/0.62), `hermes_tag_efficacy` lift table
+  (general_research −0.29 flagged); hourly taxonomy cron retired (zero readers).
+- **P5 autonomy + honest maturity:** `hermes_config_governor.py` files rails-pressure
+  `config_change_proposals`; pipeline-health correctness watchdogs #5-#10 → daily-deduped
+  `escalation_queue` items (first live catch same day); `hermes_maturity_gates.py` — 6 dimensions
+  / ~21 computed gates into the maturity dashboard, 5 = all-pass × 30 consecutive daily snapshots.
+  First honest board: 2.3 → 2.7 same day.
+- **Ops:** all crons applied live; portfolio server restarted under systemd (an orphan process
+  held port 7777; the unit had 8,144 failed restarts) — dashboard now serves `maturity_gates`.
+
+Docs updated: HERMES_INTELLIGENCE_ENGINE (H-1 tier-mode, H-4 outcome-gated, cron map),
+HERMES_RESEARCH_LIFECYCLE (Track A½ outcome yield), MASTER_SYSTEM_DOCUMENTATION (Hermes row),
+TAXONOMY_ALIGNMENT_SCOPE (cron retired), DOCUMENTATION_INDEX (design doc entry).
+
 ## 2026-07-02 - CIO structured evidence UI surfacing (watchlist · proposals · Hermes · portfolio)
 
 Surfaces tagged `[fact|technical|risk]` evidence + `data_i_doubt` in Command Center v3 — API enrichment was already wired; this commit completes the UI layer.

@@ -67,6 +67,7 @@
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | **Risk visualization layer** — Recharts components, hub integration map, library roadmap | Active (2026-06-24) |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-24) |
 | `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill; §11 DD hardening (OCO_REPLACING + read-back + repair supervisor, reconciler `--fix` DB-only vs `--apply-oco-retrofit`, qty fail-closed) | **Partially implemented** — paper P1+P2 live + DD-hardened (2026-06-30); Schwab P3 staged inert (`OCO_BRACKETS_SCHWAB` off); P4/P5 pending |
+| `docs/design/HERMES_MATURITY_5_DESIGN.md` | **Hermes Maturity-5 program** — audit (2/5) → phases 0-5: governed S0-S3 scope + event lane; outcome ledger + nightly grader; gated learning (drift ratchet frozen, learned promotion gates, outcome-yield source curation, lane routing); falsifiable tagging; config-proposal channel; honest computed maturity board (5s = 30-day streaks). Per-phase implementation status inline | **Implemented — all phases live (2026-07-02)**; 5s accrue on samples/streaks |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
