@@ -1,0 +1,21 @@
+[Unit]
+Description=Grok OAuth proxy (free xai-oauth -> OpenAI-compatible :8645) for Trade AI oversight
+After=network.target
+
+# Install (user service, no sudo):
+#   cp config/systemd/grok-oauth-proxy.service ~/.config/systemd/user/hermes-xai-proxy.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hermes-xai-proxy.service
+# Requires the operator's free xAI OAuth session:
+#   hermes auth add xai-oauth --type oauth
+
+[Service]
+Type=simple
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/usr/bin/python3 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/grok_oauth_proxy.py
+Restart=always
+RestartSec=5
+Environment=GROK_PROXY_PORT=8645
+
+[Install]
+WantedBy=default.target
