@@ -36,6 +36,7 @@
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | **Momentum-scalp layered stop/trail policy** — 4-layer methodology (structure+ATR initial stop, breakeven @ +1.0–1.5R, Chandelier trailing **config-OFF** per backtest gate, portfolio heat); §6 validation gate (150 trades); Risk tab monitor + Stop Intelligence replay | Active (2026-06-30, paper validation phase) |
 | `docs/COST_MODEL.md` | Cloud LLM operating cost model, budget gates | Active |
 | `docs/LLM_DATA_DICTIONARY.md` | Data flow to every model call, 6 context types, anti-hallucination spec | Active |
+| `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | **CIO prompt & input audit** — committee→synthesis→dual-consensus pipeline; what's mature vs F1–F5 tightening (F1 = dual ownership sources contradict, e.g. AZN conf 0.19); priority = input tightness over prompt rewrites | Active (2026-07-01) |
 
 ### LLM Fleet v4.1 (canonical set)
 | Document | Purpose | Status |
