@@ -33,10 +33,31 @@ done
 
 [ "$ok" = "1" ] && exit 0
 
-# Unresponsive after FAILS probes — find and kill the server so systemd respawns it.
+# Unresponsive after FAILS probes — restart under systemd (or kill orphan so systemd respawns).
 pid=$(pgrep -f "$PROC" | head -1)
 if [ -z "$pid" ]; then
-  log "UNRESPONSIVE and no pid found — systemd should be starting it; no action."
+  log "UNRESPONSIVE and no pid found — starting portfolio-server.service"
+  systemctl --user start portfolio-server.service 2>/dev/null || true
+  sleep 6
+  if curl -s -o /dev/null --max-time "$TIMEOUT" "$URL" 2>/dev/null; then
+    log "RECOVERED — systemd started server."
+  else
+    log "still not responding after systemd start — escalate."
+  fi
+  exit 0
+fi
+if ! systemctl --user is-active --quiet portfolio-server.service 2>/dev/null; then
+  log "UNRESPONSIVE with orphan pid $pid (systemd inactive) — killing orphan and starting service"
+  kill -TERM "$pid" 2>/dev/null || true
+  sleep 3
+  kill -9 "$pid" 2>/dev/null || true
+  systemctl --user start portfolio-server.service 2>/dev/null || true
+  sleep 6
+  if curl -s -o /dev/null --max-time "$TIMEOUT" "$URL" 2>/dev/null; then
+    log "RECOVERED — orphan cleared, systemd owns port 7777."
+  else
+    log "still not responding after orphan cleanup — escalate."
+  fi
   exit 0
 fi
 log "UNRESPONSIVE after ${FAILS} probes — killing pid $pid (systemd Restart=always will respawn)"

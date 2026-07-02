@@ -94,6 +94,17 @@ export default function StopManagement({ onFocusHolding }: Props) {
 
       {sub === 'Audit' ? <AuditView /> : (
         <>
+          {data?.broker_stops_degraded && (
+            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${RED}14`, border: `1px solid ${RED}55` }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: RED }}>⚠ Schwab live stop read failed — broker stops may be hidden</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>
+                Only Fidelity monitored / planned stops are showing. Fidelity JEPQ-style rows can still appear while Schwab orders look &quot;planned only&quot;.
+                {data?.broker_stops_meta?.error ? <> Error: <span style={{ color: TEXT0 }}>{String(data.broker_stops_meta.error)}</span>.</> : null}
+                {' '}Refresh after the API server and venv recover; check <code style={{ fontSize: 10.5 }}>/api/v2/holdings/live-stops</code>.
+              </div>
+            </div>
+          )}
+
           {/* Summary cards */}
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
             <Card label="Total Open Risk" value={fmt$(summary.total_open_risk)} />
