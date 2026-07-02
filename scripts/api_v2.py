@@ -18662,8 +18662,8 @@ def _hermes_scalp_swarm_status():
         "signal_scout": ("file", "logs/hermes_scalp_signal_scout.log"),
         "entry_validation": ("file", "logs/hermes_scalp_entry_validation.log"),
         "stop_adjustment": ("file", "state/momentum_scalp/stop_adjustment_history.json"),
-        "exit_intelligence": ("file", "state/momentum_scalp/stoplight_status.json"),
-        "post_trade_review": ("file", "state/momentum_scalp/validation_tracker.json"),
+        "exit_intelligence": ("file", "logs/hermes_scalp_exit_intelligence.log"),
+        "post_trade_review": ("file", "logs/hermes_scalp_post_trade_review.log"),
     }
 
     def _agent_state(aid, ev):
@@ -18689,12 +18689,15 @@ def _hermes_scalp_swarm_status():
         "fleet": "momentum_scalp_swarm",
         "policy": "docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md",
         "phase": "4.4_paper_validation",
-        "rollout_phase": "phase_2_signal_entry",
+        "rollout_phase": "phase_3_exit_review",
         "agents": agents,
         "portfolio_heat": heat,
         "pending_approvals": len((pending.get("approvals") or [])),
         "qualified_signals": len([s for s in (qs.get("signals") or []) if s.get("status") == "pending_validation"]),
         "validated_pending_approval": len(evq.get("validated") or []),
+        "exit_suggestions": len((read_json("exit_suggestions.json", {}) or {}).get("suggestions") or []),
+        "post_trade_reviews": (read_json("post_trade_reviews.json", {}) or {}).get("total_reviewed", 0),
+        "validation_overall": (read_json("validation_tracker.json", {}) or {}).get("overall"),
         "state": state_health(),
         "docs": "docs/hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md",
     }

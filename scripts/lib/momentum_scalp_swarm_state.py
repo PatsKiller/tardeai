@@ -26,6 +26,8 @@ STATE_FILES = (
     "pending_approvals.json",
     "qualified_signals.json",
     "entry_validation_queue.json",
+    "exit_suggestions.json",
+    "post_trade_reviews.json",
 )
 
 

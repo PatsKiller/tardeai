@@ -80,11 +80,11 @@ const SCALP_HERMES_AGENTS: HAgent[] = [
     mission: 'Layer 4 stop adjustments: regime shift, heat, freshness decay; full audit history', reads: 'stoplight_status.json, regime_state.json, stop policy',
     writes: 'stop_adjustment_history.json, paper_trades.current_stop (approval-gated)', forbidden: 'Trail before breakeven secured, broker orders',
     caps: 'Every change cites policy §section', targets: ['scalp_orchestrator'], pos: { x: 580, y: 200 } },
-  { id: 'exit_intelligence', label: 'Exit Intelligence Agent', state: 'designed', phase: 'PHASE 3',
+  { id: 'exit_intelligence', label: 'Exit Intelligence Agent', state: 'designed', phase: 'PHASE 3 — hermes_scalp_exit_intelligence.py (60s)',
     mission: 'Profit extension vs Street consensus; partial take + trail tighten suggestions', reads: 'pro_analyst_pills_latest.json, stoplight_status, open_scalps',
     writes: 'exit suggestions (via orchestrator)', forbidden: 'Auto-exits without approval',
     caps: 'Works with Stop Adjustment Agent', targets: ['stop_adjustment', 'scalp_orchestrator'], pos: { x: 720, y: 90 }, readsTradeAI: true },
-  { id: 'post_trade_review', label: 'Post-Trade Review Agent', state: 'designed', phase: 'PHASE 3',
+  { id: 'post_trade_review', label: 'Post-Trade Review Agent', state: 'designed', phase: 'PHASE 3 — hermes_scalp_post_trade_review.py (300s)',
     mission: 'AI Trade Critique on closed scalps; 4 stop-quality questions; validation tracker', reads: 'paper_trades closed, replay, validation_tracker.json',
     writes: 'validation_tracker.json, critique feedback loop', forbidden: 'Mutate open trades',
     caps: 'Every closed scalp gets critique', targets: ['scalp_orchestrator'], pos: { x: 400, y: 320 }, readsTradeAI: true },
@@ -474,6 +474,9 @@ export default function HermesHub({ onDrill }: Props) {
               ['Pending approvals', String(scalpSwarm?.pending_approvals ?? 0)],
               ['Qualified signals', String(scalpSwarm?.qualified_signals ?? 0)],
               ['Validated (awaiting TG)', String(scalpSwarm?.validated_pending_approval ?? 0)],
+              ['Exit suggestions', String(scalpSwarm?.exit_suggestions ?? 0)],
+              ['Post-trade reviews', String(scalpSwarm?.post_trade_reviews ?? 0)],
+              ['Validation gate', scalpSwarm?.validation_overall ?? '—'],
               ['Pause new entries', scalpSwarm?.portfolio_heat?.pause_new_entries ? 'YES' : 'no'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>

@@ -1,0 +1,127 @@
+{
+  "reviews": [
+    {
+      "breakeven_timing": "unknown",
+      "closed_at": "2026-06-01 12:00:02.816320-04:00",
+      "final_r_vs_planned_stop": null,
+      "initial_stop_vs_mae": "too tight \u2014 MAE only -7.74R (stopped on noise risk)",
+      "mode": "deterministic",
+      "policy_sections_reviewed": [
+        "\u00a73 L1",
+        "\u00a73 L2",
+        "\u00a73 L3 (advisory)",
+        "\u00a73 L4",
+        "\u00a75",
+        "\u00a76"
+      ],
+      "r_left_on_table": 260.03,
+      "r_left_on_table_narrative": "260.03R left on table (MFE-R minus realized)",
+      "realized_r": 3.125,
+      "recommended_params": {
+        "breakeven_trigger_r": 1.2,
+        "initial_stop_atr_mult": "1.0-1.5",
+        "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
+        "regime": "risk_on_trend",
+        "setup": "RVOL 381.5x | Float 4M | Gap +66.8% | Verified catalyst | A 51pts | Source screener",
+        "trail_mult": "advisory-only \u2014 do not enable L3 execution"
+      },
+      "stop_quality_score": 1,
+      "symbol": "ANY",
+      "trade_id": 44,
+      "trail_activation_correct": "trail not active (expected \u2014 Layer 3 config-OFF per \u00a72.1 backtest gate)"
+    },
+    {
+      "breakeven_timing": "unknown",
+      "closed_at": "2026-06-01 11:30:02.681793-04:00",
+      "final_r_vs_planned_stop": null,
+      "initial_stop_vs_mae": "unknown \u2014 MAE not tagged",
+      "mode": "deterministic",
+      "policy_sections_reviewed": [
+        "\u00a73 L1",
+        "\u00a73 L2",
+        "\u00a73 L3 (advisory)",
+        "\u00a73 L4",
+        "\u00a75",
+        "\u00a76"
+      ],
+      "r_left_on_table": null,
+      "r_left_on_table_narrative": "insufficient MFE/replay data",
+      "realized_r": null,
+      "recommended_params": {
+        "breakeven_trigger_r": 1.2,
+        "initial_stop_atr_mult": "1.0-1.5",
+        "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
+        "regime": "risk_on_trend",
+        "setup": "momentum_scalp",
+        "trail_mult": "advisory-only \u2014 do not enable L3 execution"
+      },
+      "stop_quality_score": 3,
+      "symbol": "ANY",
+      "trade_id": 45,
+      "trail_activation_correct": "trail not active (expected \u2014 Layer 3 config-OFF per \u00a72.1 backtest gate)"
+    },
+    {
+      "breakeven_timing": "unknown",
+      "closed_at": "2026-05-13 15:45:01.280570-04:00",
+      "final_r_vs_planned_stop": null,
+      "initial_stop_vs_mae": "too tight \u2014 MAE only -9.59R (stopped on noise risk)",
+      "mode": "deterministic",
+      "policy_sections_reviewed": [
+        "\u00a73 L1",
+        "\u00a73 L2",
+        "\u00a73 L3 (advisory)",
+        "\u00a73 L4",
+        "\u00a75",
+        "\u00a76"
+      ],
+      "r_left_on_table": 11.3,
+      "r_left_on_table_narrative": "11.3R left on table (MFE-R minus realized)",
+      "realized_r": -1.714,
+      "recommended_params": {
+        "breakeven_trigger_r": 1.2,
+        "initial_stop_atr_mult": "1.0-1.5",
+        "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
+        "regime": "unknown",
+        "setup": "momentum_scalp",
+        "trail_mult": "advisory-only \u2014 do not enable L3 execution"
+      },
+      "stop_quality_score": 1,
+      "symbol": "GCTS",
+      "trade_id": 22,
+      "trail_activation_correct": "trail not active (expected \u2014 Layer 3 config-OFF per \u00a72.1 backtest gate)"
+    },
+    {
+      "breakeven_timing": "unknown",
+      "closed_at": "2026-05-12 16:00:01.535190-04:00",
+      "final_r_vs_planned_stop": null,
+      "initial_stop_vs_mae": "unknown \u2014 MAE not tagged",
+      "mode": "deterministic",
+      "policy_sections_reviewed": [
+        "\u00a73 L1",
+        "\u00a73 L2",
+        "\u00a73 L3 (advisory)",
+        "\u00a73 L4",
+        "\u00a75",
+        "\u00a76"
+      ],
+      "r_left_on_table": null,
+      "r_left_on_table_narrative": "insufficient MFE/replay data",
+      "realized_r": null,
+      "recommended_params": {
+        "breakeven_trigger_r": 1.2,
+        "initial_stop_atr_mult": "1.0-1.5",
+        "note": "Layer 3 trailing stays config-OFF until \u00a76 paper validation overturns backtest",
+        "regime": "unknown",
+        "setup": "momentum_scalp",
+        "trail_mult": "advisory-only \u2014 do not enable L3 execution"
+      },
+      "stop_quality_score": 3,
+      "symbol": "FLYW",
+      "trade_id": 19,
+      "trail_activation_correct": "trail not active (expected \u2014 Layer 3 config-OFF per \u00a72.1 backtest gate)"
+    }
+  ],
+  "schema_version": "1.0",
+  "total_reviewed": 4,
+  "updated_at": "2026-07-02T22:56:13.319963+00:00"
+}

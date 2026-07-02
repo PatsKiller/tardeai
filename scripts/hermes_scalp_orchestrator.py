@@ -116,6 +116,18 @@ def tick() -> dict:
                     "requires_approval": True,
                 })
 
+    # Phase 3: log exit suggestions (Exit Intelligence agent already enqueues approvals)
+    exit_data = read_json("exit_suggestions.json", {}) or {}
+    for sug in (exit_data.get("suggestions") or [])[:5]:
+        if sug.get("action") in ("suggest_partial_exit", "suggest_stop_review"):
+            routes.append({
+                "target": "exit_intelligence",
+                "action": sug.get("action"),
+                "symbol": sug.get("symbol"),
+                "reason": sug.get("reason"),
+                "requires_approval": False,
+            })
+
     for route in routes:
         if route.get("requires_approval"):
             _enqueue_approval(route)

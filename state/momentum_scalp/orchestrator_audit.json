@@ -9,8 +9,40 @@
       "red_positions": 0,
       "routes": 0,
       "ts": "2026-07-02T22:50:34.222497+00:00"
+    },
+    {
+      "action": "critique",
+      "agent": "post_trade_review",
+      "stop_quality_score": 1,
+      "symbol": "ANY",
+      "trade_id": 44,
+      "ts": "2026-07-02T22:55:41.429821+00:00"
+    },
+    {
+      "action": "critique",
+      "agent": "post_trade_review",
+      "stop_quality_score": 3,
+      "symbol": "ANY",
+      "trade_id": 45,
+      "ts": "2026-07-02T22:55:41.430098+00:00"
+    },
+    {
+      "action": "critique",
+      "agent": "post_trade_review",
+      "stop_quality_score": 1,
+      "symbol": "GCTS",
+      "trade_id": 22,
+      "ts": "2026-07-02T22:55:41.430282+00:00"
+    },
+    {
+      "action": "critique",
+      "agent": "post_trade_review",
+      "stop_quality_score": 3,
+      "symbol": "FLYW",
+      "trade_id": 19,
+      "ts": "2026-07-02T22:55:41.430424+00:00"
     }
   ],
   "schema_version": "1.0",
-  "updated_at": "2026-07-02T22:50:34.222518+00:00"
+  "updated_at": "2026-07-02T22:55:41.430427+00:00"
 }

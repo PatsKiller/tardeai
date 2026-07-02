@@ -36,8 +36,8 @@ A hierarchical 7-agent Hermes swarm manages the full lifecycle of Momentum Scalp
 | 3 | Entry Validation | Layer 1 validation, sizing, journal entry | **Phase 2** (`hermes_scalp_entry_validation.py`) |
 | 4 | Live Monitor | Persistent open-scalp monitoring, regime, stoplight | **Phase 1** |
 | 5 | Stop Adjustment | Layer 4 adjustments with audit trail | **Phase 1** |
-| 6 | Exit Intelligence | Profit vs Street consensus, partial exits | Phase 3 |
-| 7 | Post-Trade Review | AI Trade Critique, validation tracker | Phase 3 |
+| 6 | Exit Intelligence | Profit vs Street consensus, partial exits | **Phase 3** (`hermes_scalp_exit_intelligence.py`) |
+| 7 | Post-Trade Review | AI Trade Critique, validation tracker | **Phase 3** (`hermes_scalp_post_trade_review.py`) |
 
 ---
 
@@ -124,3 +124,4 @@ See [`DEPLOYMENT_OPERATIONS.md`](DEPLOYMENT_OPERATIONS.md) and [`GETTING_STARTED
 | Agent prompts | `docs/hermes/momentum_scalp_swarm/agents/` |
 | Orchestration | `ORCHESTRATION_ROUTING.md` |
 | Validation | `VALIDATION_CHECKLIST.md` |
+| Phase 3 dry test | `PHASE_3_DRY_TEST.md` |

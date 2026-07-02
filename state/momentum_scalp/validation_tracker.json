@@ -1,9 +1,38 @@
 {
-  "schema_version": "1.0",
-  "updated_at": null,
+  "closed_trades": 2,
   "gate": "4.4_to_4.5",
-  "closed_trades": 0,
+  "gate_verdicts": {
+    "closed_trades": "FAIL (2 vs >=150)",
+    "expectancy_R": "INSUFFICIENT (2/30 min sample)",
+    "profit_factor": "INSUFFICIENT (2/30 min sample)",
+    "win_pct": "INSUFFICIENT (2/30 min sample)"
+  },
+  "metrics": {
+    "breakeven_tagged": 0,
+    "by_regime": {
+      "risk_on_trend": {
+        "exp_R": 3.125,
+        "n": 1
+      },
+      "unknown": {
+        "exp_R": -1.714,
+        "n": 1
+      }
+    },
+    "closed_trades": 2,
+    "expectancy_R": 0.705,
+    "freshness_tagged": 0,
+    "mae_tagged": 2,
+    "max_dd_R": -1.71,
+    "profit_factor": 1.82,
+    "tagged_no_risk_denominator": 2,
+    "win_pct": 50.0
+  },
+  "overall": "INSUFFICIENT SAMPLE \u2014 gate needs >=150 closed trades",
+  "policy_ref": "MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md \u00a76",
+  "schema_version": "1.0",
   "social_route_trades": 0,
-  "metrics": {},
-  "policy_ref": "MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md §6"
+  "source": "scalp_stop_validation_tracker.py",
+  "trailing_note": "Layer-3 trailing excluded \u2014 backtest+sweep show net-negative for momentum (stays config-OFF); see MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY \u00a72.",
+  "updated_at": "2026-07-02T22:56:13.320864+00:00"
 }
