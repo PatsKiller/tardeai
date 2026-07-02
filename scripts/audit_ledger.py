@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -79,7 +80,6 @@ def record_event(
     """Append immutable audit record. Never raises — returns ok=False on failure."""
     event_id = str(uuid.uuid4())
     correlation_id = correlation_id or event_id
-    prev_hash = _last_hash()
     created_at = dt.datetime.now(dt.timezone.utc).isoformat()
     body = {
         "event_id": event_id,
@@ -91,15 +91,32 @@ def record_event(
         "reason": reason,
         "snapshot": snapshot or {},
         "snapshot_refs": snapshot_refs or [],
-        "prev_event_hash": prev_hash,
         "created_at": created_at,
     }
-    event_hash = _hash_payload(body)
-    body["event_hash"] = event_hash
     try:
         LEDGER_DIR.mkdir(parents=True, exist_ok=True)
-        with LEDGER_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(body, default=str) + "\n")
+        with LEDGER_PATH.open("a+", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                prev_hash = "GENESIS"
+                f.seek(0)
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                        prev_hash = row.get("event_hash") or prev_hash
+                    except Exception:
+                        pass
+                body["prev_event_hash"] = prev_hash
+                event_hash = _hash_payload(body)
+                body["event_hash"] = event_hash
+                f.seek(0, 2)
+                f.write(json.dumps(body, default=str) + "\n")
+                f.flush()
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
     conn = _conn()
@@ -161,6 +178,43 @@ def verify_chain(limit: int = 500) -> dict:
         prev = eh
         verified += 1
     return {"ok": True, "verified": verified}
+
+
+def repair_chain() -> dict:
+    """Rebuild prev_event_hash links and recompute hashes after a concurrent-append race."""
+    if not LEDGER_PATH.exists():
+        return {"ok": True, "repaired": 0, "total": 0}
+    raw = LEDGER_PATH.read_text(encoding="utf-8").splitlines()
+    rows = [json.loads(ln) for ln in raw if ln.strip()]
+    if not rows:
+        return {"ok": True, "repaired": 0, "total": 0}
+    prev = rows[0].get("prev_event_hash") or "GENESIS"
+    repaired = 0
+    out: list[str] = []
+    for row in rows:
+        body = {k: v for k, v in row.items() if k != "event_hash"}
+        if body.get("prev_event_hash") != prev:
+            body["prev_event_hash"] = prev
+            repaired += 1
+        new_hash = _hash_payload(body)
+        if row.get("event_hash") != new_hash:
+            repaired += 1
+        body["event_hash"] = new_hash
+        prev = new_hash
+        out.append(json.dumps(body, default=str))
+    backup = LEDGER_PATH.with_suffix(f".jsonl.bak.{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d%H%M%S')}")
+    backup.write_text("\n".join(raw) + ("\n" if raw else ""), encoding="utf-8")
+    tmp = LEDGER_PATH.with_suffix(".jsonl.repair_tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    tmp.replace(LEDGER_PATH)
+    verify = verify_chain(len(rows))
+    return {
+        "ok": verify.get("ok", False),
+        "repaired": repaired,
+        "total": len(rows),
+        "verified": verify.get("verified", 0),
+        "backup": str(backup),
+    }
 
 
 # Live-adjacent event types we expect to see covered in a healthy live-adjacent ledger.
@@ -225,11 +279,14 @@ def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--verify", action="store_true")
+    ap.add_argument("--repair", action="store_true", help="fix hash chain after concurrent-append race")
     ap.add_argument("--coverage", action="store_true")
     ap.add_argument("--release-mode", default="review")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
-    if args.coverage:
+    if args.repair:
+        out = repair_chain()
+    elif args.coverage:
         out = coverage_report(release_mode=args.release_mode)
     else:
         out = verify_chain()
