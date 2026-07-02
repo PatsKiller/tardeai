@@ -312,6 +312,22 @@ in ~2–3 weeks of build; the all-5 board in ~6–10 weeks, because the 5s are s
 like momentum-scalp's 4.4 cap.** Claiming them sooner would repeat the failure mode this design
 exists to fix.
 
+## Phase 6 — Close the Consumption Gap (added post-review, 2026-07-02)
+
+_**IMPLEMENTED 2026-07-02.** The external review confirmed the audit's finding that AI Trade
+Critique, Stop Management, and the Validation Tracker wrote research but never read Hermes back.
+All three now consume via the canonical `hermes_data_access.hermes_prompt_block` path, fail-open:_
+
+| Surface | Integration | Version marker |
+|---|---|---|
+| AI Trade Critique (`journal_ai_critique.py`) | Hermes block (≤1,200 chars) appended to the coach prompt; deterministic facts remain ground truth | `ai_critique_v3_hermes` |
+| Stop advisory (`holding_protection_advisor.py`) | Hermes block (≤700 chars) for rationale color, explicitly subordinate to HARD RULES / family bands | `protection_advisor_v2_hermes` |
+| Validation Tracker (`momentum_scalp_validation_tracker.py`) | `hermes_context` section: confirmed-trades-with-prior-research share + scalp-tag efficacy (`hit_rate`/`lift`/`trade_n`/`avg_realized_r`) | report field |
+
+_First tracker reading: 0/2 confirmed scalp trades had prior Hermes research — the coverage gap is
+now measured where the operator looks, which is the point. Tag-efficacy `avg_realized_r` fills as
+the validation sample grows (loop 5 of the closed-loop map)._
+
 ### Non-goals / invariants preserved
 
 Advisory-only; no new live order surfaces; 2FA and execution gates untouched; no paid-LLM
