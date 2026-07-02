@@ -87,9 +87,25 @@ A/B-observed). Implementation of F1–F5 to follow on operator approval.
 - **F3** ✅ `_strip_local_tokens()` strips `/no_think` before every cloud lane call (`_synthesis_llm`,
   `_synthesis_dual`); local gemma fallback keeps the original prompt.
 
-**Stage 2 PENDING** (next, after observing v4 confidence distributions): **F2** structured agent
-evidence (note: agents already return JSON — the gap is tagged evidence bullets + a "data I doubt"
-field, not a new contract), **F4** enumerate stale fields + age in the DQ note (and reconcile the
-G1 "skip on stale" vs DQ-note "proceed with lower confidence" policy contradiction), plus a
-`max_tokens` review on `_synthesis_dual` (1000 is tight for the full JSON contract and risks
-truncation → silent fallback to loose parsing).
+**Stage 2a SHIPPED** (2026-07-01, operator-approved) — `cio_synth_v5_dq_specifics_2026-07-01`,
+`SYNTHESIS_VERSION_NUM=5`:
+- **F4** ✅ `_build_dq_note()` replaces the count-only warning. Finding refined during
+  implementation: the alert_events count **almost never fires for real tickers** (0 real-ticker
+  stale alerts in 7 days — nearly all `stale` alerts are `topic:*` research-gap rows), so the note
+  now measures staleness directly from the sources the prompt uses: enrichment `cached_at` (>2d,
+  daily 06:40 rebuild cadence), `ticker_prices` latest date (>4d, weekend-safe), news recency
+  (>14d, matches `_check_symbol_data_quality`), plus the alert count when nonzero. Verified live:
+  V → fresh/empty; SCHD → "news 15 days old"; SNOW/AZN → "NO price history in DB".
+- **G1 reconciliation** ✅ resolved as layered policy, not a contradiction: agents keep G1's
+  skip-on-wholesale-stale; the synthesis DQ note now instructs down-weighting the *specific* stale
+  fields, capping confidence at 0.5 / outputting RESEARCH_MORE when a decision-critical input
+  (price, ownership, income) is stale, and proceeding normally otherwise.
+- **max_tokens** ✅ 1000 → 2000 on `_synthesis_llm`/`_synthesis_dual` + call site. Measured first
+  (14 days of `raw_response`): cloud lanes 1 parse failure in 650 rows, zero truncation (they send
+  no cap); the ONLY local-fallback row was truncated mid-JSON — the cap applies to the local gemma
+  fallback and it bites exactly when that lane runs.
+
+**Stage 2b PENDING** (held for the v4/v5 observation window per operator): **F2** structured agent
+evidence — tagged evidence bullets (fact/technical/risk) + a "data I doubt" field added to the
+committee agents' existing JSON contract (agents already return JSON; the gap is evidence
+granularity, not a missing contract).
