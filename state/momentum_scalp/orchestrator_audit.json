@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "action": "tick",
+      "agent": "orchestrator",
+      "amber_positions": 0,
+      "heat_msg": "heat ok",
+      "heat_ok": true,
+      "red_positions": 0,
+      "routes": 0,
+      "ts": "2026-07-02T22:50:34.222497+00:00"
+    }
+  ],
+  "schema_version": "1.0",
+  "updated_at": "2026-07-02T22:50:34.222518+00:00"
+}

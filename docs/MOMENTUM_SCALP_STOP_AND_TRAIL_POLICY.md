@@ -271,6 +271,8 @@ To pass from Maturity 4.4 → 4.5, the following must be demonstrated via paper 
 | Holdings stop policy | [`STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md) |
 | Scalp lifecycle | [`diligence/current/MOMENTUM_SCALP_LIFECYCLE.md`](diligence/current/MOMENTUM_SCALP_LIFECYCLE.md) |
 | Validation ops | [`diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md`](diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md) |
+| Multi-Hermes swarm | [`hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md`](hermes/momentum_scalp_swarm/MULTI_HERMES_MOMENTUM_SCALP_ARCHITECTURE.md) |
+| Swarm CC UI | Command Center v3 → Hermes → Momentum Scalp Swarm |
 
 ---
 

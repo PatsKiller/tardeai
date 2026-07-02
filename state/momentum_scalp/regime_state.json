@@ -1,0 +1,183 @@
+{
+  "market_regime": "risk_on_trend",
+  "schema_version": "1.0",
+  "symbols": {
+    "ARKG": {
+      "candidate_regime": "strong_trending_bull",
+      "candidate_streak": 2,
+      "confidence": 50.0,
+      "entry_regime": "strong_trending_bull",
+      "regime": "strong_trending_bull",
+      "updated_at": null
+    },
+    "ARKQ": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "ARKX": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "BAH": {
+      "candidate_regime": "strong_trending_bear",
+      "candidate_streak": 2,
+      "confidence": 50.0,
+      "entry_regime": "strong_trending_bear",
+      "regime": "strong_trending_bear",
+      "updated_at": null
+    },
+    "BND": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 66.7,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "CACI": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 50.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "CSWC": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "DIV": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 66.7,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "DIVI": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 100.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "JEPI": {
+      "candidate_regime": "ranging",
+      "candidate_streak": 2,
+      "confidence": 100.0,
+      "entry_regime": "ranging",
+      "regime": "ranging",
+      "updated_at": null
+    },
+    "JEPQ": {
+      "candidate_regime": "ranging",
+      "candidate_streak": 2,
+      "confidence": 100.0,
+      "entry_regime": "ranging",
+      "regime": "ranging",
+      "updated_at": null
+    },
+    "LDOS": {
+      "candidate_regime": "strong_trending_bear",
+      "candidate_streak": 2,
+      "confidence": 75.0,
+      "entry_regime": "strong_trending_bear",
+      "regime": "strong_trending_bear",
+      "updated_at": null
+    },
+    "NEE": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 100.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "NOC": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 100.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "PFLT": {
+      "candidate_regime": "strong_trending_bear",
+      "candidate_streak": 2,
+      "confidence": 75.0,
+      "entry_regime": "strong_trending_bear",
+      "regime": "strong_trending_bear",
+      "updated_at": null
+    },
+    "RTX": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "SCHD": {
+      "candidate_regime": "trending",
+      "candidate_streak": 6,
+      "confidence": 66.7,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "SCHG": {
+      "candidate_regime": "trending",
+      "candidate_streak": 8,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "V": {
+      "candidate_regime": "trending",
+      "candidate_streak": 4,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "XAR": {
+      "candidate_regime": "strong_trending_bull",
+      "candidate_streak": 2,
+      "confidence": 75.0,
+      "entry_regime": "strong_trending_bull",
+      "regime": "strong_trending_bull",
+      "updated_at": null
+    },
+    "XLB": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 80.0,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    },
+    "XLI": {
+      "candidate_regime": "trending",
+      "candidate_streak": 2,
+      "confidence": 66.7,
+      "entry_regime": "trending",
+      "regime": "trending",
+      "updated_at": null
+    }
+  },
+  "updated_at": "2026-07-02T22:50:29.447884+00:00"
+}

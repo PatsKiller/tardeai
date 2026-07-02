@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "updated_at": null,
+  "gate": "4.4_to_4.5",
+  "closed_trades": 0,
+  "social_route_trades": 0,
+  "metrics": {},
+  "policy_ref": "MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md §6"
+}
