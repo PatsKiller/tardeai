@@ -631,11 +631,10 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         try:
             _empty_syms = [t.get("symbol") for t in scored if not (t.get("sector") or "").strip()]
             if _empty_syms:
-                cur2 = conn.cursor()
-                cur2.execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
+                _sector_rows = _execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
                                 WHERE symbol = ANY(%s) AND COALESCE(sector,'') <> ''
-                                ORDER BY symbol, scanned_at DESC""", (_empty_syms,))
-                _sector_map = dict(cur2.fetchall())
+                                ORDER BY symbol, scanned_at DESC""", (_empty_syms,), fetch="all") or []
+                _sector_map = {r["symbol"]: r["sector"] for r in _sector_rows}
                 for t in scored:
                     if not (t.get("sector") or "").strip() and t.get("symbol") in _sector_map:
                         t["sector"] = _sector_map[t.get("symbol")]
@@ -701,8 +700,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                 t.get("sector_etf", ""),
                 _num(t.get("ticker_perf_1m")), _num(t.get("sector_perf_1m")), _num(t.get("vs_sector_pct")),
                 soc.get("sentiment_label", ""), _num(soc.get("sentiment_score")),
-                soc.get("reddit_mentions", 0), soc.get("stocktwits_messages", 0),
-                _num(soc.get("stocktwits_bullish_pct")), soc.get("wsb_mentions", 0),
+                int(_num(soc.get("reddit_mentions", 0)) or 0), int(_num(soc.get("stocktwits_messages", 0)) or 0),
+                _num(soc.get("stocktwits_bullish_pct")), int(_num(soc.get("wsb_mentions", 0)) or 0),
                 "screener",
                 # attribution restored 2026-06-11: which Finviz list produced this row (was tagged at
                 # ingestion and dropped here — made per-list efficacy unmeasurable)
