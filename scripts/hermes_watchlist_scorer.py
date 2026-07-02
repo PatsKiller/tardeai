@@ -25,7 +25,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
-from watchlist_priority import WATCHLIST_TOP_N, holdings_list, is_off_hours_et, off_hours_top_n
+from watchlist_priority import (
+    WATCHLIST_TOP_N, daily_priority_sql_params, holdings_list, is_off_hours_et, off_hours_top_n,
+    sql_daily_priority_exists,
+)
 PILLS = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
@@ -241,27 +244,46 @@ _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_k
 
 
 def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
-    """Off-hours: score only top-N + holdings + directives + active (saves ~3k tail churn)."""
+    """Off-hours: daily-priority (holdings/proposals/buy/start) + Hermes top-N; skip ~3k tail."""
     if not off_hours:
         sql = _BASE_SELECT + (f" LIMIT {int(limit)}" if limit else "")
         cur.execute(sql)
         return
     cap = int(limit or WATCHLIST_TOP_N)
-    holdings = holdings_list(PROJECT_ROOT)
-    cur.execute("""WITH candidates AS (
-                     SELECT wi.symbol,
+    dp = daily_priority_sql_params(project_root=PROJECT_ROOT)
+    daily_sql = sql_daily_priority_exists("wi.symbol")
+    cur.execute(f"""WITH daily AS (
+                     SELECT DISTINCT wi.symbol,
                        MIN(CASE WHEN wi.in_directive_watch THEN 0
                                 WHEN wi.symbol = ANY(%s) THEN 1
-                                WHEN wi.status = 'active' THEN 2
-                                ELSE 3 END) AS tier,
-                       MIN(wi.hermes_rank) AS best_rank
+                                WHEN EXISTS (SELECT 1 FROM paper_trade_proposals p
+                                             WHERE UPPER(p.symbol)=UPPER(wi.symbol) AND p.status=ANY(%s)) THEN 2
+                                WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                                             WHERE UPPER(rc.symbol)=UPPER(wi.symbol)
+                                               AND UPPER(REPLACE(REPLACE(rc.latest_recommendation,' ','_'),'-','_'))=ANY(%s))
+                                  OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                                             WHERE UPPER(fs.symbol)=UPPER(wi.symbol)
+                                               AND UPPER(REPLACE(REPLACE(fs.recommendation,' ','_'),'-','_'))=ANY(%s)) THEN 3
+                                WHEN wi.status = 'active' THEN 4
+                                ELSE 5 END) AS tier
+                     FROM watchlist_items wi
+                     WHERE wi.status IN ('active','researched') AND {daily_sql}
+                     GROUP BY wi.symbol
+                   ),
+                   ranked AS (
+                     SELECT wi.symbol, MIN(wi.hermes_rank) AS best_rank
                      FROM watchlist_items wi
                      WHERE wi.status IN ('active','researched')
-                       AND (wi.in_directive_watch OR wi.symbol = ANY(%s) OR wi.status = 'active'
-                            OR (wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s))
+                       AND wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s
+                       AND UPPER(wi.symbol) NOT IN (SELECT UPPER(symbol) FROM daily)
                      GROUP BY wi.symbol
-                     ORDER BY tier, best_rank ASC NULLS LAST
-                     LIMIT %s
+                     ORDER BY best_rank ASC NULLS LAST
+                     LIMIT GREATEST(%s - (SELECT COUNT(*) FROM daily), 0)
+                   ),
+                   candidates AS (
+                     SELECT symbol, tier, 0 AS best_rank FROM daily
+                     UNION ALL
+                     SELECT symbol, 10 AS tier, best_rank FROM ranked
                    )
                    SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
@@ -270,8 +292,9 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                    FROM candidates c
                    JOIN watchlist_items wi ON wi.symbol = c.symbol AND wi.status IN ('active','researched')
                    LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
-                   LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol""",
-                (holdings, holdings, WATCHLIST_TOP_N, cap))
+                   LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
+                   ORDER BY c.tier, c.best_rank ASC NULLS LAST""",
+                (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap))
 
 
 def run(limit=None):

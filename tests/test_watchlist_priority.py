@@ -56,3 +56,26 @@ def test_rank_alert_worthy_crossing_into_top_n():
 
 def test_watchlist_top_n_default_is_200():
     assert wp.WATCHLIST_TOP_N == 200
+
+
+def test_is_buy_side_rating():
+    assert wp.is_buy_side_rating("STRONG_BUY") is True
+    assert wp.is_buy_side_rating("START") is True
+    assert wp.is_buy_side_rating("HOLD") is False
+
+
+def test_rank_in_scope_daily_priority_symbol():
+    daily = {"AAPL", "MSFT"}
+    assert wp.rank_in_scope(5000, symbol="AAPL", daily_symbols=daily) is True
+    assert wp.rank_in_scope(5000, symbol="TAIL", daily_symbols=daily) is False
+
+
+def test_rank_alert_worthy_daily_priority_symbol():
+    daily = {"NVDA"}
+    assert wp.rank_alert_worthy(4000, 4100, symbol="NVDA", daily_symbols=daily) is True
+
+
+def test_sql_daily_priority_exists_has_proposals_and_buy():
+    sql = wp.sql_daily_priority_exists("j.symbol")
+    assert "paper_trade_proposals" in sql
+    assert "watchlist_final_synthesis" in sql

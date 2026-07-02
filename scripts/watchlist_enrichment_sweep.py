@@ -22,7 +22,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
-from watchlist_priority import WATCHLIST_TOP_N, is_off_hours_et, off_hours_top_n
+from watchlist_priority import (
+    WATCHLIST_TOP_N, daily_priority_sql_params, is_off_hours_et, off_hours_top_n,
+    sql_daily_priority_exists,
+)
 
 BATCH = 15  # Finviz-Elite rate-limit aware
 
@@ -95,13 +98,17 @@ def sweep(limit=None, dry=False):
     else:
         TAIL_MIN = max(30, cap // 4)
         prio_limit = max(cap - TAIL_MIN, 1)
-    cur.execute("""SELECT symbol FROM watchlist_items
-                   WHERE status IN ('active','researched') AND symbol IS NOT NULL
-                     AND (directive_id IS NOT NULL OR status = 'active'
-                          OR (hermes_rank IS NOT NULL AND hermes_rank <= %s))
-                   ORDER BY (directive_id IS NULL), (status <> 'active'),
-                            last_enriched_at ASC NULLS FIRST, hermes_rank ASC NULLS LAST
-                   LIMIT %s""", (RANK_PRIORITY, prio_limit))
+    daily_sql = sql_daily_priority_exists("wi.symbol")
+    dp = daily_priority_sql_params(project_root=PROJECT_ROOT)
+    cur.execute(f"""SELECT wi.symbol FROM watchlist_items wi
+                   WHERE wi.status IN ('active','researched') AND wi.symbol IS NOT NULL
+                     AND ({daily_sql}
+                          OR (wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s))
+                   ORDER BY (wi.directive_id IS NULL),
+                            (NOT ({daily_sql})),
+                            (wi.status <> 'active'),
+                            wi.last_enriched_at ASC NULLS FIRST, wi.hermes_rank ASC NULLS LAST
+                   LIMIT %s""", (*dp, RANK_PRIORITY, *dp, prio_limit))
     prio = [r[0] for r in cur.fetchall() if r[0]]
     tail = []
     if not off_hours:
@@ -115,7 +122,7 @@ def sweep(limit=None, dry=False):
             tail = [r[0] for r in cur.fetchall() if r[0]]
     symbols = list(dict.fromkeys(prio + tail))
     mode = "off-hours-top%d" % cap if off_hours else "intraday"
-    print(f"[sweep] {mode}: selected {len(symbols)}: {len(prio)} priority (directive/active/rank<={RANK_PRIORITY})"
+    print(f"[sweep] {mode}: selected {len(symbols)}: {len(prio)} priority (holdings/proposals/buy/start/rank<={RANK_PRIORITY})"
           + (f" + {len(tail)} tail rotation" if tail else ""))
     if not symbols:
         print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}

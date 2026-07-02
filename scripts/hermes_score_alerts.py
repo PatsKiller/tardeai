@@ -18,7 +18,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
-from watchlist_priority import rank_alert_worthy, rank_in_scope
+from watchlist_priority import load_daily_priority_symbols, rank_alert_worthy, rank_in_scope
 
 SCORE_DELTA = 8.0
 RANK_JUMP = 20
@@ -62,6 +62,7 @@ def _div(components):
 
 def run(send=False):
     conn = _conn(); cur = conn.cursor()
+    daily_symbols = load_daily_priority_symbols(cur, PROJECT_ROOT)
     cur.execute("""SELECT symbol, composite_score, rank, components, scored_at,
                      ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY scored_at DESC) rn
                    FROM hermes_score_history WHERE scored_at > now() - interval '3 days'""")
@@ -79,7 +80,8 @@ def run(send=False):
         ts = cur_s["scored_at"].strftime("%Y%m%d%H%M")
         cur_rank = cur_s.get("rank")
         prev_rank = prev_s.get("rank")
-        in_scope = rank_in_scope(cur_rank) or rank_alert_worthy(cur_rank, prev_rank)
+        in_scope = rank_in_scope(cur_rank, symbol=sym, daily_symbols=daily_symbols)
+        rank_ok = rank_alert_worthy(cur_rank, prev_rank, symbol=sym, daily_symbols=daily_symbols)
         # composite spike/drop (top-N only — tail churn is not actionable)
         if in_scope and cur_s["composite_score"] is not None and prev_s["composite_score"] is not None:
             delta = float(cur_s["composite_score"]) - float(prev_s["composite_score"])
@@ -89,7 +91,7 @@ def run(send=False):
                 if _alert(cur, f"hermes_score_{sym}_{ts}", "hermes_score_move", sym, "info" if delta > 0 else "warning", txt):
                     new_alerts.append(txt)
         # rank surge (suppress #2000+ tail noise)
-        if rank_alert_worthy(cur_rank, prev_rank) and cur_rank and prev_rank and (prev_rank - cur_rank) >= RANK_JUMP:
+        if rank_ok and cur_rank and prev_rank and (prev_rank - cur_rank) >= RANK_JUMP:
             txt = f"⤴ {sym} jumped to Hermes rank #{cur_s['rank']} (from #{prev_s['rank']})"
             if _alert(cur, f"hermes_rank_{sym}_{ts}", "hermes_rank_surge", sym, "info", txt):
                 new_alerts.append(txt)
