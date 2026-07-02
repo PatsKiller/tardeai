@@ -197,6 +197,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const pageRows = holdingsList.slice(pageClamped * PAGE_SIZE, (pageClamped + 1) * PAGE_SIZE)
   const coverage: Record<string, any[]> = (llmCov as any)?.coverage ?? {}
   const protection: Record<string, any> = (llmCov as any)?.protection ?? {}
+  const stopCuration: Record<string, any> = (llmCov as any)?.stop_curation ?? {}
   const monitoredByKey: Record<string, any> = monitoredStops?.by_key ?? {}
   const confirmedByKey: Record<string, any> = (llmCov as any)?.confirmed_stops ?? {}
   const liveStopsByKey: Record<string, any> = (liveStops as any)?.by_key ?? {}
@@ -366,7 +367,19 @@ export default function PortfolioHub({ onDrill }: Props) {
                 const _isFocus = focusKey === `${h.symbol}-${h.account}`
                 return (
                   <div key={`${h.symbol}-${h.account}`} id={`hold-${h.symbol}-${h.account}`}
-                    onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
+                    onClick={() => {
+                      const symU = (h.symbol || '').toUpperCase()
+                      onDrill({
+                        title: h.symbol,
+                        subtitle: `${h.account} · ${h.name}`,
+                        endpoint: '/api/v2/portfolio/holdings',
+                        rows: [{
+                          ...h,
+                          protection_advisory: mergeProtection(symU, protection[symU]),
+                          stop_curation: stopCuration[symU],
+                        }],
+                      })
+                    }}
                     style={{ background: 'var(--bg1)', border: _isFocus ? '1px solid #60a5fa' : '1px solid var(--border)', borderLeft: `4px solid ${sc === 'var(--text3)' ? ac : sc}`,
                       boxShadow: _isFocus ? '0 0 0 2px rgba(96,165,250,.5)' : 'none',
                       borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
@@ -468,8 +481,32 @@ export default function PortfolioHub({ onDrill }: Props) {
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
                     </div>
                     {(h.llm_evidence?.length > 0 || (h.llm_data_i_doubt && h.llm_data_i_doubt !== 'none')) && (
-                      <EvidenceBlock evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} compact maxItems={3} />
+                      <EvidenceBlock
+                        title={h.llm_health ? `Holdings health · ${h.llm_health}${h.llm_action ? ` · ${h.llm_action}` : ''}` : 'Holdings LLM evidence'}
+                        evidence={h.llm_evidence}
+                        dataIDoubt={h.llm_data_i_doubt}
+                        compact
+                        maxItems={3}
+                      />
                     )}
+                    {(() => {
+                      const symU = (h.symbol || '').toUpperCase()
+                      const pr = mergeProtection(symU, protection[symU])
+                      const sc = stopCuration[symU]
+                      const showProt = pr?.evidence?.length > 0 || (pr?.data_i_doubt && pr.data_i_doubt !== 'none')
+                      const showCur = sc?.evidence?.length > 0 || (sc?.data_i_doubt && sc.data_i_doubt !== 'none') || sc?.grade
+                      if (!showProt && !showCur) return null
+                      return (
+                        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {showProt && (
+                            <EvidenceBlock title={`Stop advisory${pr.model ? ` · ${pr.model}` : ''}`} evidence={pr.evidence} dataIDoubt={pr.data_i_doubt} compact maxItems={3} />
+                          )}
+                          {showCur && (
+                            <EvidenceBlock title={`Grok stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} compact maxItems={2} />
+                          )}
+                        </div>
+                      )
+                    })()}
                     {holdingReportEligible(h) && (
                       <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
                         <HoldingReportLinks

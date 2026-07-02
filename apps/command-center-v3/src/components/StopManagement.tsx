@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
+import { EvidenceBlock } from './EvidenceBlock'
 
 // Portfolio → Stop Management. Aggregates broker-actual + advisor-planned stops with Yellow/Amber/Red alerts,
 // plus an Audit sub-tab (2FA stop requests + operator confirmations). Read-only view; live adjustments route
@@ -27,6 +28,9 @@ type Row = {
   trail_recommended: boolean; rec_source: string | null; rec_model: string | null; rec_rationale: string | null
   alert_level: 'red' | 'amber' | 'yellow' | null; alert_reasons: string[]
   direction?: 'long' | 'short'; narrative?: string | null; next_action?: string | null; projection?: string | null
+  rec_evidence?: unknown[]; rec_data_i_doubt?: string | null
+  stop_curation?: { grade?: string; recommendation?: string; rr_assessment?: string; evidence?: unknown[]; data_i_doubt?: string | null; summary?: string } | null
+  holdings_llm_health?: string | null; holdings_llm_evidence?: unknown[]; holdings_llm_data_i_doubt?: string | null
 }
 type NextAction = { symbol: string; account: string; alert_level: Row['alert_level']; action: string | null; projection: string | null; dollars_at_risk: number | null }
 
@@ -189,7 +193,7 @@ export default function StopManagement({ onFocusHolding }: Props) {
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: (r.unrealized_dollars ?? 0) >= 0 ? GREEN : RED }}>{r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}</td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</td>
-                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 300 }}>
+                    <td style={{ padding: '7px 9px', fontSize: 10.5, color: MUTED, maxWidth: 340 }}>
                       {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, lineHeight: 1.45, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons || []).join(' · ')}
                       {r.next_action ? (
                         <div style={{ fontSize: 10.5, fontWeight: 700, lineHeight: 1.4,
@@ -197,6 +201,18 @@ export default function StopManagement({ onFocusHolding }: Props) {
                           → {r.next_action}
                         </div>
                       ) : null}
+                      {(r.rec_evidence?.length > 0 || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')) && (
+                        <EvidenceBlock title="Stop advisory evidence" evidence={r.rec_evidence} dataIDoubt={r.rec_data_i_doubt} compact maxItems={3} />
+                      )}
+                      {r.stop_curation && (r.stop_curation.evidence?.length > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
+                        <div style={{ marginTop: 4 }}>
+                          {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
+                          <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
+                        </div>
+                      )}
+                      {(r.holdings_llm_evidence?.length > 0 || (r.holdings_llm_data_i_doubt && r.holdings_llm_data_i_doubt !== 'none')) && (
+                        <EvidenceBlock title={r.holdings_llm_health ? `Holdings health · ${r.holdings_llm_health}` : 'Holdings LLM evidence'} evidence={r.holdings_llm_evidence} dataIDoubt={r.holdings_llm_data_i_doubt} compact maxItems={2} />
+                      )}
                     </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
                       {r.trailing_should_be_active && (
@@ -292,7 +308,23 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
           <b style={{ color: row.trail_recommended ? GREEN : AMBER }}>Recommended: {recKind} stop</b>
           {row.rec_source ? <span style={{ color: MUTED }}> · by <b style={{ color: row.rec_model && /grok|gpt|claude/i.test(row.rec_model) ? PURPLE : BLUE }}>{row.rec_source}</b>{row.rec_model ? ` (${row.rec_model})` : ''}</span> : null}
           {row.rec_rationale ? <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{row.rec_rationale}</div> : null}
+          <EvidenceBlock evidence={row.rec_evidence} dataIDoubt={row.rec_data_i_doubt} compact maxItems={5} />
         </div>
+
+        {row.stop_curation && (
+          <div style={{ fontSize: 12, padding: '8px 11px', borderRadius: 8, marginBottom: 12, background: `${PURPLE}10`, border: `1px solid ${PURPLE}44` }}>
+            <b style={{ color: PURPLE }}>Grok stop curation{row.stop_curation.grade ? ` · ${row.stop_curation.grade}` : ''}</b>
+            {row.stop_curation.rr_assessment && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{row.stop_curation.rr_assessment}</div>}
+            <EvidenceBlock evidence={row.stop_curation.evidence} dataIDoubt={row.stop_curation.data_i_doubt} compact />
+          </div>
+        )}
+
+        {(row.holdings_llm_evidence?.length > 0 || (row.holdings_llm_data_i_doubt && row.holdings_llm_data_i_doubt !== 'none')) && (
+          <div style={{ fontSize: 12, padding: '8px 11px', borderRadius: 8, marginBottom: 12, background: 'rgba(45,212,191,.08)', border: '1px solid rgba(45,212,191,.3)' }}>
+            <b style={{ color: '#2dd4bf' }}>Holdings LLM health{row.holdings_llm_health ? ` · ${row.holdings_llm_health}` : ''}</b>
+            <EvidenceBlock evidence={row.holdings_llm_evidence} dataIDoubt={row.holdings_llm_data_i_doubt} compact />
+          </div>
+        )}
 
         {/* Plain-English "what this means" + the projected effect of the 2FA stop trade */}
         {(row.narrative || row.projection || row.next_action) && (

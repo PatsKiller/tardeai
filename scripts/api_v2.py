@@ -368,12 +368,40 @@ def _stops_management_api(query=None):
             ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
             rec = ev.get("recommendation") or {}
             inp = ev.get("inputs") or {}
+            _aep = _evidence_packet(rec if isinstance(rec, dict) else ev)
             advised[str(sym).upper()] = {
                 "stop": _f(rec.get("stop_price")), "trail": rec.get("trail_recommended"),
                 "trail_offset": _f(rec.get("trail_offset")), "atr": _f(inp.get("atr")),
                 "family": ev.get("family"), "basis": _f(inp.get("basis_ps")),
                 "rec_model": _row.get("model_used"), "rec_lane": ev.get("lane"),
-                "rationale": rec.get("rationale")}
+                "rationale": rec.get("rationale"),
+                "evidence": _aep.get("evidence") or [],
+                "data_i_doubt": _aep.get("data_i_doubt"),
+            }
+    except Exception:
+        pass
+    # 3b. Grok stop curation (external LLM R:R review on live stops)
+    stop_curation = {}
+    try:
+        for _row in (_db_query(
+                "SELECT DISTINCT ON (symbol) symbol, evidence_json, model_used, summary "
+                "FROM hermes_research_intelligence "
+                "WHERE research_type='stop_curation' AND created_at > now()-interval '14 days' "
+                "ORDER BY symbol, created_at DESC") or []):
+            sym = str(_row.get("symbol") or "").upper()
+            ev = _row.get("evidence_json")
+            ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
+            _cep = _evidence_packet(ev)
+            stop_curation[sym] = {
+                "grade": ev.get("grade"),
+                "recommendation": ev.get("recommendation"),
+                "rr_assessment": ev.get("rr_assessment"),
+                "suggested_action": ev.get("suggested_action"),
+                "model": _row.get("model_used"),
+                "summary": (_row.get("summary") or "")[:200],
+                "evidence": _cep.get("evidence") or [],
+                "data_i_doubt": _cep.get("data_i_doubt"),
+            }
     except Exception:
         pass
     # 4. strategy/route per symbol
@@ -539,6 +567,12 @@ def _stops_management_api(query=None):
             "trail_pct": _trail_pct, "trailing_trigger": _trail_trigger,
             "trail_recommended": bool(adv.get("trail")), "rec_source": _rec_source,
             "rec_model": adv.get("rec_model"), "rec_rationale": adv.get("rationale"),
+            "rec_evidence": adv.get("evidence") or [],
+            "rec_data_i_doubt": adv.get("data_i_doubt"),
+            "stop_curation": stop_curation.get(sym),
+            "holdings_llm_health": h.get("llm_health"),
+            "holdings_llm_evidence": h.get("llm_evidence") or [],
+            "holdings_llm_data_i_doubt": h.get("llm_data_i_doubt"),
             "heat_contribution_pct": heat_contrib, "regime_now": regime_now,
             "alert_level": level, "alert_reasons": reasons,
             "lifecycle": ls.get("lifecycle"), "health": ls.get("health"), "flags": ls.get("flags"),
@@ -22488,6 +22522,7 @@ def _portfolio_llm_coverage(query=None):
         _fb = ev.get("family_bounds") if isinstance(ev.get("family_bounds"), dict) else {}
         _floor_pct = _fb.get("stop_min_pct")
         _fam = ev.get("family") or ""
+        _pep = _evidence_packet(rec if isinstance(rec, dict) else ev)
         protection[sym] = {"rec": p["thesis"], "rationale": p["summary"], "model": p["model_used"],
                            "confidence": _json_clean(p["confidence_score"]), "at": _json_clean(p["created_at"]),
                            "stop_price": stop, "trail_recommended": trail_rec,
@@ -22498,7 +22533,9 @@ def _portfolio_llm_coverage(query=None):
                            "family": _fam, "family_source": ev.get("family_source"),
                            "family_bounds": _fb,
                            "family_floor_pct": _floor_pct,
-                           "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None}
+                           "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None,
+                           "evidence": _pep.get("evidence") or [],
+                           "data_i_doubt": _pep.get("data_i_doubt")}
     # monthly Claude arbitration verdicts (structured) — the tie-breaker layer for future approval flow
     cv = _db_query("""SELECT DISTINCT ON (symbol) symbol, recommendation, evidence_json, model, created_at
                       FROM hermes_external_research
@@ -22509,6 +22546,28 @@ def _portfolio_llm_coverage(query=None):
         **{k: (r["evidence_json"] or {}).get(k) for k in
            ("verdict_stop", "verdict_trail_type", "verdict_trail_offset", "agrees_with", "note")
            if isinstance(r.get("evidence_json"), dict)}} for r in cv}
+    stop_curation_map = {}
+    try:
+        for _sc in (_db_query(
+                "SELECT DISTINCT ON (symbol) symbol, evidence_json, model_used, summary "
+                "FROM hermes_research_intelligence "
+                "WHERE research_type='stop_curation' AND created_at > NOW()-INTERVAL '30 days' "
+                "ORDER BY symbol, created_at DESC") or []):
+            _sym = (_sc.get("symbol") or "").upper()
+            _ev = _sc.get("evidence_json")
+            _ev = _ev if isinstance(_ev, dict) else json.loads(_ev or "{}")
+            _sep = _evidence_packet(_ev)
+            stop_curation_map[_sym] = {
+                "grade": _ev.get("grade"),
+                "recommendation": _ev.get("recommendation"),
+                "rr_assessment": _ev.get("rr_assessment"),
+                "model": _sc.get("model_used"),
+                "summary": (_sc.get("summary") or "")[:200],
+                "evidence": _sep.get("evidence") or [],
+                "data_i_doubt": _sep.get("data_i_doubt"),
+            }
+    except Exception:
+        pass
     # Operator-confirmed live stops (Fidelity manual orders, etc.) — SnapTrade read-only cannot see orders.
     conf_rows = _db_query("""SELECT symbol, account, stop_confirmed, stop_price_confirmed,
                                     stop_confirmed_at, stop_exception_reason
@@ -22559,7 +22618,8 @@ def _portfolio_llm_coverage(query=None):
         _broker_fetched_at = _oti.broker_stops_fetched_at()
     except Exception:
         pass
-    return _json_clean({"coverage": cov, "protection": protection, "claude_verdicts": claude_verdicts,
+    return _json_clean({"coverage": cov, "protection": protection, "stop_curation": stop_curation_map,
+                        "claude_verdicts": claude_verdicts,
                         "confirmed_stops": confirmed_stops,
                         "broker_stops_fetched_at": _broker_fetched_at,
                         "window_days": 30,

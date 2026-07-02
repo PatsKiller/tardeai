@@ -179,6 +179,18 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             <EvidenceBlock evidence={primary.llm_evidence} dataIDoubt={primary.llm_data_i_doubt} />
           </Section>
         )}
+        {primary.protection_advisory && (primary.protection_advisory.evidence?.length > 0 || (primary.protection_advisory.data_i_doubt && primary.protection_advisory.data_i_doubt !== 'none')) && (
+          <Section title="Stop advisory evidence" subtitle={primary.protection_advisory.model ? `${primary.protection_advisory.model} · stop $${primary.protection_advisory.stop_price ?? '—'}` : 'protection advisor'} accent={AMBER}>
+            {primary.protection_advisory.rationale && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45 }}>{String(primary.protection_advisory.rationale).slice(0, 320)}</div>}
+            <EvidenceBlock evidence={primary.protection_advisory.evidence} dataIDoubt={primary.protection_advisory.data_i_doubt} />
+          </Section>
+        )}
+        {primary.stop_curation && (primary.stop_curation.evidence?.length > 0 || (primary.stop_curation.data_i_doubt && primary.stop_curation.data_i_doubt !== 'none') || primary.stop_curation.grade) && (
+          <Section title="Grok stop curation" subtitle={primary.stop_curation.grade ? `grade ${primary.stop_curation.grade}` : 'external LLM R:R review'} accent={PURPLE}>
+            {primary.stop_curation.rr_assessment && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45 }}>{primary.stop_curation.rr_assessment}</div>}
+            <EvidenceBlock evidence={primary.stop_curation.evidence} dataIDoubt={primary.stop_curation.data_i_doubt} />
+          </Section>
+        )}
         {intel?.cio_synthesis && (intel.cio_synthesis.evidence?.length > 0 || intel.cio_synthesis.narrative_snip || (intel.cio_synthesis.data_i_doubt && intel.cio_synthesis.data_i_doubt !== 'none')) && (
           <Section title="CIO synthesis evidence" subtitle={intel.cio_synthesis.recommendation ? `recommendation: ${intel.cio_synthesis.recommendation}` : 'watchlist committee synthesis'} accent={PURPLE}>
             {intel.cio_synthesis.narrative_snip && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45, fontStyle: 'italic' }}>{intel.cio_synthesis.narrative_snip}</div>}

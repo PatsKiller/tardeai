@@ -9,7 +9,8 @@ Surfaces tagged `[fact|technical|risk]` evidence + `data_i_doubt` in Command Cen
 - **Watchlist:** CIO card shows `synthesis_evidence` under metrics (`WatchlistHub.tsx`).
 - **Proposals:** `BrokerIntelPanel` (agent reviews, local LLM, cloud lanes) + `ProposalsRich` agent/LLM evidence blocks.
 - **Hermes:** Research backlog cards + `DetailDrawer` external intel + CIO synthesis (auto-fetches `/api/v2/hermes/intel/{symbol}` for stock drills).
-- **Portfolio:** Holdings cards — LLM health chip + compact evidence strip; drawer shows holdings LLM health section.
+- **Portfolio:** Holdings cards — LLM health chip + holdings/stop-advisory/Grok-curation evidence strips; drawer shows all three evidence layers.
+- **Stops:** Stop Management tab — protection advisory + Grok stop curation + holdings LLM evidence per row and in adjust modal (`/api/v2/stops/management`, `/api/v2/portfolio/llm-coverage`).
 - Tests: `test_extract_evidence_packet_shapes` in `test_cio_agent_contract_fleet.py` (14 checks).
 
 ## 2026-07-02 - CIO fleet parity phase 2 (Hermes + synthesis + remaining lanes)
