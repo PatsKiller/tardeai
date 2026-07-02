@@ -30,8 +30,11 @@ type ClassRow = {
  * (pipeline-dysfunction report + dry-run broker-queue sweep preview). Lets the
  * operator re-queue a REJECTED/EXPIRED proposal back to PENDING.
  */
-export default function QueueHealthPanel({ onRequeued }: { onRequeued?: () => void } = {}) {
-  const [open, setOpen] = useState(false)
+export default function QueueHealthPanel({
+  onRequeued,
+  autoOpen,
+}: { onRequeued?: () => void; autoOpen?: boolean } = {}) {
+  const [open, setOpen] = useState(Boolean(autoOpen))
   // Poll only while the panel is open to avoid an extra background fetch on every tab visit.
   const { data, loading, error, refetch } = useApi<any>(
     '/api/v2/broker-proposals/audit',

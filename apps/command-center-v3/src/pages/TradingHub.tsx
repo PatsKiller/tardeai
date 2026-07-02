@@ -113,6 +113,17 @@ export default function TradingHub({ onDrill }: Props) {
       </div>
 
       {/* Readiness bar */}
+      {readiness && tab === 'Proposals' && (
+        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10 }}>
+          <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
+          <span style={{ fontWeight: 700, color: '#f59e0b', marginLeft: 8 }}>{readiness.level?.replace(/_/g, ' ')}</span>
+          <span style={{ color: 'var(--text3)', marginLeft: 12 }}>
+            {readiness.level === 'P0_NOT_ENOUGH_DATA'
+              ? ' — empirical validation sample still thin; Path B caps are advisory until maturity gates pass.'
+              : ' — live route gates reflect current validation tier.'}
+          </span>
+        </div>
+      )}
       {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
           <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>

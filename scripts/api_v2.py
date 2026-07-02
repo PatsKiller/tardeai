@@ -15373,8 +15373,15 @@ def _broker_proposals(query=None):
                 curator_meta = json.loads(_cp.read_text(encoding="utf-8"))
         except Exception:
             pass
+        queue_summary = None
+        try:
+            import broker_proposal_queue_ops as _bqo
+            queue_summary = _bqo.compute_queue_summary()
+        except Exception:
+            pass
         result = {
             "proposals": prop_rows,
+            "queue_summary": queue_summary,
             "quotes_live": bool(BROKER_LIST_LIVE_QUOTES),
             "autocal": autocal_meta or None,
             "curator": curator_meta,
@@ -15971,6 +15978,84 @@ def _broker_queue_oversight(body: dict):
         "ok": True,
         "message": f"Oversight jobs started for #{pid} {sym}".strip(),
         "started": res.get("started") or [],
+    }
+
+
+def _broker_queue_summary():
+    import broker_proposal_queue_ops as bqo
+    return bqo.compute_queue_summary()
+
+
+def _broker_resize_to_cap(body: dict):
+    import broker_proposal_queue_ops as bqo
+    b = body or {}
+    pid = int(b.get("proposal_id") or 0)
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    res = bqo.resize_to_policy_cap(pid, operator=str(b.get("operator") or "operator")[:60])
+    if res.get("ok"):
+        try:
+            _broker_list_cache_clear()
+        except Exception:
+            pass
+    return res
+
+
+def _broker_bulk_action(body: dict):
+    import broker_proposal_queue_ops as bqo
+    b = body or {}
+    ids = b.get("proposal_ids") or []
+    if not ids:
+        return {"ok": False, "error": "proposal_ids required"}
+    res = bqo.bulk_action(
+        [int(x) for x in ids],
+        str(b.get("action") or ""),
+        reason=str(b.get("reason") or "")[:200],
+        operator=str(b.get("operator") or "operator")[:60],
+    )
+    if res.get("ok"):
+        try:
+            _broker_list_cache_clear()
+        except Exception:
+            pass
+    return res
+
+
+def _broker_reconcile_sleeves(body: dict):
+    import broker_proposal_queue_ops as bqo
+    b = body or {}
+    res = bqo.reconcile_sleeve_strategies(dry_run=bool(b.get("dry_run")))
+    if res.get("ok") and not b.get("dry_run"):
+        try:
+            _broker_list_cache_clear()
+        except Exception:
+            pass
+    return res
+
+
+def _broker_mature_llm_stage_2b(body: dict):
+    import broker_proposal_queue_ops as bqo
+    b = body or {}
+    ids = b.get("proposal_ids")
+    if ids:
+        ids = [int(x) for x in ids]
+    return bqo.mature_llm_stage_2b(ids)
+
+
+def _broker_queue_agent_batch(body: dict):
+    """Queue steph/maria/risk agent reviews for proposal symbols."""
+    import subprocess
+    b = body or {}
+    sym = str(b.get("symbol") or "").strip().upper()
+    cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/queue_proposal_agent_reviews.py", "--apply"]
+    if sym:
+        cmd.extend(["--symbol", sym])
+    proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120)
+    return {
+        "ok": proc.returncode == 0,
+        "exit_code": proc.returncode,
+        "stdout_tail": (proc.stdout or "")[-400:],
+        "stderr_tail": (proc.stderr or "")[-400:],
     }
 
 
@@ -25093,6 +25178,7 @@ ROUTES = {
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
+    "/api/v2/broker-proposals/summary": lambda: _broker_queue_summary(),
     "/api/v2/broker-proposals/audit": lambda: _broker_proposals_audit(),
     "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
     "/api/v2/executions/manual-log": lambda: _manual_execution_log(_current_query),
@@ -25699,6 +25785,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/broker-proposals/queue-oversight":
             try:
                 res = _broker_queue_oversight(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/resize-to-cap":
+            try:
+                res = _broker_resize_to_cap(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/bulk-action":
+            try:
+                res = _broker_bulk_action(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/reconcile-sleeves":
+            try:
+                res = _broker_reconcile_sleeves(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/mature-llm-stage-2b":
+            try:
+                res = _broker_mature_llm_stage_2b(body)
+                return (200 if res.get("ok") else 400), res
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:160]}
+
+        if base_path == "/api/v2/broker-proposals/queue-agent-batch":
+            try:
+                res = _broker_queue_agent_batch(body)
                 return (200 if res.get("ok") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:160]}

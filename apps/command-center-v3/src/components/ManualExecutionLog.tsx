@@ -72,6 +72,12 @@ export default function ManualExecutionLog({
                 {e.origin_type && e.origin_type !== 'manual' && (
                   <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,.15)', color: GREEN }}>✓ {e.origin_type}</span>
                 )}
+                {(e.proposal_id || e.origin_proposal_id) && (
+                  <a href={`/v3/trading?tab=Proposals&symbol=${encodeURIComponent(e.symbol || '')}`}
+                    style={{ fontSize: 9, fontWeight: 800, color: BLUE, textDecoration: 'none' }}>
+                    → proposal #{e.proposal_id || e.origin_proposal_id}
+                  </a>
+                )}
                 <span style={{ fontSize: 9, color: MUTED }}>{e.outcome || 'pending'}</span>
                 <span style={{ fontSize: 9, color: MUTED, marginLeft: 'auto' }}>{fmtTs(e.executed_at)}</span>
               </div>
