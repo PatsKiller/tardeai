@@ -65,6 +65,16 @@ def main():
     check("reaper auto-remediable", "agent_jobs_processing_stuck" in pol["auto_remediate"]["finding_types"])
     check("reaper remediation is the safe reaper script",
           "reset_stuck_agent_jobs.py" in pol["remediation_map"].get("agent_jobs_processing_stuck", ""))
+    # ---- synthesis-zombie reaper extension (2026-07-01: 19 maturity rows stuck 'processing') ----
+    import reset_stuck_agent_jobs as reaper
+    check("reaper finds synthesis zombies", callable(getattr(reaper, "find_stuck_synthesis", None)))
+    check("reaper resets synthesis zombies", callable(getattr(reaper, "reset_synthesis", None)))
+    check("synthesis reset targets 'pending' (pickup path), not 'queued'",
+          "final_synthesis_status='pending'" in open(os.path.join(os.path.dirname(__file__), "..", "scripts", "reset_stuck_agent_jobs.py")).read())
+    check("health agent emits synthesis_processing_stuck", "synthesis_processing_stuck" in src)
+    check("synthesis zombie auto-remediable", "synthesis_processing_stuck" in pol["auto_remediate"]["finding_types"])
+    check("synthesis zombie remediation is the same safe reaper",
+          "reset_stuck_agent_jobs.py" in pol["remediation_map"].get("synthesis_processing_stuck", ""))
 
     # ---- dashboard server is now threaded + thread-local DB ----
     ps = open(os.path.join(os.path.dirname(__file__), "..", "scripts", "portfolio_server.py")).read()
