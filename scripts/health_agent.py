@@ -1141,6 +1141,22 @@ def collect_infra_optimization_health() -> list[dict]:
                           f"resetting to queued", count=len(stuck)))
     except Exception:
         pass
+    # 1b. Zombie 'processing' synthesis rows (watchlist_analysis_maturity) — same failure mode, different
+    # table: _check_synthesis_ready skips 'processing', so a stranded row silently excludes the symbol
+    # from CIO-view refreshes (2026-07-01: 19 symbols, worst 34 days). Same reaper --apply remediates.
+    try:
+        from db_adapter import get_connection
+        from reset_stuck_agent_jobs import find_stuck_synthesis
+        stuck_syn = find_stuck_synthesis(get_connection())
+        if stuck_syn:
+            sev = "warning" if len(stuck_syn) < 10 else "critical"
+            worst = max(float(s["age_min"]) for s in stuck_syn) / 60.0
+            out.append(_f("execution_health", "synthesis_processing_stuck", sev,
+                          f"{len(stuck_syn)} synthesis rows stuck in 'processing' >30m (worst {worst:.0f}h) — "
+                          f"symbols silently excluded from CIO-view refresh; resetting to pending",
+                          count=len(stuck_syn)))
+    except Exception:
+        pass
     # 2. Cloud-OAuth lanes — usage / reachability / paid-fallback.
     try:
         from cloud_oauth_usage_monitor import build as _oauth_build
