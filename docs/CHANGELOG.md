@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-01 - CIO input tightness Stage 1 (audit F1+F3+F5, synthesis v4)
+
+Implements Stage 1 of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`; prompt version bumped `cio_synth_v3` → **`cio_synth_v4_input_tightness_2026-07-01`** (`synthesis_version=4`).
+
+- **F1 explicit non-ownership:** agent context (`_get_context`) now emits `Position: NOT CURRENTLY HELD (0 shares in any account)` instead of silence when unheld; synthesis `PORTFOLIO POSITION` block gets the same explicit line at 0 shares (silence-is-not-ground-truth — the AZN "22% position vs 0 shares" case).
+- **F5 contradiction rule:** CIO critical instruction 8 — on material-fact conflict prefer the live-holdings PORTFOLIO POSITION block over analyst narratives, record it in `conflicts`, lower confidence proportionally, but don't let a stale-narrative conflict alone collapse confidence below 0.4.
+- **F3 control-token hygiene:** `_strip_local_tokens` removes gemma/qwen `/no_think` from prompts before every cloud call (`_synthesis_llm` Grok, `_synthesis_dual` Grok+ChatGPT); local fallback keeps the original prompt.
+- Advisory-only pipeline (CIO View), no trading-path change. Observe confidence distributions for a few days before Stage 2 (F2 structured agent evidence, F4 specific DQ fields).
+
 ## 2026-07-01 - Stop lifecycle closure (#5 Open Trades preflight + #7 re-entry watch API/UI)
 
 - **#5 Open Trades preflight parity:** extracted `protectiveStopPreflight.ts` + `PreflightChangedPanel`; `PositionDecisionCard` now runs the same click-time preflight chain (refresh-quote → llm-coverage → live-stops → stop-readiness → `buildStopLogic`) before request and 2FA confirm, with structured amber diff + Proceed anyway / Cancel.
