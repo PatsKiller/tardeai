@@ -105,7 +105,10 @@ A/B-observed). Implementation of F1–F5 to follow on operator approval.
   no cap); the ONLY local-fallback row was truncated mid-JSON — the cap applies to the local gemma
   fallback and it bites exactly when that lane runs.
 
-**Stage 2b PENDING** (held for the v4/v5 observation window per operator): **F2** structured agent
-evidence — tagged evidence bullets (fact/technical/risk) + a "data I doubt" field added to the
-committee agents' existing JSON contract (agents already return JSON; the gap is evidence
-granularity, not a missing contract).
+**Stage 2b SHIPPED** (2026-07-02, operator-approved) — `cio_agent_v2_structured_evidence_2026-07-02`,
+synthesis `cio_synth_v6_structured_agent_evidence_2026-07-02`, `SYNTHESIS_VERSION_NUM=6`:
+- **F2** ✅ committee agents (`maria`, `steph`, `risk_agent`, `tax_agent`, `full_chain`) now require
+  `evidence` (3–5 tagged `{tag: fact|technical|risk, text}`) + `data_i_doubt` in the JSON contract.
+- `_parse_result` / `full_result` JSON persist structured fields; CIO synthesis prompt renders tagged
+  evidence per analyst and instruction #9 reconciles structured claims before prose.
+- Maria two-pass pass-2 schema updated; combined output merges catalyst/headlines into tagged evidence.
