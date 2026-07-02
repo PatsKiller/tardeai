@@ -596,6 +596,66 @@ def parse_hermes_topic_result(raw: str) -> Optional[dict]:
     })
 
 
+def extract_evidence_packet(row_or_json) -> dict:
+    """Normalize evidence[] + data_i_doubt from any stored JSON/DB row shape."""
+    if row_or_json is None:
+        return {"evidence": [], "data_i_doubt": "none", "agent_contract": None}
+    if isinstance(row_or_json, str):
+        try:
+            row_or_json = json.loads(row_or_json)
+        except json.JSONDecodeError:
+            return {"evidence": [], "data_i_doubt": "none", "agent_contract": None}
+    if not isinstance(row_or_json, dict):
+        return {"evidence": [], "data_i_doubt": "none", "agent_contract": None}
+
+    ev = row_or_json.get("evidence")
+    doubt = row_or_json.get("data_i_doubt")
+    contract = row_or_json.get("agent_contract")
+
+    if not ev and row_or_json.get("structured_evidence"):
+        ev = row_or_json.get("structured_evidence")
+    if not ev and row_or_json.get("cio_evidence"):
+        ev = row_or_json.get("cio_evidence")
+
+    fr = row_or_json.get("full_result")
+    if isinstance(fr, str):
+        try:
+            fr = json.loads(fr)
+        except json.JSONDecodeError:
+            fr = None
+    if isinstance(fr, dict):
+        if not ev:
+            ev = fr.get("evidence")
+        if not doubt:
+            doubt = fr.get("data_i_doubt")
+        contract = contract or fr.get("agent_contract")
+
+    for key in ("catalyst_summary", "risk_summary", "technical_summary", "payload"):
+        sub = row_or_json.get(key)
+        if isinstance(sub, str):
+            try:
+                sub = json.loads(sub)
+            except json.JSONDecodeError:
+                sub = None
+        if isinstance(sub, dict):
+            if not ev and sub.get("evidence"):
+                ev = sub.get("evidence")
+            if (not doubt or doubt == "none") and sub.get("data_i_doubt"):
+                doubt = sub.get("data_i_doubt")
+            contract = contract or sub.get("agent_contract")
+
+    tagged = normalize_evidence(ev)
+    if not tagged:
+        tagged = normalize_hermes_evidence(row_or_json)
+
+    out_doubt = normalize_data_i_doubt(doubt)
+    return {
+        "evidence": tagged,
+        "data_i_doubt": out_doubt,
+        "agent_contract": contract or (AGENT_JSON_CONTRACT_VERSION if tagged or out_doubt != "none" else None),
+    }
+
+
 def format_portfolio_brief_display(parsed: dict) -> str:
     """Render structured portfolio brief JSON as readable prose for the UI."""
     parts = []

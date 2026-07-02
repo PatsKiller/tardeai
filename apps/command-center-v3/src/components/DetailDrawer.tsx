@@ -6,6 +6,7 @@ import FinvizEnrichmentPanel from './FinvizEnrichmentPanel'
 import OptionChainPanel from './OptionChainPanel'
 import HoldingReportLinks from './HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
+import { EvidenceBlock } from './EvidenceBlock'
 
 // finviz-derived recom fields are NOT analyst ratings (known correction): finviz 'recom' is a momentum
 // number, and the holdings enrichment mislabels it as 'Strong Sell' (e.g. SCHD recom 1.34 → labeled
@@ -40,6 +41,7 @@ const RED = '#ef4444'
 const AMBER = '#f59e0b'
 const BLUE = '#60a5fa'
 const PURPLE = '#a855f7'
+const TEAL = '#2dd4bf'
 const panel = { background: 'rgba(15,23,42,.72)', border: '1px solid rgba(148,163,184,.20)', borderRadius: 12, padding: 14 } as const
 const metric = { background: 'rgba(2,6,23,.40)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10, padding: '10px 12px' } as const
 
@@ -84,9 +86,19 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
     setIntel(null)
     if (!ctx) return
     let cancelled = false
-    const url = ctx.endpoint?.startsWith('/api/v2/hermes/intel/') ? ctx.endpoint : (ctx.subjectType && ctx.subjectKey) ? `/api/v2/hermes/subject-intel?type=${encodeURIComponent(ctx.subjectType)}&key=${encodeURIComponent(ctx.subjectKey)}` : null
+    const row = ctx.rows?.[0] ?? {}
+    const symCand = String(row.symbol || ctx.subjectKey || (ctx.title || '').match(/^[A-Z]{1,5}\b/)?.[0] || '').toUpperCase().trim()
+    const stockSym = /^[A-Z]{1,5}$/.test(symCand) ? symCand : ''
+    const chain = ctx.chainMode || (ctx.endpoint || '').includes('option-chain')
+    const url = ctx.endpoint?.startsWith('/api/v2/hermes/intel/')
+      ? ctx.endpoint
+      : stockSym && !chain
+        ? `/api/v2/hermes/intel/${stockSym}`
+        : (ctx.subjectType && ctx.subjectKey)
+          ? `/api/v2/hermes/subject-intel?type=${encodeURIComponent(ctx.subjectType)}&key=${encodeURIComponent(ctx.subjectKey)}`
+          : null
     if (!url) return
-    fetch(url).then(r => r.ok ? r.json() : null).then(j => { if (!cancelled && j?.data) setIntel(j.data) }).catch(() => {})
+    fetch(url).then(r => r.ok ? r.json() : null).then(j => { if (!cancelled && j?.data) setIntel(j.data); else if (!cancelled && j && !j.data) setIntel(j) }).catch(() => {})
     return () => { cancelled = true }
   }, [ctx])
 
@@ -161,8 +173,20 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
         {showStockIntel && drawerSymbol && !primary.is_cash && /^[A-Z]{1,5}$/.test(drawerSymbol) && (
           <Section title="Insider activity · SEC Form 4" subtitle="recent insider filings (authoritative · advisory)" accent={AMBER}><InsiderActivity symbol={drawerSymbol} /></Section>
         )}
+        {(primary.llm_evidence?.length > 0 || (primary.llm_data_i_doubt && primary.llm_data_i_doubt !== 'none') || primary.llm_health) && (
+          <Section title="Holdings LLM health" subtitle={primary.llm_health ? `${primary.llm_health} · ${primary.llm_action || '—'}` : 'structured evidence from holdings refresh'} accent={TEAL}>
+            {primary.llm_summary && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45 }}>{typeof primary.llm_summary === 'string' ? primary.llm_summary.slice(0, 280) : ''}</div>}
+            <EvidenceBlock evidence={primary.llm_evidence} dataIDoubt={primary.llm_data_i_doubt} />
+          </Section>
+        )}
+        {intel?.cio_synthesis && (intel.cio_synthesis.evidence?.length > 0 || intel.cio_synthesis.narrative_snip || (intel.cio_synthesis.data_i_doubt && intel.cio_synthesis.data_i_doubt !== 'none')) && (
+          <Section title="CIO synthesis evidence" subtitle={intel.cio_synthesis.recommendation ? `recommendation: ${intel.cio_synthesis.recommendation}` : 'watchlist committee synthesis'} accent={PURPLE}>
+            {intel.cio_synthesis.narrative_snip && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45, fontStyle: 'italic' }}>{intel.cio_synthesis.narrative_snip}</div>}
+            <EvidenceBlock evidence={intel.cio_synthesis.evidence} dataIDoubt={intel.cio_synthesis.data_i_doubt} />
+          </Section>
+        )}
         {intel?.setup && <Section title={`Hermes setup · ${intel.setup.conviction || 'unknown'} conviction`} accent={PURPLE}><div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 12 }}><div><div style={{ fontSize: 16, color: '#d8b4fe', fontWeight: 950 }}>{intel.setup.type}</div><div style={{ fontSize: 12, color: TEXT2, marginTop: 7, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Entry:</b> {intel.setup.entry}</div><div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}><b style={{ color: TEXT1 }}>Invalidation:</b> {intel.setup.invalidation}</div><div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>{intel.setup.why}</div></div>{intel.competition && <div style={{ ...metric }}><div style={{ fontSize: 9, color: MUTED, fontWeight: 850, textTransform: 'uppercase' }}>Competition / peer context</div><ObjBlock obj={intel.competition} /></div>}</div></Section>}
-        {intel?.external_intel?.length > 0 && <Section title={`External LLM intelligence (${intel.external_intel.length})`} subtitle="recommendation, evidence, counter-view, risk flags" accent={BLUE}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>{intel.external_intel.map((e: any, i: number) => { const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }; const ev = fmtBlob(e.evidence), rf = fmtBlob(e.risk_flags); return <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}><span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span><span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span></div>{e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}{ev.length > 0 && <ul style={{ margin: '4px 0', paddingLeft: 18 }}>{ev.map((x, j) => <li key={j} style={{ fontSize: 11, color: TEXT2, lineHeight: 1.45 }}>{x}</li>)}</ul>}{e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}{rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}{e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}</div> })}</div></Section>}
+        {intel?.external_intel?.length > 0 && <Section title={`External LLM intelligence (${intel.external_intel.length})`} subtitle="recommendation, structured evidence, counter-view, risk flags" accent={BLUE}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))', gap: 12 }}>{intel.external_intel.map((e: any, i: number) => { const m = LLM_META[e.lane] || { label: e.lane || 'LLM', color: TEXT2 }; const rf = fmtBlob(e.risk_flags); return <div key={i} style={{ background: 'rgba(2,6,23,.38)', border: `1px solid ${m.color}55`, borderLeft: `5px solid ${m.color}`, borderRadius: 11, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}><span style={{ fontSize: 13, fontWeight: 950, color: m.color }}>{m.label}<span style={{ color: MUTED, fontWeight: 500, fontSize: 10, marginLeft: 6 }}>{e.model}</span></span><span style={{ fontSize: 10, color: MUTED }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span></div>{e.recommendation && <div style={{ fontSize: 12.5, color: TEXT0, fontWeight: 850, lineHeight: 1.45, marginBottom: 6 }}>{e.recommendation}</div>}<EvidenceBlock evidence={e.evidence} dataIDoubt={e.data_i_doubt} compact />{e.dissent && <div style={{ fontSize: 11, color: AMBER, marginTop: 5, lineHeight: 1.45 }}><b>Counter-view:</b> {e.dissent}</div>}{rf.length > 0 && <div style={{ fontSize: 11, color: RED, marginTop: 5, lineHeight: 1.45 }}><b>Risks:</b> {rf.join('; ')}</div>}{e.confidence != null && <div style={{ marginTop: 7 }}><Chip text={`confidence ${e.confidence}`} color={chipColor(e.confidence)} /></div>}</div> })}</div></Section>}
         {ctx.rows.length === 0 && !chainMode && <Section title="No data" accent={DIM}><div style={{ color: MUTED, fontSize: 12 }}>No data rows.</div></Section>}
         {ctx.rows.map((row, i) => { const entries = Object.entries(row).filter(([k, v]) => !SUPPRESS_KEYS.has(k) && (k.match(SECTION_RE) || !isEmptyVal(v))); const hidden = Object.keys(row).length - entries.length; return <Section key={i} title={ctx.rows.length > 1 ? `Source record ${i + 1}` : 'Source record'} subtitle={hidden > 0 ? `${hidden} empty fields hidden` : undefined} accent={DIM}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 28, rowGap: 2 }}>{entries.map(([k, v]) => <Field key={k} k={k} v={v} />)}</div></Section> })}
       </div>

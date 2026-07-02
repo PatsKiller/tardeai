@@ -115,23 +115,36 @@ def _lane_availability() -> dict:
 
 
 def _fetch_agent_reviews(proposal_id: int) -> list[dict]:
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+        from cio_agent_contract import extract_evidence_packet as _eep
+    except Exception:
+        _eep = lambda x: {"evidence": [], "data_i_doubt": "none", "agent_contract": None}
     rows = _q(
-        """SELECT agent_name, status, vote, confidence, summary, reviewed_by_model, reviewed_at
+        """SELECT agent_name, status, vote, confidence, summary, payload,
+                  reviewed_by_model, reviewed_at
            FROM proposal_agent_reviews WHERE proposal_id=%s ORDER BY agent_name""",
         (proposal_id,),
     ) or []
-    return [
-        {
+    out = []
+    for r in rows:
+        ep = _eep(r.get("payload") or r)
+        out.append({
             "agent": r.get("agent_name"),
             "status": r.get("status"),
             "vote": r.get("vote"),
+            "verdict": r.get("vote"),
             "confidence": float(r["confidence"]) if r.get("confidence") is not None else None,
             "summary": (r.get("summary") or "")[:300],
             "model": r.get("reviewed_by_model"),
             "reviewed_at": str(r.get("reviewed_at") or "")[:19] or None,
-        }
-        for r in rows
-    ]
+            "evidence": ep.get("evidence") or [],
+            "data_i_doubt": ep.get("data_i_doubt"),
+            "agent_contract": ep.get("agent_contract"),
+        })
+    return out
 
 
 def _fetch_local_llm(proposal_id: int) -> dict:
@@ -143,7 +156,8 @@ def _fetch_local_llm(proposal_id: int) -> dict:
         (proposal_id,), one=True,
     ) or {}
     analysis = _q(
-        """SELECT model_used, narrative_source, summary, approve_case, reject_case, confidence
+        """SELECT model_used, narrative_source, summary, approve_case, reject_case, confidence,
+                  catalyst_summary, risk_summary, technical_summary
            FROM paper_proposal_analysis WHERE proposal_id=%s
            ORDER BY created_at DESC LIMIT 1""",
         (proposal_id,), one=True,
@@ -164,6 +178,14 @@ def _fetch_local_llm(proposal_id: int) -> dict:
     fallback = _build_thesis_fallback(prop)
     if state == "missing" and fallback.strip():
         state = "watchlist_plan"
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+        from cio_agent_contract import extract_evidence_packet as _eep
+    except Exception:
+        _eep = lambda x: {"evidence": [], "data_i_doubt": "none", "agent_contract": None}
+    _lep = _eep(analysis)
     return {
         "status": state,
         "model": analysis.get("model_used"),
@@ -175,6 +197,9 @@ def _fetch_local_llm(proposal_id: int) -> dict:
         "symbol": prop.get("symbol"),
         "strategy_id": prop.get("strategy_id"),
         "thesis": preview or fallback,
+        "evidence": _lep.get("evidence") or [],
+        "data_i_doubt": _lep.get("data_i_doubt"),
+        "agent_contract": _lep.get("agent_contract"),
     }
 
 

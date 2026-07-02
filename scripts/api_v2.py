@@ -20,6 +20,15 @@ except Exception:
 
 from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_local_llm_status
 
+import sys as _sys_ev
+_sys_ev.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import extract_evidence_packet
+
+
+def _evidence_packet(row_or_json) -> dict:
+    """API-safe evidence block for frontend EvidenceBlock."""
+    return extract_evidence_packet(row_or_json)
+
 
 
 
@@ -2010,6 +2019,15 @@ def portfolio_holdings():
             "llm_summary": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_summary')),
             "llm_at": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_at')),
         })
+        _hls = rows[-1].get("llm_summary")
+        if isinstance(_hls, str):
+            try:
+                _hls = json.loads(_hls)
+            except Exception:
+                _hls = None
+        _hlep = _evidence_packet(_hls if isinstance(_hls, dict) else (llm_health_map.get(sym) or {}).get('holdings_llm_summary'))
+        rows[-1]["llm_evidence"] = _hlep.get("evidence") or []
+        rows[-1]["llm_data_i_doubt"] = _hlep.get("data_i_doubt")
         # ── Technical analysis enrichment: RSI zone, fib levels, data availability ──
         _row = rows[-1]
         _rsi_status = e_cache.get("rsi_status") or t_snap.get("rsi_status")
@@ -5025,6 +5043,7 @@ def _wl_items(query: dict = None):
                fs.recommendation AS synthesis_recommendation,
                fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                fs.model_used AS cio_model_used,
+               fs.dual_consensus_json, fs.synthesis_narrative, fs.conflicts, fs.unresolved,
                sp.sector AS profile_sector, sp.industry AS profile_industry,
                sp.instrument_type AS instrument_type,
                sp.expense_ratio AS expense_ratio,
@@ -5065,6 +5084,21 @@ def _wl_items(query: dict = None):
                  {sort_p}
     """, params) or []
     _items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    for _it in _items:
+        _dcj = _it.get("dual_consensus_json")
+        if isinstance(_dcj, str):
+            try:
+                _dcj = json.loads(_dcj)
+            except Exception:
+                _dcj = {}
+        _ep = _evidence_packet(_dcj if isinstance(_dcj, dict) else {})
+        _it["synthesis_evidence"] = _ep.get("evidence") or []
+        _it["synthesis_data_i_doubt"] = _ep.get("data_i_doubt") or "none"
+        _it["synthesis_agent_contract"] = _ep.get("agent_contract")
+        if _it.get("synthesis_narrative"):
+            _it["synthesis_narrative_snip"] = str(_it["synthesis_narrative"])[:280]
+        if _it.get("conflicts") and isinstance(_it["conflicts"], list) and _it["conflicts"]:
+            _it["synthesis_conflicts_snip"] = "; ".join(str(c) for c in _it["conflicts"][:2])[:200]
     # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
     # edits go live without a full restart.
     try:
@@ -5150,7 +5184,7 @@ def _wl_research_card(symbol: str):
     # Full narratives, not just summaries
     results = _db_query("""
         SELECT agent, summary, full_narrative, recommendation, confidence,
-               reason_codes, model_used, created_at, completed_at
+               reason_codes, model_used, created_at, completed_at, full_result
         FROM watchlist_agent_results WHERE symbol=%s ORDER BY created_at DESC LIMIT 20
     """, (sym,))
     events = _db_query("SELECT event_type, status, message, created_at FROM watchlist_events WHERE symbol=%s ORDER BY created_at DESC LIMIT 30", (sym,))
@@ -5256,12 +5290,25 @@ def _wl_research_card(symbol: str):
               "human_review_required": False, "conflicts_detected": [],
               "gating_reasons": [], "missing_agents": []}
 
+    _syn_clean = {k: _json_clean(v) for k, v in synthesis.items()} if synthesis else None
+    _syn_evidence = _evidence_packet(_syn_clean.get("dual_consensus_json") if _syn_clean else {})
+    _agent_results = []
+    for r in (results or []):
+        row = {k: _json_clean(v) for k, v in r.items()}
+        ep = _evidence_packet(row.get("full_result") or row)
+        row["structured_evidence"] = ep.get("evidence") or []
+        row["data_i_doubt"] = ep.get("data_i_doubt") or "none"
+        row["agent_contract"] = ep.get("agent_contract")
+        _agent_results.append(row)
+
     return {
         "symbol": sym,
         "card": {k: _json_clean(v) for k, v in card.items()} if card else None,
         "strategy": {k: _json_clean(v) for k, v in strategy.items()} if strategy else None,
         "maturity": maturity_summary,
-        "synthesis": {k: _json_clean(v) for k, v in synthesis.items()} if synthesis else None,
+        "synthesis": _syn_clean,
+        "synthesis_evidence": _syn_evidence.get("evidence") or [],
+        "synthesis_data_i_doubt": _syn_evidence.get("data_i_doubt") or "none",
         "decision_qa": {
             "status": qa["decision_quality_status"],
             "actionable": qa["actionable"],
@@ -5277,7 +5324,7 @@ def _wl_research_card(symbol: str):
             "portfolio_weight": round(total_mv / total_portfolio * 100, 2) if total_portfolio > 0 else 0,
         } if account_holdings else None,
         "items": [{k: _json_clean(v) for k, v in r.items()} for r in (items or [])],
-        "results": [{k: _json_clean(v) for k, v in r.items()} for r in (results or [])],
+        "results": _agent_results,
         "events": [{k: _json_clean(v) for k, v in r.items()} for r in (events or [])],
         "alerts": [{k: _json_clean(v) for k, v in r.items()} for r in alerts],
         "income": income_data,
@@ -10929,13 +10976,15 @@ def _paper_proposals_enriched():
                 if pid:
                     # --- Agent reviews (detailed) ---
                     agent_rows = _db_query("""
-                        SELECT agent_name, vote, confidence, summary, reviewed_by_model, reviewed_at, status
+                        SELECT agent_name, vote, confidence, summary, concerns, payload,
+                               reviewed_by_model, reviewed_at, status
                         FROM proposal_agent_reviews
                         WHERE proposal_id = %s ORDER BY agent_name
                     """, [pid]) or []
                     votes = {}
                     agent_reviews_list = []
                     for ar in agent_rows:
+                        _aep = _evidence_packet(ar.get('payload') or ar)
                         votes[ar['agent_name']] = {
                             'vote': ar.get('vote'),
                             'confidence': _json_clean(ar.get('confidence')),
@@ -10948,6 +10997,9 @@ def _paper_proposals_enriched():
                             'confidence': _json_clean(ar.get('confidence')),
                             'summary': (ar.get('summary') or '')[:200],
                             'created_at': _json_clean(ar.get('reviewed_at')),
+                            'evidence': _aep.get('evidence') or [],
+                            'data_i_doubt': _aep.get('data_i_doubt'),
+                            'agent_contract': _aep.get('agent_contract'),
                         })
                     prop['agent_votes'] = votes
                     prop['agent_reviews'] = agent_reviews_list
@@ -10962,16 +11014,51 @@ def _paper_proposals_enriched():
                         ORDER BY created_at DESC LIMIT 1
                     """, [pid], fetch="one")
                     if pa:
+                        _lep = _evidence_packet(pa)
+                        for _sk in ('catalyst_summary', 'risk_summary', 'technical_summary'):
+                            _sub = pa.get(_sk)
+                            if isinstance(_sub, str):
+                                try:
+                                    _sub = json.loads(_sub)
+                                except Exception:
+                                    _sub = None
+                            if isinstance(_sub, dict) and _sub.get('evidence') and not _lep.get('evidence'):
+                                _lep = _evidence_packet(_sub)
                         prop['llm_analysis'] = {
                             'model_used': pa.get('model_used'),
                             'narrative_source': pa.get('narrative_source'),
                             'summary': pa.get('summary'),
                             'approve_case': pa.get('approve_case'),
                             'reject_case': pa.get('reject_case'),
+                            'invalidation': pa.get('invalidation'),
                             'confidence': _json_clean(pa.get('confidence')),
+                            'catalyst_summary': _json_clean(pa.get('catalyst_summary')),
+                            'risk_summary': _json_clean(pa.get('risk_summary')),
+                            'technical_summary': _json_clean(pa.get('technical_summary')),
+                            'evidence': _lep.get('evidence') or [],
+                            'data_i_doubt': _lep.get('data_i_doubt'),
+                            'agent_contract': _lep.get('agent_contract'),
                         }
                     else:
                         prop['llm_analysis'] = None
+
+                    _chunks = prop.get('llm_review_chunks')
+                    if isinstance(_chunks, str):
+                        try:
+                            _chunks = json.loads(_chunks)
+                        except Exception:
+                            _chunks = None
+                    if isinstance(_chunks, dict):
+                        _chunk_ev = []
+                        for _ck, _cv in _chunks.items():
+                            if isinstance(_cv, dict):
+                                _chunk_ev.extend(_evidence_packet(_cv).get('evidence') or [])
+                        if _chunk_ev and prop.get('llm_analysis'):
+                            prop['llm_analysis']['evidence'] = (
+                                prop['llm_analysis'].get('evidence') or []) + _chunk_ev[:5]
+                        elif _chunk_ev:
+                            prop['llm_analysis'] = prop.get('llm_analysis') or {}
+                            prop['llm_analysis']['evidence'] = _chunk_ev[:5]
 
                     # --- Quality review ---
                     qr = _db_query("""
@@ -18111,6 +18198,7 @@ def _hermes_research_backlog():
             except Exception:
                 ej = []
         meta = ej[0] if ej else {}
+        _hep = _evidence_packet(meta if isinstance(meta, dict) else ej)
         items.append({
             "id": r["id"],
             "symbol": r.get("symbol"),
@@ -18122,6 +18210,9 @@ def _hermes_research_backlog():
             "owner_agent": meta.get("owner_agent", "unknown"),
             "backlog_type": meta.get("backlog_type", "unknown"),
             "created_at": _json_clean(r.get("created_at")),
+            "evidence": _hep.get("evidence") or [],
+            "data_i_doubt": _hep.get("data_i_doubt"),
+            "agent_contract": _hep.get("agent_contract"),
         })
     return {
         "ok": True,
@@ -21354,12 +21445,29 @@ def _hermes_intel(symbol):
                             FROM hermes_external_research
                             WHERE symbol=%s AND status IN ('sent','ok','complete','success')
                             ORDER BY lane, created_at DESC""", (symbol,)) or []
-    external_intel = [{"lane": e["lane"], "model": e.get("model"), "recommendation": e.get("recommendation"),
-                       "evidence": e.get("evidence_json"), "dissent": e.get("dissent"),
-                       "confidence": _json_clean(e.get("confidence")), "risk_flags": e.get("risk_flags"),
-                       "at": _json_clean(e.get("created_at"))} for e in ext_rows]
+    external_intel = []
+    for e in ext_rows:
+        _eep = _evidence_packet(e.get("evidence_json") or e)
+        external_intel.append({
+            "lane": e["lane"], "model": e.get("model"), "recommendation": e.get("recommendation"),
+            "evidence": _eep.get("evidence") or [],
+            "data_i_doubt": _eep.get("data_i_doubt"),
+            "agent_contract": _eep.get("agent_contract"),
+            "dissent": e.get("dissent"),
+            "confidence": _json_clean(e.get("confidence")), "risk_flags": e.get("risk_flags"),
+            "at": _json_clean(e.get("created_at")),
+        })
+    _fs = _db_query("SELECT dual_consensus_json, synthesis_narrative, recommendation FROM watchlist_final_synthesis WHERE symbol=%s", (symbol,), fetch="one")
+    _cio_ep = _evidence_packet(_fs.get("dual_consensus_json") if _fs else {})
     return {"symbol": symbol, "composite_score": _json_clean(wi.get("hermes_composite_score")),
             "external_intel": external_intel,
+            "cio_synthesis": {
+                "recommendation": _fs.get("recommendation") if _fs else None,
+                "narrative_snip": str((_fs or {}).get("synthesis_narrative") or "")[:320],
+                "evidence": _cio_ep.get("evidence") or [],
+                "data_i_doubt": _cio_ep.get("data_i_doubt"),
+                "agent_contract": _cio_ep.get("agent_contract"),
+            } if _fs else None,
             "rank": wi.get("hermes_rank"), "confidence": comp.get("_confidence"), "coverage": comp.get("_coverage"),
             "raw_score": comp.get("_raw_score"), "scored_at": _json_clean(wi.get("hermes_scored_at")),
             "factors": factors, "analyst": analyst,

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-02 - CIO structured evidence UI surfacing (watchlist · proposals · Hermes · portfolio)
+
+Surfaces tagged `[fact|technical|risk]` evidence + `data_i_doubt` in Command Center v3 — API enrichment was already wired; this commit completes the UI layer.
+
+- **Shared component:** `EvidenceBlock.tsx` — tagged bullets + data-doubt banner (fleet parity).
+- **API:** `extract_evidence_packet()` in `cio_agent_contract.py`; `_evidence_packet()` helper in `api_v2.py` + `broker_promote_oversight.py` for proposals, watchlist synthesis, Hermes backlog/intel, holdings LLM health.
+- **Watchlist:** CIO card shows `synthesis_evidence` under metrics (`WatchlistHub.tsx`).
+- **Proposals:** `BrokerIntelPanel` (agent reviews, local LLM, cloud lanes) + `ProposalsRich` agent/LLM evidence blocks.
+- **Hermes:** Research backlog cards + `DetailDrawer` external intel + CIO synthesis (auto-fetches `/api/v2/hermes/intel/{symbol}` for stock drills).
+- **Portfolio:** Holdings cards — LLM health chip + compact evidence strip; drawer shows holdings LLM health section.
+- Tests: `test_extract_evidence_packet_shapes` in `test_cio_agent_contract_fleet.py` (14 checks).
+
 ## 2026-07-02 - CIO fleet parity phase 2 (Hermes + synthesis + remaining lanes)
 
 Extended `scripts/lib/cio_agent_contract.py` to Hermes external lanes, CIO synthesis, holdings health, cloud review, rebalance, and stop curation.

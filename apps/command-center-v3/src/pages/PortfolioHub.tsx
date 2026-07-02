@@ -16,6 +16,7 @@ import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 import RiskContributionBars from '../components/risk/RiskContributionBars'
 import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
+import { EvidenceBlock } from '../components/EvidenceBlock'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
@@ -62,6 +63,21 @@ const LLM_LANE: Record<string, { label: string; c: string }> = {
   chatgpt: { label: 'GPT', c: '#a3e635' },
   claude: { label: 'CLAUDE', c: '#d97757' },
 }
+const LLM_HEALTH_COLOR: Record<string, string> = {
+  HEALTHY: '#22c55e', WATCH: '#f59e0b', CONCERN: '#ef4444', TRIM: '#fb923c', HOLD: '#60a5fa',
+}
+function LlmHealthChip({ health, action }: { health?: string; action?: string }) {
+  if (!health) return null
+  const c = LLM_HEALTH_COLOR[String(health).toUpperCase()] || 'var(--text3)'
+  return (
+    <span title={action ? `LLM action: ${action}` : 'Holdings LLM health assessment'}
+      style={{ fontSize: 7.5, fontWeight: 800, padding: '1px 6px', borderRadius: 3,
+        background: `${c}1f`, color: c, border: `1px solid ${c}44`, cursor: 'help' }}>
+      🩺 {health}
+    </span>
+  )
+}
+
 function LlmBadges({ cov }: { cov?: any[] }) {
   if (!cov?.length) return <span title="no LLM research touched this symbol in 30d" style={{ fontSize: 8, color: 'var(--text3)' }}>no LLM review</span>
   const byLane: Record<string, any> = {}
@@ -447,9 +463,13 @@ export default function PortfolioHub({ onDrill }: Props) {
                               : String(pr.rec).split('·')[0].trim()}</span>
                         )
                       })()}
+                      <LlmHealthChip health={h.llm_health} action={h.llm_action} />
                       <span style={{ flex: 1 }} />
                       <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
                     </div>
+                    {(h.llm_evidence?.length > 0 || (h.llm_data_i_doubt && h.llm_data_i_doubt !== 'none')) && (
+                      <EvidenceBlock evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} compact maxItems={3} />
+                    )}
                     {holdingReportEligible(h) && (
                       <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
                         <HoldingReportLinks

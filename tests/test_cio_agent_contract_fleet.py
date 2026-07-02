@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from cio_agent_contract import (
     AGENT_JSON_CONTRACT_VERSION,
     build_proposal_vote_json_schema,
+    extract_evidence_packet,
     merge_structured_into_result,
     normalize_evidence,
     normalize_hermes_evidence,
@@ -168,6 +169,35 @@ def test_cloud_review_parser():
     assert len(p["evidence"]) >= 1
 
 
+def test_extract_evidence_packet_shapes():
+    direct = extract_evidence_packet({
+        "evidence": [{"tag": "fact", "text": "Yield 3.2%"}],
+        "data_i_doubt": "none",
+        "agent_contract": AGENT_JSON_CONTRACT_VERSION,
+    })
+    assert direct["evidence"][0]["text"] == "Yield 3.2%"
+    assert direct["data_i_doubt"] == "none"
+
+    nested = extract_evidence_packet({
+        "full_result": json.dumps({
+            "evidence": [{"tag": "technical", "text": "RSI 58"}],
+            "data_i_doubt": "quote stale",
+        }),
+    })
+    assert nested["evidence"][0]["tag"] == "technical"
+    assert nested["data_i_doubt"] == "quote stale"
+
+    payload = extract_evidence_packet({
+        "payload": {"evidence": [{"tag": "risk", "text": "Sector -6%"}], "data_i_doubt": "none"},
+    })
+    assert payload["evidence"][0]["tag"] == "risk"
+
+    hermes = extract_evidence_packet({"facts": ["Revenue +12%"], "challenge_points": ["High payout"]})
+    assert hermes["evidence"][0]["tag"] == "fact"
+    assert hermes["evidence"][1]["tag"] == "risk"
+    assert hermes["agent_contract"] == AGENT_JSON_CONTRACT_VERSION
+
+
 def test_hermes_topic_parser():
     raw = json.dumps({
         "summary": "Medicaid lookback rules require planning ahead for asset transfers.",
@@ -193,8 +223,9 @@ def main():
     test_hermes_evidence_mapper()
     test_holdings_health_parser()
     test_cloud_review_parser()
+    test_extract_evidence_packet_shapes()
     test_hermes_topic_parser()
-    print("test_cio_agent_contract_fleet: 13 passed")
+    print("test_cio_agent_contract_fleet: 14 passed")
 
 
 if __name__ == "__main__":

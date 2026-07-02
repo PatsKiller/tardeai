@@ -4,6 +4,7 @@ import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
 import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor'
+import { EvidenceBlock } from '../components/EvidenceBlock'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Overview', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
@@ -711,6 +712,7 @@ export default function HermesHub({ onDrill }: Props) {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{d.meaning}</div>
                     <div style={{ fontSize: 10, color: SEV_COLOR[d.severity], marginTop: 3 }}>→ {d.resolve}{d.where ? <span style={{ color: 'var(--text3)' }}>  ·  {d.where}</span> : null}</div>
+                    <EvidenceBlock evidence={it.evidence} dataIDoubt={it.data_i_doubt} compact maxItems={3} />
                     {(() => { const dom = domainsOf(it.source_urls_json); return dom.length ? <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>🔎 sources: {dom.slice(0, 4).join(', ')}{dom.length > 4 ? ` +${dom.length - 4}` : ''}</div> : null })()}
                   </div>
                 </div>
