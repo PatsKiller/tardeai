@@ -12,6 +12,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from cio_agent_contract import build_discovery_evidence_footer
 
 REL_TYPES = {"supplier", "customer", "partner", "competitor", "ecosystem", "enabling", "direct exposure", "indirect"}
 EXPOSURE = {"high", "medium", "low"}
@@ -47,7 +49,7 @@ def _prompt(query, mode):
         '"relationship_type":"direct exposure|supplier|customer|partner|competitor|ecosystem|enabling",'
         '"exposure_strength":"high|medium|low","reason":"one concise sentence on why it matches"}. '
         "Tickers must be real and tradable. Do not invent tickers. relevance_score reflects strength + directness of the link."
-    )
+    ) + build_discovery_evidence_footer()
 
 
 def _call_lane(lane, prompt):

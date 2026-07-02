@@ -317,6 +317,285 @@ def parse_portfolio_brief_result(raw: str) -> Optional[dict]:
     })
 
 
+def normalize_hermes_evidence(parsed: dict) -> list:
+    """Map Hermes-native evidence (facts, string evidence[], challenge_points) to tagged bullets."""
+    tagged = normalize_evidence(parsed.get("evidence"))
+    if tagged:
+        return tagged
+    out = []
+    for fact in (parsed.get("facts") or [])[:3]:
+        if str(fact).strip():
+            out.append({"tag": "fact", "text": str(fact).strip()[:300]})
+    for pt in (parsed.get("challenge_points") or [])[:2]:
+        if str(pt).strip():
+            out.append({"tag": "risk", "text": str(pt).strip()[:300]})
+    for inf in (parsed.get("inferences") or [])[:2]:
+        if str(inf).strip():
+            out.append({"tag": "technical", "text": str(inf).strip()[:300]})
+    return out[:5]
+
+
+def build_synthesis_json_schema() -> str:
+    return (
+        "Respond in JSON format:\n"
+        '- "recommendation": one of BUY, HOLD, SELL, ADD, ADD_ON_PULLBACK, TRIM, REBALANCE_TRIM, AVOID, IGNORE\n'
+        '- "confidence": 0.0-1.0\n'
+        '- "action": specific next action with price levels and share counts where possible\n'
+        '- "account_action": which account to act in and why\n'
+        '- "income_goal_impact": how this action affects the $55K income target\n'
+        '- "reason_codes": array of reason tags\n'
+        '- "conflicts": array of disagreements between analysts (empty if none)\n'
+        '- "unresolved": array of questions that still need answers\n'
+        '- "what_changes_view": what new information would change this recommendation\n'
+        '- "synthesis_narrative": 2-3 paragraph final assessment explaining the weighting\n'
+        '- "next_review_date": ISO date for when to re-review\n'
+        f"{_EVIDENCE_FIELDS_DOC}"
+    )
+
+
+def build_holdings_health_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        f"{GLOBAL_RULES_G1_G10}\n"
+        "JSON only:\n"
+        '{"health":"STRONG|STABLE|WATCH|CONCERN|EXIT","confidence":0-100,'
+        '"thesis_intact":"yes|weakening|broken","catalyst_outlook":"positive|neutral|negative",'
+        '"risk_flag":"none|earnings|sector_rotation|momentum_loss|overvalued",'
+        '"action":"HOLD|ADD|TRIM|EXIT","reasoning":"1-2 sentences",'
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}],'
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_proposal_quality_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        f"{PROPOSAL_GLOBAL_RULES}\n"
+        'Respond as JSON: {"approve_case":"...","reject_case":"...","quality_notes":"...",'
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}],'
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_external_research_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        "Return ONLY valid JSON:\n"
+        '{"recommendation":"...", "evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '"dissent":"the strongest counter-view", "confidence":0.0-1.0, '
+        '"risk_flags":["..."], "learning_candidate":"what the system should learn", '
+        '"operator_action":"what the human operator should consider", '
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_hermes_research_json_footer() -> str:
+    return (
+        f"\n{contract_header()}\n"
+        f"CIO parity fields (append to schema above): {_EVIDENCE_FIELDS_DOC}\n"
+        "Map facts[] to tag=fact, challenge_points[] to tag=risk, inferences[] to tag=technical when evidence[] is empty."
+    )
+
+
+def build_cloud_review_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        "Reply with ONLY valid JSON:\n"
+        '{"verdict":"AGREE|CAUTION|DISAGREE","assessment":"1-3 sentence judgment",'
+        '"concerns":["..."],'
+        '"corrections":["a concrete fix if the local model got something wrong"],'
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}],'
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_topic_research_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        'Return ONLY a JSON object, no prose:\n'
+        '{"summary": "120-180 words briefing", "thesis": "one-sentence actionable takeaway", '
+        '"considerations": ["3-5 specific points"], "confidence": 0.0-1.0, '
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_deep_research_json_schema(sym: str) -> str:
+    return (
+        f"{contract_header()}\n"
+        f"Return ONLY valid JSON with keys:\n"
+        f'  "summary": 3-6 sentence synthesis mentioning {sym},\n'
+        '  "thesis": bull/bear thesis in 1-2 sentences,\n'
+        '  "risks": key risks in 1-2 sentences,\n'
+        '  "limitations": array of 1-3 caveat strings,\n'
+        '  "confidence_score": number 0.0-0.8,\n'
+        f'  {_EVIDENCE_FIELDS_DOC}'
+    )
+
+
+def build_discovery_evidence_footer() -> str:
+    return (
+        f"\n{contract_header()}\n"
+        "Each array item may also include "
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}] and '
+        '"data_i_doubt":"none or caveat".'
+    )
+
+
+def build_rebalance_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        f"{GLOBAL_RULES_G1_G10}\n"
+        "Respond with JSON:\n"
+        '{"yaml_health_score": 0-100, "executive_summary": "3-4 sentence overview", '
+        '"recommendations": [{"account":"...", "symbol":"TICKER", "action":"BUY|SELL|TRIM|HOLD|CONVERT", '
+        '"shares_or_dollars":"amount", "rationale":"why", "urgency":"HIGH|MEDIUM|LOW", '
+        '"tax_impact":"none|minimal|moderate|significant"}], '
+        '"v_concentration_plan":"...", "bond_ballast_assessment":"...", '
+        '"yaml_gaps":[{"category":"name","target_pct":0,"actual_pct":0,"action_needed":"desc"}], '
+        '"income_gap_plan":"...", "top_3_actions":["..."], '
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def build_stop_review_json_schema() -> str:
+    return (
+        f"{contract_header()}\n"
+        "Return STRICT JSON only:\n"
+        '{"grade": "good|adjust|concern", "rr_assessment": "<one line>", '
+        '"should_trail": true|false, "recommendation": "<one line>", '
+        '"suggested_action": "<short imperative>", "confidence": 0.0-1.0, '
+        '"evidence":[{"tag":"fact|technical|risk","text":"..."}], '
+        '"data_i_doubt":"none or specific stale/missing inputs"}'
+    )
+
+
+def parse_synthesis_result(raw: str) -> dict:
+    """Parse CIO final synthesis JSON (recommendation + committee fields + evidence)."""
+    parsed = extract_json_object(raw)
+    if not parsed or "recommendation" not in parsed:
+        base = parse_agent_result(raw)
+        return {
+            **base,
+            "action": base.get("next_action", ""),
+            "account_action": "",
+            "income_goal_impact": "",
+            "conflicts": [],
+            "unresolved": [],
+            "what_changes_view": "",
+            "synthesis_narrative": base.get("full_narrative", ""),
+            "next_review_date": None,
+        }
+    recs = parsed.get("reason_codes", [])
+    return merge_structured_into_result({
+        "summary": str(parsed.get("summary", ""))[:500],
+        "full_narrative": str(parsed.get("synthesis_narrative", parsed.get("summary", "")))[:3000],
+        "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
+        "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+        "reason_codes": recs if isinstance(recs, list) else [],
+        "next_action": str(parsed.get("action", ""))[:200],
+        "action": str(parsed.get("action", ""))[:200],
+        "account_action": str(parsed.get("account_action", ""))[:300],
+        "income_goal_impact": str(parsed.get("income_goal_impact", ""))[:300],
+        "conflicts": parsed.get("conflicts", []) if isinstance(parsed.get("conflicts"), list) else [],
+        "unresolved": parsed.get("unresolved", []) if isinstance(parsed.get("unresolved"), list) else [],
+        "what_changes_view": str(parsed.get("what_changes_view", ""))[:500],
+        "synthesis_narrative": str(parsed.get("synthesis_narrative", ""))[:3000],
+        "next_review_date": parsed.get("next_review_date"),
+        "evidence": parsed.get("evidence"),
+        "data_i_doubt": parsed.get("data_i_doubt"),
+    })
+
+
+def parse_holdings_health_result(raw: str) -> Optional[dict]:
+    parsed = extract_json_object(raw)
+    if not parsed:
+        return None
+    return merge_structured_into_result({
+        "health": str(parsed.get("health", "STABLE")).upper(),
+        "confidence": min(100, max(0, int(parsed.get("confidence", 50)))),
+        "thesis_intact": str(parsed.get("thesis_intact", "yes")),
+        "catalyst_outlook": str(parsed.get("catalyst_outlook", "neutral")),
+        "risk_flag": str(parsed.get("risk_flag", "none")),
+        "action": str(parsed.get("action", "HOLD")).upper(),
+        "reasoning": str(parsed.get("reasoning", ""))[:500],
+        "evidence": parsed.get("evidence"),
+        "data_i_doubt": parsed.get("data_i_doubt"),
+    })
+
+
+def parse_external_research_result(raw: str) -> Optional[dict]:
+    parsed = extract_json_object(raw)
+    if not parsed:
+        return None
+    ev = normalize_evidence(parsed.get("evidence"))
+    if not ev:
+        ev = normalize_hermes_evidence(parsed)
+    doubt = normalize_data_i_doubt(parsed.get("data_i_doubt"))
+    if doubt == "none" and parsed.get("risk_flags"):
+        flags = parsed.get("risk_flags")
+        if isinstance(flags, list) and flags:
+            doubt = "; ".join(str(x) for x in flags[:3])[:500]
+    return merge_structured_into_result({
+        "recommendation": str(parsed.get("recommendation", ""))[:500],
+        "dissent": str(parsed.get("dissent", ""))[:500],
+        "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+        "risk_flags": parsed.get("risk_flags", []) if isinstance(parsed.get("risk_flags"), list) else [],
+        "learning_candidate": str(parsed.get("learning_candidate", ""))[:300],
+        "operator_action": str(parsed.get("operator_action", ""))[:300],
+        "evidence": ev,
+        "data_i_doubt": doubt,
+    })
+
+
+def parse_cloud_review_result(raw: str) -> Optional[dict]:
+    parsed = extract_json_object(raw)
+    if not parsed:
+        return None
+    verdict = str(parsed.get("verdict", "")).upper()
+    for v in ("DISAGREE", "CAUTION", "AGREE"):
+        if v in verdict:
+            verdict = v
+            break
+    else:
+        verdict = "UNKNOWN"
+    ev = normalize_evidence(parsed.get("evidence"))
+    if not ev and parsed.get("concerns"):
+        ev = normalize_evidence(parsed.get("concerns"))
+    return merge_structured_into_result({
+        "verdict": verdict,
+        "assessment": str(parsed.get("assessment", ""))[:600],
+        "concerns": parsed.get("concerns", []) if isinstance(parsed.get("concerns"), list) else [],
+        "corrections": parsed.get("corrections", []) if isinstance(parsed.get("corrections"), list) else [],
+        "evidence": ev,
+        "data_i_doubt": parsed.get("data_i_doubt"),
+    })
+
+
+def parse_hermes_topic_result(raw: str) -> Optional[dict]:
+    parsed = extract_json_object(raw)
+    if not parsed:
+        return None
+    cons = parsed.get("considerations", [])
+    if not isinstance(cons, list):
+        cons = []
+    ev = normalize_evidence(parsed.get("evidence"))
+    if not ev:
+        ev = normalize_hermes_evidence(parsed)
+    doubt = normalize_data_i_doubt(parsed.get("data_i_doubt"))
+    if doubt == "none" and cons:
+        doubt = "; ".join(str(x) for x in cons[:2])[:500]
+    return merge_structured_into_result({
+        "summary": str(parsed.get("summary", ""))[:2000],
+        "thesis": str(parsed.get("thesis", ""))[:500],
+        "considerations": cons[:8],
+        "confidence": min(1.0, max(0.0, float(parsed.get("confidence", parsed.get("confidence_score", 0.5))))),
+        "evidence": ev,
+        "data_i_doubt": doubt,
+    })
+
+
 def format_portfolio_brief_display(parsed: dict) -> str:
     """Render structured portfolio brief JSON as readable prose for the UI."""
     parts = []

@@ -15,6 +15,8 @@ import os, sys, re, json, argparse, urllib.request
 from pathlib import Path
 from datetime import date
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_external_research_json_schema, parse_external_research_result
 from llm_net import urlopen_retry  # retry transient network/DNS/5xx; surfaces 4xx (e.g. credit) immediately
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -101,10 +103,7 @@ given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a 
 Question: {question}
 Redacted context (JSON): {context}
 
-Return ONLY valid JSON:
-{{"recommendation":"...", "evidence":["..."], "dissent":"the strongest counter-view",
-  "confidence":0.0-1.0, "risk_flags":["..."], "learning_candidate":"what the system should learn",
-  "operator_action":"what the human operator should consider"}}"""
+""" + build_external_research_json_schema()
 
 
 def _get_key(env_name):
@@ -332,7 +331,7 @@ def main():
     status, parsed, raw = "sent", {}, ""
     try:
         raw = call_external(args.lane, args.model, prompt)
-        parsed = json.loads(raw[raw.find("{"):raw.rfind("}") + 1]) if "{" in raw else {}
+        parsed = parse_external_research_result(raw) or {}
     except urllib.error.HTTPError as he:
         detail = ""
         try:
@@ -353,7 +352,7 @@ def main():
          trigger_source, budget_decision, lane_used)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
-         parsed.get("recommendation"), json.dumps(parsed.get("evidence")), parsed.get("dissent"),
+         parsed.get("recommendation"), json.dumps(parsed.get("evidence", [])), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
          (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane))

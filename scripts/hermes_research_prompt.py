@@ -7,7 +7,12 @@ and advisory-only framing.
 """
 
 import json
+import sys
 from datetime import date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_hermes_research_json_footer
 
 
 def build_research_prompt(task_id, agent_name, research_type, topic, context,
@@ -70,4 +75,4 @@ OUTPUT: Respond with ONLY valid JSON matching this exact schema:
 CRITICAL: challenge_points must be FINDINGS, not questions.
 BAD: "Analyze whether the strategy was appropriate"
 GOOD: "The dividend_growth_compounder strategy was mismatched — SPRC has beta 2.46 and no dividend history"
-"""
+{build_hermes_research_json_footer()}"""

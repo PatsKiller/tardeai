@@ -118,3 +118,9 @@ synthesis `cio_synth_v6_structured_agent_evidence_2026-07-02`, `SYNTHESIS_VERSIO
 - **Proposal review** (`proposal_agent_review.py`, `proposal_intelligence_analyzer.py`, `proposal_llm_reviewer.py`) wired to `cio_agent_v2` evidence + `data_i_doubt` schema; structured fields stored in DB payloads.
 - **Portfolio analysis** (`portfolio_ai_analyst.py` daily executive summary) uses same contract; `executive_summary_structured` JSON alongside formatted prose.
 - Phase 2 (Hermes external, strategy cards, remaining lanes) deferred until observation window on proposal/portfolio outputs.
+
+**Fleet parity phase 2 SHIPPED** (2026-07-02, operator-approved):
+- Hermes lanes (`hermes_research_prompt`, `hermes_external_researcher`, `hermes_top20_external_intel`, `hermes_discovery`, `hermes_deep_research_local`, `topic_research_synthesizer`, `inference_hermes_query`) wired to tagged evidence + `data_i_doubt`; stored in `evidence_json` / `hermes_external_research.evidence_json`.
+- CIO synthesis contract parity: `cio_synth_v7_synthesis_evidence_2026-07-02` (`SYNTHESIS_VERSION_NUM=7`); structured evidence in `dual_consensus_json`.
+- Remaining lanes: `holdings_llm_refresh`, `proposal_quality_reviewer`, `cloud_review`, `rebalance_deep_analyzer`, `grok_stop_review`, `proposal_llm_reviewer` chunks 3–4.
+- Strategy cards remain deterministic (`materialize_watchlist_strategy_cards.py`); CIO View evidence comes via synthesis path above.

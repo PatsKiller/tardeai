@@ -19,6 +19,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cio_agent_contract import build_stop_review_json_schema, extract_json_object, merge_structured_into_result
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -60,19 +63,13 @@ def _build_prompt(stop: dict, thesis: str | None) -> str:
         f"Live stop: {stop.get('order_type')} at {lvl}  (qty {stop.get('qty')})\n"
         f"Distance to stop: {stop.get('proximity_pct')}%  Lifecycle: {stop.get('lifecycle')}  Coverage: {stop.get('coverage')}\n"
         f"Latest Hermes thesis: {thesis or 'n/a'}\n\n"
-        "Return STRICT JSON only:\n"
-        "{\"grade\": \"good|adjust|concern\", \"rr_assessment\": \"<one line on the risk:reward of this stop>\", "
-        "\"should_trail\": true|false, \"recommendation\": \"<one line: keep / raise to $X / convert to trailing N% / tighten / loosen>\", "
-        "\"suggested_action\": \"<short imperative for the operator>\", \"confidence\": 0.0-1.0}"
+        + build_stop_review_json_schema()
     )
 
 
 def _parse(text: str) -> dict | None:
-    try:
-        s = text[text.index("{"): text.rindex("}") + 1]
-        return json.loads(s)
-    except Exception:
-        return None
+    parsed = extract_json_object(text)
+    return merge_structured_into_result(parsed) if parsed else None
 
 
 def _hermes_finding(cur, stop: dict, parsed: dict) -> None:

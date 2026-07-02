@@ -18,7 +18,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
+from cio_agent_contract import build_proposal_quality_json_schema, extract_json_object, merge_structured_into_result
 from session13_db import get_conn
 from local_llm_config import get_local_llm_model
 
@@ -137,7 +139,7 @@ Risk gate: {p.get('risk_gate_result') or 'N/A'}
 Sector: {p.get('sector') or 'N/A'}
 Deterministic review: {det_state} (score {det_score})
 
-Respond as JSON: {{"approve_case":"...","reject_case":"...","quality_notes":"..."}}"""
+{build_proposal_quality_json_schema()}"""
 
 
 def review_proposal(conn, p, generate_fn, dry_run=False):
@@ -154,6 +156,7 @@ def review_proposal(conn, p, generate_fn, dry_run=False):
     reject_case = None
     llm_model = None
     narrative_source = "deterministic"
+    llm_parsed = None
 
     if generate_fn and det_state not in ("BLOCKED_BY_RISK_GATE",):
         try:
@@ -161,12 +164,11 @@ def review_proposal(conn, p, generate_fn, dry_run=False):
             raw = generate_fn(prompt, timeout=90, fallback=False, fast=True)
             if raw:
                 try:
-                    start = raw.find("{")
-                    end = raw.rfind("}") + 1
-                    if start >= 0 and end > start:
-                        parsed = json.loads(raw[start:end])
-                        approve_case = parsed.get("approve_case")
-                        reject_case = parsed.get("reject_case")
+                    parsed = extract_json_object(raw)
+                    if parsed:
+                        llm_parsed = merge_structured_into_result(parsed)
+                        approve_case = llm_parsed.get("approve_case")
+                        reject_case = llm_parsed.get("reject_case")
                         narrative_source = "local_llm"
                         try:
                             from local_llm import model_used
@@ -213,6 +215,7 @@ def review_proposal(conn, p, generate_fn, dry_run=False):
         json.dumps({
             "deterministic_state": det_state,
             "deterministic_score": det_score,
+            **(llm_parsed or {}),
         }),
     ])
 

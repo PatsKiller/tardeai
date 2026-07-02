@@ -18,7 +18,7 @@ from process_watchlist_agent_jobs import (
 
 
 def test_synthesis_version_bumped():
-    assert SYNTHESIS_VERSION_NUM == 6
+    assert SYNTHESIS_VERSION_NUM == 7
     assert "structured_evidence" in AGENT_JSON_CONTRACT_VERSION
 
 
