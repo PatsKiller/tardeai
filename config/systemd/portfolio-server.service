@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-# portfolio_server.py clears stray :7777 holders on startup — do NOT fuser -k here (restart-loop risk).
+# Do NOT fuser -k in ExecStartPre — overlapping restarts + port-guard SIGTERM caused adopt churn.
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_server.py
 Restart=on-failure
 RestartSec=5

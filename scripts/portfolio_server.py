@@ -2004,23 +2004,15 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == "__main__":
-    # Guard: kill any stray process holding our port before binding
-    import subprocess
+    # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
+    # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
+    # manual recovery: systemctl --user stop portfolio-server && kill stray pid && systemctl start.
     try:
-        result = subprocess.run(["fuser", f"{PORT}/tcp"], capture_output=True, text=True)
-        if result.stdout.strip():
-            pids = result.stdout.strip().split()
-            my_pid = str(os.getpid())
-            for pid in pids:
-                pid = pid.strip()
-                if pid and pid != my_pid:
-                    print(f"[guard] Killing stray process {pid} on port {PORT}")
-                    subprocess.run(["kill", pid], capture_output=True)
-            import time; time.sleep(1)
-    except Exception:
-        pass
-
-    server = ReusableHTTPServer(("", PORT), PortfolioHandler)
+        server = ReusableHTTPServer(("", PORT), PortfolioHandler)
+    except OSError as e:
+        print(f"[fatal] Cannot bind port {PORT}: {e}")
+        print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
+        sys.exit(1)
     print(f"Portfolio server → http://localhost:{PORT}")
     print(f"Project root: {PROJECT_ROOT}")
     print(f"Holdings: {HOLDINGS_PATH}")

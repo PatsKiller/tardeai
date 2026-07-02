@@ -31,7 +31,14 @@ for i in $(seq 1 "$FAILS"); do
   sleep 5
 done
 
-[ "$ok" = "1" ] && exit 0
+if [ "$ok" = "1" ]; then
+  # Healthy orphan (systemd inactive but :7777 serving) — do NOT kill; that caused adopt churn.
+  if ! systemctl --user is-active --quiet portfolio-server.service 2>/dev/null; then
+    _opid=$(pgrep -f "$PROC" | head -1)
+    [ -n "$_opid" ] && log "HEALTHY orphan pid $_opid (systemd inactive) — leaving up; restart manually when convenient"
+  fi
+  exit 0
+fi
 
 # Unresponsive after FAILS probes — restart under systemd (or kill orphan so systemd respawns).
 pid=$(pgrep -f "$PROC" | head -1)
