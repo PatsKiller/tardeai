@@ -1,10 +1,10 @@
 """rag_retrieval.py — Universal RAG Retrieval Engine for Trade AI v12.
-import os
 
 Covers all intelligence source types. Used by all agents.
 Falls back to keyword search if Ollama unavailable.
 """
 import logging
+import os
 import json
 import numpy as np
 import requests
