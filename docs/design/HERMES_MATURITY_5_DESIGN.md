@@ -284,6 +284,25 @@ its gate clears:**
 | Closed loop | ≥20 graded samples/factor feeding calibration; ≥100 graded promotions with precision > baseline; ≥1 shadow→live graft won on evidence; ≥1 source auto-retired on outcome yield |
 | Autonomy | 30 consecutive days: zero silent failures, all config drift via proposal channel, self-healing caught ≥1 real issue |
 
+**As implemented** (`scripts/hermes_maturity_gates.py`, snapshotted daily to
+`hermes_maturity_history`; every value computed live, thresholds inline; a dimension scores 5
+only when ALL its gates pass on 30 consecutive daily snapshots — until then it caps at 4):
+
+| Dimension | Implemented gates (threshold) |
+|---|---|
+| scope | `universe_within_cap` (1..800) · `s0_scoring_coverage` (≥98% S0 scored <4h) · `trigger_coverage` (≥80% of 24h-scored symbols governed-live) · `governor_active` (≥1 run/24h) |
+| research | `external_error_rate` (<2% 24h) · `proposals_with_prior_research` (≥60% 30d) · `s0_research_freshness` (≥95% <7d) |
+| tagging | `fallback_share` (<15% 30d) · `significant_tag_lift` (≥1 tag n≥50 z>1.96) · `quality_discriminates` (stddev ≥0.03) |
+| efficiency | `score_rows_per_day` (≤5K) · `score_history_size_mb` (≤300) · `error_call_rate_7d` (<5%) · `no_unauthorized_paid_llm` (0) |
+| closed_loop | `calibration_pairs` (≥20 graded w/ components) · `promotion_sample_and_precision` (≥100 graded AND hits>misses) · `outcome_graft_won` (≥1 audited outcome graft) · `source_retired_on_outcome` (≥1) |
+| autonomy | `no_pipeline_failures_30d` (0 health alerts) · `governance_channel_active` (proposals or audited auto-actions ≥1/30d) · `self_healing_caught_issue` (≥1 watchdog escalation/30d) |
+
+The board also reports `trend_vs_7d` (per-dimension score + gates-passed deltas vs the snapshot a
+week prior) — compounding improvement is measured, not asserted. Note vs the conceptual table
+above: "GPU challenger duty" was not implemented as a gate (the challenger belongs to the
+coordinator, not scoring; candidate for a later efficiency gate) and "0 manual overrides for 30d"
+is subsumed by the streak requirement itself.
+
 ### Sequencing & effort
 
 P0 days (blocked only on coordinating with the in-flight session) → P1+P2 in parallel (~1 week;
