@@ -19,7 +19,8 @@ SLEEVE_TO_STRATEGY: dict[str, str] = {
     "core_holding": "core_growth_compounder",
     "growth_etf": "core_index",
     "speculative_growth": "swing_breakout",
-    "defense_thesis": "defense_thesis",
+    # defense_thesis.yaml is ALLOCATION_POLICY — route via executable trading strategy
+    "defense_thesis": "swing_breakout",
 }
 
 

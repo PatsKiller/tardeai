@@ -9,6 +9,8 @@ import ProposalStrategyBadge from './ProposalStrategyBadge'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import { PROPOSAL_STATUS_LABELS, routingPathLabel, unifiedEdgeFromProposal } from '../lib/proposalLabels'
 import { brokerOf, fmtMoney, pickFreshOversight, resolveLiveQuote, resolveTickerContext, tradeEconomics } from '../lib/brokerThesis'
+import { collectCardBlockers, groupBlockers } from '../lib/proposalBlockers'
+import ProposalLifecycleTimeline from './ProposalLifecycleTimeline'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
@@ -64,6 +66,11 @@ type Props = {
   selectMode?: boolean
   selected?: boolean
   onToggleSelected?: () => void
+  onResizeToCap?: () => void
+  onReject?: () => void
+  onExpire?: () => void
+  resizeBusy?: boolean
+  actionBusy?: boolean
 }
 
 export default function BrokerProposalCard({
@@ -99,6 +106,11 @@ export default function BrokerProposalCard({
   selectMode,
   selected,
   onToggleSelected,
+  onResizeToCap,
+  onReject,
+  onExpire,
+  resizeBusy,
+  actionBusy,
 }: Props) {
   const [showAllBlockers, setShowAllBlockers] = useState(false)
   const preview = p._preview
@@ -704,30 +716,43 @@ export default function BrokerProposalCard({
             </div>
           )}
           {cardShowsBlockers && (() => {
-            const blockers: string[] = [
-              ...hardGateViolations,
-              ...(!operatorRoute ? (ov.violations || []) : []),
-              ...(!operatorRoute ? sizingViolations.filter((v: string) => !(ov.violations || []).includes(v)) : []),
-            ]
-            const LIMIT = 3
-            const truncated = !showAllBlockers && blockers.length > LIMIT
-            const visible = truncated ? blockers.slice(0, LIMIT) : blockers
+            const blockers = collectCardBlockers(p, evalData, ov, { operatorRoute })
+            const groups = groupBlockers(blockers)
+            const flat = groups.flatMap(g => g.items)
+            const LIMIT = 4
+            const truncated = !showAllBlockers && flat.length > LIMIT
+            const visible = truncated ? flat.slice(0, LIMIT) : flat
             return (
               <div style={{ marginTop: 8, padding: '8px 10px', fontSize: 10, color: RED, background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)' }}>
-                {visible.map((v: string, i: number) => <div key={i}>⛔ {v}</div>)}
-                {blockers.length > LIMIT && (
+                {groups.map(g => (
+                  <div key={g.category} style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 2 }}>{g.label}</div>
+                    {(showAllBlockers ? g.items : g.items.filter(it => visible.includes(it))).map((v, i) => (
+                      <div key={`${g.category}-${i}`}>⛔ {v}</div>
+                    ))}
+                  </div>
+                ))}
+                {flat.length > LIMIT && (
                   <button
                     onClick={() => setShowAllBlockers(s => !s)}
                     aria-expanded={showAllBlockers}
-                    aria-label={truncated ? `Show all ${blockers.length} blockers` : 'Show fewer blockers'}
+                    aria-label={truncated ? `Show all ${flat.length} blockers` : 'Show fewer blockers'}
                     style={{ marginTop: 4, fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.35)', background: 'transparent', color: RED, cursor: 'pointer' }}
                   >
-                    {truncated ? `+${blockers.length - LIMIT} more` : 'Show fewer'}
+                    {truncated ? `+${flat.length - LIMIT} more` : 'Show fewer'}
                   </button>
                 )}
               </div>
             )
           })()}
+          {oversized && onResizeToCap && (
+            <button onClick={onResizeToCap} disabled={resizeBusy}
+              style={{ marginTop: 8, fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 7, cursor: resizeBusy ? 'not-allowed' : 'pointer',
+                border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>
+              {resizeBusy ? '…' : `Resize to policy cap (${policyCap ?? '?' } sh)`}
+            </button>
+          )}
+          <ProposalLifecycleTimeline proposalId={p.id} />
 
           <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             <div style={metricBox}>
@@ -891,6 +916,20 @@ export default function BrokerProposalCard({
           title="Log fill after executing in FA or Schwab">
           ✓ Executed manually
         </ActionButton>
+        {onReject && (
+          <ActionButton variant="secondary" size="md" disabled={actionBusy} onClick={onReject}
+            style={{ border: `1px solid ${RED}`, color: RED, fontWeight: 700 }}
+            title="Reject — removes from active queue">
+            Reject
+          </ActionButton>
+        )}
+        {onExpire && (
+          <ActionButton variant="secondary" size="md" disabled={actionBusy} onClick={onExpire}
+            style={{ border: `1px solid ${MUTED}`, color: MUTED, fontWeight: 700 }}
+            title="Expire — archive invalid thesis">
+            Expire
+          </ActionButton>
+        )}
         <span style={{ flex: 1 }} />
         <ActionButton
           variant={routeBlocked && !fid ? 'disabled' : 'primary'}

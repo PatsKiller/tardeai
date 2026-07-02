@@ -8,6 +8,7 @@ import ExecutionPathsStrip from './ExecutionPathsStrip'
 import BrokerProposalCard from './BrokerProposalCard'
 import ProtectionProposalCard from './ProtectionProposalCard'
 import QueueHealthPanel from './QueueHealthPanel'
+import ProposalQueueSummaryBar from './ProposalQueueSummaryBar'
 import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
 import type { BrokerAccount } from './BrokerAccountPicker'
 
@@ -33,6 +34,7 @@ const TEXT0 = '#f8fafc'
 const GREEN = '#22c55e'
 const AMBER = '#f59e0b'
 const BLUE = '#60a5fa'
+const RED = '#ef4444'
 
 const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const inp = { fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(15,23,42,.55)', color: TEXT0, width: '100%' } as const
@@ -99,7 +101,12 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     return `/api/v2/broker-proposals?${p.toString()}`
   }, [listFilters, bypassCache, view])
 
-  const { data, loading, error, stale, refetch } = useApi<any>(listPath, 30_000)
+  const [fastPoll, setFastPoll] = useState(false)
+  const { data, loading, error, stale, refetch } = useApi<any>(listPath, fastPoll ? 15_000 : 30_000)
+  useEffect(() => {
+    const qs = data?.queue_summary
+    setFastPoll(Boolean(qs && qs.route_ready === 0 && (qs.blocked ?? 0) > 0))
+  }, [data?.queue_summary])
   const { data: outcomesData } = useApi<any>('/api/v2/rec-intel/outcomes', 300_000)
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const isNarrow = useIsNarrow(720)
@@ -150,6 +157,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [validateBusy, setValidateBusy] = useState<Record<number, boolean>>({})
   const [litmusMap, setLitmusMap] = useState<Record<number, any>>({})
+  const [agentBatchBusy, setAgentBatchBusy] = useState(false)
+  const [reconcileBusy, setReconcileBusy] = useState(false)
+  const [llmMatureBusy, setLlmMatureBusy] = useState(false)
+  const [bulkActionBusy, setBulkActionBusy] = useState(false)
+  const [bulkActionMsg, setBulkActionMsg] = useState('')
+  const [cardActionBusy, setCardActionBusy] = useState<Record<number, boolean>>({})
+  const [resizeBusy, setResizeBusy] = useState<Record<number, boolean>>({})
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
@@ -317,6 +331,82 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   }
 
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
+
+  const postJson = async (path: string, body: object) => {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    return r.json()
+  }
+
+  const afterQueueMutation = () => {
+    setBypassCache(true)
+    refetch?.()
+    setTimeout(() => setBypassCache(false), 2000)
+  }
+
+  const bulkAction = async (action: string, ids: number[], reason?: string) => {
+    setBulkActionBusy(true)
+    setBulkActionMsg('')
+    try {
+      const res = await postJson('/api/v2/broker-proposals/bulk-action', { proposal_ids: ids, action, reason })
+      setBulkActionMsg(res.ok ? `✅ ${action}: ${res.succeeded}/${res.total}` : `⚠ ${res.error || action}`)
+      if (res.ok) afterQueueMutation()
+    } catch (e: any) {
+      setBulkActionMsg(`⚠ ${String(e?.message || e).slice(0, 80)}`)
+    } finally {
+      setBulkActionBusy(false)
+    }
+  }
+
+  const resizeToCap = async (pid: number) => {
+    setResizeBusy(m => ({ ...m, [pid]: true }))
+    try {
+      const res = await postJson('/api/v2/broker-proposals/resize-to-cap', { proposal_id: pid })
+      if (res.ok) afterQueueMutation()
+    } finally {
+      setResizeBusy(m => ({ ...m, [pid]: false }))
+    }
+  }
+
+  const cardAction = async (pid: number, action: 'reject' | 'expire', reason: string) => {
+    setCardActionBusy(m => ({ ...m, [pid]: true }))
+    try {
+      await bulkAction(action, [pid], reason)
+    } finally {
+      setCardActionBusy(m => ({ ...m, [pid]: false }))
+    }
+  }
+
+  const queueAgentBatch = async () => {
+    setAgentBatchBusy(true)
+    try {
+      await postJson('/api/v2/broker-proposals/queue-agent-batch', {})
+      afterQueueMutation()
+    } finally {
+      setAgentBatchBusy(false)
+    }
+  }
+
+  const reconcileSleeves = async () => {
+    setReconcileBusy(true)
+    try {
+      const res = await postJson('/api/v2/broker-proposals/reconcile-sleeves', {})
+      setBulkActionMsg(res.ok ? `✅ Reconciled ${res.updated} sleeve(s)` : `⚠ reconcile failed`)
+      if (res.ok) afterQueueMutation()
+    } finally {
+      setReconcileBusy(false)
+    }
+  }
+
+  const matureLlmStage2b = async (ids?: number[]) => {
+    setLlmMatureBusy(true)
+    try {
+      const res = await postJson('/api/v2/broker-proposals/mature-llm-stage-2b', { proposal_ids: ids })
+      setBulkActionMsg(res.ok ? `✅ LLM stage 2b: ${res.reviewed} reviewed` : `⚠ LLM mature failed`)
+      if (res.ok) afterQueueMutation()
+    } finally {
+      setLlmMatureBusy(false)
+    }
+  }
   const refreshAll = () => { refetch?.() }
 
   const submit = async () => {
@@ -661,6 +751,14 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         setDetailMap({})
         refetch?.()
         setTimeout(() => setBypassCache(false), 2500)
+        // Re-queue cloud oversight when prices move thesis zone (oversight freshness coupling).
+        try {
+          await fetch('/api/v2/broker-proposals/queue-cloud-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scope: 'ids', proposal_ids: valid, max: 30 }),
+          })
+        } catch { /* non-fatal */ }
       }
     } catch { /* ignore */ }
     finally {
@@ -770,7 +868,22 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         </div>
       )}
 
-      <QueueHealthPanel onRequeued={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }} />
+      <QueueHealthPanel
+        autoOpen={data?.queue_summary?.route_ready === 0 && (data?.queue_summary?.blocked ?? 0) > 0}
+        onRequeued={() => { setBypassCache(true); refetch?.(); setTimeout(() => setBypassCache(false), 2000) }}
+      />
+      <ProposalQueueSummaryBar
+        summary={data?.queue_summary}
+        onQueueAgents={queueAgentBatch}
+        onReconcile={reconcileSleeves}
+        onMatureLlm={() => matureLlmStage2b(entryProposalIds(shown))}
+        agentBusy={agentBatchBusy}
+        reconcileBusy={reconcileBusy}
+        llmBusy={llmMatureBusy}
+      />
+      {bulkActionMsg && (
+        <div style={{ fontSize: 11, marginBottom: 8, color: bulkActionMsg.startsWith('✅') ? GREEN : AMBER }}>{bulkActionMsg}</div>
+      )}
 
       {!!data?.hygiene?.changed && (
         <div style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', color: AMBER }}>
@@ -1088,6 +1201,17 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               title="Queue Grok+ChatGPT for the selected cards"
               style={btn(AMBER, batchCloudBusy || selectedShownIds.length === 0)}
             >{batchCloudBusy ? '…' : `☁ Run cloud selected (${selectedShownIds.length})`}</button>
+            <button onClick={() => bulkAction('resize_to_cap', selectedShownIds)} disabled={bulkActionBusy || selectedShownIds.length === 0}
+              style={btn(BLUE, bulkActionBusy || selectedShownIds.length === 0)}>Resize to cap</button>
+            <button onClick={() => bulkAction('reject', selectedShownIds, 'operator_bulk_reject')} disabled={bulkActionBusy || selectedShownIds.length === 0}
+              style={btn(RED, bulkActionBusy || selectedShownIds.length === 0)}>Reject</button>
+            <button onClick={() => bulkAction('expire', selectedShownIds, 'operator_bulk_expire')} disabled={bulkActionBusy || selectedShownIds.length === 0}
+              style={btn(MUTED, bulkActionBusy || selectedShownIds.length === 0)}>Expire</button>
+            <button onClick={() => bulkAction('reject', entryProposalIds(shown).filter(id => {
+              const p = shown.find(x => x.id === id)
+              return p && (p.thesis_zone === 'invalid' || (p.live_rr != null && Number(p.live_rr) < 2))
+            }), 'invalid_thesis_bulk')} disabled={bulkActionBusy}
+              style={btn(RED, bulkActionBusy)} title="Reject all invalid-thesis rows on page">Reject invalid thesis</button>
             <span style={{ flex: 1 }} />
             <button
               onClick={exitSelectMode}
@@ -1098,10 +1222,24 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {shown.map(rawP => {
-            if (isProtectionProposal(rawP)) {
-              return <ProtectionProposalCard key={rawP.id} proposal={rawP} />
-            }
+          {shown.some(isProtectionProposal) && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, marginBottom: 8, textTransform: 'uppercase' }}>
+                Protection / ATM ({shown.filter(isProtectionProposal).length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {shown.filter(isProtectionProposal).map(rawP => (
+                  <ProtectionProposalCard key={rawP.id} proposal={rawP} />
+                ))}
+              </div>
+            </div>
+          )}
+          {shown.filter(p => !isProtectionProposal(p)).length > 0 && (
+            <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, marginBottom: 4, textTransform: 'uppercase' }}>
+              Entry proposals ({shown.filter(p => !isProtectionProposal(p)).length})
+            </div>
+          )}
+          {shown.filter(p => !isProtectionProposal(p)).map(rawP => {
             const p = mergeProposal(rawP)
             const dest = destAccount[p.id] ?? p.account ?? ''
             return (
@@ -1142,6 +1280,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 selectMode={selectMode}
                 selected={selectedIds.has(p.id)}
                 onToggleSelected={() => toggleSelected(p.id)}
+                onResizeToCap={() => resizeToCap(p.id)}
+                onReject={() => cardAction(p.id, 'reject', 'operator_card_reject')}
+                onExpire={() => cardAction(p.id, 'expire', 'operator_card_expire')}
+                resizeBusy={!!resizeBusy[p.id]}
+                actionBusy={!!cardActionBusy[p.id]}
               />
             )
           })}
