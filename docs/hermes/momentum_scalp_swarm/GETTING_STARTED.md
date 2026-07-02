@@ -85,9 +85,20 @@ Portfolio → **Stop Management** tab should show:
 
 The tmux launcher starts all Phase 1+2 daemons. Qualified signals land in `qualified_signals.json`; validated entries queue to `pending_approvals.json` for Telegram approval.
 
-## Phase 3
+## Phase 3 — Exit Intelligence + Post-Trade Review
 
-Add Exit Intelligence + Post-Trade Review for closed-trade learning loop.
+```bash
+.venv/bin/python3 scripts/hermes_scalp_exit_intelligence.py --once
+.venv/bin/python3 scripts/hermes_scalp_post_trade_review.py --once
+.venv/bin/python3 -m pytest tests/test_hermes_scalp_phase3.py -v
+```
+
+Dry test guide: `docs/hermes/momentum_scalp_swarm/PHASE_3_DRY_TEST.md`
+
+Outputs:
+- `exit_suggestions.json` — Street-extended profit alerts
+- `post_trade_reviews.json` — §5 stop-quality critiques per closed trade
+- `validation_tracker.json` — synced §6 gate metrics
 
 ---
 

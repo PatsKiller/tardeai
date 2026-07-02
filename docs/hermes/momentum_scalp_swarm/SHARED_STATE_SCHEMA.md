@@ -146,6 +146,58 @@ Dynamic Y/A/R thresholds come from `stoplight_regime_thresholds.py` per regime.
 
 ---
 
+## exit_suggestions.json
+
+Written by Exit Intelligence Agent.
+
+```json
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-07-02T16:00:00Z",
+  "suggestions": [
+    {
+      "symbol": "CSWC",
+      "suggestion_type": "partial_profit_extended_above_street",
+      "action": "suggest_partial_exit",
+      "severity": "amber",
+      "price_vs_consensus_pct": 12.5,
+      "current_r": 2.8,
+      "consensus_mean": 24.90,
+      "reason": "CSWC price +12.5% above Street μ at +2.8R — consider partial profit"
+    }
+  ],
+  "open_positions_scanned": 4,
+  "street_coverage": 2
+}
+```
+
+---
+
+## post_trade_reviews.json
+
+Written by Post-Trade Review Agent. Each review answers §5 four stop-quality questions.
+
+```json
+{
+  "schema_version": "1.0",
+  "total_reviewed": 3,
+  "reviews": [
+    {
+      "trade_id": 42,
+      "symbol": "NVDA",
+      "stop_quality_score": 4,
+      "initial_stop_vs_mae": "optimal — MAE 0.6R within planned 1R envelope",
+      "trail_activation_correct": "trail not active (expected — Layer 3 config-OFF)",
+      "r_left_on_table": 0.8,
+      "recommended_params": { "regime": "trending", "breakeven_trigger_r": 1.2 },
+      "policy_sections_reviewed": ["§3 L1", "§3 L2", "§3 L3 (advisory)", "§5", "§6"]
+    }
+  ]
+}
+```
+
+---
+
 ## validation_tracker.json
 
 Synced with `scripts/scalp_stop_validation_tracker.py` output. Tracks §6 gate metrics (≥150 closed trades, win rate, expectancy, etc.).

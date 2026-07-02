@@ -23,6 +23,8 @@ Enable for `tradeai12b` profile (System → Hermes):
 | live_monitor | `hermes_scalp_live_monitor.py` | 30s |
 | signal_scout | `hermes_scalp_signal_scout.py` | 45s |
 | entry_validation | `hermes_scalp_entry_validation.py` | 60s |
+| exit_intelligence | `hermes_scalp_exit_intelligence.py` | 60s |
+| post_trade_review | `hermes_scalp_post_trade_review.py` | 300s |
 | health | API status watch | 15s |
 
 ```bash

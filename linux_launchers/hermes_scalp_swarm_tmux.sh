@@ -19,6 +19,10 @@ start_session() {
     "cd '$ROOT' && $VENV scripts/hermes_scalp_signal_scout.py --interval 45 2>&1 | tee -a logs/hermes_scalp_signal_scout.log"
   tmux new-window -t "$SESSION" -n entry_validation \
     "cd '$ROOT' && $VENV scripts/hermes_scalp_entry_validation.py --interval 60 2>&1 | tee -a logs/hermes_scalp_entry_validation.log"
+  tmux new-window -t "$SESSION" -n exit_intelligence \
+    "cd '$ROOT' && $VENV scripts/hermes_scalp_exit_intelligence.py --interval 60 2>&1 | tee -a logs/hermes_scalp_exit_intelligence.log"
+  tmux new-window -t "$SESSION" -n post_trade_review \
+    "cd '$ROOT' && $VENV scripts/hermes_scalp_post_trade_review.py --interval 300 2>&1 | tee -a logs/hermes_scalp_post_trade_review.log"
   tmux new-window -t "$SESSION" -n health \
     "watch -n 15 'curl -s http://127.0.0.1:7777/api/v2/hermes/scalp-swarm/status | python3 -m json.tool | head -50'"
   echo "Started tmux session: $SESSION"
