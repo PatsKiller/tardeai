@@ -11162,15 +11162,27 @@ def _paper_proposals_enriched():
                     {k: _json_clean(v) for k, v in r.items()} for r in scan_rows
                 ]
 
-                # Catalyst quality
+                # Catalyst quality (DB columns: quality_score, grade, risk — UI expects *_score/*_grade aliases)
                 cat_row = _db_query("""
-                    SELECT catalyst_quality_score, catalyst_grade, catalyst_type,
-                           company_specific, duration_estimate, risk_note,
-                           contradictory_signals
+                    SELECT quality_score, grade, catalyst_type,
+                           company_specific, duration_estimate, risk,
+                           contradictory_signals, assessed_at
                     FROM catalyst_quality_results
-                    WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 1
+                    WHERE proposal_id = %s ORDER BY assessed_at DESC LIMIT 1
                 """, [pid], fetch="one")
-                prop['catalyst_quality'] = {k: _json_clean(v) for k, v in cat_row.items()} if cat_row else None
+                if cat_row:
+                    prop['catalyst_quality'] = {
+                        "catalyst_quality_score": _json_clean(cat_row.get("quality_score")),
+                        "catalyst_grade": cat_row.get("grade"),
+                        "catalyst_type": cat_row.get("catalyst_type"),
+                        "company_specific": cat_row.get("company_specific"),
+                        "duration_estimate": cat_row.get("duration_estimate"),
+                        "risk_note": cat_row.get("risk"),
+                        "contradictory_signals": cat_row.get("contradictory_signals"),
+                        "assessed_at": _json_clean(cat_row.get("assessed_at")),
+                    }
+                else:
+                    prop['catalyst_quality'] = None
 
                 # Backtest summary
                 bt_row = _db_query("""

@@ -1,0 +1,17 @@
+[Unit]
+Description=TradeAI Portfolio Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# portfolio_server.py clears stray :7777 holders on startup — do NOT fuser -k here (restart-loop risk).
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_server.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_server.log
+Environment=HOME=/home/johnclaw
+
+[Install]
+WantedBy=default.target
