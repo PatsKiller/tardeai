@@ -3,9 +3,10 @@ Description=Grok OAuth proxy (free xai-oauth -> OpenAI-compatible :8645) for Tra
 After=network.target
 
 # Install (user service, no sudo):
-#   cp config/systemd/grok-oauth-proxy.service ~/.config/systemd/user/hermes-xai-proxy.service
+#   cp config/systemd/grok-oauth-proxy.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now hermes-xai-proxy.service
+#   systemctl --user enable --now grok-oauth-proxy.service
+# Legacy alias hermes-xai-proxy.service — disable if migrating to this unit name.
 # Requires the operator's free xAI OAuth session:
 #   hermes auth add xai-oauth --type oauth
 
