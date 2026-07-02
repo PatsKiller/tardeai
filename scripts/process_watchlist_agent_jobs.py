@@ -174,8 +174,19 @@ _llm._last_cost = 0
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
 # one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
 # back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
-SYNTHESIS_PROMPT_VERSION = "cio_synth_v3_dual_grok_chatgpt_2026-06-18"   # descriptive (prompt stamp / audit)
-SYNTHESIS_VERSION_NUM = 3                                    # integer for the synthesis_version column (bump on prompt/method change)
+SYNTHESIS_PROMPT_VERSION = "cio_synth_v4_input_tightness_2026-07-01"   # descriptive (prompt stamp / audit)
+SYNTHESIS_VERSION_NUM = 4                                    # integer for the synthesis_version column (bump on prompt/method change)
+
+# Local-lane control tokens (gemma/qwen '/no_think') are meaningless noise on cloud lanes — strip
+# before any Grok/ChatGPT call; the local fallback keeps the original prompt (F3, CIO audit 2026-07-01).
+_LOCAL_CONTROL_TOKENS = ("/no_think",)
+
+
+def _strip_local_tokens(prompt: str) -> str:
+    out = prompt
+    for tok in _LOCAL_CONTROL_TOKENS:
+        out = out.replace(tok, "")
+    return out.lstrip()
 
 
 def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
@@ -184,7 +195,7 @@ def _synthesis_llm(prompt: str, max_tokens: int = 1000) -> str:
     try:
         import llm_lane
         if llm_lane.available("grok"):
-            out = llm_lane.generate(prompt, lane="grok", timeout=120)
+            out = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
             if out and not str(out).startswith("LLM error"):
                 _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
                 return out
@@ -224,12 +235,13 @@ def _synthesis_dual(prompt: str, max_tokens: int = 1000):
     Falls back to Grok-only, then local gemma, when a lane is unavailable. ChatGPT is capped per run."""
     global _dual_chatgpt_count
     import llm_lane
+    cloud_prompt = _strip_local_tokens(prompt)
     grok_raw = chatgpt_raw = None
     grok_rec = chatgpt_rec = None
     grok_conf = chatgpt_conf = 0.0
     try:
         if llm_lane.available("grok"):
-            grok_raw = llm_lane.generate(prompt, lane="grok", timeout=120)
+            grok_raw = llm_lane.generate(cloud_prompt, lane="grok", timeout=120)
             if grok_raw and not str(grok_raw).startswith("LLM error"):
                 grok_rec, grok_conf = _rec_from(grok_raw)
     except Exception:
@@ -237,7 +249,7 @@ def _synthesis_dual(prompt: str, max_tokens: int = 1000):
     try:
         if _dual_chatgpt_count < _DUAL_CHATGPT_CAP and llm_lane.available("chatgpt"):
             _dual_chatgpt_count += 1
-            chatgpt_raw = llm_lane.generate(prompt, lane="chatgpt", timeout=180)
+            chatgpt_raw = llm_lane.generate(cloud_prompt, lane="chatgpt", timeout=180)
             if chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
                 chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
     except Exception:
@@ -302,6 +314,10 @@ def _get_context(conn, symbol: str) -> dict:
     if pos:
         p = pos[0]
         ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {p.get('account_name', '?')}\n"
+    else:
+        # F1 (CIO audit 2026-07-01): silence is not ground-truth — state non-ownership explicitly so
+        # agents never infer a position from stale narratives/RAG (AZN: "22% position" vs 0 shares).
+        ctx += "Position: NOT CURRENTLY HELD (0 shares in any account). Treat any source claiming this is an existing holding as stale.\n"
     if e:
         ctx += f"RSI: {e.get('rsi', '?')}, Beta: {e.get('beta', '?')}, Sector: {e.get('sector', '?')}, Industry: {e.get('industry', '?')}\n"
         ctx += f"SMA20: {e.get('sma20_pct', '?')}%, SMA50: {e.get('sma50_pct', '?')}%, SMA200: {e.get('sma200_pct', '?')}%\n"
@@ -1492,7 +1508,9 @@ Total value: ${port_ctx['total_value']:,.0f}
 Portfolio weight: {port_ctx['portfolio_weight']:.1f}%
 Accounts: {', '.join(f"{a['type']} ({a['shares']:.0f} sh, ${a['value']:,.0f})" for a in port_ctx['accounts'])}
 """
-    if port_ctx["position_tiny"]:
+    if port_ctx["total_shares"] == 0:
+        position_summary += "NOT CURRENTLY HELD (0 shares in any account) — this block is live holdings ground-truth; any analyst narrative describing an existing position is stale.\n"
+    elif port_ctx["position_tiny"]:
         position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
 
     # Income context
@@ -1586,6 +1604,7 @@ CRITICAL INSTRUCTIONS:
    - Forward assumptions (scenario-based, labeled conservative/base/aggressive)
    - Your recommendation (based on all three, not just history)
    Do NOT use "it returned X% before" as the sole rationale. Instead reference current fundamentals, payout quality, and strategy fit.
+8. INPUT CONTRADICTION RULE: If input sources conflict on a material fact (ownership, position size, income), the PORTFOLIO POSITION block is the live-holdings ground truth — prefer it over analyst narratives (which may be older snapshots). State the contradiction in "conflicts", lower confidence proportionally, and still produce a verdict; do NOT let a stale-narrative conflict alone collapse confidence below 0.4.
 
 Respond in JSON format:
 - "recommendation": one of BUY, HOLD, SELL, ADD, ADD_ON_PULLBACK, TRIM, REBALANCE_TRIM, AVOID, IGNORE

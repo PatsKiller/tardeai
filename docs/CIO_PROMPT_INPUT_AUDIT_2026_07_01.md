@@ -73,3 +73,23 @@ F3/F4/F5. F1 is the one with a demonstrated confidence-tanking failure (AZN) and
 This is an audit + recommendations. No prompts were changed in this pass (CIO prompts drive
 trading-decision output; changes should be staged, version-bumped via `SYNTHESIS_VERSION_NUM`, and
 A/B-observed). Implementation of F1–F5 to follow on operator approval.
+
+## Implementation status (2026-07-01, operator-approved)
+**Stage 1 SHIPPED** — `cio_synth_v4_input_tightness_2026-07-01`, `SYNTHESIS_VERSION_NUM=4`:
+- **F1** ✅ explicit `NOT CURRENTLY HELD (0 shares)` line in *both* the agent context (`_get_context`,
+  which previously stayed silent when unheld) and the synthesis `PORTFOLIO POSITION` block. Root cause
+  refined during implementation: both context builders read the same `holdings.json` — the AZN
+  contradiction was **time skew** (agent narratives generated from an older snapshot, embedded verbatim
+  next to a fresh position summary), which the F5 precedence rule addresses.
+- **F5** ✅ (promoted to ship with F1) CIO critical instruction 8: prefer the live PORTFOLIO POSITION
+  block over analyst narratives on material-fact conflict, record in `conflicts`, lower confidence
+  proportionally — without letting a stale-narrative conflict alone collapse confidence below 0.4.
+- **F3** ✅ `_strip_local_tokens()` strips `/no_think` before every cloud lane call (`_synthesis_llm`,
+  `_synthesis_dual`); local gemma fallback keeps the original prompt.
+
+**Stage 2 PENDING** (next, after observing v4 confidence distributions): **F2** structured agent
+evidence (note: agents already return JSON — the gap is tagged evidence bullets + a "data I doubt"
+field, not a new contract), **F4** enumerate stale fields + age in the DQ note (and reconcile the
+G1 "skip on stale" vs DQ-note "proceed with lower confidence" policy contradiction), plus a
+`max_tokens` review on `_synthesis_dual` (1000 is tight for the full JSON contract and risks
+truncation → silent fallback to loose parsing).
