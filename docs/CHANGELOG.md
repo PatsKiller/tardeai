@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-01 - CIO input tightness Stage 2a (audit F4 + max_tokens, synthesis v5)
+
+Implements Stage 2a of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md`; prompt version **`cio_synth_v5_dq_specifics_2026-07-01`** (`synthesis_version=5`). F2 (structured agent evidence) intentionally held for the observation window.
+
+- **F4 specific DQ note:** `_build_dq_note()` enumerates WHICH inputs are stale + age, measured from the actual prompt sources (enrichment `cached_at` >2d, `ticker_prices` latest >4d weekend-safe, news >14d, + alert count) — the old alert-count-only note near-never fired for real tickers (0 in 7 days; `stale` alerts are ~all `topic:*` research-gap rows). Verified live: V fresh/empty; SCHD "news 15 days old"; SNOW/AZN "NO price history in DB".
+- **G1 reconciliation:** layered staleness policy — agents keep G1 skip-on-wholesale-stale; synthesis down-weights specific stale fields, caps confidence at 0.5 / RESEARCH_MORE when a decision-critical input is stale.
+- **max_tokens 1000→2000** on `_synthesis_llm`/`_synthesis_dual` (local-fallback-only cap; measured 14d of `raw_response`: cloud 1 parse-fail/650 + 0 truncations, the single local-fallback row WAS truncated mid-JSON).
+- Advisory-only (CIO View), no trading path.
+
 ## 2026-07-01 - CIO input tightness Stage 1 (audit F1+F3+F5, synthesis v4)
 
 Implements Stage 1 of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`; prompt version bumped `cio_synth_v3` → **`cio_synth_v4_input_tightness_2026-07-01`** (`synthesis_version=4`).
