@@ -24,6 +24,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from watchlist_priority import WATCHLIST_TOP_N, holdings_list, is_off_hours_et, off_hours_top_n
 PILLS = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
@@ -228,19 +230,58 @@ def _regime_weights(weights, vix):
     return {k: v / tot for k, v in w.items()}, regime
 
 
-def run(limit=None):
-    conn = _conn(); cur = conn.cursor()
-    pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
-    vix = _vix(conn)
-    weights, _regime = _regime_weights(weights, vix)
-    cur.execute("""SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
+_BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
                      ie.catalyst, ie.catalyst_verified, ie.sector
                    FROM watchlist_items wi
                    LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
-                   WHERE wi.status IN ('active','researched')""" + (f" LIMIT {int(limit)}" if limit else ""))
+                   WHERE wi.status IN ('active','researched')"""
+
+
+def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
+    """Off-hours: score only top-N + holdings + directives + active (saves ~3k tail churn)."""
+    if not off_hours:
+        sql = _BASE_SELECT + (f" LIMIT {int(limit)}" if limit else "")
+        cur.execute(sql)
+        return
+    cap = int(limit or WATCHLIST_TOP_N)
+    holdings = holdings_list(PROJECT_ROOT)
+    cur.execute("""WITH candidates AS (
+                     SELECT wi.symbol,
+                       MIN(CASE WHEN wi.in_directive_watch THEN 0
+                                WHEN wi.symbol = ANY(%s) THEN 1
+                                WHEN wi.status = 'active' THEN 2
+                                ELSE 3 END) AS tier,
+                       MIN(wi.hermes_rank) AS best_rank
+                     FROM watchlist_items wi
+                     WHERE wi.status IN ('active','researched')
+                       AND (wi.in_directive_watch OR wi.symbol = ANY(%s) OR wi.status = 'active'
+                            OR (wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s))
+                     GROUP BY wi.symbol
+                     ORDER BY tier, best_rank ASC NULLS LAST
+                     LIMIT %s
+                   )
+                   SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
+                     sc.target_price, sc.stop_loss,
+                     ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
+                     ie.catalyst, ie.catalyst_verified, ie.sector
+                   FROM candidates c
+                   JOIN watchlist_items wi ON wi.symbol = c.symbol AND wi.status IN ('active','researched')
+                   LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
+                   LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol""",
+                (holdings, holdings, WATCHLIST_TOP_N, cap))
+
+
+def run(limit=None):
+    conn = _conn(); cur = conn.cursor()
+    pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
+    vix = _vix(conn)
+    weights, _regime = _regime_weights(weights, vix)
+    off_hours = is_off_hours_et()
+    limit = off_hours_top_n(limit)
+    _fetch_watchlist_rows(cur, limit=limit, off_hours=off_hours)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     scored = []
@@ -278,16 +319,27 @@ def run(limit=None):
     penalized.sort(key=lambda x: -x[1])
     scored = penalized
     for rank, (sym, comp, components, px) in enumerate(scored, 1):
-        cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
-                         hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
-                       WHERE symbol=%s AND status IN ('active','researched')""",
-                    (comp, rank, json.dumps(components), sym))
-        # append-only snapshot for calibration (H-4) + alerting (H-5)
-        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
-                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
-                    (sym, comp, rank, json.dumps(components), px))
+        if off_hours:
+            # Off-hours: refresh composite only — frozen global ranks prevent tail rank-jump spam.
+            cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
+                             hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
+                           WHERE symbol=%s AND status IN ('active','researched')""",
+                        (comp, json.dumps(components), sym))
+            cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                           SELECT %s, %s, hermes_rank, %s::jsonb, %s FROM watchlist_items
+                           WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
+                        (sym, comp, json.dumps(components), px, sym))
+        else:
+            cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
+                             hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
+                           WHERE symbol=%s AND status IN ('active','researched')""",
+                        (comp, rank, json.dumps(components), sym))
+            cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                           VALUES (%s, %s, %s, %s::jsonb, %s)""",
+                        (sym, comp, rank, json.dumps(components), px))
     conn.commit()
-    print(f"[hermes-scorer] scored {len(scored)} watchlist names (top: " +
+    mode = "off-hours-top%d" % (limit or WATCHLIST_TOP_N) if off_hours else "full"
+    print(f"[hermes-scorer] {mode}: scored {len(scored)} watchlist names (top: " +
           ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")")
     return {"scored": len(scored), "top": [(s, round(c, 1)) for s, c, *_ in scored[:10]]}
 

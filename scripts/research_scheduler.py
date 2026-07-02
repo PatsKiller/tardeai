@@ -25,13 +25,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from watchlist_priority import WATCHLIST_TOP_N
 PY = str(ROOT / ".venv" / "bin" / "python")
 RESEARCHER = str(ROOT / "scripts" / "hermes_external_researcher.py")
 HOLDINGS_FILE = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
 # ── tunables (env-overridable) ───────────────────────────────────────────────
 EXTERNAL_BUDGET = int(os.getenv("RESEARCH_EXTERNAL_BUDGET_PER_RUN", "40"))
-TOP_RANK_N      = int(os.getenv("RESEARCH_TOP_RANK_N", "50"))
+TOP_RANK_N      = int(os.getenv("RESEARCH_TOP_RANK_N", str(WATCHLIST_TOP_N)))
 COLD_FLOOR_DAYS = int(os.getenv("RESEARCH_COLD_FLOOR_DAYS", "14"))
 CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 

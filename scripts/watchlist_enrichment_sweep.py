@@ -21,6 +21,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from watchlist_priority import WATCHLIST_TOP_N, is_off_hours_et, off_hours_top_n
 
 BATCH = 15  # Finviz-Elite rate-limit aware
 
@@ -83,29 +85,38 @@ def sweep(limit=None, dry=False):
     #    rotated stalest-first — the cards the operator actually looks at (e.g. ELVN #3, SNOW #135).
     #  • TAIL = remainder of the cap, stalest-first over everyone else, so nothing is permanently
     #    starved. */30 intraday + post-close runs cycle the set; bounded cap keeps Finviz happy.
+    off_hours = is_off_hours_et()
     cap = int(limit) if limit else 180
-    RANK_PRIORITY = 150               # Hermes rank treated as "front page" / high-value
-    TAIL_MIN = max(30, cap // 4)      # always reserve a fair-rotation slice for the tail
-    top_n = max(cap - TAIL_MIN, 1)
+    if off_hours:
+        cap = off_hours_top_n(limit) or WATCHLIST_TOP_N
+    RANK_PRIORITY = WATCHLIST_TOP_N
+    if off_hours:
+        prio_limit = cap
+    else:
+        TAIL_MIN = max(30, cap // 4)
+        prio_limit = max(cap - TAIL_MIN, 1)
     cur.execute("""SELECT symbol FROM watchlist_items
                    WHERE status IN ('active','researched') AND symbol IS NOT NULL
                      AND (directive_id IS NOT NULL OR status = 'active'
                           OR (hermes_rank IS NOT NULL AND hermes_rank <= %s))
                    ORDER BY (directive_id IS NULL), (status <> 'active'),
                             last_enriched_at ASC NULLS FIRST, hermes_rank ASC NULLS LAST
-                   LIMIT %s""", (RANK_PRIORITY, top_n))
+                   LIMIT %s""", (RANK_PRIORITY, prio_limit))
     prio = [r[0] for r in cur.fetchall() if r[0]]
     tail = []
-    rem = cap - len(prio)
-    if rem > 0:
-        cur.execute("""SELECT symbol FROM watchlist_items
-                       WHERE status IN ('active','researched') AND symbol IS NOT NULL
-                         AND NOT (symbol = ANY(%s))
-                       ORDER BY last_enriched_at ASC NULLS FIRST, updated_at DESC
-                       LIMIT %s""", (prio or [''], rem))
-        tail = [r[0] for r in cur.fetchall() if r[0]]
-    symbols = list(dict.fromkeys(prio + tail))  # priority first, then tail; dedup, preserve order
-    print(f"[sweep] selected {len(symbols)}: {len(prio)} priority (directive/active/rank<={RANK_PRIORITY}) + {len(tail)} tail rotation")
+    if not off_hours:
+        rem = cap - len(prio)
+        if rem > 0:
+            cur.execute("""SELECT symbol FROM watchlist_items
+                           WHERE status IN ('active','researched') AND symbol IS NOT NULL
+                             AND NOT (symbol = ANY(%s))
+                           ORDER BY last_enriched_at ASC NULLS FIRST, updated_at DESC
+                           LIMIT %s""", (prio or [''], rem))
+            tail = [r[0] for r in cur.fetchall() if r[0]]
+    symbols = list(dict.fromkeys(prio + tail))
+    mode = "off-hours-top%d" % cap if off_hours else "intraday"
+    print(f"[sweep] {mode}: selected {len(symbols)}: {len(prio)} priority (directive/active/rank<={RANK_PRIORITY})"
+          + (f" + {len(tail)} tail rotation" if tail else ""))
     if not symbols:
         print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}
 
