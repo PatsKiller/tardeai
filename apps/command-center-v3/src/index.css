@@ -147,3 +147,12 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .app-main div[style*="font-size: 15"] { font-size: 13px !important; }
   .metric-strip > div { padding: 2px 6px !important; }
 }
+
+/* ── Security Card v3 module grid — 2-col dashboard ≥1100px, stacked below ── */
+.wlc-grid { display: grid; grid-template-columns: 1fr; border-top: 1px solid rgba(148,163,184,.10); }
+.wlc-grid > .wlc-cell { padding: 11px 16px; min-width: 0; }
+.wlc-grid > .wlc-cell + .wlc-cell { border-top: 1px solid rgba(148,163,184,.10); }
+@media (min-width: 1100px) {
+  .wlc-grid { grid-template-columns: 1.05fr 0.95fr; }
+  .wlc-grid > .wlc-cell + .wlc-cell { border-top: none; border-left: 1px solid rgba(148,163,184,.10); }
+}
