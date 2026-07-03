@@ -376,10 +376,32 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
               : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}
           </div>
         })() : (
+          <>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 16,
+            gridTemplateColumns: '28px 110px 90px 1fr 80px 130px 52px',
+            gap: 10,
+            padding: '4px 12px',
+            fontSize: 9,
+            fontWeight: 800,
+            color: MUTED,
+            textTransform: 'uppercase',
+            letterSpacing: '.06em',
+            borderBottom: '1px solid var(--border)',
+            marginBottom: 4,
+          }}>
+            <span />
+            <span>Symbol</span>
+            <span>Analyst</span>
+            <span>Action · Plan</span>
+            <span style={{ textAlign: 'right' }}>Price</span>
+            <span style={{ textAlign: 'right' }}>CTA</span>
+            <span />
+          </div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
             width: '100%',
             minWidth: 0,
           }}>
@@ -414,6 +436,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
               )
             })}
           </div>
+          </>
         )}
         {pageCount > 1 && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', marginTop: 14 }}>
@@ -422,7 +445,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
             <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
-        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>↻ Refresh on each card — Finviz/RSI now + agent requeue. Each card shows company, catalyst, and news inline; ▸ Context for CIO evidence and fib. Click card → full intel drawer. Advisory-only — never places trades.</div>
+        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>One row per symbol — verdict · action · plan · price · CTA. Click row for intel drawer; ▸ expands research, ladder, and CIO evidence. Advisory-only — never places trades.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}
