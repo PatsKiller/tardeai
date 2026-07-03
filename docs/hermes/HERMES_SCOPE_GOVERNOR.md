@@ -37,7 +37,10 @@ Inputs (portfolio, outcomes, social, regime, events)
 | `scripts/lib/hermes_scope_governor/scoring.py` | Outcome-aware edge scoring |
 | `scripts/lib/hermes_scope_governor/inputs.py` | Signal aggregation |
 | `scripts/lib/hermes_scope_governor/universe.py` | Governed universe feed |
+| `scripts/lib/hermes_scope_governor/watchlist_lifecycle.py` | Advisory lifecycle stages + conviction |
+| `scripts/lib/hermes_scope_governor/watchlist_health.py` | Composite health score + promotion gate |
 | `config/hermes_scope_governor.yaml` | Tunable rails + scoring weights |
+| `config/hermes_watchlist_lifecycle.yaml` | Health weights, watch stage, promotion floor |
 
 ### Cron
 
@@ -72,7 +75,7 @@ Inputs (portfolio, outcomes, social, regime, events)
 - Fresh catalyst (< 48h)
 - Active watchlist status
 - Capped fresh directive hit
-- **Outcome promotion:** edge score ≥ `hot_min_score` (default 65) with graft-gate `promote_eligible`
+- **Outcome promotion:** edge score ≥ `hot_min_score` (default 65) with graft-gate `promote_eligible`, **and** watchlist health ≥ `promote_floor` (62) when `block_weak_outcome_promotions` is enabled (see `HERMES_WATCHLIST_LIFECYCLE.md`)
 
 ### S2 triggers (Warm)
 
@@ -90,14 +93,16 @@ Inputs (portfolio, outcomes, social, regime, events)
 - Minimum 3 graded outcomes before demotion/promotion gates apply
 - Single wins cannot promote without `promote_hit_rate` threshold
 - `max_outcome_promotions: 25` per run
+- **Watchlist health gate (Phase 2):** outcome S1 claims blocked when health &lt; 62, `graded_n &lt; 3`, or `confidence_tier = sparse_data`; logged as `blocked_promotion` in `hermes_watchlist_lifecycle_audit.jsonl`
 
 ## Outputs
 
 1. **Tier assignment** on every watchlist symbol (`scope_tier`)
 2. **Audit log** — `scope_governor_audit` (run_id, action, from/to, reason + edge evidence)
 3. **Governed universe feed** — `data/runtime/hermes_governed_universe.json`
-4. **Watchlist lifecycle snapshot** — `data/runtime/hermes_watchlist_lifecycle.json` (stages + conviction; see `HERMES_WATCHLIST_LIFECYCLE.md`)
-5. **API** — `GET /api/v2/hermes/scope-governor` (+ `watchlist_lifecycle`, override POST)
+4. **Watchlist lifecycle snapshot** — `data/runtime/hermes_watchlist_lifecycle.json` (stages, conviction, **health score**, 14d `health_history`, `blocked_promotions`; see `HERMES_WATCHLIST_LIFECYCLE.md`)
+5. **Holdings lifecycle snapshot** — `data/runtime/hermes_holdings_lifecycle.json` (see `HERMES_HOLDINGS_LIFECYCLE.md`)
+6. **API** — `GET /api/v2/hermes/scope-governor` (+ `watchlist_lifecycle`, override POST)
 
 ## Closed-loop feedback
 
@@ -169,9 +174,12 @@ tail -f logs/safe_flock_events.jsonl | rg hermes_scope
 - [ ] Event feeder reactivates S3 names within minutes of catalyst
 - [ ] Maturity gate `governor_active` ≥ 1 run/24h
 - [ ] `GET /api/v2/hermes/scope-governor` returns heat counts + recent audit
+- [ ] Weak-health symbols with high edge appear in `watchlist_lifecycle.blocked_promotions`, not in `want` outcome claims
+- [ ] Closed Loop panel shows watchlist health column + 7d trend (see `HERMES_WATCHLIST_LIFECYCLE.md` §9)
 
 ## Tests
 
 ```bash
 python3 -m unittest tests.test_hermes_scope_governor -v
+python3 -m unittest tests.test_watchlist_lifecycle -v
 ```

@@ -64,5 +64,5 @@ Refreshed on each Scope Governor tick (`:07/:37`) and on `GET /api/v2/hermes/hol
 ## Related
 
 - `HERMES_SCOPE_GOVERNOR.md` — S0 pins
-- `HERMES_WATCHLIST_LIFECYCLE.md` — non-holding watchlist symbols
+- `HERMES_WATCHLIST_LIFECYCLE.md` — non-holding watchlist symbols (Phase 2 health + promotion gate)
 - `OUTCOME_BUS_IMPLEMENTATION.md` — `by_symbol`, `feedback_to_governor`
