@@ -40,7 +40,7 @@ NOT a replacement for the direct Schwab integration, and it introduces **no trad
 | API: `GET /api/v2/snaptrade/status`, `POST /api/v2/snaptrade/credentials` | ✅ shipped | status (masked) + save keys |
 | `scripts/brokers/snaptrade_connect.py` | ✅ shipped | `register` (mint userSecret) + `login` (brokerage link URL) + `status` |
 | `scripts/snaptrade_sync.py` | ✅ shipped | pull mapped accounts → `normalize_positions` → merge → `protected_holdings_write`. **Dry run unless `--apply`.** |
-| `scripts/snaptrade_activity_ingest.py` | required for Fidelity activity | pull mapped account activity → `trade_transactions` ledger. **Dividend cash receipts, dividend reinvestments, sells, buys, and interest do not come from `snaptrade_sync.py`; run this activity ingest with `--apply` to persist them.** |
+| `scripts/snaptrade_activity_ingest.py` | ✅ shipped + cron'd | pull mapped account activity → `trade_transactions` ledger. **Dividend cash receipts, dividend reinvestments, sells, buys, and interest do not come from `snaptrade_sync.py`.** Scheduled daily 07:20 ET Mon–Sat (`--apply`, flock, `logs/snaptrade_activity_ingest.log`) — Fidelity posts the ledger overnight, so the morning pull lands the prior day's activity before the 07:30 daily report. Idempotent (delete-and-replace within `import_source='snaptrade_activity'`). |
 | `config/snaptrade_accounts.json` | ✅ shipped (empty) | SnapTrade `accountId` → internal `account_key` map (only mapped accounts are synced) |
 
 ## Data flow
