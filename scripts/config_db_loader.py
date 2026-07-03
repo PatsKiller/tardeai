@@ -154,32 +154,9 @@ def upsert_config_document(config_key, content, config_type, source_path=None,
         return "inserted"
 
 
-def mirror_holdings():
-    """Snapshot holdings.json into holdings_json_mirror table. Read-only mirror."""
-    holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    if not holdings_path.exists():
-        print("  [holdings-mirror] holdings.json not found")
-        return
-    content = json.loads(holdings_path.read_text())
-    checksum = _checksum(content)
-    value = content.get("portfolio_totals", {}).get("total_value", 0)
-    positions = len(content.get("holdings", content.get("positions", [])))
-
-    conn = _get_conn()
-    cur = conn.cursor()
-    # Check if latest mirror matches current checksum
-    cur.execute("SELECT checksum FROM holdings_json_mirror ORDER BY snapshot_at DESC LIMIT 1")
-    last = cur.fetchone()
-    if last and last[0] == checksum:
-        conn.close()
-        return  # No change
-    cur.execute("""
-        INSERT INTO holdings_json_mirror (content, checksum, portfolio_value, position_count)
-        VALUES (%s, %s, %s, %s)
-    """, (json.dumps(content, default=str), checksum, value, positions))
-    conn.commit()
-    conn.close()
-    print(f"  [holdings-mirror] Mirrored: ${value:,.0f}, {positions} positions")
+# mirror_holdings() retired 2026-07-03: it only ran via this module's __main__ smoke test, so the
+# holdings_json_mirror table silently froze at 2026-05-09. Nothing consumed it; the canonical
+# snapshot chain is holdings.json (+ raw_snapshots / ticker_snapshot_history for point-in-time reads).
 
 
 if __name__ == "__main__":
@@ -187,5 +164,4 @@ if __name__ == "__main__":
     print("Testing config_db_loader...")
     result = get_config("test_nonexistent", fallback_path="config/thesis.json")
     print(f"  Fallback test: {'OK' if result else 'FAILED'}")
-    mirror_holdings()
     print("Done.")

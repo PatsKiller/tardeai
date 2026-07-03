@@ -164,17 +164,13 @@ def _execute(sql: str, params=None, fetch: str = None):
 # ── HOLDINGS ─────────────────────────────────────────────────────────────────
 
 def load_holdings(state_dir: Path) -> Dict:
-    """Load portfolio holdings. Returns full portfolio dict."""
-    if USE_DB:
-        rows = _execute(
-            "SELECT data FROM holdings ORDER BY as_of DESC LIMIT 1",
-            fetch="one"
-        )
-        if rows and rows.get("data"):
-            return rows["data"]
-        print("  [db_adapter] No holdings in DB — falling back to JSON")
+    """Load portfolio holdings from canonical holdings.json.
 
-    # JSON fallback
+    The DB `holdings` table was retired 2026-07-03: its writer stopped running 2026-04-19,
+    so the DB-first read here served a months-stale portfolio to every USE_DB caller
+    (portfolio_yaml_advisor et al.). holdings.json is the single source of truth — it is
+    what the brokers' syncs write through protected_holdings_write.
+    """
     path = Path(state_dir) / "holdings.json"
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -182,20 +178,7 @@ def load_holdings(state_dir: Path) -> Dict:
 
 
 def save_holdings(portfolio: Dict, state_dir: Path) -> None:
-    """Save portfolio holdings."""
-    if USE_DB:
-        as_of = portfolio.get("as_of", "")
-        result = _execute(
-            """INSERT INTO holdings (as_of, data)
-               VALUES (%s, %s)
-               ON CONFLICT (as_of) DO UPDATE SET data = EXCLUDED.data""",
-            (as_of, json.dumps(portfolio, default=str))
-        )
-        if result is not None:
-            return
-        print("  [db_adapter] DB save failed — writing JSON backup")
-
-    # JSON (always write on Windows; fallback on Linux)
+    """Save portfolio holdings to canonical holdings.json (DB mirror retired 2026-07-03)."""
     path = Path(state_dir) / "holdings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.

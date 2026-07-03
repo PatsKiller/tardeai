@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 - Retire stale holdings DB mirrors; all readers on canonical holdings.json
+
+The `holdings` table (writer dead since 2026-04-19) and `holdings_json_mirror`
+(dead since 2026-05-09) were serving months-stale portfolios to live consumers:
+holdings_llm_refresh daily cron, hermes_top20_external_intel budget tiering,
+hermes_research_scope_audit, db_adapter.load_holdings (USE_DB path), and
+intel_query's heat fallback (which queried columns the table never had).
+All repointed to data/portfolios/state/holdings.json; mirror writer removed;
+tables renamed *_retired_20260703 and latest_holdings view dropped (both
+reversible — view def: SELECT data FROM holdings ORDER BY as_of DESC LIMIT 1).
+
 ## 2026-07-03 - Holdings lifecycle Phase 2: stop weight 30%, confidence, UI stop column
 
 Holdings health uses hot-tier stop metrics + R-left penalty, confidence discount,

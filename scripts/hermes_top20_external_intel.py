@@ -81,17 +81,18 @@ def _recent(conn, symbol, lane):
 def _trigger_context(conn):
     cur = conn.cursor()
     ctx = {"holdings": set(), "proposals": set(), "directive": set()}
+    # held-symbol set from canonical holdings.json — the latest_holdings VIEW was retired
+    # 2026-07-03 (it read the dead `holdings` table, frozen at 2026-04-19, so budget tiering
+    # treated current positions as not-held for months).
     try:
-        cur.execute("SELECT data FROM latest_holdings")
-        row = cur.fetchone()
-        if row and row[0]:
-            d = row[0] if isinstance(row[0], (list, dict)) else json.loads(row[0])
-            items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
-            for it in items:
-                if isinstance(it, dict):
-                    s = (it.get("symbol") or it.get("ticker") or "").upper().strip()
-                    if s and s not in ("CASH", "USD"):
-                        ctx["holdings"].add(s)
+        _hp = Path(__file__).resolve().parents[1] / "data" / "portfolios" / "state" / "holdings.json"
+        d = json.loads(_hp.read_text()) if _hp.exists() else {}
+        items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
+        for it in items:
+            if isinstance(it, dict) and not it.get("is_cash"):
+                s = (it.get("symbol") or it.get("ticker") or "").upper().strip()
+                if s and s not in ("CASH", "USD"):
+                    ctx["holdings"].add(s)
     except Exception:
         pass
     for key, sql in [
