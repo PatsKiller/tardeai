@@ -84,6 +84,15 @@ scheduled pass. First run baselines silently; CLI: dry-run default, `--apply`, `
 Root cause this closes: SMCI bought 2026-07-03 12:33 still showed the prior night's
 "zero position" narrative (advisory-only; no order surface).
 
+## Failed-LLM narrative guard
+
+`run_synthesis` skips the upsert entirely when every LLM lane fails (raw starts with
+"LLM error") — the prior good synthesis stays in place instead of being clobbered with the
+error string. The items API additionally filters `synthesis_narrative ILIKE 'LLM error:%'`
+out of the `fs` join. Backlog from the Apr 29 – May 8 2026 outage (404 rows, e.g. ANET's
+65-day-old error note) was purged via `scripts/purge_error_synthesis.py` (backup → delete →
+re-enqueue Hermes-top-200 overlap only, capped).
+
 ## Propose Entry modal
 
 **Component:** `apps/command-center-v3/src/components/WatchlistProposeModal.tsx`

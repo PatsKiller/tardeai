@@ -5189,7 +5189,9 @@ def _wl_items(query: dict = None):
         FROM picked p
         LEFT JOIN LATERAL (SELECT * FROM watchlist_strategy_cards t WHERE t.symbol = p.symbol LIMIT 1) sc ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_research_cards t WHERE t.symbol = p.symbol LIMIT 1) rc ON true
-        LEFT JOIN LATERAL (SELECT * FROM watchlist_final_synthesis t WHERE t.symbol = p.symbol LIMIT 1) fs ON true
+        -- failed-LLM artifacts ("LLM error: …") never surface as CIO notes (purged 2026-07-03; guard in run_synthesis)
+        LEFT JOIN LATERAL (SELECT * FROM watchlist_final_synthesis t WHERE t.symbol = p.symbol
+                           AND (t.synthesis_narrative IS NULL OR t.synthesis_narrative NOT ILIKE 'LLM error:%%') LIMIT 1) fs ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_analysis_maturity t WHERE t.symbol = p.symbol LIMIT 1) am ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_symbol_master t WHERE t.symbol = p.symbol LIMIT 1) sm ON true
         LEFT JOIN LATERAL (SELECT * FROM symbol_profiles t WHERE upper(t.symbol) = upper(p.symbol) LIMIT 1) sp ON true
