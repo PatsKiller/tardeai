@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
-import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
-import { exitLadder, planWarnings, MONITOR_RULES } from '../lib/exitLadder'
+import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
-import FibConfluencePanel from '../components/FibConfluencePanel'
-import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
-import HoldingReportLinks from '../components/HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
-import { watchlistReportEligible } from '../lib/reportLinks'
-import { EvidenceBlock } from '../components/EvidenceBlock'
+import WatchlistCard from '../components/WatchlistCard'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -24,27 +19,10 @@ const RED = '#ef4444'
 const AMBER = '#f59e0b'
 const BLUE = '#60a5fa'
 const PURPLE = '#a855f7'
-const TEAL = '#14b8a6'
-
-function watchlistNeedsRefresh(it: any, stale: boolean) {
-  if (stale) return true
-  if (it.final_synthesis_status === 'pending') return true
-  return ['maria_status', 'steph_status', 'risk_status'].some(k => {
-    const s = it[k]
-    return s && String(s).toLowerCase() !== 'completed'
-  })
-}
-
 const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }
-const metricBox: React.CSSProperties = { background: 'rgba(15,23,42,.58)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9, padding: '8px 10px', minHeight: 52 }
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: TEXT0 }
 
-const advColor = (f?: string) => f === 'caution' ? RED : f === 'favorable' ? GREEN : MUTED
-const trendBadge = (t?: string) => (({ bullish: GREEN, bearish: RED, neutral: AMBER, unknown: MUTED } as any)[(t || '').toLowerCase()] || MUTED)
-const llmMeta = (lane?: string) => (({ grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' } } as any)[lane || ''] || { label: lane || 'LLM', color: MUTED })
-const originColor = (o?: string) => { const k = (o || '').toLowerCase(); if (k.includes('directive') || k === 'operator') return PURPLE; if (k === 'hermes') return '#14b8a6'; if (k.includes('social')) return AMBER; if (k.includes('agent')) return GREEN; if (k.includes('portfolio')) return '#eab308'; return BLUE }
-const originLabel = (o?: string) => ({ trade_ai_screener: 'Screener', agent_discovery: 'AI', operator: 'Operator', hermes: 'Hermes', portfolio: 'Portfolio', social: 'Social' } as any)[o || ''] || (o || 'screener')
-const tierColor = (t?: string) => (({ core: GREEN, trusted: '#84cc16', probationary: AMBER, candidate: MUTED, demoted: RED } as any)[t || ''] || MUTED)
+
 // A directive's IDENTITY: a ticker directive is identified by its SYMBOL (label is just its list
 // membership, often the generic "Watchlist"); a sector/trend directive is identified by its theme label.
 const dirName = (d: any) => d.kind === 'ticker' ? (d.symbol || d.label || '—') : (d.label || d.kind)
@@ -56,30 +34,8 @@ const dirList = (d: any) => {
   return l
 }
 
-function ago(v: any) {
-  if (!v) return ''
-  const t = new Date(v).getTime()
-  if (!Number.isFinite(t)) return ''
-  const h = Math.round((Date.now() - t) / 36e5)
-  if (h < 1) return 'just now'
-  if (h < 48) return `${h}h ago`
-  return `${Math.round(h / 24)}d ago`
-}
-function freshnessColor(v: any) { if (!v) return DIM; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return DIM; const h = (Date.now() - t) / 36e5; if (h <= 4) return GREEN; if (h <= 24) return AMBER; return RED }
-// AI enrichment runs every ~30 min (market hrs) — green only within 1h, matching the stale flag. (Validated is daily → keeps freshnessColor.)
-function enrichColor(v: any) { if (!v) return DIM; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return DIM; const h = (Date.now() - t) / 36e5; if (h <= 1) return GREEN; if (h <= 24) return AMBER; return RED }
-function recColor(v: any) { const s = String(v ?? '').toUpperCase(); if (s.includes('BUY') || s.includes('ACCUMULATE') || s.includes('WATCH')) return GREEN; if (s.includes('HOLD') || s.includes('WAIT')) return AMBER; if (s.includes('AVOID') || s.includes('SELL')) return RED; return MUTED }
-function money(v: any) { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—' }
-function num(v: any) { const n = Number(v); return Number.isFinite(n) ? n : null }
-
 const Pill = ({ text, color, tip, strong = false }: any) => (
   <span title={tip} style={{ fontSize: strong ? 10.5 : 9.5, fontWeight: strong ? 800 : 700, padding: strong ? '3px 8px' : '2px 7px', borderRadius: 5, background: color + '22', color, border: `1px solid ${color}66`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
-)
-const Metric = ({ label, value, color = TEXT0 }: { label: string; value: any; color?: string }) => (
-  <div style={metricBox}>
-    <div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 800 }}>{label}</div>
-    <div style={{ fontSize: 12, color, fontWeight: 900, marginTop: 4, lineHeight: 1.1 }}>{value || '—'}</div>
-  </div>
 )
 
 const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
@@ -255,8 +211,6 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       .sort((a, b) => (isStarred(b) ? 1 : 0) - (isStarred(a) ? 1 : 0))
   }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, search, paMap, advMap, directives, outMap])
 
-  const freshness = (it: any) => it.bucket ? it.bucket : (it.in_directive_watch ? 'standing' : '')
-
   const pageCount = Math.max(1, Math.ceil(visible.length / PER_PAGE))
   const curPage = Math.min(page, pageCount - 1)
   const pageItems = visible.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
@@ -371,171 +325,28 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
         })() : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(620px, 1fr))', gap: 16, paddingRight: 4 }}>
             {pageItems.map((it: any) => {
-              const a = advMap[it.symbol]
-              const fr = freshness(it)
-              const enriched = !!it.last_enriched_at
-              const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 1 * 3600 * 1000
-              const rsi = it.rsi != null ? Number(it.rsi) : null
-              const tcol = trendBadge(it.trend)
-              const sc = cardMap[it.symbol]
-              const pa = paMap[it.symbol] ?? {}
-              const street = Number(pa.target) > 0 ? Number(pa.target) : null
-              const entry = it.entry_limit != null ? Number(it.entry_limit) : null
-              const stop = it.entry_stop != null ? Number(it.entry_stop) : null
-              const planTarget = it.entry_target != null ? Number(it.entry_target) : null
-              const rr = it.entry_rr != null ? Number(it.entry_rr) : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
-              const ladder = entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null
-              const warns = entry != null || stop != null ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa.upside != null ? Number(pa.upside) : null }) : []
-              const hasPlan = entry != null && stop != null   // a real entry/stop plan exists → make it stand out
-              const llms = extMap[it.symbol] || []
               const symKey = String(it.symbol).toUpperCase()
-              const refreshState = refreshBusy[symKey]
-              const needsRefresh = watchlistNeedsRefresh(it, stale)
-              const refreshBtnStyle: React.CSSProperties = {
-                fontSize: 11, fontWeight: 800, padding: '7px 14px', borderRadius: 8,
-                border: `1.5px solid ${needsRefresh ? TEAL : GREEN}`,
-                background: needsRefresh ? 'rgba(20,184,166,.24)' : 'rgba(34,197,94,.16)',
-                color: needsRefresh ? '#5eead4' : '#86efac',
-                cursor: refreshState ? 'wait' : 'pointer',
-                opacity: refreshState ? 0.8 : 1,
-                whiteSpace: 'nowrap',
-                boxShadow: needsRefresh ? '0 0 12px rgba(20,184,166,.35)' : undefined,
-              }
+              const outcome = outMap[symKey]
               return (
-                <div key={it.id} onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
-                  style={{ background: hasPlan ? 'linear-gradient(180deg, rgba(22,52,42,.74), rgba(15,32,26,.7))' : 'linear-gradient(180deg, rgba(30,41,59,.74), rgba(15,23,42,.68))', border: hasPlan ? `1px solid ${GREEN}77` : '1px solid rgba(148,163,184,.22)', borderLeft: `4px solid ${it.directive_id ? PURPLE : originColor(it.origin_system)}`, borderRadius: 13, padding: 16, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: hasPlan ? `0 0 0 1px ${GREEN}44, 0 0 22px rgba(34,197,94,.18), 0 10px 28px rgba(0,0,0,.2)` : '0 10px 28px rgba(0,0,0,.18)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <button onClick={e => { e.stopPropagation(); toggleStar(it) }} title={isStarred(it) ? 'operator-starred — shows first + faster refresh; click to unstar' : 'star this symbol — always shows first + faster entry-plan refresh'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 17, padding: 0, lineHeight: 1, color: isStarred(it) ? '#fbbf24' : MUTED }}>{isStarred(it) ? '★' : '☆'}</button>
-                      {it.hermes_rank != null && <span title={`Hermes composite ${it.hermes_composite_score} · confidence ${it.hermes_score_components?._confidence ?? '—'} · coverage ${it.hermes_score_components?._coverage ?? '—'}`} style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(168,85,247,.22)', color: '#e9d5ff', cursor: 'help' }}>#{it.hermes_rank} · {Number(it.hermes_composite_score).toFixed(0)}</span>}
-                      <span style={{ fontWeight: 950, color: TEXT0, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
-                      {it.private_nontradeable && <span title={it.private_note} style={{ fontSize: 9.5, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,.2)', color: '#fca5a5', border: '1px solid #ef4444', cursor: 'help' }}>⚠ PRIVATE · {it.private_company} — NOT A PUBLIC TICKER</span>}
-                      {hasPlan && !it.private_nontradeable && <span title="entry plan ready — limit/stop/exit-ladder set" style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: GREEN + '26', color: '#bbf7d0', border: `1px solid ${GREEN}77` }}>🎯 PLAN</span>}
-                      <ProAnalystPill symbol={it.symbol} map={paMap} compact />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                      <button onClick={e => refreshSymbol(it.symbol, e)} disabled={!!refreshState}
-                        title="Refresh Finviz/RSI now + re-queue Maria → Steph → Risk → CIO synthesis (~15 min cron). Advisory-only."
-                        style={refreshBtnStyle}>
-                        {refreshState ? `↻ ${refreshState}` : '↻ Refresh'}
-                      </button>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? `$${Number(it.price).toFixed(2)}` : ''}</div>
-                        {it.change_pct != null && <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>{Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%</div>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {fvMap[it.symbol] && (() => {
-                    const fv = fvMap[it.symbol]
-                    const pc = (v: any) => v == null ? MUTED : Number(v) > 0 ? GREEN : Number(v) < 0 ? RED : MUTED
-                    const rsiC = fv.rsi == null ? MUTED : fv.rsi >= 70 ? RED : fv.rsi <= 30 ? GREEN : TEXT0
-                    const cell = (label: string, val: any, color: string, suffix = '') => (
-                      <span style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 8.5, color: MUTED, fontWeight: 700 }}>{label}</span>
-                        <span style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color }}>{val == null ? '—' : `${Number(val) > 0 && suffix ? '+' : ''}${Number(val).toFixed(suffix ? 1 : 0)}${suffix}`}</span>
-                      </span>
-                    )
-                    return (
-                      <div title="Finviz daily metrics" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '5px 10px', background: 'rgba(96,165,250,.07)', border: '1px solid rgba(96,165,250,.18)', borderRadius: 9 }}>
-                        {cell('RSI', fv.rsi, rsiC)}
-                        {cell('W', fv.perf_week, pc(fv.perf_week), '%')}
-                        {cell('M', fv.perf_month, pc(fv.perf_month), '%')}
-                        {cell('YTD', fv.perf_ytd, pc(fv.perf_ytd), '%')}
-                        {cell('vs50d', fv.sma50, pc(fv.sma50), '%')}
-                        <span style={{ fontSize: 8, color: MUTED, alignSelf: 'center' }}>finviz</span>
-                      </div>
-                    )
-                  })()}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(110px, 1fr))', gap: 8, padding: 10, background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10 }}>
-                    <Metric label="CIO View" color={recColor(it.latest_recommendation || pa.rec)} value={
-                      <span>
-                        {it.latest_recommendation || (pa.rec ? String(pa.rec).replace('_', ' ') : 'watch')}
-                        {it.models_agree === true && <span title={`Grok + ChatGPT agree (${it.grok_recommendation})`} style={{ fontSize: 8.5, color: GREEN, marginLeft: 5, fontWeight: 800 }}>✓ 2 models</span>}
-                        {it.models_agree === false && <span title={`Grok: ${it.grok_recommendation} · ChatGPT: ${it.chatgpt_recommendation} — took the more cautious`} style={{ fontSize: 8.5, color: AMBER, marginLeft: 5, fontWeight: 800 }}>⚠ models split</span>}
-                      </span>
-                    } />
-                    <Metric label="Confidence" value={it.research_confidence != null ? Number(it.research_confidence).toFixed(2) : it.hermes_score_components?._confidence ?? '—'} color={BLUE} />
-                    <Metric label="AI Enriched" value={ago(it.last_enriched_at) || 'pending'} color={enrichColor(it.last_enriched_at)} />
-                    <Metric label="Plan validated" value={ago(it.entry_planned_at) || ago(it.last_validated_at) || 'pending'} color={freshnessColor(it.entry_planned_at || it.last_validated_at)} />
-                    <Metric label="Entry Model" value={it.entry_model || '—'} color={PURPLE} />
-                    <Metric label="R:R" value={rr != null ? rr.toFixed(2) : '—'} color={rr != null && rr >= 2 ? GREEN : AMBER} />
-                    <Metric label="Limit" value={money(it.entry_limit)} color={hasPlan ? GREEN : MUTED} />
-                    <Metric label="Stop" value={money(it.entry_stop)} color={RED} />
-                  </div>
-
-                  {(it.synthesis_evidence?.length > 0 || (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')) && (
-                    <EvidenceBlock
-                      title="CIO structured evidence"
-                      evidence={it.synthesis_evidence}
-                      dataIDoubt={it.synthesis_data_i_doubt}
-                      compact
-                    />
-                  )}
-                  {it.synthesis_narrative_snip && (
-                    <div style={{ fontSize: 10.5, color: TEXT2, lineHeight: 1.45, fontStyle: 'italic' }}>
-                      {it.synthesis_narrative_snip}
-                    </div>
-                  )}
-
-                  {warns.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{warns.map((w, i) => <div key={i} style={{ fontSize: 11, color: w.color, fontWeight: 850 }}>⚠ {w.text}</div>)}</div>}
-                  {ladder && <div onClick={e => e.stopPropagation()} style={{ background: 'rgba(2,6,23,.38)', border: '1px solid rgba(148,163,184,.18)', borderRadius: 10, padding: '9px 11px' }}><div style={{ fontSize: 9.5, color: MUTED, fontWeight: 900, textTransform: 'uppercase' }}>Exit ladder · R = ${ladder.R.toFixed(2)}/sh</div>{ladder.steps.map((s, i) => <div key={i} style={{ fontSize: 11, marginTop: 3 }}><span style={{ color: GREEN, fontWeight: 900, fontFamily: 'monospace' }}>{s.label} {s.px.toFixed(2)}</span><span style={{ color: TEXT2 }}> — {s.action}</span></div>)}<div style={{ fontSize: 9.5, color: MUTED, marginTop: 5 }}>In-trade: {MONITOR_RULES}</div></div>}
-
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Pill text={originLabel(it.origin_system)} color={originColor(it.origin_system)} tip={it.provenance_reason || it.source} strong />
-                    {it.source_tier && <Pill text={it.source_tier} color={tierColor(it.source_tier)} />}
-                    {fr && <Pill text={fr} color={BLUE} tip="bucket / TTL" />}
-                    {it.directive_id && <Pill text="◆ directive" color={PURPLE} />}
-                    {(() => { const o = outMap[String(it.symbol).toUpperCase()]; if (!o) return null
-                      const sold = (o.closed_trades ?? 0) > 0, up = (o.last_pnl_pct ?? 0) >= 0, hUp = (o.unrealized_pnl_pct ?? 0) >= 0
-                      return <>
-                        {o.held && <Pill text={`● held ${hUp ? '+' : ''}${o.unrealized_pnl_pct ?? '?'}% unrl`} color={hUp ? BLUE : AMBER}
-                          tip={`currently held${o.held_shares ? ` · ${o.held_shares} sh` : ''}${o.held_since ? ` since ${String(o.held_since).slice(0, 10)}` : ''}${o.origin ? ` · origin: ${o.origin}` : ''} · unrealized $${o.unrealized_pnl ?? '?'} (monitoring till sale)`} />}
-                        {sold && <Pill text={`✓ sold ${up ? '+' : ''}${o.last_pnl_pct ?? '?'}%${o.closed_trades > 1 ? ` ·${o.closed_trades}×` : ''}${o.journaled ? ' 📓' : ''}`} color={up ? GREEN : RED}
-                          tip={`prior real closed trade(s)${o.origin ? ` · origin: ${o.origin}` : ''} · win rate ${o.win_rate_pct ?? '?'}% · total P&L $${o.total_pnl ?? '?'}${o.journaled ? ' · journaled' : ' · not yet journaled'}`} />}
-                      </> })()}
-                    {it.watch_lists && String(it.watch_lists).split(' · ').filter(Boolean).map((l: string) => <Pill key={l} text={`☰ ${l}`} color="#22d3ee" tip="watch list — filter by it above" />)}
-                    {it.in_portfolio && <Pill text="HELD" color="#ffa726" />}
-                    {it.entry_urgency && <Pill text={`${it.entry_urgency === 'ready' ? 'READY' : it.entry_urgency === 'near_entry' ? 'NEAR-ENTRY' : 'planned'} · ${it.entry_setup} · lim ${money(it.entry_limit)}`} color={it.entry_urgency === 'ready' ? GREEN : it.entry_urgency === 'near_entry' ? AMBER : MUTED} strong />}
-                    {llms.map((e: any, i: number) => { const m = llmMeta(e.lane); return <Pill key={`llm${i}`} text={`✦ ${m.label}`} color={m.color} tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} /> })}
-                  </div>
-
-                  {!enriched ? <div style={{ fontSize: 11, color: MUTED, fontStyle: 'italic' }}>awaiting enrichment…</div> : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{rsi != null && <Pill text={`RSI ${rsi.toFixed(0)}`} color={rsi >= 70 ? RED : rsi < 40 ? GREEN : BLUE} tip={it.setup_advisory} />}<Pill text={it.trend || 'unknown'} color={tcol} />{it.score != null && <Pill text={`score ${Number(it.score).toFixed(0)}`} color={it.watch_score_kind === 'strategy_qualified' ? GREEN : BLUE} />}{a && <Pill text={`${a.advisory_flag === 'caution' ? '⚠ ' : ''}${a.band}`} color={advColor(a.advisory_flag)} tip={a.note} />}{stale && <Pill text="technicals stale" color={AMBER} />}</div>}
-
-                  {(it.analysis_stage || it.maria_status || it.steph_status || it.risk_status || it.final_synthesis_status) && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>{it.analysis_stage && <Pill text={`stage ${it.analysis_stage}`} color={BLUE} />}{it.maria_status && <Pill text={`Maria ${it.maria_status}`} color={it.maria_status === 'completed' ? GREEN : AMBER} />}{it.steph_status && <Pill text={`Steph ${it.steph_status}`} color={it.steph_status === 'completed' ? GREEN : AMBER} />}{it.risk_status && <Pill text={`Risk ${it.risk_status}`} color={it.risk_status === 'completed' ? GREEN : AMBER} />}{it.final_synthesis_status && <Pill text={`Final ${it.final_synthesis_status}`} color={it.final_synthesis_status === 'completed' ? GREEN : AMBER} />}</div>}
-
-                  {sc && <div style={{ borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>{sc.description && <div style={{ fontSize: 11.5, color: TEXT2, lineHeight: 1.45 }}>{sc.description}</div>}<div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>{sc.sector && <Pill text={`${sc.sector}${sc.sector_etf ? ` (${sc.sector_etf})` : ''}`} color={BLUE} tip={sc.industry || undefined} />}{sc.vs_sector_week != null && <Pill text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`} color={sc.vs_sector_week >= 0 ? GREEN : RED} />}{sc.analyst?.rating && <Pill text={`${String(sc.analyst.rating).replace('_', ' ')} · ${sc.analyst.opinions} analysts · target $${sc.analyst.target}${sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}`} color={String(sc.analyst.rating).includes('buy') ? GREEN : sc.analyst.rating === 'hold' ? AMBER : MUTED} />}</div>{(sc.news ?? []).slice(0, 4).map((n: any, i: number) => <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4 }}><span style={{ color: MUTED }}>{n.source} · {n.at ? `${Math.round((Date.now() - new Date(n.at).getTime()) / 36e5)}h` : ''} </span>{n.url ? <a href={n.url} target="_blank" rel="noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>{n.title}</a> : <span style={{ color: TEXT2 }}>{n.title}</span>}</div>)}</div>}
-                  {!sc && (it.profile_description || it.profile_sector) && <div style={{ borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>{it.profile_description && <div style={{ fontSize: 11.5, color: TEXT2, lineHeight: 1.45 }}>{it.profile_description}</div>}{it.profile_sector && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}><Pill text={it.profile_sector} color={BLUE} tip={it.profile_industry || undefined} />{it.profile_industry && <Pill text={it.profile_industry} color={MUTED} />}</div>}</div>}
-                  {it.catalyst_headline && <div style={{ fontSize: 10.5, color: TEXT2, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}><Pill text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`} color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? GREEN : AMBER} tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`} />{it.catalyst_url ? <a href={it.catalyst_url} target="_blank" rel="noreferrer" style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>{it.catalyst_headline}</a> : <span>{it.catalyst_headline}</span>}{it.catalyst_at && <span style={{ color: MUTED, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}</div>}
-                  <FibConfluencePanel symbol={it.symbol} />
-
-                  {/* One-click action row — real routes + the cross-page multi-LLM ensemble thread (on-demand) */}
-                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 9 }}>
-                    {watchlistReportEligible(it) && (
-                      <HoldingReportLinks
-                        symbol={it.symbol}
-                        entry={reportMap[String(it.symbol).toUpperCase()]}
-                        reportType={reportMap[String(it.symbol).toUpperCase()]?.report_type || 'symbol_watchlist'}
-                        compact
-                      />
-                    )}
-                    <button onClick={() => onDrill({ title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`, subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`, endpoint: `/api/v2/hermes/intel/${it.symbol}`, rows: [a ? { ...it, setup_advisory_note: a.note, setup_advisory_flag: a.advisory_flag, current_rsi: a.rsi, rsi_band: a.band } : it] })}
-                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${BLUE}66`, background: BLUE + '14', color: '#bfdbfe', cursor: 'pointer' }}>Open card →</button>
-                    <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
-                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${hasPlan ? GREEN : 'var(--border)'}`, background: hasPlan ? GREEN + '16' : 'var(--bg2)', color: hasPlan ? '#bbf7d0' : MUTED, textDecoration: 'none' }}>{hasPlan ? '🎯 Propose →' : 'Propose →'}</a>
-                    <a href={`/v3/rec-intel?symbol=${it.symbol}`} onClick={e => e.stopPropagation()}
-                      style={{ fontSize: 10.5, fontWeight: 700, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, textDecoration: 'none' }} title={`${it.symbol} recommendation intelligence — lineage, origin source, outcomes`}>Rec-Intel →</a>
-                    <button onClick={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
-                      style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 12px', borderRadius: 7, border: `1px solid ${PURPLE}66`, background: ensOpen[it.id] ? PURPLE + '22' : 'var(--bg2)', color: '#d8b4fe', cursor: 'pointer' }}>⚖ Ensemble {ensOpen[it.id] ? '▲' : '▾'}</button>
-                  </div>
-                  {ensOpen[it.id] && (
-                    <div onClick={e => e.stopPropagation()}>
-                      <EnsembleValidationInline targetType="signal" targetId={it.id} subject={it.symbol}
-                        content={`${it.symbol} watchlist — ${it.latest_recommendation || it.trend || ''} · ${it.profile_sector || ''} · ${(cardMap[it.symbol]?.description || it.profile_description || '').slice(0, 400)}`} />
-                    </div>
-                  )}
-                </div>
+                <WatchlistCard
+                  key={it.id}
+                  it={it}
+                  adv={advMap[it.symbol]}
+                  sc={cardMap[it.symbol]}
+                  pa={paMap[it.symbol]}
+                  outcome={outcome ? { ...outcome, sold: (outcome.closed_trades ?? 0) > 0 } : undefined}
+                  llms={extMap[it.symbol] || []}
+                  fv={fvMap[it.symbol]}
+                  reportEntry={reportMap[symKey]}
+                  paMap={paMap}
+                  ensOpen={!!ensOpen[it.id]}
+                  refreshState={refreshBusy[symKey]}
+                  isStarred={isStarred(it)}
+                  onDrill={onDrill}
+                  onToggleStar={e => { e.stopPropagation(); toggleStar(it) }}
+                  onRefresh={e => refreshSymbol(it.symbol, e)}
+                  onToggleEns={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
+                />
               )
             })}
           </div>
