@@ -35,7 +35,7 @@ NOT a replacement for the direct Schwab integration, and it introduces **no trad
 | File | Status | Role |
 |------|--------|------|
 | `scripts/brokers/snaptrade_credentials.py` | ✅ shipped | read/write/status of the client pair in the env file; write-only (status never returns the consumer key) |
-| `scripts/brokers/snaptrade_read.py` | ✅ shipped | read client: `list_accounts / holdings / balances / activities` + `normalize_positions`. Reads when configured. |
+| `scripts/brokers/snaptrade_read.py` | ✅ shipped | read client: `list_accounts / holdings / balances / activities` + `normalize_positions`. Reads when configured. `activities` uses the per-account `get_account_activities` endpoint (paginated); the legacy `transactions_and_reporting.get_activities` was retired by SnapTrade (410 Gone, 2026-07). |
 | UI: `SnapTradeCredsModal.tsx` + Schwab Accounts "**+ Connect SnapTrade**" button | ✅ shipped | paste keys → `POST /api/v2/snaptrade/credentials`; shows masked status + connection |
 | API: `GET /api/v2/snaptrade/status`, `POST /api/v2/snaptrade/credentials` | ✅ shipped | status (masked) + save keys |
 | `scripts/brokers/snaptrade_connect.py` | ✅ shipped | `register` (mint userSecret) + `login` (brokerage link URL) + `status` |

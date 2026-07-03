@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-02 - SnapTrade activity ingest fixed (retired endpoint + type-first classification)
+
+SnapTrade retired `transactions_and_reporting.get_activities` (410 Gone), which had been silently
+breaking `scripts/snaptrade_activity_ingest.py`. `snaptrade_read.activities()` now uses the
+per-account `account_information.get_account_activities` endpoint (paginated, raw-JSON parse —
+the SDK schema wrapper is unreliable for its `{"data": [...]}` body). Ingest classification now
+maps the structured activity `type` (BUY/SELL/DIVIDEND/REI/CONTRIBUTION) before falling back to
+description heuristics — fund names containing "DIVIDEND" (e.g. SCHD buys) previously
+misclassified as Dividend, and `REI` reinvestments fell through to generic Activity. Applied:
+33 rows for `fidelity_rollover_ira` (2026-06-18 → 06-30) under `import_source='snaptrade_activity'`.
+Known overlap: four `fidelity_manual` placeholder rows (06-18 XAR/HPE/GCTS/ARKX buys) now duplicate
+authoritative SnapTrade rows — pending operator decision on removal.
+
 ## 2026-07-02 - Hermes Phase 6: consumption gap closed (critique / stops / validation read Hermes back)
 
 The audit + external review both flagged AI Trade Critique, Stop Management, and the Validation

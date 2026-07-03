@@ -110,11 +110,31 @@ def balances(user: SnapTradeUser, account_id: str) -> list[dict]:
 
 def activities(user: SnapTradeUser, account_id: str, *, start: Optional[str] = None,
                end: Optional[str] = None) -> list[dict]:
-    """GET transactions/activities for one account (reconciliation)."""
+    """GET transactions/activities for one account (reconciliation).
+
+    Uses the per-account endpoint (get_account_activities); the old
+    transactions_and_reporting.get_activities was retired by SnapTrade (410 Gone). The body is an
+    object {"data": [...], "pagination": {...}} — the SDK schema wrapper is unreliable for it, so
+    parse the raw JSON response and page through until all rows in the window are collected.
+    """
+    import json as _json
     c = _client()
-    return _body(c.transactions_and_reporting.get_activities(
-        user_id=user.user_id, user_secret=user.user_secret, account_id=account_id,
-        start_date=start, end_date=end))
+    rows: list[dict] = []
+    offset, limit = 0, 1000
+    while True:
+        kwargs = dict(user_id=user.user_id, user_secret=user.user_secret, account_id=account_id,
+                      offset=offset, limit=limit)
+        if start:
+            kwargs["start_date"] = start
+        if end:
+            kwargs["end_date"] = end
+        resp = c.account_information.get_account_activities(**kwargs)
+        body = _json.loads(resp.response.data.decode("utf-8")) or {}
+        page = list(body.get("data") or [])
+        rows.extend(page)
+        if len(page) < limit:
+            return rows
+        offset += limit
 
 
 # ── Normalization to the holdings.json shape (pure, no network) ─────────────────────────────────────
