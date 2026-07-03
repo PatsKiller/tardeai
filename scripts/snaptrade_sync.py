@@ -176,6 +176,7 @@ def run(apply: bool = False) -> dict:
         return {"ok": False, "error": f"snaptrade read failed: {e}"}
 
     synced: dict[str, list[dict]] = {}
+    reported_totals: dict[str, float] = {}
     report = []
     for a in accounts:
         aid = str(a.get("id") or a.get("account_id") or "")
@@ -190,6 +191,14 @@ def run(apply: bool = False) -> dict:
         except Exception as e:
             report.append(f"  {key} ({aid}): read error — {e}")
             continue
+        # SnapTrade's own account-level balance — used below to keep reported_total_value fresh
+        # (it froze at the rollover-day value otherwise, tripping the repricer stale-guard forever)
+        try:
+            amt = ((a.get("balance") or {}).get("total") or {}).get("amount")
+            if amt is not None and float(amt) > 0:
+                reported_totals[key] = round(float(amt), 2)
+        except Exception:
+            pass
         # data-pull-pending guard: don't wipe a funded account with an empty post-link response
         synced_val = round(sum((p.get("market_value") or 0) for p in positions), 2)
         if synced_val <= EMPTY_SYNC_SKIP_THRESHOLD:
@@ -255,6 +264,18 @@ def run(apply: bool = False) -> dict:
     import schwab_position_sync as sps
     current = json.loads(HOLDINGS_PATH.read_text()) if HOLDINGS_PATH.exists() else {"holdings": []}
     merged = _merge(current, synced)
+    # refresh reported totals from SnapTrade's live balance (never freeze at a past as_of again)
+    from datetime import datetime as _dt
+    _today = _dt.now().strftime("%Y-%m-%d")
+    _summaries = merged.get("account_summaries") or {}
+    for _key, _amt in reported_totals.items():
+        _s = _summaries.get(_key)
+        if isinstance(_s, dict):
+            _s["reported_total_value"] = _amt
+            _s["reported_total_as_of"] = _today
+            _s["as_of"] = _today
+            _s.pop("reported_total_stale", None)
+            print(f"  reported_total refreshed: {_key} ${_amt:,.2f} as_of {_today}")
     result = sps.protected_holdings_write(merged, source="snaptrade",
                                           account_key=",".join(sorted(synced.keys())), protect_basis=False)
     print(f"holdings write: {result.get('status')} (wrote={result.get('wrote')})")
