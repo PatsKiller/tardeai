@@ -57,6 +57,19 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const { data: acctRaw } = useApi<any>('/api/v2/proposal-accounts', 120_000)
   const proposalAccounts = useMemo(() => parseProposalAccounts(acctRaw), [acctRaw])
+  const { data: holdRaw } = useApi<any>('/api/v2/portfolio/holdings', 300_000)
+  // symbol → per-account held rows, for held-aware sizing on cards
+  const heldMap = useMemo(() => {
+    const rows: any[] = holdRaw?.holdings ?? holdRaw?.data?.holdings ?? []
+    const m: Record<string, { account: string; shares: number; market_value: number }[]> = {}
+    for (const h of rows) {
+      const sym = String(h?.symbol || '').toUpperCase()
+      const shares = Number(h?.shares)
+      if (!sym || !Number.isFinite(shares) || shares <= 0) continue
+      ;(m[sym] ??= []).push({ account: String(h.account || ''), shares, market_value: Number(h.market_value) || 0 })
+    }
+    return m
+  }, [holdRaw])
 
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
@@ -403,6 +416,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   reportEntry={reportMap[symKey]}
                   paMap={paMap}
                   accounts={proposalAccounts}
+                  heldPositions={heldMap[symKey]}
                   ensOpen={!!ensOpen[it.id]}
                   refreshState={refreshBusy[symKey]}
                   isStarred={isStarred(it)}

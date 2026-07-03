@@ -128,6 +128,8 @@ export type WatchlistCardProps = {
   paMap: Record<string, any>
   /** Proposal accounts for per-account 1%-risk share sizing (from /api/v2/proposal-accounts). */
   accounts?: ProposalAccount[]
+  /** Current per-account positions in this symbol (from /api/v2/portfolio/holdings). */
+  heldPositions?: { account: string; shares: number; market_value: number }[]
   ensOpen: boolean
   refreshState?: string
   onDrill: (ctx: DrillContext) => void
@@ -142,7 +144,7 @@ export type WatchlistCardProps = {
 }
 
 export default function WatchlistCard({
-  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts,
+  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
@@ -229,22 +231,29 @@ export default function WatchlistCard({
     entryTag && !['ok', 'ready'].includes(entryTag) ? entryTag : null,
   ].filter(Boolean).join(' · ')
 
-  // Per-account 1%-risk sizing — same math as the Propose modal (risk budget ÷ stop distance, cash-capped).
+  // Per-account 1%-risk sizing — same math as the Propose modal (risk budget ÷ stop distance,
+  // cash-capped) — with held-position awareness: an existing position in the account renders as
+  // "holds N sh · add ~M sh" so new risk reads as incremental, not fresh.
+  const heldFor = (key: string) => (heldPositions ?? []).find(h => h.account === key) ?? null
   const accountSizing = (hasPlan && entry != null && stop != null && entry > stop)
     ? (accounts ?? [])
         .map(a => ({ a, base: resolveSizingBase(a) }))
         .filter(x => x.base >= 1000)
         .map(x => ({
+          key: x.a.account_key,
           name: x.a.display_name || acctLabel(x.a.account_key),
+          held: heldFor(x.a.account_key),
           pos: computeRiskSizedShares({
             sizingBase: x.base, equity: resolveEquity(x.a), entry, stop,
             target: planTarget ?? entry, riskPct: 1,
           }),
         }))
-        .filter(x => x.pos.shares > 0)
+        .filter(x => x.pos.shares > 0 || x.held)
         .sort((l, r) => r.pos.sizingBase - l.pos.sizingBase)
         .slice(0, 3)
     : []
+  // Positions in accounts the sizing line doesn't cover (e.g. below cash floor or unsized).
+  const heldElsewhere = (heldPositions ?? []).filter(h => !accountSizing.some(x => x.key === h.account))
 
   const reasoning = actionReasoning({ it, pa, adv, action, hasPlan, rr, stale, enriched })
   const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt, adv })
@@ -506,11 +515,29 @@ export default function WatchlistCard({
         )}
         {accountSizing.length > 0 ? (
           <div
-            title={'1% of each account\'s sizing base (cash / buying power, never equity) ÷ stop distance, capped by available cash — same math as the Propose modal.'}
+            title={'1% of each account\'s sizing base (cash / buying power, never equity) ÷ stop distance, capped by available cash — same math as the Propose modal. "holds" = current position in that account; the add is incremental new risk on top of it.'}
             style={{ marginTop: 6, fontSize: 11.5, color: WL.text.secondary, lineHeight: 1.5 }}
           >
             <span style={{ color: WL.text.dim, fontWeight: 700 }}>Sizing @1% risk </span>
-            {accountSizing.map(x => `${x.name} ~${x.pos.shares.toLocaleString()} sh ($${(x.pos.investment / 1000).toFixed(1)}k)`).join(' · ')}
+            {accountSizing.map((x, i) => (
+              <span key={x.key}>
+                {i > 0 && ' · '}
+                {x.name}{' '}
+                {x.held && (
+                  <span style={{ color: WL.signal.amber, fontWeight: 700 }}>
+                    holds {Math.round(x.held.shares).toLocaleString()} sh (${(x.held.market_value / 1000).toFixed(1)}k)
+                  </span>
+                )}
+                {x.held && x.pos.shares > 0 && ' · add '}
+                {x.pos.shares > 0 && `~${x.pos.shares.toLocaleString()} sh ($${(x.pos.investment / 1000).toFixed(1)}k)`}
+              </span>
+            ))}
+            {heldElsewhere.length > 0 && (
+              <span style={{ color: WL.text.dim }}>
+                {' · also held: '}
+                {heldElsewhere.map(h => `${acctLabel(h.account)} ${Math.round(h.shares).toLocaleString()} sh`).join(', ')}
+              </span>
+            )}
           </div>
         ) : sizingHint ? (
           <div style={{ marginTop: 6, fontSize: 11, color: WL.text.dim, lineHeight: 1.45 }}>{sizingHint}</div>
