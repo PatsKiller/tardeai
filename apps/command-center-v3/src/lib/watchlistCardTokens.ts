@@ -51,7 +51,9 @@ export function heroStateStyle(verdict: CardVerdict, urgency: ActionUrgency) {
   if (verdict === 'READY' || urgency === 'green') {
     return { bg: 'rgba(45,212,191,.08)', border: 'rgba(45,212,191,.28)', accent: WL.signal.teal, rail: WL.signal.teal }
   }
-  if (verdict === 'FIX' || urgency === 'red') {
+  // Red is reserved for hard plan defects (no stop, R:R < 1). Advisory FIX states
+  // (thin edge, target-below-Street) carry amber urgency and get the amber treatment.
+  if (urgency === 'red' || (verdict === 'FIX' && urgency !== 'amber')) {
     return { bg: 'rgba(239,83,80,.07)', border: 'rgba(239,83,80,.25)', accent: WL.signal.red, rail: WL.signal.red }
   }
   if (verdict === 'STALE' || verdict === 'WAIT' || verdict === 'BUILD' || urgency === 'amber') {
