@@ -202,6 +202,9 @@ export default function WatchlistCard({
   const zoneHi = it.entry_zone_high != null ? Number(it.entry_zone_high) : null
   const hasZone = zoneLo != null && zoneHi != null && Number.isFinite(zoneLo) && Number.isFinite(zoneHi)
   const setupLabel = it.entry_setup ? String(it.entry_setup).replace(/_/g, ' ') : null
+  const urgencyLabel = it.entry_urgency
+    ? String(it.entry_urgency).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null
 
   const reasoning = actionReasoning({ it, pa, adv, action, hasPlan, rr, stale, enriched })
   const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt, adv })
@@ -294,6 +297,7 @@ export default function WatchlistCard({
     validatedVal ? `plan validated ${validatedVal}` : null,
     it.entry_model ? `model ${it.entry_model}` : null,
     setupLabel,
+    urgencyLabel,
   ].filter(Boolean).join(' · ')
 
   const monitorRuleShort = MONITOR_RULES.split('·')[0].trim()
@@ -332,6 +336,10 @@ export default function WatchlistCard({
           {provenanceText && (
             <div style={{ marginTop: 4, fontSize: 11.5, color: WL.text.dim, lineHeight: 1.4 }}>{provenanceText}</div>
           )}
+          <div style={{ marginTop: 5, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+            <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={false} />
+            {analystDivergent && <span style={{ fontSize: 10.5, color: WL.signal.red, fontWeight: 700 }}>CIO ≠ Street</span>}
+          </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
           <div style={{ ...numStyle, fontSize: 20, fontWeight: 800 }}>{it.price != null ? money(it.price) : '—'}</div>
@@ -485,8 +493,6 @@ export default function WatchlistCard({
           <span style={{ fontSize: 11.5, color: WL.text.dim }}>
             {convictionMeta}
           </span>
-          <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={!analystDivergent} />
-          {analystDivergent && <span style={{ fontSize: 11, color: WL.signal.red, fontWeight: 700 }}>CIO ≠ Street</span>}
         </div>
         <div title={dqTip} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: WL.text.secondary, marginTop: 9 }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: dqColor, flex: 'none' }} />
@@ -494,8 +500,8 @@ export default function WatchlistCard({
         </div>
       </Row>
 
-      {/* ⑤ Exit ladder — one line; actions behind "Plan detail" */}
-      {ladder && prominence.showLadder && (
+      {/* ⑤ Exit ladder — one line; actions behind "Plan detail". Always shown when a ladder exists. */}
+      {ladder && (
         <Row
           label="Exit ladder"
           right={<Expander open={ladderOpen} onToggle={() => setLadderOpen(v => !v)} label="Plan detail" />}
@@ -560,30 +566,30 @@ export default function WatchlistCard({
               {it.catalyst_at && <span style={{ color: WL.text.dim, marginLeft: 6 }}>{ago(it.catalyst_at)}</span>}
             </div>
           )}
-          {!fv && !it.catalyst_headline && companyDesc && (
+          {topNews && (
+            <div style={{ overflowWrap: 'anywhere' }}>
+              <span style={{ color: WL.text.dim, fontWeight: 700 }}>News </span>
+              <span style={{ color: WL.text.dim }}>{cleanNewsSource(topNews.source)}{topNews.at ? ` · ${ago(topNews.at)}` : ''} </span>
+              {topNews.url ? (
+                <a href={topNews.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={linkStyle}>{topNews.title}</a>
+              ) : topNews.title}
+            </div>
+          )}
+          {companyDesc && (
             <div style={{ color: WL.text.muted }}>{truncate(companyDesc, 140)}</div>
+          )}
+          {llms.length > 0 && (
+            <div style={{ fontSize: 11, color: WL.text.dim }}>
+              External intel current: {llms.map((e: any) => llmName(e.lane)).join(' · ')}
+            </div>
           )}
         </div>
         {ctxOpen && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: WL.text.secondary, lineHeight: 1.55 }}>
-            {companyDesc && (
+            {companyDesc && companyDesc.trim().length > 140 && (
               <div>
                 <span style={{ color: WL.text.dim, fontWeight: 700 }}>Company </span>
-                {truncate(companyDesc, 300)}
-              </div>
-            )}
-            {topNews && (
-              <div style={{ overflowWrap: 'anywhere' }}>
-                <span style={{ color: WL.text.dim, fontWeight: 700 }}>News </span>
-                <span style={{ color: WL.text.dim }}>{cleanNewsSource(topNews.source)}{topNews.at ? ` · ${ago(topNews.at)}` : ''} </span>
-                {topNews.url ? (
-                  <a href={topNews.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={linkStyle}>{topNews.title}</a>
-                ) : topNews.title}
-              </div>
-            )}
-            {llms.length > 0 && (
-              <div style={{ fontSize: 11, color: WL.text.dim }}>
-                External intel current: {llms.map((e: any) => llmName(e.lane)).join(' · ')}
+                {truncate(companyDesc, 400)}
               </div>
             )}
             <FibConfluencePanel symbol={it.symbol} />

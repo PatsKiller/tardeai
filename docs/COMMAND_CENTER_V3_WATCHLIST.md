@@ -18,12 +18,12 @@ banner is the only tinted element; the primary button the only solid one. Color 
 
 | Zone | Content | Default |
 |------|---------|---------|
-| ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), price/change, quiet Refresh | visible |
+| ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), colored Street rating `ProAnalystPill` (+ CIO ≠ Street note), price/change, quiet Refresh | visible |
 | ② Status banner | Verdict word + headline + one-line why (warning folded in) + primary CTA + one quiet secondary + ••• overflow menu | visible, dominant |
 | ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; exit-vs-Street + sizing note | visible |
-| ④ Conviction | CIO stance chip, confidence meter, models/validated/model meta, neutral `ProAnalystPill`, one data-health line (dot + worst flag, full list in tooltip) | visible |
-| ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts) | summary |
-| ⑥ Context | Technicals + catalyst lines; company / news / `FibConfluencePanel` / LLM lanes behind "More" | 2 lines |
+| ④ Conviction | CIO stance chip, confidence meter, models/validated/model/setup/urgency meta, one data-health line (dot + worst flag, full list in tooltip) | visible |
+| ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts); always shown when a ladder exists | summary |
+| ⑥ Context | Technicals, catalyst, news, company one-liner, external-intel lanes; full description + `FibConfluencePanel` behind "More" | visible |
 | ⑦ Due diligence | Weekly prospectus PDF/Word/↻ (`HoldingReportLinks`) with freshness · gen # · oversight verdict; obvious generate state when missing | visible |
 | ⑧ Evidence | CIO narrative + evidence + advisory detail behind "CIO evidence & narrative" | collapsed |
 
