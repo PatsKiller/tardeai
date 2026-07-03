@@ -4,6 +4,7 @@ import ProAnalystPill from './ProAnalystPill'
 import { exitLadder, planWarnings, MONITOR_RULES, type Ladder } from '../lib/exitLadder'
 import {
   deriveRecommendedAction,
+  actionProminence,
   rrTooltip,
   confidenceTooltip,
   planValidatedTooltip,
@@ -11,40 +12,15 @@ import {
   cioViewTooltip,
   dataDoubtTooltip,
   ladderStepTooltip,
+  watchlistNeedsRefresh,
   type PrimaryActionKind,
 } from '../lib/watchlistCardAction'
+import { WL, urgencyColor } from '../lib/watchlistCardTokens'
 import { EvidenceBlock } from './EvidenceBlock'
 import FibConfluencePanel from './FibConfluencePanel'
 import HoldingReportLinks from './HoldingReportLinks'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
-import { watchlistNeedsRefresh } from '../lib/watchlistCardAction'
 import { watchlistReportEligible } from '../lib/reportLinks'
-
-const TEXT0 = '#f8fafc'
-const TEXT2 = '#cbd5e1'
-const MUTED = '#94a3b8'
-const DIM = '#64748b'
-const GREEN = '#16a34a'
-const RED = '#dc2626'
-const AMBER = '#d97706'
-
-const NEUTRAL_TAG = {
-  background: 'rgba(30,41,59,.75)',
-  border: '1px solid rgba(71,85,105,.45)',
-  color: '#cbd5e1',
-} as const
-
-const cardPanel: React.CSSProperties = {
-  background: 'var(--bg1)',
-  border: '1px solid rgba(148,163,184,.22)',
-  borderRadius: 12,
-  padding: 16,
-  cursor: 'pointer',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-  boxShadow: '0 8px 24px rgba(0,0,0,.16)',
-}
 
 function ago(v: any) {
   if (!v) return ''
@@ -61,37 +37,24 @@ function money(v: any) {
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—'
 }
 
-function urgencyAccent(u: string): string | undefined {
-  if (u === 'red') return RED
-  if (u === 'amber') return AMBER
-  if (u === 'green') return GREEN
-  return undefined
-}
-
 function Tag({ text, tip }: { text: string; tip?: string }) {
   return (
     <span title={tip} style={{
       fontSize: 9.5, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
-      whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default', ...NEUTRAL_TAG,
+      whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default',
+      background: WL.tag.background, border: WL.tag.border, color: WL.tag.color,
     }}>{text}</span>
-  )
-}
-
-function MetricCell({ label, value, tip, warn }: { label: string; value: React.ReactNode; tip?: string; warn?: boolean }) {
-  return (
-    <div title={tip} style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 800 }}>{label}</div>
-      <div style={{
-        fontSize: 12, fontWeight: 800, marginTop: 3, lineHeight: 1.15, fontFamily: 'monospace',
-        color: warn ? RED : TEXT0,
-      }}>{value ?? '—'}</div>
-    </div>
   )
 }
 
 function ladderFocusIndex(ladder: Ladder | null): number {
   if (!ladder?.steps.length) return -1
   return ladder.steps.length > 1 ? 1 : 0
+}
+
+function ladderSummary(ladder: Ladder): string {
+  const focus = ladder.steps[ladderFocusIndex(ladder)]
+  return focus ? `${focus.label} ${focus.px.toFixed(2)}` : ''
 }
 
 export type WatchlistCardProps = {
@@ -117,7 +80,9 @@ export default function WatchlistCard({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
 }: WatchlistCardProps) {
-  const [techOpen, setTechOpen] = useState(false)
+  const [contextOpen, setContextOpen] = useState(false)
+  const [ladderOpen, setLadderOpen] = useState<boolean | null>(null)
+  const [rulesOpen, setRulesOpen] = useState(false)
 
   const enriched = !!it.last_enriched_at
   const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 3600 * 1000
@@ -134,8 +99,10 @@ export default function WatchlistCard({
     ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa?.upside != null ? Number(pa.upside) : null })
     : []
   const action = deriveRecommendedAction({ it, hasPlan, rr, warns, stale, enriched, entry, adv })
-  const accent = urgencyAccent(action.urgency)
+  const prominence = actionProminence(action, hasPlan)
+  const accent = urgencyColor(action.urgency)
   const focusIdx = ladderFocusIndex(ladder)
+  const ladderExpanded = ladderOpen ?? prominence.ladderDefaultOpen
 
   const cioLabel = it.latest_recommendation
     ? String(it.latest_recommendation).replace(/_/g, ' ')
@@ -147,7 +114,7 @@ export default function WatchlistCard({
   const validatedVal = ago(it.entry_planned_at) || ago(it.last_validated_at) || 'pending'
 
   const drillCtx: DrillContext = {
-    title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank} (${it.hermes_composite_score})` : ''}`,
+    title: `${it.symbol}${it.hermes_rank != null ? ` — Hermes #${it.hermes_rank}` : ''}`,
     subtitle: `${it.origin_system ?? it.source ?? ''} · ${it.status}`,
     endpoint: `/api/v2/hermes/intel/${it.symbol}`,
     rows: [adv ? { ...it, setup_advisory_note: adv.note, setup_advisory_flag: adv.advisory_flag, current_rsi: adv.rsi, rsi_band: adv.band } : it],
@@ -156,41 +123,40 @@ export default function WatchlistCard({
   const originLabel = ({ trade_ai_screener: 'Screener', agent_discovery: 'AI', operator: 'Operator', hermes: 'Hermes', portfolio: 'Portfolio', social: 'Social' } as Record<string, string>)[it.origin_system || ''] || (it.origin_system || 'screener')
 
   const statusTags: { text: string; tip?: string }[] = []
+  if (it.hermes_rank != null) statusTags.push({ text: `#${it.hermes_rank}`, tip: `Hermes composite ${it.hermes_composite_score}` })
   statusTags.push({ text: originLabel, tip: it.provenance_reason || it.source })
   if (it.source_tier) statusTags.push({ text: it.source_tier, tip: 'source tier' })
   if (it.directive_id) statusTags.push({ text: 'directive', tip: 'operator watch directive' })
   if (it.in_portfolio || outcome?.held) statusTags.push({ text: 'held', tip: outcome?.held ? `unrealized ${outcome.unrealized_pnl_pct ?? '?'}%` : 'in portfolio' })
-  const lists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim()).filter(Boolean)
-  if (lists.length === 1) statusTags.push({ text: lists[0], tip: 'watch list' })
-  else if (lists.length > 1) statusTags.push({ text: `+${lists.length} lists`, tip: lists.join(' · ') })
-  if (llms.length === 1) statusTags.push({ text: llms[0].lane || 'curated', tip: `Curated by ${llms[0].lane}` })
   const visibleTags = statusTags.slice(0, 4)
-
-  const rsi = it.rsi != null ? Number(it.rsi) : (fv?.rsi != null ? Number(fv.rsi) : null)
-  const techParts: string[] = []
-  if (rsi != null) techParts.push(`RSI ${rsi.toFixed(0)}`)
-  if (it.trend) techParts.push(String(it.trend))
-  if (adv?.band) techParts.push(`${adv.advisory_flag === 'caution' ? 'caution' : adv.band} band`)
-  if (it.score != null) techParts.push(`score ${Number(it.score).toFixed(0)}`)
-  if (stale) techParts.push('technicals stale')
-
-  const sectorLine = sc?.sector || it.profile_sector
-    ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' · ')
-    : null
 
   const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
     ? String(it.synthesis_data_i_doubt).trim() : ''
 
+  const riskLines: { text: string; severity: 'red' | 'amber'; doubt?: boolean }[] = []
+  for (const w of warns.slice(0, 1)) {
+    riskLines.push({ text: w.text, severity: w.color === WL.urgency.red ? 'red' : 'amber' })
+  }
+  if (dataDoubt) riskLines.push({ text: dataDoubt, severity: 'amber', doubt: true })
+  const sectorLine = sc?.sector || it.profile_sector
+    ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' · ')
+    : null
+  const hasContext = !!(sectorLine || it.catalyst_headline || it.synthesis_evidence?.length
+    || it.synthesis_narrative_snip || fv || !enriched)
+
+  const heroTextSize = prominence.heroScale === 'large' ? WL.hero.textLarge : WL.hero.textMedium
+  const metricColor = prominence.metricsMuted ? WL.text.dim : WL.text.primary
+
   const primaryBtnStyle = (kind: PrimaryActionKind): React.CSSProperties => {
     const solid = kind === 'propose' || kind === 'build'
-    const outlinePrimary = kind === 'adjust' || kind === 'review'
+    const outlineTrade = kind === 'adjust' || kind === 'review'
     return {
-      fontSize: 11, fontWeight: 800, padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
-      border: solid ? `1px solid ${GREEN}` : outlinePrimary ? `1px solid ${AMBER}` : '1px solid var(--border)',
-      background: solid ? GREEN : outlinePrimary ? 'rgba(217,119,6,.12)' : 'transparent',
-      color: solid ? '#fff' : outlinePrimary ? '#fcd34d' : MUTED,
+      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+      minWidth: 132,
+      border: solid ? `1px solid ${WL.urgency.green}` : outlineTrade ? `1px solid ${WL.urgency.amber}` : `1px solid ${WL.tag.border}`,
+      background: solid ? WL.urgency.green : outlineTrade ? 'rgba(217,119,6,.1)' : 'transparent',
+      color: solid ? '#fff' : outlineTrade ? '#fcd34d' : WL.text.muted,
       textDecoration: 'none',
-      whiteSpace: 'nowrap',
     }
   }
 
@@ -198,288 +164,289 @@ export default function WatchlistCard({
     e.stopPropagation()
     if (action.primaryKind === 'refresh') onRefresh(e)
     else if (action.primaryKind === 'intel' || action.primaryKind === 'review') onDrill(drillCtx)
-    else if (action.primaryKind === 'propose' || action.primaryKind === 'adjust' || action.primaryKind === 'build') {
+    else if (['propose', 'adjust', 'build'].includes(action.primaryKind)) {
       window.location.href = `/v3/trading?symbol=${it.symbol}`
     }
   }
+
+  const PrimaryCta = () => (
+    ['propose', 'build', 'adjust'].includes(action.primaryKind) ? (
+      <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()} style={primaryBtnStyle(action.primaryKind)}>
+        {action.primaryLabel}
+      </a>
+    ) : (
+      <button onClick={handlePrimary} style={primaryBtnStyle(action.primaryKind)}>{action.primaryLabel}</button>
+    )
+  )
 
   return (
     <div
       onClick={() => onDrill(drillCtx)}
       style={{
-        ...cardPanel,
-        borderLeft: accent ? `4px solid ${accent}` : '4px solid transparent',
+        background: WL.card.bg,
+        border: WL.card.border,
+        borderRadius: WL.card.radius,
+        padding: 16,
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        boxShadow: WL.card.shadow,
       }}
     >
-      {/* Header */}
+      {/* 1. Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
           <button
             onClick={e => { e.stopPropagation(); onToggleStar(e) }}
-            title={isStarred ? 'Unstar' : 'Star — shows first + faster refresh'}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1, color: isStarred ? '#fbbf24' : MUTED }}
+            title={isStarred ? 'Unstar' : 'Star for priority refresh'}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, padding: 0, color: isStarred ? WL.text.secondary : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
-          <span style={{ fontWeight: 950, color: TEXT0, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
-          {it.hermes_rank != null && (
-            <span
-              title={`Hermes #${it.hermes_rank} · composite ${it.hermes_composite_score}`}
-              style={{ fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 4, ...NEUTRAL_TAG }}
-            >#{it.hermes_rank}</span>
-          )}
+          <span style={{ fontWeight: 950, color: WL.text.primary, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
           <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral />
           {it.private_nontradeable && (
-            <span title={it.private_note} style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: RED, border: `1px solid ${RED}55`, background: 'rgba(220,38,38,.12)' }}>
+            <span title={it.private_note} style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: WL.urgency.red, border: `1px solid ${WL.urgency.red}55`, background: 'rgba(220,38,38,.1)' }}>
               PRIVATE
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 17, fontWeight: 900, color: TEXT0 }}>{it.price != null ? money(it.price) : '—'}</div>
-            {it.change_pct != null && (
-              <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? GREEN : RED }}>
-                {Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%
-              </div>
-            )}
-          </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: WL.text.primary }}>{it.price != null ? money(it.price) : '—'}</div>
+          {it.change_pct != null && (
+            <div style={{ fontSize: 12, fontWeight: 800, color: Number(it.change_pct) >= 0 ? WL.price.up : WL.price.down }}>
+              {Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%
+            </div>
+          )}
           <button
             onClick={e => { e.stopPropagation(); onRefresh(e) }}
             disabled={!!refreshState}
             title="Refresh Finviz/RSI + re-queue synthesis"
             style={{
-              fontSize: 9, fontWeight: 600, padding: '3px 8px', borderRadius: 5, cursor: refreshState ? 'wait' : 'pointer',
-              border: `1px solid ${needsRefresh ? AMBER + '66' : 'rgba(71,85,105,.5)'}`,
-              background: 'transparent', color: needsRefresh ? AMBER : DIM,
+              marginTop: 4, fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+              cursor: refreshState ? 'wait' : 'pointer', border: `1px solid ${WL.tag.border}`,
+              background: 'transparent', color: needsRefresh ? WL.urgency.amber : WL.text.dim,
             }}
-          >{refreshState ? `↻ ${refreshState}` : '↻ Refresh'}</button>
+          >{refreshState ? `↻ ${refreshState}` : '↻'}</button>
         </div>
       </div>
 
-      {/* Recommended action */}
-      <div style={{
-        padding: '10px 12px',
-        background: 'rgba(15,23,42,.55)',
-        borderLeft: accent ? `3px solid ${accent}` : '3px solid rgba(71,85,105,.4)',
-        borderRadius: 8,
-      }}>
-        <div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 800 }}>
-          Recommended action
+      {/* 2. Hero — recommended action + primary CTA */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          padding: '14px 14px 12px',
+          background: WL.hero.bg,
+          borderRadius: WL.body.radius,
+          border: `1px solid ${WL.hero.border}`,
+          borderLeft: accent ? `4px solid ${accent}` : `4px solid ${WL.hero.border}`,
+        }}
+      >
+        <div style={{
+          fontSize: WL.hero.labelSize, color: WL.text.muted, textTransform: 'uppercase',
+          letterSpacing: '.08em', fontWeight: 800,
+        }}>Recommended action</div>
+        <div style={{
+          fontSize: heroTextSize, fontWeight: 700, color: WL.text.primary,
+          marginTop: 6, lineHeight: 1.35,
+        }}>{action.text}</div>
+        {action.subtext && (
+          <div style={{ fontSize: WL.hero.subtextSize, color: WL.text.muted, marginTop: 4, lineHeight: 1.35 }}>{action.subtext}</div>
+        )}
+        <div style={{ marginTop: 12 }}>
+          <PrimaryCta />
         </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT0, marginTop: 4, lineHeight: 1.4 }}>{action.text}</div>
-        {action.subtext && <div style={{ fontSize: 10, color: MUTED, marginTop: 3, lineHeight: 1.35 }}>{action.subtext}</div>}
       </div>
 
-      {/* Key decision metrics */}
+      {/* 3–4. Plan metrics + conviction (single surface) */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-        gap: 10,
         padding: '10px 12px',
-        background: 'rgba(2,6,23,.32)',
-        border: '1px solid rgba(148,163,184,.15)',
-        borderRadius: 10,
+        background: WL.body.bg,
+        border: `1px solid ${WL.body.border}`,
+        borderRadius: WL.body.radius,
+        opacity: prominence.metricsMuted ? 0.72 : 1,
       }}>
-        <MetricCell label="Entry model" value={it.entry_model || '—'} />
-        <MetricCell label="R:R" value={rr != null ? rr.toFixed(2) : '—'} tip={rrTooltip(entry, stop, planTarget, rr)} warn={rr != null && rr < 1.5} />
-        <MetricCell label="Limit" value={money(it.entry_limit)} />
-        <MetricCell label="Stop" value={money(it.entry_stop)} warn={hasPlan && stop == null} />
-        <MetricCell label="Street" value={street != null ? money(street) : '—'} tip={pa?.n ? `${pa.n} analysts · mean target` : undefined} />
-      </div>
-
-      {/* Conviction block */}
-      <div style={{
-        padding: '8px 12px',
-        background: 'rgba(2,6,23,.28)',
-        border: '1px solid rgba(148,163,184,.12)',
-        borderRadius: 8,
-        fontSize: 10.5,
-        color: TEXT2,
-        lineHeight: 1.5,
-      }}>
-        <span title={cioViewTooltip(it)} style={{ cursor: 'help' }}>
-          <b style={{ color: MUTED, fontWeight: 700 }}>CIO</b> {cioLabel}
-        </span>
-        <span style={{ color: DIM, margin: '0 6px' }}>·</span>
-        <span title={confidenceTooltip(it)} style={{ cursor: 'help' }}>
-          <b style={{ color: MUTED, fontWeight: 700 }}>Conf</b> {confVal}
-        </span>
-        <span style={{ color: DIM, margin: '0 6px' }}>·</span>
-        <span title={enrichedTooltip(it)} style={{ cursor: 'help' }}>
-          <b style={{ color: MUTED, fontWeight: 700 }}>Enriched</b> {enrichVal}
-        </span>
-        <span style={{ color: DIM, margin: '0 6px' }}>·</span>
-        <span title={planValidatedTooltip(it)} style={{ cursor: 'help' }}>
-          <b style={{ color: MUTED, fontWeight: 700 }}>Validated</b> {validatedVal}
-        </span>
-        {it.models_agree === true && (
-          <span title={`Grok + ChatGPT agree (${it.grok_recommendation})`} style={{ marginLeft: 8, fontSize: 9.5, color: MUTED }}>✓ 2 models</span>
-        )}
-        {it.models_agree === false && (
-          <span title={`Grok: ${it.grok_recommendation} · ChatGPT: ${it.chatgpt_recommendation}`} style={{ marginLeft: 8, fontSize: 9.5, color: AMBER }}>⚠ models split</span>
-        )}
-      </div>
-
-      {/* Exit ladder — before status/tags per hierarchy */}
-      {ladder && (
-        <div onClick={e => e.stopPropagation()} style={{
-          background: 'rgba(2,6,23,.32)',
-          border: '1px solid rgba(148,163,184,.15)',
-          borderRadius: 10,
-          padding: '9px 11px',
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: 10,
         }}>
-          <div style={{ fontSize: 9, color: MUTED, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>
-            Exit ladder · R = ${ladder.R.toFixed(2)}/sh
-          </div>
-          {ladder.steps.map((s, i) => {
-            const active = i === focusIdx
+          {[
+            { label: 'Entry model', value: it.entry_model || '—' },
+            { label: 'R:R', value: rr != null ? rr.toFixed(2) : '—', tip: rrTooltip(entry, stop, planTarget, rr), warn: rr != null && rr < 1.5 },
+            { label: 'Limit', value: money(it.entry_limit) },
+            { label: 'Stop', value: money(it.entry_stop), warn: hasPlan && stop == null },
+          ].map(m => (
+            <div key={m.label} title={m.tip} style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 8, color: WL.text.muted, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 800 }}>{m.label}</div>
+              <div style={{
+                fontSize: 12, fontWeight: 800, marginTop: 3, fontFamily: 'monospace', lineHeight: 1.1,
+                color: m.warn ? WL.urgency.red : metricColor,
+              }}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{
+          marginTop: 10, paddingTop: 10, borderTop: `1px solid ${WL.body.border}`,
+          fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5,
+        }}>
+          <span title={cioViewTooltip(it)} style={{ cursor: 'help' }}><b style={{ color: WL.text.muted, fontWeight: 700 }}>CIO</b> {cioLabel}</span>
+          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
+          <span title={confidenceTooltip(it)} style={{ cursor: 'help' }}><b style={{ color: WL.text.muted, fontWeight: 700 }}>Conf</b> {confVal}</span>
+          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
+          <span title={enrichedTooltip(it)} style={{ cursor: 'help' }}><b style={{ color: WL.text.muted, fontWeight: 700 }}>Enriched</b> {enrichVal}</span>
+          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
+          <span title={planValidatedTooltip(it)} style={{ cursor: 'help' }}><b style={{ color: WL.text.muted, fontWeight: 700 }}>Validated</b> {validatedVal}</span>
+          {it.models_agree === true && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.dim }}>✓ 2 models</span>}
+          {it.models_agree === false && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.muted }}>models split</span>}
+        </div>
+      </div>
+
+      {/* Risk strip (merged warnings + data doubt) */}
+      {riskLines.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {riskLines.map((r, i) => {
+            const c = r.severity === 'red' ? WL.urgency.red : WL.urgency.amber
             return (
               <div
                 key={i}
-                title={ladderStepTooltip(s.label, s.px, s.action)}
+                title={r.doubt ? dataDoubtTooltip(r.text) : undefined}
                 style={{
-                  fontSize: 11, marginTop: i ? 4 : 0, padding: '4px 8px', borderRadius: 6,
-                  background: active ? 'rgba(51,65,85,.35)' : 'transparent',
-                  borderLeft: active ? `2px solid ${AMBER}` : '2px solid transparent',
-                  color: active ? TEXT0 : TEXT2,
+                  fontSize: 10, fontWeight: 650, color: c, padding: '6px 10px', borderRadius: 6,
+                  background: r.severity === 'red' ? 'rgba(220,38,38,.08)' : 'rgba(217,119,6,.08)',
+                  border: `1px solid ${c}33`, lineHeight: 1.4, cursor: r.doubt ? 'help' : 'default',
                 }}
               >
-                <span style={{ fontWeight: active ? 800 : 600, fontFamily: 'monospace' }}>{s.label} {s.px.toFixed(2)}</span>
-                <span style={{ color: MUTED, fontSize: 10 }}> — {s.action}</span>
+                ⚠ {r.doubt ? <><b>Data doubt</b> — {r.text}</> : r.text}
               </div>
             )
           })}
-          <div style={{ fontSize: 9, color: DIM, marginTop: 6 }}>In-trade: {MONITOR_RULES}</div>
         </div>
       )}
 
-      {/* Plan / risk warnings */}
-      {warns.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {warns.map((w, i) => (
-            <div key={i} style={{
-              fontSize: 10.5, fontWeight: 700, color: w.color === RED ? RED : AMBER,
-              padding: '6px 10px', borderRadius: 6,
-              background: w.color === RED ? 'rgba(220,38,38,.1)' : 'rgba(217,119,6,.1)',
-              border: `1px solid ${w.color === RED ? RED : AMBER}44`,
-            }}>⚠ {w.text}</div>
-          ))}
-        </div>
-      )}
-
-      {dataDoubt && (
-        <div
-          title={dataDoubtTooltip(dataDoubt)}
-          style={{
-            display: 'flex', gap: 8, alignItems: 'flex-start',
-            fontSize: 10.5, fontWeight: 650, color: AMBER,
-            padding: '7px 10px', borderRadius: 6,
-            background: 'rgba(217,119,6,.1)', border: `1px solid ${AMBER}44`,
-            lineHeight: 1.4, cursor: 'help',
-          }}
-        >
-          <span style={{ fontSize: 12, lineHeight: 1 }} aria-hidden>⚠</span>
-          <span><b style={{ fontWeight: 800 }}>Data doubt</b> — {dataDoubt}</span>
-        </div>
-      )}
-
-      {it.synthesis_evidence?.length > 0 && (
-        <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
-      )}
-
-      {it.synthesis_narrative_snip && (
-        <div style={{ fontSize: 10.5, color: TEXT2, lineHeight: 1.45, fontStyle: 'italic' }}>
-          {String(it.synthesis_narrative_snip).slice(0, 200)}{String(it.synthesis_narrative_snip).length > 200 ? '…' : ''}
-        </div>
-      )}
-
-      {/* Status tags */}
-      {visibleTags.length > 0 && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-          {visibleTags.map(t => <Tag key={t.text} text={t.text} tip={t.tip} />)}
-          {outcome?.sold && (
-            <Tag
-              text={`sold ${(outcome.last_pnl_pct ?? 0) >= 0 ? '+' : ''}${outcome.last_pnl_pct ?? '?'}%`}
-              tip={`Prior closed trade${outcome.closed_trades > 1 ? ` · ${outcome.closed_trades}×` : ''}`}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Technicals — collapsed */}
-      {(techParts.length > 0 || fv) && (
+      {/* 5. Exit ladder — compact / collapsible */}
+      {prominence.showLadder && ladder && (
         <div onClick={e => e.stopPropagation()}>
           <button
-            onClick={() => setTechOpen(v => !v)}
+            onClick={() => setLadderOpen(v => !(v ?? prominence.ladderDefaultOpen))}
             style={{
-              fontSize: 9.5, fontWeight: 700, padding: '4px 8px', borderRadius: 5, cursor: 'pointer',
-              border: '1px solid rgba(71,85,105,.45)', background: 'transparent', color: MUTED,
+              width: '100%', textAlign: 'left', fontSize: 10, fontWeight: 700, padding: '6px 10px',
+              borderRadius: 6, cursor: 'pointer', border: `1px solid ${WL.body.border}`,
+              background: WL.body.bg, color: WL.text.muted,
             }}
-          >{techOpen ? '▾' : '▸'} Technicals{techParts.length ? ` · ${techParts.join(' · ')}` : ''}</button>
-          {techOpen && fv && (
-            <div title="Finviz daily metrics" style={{
-              display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6, padding: '6px 10px',
-              background: 'rgba(2,6,23,.28)', borderRadius: 8, fontSize: 10, color: TEXT2,
-            }}>
-              {['rsi', 'perf_week', 'perf_month', 'perf_ytd', 'sma50'].map(k => (
-                fv[k] != null && <span key={k}><span style={{ color: DIM }}>{k} </span>{Number(fv[k]).toFixed(1)}{k.includes('perf') || k === 'sma50' ? '%' : ''}</span>
-              ))}
+          >
+            {ladderExpanded ? '▾' : '▸'} Exit ladder
+            {!ladderExpanded && (
+              <span style={{ fontWeight: 600, marginLeft: 8, color: WL.text.secondary, fontFamily: 'monospace' }}>
+                · {ladderSummary(ladder)} · R ${ladder.R.toFixed(2)}/sh
+              </span>
+            )}
+          </button>
+          {ladderExpanded && (
+            <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: WL.body.radius, background: WL.body.bg, border: `1px solid ${WL.body.border}` }}>
+              {ladder.steps.map((s, i) => {
+                const active = i === focusIdx
+                return (
+                  <div
+                    key={i}
+                    title={ladderStepTooltip(s.label, s.px, s.action)}
+                    style={{
+                      fontSize: 10.5, marginTop: i ? 3 : 0, padding: '3px 6px', borderRadius: 4,
+                      borderLeft: active ? `2px solid ${WL.urgency.amber}` : '2px solid transparent',
+                      color: active ? WL.text.primary : WL.text.secondary,
+                    }}
+                  >
+                    <span style={{ fontWeight: active ? 800 : 500, fontFamily: 'monospace' }}>{s.label} {s.px.toFixed(2)}</span>
+                    <span style={{ color: WL.text.dim, fontSize: 9.5 }}> — {s.action}</span>
+                  </div>
+                )
+              })}
+              <button
+                onClick={() => setRulesOpen(v => !v)}
+                style={{
+                  marginTop: 6, fontSize: 9, fontWeight: 600, padding: 0, border: 'none',
+                  background: 'none', color: WL.text.dim, cursor: 'pointer',
+                }}
+              >{rulesOpen ? '▾' : '▸'} In-trade rules</button>
+              {rulesOpen && <div style={{ fontSize: 9, color: WL.text.dim, marginTop: 4, lineHeight: 1.4 }}>{MONITOR_RULES}</div>}
             </div>
           )}
         </div>
       )}
 
-      {sectorLine && <div style={{ fontSize: 10, color: DIM }}>{sectorLine}</div>}
-
-      {it.catalyst_headline && (
-        <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.4 }}>
-          <span style={{ color: MUTED, fontWeight: 700 }}>Catalyst </span>
-          {it.catalyst_url ? (
-            <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none' }}>
-              {it.catalyst_headline}
-            </a>
-          ) : it.catalyst_headline}
-          {it.catalyst_at && <span style={{ color: DIM, marginLeft: 6 }}>{ago(it.catalyst_at)}</span>}
+      {/* 6. Status tags */}
+      {visibleTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {visibleTags.map(t => <Tag key={t.text} text={t.text} tip={t.tip} />)}
+          {outcome?.sold && (
+            <Tag text={`sold ${(outcome.last_pnl_pct ?? 0) >= 0 ? '+' : ''}${outcome.last_pnl_pct ?? '?'}%`} tip="Prior closed trade" />
+          )}
         </div>
       )}
 
-      {!enriched && <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>awaiting enrichment…</div>}
+      {/* Context drawer — evidence, catalyst, technicals, fib */}
+      {hasContext && (
+        <div onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => setContextOpen(v => !v)}
+            style={{
+              fontSize: 9.5, fontWeight: 700, padding: '4px 8px', borderRadius: 5, cursor: 'pointer',
+              border: `1px solid ${WL.tag.border}`, background: 'transparent', color: WL.text.muted,
+            }}
+          >{contextOpen ? '▾' : '▸'} Context</button>
+          {contextOpen && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {!enriched && <div style={{ fontSize: 10, color: WL.text.muted, fontStyle: 'italic' }}>awaiting enrichment…</div>}
+              {sectorLine && <div style={{ fontSize: 10, color: WL.text.dim }}>{sectorLine}</div>}
+              {it.catalyst_headline && (
+                <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.4 }}>
+                  <span style={{ color: WL.text.muted, fontWeight: 700 }}>Catalyst </span>
+                  {it.catalyst_url ? (
+                    <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: WL.text.secondary, textDecoration: 'underline' }}>
+                      {it.catalyst_headline}
+                    </a>
+                  ) : it.catalyst_headline}
+                </div>
+              )}
+              {fv && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10, color: WL.text.secondary }}>
+                  {['rsi', 'perf_week', 'perf_month', 'perf_ytd', 'sma50'].map(k => (
+                    fv[k] != null && <span key={k}><span style={{ color: WL.text.dim }}>{k} </span>{Number(fv[k]).toFixed(1)}{k.includes('perf') || k === 'sma50' ? '%' : ''}</span>
+                  ))}
+                </div>
+              )}
+              {it.synthesis_evidence?.length > 0 && (
+                <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
+              )}
+              {it.synthesis_narrative_snip && (
+                <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.45, fontStyle: 'italic' }}>
+                  {String(it.synthesis_narrative_snip).slice(0, 200)}
+                </div>
+              )}
+              <FibConfluencePanel symbol={it.symbol} />
+            </div>
+          )}
+        </div>
+      )}
 
-      <div onClick={e => e.stopPropagation()}>
-        <FibConfluencePanel symbol={it.symbol} />
-      </div>
-
-      {/* Actions */}
-      <div style={{
-        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-        borderTop: '1px solid rgba(148,163,184,.15)', paddingTop: 10,
-      }}>
-        {['propose', 'build', 'adjust'].includes(action.primaryKind) ? (
-          <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()} style={primaryBtnStyle(action.primaryKind)}>
-            {action.primaryLabel}
-          </a>
-        ) : (
-          <button onClick={handlePrimary} style={primaryBtnStyle(action.primaryKind)}>{action.primaryLabel}</button>
-        )}
+      {/* 7. Secondary actions */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
+          borderTop: `1px solid ${WL.body.border}`, paddingTop: 10,
+        }}
+      >
         <button
           onClick={e => { e.stopPropagation(); onDrill(drillCtx) }}
-          style={{ fontSize: 10, fontWeight: 600, padding: '6px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}
+          style={{ fontSize: 10, fontWeight: 600, padding: '4px 0', border: 'none', background: 'transparent', color: WL.text.muted, cursor: 'pointer' }}
         >Open</button>
-        <a
-          href={`/v3/rec-intel?symbol=${it.symbol}`}
-          onClick={e => e.stopPropagation()}
-          style={{ fontSize: 10, fontWeight: 600, padding: '6px 10px', color: MUTED, textDecoration: 'none' }}
-        >Rec-Intel</a>
+        <a href={`/v3/rec-intel?symbol=${it.symbol}`} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 600, color: WL.text.muted, textDecoration: 'none' }}>Rec-Intel</a>
         <button
           onClick={e => { e.stopPropagation(); onToggleEns() }}
-          style={{ fontSize: 10, fontWeight: 600, padding: '6px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}
+          style={{ fontSize: 10, fontWeight: 600, padding: '4px 0', border: 'none', background: 'transparent', color: WL.text.muted, cursor: 'pointer' }}
         >Ensemble {ensOpen ? '▲' : '▾'}</button>
         {watchlistReportEligible(it) && (
-          <HoldingReportLinks
-            symbol={it.symbol}
-            entry={reportEntry}
-            reportType={reportEntry?.report_type || 'symbol_watchlist'}
-            compact
-          />
+          <HoldingReportLinks symbol={it.symbol} entry={reportEntry} reportType={reportEntry?.report_type || 'symbol_watchlist'} compact />
         )}
       </div>
 
