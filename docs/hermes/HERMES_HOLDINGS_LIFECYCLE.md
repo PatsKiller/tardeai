@@ -47,7 +47,20 @@ Config: `config/hermes_holdings_lifecycle.yaml`
 
 Refreshed on each Scope Governor tick (`:07/:37`) and on `GET /api/v2/hermes/holdings-lifecycle`.
 
-**Research scheduler (B2):** `research_scheduler.py` applies `holdings_research_multiplier()` for `T0-HOLD` symbols — `standard` 1.0×, `elevated` 1.25×, `full` 1.45× (trim_candidate floor 1.45×). Exported nightly on `outcome_bus.json` → `lifecycle.holdings`.
+**Research scheduler (B2):** `research_scheduler.py` applies `holdings_research_multiplier()` for `T0-HOLD` symbols — `standard` 1.0×, `elevated` 1.25×, `full` 1.45× (trim_candidate floor 1.45×).
+
+### Outcome bus export
+
+Nightly `hermes_outcome_feedback_agent.py --apply` writes:
+
+| Bus key | Contents |
+|---------|----------|
+| `lifecycle.holdings` | Compact stage/health/monitoring (backward compatible) |
+| `holdings_health` | Full scores, `components`, global `stop_quality` snapshot, `health_history`, `lineage` |
+| `by_symbol.SYM.holdings_lifecycle` | Compact per-symbol slice |
+| `by_symbol.SYM.lineage.holdings_health_ref` | Cross-ref to `holdings_health.symbols.SYM` |
+
+Module: `scripts/lib/hermes_outcome_bus/bus_traceability.py` (see `OUTCOME_BUS_IMPLEMENTATION.md`).
 
 ## API
 

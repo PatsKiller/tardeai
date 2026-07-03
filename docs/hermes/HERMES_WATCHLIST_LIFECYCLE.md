@@ -69,6 +69,19 @@ Weighted composite from outcome bus + governor signals:
 
 Wired into `ScopeGovernorEngine.run()` after each dry-run or `--apply` tick.
 
+### Outcome bus export
+
+Nightly `hermes_outcome_feedback_agent.py --apply` writes:
+
+| Bus key | Contents |
+|---------|----------|
+| `lifecycle.watchlist` | Compact stage/health summary (backward compatible) |
+| `watchlist_health` | Full scores, 6 `components`, `health_history`, `data_quality`, `lineage` |
+| `by_symbol.SYM.watchlist_lifecycle` | Compact per-symbol slice |
+| `by_symbol.SYM.lineage.watchlist_health_ref` | Cross-ref to `watchlist_health.symbols.SYM` |
+
+Module: `scripts/lib/hermes_outcome_bus/bus_traceability.py` (see `OUTCOME_BUS_IMPLEMENTATION.md`).
+
 ## API
 
 **GET** `/api/v2/hermes/scope-governor`

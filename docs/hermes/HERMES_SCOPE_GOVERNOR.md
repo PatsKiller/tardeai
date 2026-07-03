@@ -102,7 +102,8 @@ Inputs (portfolio, outcomes, social, regime, events)
 3. **Governed universe feed** — `data/runtime/hermes_governed_universe.json`
 4. **Watchlist lifecycle snapshot** — `data/runtime/hermes_watchlist_lifecycle.json` (stages, conviction, **health score**, 14d `health_history`, `blocked_promotions`; see `HERMES_WATCHLIST_LIFECYCLE.md`)
 5. **Holdings lifecycle snapshot** — `data/runtime/hermes_holdings_lifecycle.json` (see `HERMES_HOLDINGS_LIFECYCLE.md`)
-6. **API** — `GET /api/v2/hermes/scope-governor` (+ `watchlist_lifecycle`, override POST)
+6. **Outcome bus traceability** — nightly `outcome_bus.json` exports `watchlist_health`, `holdings_health`, `lineage`; governor feedback includes `source_refs` (see `OUTCOME_BUS_IMPLEMENTATION.md`, `HERMES_CLOSED_LOOP_TRACEABILITY.md`)
+7. **API** — `GET /api/v2/hermes/scope-governor` (+ `watchlist_lifecycle`, override POST); `GET /api/v2/hermes/symbol-journey?symbol=XYZ` for end-to-end trace
 
 ## Closed-loop feedback
 
