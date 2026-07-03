@@ -5388,17 +5388,39 @@ def _wl_propose_symbol(sym: str, body: dict | None = None) -> tuple[int, dict]:
     if not (entry > 0 and stop > 0 and target > 0 and entry > stop and target > entry):
         return 400, {"ok": False, "error": "valid entry > stop and target > entry required"}
 
-    # Advisory risk guard: block >2% equity risk unless operator explicitly confirms.
-    equity = None
+    # Advisory risk guard: size on available cash, not total equity.
+    confirm_over_cash = bool(b.get("confirm_over_cash"))
     try:
-        import schwab_transport as _st
-        bal = _st.get_account(account)
-        if isinstance(bal, dict) and bal.get("status") == "active":
-            equity = float(bal.get("equity") or bal.get("buying_power") or bal.get("cash") or 0)
+        import account_policy as _ap
+        equity, _ = _ap.equity_for_account(account)
+        cash_base, _, _ = _ap.sizing_cash_base(account)
+        cash_settled, _ = _ap.cash_for_account(account)
     except Exception:
-        pass
-    if equity and equity > 0:
-        dollar_risk = abs(entry - stop) * shares
+        equity, cash_base, cash_settled = 0, None, None
+
+    dollar_risk = abs(entry - stop) * shares
+    investment = entry * shares
+    deployable = cash_base if cash_base and cash_base > 0 else None
+
+    if deployable and deployable > 0:
+        pct_risk_cash = dollar_risk / deployable * 100
+        if pct_risk_cash > 2.05 and not confirm_over:
+            return 400, {
+                "ok": False,
+                "error": f"Risk {pct_risk_cash:.2f}% of available cash exceeds 2% cap — confirm or reduce shares",
+                "pct_risk_cash": round(pct_risk_cash, 2),
+            }
+        if investment > deployable * 1.001 and not confirm_over_cash:
+            return 400, {
+                "ok": False,
+                "error": (
+                    f"Investment ${investment:,.0f} exceeds available cash "
+                    f"${deployable:,.0f} — confirm or reduce shares"
+                ),
+                "investment": round(investment, 2),
+                "cash_available": round(deployable, 2),
+            }
+    elif equity and equity > 0:
         pct_risk = dollar_risk / equity * 100
         if pct_risk > 2.05 and not confirm_over:
             return 400, {
@@ -23484,6 +23506,134 @@ def _broker_orders_activity(query=None):
 
 
 _SCHWAB_LIVE_CACHE: dict = {}   # accounts-live 30s cache — the monitor UI must never hammer the API
+_PROPOSAL_ACCOUNTS_CACHE: dict = {}   # proposal-accounts 30s cache
+
+
+def _infer_account_type(account_key: str, summ: dict | None = None) -> str:
+    low = (account_key or "").lower()
+    if summ and summ.get("display_name"):
+        dn = str(summ["display_name"])
+        if "401" in dn:
+            return "401k"
+        if "Rollover" in dn or "rollover" in low:
+            return "Rollover IRA"
+        if "Roth" in dn or "roth" in low:
+            return "Roth IRA"
+        if "Taxable" in dn or "Individual" in dn or "taxable" in low:
+            return "Taxable"
+    if "401k" in low:
+        return "401k"
+    if "rollover" in low:
+        return "Rollover IRA"
+    if "roth" in low:
+        return "Roth IRA"
+    if "taxable" in low:
+        return "Taxable"
+    if low.startswith("fidelity"):
+        return "Fidelity"
+    if low.startswith("schwab"):
+        return "Schwab"
+    return "Brokerage"
+
+
+def _proposal_accounts(query=None):
+    """GET /api/v2/proposal-accounts — Schwab + Fidelity destinations with equity/cash for propose modal."""
+    import time as _t
+    hit = _PROPOSAL_ACCOUNTS_CACHE.get("proposal_accounts")
+    if hit and _t.time() - hit[0] < 30:
+        return hit[1]
+
+    import account_policy as ap
+
+    rows = _db_query("""
+        SELECT account_key, display_name, broker, environment
+        FROM broker_accounts
+        WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%'
+        ORDER BY (broker ILIKE '%%fidelity%%') DESC, account_key""") or []
+
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    summaries = h.get("account_summaries") or {}
+    seen = {r.get("account_key") for r in rows}
+    for ak, summ in summaries.items():
+        if ak in seen or ak == "fidelity_401k":
+            continue
+        broker = summ.get("broker") or ("fidelity" if ak.startswith("fidelity") else "schwab")
+        if not (str(broker).lower().startswith("fidelity") or str(broker).lower().startswith("schwab")):
+            continue
+        rows.append({
+            "account_key": ak,
+            "display_name": summ.get("display_name"),
+            "broker": broker,
+            "environment": "live",
+        })
+        seen.add(ak)
+
+    schwab_live: dict = {}
+    try:
+        live_payload = _schwab_accounts_live()
+        for a in (live_payload.get("accounts") or []):
+            schwab_live[a.get("account_key")] = a
+    except Exception:
+        pass
+
+    accounts = []
+    for r in rows:
+        ak = r.get("account_key") or ""
+        if not ak or ak == "fidelity_401k":
+            continue
+
+        equity, eq_src = ap.equity_for_account(ak)
+        sizing_base, _, sizing_src = ap.sizing_cash_base(ak)
+        cash_only, cash_only_src = ap.cash_for_account(ak)
+        bp, bp_src = ap.buying_power_for_account(ak)
+
+        live = schwab_live.get(ak) or {}
+        if live.get("balances_status") == "ok":
+            if live.get("account_value") is not None:
+                equity = float(live["account_value"])
+                eq_src = "schwab_live"
+            if live.get("cash") is not None:
+                cash_only = float(live["cash"])
+                cash_only_src = "schwab_live"
+            if live.get("buying_power") is not None:
+                bp = float(live["buying_power"])
+                bp_src = "schwab_live"
+
+        summ = summaries.get(ak) or {}
+        display = r.get("display_name") or summ.get("display_name") or ak.replace("_", " ").title()
+        acct_type = _infer_account_type(ak, summ)
+        is_ret = ap.is_retirement_account(ak)
+
+        if sizing_base is None and cash_only and cash_only > 0:
+            sizing_base = cash_only
+            sizing_src = cash_only_src
+        if sizing_base is None and bp and bp > 0 and not is_ret:
+            sizing_base = bp
+            sizing_src = bp_src
+
+        accounts.append({
+            "account_key": ak,
+            "display_name": display,
+            "broker": r.get("broker"),
+            "account_type": acct_type,
+            "is_retirement": is_ret,
+            "account_value": round(equity, 2) if equity else None,
+            "equity_source": eq_src,
+            "cash": round(cash_only, 2) if cash_only else None,
+            "buying_power": round(bp, 2) if bp else None,
+            "sizing_base": round(sizing_base, 2) if sizing_base else None,
+            "sizing_base_label": "cash" if is_ret or (cash_only and cash_only > 0) else "buying_power",
+            "cash_source": sizing_src,
+            "balances_status": live.get("balances_status") or ("ok" if sizing_base else "snapshot"),
+        })
+
+    out = _json_clean({
+        "accounts": accounts,
+        "note": "Risk sizing uses sizing_base (cash/buying power), not total equity. Retirement accounts are cash-only.",
+        "cached_seconds": 30,
+    })
+    _PROPOSAL_ACCOUNTS_CACHE["proposal_accounts"] = (_t.time(), out)
+    return out
 
 
 def _schwab_accounts_live(query=None):
@@ -26114,6 +26264,7 @@ ROUTES = {
     "/api/v2/reports/analyst/eligible": _reports_analyst_eligible,
     "/api/v2/reports/analyst/validate": _reports_analyst_validate,
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
+    "/api/v2/proposal-accounts": _proposal_accounts,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
     "/api/v2/symbol-cards": _symbol_cards,

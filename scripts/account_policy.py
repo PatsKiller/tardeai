@@ -142,18 +142,63 @@ def _resolve_equity(low: str, key: str) -> tuple[float, str]:
     return FALLBACK_EQUITY, "env_fallback"
 
 
-def _equity_from_holdings(account_key: str) -> float | None:
+def _holdings_json() -> dict:
     import json
     root = Path(__file__).resolve().parent.parent
-    hj = json.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text())
-    summ = (hj.get("account_summaries") or {}).get(account_key)
+    path = root / "data" / "portfolios" / "state" / "holdings.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def _equity_from_holdings(account_key: str) -> float | None:
+    summ = (_holdings_json().get("account_summaries") or {}).get(account_key)
     if summ:
         return _f(summ.get("total_value"))
     return None
 
 
+def _cash_from_holdings(account_key: str) -> float | None:
+    """Sum is_cash positions for Fidelity / snapshot accounts (SPAXX, sweep, etc.)."""
+    total = 0.0
+    found = False
+    for h in _holdings_json().get("holdings", []):
+        if h.get("account") != account_key:
+            continue
+        if not h.get("is_cash"):
+            continue
+        mv = _f(h.get("market_value")) or 0.0
+        if mv > 0:
+            total += mv
+            found = True
+    return total if found else None
+
+
+def buying_power_for_account(account_key: str) -> tuple[float | None, str]:
+    """Buying power when distinct from settled cash (Schwab margin). Returns (bp, source)."""
+    key = (account_key or "").strip()
+    low = key.lower()
+    if low.startswith("schwab"):
+        try:
+            import schwab_transport as st
+            acct = st.get_account(key) or {}
+            if acct.get("status") == "active":
+                bp = _f(acct.get("buying_power"))
+                if bp and bp > 0:
+                    return bp, "schwab_live"
+        except Exception:
+            pass
+    cash, src = cash_for_account(key)
+    if cash and cash > 0:
+        return cash, src
+    return None, "unavailable"
+
+
 def cash_for_account(account_key: str) -> tuple[float | None, str]:
-    """Settled cash / buying power for notional cap. Returns (cash, source). Never raises."""
+    """Settled cash for risk/notional caps. IRAs use cash only (no margin). Never raises."""
     key = (account_key or "").strip()
     low = key.lower()
 
@@ -163,12 +208,18 @@ def cash_for_account(account_key: str) -> tuple[float | None, str]:
             acct = st.get_account(key) or {}
             if acct.get("status") == "active":
                 cash = _f(acct.get("cash"))
+                if cash and cash > 0:
+                    return cash, "schwab_live"
                 bp = _f(acct.get("buying_power"))
-                val = cash if cash and cash > 0 else bp
-                if val and val > 0:
-                    return val, "schwab_live"
+                if bp and bp > 0:
+                    return bp, "schwab_live_bp"
         except Exception:
             pass
+
+    if low.startswith("fidelity"):
+        cash = _cash_from_holdings(key)
+        if cash and cash > 0:
+            return cash, "holdings_snapshot"
 
     if low in ("alpaca_paper", "alpaca"):
         try:
@@ -181,6 +232,25 @@ def cash_for_account(account_key: str) -> tuple[float | None, str]:
             pass
 
     return None, "unavailable"
+
+
+def is_retirement_account(account_key: str) -> bool:
+    low = (account_key or "").lower()
+    return any(t in low for t in ("rollover", "roth", "ira", "401k"))
+
+
+def sizing_cash_base(account_key: str) -> tuple[float | None, float, str]:
+    """Cash base for propose-modal sizing + equity for reference %. Returns (cash, equity, cash_source)."""
+    equity, _ = equity_for_account(account_key)
+    cash, cash_src = cash_for_account(account_key)
+    if is_retirement_account(account_key):
+        return cash, equity, cash_src
+    if cash and cash > 0:
+        return cash, equity, cash_src
+    bp, bp_src = buying_power_for_account(account_key)
+    if bp and bp > 0:
+        return bp, equity, bp_src
+    return None, equity, cash_src
 
 
 def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
