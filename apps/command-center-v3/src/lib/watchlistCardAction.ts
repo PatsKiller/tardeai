@@ -350,6 +350,91 @@ export function dataDoubtTooltip(doubt: string): string {
   return `Action: verify before sizing. CIO data doubt: ${doubt}. Monitoring is still OK.`
 }
 
+export function cioRecColor(rec?: string | null): string {
+  const u = String(rec ?? '').toUpperCase()
+  if (['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK', 'ACCUMULATE'].some(k => u.includes(k))) return '#16a34a'
+  if (['AVOID', 'IGNORE', 'SELL', 'TRIM'].some(k => u.includes(k))) return '#dc2626'
+  if (['HOLD', 'RESEARCH_MORE', 'WAIT'].some(k => u.includes(k))) return '#d97706'
+  return '#94a3b8'
+}
+
+export function targetVsStreetLabel(planTarget: number | null, streetTarget: number | null): string | null {
+  if (planTarget == null || streetTarget == null || !Number.isFinite(planTarget) || !Number.isFinite(streetTarget)) return null
+  const pct = ((planTarget - streetTarget) / streetTarget) * 100
+  if (Math.abs(pct) < 3) return `Target ${money(planTarget)} ≈ Street ${money(streetTarget)}`
+  if (pct < 0) return `Target ${money(planTarget)} is ${Math.abs(pct).toFixed(0)}% below Street ${money(streetTarget)} — conservative`
+  return `Target ${money(planTarget)} is ${pct.toFixed(0)}% above Street ${money(streetTarget)} — aggressive`
+}
+
+export function dataQualityFlags(args: {
+  it: any
+  stale: boolean
+  enriched: boolean
+  needsRefresh: boolean
+  dataDoubt: string
+}): { label: string; severity: 'red' | 'amber' | 'none' }[] {
+  const { it, stale, enriched, needsRefresh, dataDoubt } = args
+  const flags: { label: string; severity: 'red' | 'amber' | 'none' }[] = []
+  if (dataDoubt) flags.push({ label: 'Data doubt', severity: 'amber' })
+  if (!enriched) flags.push({ label: 'Awaiting enrichment', severity: 'amber' })
+  else if (stale) flags.push({ label: 'Stale technicals', severity: 'amber' })
+  if (needsRefresh && !stale) flags.push({ label: 'Agents pending', severity: 'amber' })
+  if (it.final_synthesis_status === 'pending') flags.push({ label: 'CIO synthesis pending', severity: 'amber' })
+  if (it.price == null) flags.push({ label: 'No live price', severity: 'red' })
+  return flags
+}
+
+/** One-line why — CIO/Hermes vs Street, advisory, plan state. */
+export function actionReasoning(args: {
+  it: any
+  pa?: any
+  adv?: { advisory_flag?: string; note?: string } | null
+  action: CardAction
+  hasPlan: boolean
+  rr: number | null
+  stale: boolean
+  enriched: boolean
+}): string {
+  const { it, pa, adv, action, hasPlan, rr, stale, enriched } = args
+  const parts: string[] = []
+
+  const cio = String(it.latest_recommendation || '').toUpperCase()
+  const streetRec = pa?.rec ? String(pa.rec).replace(/_/g, ' ') : null
+  if (pa?.divergence === 'divergent') {
+    parts.push(`CIO ${cioLabel(it.latest_recommendation)} disagrees with Street ${streetRec || pa?.street || 'consensus'}`)
+  } else if (cioAvoid(it.latest_recommendation) && streetRec && /buy/i.test(streetRec)) {
+    parts.push(`CIO ${cioLabel(it.latest_recommendation)} — Street still ${streetRec}`)
+  }
+
+  if (it.hermes_rank != null) {
+    parts.push(`Hermes #${it.hermes_rank}${it.hermes_composite_score != null ? ` (score ${Number(it.hermes_composite_score).toFixed(0)})` : ''}`)
+  }
+
+  if (adv?.advisory_flag === 'caution' && adv.note) {
+    parts.push(truncateWords(adv.note, 12))
+  } else if (adv?.advisory_flag === 'favorable' && adv.note) {
+    parts.push(truncateWords(adv.note, 10))
+  }
+
+  if (action.detail && !parts.length) parts.push(truncateWords(action.detail, 14))
+  if (!hasPlan && enriched) parts.push('No entry plan yet — build limit/stop/target before proposing')
+  if (stale && hasPlan) parts.push('Refresh before acting on RSI/advisory')
+  if (rr != null && rr < 1.5 && hasPlan) parts.push(`Thin R:R ${rr.toFixed(1)}`)
+
+  if (it.synthesis_narrative_snip && parts.length < 2) {
+    parts.push(truncateWords(String(it.synthesis_narrative_snip), 16))
+  }
+
+  if (!parts.length && action.subtext) return action.subtext
+  return parts.slice(0, 2).join(' · ') || action.subtext || 'Review intel before sizing'
+}
+
+function truncateWords(text: string, maxWords: number): string {
+  const words = String(text).trim().split(/\s+/)
+  if (words.length <= maxWords) return words.join(' ')
+  return `${words.slice(0, maxWords).join(' ')}…`
+}
+
 export function ladderStepTooltip(label: string, px: number, action: string): string {
   const tier =
     label.startsWith('T1') ? 'First scale-out at +1R. Sell ⅓ via limit, then move stop to breakeven.'
