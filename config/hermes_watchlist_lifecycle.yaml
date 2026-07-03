@@ -1,0 +1,44 @@
+# Watchlist lifecycle — parallel to scope_tier (S0–S3), outcome-driven, advisory-only.
+# Does NOT replace scope_tier; explains operator-facing stage + conviction for UI/audit.
+
+enabled: true
+review_mode: true   # persist recommendations; tier writes still via scope governor --apply
+
+stages:
+  - new
+  - monitoring
+  - promoted
+  - demoted
+  - archived
+  - blacklisted
+
+# Days on watchlist before "new" graduates to monitoring (unless promoted)
+new_symbol_days: 7
+
+# Archive: S3 + conviction below floor for graded symbols
+archive_conviction_floor: 35
+
+# Re-promote cooldown after demotion (days) — conservative
+demotion_cooldown_days: 7
+
+conviction:
+  # Base = edge_score from scope governor; apply gate/bus deltas
+  gate_adjustments:
+    promote_eligible: 8
+    demote_pressure: -18
+    pause_eligible: -28
+    neutral: 0
+  bus_action_adjustments:
+    promote_eligible: 5
+    demote_pressure: -10
+    pause: -20
+
+transition_rules:
+  # Minimum graded outcomes before outcome-driven stage moves (graft gate)
+  min_graded_samples: 3
+  # Blacklist only via manual override or pause_eligible with bus pause
+  auto_blacklist_on_pause: true
+
+monitoring:
+  # Symbols surfaced in Closed Loop panel (top by abs conviction delta / pending)
+  panel_limit: 30

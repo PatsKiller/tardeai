@@ -20202,6 +20202,17 @@ def _hermes_scope_governor(query=None):
             sym_row = next((s for s in feed["symbols"] if str(s.get("symbol", "")).upper() == str(symbol).upper()), None)
         else:
             sym_row = None
+        lifecycle = {}
+        lifecycle_audit = []
+        try:
+            from lib.hermes_scope_governor.watchlist_lifecycle import (
+                load_lifecycle_audit_tail,
+                load_lifecycle_state,
+            )
+            lifecycle = load_lifecycle_state()
+            lifecycle_audit = load_lifecycle_audit_tail(15)
+        except Exception:
+            pass
         return _json_clean({
             "ok": True,
             "advisory_notice": "Scope Governor — advisory only; Hermes reads this feed, does not self-scope",
@@ -20212,6 +20223,8 @@ def _hermes_scope_governor(query=None):
             "universe": feed,
             "symbol_detail": sym_row,
             "recent_audit": audit,
+            "watchlist_lifecycle": lifecycle,
+            "watchlist_lifecycle_audit": lifecycle_audit,
         })
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -28974,6 +28987,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body or {}
             apply_p = bool(b.get("apply", True))
             result = run_learning_cycle(apply_proposals=apply_p)
+            code = 200 if result.get("ok") else 400
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/watchlist-lifecycle/override":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_scope_governor.watchlist_lifecycle import apply_manual_override
+            b = body or {}
+            symbol = b.get("symbol")
+            stage = b.get("stage")
+            reason = b.get("reason") or b.get("notes")
+            if not symbol or not stage:
+                return 400, {"ok": False, "error": "symbol and stage required"}
+            result = apply_manual_override(
+                str(symbol),
+                str(stage),
+                str(reason or ""),
+                by=str(b.get("by") or "operator_ui"),
+            )
             code = 200 if result.get("ok") else 400
             return code, _json_clean(result)
         except Exception as e:
