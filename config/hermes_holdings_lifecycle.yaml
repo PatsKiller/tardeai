@@ -10,11 +10,17 @@ stages:
   - exited
 
 health_weights:
-  stop_quality: 0.25
-  outcome_consistency: 0.25
+  stop_quality: 0.30          # trail, alignment, R-left (Prompt: 25–35%)
+  outcome_consistency: 0.22
   realized_r: 0.15
-  research_actionability: 0.15
+  research_actionability: 0.13
   position_risk: 0.20
+
+confidence:
+  min_graded_samples: 2
+  min_graded_for_full: 4
+  low_graded_multiplier: 0.80
+  sparse_multiplier: 0.88
 
 thresholds:
   healthy_min: 70

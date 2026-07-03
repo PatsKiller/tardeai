@@ -1785,10 +1785,16 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
           </div>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.5fr 0.5fr 0.6fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
-              <span>Symbol</span><span>Stage</span><span>Health</span><span>Gain</span><span>Gate</span><span>Monitoring</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.55fr 0.65fr 0.45fr 0.4fr 0.45fr 0.45fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
+              <span>Symbol</span><span>Stage</span><span>Health</span><span>Stop</span><span>Gain</span><span>Gate</span><span>Action / monitoring</span>
             </div>
-            {holdingsPanelRows.map((row: any) => (
+            {holdingsPanelRows.map((row: any) => {
+              const hc = row.health_components ?? row.components ?? {}
+              const action = row.recommended_action
+              const actionLabel = action === 'operator_trim_review' ? 'trim review'
+                : action === 'review_stops_and_research' ? 'review stops'
+                  : action === 'monitor' ? 'monitor' : action ?? '—'
+              return (
               <div key={row.symbol}
                 onClick={() => onDrill({
                   title: row.symbol,
@@ -1798,7 +1804,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                   rows: [],
                 })}
                 style={{
-                display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.5fr 0.5fr 0.6fr 1fr',
+                display: 'grid', gridTemplateColumns: '0.55fr 0.65fr 0.45fr 0.4fr 0.45fr 0.45fr 1fr',
                 padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
                 cursor: 'pointer',
                 borderLeft: row.lifecycle_stage === 'trim_candidate' ? '3px solid #ef4444'
@@ -1811,7 +1817,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 <span style={{
                   fontWeight: 700,
                   color: (row.health_score ?? 0) >= 70 ? '#22c55e' : (row.health_score ?? 0) < 50 ? '#ef4444' : '#f59e0b',
-                }}>
+                }} title={row.confidence_tier ? `confidence: ${row.confidence_tier}` : undefined}>
                   {row.health_score != null ? Math.round(Number(row.health_score)) : '—'}
                   {row.health_delta != null && (
                     <span style={{ fontSize: 8, color: row.health_delta >= 0 ? '#22c55e' : '#ef4444', marginLeft: 4 }}>
@@ -1819,15 +1825,22 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                     </span>
                   )}
                 </span>
+                <span style={{
+                  fontWeight: 700, fontSize: 10,
+                  color: (hc.stop_quality ?? 0) >= 65 ? '#22c55e' : (hc.stop_quality ?? 0) < 45 ? '#ef4444' : '#f59e0b',
+                }}>
+                  {hc.stop_quality != null ? Math.round(Number(hc.stop_quality)) : '—'}
+                </span>
                 <span style={{ fontSize: 10, color: (row.gain_pct ?? 0) < 0 ? '#ef4444' : 'var(--text2)' }}>
                   {row.gain_pct != null ? `${Number(row.gain_pct).toFixed(1)}%` : '—'}
                 </span>
                 <span style={{ fontSize: 9, color: 'var(--text3)' }}>{row.outcome_gate ?? '—'}</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>
-                  {row.monitoring?.research_depth ?? '—'} · stops {row.monitoring?.stop_monitoring ?? '—'}
+                <span style={{ fontSize: 9, color: row.lifecycle_stage === 'trim_candidate' ? '#ef4444' : row.lifecycle_stage === 'watch' ? '#f59e0b' : 'var(--text3)' }} title={row.stage_reason}>
+                  <span style={{ fontWeight: 600 }}>{actionLabel}</span>
+                  {' · '}{row.monitoring?.research_depth ?? '—'} · stops {row.monitoring?.stop_monitoring ?? '—'}
                 </span>
               </div>
-            ))}
+            )})}
           </>
         )}
       </div>

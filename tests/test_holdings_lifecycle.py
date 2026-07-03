@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 from lib.hermes_holdings_lifecycle.holdings_lifecycle import (  # noqa: E402
+    apply_confidence_discount,
     apply_manual_override,
     compute_health_score,
     resolve_stage,
@@ -31,9 +32,15 @@ class TestHoldingsHealth(unittest.TestCase):
             "research_actionability": 75.0,
             "position_risk": 65.0,
         }
-        score = compute_health_score(components, cfg)
+        score = compute_health_score(components, cfg, graded_n=5)
         self.assertGreaterEqual(score, 65.0)
         self.assertLessEqual(score, 100.0)
+
+    def test_confidence_discount_sparse(self):
+        cfg = load_config()
+        final, tier = apply_confidence_discount(80.0, 1, cfg)
+        self.assertEqual(tier, "sparse_data")
+        self.assertLess(final, 80.0)
 
     def test_resolve_trim_on_low_health(self):
         cfg = load_config()
@@ -50,7 +57,7 @@ class TestHoldingsHealth(unittest.TestCase):
         pos = {"gain_pct": -8.0, "pct_from_high": -20}
         bus_sym = {"gate": "demote_pressure", "n": 5, "misses": 3, "hits": 1}
         comps = _component_scores("TEST", pos, bus_sym, {"action": "demote_pressure"}, None, {}, cfg)
-        score = compute_health_score(comps, cfg)
+        score = compute_health_score(comps, cfg, graded_n=5)
         self.assertLess(score, 70.0)
 
 
