@@ -20,12 +20,89 @@ PREMARKET_START = time(4, 0)
 AFTERHOURS_END = time(20, 0)
 EARLY_CLOSE_TIME = time(13, 0)
 
-# 2026 US market holidays (NYSE observed)
-US_HOLIDAYS_2026 = {
-    "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
-    "2026-05-25", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
-}
-US_EARLY_CLOSE_2026 = {"2026-11-27", "2026-12-24"}
+# NYSE observed holidays + early closes — COMPUTED for any year, per NYSE Rule 7.2 observance:
+# a holiday falling on Saturday is observed the preceding Friday (except New Year's Day, which
+# is then not observed); falling on Sunday, the following Monday. Replaces a hardcoded 2026-only
+# set that (a) was missing Juneteenth — every gated cron ran on 2026-06-19 — and (b) would have
+# silently treated ALL 2027 holidays as trading days.
+
+def _easter(year: int):
+    """Gregorian Easter (anonymous computus)."""
+    from datetime import date
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month, day = divmod(h + l - 7 * m + 114, 31)
+    return date(year, month, day + 1)
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int):
+    """n-th (1-based) weekday of a month; n=-1 for the last."""
+    from datetime import date, timedelta
+    if n > 0:
+        d = date(year, month, 1)
+        d += timedelta(days=(weekday - d.weekday()) % 7)
+        return d + timedelta(weeks=n - 1)
+    d = date(year + (month == 12), (month % 12) + 1, 1) - timedelta(days=1)
+    return d - timedelta(days=(d.weekday() - weekday) % 7)
+
+
+def _observed(d):
+    """NYSE observance shift: Sat → preceding Fri, Sun → following Mon."""
+    from datetime import timedelta
+    if d.weekday() == 5:
+        return d - timedelta(days=1)
+    if d.weekday() == 6:
+        return d + timedelta(days=1)
+    return d
+
+
+def market_holidays(year: int) -> set:
+    """NYSE full-closure dates for a year, as YYYY-MM-DD strings."""
+    from datetime import date, timedelta
+    days = set()
+    jan1 = date(year, 1, 1)
+    if jan1.weekday() == 6:
+        days.add(date(year, 1, 2))          # New Year's observed Monday
+    elif jan1.weekday() != 5:
+        days.add(jan1)                       # Saturday → not observed (NYSE)
+    days.add(_nth_weekday(year, 1, 0, 3))    # MLK — 3rd Monday Jan
+    days.add(_nth_weekday(year, 2, 0, 3))    # Washington's Birthday — 3rd Monday Feb
+    days.add(_easter(year) - timedelta(days=2))   # Good Friday
+    days.add(_nth_weekday(year, 5, 0, -1))   # Memorial Day — last Monday May
+    days.add(_observed(date(year, 6, 19)))   # Juneteenth (NYSE since 2022)
+    days.add(_observed(date(year, 7, 4)))    # Independence Day
+    days.add(_nth_weekday(year, 9, 0, 1))    # Labor Day — 1st Monday Sep
+    days.add(_nth_weekday(year, 11, 3, 4))   # Thanksgiving — 4th Thursday Nov
+    days.add(_observed(date(year, 12, 25)))  # Christmas
+    return {d.isoformat() for d in days}
+
+
+def market_early_closes(year: int) -> set:
+    """NYSE 1:00 pm ET early-close dates: July 3 (when a weekday and not the observed 4th),
+    the Friday after Thanksgiving, and Christmas Eve (when a weekday and not itself a closure)."""
+    from datetime import date, timedelta
+    hols = market_holidays(year)
+    out = set()
+    for d in (date(year, 7, 3), date(year, 12, 24)):
+        if d.weekday() < 5 and d.isoformat() not in hols:
+            out.add(d.isoformat())
+    out.add((_nth_weekday(year, 11, 3, 4) + timedelta(days=1)).isoformat())  # day after Thanksgiving
+    return out
+
+
+_CALENDAR_CACHE: dict = {}
+
+
+def _calendar(year: int):
+    if year not in _CALENDAR_CACHE:
+        _CALENDAR_CACHE[year] = (market_holidays(year), market_early_closes(year))
+    return _CALENDAR_CACHE[year]
 
 # Freshness thresholds (minutes) by strategy type
 # Multi-day strategies have multi-day validity windows.
@@ -80,9 +157,10 @@ def current_market_session(now=None):
 
     if weekday >= 5:
         return "weekend"
-    if date_str in US_HOLIDAYS_2026:
+    holidays, early_closes = _calendar(et.year)
+    if date_str in holidays:
         return "holiday"
-    if date_str in US_EARLY_CLOSE_2026:
+    if date_str in early_closes:
         if t < PREMARKET_START:
             return "closed"
         if t < MARKET_OPEN:
@@ -121,7 +199,7 @@ def next_regular_session_open(now=None):
         candidate += timedelta(days=1)
     for _ in range(10):
         ds = candidate.strftime("%Y-%m-%d")
-        if candidate.weekday() < 5 and ds not in US_HOLIDAYS_2026:
+        if candidate.weekday() < 5 and ds not in _calendar(candidate.year)[0]:
             return candidate
         candidate += timedelta(days=1)
     return candidate
