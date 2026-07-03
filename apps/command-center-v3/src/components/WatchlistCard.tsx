@@ -6,6 +6,7 @@ import {
   deriveRecommendedAction,
   actionProminence,
   buttonStyle,
+  verdictColor,
   rrTooltip,
   confidenceTooltip,
   planValidatedTooltip,
@@ -15,6 +16,7 @@ import {
   ladderStepTooltip,
   watchlistNeedsRefresh,
   type CardActionType,
+  type CardVerdict,
 } from '../lib/watchlistCardAction'
 import { WL, urgencyColor } from '../lib/watchlistCardTokens'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -104,6 +106,30 @@ function ladderSummary(ladder: Ladder): string {
   return focus ? `${focus.label} ${focus.px.toFixed(2)}` : ''
 }
 
+function truncate(text: string, max: number): string {
+  const t = text.trim()
+  if (t.length <= max) return t
+  return `${t.slice(0, max - 1).trimEnd()}…`
+}
+
+function cleanNewsSource(raw?: string): string {
+  if (!raw) return 'news'
+  return String(raw)
+    .replace(/^(google_news|yahoo_rss|finviz_news|hermes):\s*/i, '')
+    .replace(/^hermes\s*·\s*/i, '')
+    .trim() || 'news'
+}
+
+function VerdictChip({ verdict }: { verdict: CardVerdict }) {
+  const c = verdictColor(verdict)
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 900, padding: '2px 7px', borderRadius: 4,
+      letterSpacing: '.06em', color: c, border: `1px solid ${c}66`, background: `${c}18`,
+    }}>{verdict}</span>
+  )
+}
+
 export type WatchlistCardProps = {
   it: any
   adv?: any
@@ -133,6 +159,7 @@ export default function WatchlistCard({
   onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
   const [contextOpen, setContextOpen] = useState(false)
+  const [researchOpen, setResearchOpen] = useState(false)
   const [ladderOpen, setLadderOpen] = useState<boolean | null>(null)
   const [rulesOpen, setRulesOpen] = useState(false)
 
@@ -189,17 +216,29 @@ export default function WatchlistCard({
     ? String(it.synthesis_data_i_doubt).trim() : ''
 
   const riskLines: { text: string; severity: 'red' | 'amber'; doubt?: boolean }[] = []
-  for (const w of warns.slice(0, 1)) {
-    riskLines.push({ text: w.text, severity: w.color === WL.urgency.red ? 'red' : 'amber' })
-  }
   if (dataDoubt) riskLines.push({ text: dataDoubt, severity: 'amber', doubt: true })
+  else if (action.verdict !== 'FIX') {
+    for (const w of warns.slice(0, 1)) {
+      riskLines.push({ text: w.text, severity: w.color === WL.urgency.red ? 'red' : 'amber' })
+    }
+  }
   const sectorLine = sc?.sector || it.profile_sector
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' · ')
     : null
   const companyDesc = sc?.description || it.profile_description || null
-  const newsItems: any[] = (sc?.news ?? []).slice(0, 3)
-  const hasIntelStrip = !!(companyDesc || sectorLine || it.catalyst_headline || newsItems.length
-    || fv || llms.length || sc?.analyst || sc?.vs_sector_week != null)
+  const companyOneLiner = companyDesc ? truncate(companyDesc, 80) : null
+  const allNews: any[] = sc?.news ?? []
+  const newsCount = allNews.length || (it.news_7d != null ? Number(it.news_7d) : 0)
+  const topNews = allNews[0] ?? null
+  const intelSummaryParts = [
+    companyOneLiner,
+    sc?.sector || it.profile_sector || null,
+    it.catalyst_type ? `⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}` : null,
+    newsCount > 0 ? `${newsCount} news` : null,
+    fv?.rsi != null ? `RSI ${Math.round(Number(fv.rsi))}` : null,
+  ].filter(Boolean)
+  const hasResearch = !!(companyDesc || sectorLine || it.catalyst_headline || allNews.length
+    || fv || llms.length || sc?.vs_sector_week != null)
   const hasContext = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip
     || hasMetaContext || !enriched)
 
@@ -268,6 +307,7 @@ export default function WatchlistCard({
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, padding: 0, color: isStarred ? WL.text.secondary : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ fontWeight: 950, color: WL.text.primary, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
+          <VerdictChip verdict={action.verdict} />
           <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral />
           {isHeld && (
             <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4, color: '#ffa726', border: '1px solid rgba(255,167,38,.45)', background: 'rgba(255,167,38,.12)' }}>
@@ -300,11 +340,12 @@ export default function WatchlistCard({
         </div>
       </div>
 
-      {/* 2. Hero — recommended action + primary CTA */}
+      {/* 2. Hero — verdict + action + primary CTA */}
       <div
         onClick={e => e.stopPropagation()}
+        title={action.detail}
         style={{
-          padding: '14px 14px 12px',
+          padding: '12px 14px',
           background: WL.hero.bg,
           borderRadius: WL.body.radius,
           border: `1px solid ${WL.hero.border}`,
@@ -312,18 +353,13 @@ export default function WatchlistCard({
         }}
       >
         <div style={{
-          fontSize: WL.hero.labelSize, color: WL.text.muted, textTransform: 'uppercase',
-          letterSpacing: '.08em', fontWeight: 800,
-        }}>Recommended action</div>
-        <div style={{
-          fontSize: heroTextSize, fontWeight: 700, color: WL.text.primary,
-          marginTop: 6, lineHeight: 1.35,
+          fontSize: heroTextSize, fontWeight: 800, color: WL.text.primary, lineHeight: 1.3,
         }}>{action.heroText}</div>
         {action.subtext && (
           <div style={{ fontSize: WL.hero.subtextSize, color: WL.text.muted, marginTop: 4, lineHeight: 1.35 }}>{action.subtext}</div>
         )}
         {action.allowPrimary && (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 10 }}>
             <button
               onClick={handlePrimary}
               style={buttonStyle(action.buttonVariant)}
@@ -398,100 +434,115 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* 5. Company & market intel — always visible (restored from pre-refactor cards) */}
-      {hasIntelStrip && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            padding: '10px 12px', borderRadius: WL.body.radius,
-            background: WL.body.bg, border: `1px solid ${WL.body.border}`,
-            display: 'flex', flexDirection: 'column', gap: 8,
-          }}
-        >
-          {companyDesc && (
-            <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
-              {companyDesc}
+      {/* 5. Research — one-line scan + expandable drawer */}
+      {hasResearch && (
+        <div onClick={e => e.stopPropagation()}>
+          {intelSummaryParts.length > 0 && (
+            <div style={{
+              fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.4,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {intelSummaryParts.join(' · ')}
             </div>
           )}
-          {(sc?.sector || it.profile_sector || sc?.vs_sector_week != null || sc?.analyst) && (
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-              {(sc?.sector || it.profile_sector) && (
-                <IntelPill
-                  text={`${sc?.sector || it.profile_sector}${sc?.sector_etf ? ` (${sc.sector_etf})` : ''}`}
-                  color="#60a5fa"
-                  tip={sc?.industry || it.profile_industry || undefined}
-                />
-              )}
-              {sc?.vs_sector_week != null && (
-                <IntelPill
-                  text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`}
-                  color={sc.vs_sector_week >= 0 ? WL.urgency.green : WL.urgency.red}
-                />
-              )}
-              {sc?.analyst?.rating && (
-                <IntelPill
-                  text={[
-                    String(sc.analyst.rating).replace(/_/g, ' '),
-                    sc.analyst.opinions ? `${sc.analyst.opinions} analysts` : null,
-                    sc.analyst.target != null ? `target $${sc.analyst.target}` : null,
-                    sc.analyst.upside_pct != null ? `(${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : null,
-                  ].filter(Boolean).join(' · ')}
-                  color={String(sc.analyst.rating).includes('buy') ? WL.urgency.green : sc.analyst.rating === 'hold' ? WL.urgency.amber : WL.text.muted}
-                />
-              )}
-            </div>
-          )}
-          {it.catalyst_headline && (
-            <div style={{ fontSize: 10.5, color: WL.text.secondary, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}>
-              {it.catalyst_type && (
-                <IntelPill
-                  text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`}
-                  color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? WL.urgency.green : WL.urgency.amber}
-                  tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`}
-                />
-              )}
-              {it.catalyst_url ? (
-                <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
-                  {it.catalyst_headline}
+          {topNews && !researchOpen && (
+            <div style={{ fontSize: 10, color: WL.text.muted, marginTop: 4, lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {cleanNewsSource(topNews.source)}{topNews.at ? ` · ${ago(topNews.at)}` : ''}{' '}
+              {topNews.url ? (
+                <a href={topNews.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 600 }}>
+                  {topNews.title}
                 </a>
-              ) : <span>{it.catalyst_headline}</span>}
-              {it.catalyst_at && <span style={{ color: WL.text.muted, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}
+              ) : <span style={{ color: WL.text.secondary }}>{topNews.title}</span>}
             </div>
           )}
-          {newsItems.map((n: any, i: number) => (
-            <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
-              <span style={{ color: WL.text.muted }}>
-                {n.source || 'news'}
-                {n.at ? ` · ${ago(n.at)}` : ''}
-                {' '}
-              </span>
-              {n.url ? (
-                <a href={n.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
-                  {n.title}
-                </a>
-              ) : <span style={{ color: WL.text.secondary }}>{n.title}</span>}
-            </div>
-          ))}
-          {!newsItems.length && it.news_7d != null && Number(it.news_7d) > 0 && (
-            <div style={{ fontSize: 10, color: WL.text.muted }}>
-              {it.news_7d} news article{Number(it.news_7d) === 1 ? '' : 's'} (7d)
-              {it.news_top_score != null ? ` · top score ${it.news_top_score}` : ''}
-            </div>
-          )}
-          {fv && <FinvizStrip fv={fv} />}
-          {llms.length > 0 && (
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-              {llms.map((e: any, i: number) => {
-                const m = llmMeta(e.lane)
-                return (
-                  <IntelPill
-                    key={`llm-${i}`}
-                    text={`✦ ${m.label}`}
-                    color={m.color}
-                    tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}${e.at ? `\n${new Date(e.at).toLocaleString()}` : ''}`}
-                  />
-                )
-              })}
+          <button
+            onClick={() => setResearchOpen(v => !v)}
+            style={{
+              marginTop: 6, fontSize: 9.5, fontWeight: 700, padding: '4px 8px', borderRadius: 5, cursor: 'pointer',
+              border: `1px solid ${WL.tag.border}`, background: 'transparent', color: WL.text.muted,
+            }}
+          >{researchOpen ? '▾' : '▸'} Research</button>
+          {researchOpen && (
+            <div style={{
+              marginTop: 8, padding: '10px 12px', borderRadius: WL.body.radius,
+              background: WL.body.bg, border: `1px solid ${WL.body.border}`,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              {companyDesc && (
+                <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
+                  {companyDesc}
+                </div>
+              )}
+              {(sc?.sector || it.profile_sector || sc?.vs_sector_week != null) && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {(sc?.sector || it.profile_sector) && (
+                    <IntelPill
+                      text={`${sc?.sector || it.profile_sector}${sc?.sector_etf ? ` (${sc.sector_etf})` : ''}`}
+                      color="#60a5fa"
+                      tip={sc?.industry || it.profile_industry || undefined}
+                    />
+                  )}
+                  {sc?.vs_sector_week != null && (
+                    <IntelPill
+                      text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`}
+                      color={sc.vs_sector_week >= 0 ? WL.urgency.green : WL.urgency.red}
+                    />
+                  )}
+                </div>
+              )}
+              {it.catalyst_headline && (
+                <div style={{ fontSize: 10.5, color: WL.text.secondary, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}>
+                  {it.catalyst_type && (
+                    <IntelPill
+                      text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`}
+                      color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? WL.urgency.green : WL.urgency.amber}
+                      tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`}
+                    />
+                  )}
+                  {it.catalyst_url ? (
+                    <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
+                      {it.catalyst_headline}
+                    </a>
+                  ) : <span>{it.catalyst_headline}</span>}
+                  {it.catalyst_at && <span style={{ color: WL.text.muted, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}
+                </div>
+              )}
+              {allNews.slice(0, 3).map((n: any, i: number) => (
+                <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
+                  <span style={{ color: WL.text.muted }}>
+                    {cleanNewsSource(n.source)}
+                    {n.at ? ` · ${ago(n.at)}` : ''}
+                    {' '}
+                  </span>
+                  {n.url ? (
+                    <a href={n.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
+                      {n.title}
+                    </a>
+                  ) : <span style={{ color: WL.text.secondary }}>{n.title}</span>}
+                </div>
+              ))}
+              {!allNews.length && newsCount > 0 && (
+                <div style={{ fontSize: 10, color: WL.text.muted }}>
+                  {newsCount} news article{newsCount === 1 ? '' : 's'} (7d)
+                  {it.news_top_score != null ? ` · top score ${it.news_top_score}` : ''}
+                </div>
+              )}
+              {fv && <FinvizStrip fv={fv} />}
+              {llms.length > 0 && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {llms.map((e: any, i: number) => {
+                    const m = llmMeta(e.lane)
+                    return (
+                      <IntelPill
+                        key={`llm-${i}`}
+                        text={`✦ ${m.label}`}
+                        color={m.color}
+                        tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}${e.at ? `\n${new Date(e.at).toLocaleString()}` : ''}`}
+                      />
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -579,6 +630,11 @@ export default function WatchlistCard({
               )}
               {it.synthesis_evidence?.length > 0 && (
                 <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
+              )}
+              {action.detail && (
+                <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.45 }}>
+                  <span style={{ color: WL.text.muted, fontWeight: 700 }}>Advisory </span>{action.detail}
+                </div>
               )}
               {it.synthesis_narrative_snip && (
                 <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.45, fontStyle: 'italic' }}>

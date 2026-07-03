@@ -11,6 +11,8 @@ export function watchlistNeedsRefresh(it: any, stale: boolean) {
 
 export type ActionUrgency = 'none' | 'amber' | 'green' | 'red'
 
+export type CardVerdict = 'READY' | 'WAIT' | 'SKIP' | 'STALE' | 'FIX' | 'BUILD' | 'WATCH'
+
 export type CardActionType =
   | 'PROPOSE_ENTRY'
   | 'QUEUE_PROPOSAL'
@@ -25,11 +27,14 @@ export type CardActionType =
 
 export type ButtonVariant = 'solid-green' | 'outline-amber' | 'neutral'
 
-/** Unified hero + primary CTA — derived together, never independent labels. */
+/** Unified verdict + hero + primary CTA — derived together. */
 export type CardAction = {
   type: CardActionType
+  verdict: CardVerdict
   heroText: string
   subtext?: string
+  /** Long advisory/CIO note — tooltip or drawer only, never the hero line. */
+  detail?: string
   urgency: ActionUrgency
   primaryLabel: string
   buttonVariant: ButtonVariant
@@ -44,9 +49,8 @@ function cioAvoid(rec?: string | null): boolean {
   return ['AVOID', 'IGNORE', 'SELL', 'TRIM'].some(k => s.includes(k))
 }
 
-function monitorOnlyHero(text: string): boolean {
-  const t = text.toLowerCase()
-  return t.includes('do not') || t.includes('monitor only')
+function cioLabel(rec?: string | null): string {
+  return String(rec ?? 'watch').replace(/_/g, ' ').toLowerCase()
 }
 
 function money(v: number | null | undefined): string {
@@ -56,9 +60,11 @@ function money(v: number | null | undefined): string {
 
 function action(
   type: CardActionType,
+  verdict: CardVerdict,
   heroText: string,
   opts: {
     subtext?: string
+    detail?: string
     urgency?: ActionUrgency
     primaryLabel: string
     buttonVariant: ButtonVariant
@@ -66,11 +72,13 @@ function action(
   },
 ): CardAction {
   let variant = opts.buttonVariant
-  if (monitorOnlyHero(heroText) && variant === 'solid-green') variant = 'neutral'
+  if ((verdict === 'SKIP' || verdict === 'WAIT') && variant === 'solid-green') variant = 'neutral'
   return {
     type,
+    verdict,
     heroText,
     subtext: opts.subtext,
+    detail: opts.detail,
     urgency: opts.urgency ?? 'none',
     primaryLabel: opts.primaryLabel,
     buttonVariant: variant,
@@ -89,9 +97,10 @@ export function deriveRecommendedAction(args: {
   adv?: { advisory_flag?: string; note?: string } | null
 }): CardAction {
   const { it, hasPlan, rr, warns, stale, enriched, entry, adv } = args
+  const advNote = adv?.note ? String(adv.note).trim() : undefined
 
   if (it.private_nontradeable) {
-    return action('VIEW_INTEL', 'Do not trade — private ticker', {
+    return action('VIEW_INTEL', 'SKIP', 'Do not trade — private ticker', {
       subtext: it.private_note || it.private_company,
       urgency: 'red',
       primaryLabel: 'View intel',
@@ -101,7 +110,7 @@ export function deriveRecommendedAction(args: {
 
   const noStop = warns.some(w => w.text.includes('NO STOP'))
   if (noStop) {
-    return action('ADJUST_PLAN', 'Define stop before entering', {
+    return action('ADJUST_PLAN', 'FIX', 'Set stop before entry', {
       subtext: 'Risk undefined without a planned stop',
       urgency: 'red',
       primaryLabel: 'Fix plan',
@@ -110,8 +119,8 @@ export function deriveRecommendedAction(args: {
   }
 
   if (stale && hasPlan) {
-    return action('REFRESH_DATA', 'Refresh before acting — data stale', {
-      subtext: 'Technical enrichment may not match current price',
+    return action('REFRESH_DATA', 'STALE', 'Refresh data first', {
+      subtext: 'Technicals may not match live price',
       urgency: 'amber',
       primaryLabel: 'Refresh data',
       buttonVariant: 'neutral',
@@ -119,9 +128,9 @@ export function deriveRecommendedAction(args: {
   }
 
   if (adv?.advisory_flag === 'caution' && !hasPlan) {
-    const note = adv.note ? String(adv.note).slice(0, 80) : 'setup advisory caution'
-    return action('REVIEW_SETUP', `Monitor only — ${note}`, {
+    return action('REVIEW_SETUP', 'WAIT', 'Wait — advisory caution', {
       subtext: 'No validated entry plan',
+      detail: advNote,
       urgency: 'amber',
       primaryLabel: 'Review setup',
       buttonVariant: 'neutral',
@@ -129,9 +138,9 @@ export function deriveRecommendedAction(args: {
   }
 
   if (adv?.advisory_flag === 'caution' && hasPlan) {
-    const note = adv.note ? String(adv.note).slice(0, 80) : 'setup advisory caution'
-    return action('VIEW_INTEL', `Monitor only — ${note}`, {
-      subtext: 'Plan exists but advisory cautions — verify before proposing',
+    return action('VIEW_INTEL', 'WAIT', 'Wait — verify setup', {
+      subtext: 'Plan exists; advisory cautions sizing',
+      detail: advNote,
       urgency: 'amber',
       primaryLabel: 'View intel',
       buttonVariant: 'neutral',
@@ -139,9 +148,8 @@ export function deriveRecommendedAction(args: {
   }
 
   if (cioAvoid(it.latest_recommendation)) {
-    const cv = String(it.latest_recommendation).replace(/_/g, ' ').toLowerCase()
-    return action('VIEW_INTEL', `Do not add — CIO view is ${cv}`, {
-      subtext: hasPlan ? 'Plan is advisory; align with CIO before sizing' : undefined,
+    return action('VIEW_INTEL', 'SKIP', `Skip — CIO ${cioLabel(it.latest_recommendation)}`, {
+      subtext: hasPlan ? 'Align with CIO before any add' : undefined,
       urgency: 'amber',
       primaryLabel: 'View intel',
       buttonVariant: 'neutral',
@@ -149,7 +157,7 @@ export function deriveRecommendedAction(args: {
   }
 
   if (rr != null && rr < 1) {
-    return action('ADJUST_PLAN', `Rework plan — R:R ${rr.toFixed(2)} below 1.0`, {
+    return action('ADJUST_PLAN', 'FIX', `Fix plan — R:R ${rr.toFixed(2)} < 1.0`, {
       subtext: 'Reward smaller than risk at this entry',
       urgency: 'red',
       primaryLabel: 'Fix plan',
@@ -158,8 +166,8 @@ export function deriveRecommendedAction(args: {
   }
 
   if (rr != null && rr < 1.5) {
-    return action('ADJUST_PLAN', `Rework plan — R:R ${rr.toFixed(2)} is thin`, {
-      subtext: 'Raise target or tighten stop before proposing',
+    return action('ADJUST_PLAN', 'FIX', `Fix plan — R:R ${rr.toFixed(2)} thin`, {
+      subtext: 'Raise target or tighten stop',
       urgency: 'amber',
       primaryLabel: 'Fix plan',
       buttonVariant: 'outline-amber',
@@ -168,8 +176,9 @@ export function deriveRecommendedAction(args: {
 
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
   if (planCapWarn && hasPlan) {
-    return action('REVIEW_EXIT', 'Raise target or keep runner — plan caps below Street', {
-      subtext: 'Do not exit entire position at plan target alone',
+    return action('REVIEW_EXIT', 'FIX', 'Fix exit — plan below Street', {
+      subtext: 'Keep a runner; do not exit all at plan target',
+      detail: planCapWarn.text,
       urgency: 'amber',
       primaryLabel: 'Review exit',
       buttonVariant: 'outline-amber',
@@ -178,8 +187,8 @@ export function deriveRecommendedAction(args: {
 
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
   if (conf != null && Number(conf) < 0.5 && !hasPlan) {
-    return action('VIEW_INTEL', 'Monitor only — low conviction', {
-      subtext: `Confidence ${Number(conf).toFixed(2)} · gather more evidence`,
+    return action('VIEW_INTEL', 'WAIT', 'Wait — low conviction', {
+      subtext: `Conf ${Number(conf).toFixed(2)} · gather more evidence`,
       urgency: 'none',
       primaryLabel: 'View intel',
       buttonVariant: 'neutral',
@@ -188,8 +197,12 @@ export function deriveRecommendedAction(args: {
 
   const urgency = it.entry_urgency
   if (urgency === 'ready' && hasPlan && entry != null) {
-    return action('PROPOSE_ENTRY', `Propose limit ${money(entry)} · stop ${money(Number(it.entry_stop))}`, {
-      subtext: rr != null ? `READY · R:R ${rr.toFixed(1)}` : 'READY · limit order',
+    const planStop = it.entry_stop != null ? Number(it.entry_stop) : null
+    return action('PROPOSE_ENTRY', 'READY', `Propose @ ${money(entry)}`, {
+      subtext: [
+        planStop != null ? `Stop ${money(planStop)}` : null,
+        rr != null ? `R:R ${rr.toFixed(1)}` : null,
+      ].filter(Boolean).join(' · ') || 'Limit order ready',
       urgency: 'green',
       primaryLabel: 'Propose Entry',
       buttonVariant: 'solid-green',
@@ -197,8 +210,11 @@ export function deriveRecommendedAction(args: {
   }
 
   if (urgency === 'near_entry' && hasPlan && entry != null) {
-    return action('PROPOSE_ENTRY', `Add on weakness near ${money(entry)}`, {
-      subtext: rr != null ? `NEAR-ENTRY · R:R ${rr.toFixed(1)}` : 'NEAR-ENTRY',
+    return action('PROPOSE_ENTRY', 'READY', `Add on dip @ ${money(entry)}`, {
+      subtext: [
+        'NEAR-ENTRY',
+        rr != null ? `R:R ${rr.toFixed(1)}` : null,
+      ].filter(Boolean).join(' · '),
       urgency: 'amber',
       primaryLabel: 'Propose Entry',
       buttonVariant: 'solid-green',
@@ -208,9 +224,10 @@ export function deriveRecommendedAction(args: {
   if (!hasPlan) {
     return action(
       enriched ? 'BUILD_PLAN' : 'REFRESH_DATA',
-      enriched ? 'Monitor only — no validated plan' : 'Awaiting enrichment',
+      enriched ? 'BUILD' : 'STALE',
+      enriched ? 'Build entry plan' : 'Awaiting enrichment',
       {
-        subtext: enriched ? 'Build limit, stop, and target first' : undefined,
+        subtext: enriched ? 'Need limit, stop, and target' : 'Refresh after enrichment completes',
         urgency: 'none',
         primaryLabel: enriched ? 'Build plan' : 'Refresh data',
         buttonVariant: enriched ? 'outline-amber' : 'neutral',
@@ -219,15 +236,15 @@ export function deriveRecommendedAction(args: {
   }
 
   if (entry != null) {
-    return action('WATCH_ON_DESK', `Hold for trigger at ${money(entry)}`, {
-      subtext: rr != null ? `R:R ${rr.toFixed(1)}` : undefined,
+    return action('WATCH_ON_DESK', 'WATCH', `Watch trigger @ ${money(entry)}`, {
+      subtext: rr != null ? `R:R ${rr.toFixed(1)} · hold for limit` : 'Hold for limit fill',
       urgency: 'none',
       primaryLabel: 'Watch on desk',
       buttonVariant: 'neutral',
     })
   }
 
-  return action('VIEW_INTEL', 'Monitor — review intel before acting', {
+  return action('VIEW_INTEL', 'WAIT', 'Review intel first', {
     urgency: 'none',
     primaryLabel: 'View intel',
     buttonVariant: 'neutral',
@@ -252,6 +269,19 @@ export function actionProminence(action: CardAction, hasPlan: boolean): ActionPr
     showLadder: hasPlan && action.type !== 'REFRESH_DATA',
     metricsMuted: passive && !hasPlan,
   }
+}
+
+export function verdictColor(v: CardVerdict): string {
+  const map: Record<CardVerdict, string> = {
+    READY: '#16a34a',
+    WAIT: '#d97706',
+    SKIP: '#94a3b8',
+    STALE: '#d97706',
+    FIX: '#dc2626',
+    BUILD: '#d97706',
+    WATCH: '#60a5fa',
+  }
+  return map[v]
 }
 
 export function buttonStyle(variant: ButtonVariant): Record<string, string | number> {
