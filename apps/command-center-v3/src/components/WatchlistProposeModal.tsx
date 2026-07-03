@@ -44,6 +44,9 @@ export type WatchlistProposeSeed = {
   rr: number | null
   ladder: Ladder | null
   pa?: any
+  /** Optional prefill from the card's Sizing & Account Risk module. */
+  account_key?: string
+  risk_pct?: RiskPct
 }
 
 type Props = {
@@ -66,8 +69,8 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   const { it, entry, stop, planTarget, rr, ladder, pa } = seed
   const { data: acctR, loading: acctLoading, error: acctError, refetch: refetchAccounts } = useApi<any>('/api/v2/proposal-accounts', 35_000)
 
-  const [riskPct, setRiskPct] = useState<RiskPct>(1)
-  const [account, setAccount] = useState('')
+  const [riskPct, setRiskPct] = useState<RiskPct>(seed.risk_pct ?? 1)
+  const [account, setAccount] = useState(seed.account_key ?? '')
   const [shares, setShares] = useState('')
   const [sharesTouched, setSharesTouched] = useState(false)
   const [confirmOverRisk, setConfirmOverRisk] = useState(false)
