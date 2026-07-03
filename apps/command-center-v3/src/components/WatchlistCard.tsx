@@ -253,6 +253,10 @@ export default function WatchlistCard({
         flexDirection: 'column',
         gap: 12,
         boxShadow: WL.card.shadow,
+        minWidth: 0,
+        width: '100%',
+        boxSizing: 'border-box',
+        overflow: 'visible',
       }}
     >
       {/* 1. Header */}
@@ -405,7 +409,7 @@ export default function WatchlistCard({
           }}
         >
           {companyDesc && (
-            <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
               {companyDesc}
             </div>
           )}
@@ -455,7 +459,7 @@ export default function WatchlistCard({
             </div>
           )}
           {newsItems.map((n: any, i: number) => (
-            <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4 }}>
+            <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
               <span style={{ color: WL.text.muted }}>
                 {n.source || 'news'}
                 {n.at ? ` · ${ago(n.at)}` : ''}

@@ -376,13 +376,19 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
               : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}
           </div>
         })() : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(620px, 1fr))', gap: 16, paddingRight: 4 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 16,
+            width: '100%',
+            minWidth: 0,
+          }}>
             {pageItems.map((it: any) => {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
               return (
+                <div key={it.id} style={{ minWidth: 0, width: '100%' }}>
                 <WatchlistCard
-                  key={it.id}
                   it={it}
                   adv={advMap[it.symbol]}
                   sc={cardMap[it.symbol]}
@@ -404,6 +410,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   onBuildPlan={buildPlan}
                   onOpenDesk={openDesk}
                 />
+                </div>
               )
             })}
           </div>
