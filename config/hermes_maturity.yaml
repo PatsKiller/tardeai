@@ -1,0 +1,48 @@
+# Hermes closed-loop maturity model v2 — composite 0–100 score with weighted sub-components.
+# Computed nightly by hermes_outcome_feedback_agent.py → outcome_bus.maturity
+
+version: maturity-v2
+
+weights:
+  outcome_yield: 0.30
+  scope_discipline: 0.25
+  stop_quality: 0.20
+  feedback_loop: 0.15
+  research_actionability: 0.10
+
+tiers:
+  nascent:    { min: 0,  max: 39 }
+  developing: { min: 40, max: 59 }
+  mature:     { min: 60, max: 79 }
+  optimized:  { min: 80, max: 100 }
+
+# Optimized tier requires no component below this floor (balance gate)
+optimized_min_component: 55
+
+components:
+  outcome_yield:
+    hit_rate_target: 0.40
+    hit_rate_floor: 0.25
+    trade_hit_weight: 0.25
+    min_graded_claims: 50
+    graded_claims_cap: 200
+  scope_discipline:
+    efficiency_target: 0.60
+    efficiency_floor: 0.45
+    universe_cap_pct: 0.25        # live / pre_governor baseline
+    max_scope_growth_pct: 0.15
+  stop_quality:
+    trail_delta_target: 0.15      # hot vs cold pp
+    aligned_target: 0.60
+    min_sample_n: 5
+  feedback_loop:
+    min_governor_feedback: 1
+    alert_penalty_per_active: 8   # subtract per active alert from component score
+  research_actionability:
+    research_hit_target: 0.50
+    positive_tag_lift_min: 0.02
+
+trend:
+  delta_improving: 3              # composite +3 over window → improving
+  delta_declining: -3
+  window_points: 7

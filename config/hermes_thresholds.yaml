@@ -1,0 +1,91 @@
+# Hermes Adaptive Threshold Learning — safe bands, step limits, learning windows.
+# Proposals require human approval before activation (review_mode default true).
+
+version: thresholds-v2
+
+learning:
+  enabled: true
+  review_mode: true              # proposals only — never auto-apply in v1
+  min_history_days: 14           # minimum bus history points to run learner
+  analysis_window_days: 30       # primary lookback for correlation analysis
+  max_analysis_window_days: 90
+  cadence_days: 14               # suggested re-run interval
+  min_sample_days: 10            # per-threshold minimum usable days
+  sparse_data_days: 20           # below this: halve max_step on proposals
+
+# Phase 2 multi-metric scoring (see docs/hermes/HERMES_THRESHOLD_SCORING_REVIEW.md)
+scoring:
+  efficiency_weights:
+    hit_rate_separation: 0.40    # primary outcome yield signal
+    maturity_separation: 0.25    # closed-loop health
+    realized_r_separation: 0.15  # trade quality when available
+    efficiency_stability: 0.10   # avoid noise-only triggers
+    early_detection: 0.10        # fires before yield drops
+  stop_quality_weights:
+    alignment_separation: 0.35
+    trail_delta_separation: 0.25
+    maturity_stop_separation: 0.20
+    early_detection: 0.10
+    trigger_guard: 0.10
+  asymmetric:
+    tighten_min_score_delta: 0.002
+    loosen_score_delta_mult: 2.0   # loosen needs 2× score improvement
+    loosen_min_confidence: "medium"
+  confidence:
+    low_sample_days: 14
+    high_sample_days: 22
+    high_score_delta: 0.005
+    runner_up_gap: 0.005
+
+regime:
+  high_vol_pct_cap: 0.30         # >30% high-vol days → downgrade confidence
+  scoring_high_vol_match: [high_vol, volatility, risk_off, elevated]
+
+evaluation:
+  enabled: true
+  lookback_days: 60
+  min_days_after_change: 14      # wait before evaluating an approval
+  before_window_days: 14
+  after_window_days: 14
+  preferred_window_days: 14
+  min_window_days: 7
+  helped_impact_floor: 0.15
+  hurt_impact_ceiling: -0.15
+
+thresholds:
+  efficiency.tighten_threshold:
+    label: "Efficiency reaction trigger"
+    static_default: 0.50
+    path: ["efficiency", "tighten_threshold"]
+    safe_band: { min: 0.42, max: 0.58 }
+    max_step: 0.03
+    min_step: 0.01
+    priority: high
+    metrics:
+      - hit_rate_promotions
+      - maturity_composite_score
+      - resource_efficiency_score
+
+  stop_quality.divergence_delta_pp:
+    label: "Stop quality Hot vs Cold divergence floor"
+    static_default: 0.13
+    path: ["stop_quality", "divergence_delta_pp"]
+    safe_band: { min: 0.08, max: 0.20 }
+    max_step: 0.02
+    min_step: 0.01
+    priority: high
+    metrics:
+      - stop_hot_cold_trail_delta
+      - aligned_pct
+      - maturity_stop_quality_score
+
+# Future (Phase 2+) — defined but not learned in Phase 1
+future:
+  hot_min_score:
+    static_default: 65
+    safe_band: { min: 60, max: 75 }
+    max_step: 3
+  scope_creep.growth_pct:
+    static_default: 0.15
+    safe_band: { min: 0.10, max: 0.22 }
+    max_step: 0.02

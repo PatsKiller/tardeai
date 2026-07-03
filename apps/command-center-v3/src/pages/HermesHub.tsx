@@ -5,10 +5,11 @@ import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
 import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor'
 import { EvidenceBlock } from '../components/EvidenceBlock'
+import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
-const TABS = ['Overview', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+const TABS = ['Overview', 'Closed Loop', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
 const SCALP_TABS = ['Overview', 'Workflow', 'Getting Started'] as const
 
 const MATURITY_COLOR: Record<string, string> = {
@@ -664,6 +665,10 @@ export default function HermesHub({ onDrill }: Props) {
             )
           })()}
         </div>
+      )}
+
+      {!isScalp && tab === 'Closed Loop' && (
+        <HermesClosedLoopPanel onDrill={onDrill} />
       )}
 
       {!isScalp && tab === 'Workflow' && (

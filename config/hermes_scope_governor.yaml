@@ -46,3 +46,61 @@ reactivation:
 event_feeder:
   scan_minutes: 20
   sources: [catalyst, news, finviz, directive_hit, proposal]
+
+# Outcome-aware edge scoring (v2 governor). Outcome yield outranks throughput yield.
+# Hot = S0+S1, Warm = S2, Cold = S3. Hermes consumes data/runtime/hermes_governed_universe.json.
+scoring:
+  outcome_lookback_days: 90
+  max_outcome_promotions: 25          # per-run cap on outcome-only S1 promotions
+  weights:
+    portfolio_relevance: 25          # holdings, scalps, proposals, operator pins
+    outcome_yield: 30                # graded ledger hit-rate + realized R (highest weight)
+    social_conviction: 15            # intelligence_entities social_score + freshness
+    technical_edge: 15               # hermes_composite + RVOL
+    event_boost: 10                  # catalyst / directive / pending score events
+    liquidity: 5                     # avg volume + ATR guardrails
+  thresholds:
+    hot_min_score: 65                # outcome-aware S1 promotion when no rule trigger
+    warm_min_score: 40
+  liquidity_filters:
+    min_avg_volume: 200000
+    max_atr_pct: 12.0
+  outcome_gates:                     # graft-gate safeguards — do not overreact to one outcome
+    min_graded_samples: 3
+    promote_hit_rate: 0.50
+    promote_min_avg_r: 0.25
+    demote_miss_rate: 0.60
+    pause_miss_rate: 0.75
+    demote_score_penalty: 20
+    promote_score_boost: 8
+
+# Outcome-bus reaction rules — conservative, one-run overrides (reversible via enabled: false)
+bus_reactions:
+  enabled: true
+  trend_window_days: 14
+  efficiency_tighten_threshold: 0.50
+  efficiency_consecutive_days: 3
+  hot_min_score_bump: 10
+  demotion_pressure_multiplier: 1.25
+  stop_hot_advantage_pp: 0.12
+  hot_research_priority_boost: 1.08
+  tag_poor_outcomes_days: 7
+  tag_multiplier_reduction: 0.85
+  tag_multiplier_floor: 0.45
+  scope_creep_promotion_cap_reduction: 5
+  stop_quality_reactions:
+    enabled: true
+    divergence_delta_pp: 0.13              # Hot vs Cold trail delta below this triggers tighten
+    divergence_consecutive_days: 4
+    warm_cold_hot_min_bump: 5              # extra hot_min_score for warm/cold promotion path
+    warm_cold_edge_penalty: 5.0            # light edge penalty on S2/S3 symbols
+    divergence_hot_research_boost: 1.10    # research priority boost for Hot tier
+    strong_advantage_pp: 0.20              # widen above this → relax hot promotion pressure
+    strong_advantage_hot_min_relax: 5
+    strong_advantage_hot_edge_boost: 5.0
+
+# Optional LLM review for ambiguous tier changes (off by default — rules-first)
+llm_ambiguous_review:
+  enabled: false
+  min_edge_spread: 8                 # only when score within this band of tier threshold
+  lane: grok

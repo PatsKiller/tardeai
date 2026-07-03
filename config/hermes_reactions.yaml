@@ -1,0 +1,59 @@
+# Hermes Scope Governor — outcome-bus reaction rules (tunable without code changes).
+# Loaded by lib/hermes_scope_governor/reactions.py; overrides hermes_scope_governor.yaml bus_reactions.
+
+version: reactions-v1
+
+enabled: true
+review_mode: false               # true = log would-apply reactions, do not apply edge/cap/runtime changes
+trend_window_days: 14
+
+cooldown:
+  enabled: true
+  hours_per_reaction: 12           # same reaction id suppressed within window after last apply
+  hysteresis:
+    efficiency_release_threshold: 0.55   # efficiency must exceed to clear efficiency reaction cooldown early
+
+# Regime-aware scaling (market_regime_snapshots.regime_label)
+regime_modifiers:
+  high_volatility:
+    match: ["high_vol", "volatility", "risk_off", "elevated"]
+    hot_min_score_bump_mult: 1.25
+    promotion_cap_mult: 0.75
+    demotion_pressure_mult: 1.10
+  normal:
+    match: ["normal", "trend", "neutral", "low_vol"]
+    hot_min_score_bump_mult: 1.0
+    promotion_cap_mult: 1.0
+    demotion_pressure_mult: 1.0
+
+efficiency:
+  enabled: true
+  tighten_threshold: 0.50
+  consecutive_days: 3
+  hot_min_score_bump: 10
+  demotion_pressure_multiplier: 1.25
+
+stop_quality:
+  enabled: true
+  divergence_delta_pp: 0.13
+  divergence_consecutive_days: 4
+  warm_cold_hot_min_bump: 5
+  warm_cold_edge_penalty: 5.0
+  divergence_hot_research_boost: 1.10
+  strong_advantage_pp: 0.20
+  strong_advantage_hot_min_relax: 5
+  strong_advantage_hot_edge_boost: 5.0
+
+scope_creep:
+  enabled: true
+  promotion_cap_reduction: 5
+
+tags:
+  enabled: true
+  poor_outcomes_days: 7
+  multiplier_reduction: 0.85
+  multiplier_floor: 0.45
+
+legacy_aliases:
+  hot_research_priority_boost: 1.08
+  stop_hot_advantage_pp: 0.12

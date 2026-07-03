@@ -20073,6 +20073,150 @@ def _hermes_maturity_dashboard():
         return {"ok": False, "error": str(e)[:200], "advisory_notice": "Maturity dashboard unavailable"}
 
 
+def _hermes_outcome_bus(query=None):
+    """GET /api/v2/hermes/outcome-bus — nightly outcome rollups for closed-loop agents.
+
+    Read-only. Written by hermes_outcome_feedback_agent.py after the outcome grader.
+    Scope Governor and Research Agent consume feedback_to_governor / feedback_to_research.
+    """
+    q = query or {}
+    symbol = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_outcome_bus.bus import load_outcome_bus
+        bus = load_outcome_bus()
+        sym_detail = None
+        if symbol:
+            sym_detail = (bus.get("by_symbol") or {}).get(str(symbol).upper())
+        alerts = bus.get("alerts") or {}
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Outcome bus — advisory only; outcome yield outranks throughput",
+            "bus": bus,
+            "symbol_detail": sym_detail,
+            "governor_feedback_count": len(bus.get("feedback_to_governor") or []),
+            "research_feedback_count": len(bus.get("feedback_to_research") or []),
+            "active_alerts": alerts.get("active") or [],
+            "active_alert_count": alerts.get("active_count", len(alerts.get("active") or [])),
+            "maturity": bus.get("maturity") or {},
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _hermes_outcome_bus_history(query=None):
+    """GET /api/v2/hermes/outcome-bus/history — daily outcome yield + scope trends (7d/30d)."""
+    q = query or {}
+    raw_days = (q.get("days") or [30])[0] if isinstance(q.get("days"), list) else q.get("days")
+    try:
+        days = int(raw_days or 30)
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 90))
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_outcome_bus.bus import load_outcome_bus_trend
+        from lib.hermes_scope_governor.universe import load_universe_trend
+        from lib.hermes_outcome_bus.bus import load_outcome_bus
+        outcome = load_outcome_bus_trend(days=days)
+        tiers = load_universe_trend(days=days)
+        bus = load_outcome_bus()
+        alerts = (bus or {}).get("alerts") or {}
+        alert_history = [
+            {"day": s.get("day"), "active_alert_ids": s.get("active_alert_ids") or []}
+            for s in (outcome.get("series") or [])
+            if s.get("active_alert_ids")
+        ]
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Outcome bus history — one point per UTC day (latest nightly run)",
+            "days": days,
+            "outcome": outcome,
+            "tiers": tiers,
+            "alerts": {
+                "active": alerts.get("active") or [],
+                "active_count": alerts.get("active_count", len(alerts.get("active") or [])),
+                "evaluated_at": alerts.get("evaluated_at"),
+                "history": alert_history,
+            },
+            "maturity": (bus or {}).get("maturity") or {},
+            "maturity_trend": outcome.get("maturity_trend") or {},
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _hermes_thresholds(query=None):
+    """GET /api/v2/hermes/thresholds — adaptive threshold status + pending proposals."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_thresholds.workflow import threshold_status
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Adaptive thresholds — proposals require human approval in v1",
+            **threshold_status(),
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _hermes_threshold_evaluations(query=None):
+    """GET /api/v2/hermes/thresholds/evaluations — before/after impact reports."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_thresholds.evaluation_engine import evaluation_status
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Threshold evaluations are read-only recommendations",
+            **evaluation_status(),
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _hermes_scope_governor(query=None):
+    """GET /api/v2/hermes/scope-governor — governed universe feed + recent tier decisions.
+
+    Read-only. Sole scope owner is hermes_scope_governor.py; Hermes consumers read this feed
+    rather than deciding their own scope. Hot/Warm/Cold = S0+S1 / S2 / S3.
+    """
+    q = query or {}
+    symbol = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_scope_governor.universe import read_universe_feed
+        from lib.hermes_scope_governor.config import load_config
+        feed = read_universe_feed() or {}
+        cfg = load_config(PROJECT_ROOT / "config" / "hermes_scope_governor.yaml")
+        audit = _db_query("""SELECT run_id, symbol, action, from_tier, to_tier, reason, created_at
+                             FROM scope_governor_audit
+                             """ + ("WHERE UPPER(symbol)=UPPER(%s) " if symbol else "") +
+                            "ORDER BY created_at DESC LIMIT %s",
+                            ((symbol.upper(), 25) if symbol else (30,))) or []
+        if symbol and feed.get("symbols"):
+            sym_row = next((s for s in feed["symbols"] if str(s.get("symbol", "")).upper() == str(symbol).upper()), None)
+        else:
+            sym_row = None
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Scope Governor — advisory only; Hermes reads this feed, does not self-scope",
+            "philosophy": "outcome_yield_outranks_throughput",
+            "heat_map": {"hot": "S0+S1", "warm": "S2", "cold": "S3"},
+            "config_total_cap": cfg.get("total_cap", 800),
+            "scoring_weights": (cfg.get("scoring") or {}).get("weights"),
+            "universe": feed,
+            "symbol_detail": sym_row,
+            "recent_audit": audit,
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_research_critique(query=None):
     """GET /api/v2/hermes/research-critique — shared librarian/taxonomy scores + stale removal flags.
 
@@ -25882,6 +26026,11 @@ ROUTES = {
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
     "/api/v2/hermes/research-critique": lambda q: _hermes_research_critique(q),
     "/api/v2/hermes/maturity-dashboard": lambda: _hermes_maturity_dashboard(),
+    "/api/v2/hermes/scope-governor": lambda q: _hermes_scope_governor(q),
+    "/api/v2/hermes/outcome-bus": lambda q: _hermes_outcome_bus(q),
+    "/api/v2/hermes/outcome-bus/history": lambda q: _hermes_outcome_bus_history(q),
+    "/api/v2/hermes/thresholds": lambda q: _hermes_thresholds(q),
+    "/api/v2/hermes/thresholds/evaluations": lambda q: _hermes_threshold_evaluations(q),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),
@@ -28691,6 +28840,145 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── LLM Queue Approve (operator gate) ──
+    # ── Hermes adaptive thresholds (human-approved) ──
+    _HERMES_TP_PREFIX = "/api/v2/hermes/thresholds/proposals/"
+    if method == "POST" and base_path.startswith(_HERMES_TP_PREFIX):
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.workflow import approve_proposal, reject_proposal
+            b = body or {}
+            if base_path.endswith("/approve"):
+                pid = base_path[len(_HERMES_TP_PREFIX):-len("/approve")].strip("/")
+                if not pid:
+                    return 400, {"ok": False, "error": "proposal_id required in path"}
+                override = b.get("override_value")
+                if override is not None:
+                    override = float(override)
+                notes = b.get("notes")
+                reason = b.get("reason") or notes
+                force_apply = b.get("force_apply")
+                if force_apply is None:
+                    force_apply = True
+                else:
+                    force_apply = bool(force_apply)
+                result = approve_proposal(
+                    str(pid),
+                    approved_by=str(b.get("by") or "operator_ui"),
+                    override_value=override,
+                    notes=str(notes) if notes else None,
+                    reason=str(reason) if reason else None,
+                    force_apply=force_apply,
+                )
+            elif base_path.endswith("/reject"):
+                pid = base_path[len(_HERMES_TP_PREFIX):-len("/reject")].strip("/")
+                if not pid:
+                    return 400, {"ok": False, "error": "proposal_id required in path"}
+                notes = b.get("notes")
+                reason = str(b.get("reason") or notes or "operator_rejected_ui")
+                result = reject_proposal(
+                    str(pid),
+                    reason=reason,
+                    notes=str(notes) if notes else None,
+                    rejected_by=str(b.get("by") or "operator_ui"),
+                )
+            else:
+                return 404, {"ok": False, "error": "unknown threshold proposal action"}
+            code = 200 if result.get("ok") else 400
+            if not result.get("ok"):
+                reason_key = result.get("reason", "")
+                if reason_key == "proposal_not_found":
+                    code = 404
+                elif reason_key == "already_processed":
+                    code = 409
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/thresholds/approve":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.workflow import approve_proposal
+            b = body or {}
+            pid = b.get("proposal_id")
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            override = b.get("override_value")
+            if override is not None:
+                override = float(override)
+            notes = b.get("notes")
+            reason = b.get("reason") or notes
+            force_apply = b.get("force_apply")
+            if force_apply is None:
+                force_apply = True
+            else:
+                force_apply = bool(force_apply)
+            result = approve_proposal(
+                str(pid),
+                approved_by=str(b.get("by") or "operator_ui"),
+                override_value=override,
+                notes=str(notes) if notes else None,
+                reason=str(reason) if reason else None,
+                force_apply=force_apply,
+            )
+            code = 200 if result.get("ok") else 400
+            if not result.get("ok") and result.get("reason") == "already_processed":
+                code = 409
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/thresholds/reject":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.workflow import reject_proposal
+            b = body or {}
+            pid = b.get("proposal_id")
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            notes = b.get("notes")
+            reason = str(b.get("reason") or notes or "operator_rejected_ui")
+            result = reject_proposal(
+                str(pid),
+                reason=reason,
+                notes=str(notes) if notes else None,
+                rejected_by=str(b.get("by") or "operator_ui"),
+            )
+            code = 200 if result.get("ok") else 400
+            if not result.get("ok") and result.get("reason") == "already_processed":
+                code = 409
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/thresholds/evaluate":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.evaluation_engine import run_evaluation_cycle
+            b = body or {}
+            lookback = b.get("lookback_days")
+            result = run_evaluation_cycle(lookback_days=int(lookback) if lookback else None)
+            code = 200 if result.get("ok") else 400
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/thresholds/learn":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.threshold_learner import run_learning_cycle
+            b = body or {}
+            apply_p = bool(b.get("apply", True))
+            result = run_learning_cycle(apply_proposals=apply_p)
+            code = 200 if result.get("ok") else 400
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path == "/api/v2/llm-queue/approve":
         try:
             queue_id = (body or {}).get("queue_id")

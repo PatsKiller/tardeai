@@ -1,0 +1,82 @@
+# Outcome & Feedback Agent — nightly bus rollups (outcome-bus-v1).
+# Cadence: 02:50 grader → 03:05 tag_engine → 03:25 feedback → 03:35 learning.
+# Rules-first: SQL + JSON only, zero LLM. Advisory-only.
+
+lookback_days: 90
+research_throughput_days: 7
+resource_efficiency_days: 7
+
+# Graft-gate thresholds — aligned with hermes_scope_governor.yaml outcome_gates
+outcome_gates:
+  min_graded_samples: 3
+  promote_hit_rate: 0.50
+  promote_min_avg_r: 0.25
+  demote_miss_rate: 0.60
+  pause_miss_rate: 0.75
+  demote_score_penalty: -20
+  promote_score_boost: 8
+
+# Tag feedback — mirrors hermes_tag_engine efficacy gates
+tag_gates:
+  min_samples_downrank: 15
+  min_samples_boost: 15
+  negative_lift_downrank: 0.0      # lift <= this triggers downrank when n sufficient
+  positive_lift_boost: 0.02        # lift >= this triggers boost when n sufficient
+  downrank_multiplier: 0.6
+  boost_multiplier: 1.15
+  floor_multiplier: 0.3
+  ceiling_multiplier: 1.25
+
+# Stop quality slice (protection_advisory_outcomes, 90d)
+stop_quality:
+  lookback_days: 90
+  min_sample_n: 5
+
+# Resource efficiency guardrails (throughput is NOT success — outcome yield is)
+resource_efficiency:
+  pre_governor_score_writes_per_day: 157000   # audit baseline for comparison
+  pre_governor_live_universe: 4171
+  alert_throughput_up_pct: 0.20               # alert if research rows +20% while hit flat
+  score_weights:
+    outcome_yield: 0.35
+    research_efficiency: 0.20
+    write_efficiency: 0.20
+    scope_discipline: 0.15
+    llm_efficiency: 0.10
+
+# Trend alerts — evaluated nightly from outcome_bus_history (conservative defaults)
+alerts:
+  enabled: true
+  history_window_days: 14
+  hit_rate_window_days: 7
+  hit_rate_decline_pp: 0.08          # 8 percentage points
+  hit_rate_flat_pp: 0.02             # ±2pp counts as flat for scope_creep
+  efficiency_score_floor: 0.55
+  efficiency_consecutive_days: 3
+  scope_creep_window_days: 14
+  scope_growth_pct: 0.15             # >15% symbol growth
+  stop_hot_cold_delta_pp: 0.15       # Hot vs Cold trail delta floor
+  stop_divergence_consecutive_days: 5
+
+# Bus-native maturity proxy (maps to HERMES_MATURITY_5 dimensions)
+maturity:
+  outcome_hit_rate_min: 0.35
+  scope_efficiency_min: 0.55
+  scope_growth_max_pct: 0.15
+  min_graded_claims: 50
+  min_governor_feedback: 1
+  stop_hot_cold_min_pp: 0.12
+
+# S3 reactivation policy metadata (enforced by event feeder)
+s3_reactivation:
+  version: v1
+  requires_multi_factor: true
+  min_factors: 2
+  # High-trust event types (alone insufficient — need second factor)
+  primary_event_types: [catalyst, proposal, directive_hit]
+  # Low-trust types never reactivate S3 without primary + RVOL/outcome
+  low_trust_event_types: [news, finviz]
+  rvol_threshold: 3.0
+  gap_pct_threshold: 8.0
+  composite_min: 70
+  outcome_allowlist_actions: [promote_eligible]

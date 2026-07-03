@@ -66,9 +66,100 @@ def _cfg():
     return yaml.safe_load(CFG_FILE.read_text())
 
 
+def _feedback_cfg() -> dict:
+    """S3 reactivation policy from outcome feedback config (conservative multi-factor)."""
+    try:
+        import yaml
+        p = PROJECT_ROOT / "config" / "hermes_outcome_feedback.yaml"
+        return (yaml.safe_load(p.read_text()) or {}).get("s3_reactivation") or {}
+    except Exception:
+        return {}
+
+
+def _load_outcome_bus():
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_outcome_bus.bus import load_outcome_bus, governor_feedback_index
+        bus = load_outcome_bus()
+        return bus, governor_feedback_index(bus)
+    except Exception:
+        return {}, {}
+
+
+def _reactivation_factors(cur, sym: str, etype: str, policy: dict, gov_idx: dict) -> tuple[int, list[str]]:
+    """Count evidence factors for S3→S1. Requires min_factors (default 2) — no bare news inflation."""
+    factors: list[str] = []
+    primary = set(policy.get("primary_event_types") or ["catalyst", "proposal", "directive_hit"])
+    low_trust = set(policy.get("low_trust_event_types") or ["news", "finviz"])
+
+    if etype in primary:
+        factors.append(f"primary_event:{etype}")
+    elif etype in low_trust:
+        factors.append(f"low_trust_only:{etype}")  # counts as 0.5 — needs strong second factor
+
+    rvol_thr = float(policy.get("rvol_threshold", 3.0))
+    gap_thr = float(policy.get("gap_pct_threshold", 8.0))
+    try:
+        cur.execute("""SELECT rvol, gap_pct FROM trade_ai_scans
+                       WHERE UPPER(symbol)=%s AND run_date::date = CURRENT_DATE
+                       ORDER BY rvol DESC NULLS LAST LIMIT 1""", (sym,))
+        row = cur.fetchone()
+        if row:
+            rvol, gap = row[0], row[1]
+            if rvol is not None and float(rvol) >= rvol_thr:
+                factors.append(f"rvol>={rvol_thr}")
+            if gap is not None and abs(float(gap)) >= gap_thr:
+                factors.append(f"gap>={gap_thr}%")
+    except Exception:
+        pass
+
+    comp_min = float(policy.get("composite_min", 70))
+    try:
+        cur.execute("""SELECT MAX(hermes_composite_score) FROM watchlist_items
+                       WHERE UPPER(symbol)=%s AND status IN ('active','researched')""", (sym,))
+        comp = cur.fetchone()[0]
+        if comp is not None and float(comp) >= comp_min:
+            factors.append(f"composite>={comp_min}")
+    except Exception:
+        pass
+
+    allow_actions = set(policy.get("outcome_allowlist_actions") or ["promote_eligible"])
+    fb = gov_idx.get(sym.upper()) or {}
+    if str(fb.get("action") or "") in allow_actions:
+        factors.append(f"outcome_bus:{fb.get('action')}")
+
+    # Low-trust alone never sufficient: require at least one non-low-trust factor beyond the event
+    if etype in low_trust and etype not in primary:
+        non_event = [f for f in factors if not f.startswith("low_trust")]
+        if len(non_event) < 1:
+            return 0, factors
+
+    min_f = int(policy.get("min_factors", 2))
+    score = len(factors)
+    if etype in low_trust and score < min_f + 1:
+        score = max(0, score - 1)  # penalize low-trust paths
+    return score, factors
+
+
+def _s3_reactivation_eligible(cur, sym: str, etype: str, policy: dict, gov_idx: dict) -> tuple[bool, str]:
+    if not policy.get("requires_multi_factor", True):
+        return True, "policy_disabled"
+    score, factors = _reactivation_factors(cur, sym, etype, policy, gov_idx)
+    min_f = int(policy.get("min_factors", 2))
+    if score >= min_f:
+        return True, "|".join(factors)
+    return False, f"insufficient_factors({score}<{min_f}):{','.join(factors)}"
+
+
 def run(apply: bool = False) -> dict:
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — feeder idle"}
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_scope_governor.heartbeat import FEEDER_HEARTBEAT, write_heartbeat
+            write_heartbeat(FEEDER_HEARTBEAT, out)
+        except Exception:
+            pass
         print(json.dumps(out))
         return out
     from db_adapter import _get_conn
@@ -93,7 +184,11 @@ def run(apply: bool = False) -> dict:
             if sym in universe and sym not in found:
                 found[sym] = (src, ref)
 
+    policy = _feedback_cfg()
+    _bus, gov_idx = _load_outcome_bus()
+
     enqueued = reactivated = 0
+    skipped_s3 = 0
     if apply and found:
         for sym, (etype, ref) in found.items():
             cur.execute("""INSERT INTO hermes_score_event_queue (symbol, event_type, source_ref)
@@ -101,18 +196,26 @@ def run(apply: bool = False) -> dict:
                            ON CONFLICT (symbol) WHERE processed_at IS NULL DO NOTHING""",
                         (sym, etype, ref))
             enqueued += cur.rowcount
-        # S3 -> S1 reactivation on any fresh event (audited; governor may re-tier later)
+        # S3 -> S1: conservative multi-factor reactivation (prevents event-lane scope inflation)
         cur.execute("""SELECT DISTINCT UPPER(symbol) FROM watchlist_items
                        WHERE scope_tier='S3' AND UPPER(symbol) = ANY(%s)
                          AND status IN ('active','researched')""", (list(found.keys()),))
         for (sym,) in cur.fetchall():
             etype, ref = found[sym]
+            ok, evidence = _s3_reactivation_eligible(cur, sym, etype, policy, gov_idx)
+            if not ok:
+                skipped_s3 += 1
+                cur.execute("""INSERT INTO scope_governor_audit (run_id, symbol, action, from_tier, to_tier, reason)
+                               VALUES (%s,%s,'skip_reactivate','S3','S3',%s)""",
+                            (run_id, sym, f"event:{etype}:{evidence}"))
+                continue
             cur.execute("""UPDATE watchlist_items
                            SET scope_tier='S1', trigger_source=%s, last_trigger_at=NOW(), updated_at=NOW()
                            WHERE UPPER(symbol)=%s AND status IN ('active','researched')""",
                         (f"event:{etype}", sym))
             cur.execute("""INSERT INTO scope_governor_audit (run_id, symbol, action, from_tier, to_tier, reason)
-                           VALUES (%s,%s,'reactivate','S3','S1',%s)""", (run_id, sym, f"event:{etype}:{ref}"))
+                           VALUES (%s,%s,'reactivate','S3','S1',%s)""",
+                        (run_id, sym, f"event:{etype}:{ref}|{evidence}"))
             reactivated += 1
         conn.commit()
 
@@ -122,8 +225,16 @@ def run(apply: bool = False) -> dict:
     out = {"ok": True, "apply": apply, "run_id": run_id, "window_minutes": window,
            "events_found": len(found), "by_type": by_type,
            "enqueued": enqueued, "reactivated_s3_to_s1": reactivated,
+           "skipped_s3_reactivation": skipped_s3 if apply else 0,
+           "s3_policy": policy.get("version", "v1"),
            "sample": [f"{s}<-{t}" for s, (t, _r) in list(found.items())[:10]],
            "ts": datetime.now(timezone.utc).isoformat()}
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_scope_governor.heartbeat import FEEDER_HEARTBEAT, write_heartbeat
+        write_heartbeat(FEEDER_HEARTBEAT, out)
+    except Exception:
+        pass
     print(json.dumps(out, indent=2))
     return out
 

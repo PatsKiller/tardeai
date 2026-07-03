@@ -1185,6 +1185,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API dispatch
         if path.startswith("/api/v2/"):
             try:
+                import time as _time
+                _v2_t0 = _time.perf_counter()
                 _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
                 _v2_query = dict(parse_qs(parsed.query)) if parsed.query else {}
@@ -1192,6 +1194,18 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _v2_result = _v2_handle(path, method="GET", query=_v2_query)
                 if _v2_result is not None:
                     _v2_status, _v2_body = _v2_result
+                    if path.startswith("/api/v2/hermes"):
+                        try:
+                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            from lib.hermes_logging.request_logger import log_hermes_request
+                            log_hermes_request(
+                                path,
+                                method="GET",
+                                duration_ms=int((_time.perf_counter() - _v2_t0) * 1000),
+                                status_code=_v2_status,
+                            )
+                        except Exception:
+                            pass
                     json_response(self, _v2_status, _v2_body)
                     return
             except Exception as _v2e:
@@ -1609,11 +1623,25 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API POST dispatch
         if path.startswith("/api/v2/"):
             try:
+                import time as _time
+                _v2_t0 = _time.perf_counter()
                 _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
                 _v2_result = _v2_handle(path, method="POST", body=body)
                 if _v2_result is not None:
                     _v2_status, _v2_body = _v2_result
+                    if path.startswith("/api/v2/hermes"):
+                        try:
+                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            from lib.hermes_logging.request_logger import log_hermes_request
+                            log_hermes_request(
+                                path,
+                                method="POST",
+                                duration_ms=int((_time.perf_counter() - _v2_t0) * 1000),
+                                status_code=_v2_status,
+                            )
+                        except Exception:
+                            pass
                     json_response(self, _v2_status, _v2_body)
                     return
             except Exception as _v2e:
