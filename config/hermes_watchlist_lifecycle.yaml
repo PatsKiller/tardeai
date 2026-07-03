@@ -1,28 +1,49 @@
-# Watchlist lifecycle — parallel to scope_tier (S0–S3), outcome-driven, advisory-only.
-# Does NOT replace scope_tier; explains operator-facing stage + conviction for UI/audit.
+# Watchlist lifecycle + health scoring — parallel to scope_tier (S0–S3), outcome-driven.
 
 enabled: true
-review_mode: true   # persist recommendations; tier writes still via scope governor --apply
+review_mode: true   # block weak promotions in governor; tier writes still via --apply
 
 stages:
   - new
   - monitoring
+  - watch
   - promoted
   - demoted
   - archived
   - blacklisted
 
-# Days on watchlist before "new" graduates to monitoring (unless promoted)
 new_symbol_days: 7
-
-# Archive: S3 + conviction below floor for graded symbols
 archive_conviction_floor: 35
-
-# Re-promote cooldown after demotion (days) — conservative
 demotion_cooldown_days: 7
 
+# Composite health score (0–100) — Phase 2
+health_weights:
+  outcome_performance: 0.25
+  promotion_success_rate: 0.15
+  tag_lift_consistency: 0.15
+  stop_quality: 0.15
+  regime_alignment: 0.10
+  research_efficiency: 0.10
+  edge_blend: 0.10
+
+health_thresholds:
+  promote_floor: 62        # block outcome S1 promotion below this
+  watch_min: 45
+  watch_max: 59
+  archive_floor: 35
+  trend_decline_watch: 10    # 7d health drop triggers watch stage
+
+confidence:
+  min_graded_samples: 3
+  min_graded_for_full: 5
+  low_graded_multiplier: 0.75
+  sparse_multiplier: 0.85
+
+conviction_blend:
+  health_weight: 0.70
+  edge_weight: 0.30
+
 conviction:
-  # Base = edge_score from scope governor; apply gate/bus deltas
   gate_adjustments:
     promote_eligible: 8
     demote_pressure: -18
@@ -34,11 +55,17 @@ conviction:
     pause: -20
 
 transition_rules:
-  # Minimum graded outcomes before outcome-driven stage moves (graft gate)
   min_graded_samples: 3
-  # Blacklist only via manual override or pause_eligible with bus pause
   auto_blacklist_on_pause: true
+  block_weak_outcome_promotions: true
+
+promotion_success:
+  lookback_days: 90
+
+health_history_days: 14
+
+regime:
+  high_vol_tokens: [high_vol, volatility, risk_off, elevated]
 
 monitoring:
-  # Symbols surfaced in Closed Loop panel (top by abs conviction delta / pending)
   panel_limit: 30

@@ -35,7 +35,9 @@ class ScopeGovernorEngine:
         cur,
         edge_rank: dict[str, float],
         reaction_plan=None,
-    ) -> dict[str, tuple[str, str]]:
+        health_map: dict[str, dict[str, Any]] | None = None,
+        lifecycle_cfg: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, tuple[str, str]], list[dict[str, Any]]]:
         """Desired tier per symbol from live sources + outcome-aware ranking at cap boundaries."""
         from watchlist_priority import PROPOSAL_ACTIVE_STATUSES, holdings_list
 
@@ -127,7 +129,30 @@ class ScopeGovernorEngine:
         max_promo = int(scfg.get("max_outcome_promotions", 25))
         if reaction_plan and reaction_plan.max_outcome_promotions_delta:
             max_promo = max(0, max_promo + int(reaction_plan.max_outcome_promotions_delta))
+        lc_cfg = lifecycle_cfg or {}
+        rules = lc_cfg.get("transition_rules") or {}
+        block_weak = bool(rules.get("block_weak_outcome_promotions", True))
+        blocked_promotions: list[dict[str, Any]] = []
+        from .watchlist_health import passes_promotion_health_gate
         for sym in sorted(promote_syms, key=lambda s: -edge_rank[s])[:max_promo]:
+            if block_weak and health_map is not None:
+                hm = health_map.get(sym) or {}
+                ok, gate_reason = passes_promotion_health_gate(
+                    float(hm.get("health_score") or 0),
+                    str(hm.get("confidence_tier") or "sparse_data"),
+                    int(hm.get("graded_n") or 0),
+                    lc_cfg,
+                )
+                if not ok:
+                    blocked_promotions.append({
+                        "symbol": sym,
+                        "edge_score": edge_rank.get(sym),
+                        "health_score": hm.get("health_score"),
+                        "confidence_tier": hm.get("confidence_tier"),
+                        "graded_n": hm.get("graded_n"),
+                        "reason": gate_reason,
+                    })
+                    continue
             claim(sym, "S1", f"outcome_edge>={hot_min}")
 
         # S2 warm pools
@@ -164,7 +189,7 @@ class ScopeGovernorEngine:
                 else:
                     del want[sym]
 
-        return want
+        return want, blocked_promotions
 
     def _current_tiers(self, cur) -> dict[str, dict]:
         cur.execute("""SELECT UPPER(symbol), MIN(scope_tier), MIN(last_trigger_at::text), MIN(source),
@@ -216,7 +241,22 @@ class ScopeGovernorEngine:
             edge_scores_map, edge_details, reaction_plan, tier_map)
 
         tier_reaction_plan = None if reaction_plan.review_mode else reaction_plan
-        want = self._fetch_tier_candidates(cur, edge_scores_map, reaction_plan=tier_reaction_plan)
+        lifecycle_cfg: dict[str, Any] = {}
+        health_map: dict[str, dict[str, Any]] = {}
+        blocked_promotions: list[dict[str, Any]] = []
+        try:
+            from .watchlist_lifecycle import load_lifecycle_config, prepare_watchlist_health_context
+            lifecycle_cfg = load_lifecycle_config()
+            if lifecycle_cfg.get("enabled", True):
+                health_map, _, _, _ = prepare_watchlist_health_context(
+                    cur, signals, edge_scores_map, edge_details, regime, lifecycle_cfg,
+                )
+        except Exception:
+            pass
+        want, blocked_promotions = self._fetch_tier_candidates(
+            cur, edge_scores_map, reaction_plan=tier_reaction_plan,
+            health_map=health_map, lifecycle_cfg=lifecycle_cfg,
+        )
 
         s1_ttl = self.cfg["tiers"]["s1"]["ttl_days"]
         s2_ttl = self.cfg["tiers"]["s2"]["ttl_days"]
@@ -364,6 +404,8 @@ class ScopeGovernorEngine:
             lifecycle_snap = build_and_persist_lifecycle(
                 run_id, signals, edge_scores_map, edge_details, have, want,
                 decisions, post, bus_feedback, apply=apply,
+                health_map=health_map, regime_label=regime,
+                blocked_promotions=blocked_promotions, cur=cur,
             )
         except Exception as lc_err:
             lifecycle_snap = {"ok": False, "error": str(lc_err)[:120]}
@@ -404,6 +446,7 @@ class ScopeGovernorEngine:
             "watchlist_lifecycle": {
                 "summary": lifecycle_snap.get("summary") or {},
                 "pending_count": lifecycle_snap.get("pending_count", 0),
+                "blocked_promotion_count": lifecycle_snap.get("blocked_promotion_count", 0),
                 "review_mode": lifecycle_snap.get("review_mode", True),
             },
             "holdings_lifecycle": {
