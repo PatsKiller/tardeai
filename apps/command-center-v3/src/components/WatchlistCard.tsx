@@ -18,6 +18,8 @@ import {
   targetVsStreetLabel,
   dataQualityFlags,
   actionReasoning,
+  deriveSecondaryAction,
+  riskSizingHint,
   rrTooltip,
   type CardActionType,
   type CardVerdict,
@@ -264,9 +266,11 @@ export default function WatchlistCard({
   const hasMore = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip
     || action.detail || llms.length)
   const reasoning = actionReasoning({ it, pa, adv, action, hasPlan, rr, stale, enriched })
-  const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt })
+  const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt, adv })
   const exitVsStreet = targetVsStreetLabel(planTarget, street)
   const analystDivergent = pa?.divergence === 'divergent'
+  const secondaryAction = deriveSecondaryAction(action, hasPlan, it.symbol)
+  const sizingHint = riskSizingHint(action, hasPlan, rr)
 
   const executeAction = (e: React.MouseEvent, type: CardActionType) => {
     e.stopPropagation()
@@ -366,9 +370,18 @@ export default function WatchlistCard({
         </div>
       </div>
 
-      {/* Data quality — compact, always visible when relevant */}
+      {/* Data quality — prominent when caution/stale/low-conf */}
       {dqFlags.length > 0 && (
-        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center',
+            padding: '8px 10px', borderRadius: 8,
+            background: dqFlags.some(f => f.severity === 'red') ? 'rgba(220,38,38,.08)' : 'rgba(245,158,11,.1)',
+            border: `1px solid ${dqFlags.some(f => f.severity === 'red') ? 'rgba(220,38,38,.25)' : 'rgba(245,158,11,.28)'}`,
+          }}
+        >
+          <span style={{ fontSize: 9, fontWeight: 900, color: WL.urgency.amber, letterSpacing: '.04em' }}>⚠ DATA</span>
           {dqFlags.map((f, i) => (
             <IntelPill
               key={i}
@@ -411,13 +424,31 @@ export default function WatchlistCard({
             </div>
           )}
         </div>
-        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {rr != null && hasPlan && <RrBadge rr={rr} tip={rrTooltip(entry, stop, planTarget, rr)} />}
+          {secondaryAction && (
+            <button
+              onClick={e => executeAction(e, secondaryAction.type)}
+              style={buttonStyle('neutral', action.verdict === 'WAIT')}
+            >{secondaryAction.label}</button>
+          )}
           {action.allowPrimary && (
             <button onClick={handlePrimary} style={buttonStyle(action.buttonVariant)}>{action.primaryLabel}</button>
           )}
         </div>
       </div>
+
+      {sizingHint && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            fontSize: 10, fontWeight: 650, color: WL.text.secondary, lineHeight: 1.4,
+            padding: '6px 10px', borderRadius: 6,
+            background: action.type === 'PROPOSE_ENTRY' ? 'rgba(34,197,94,.08)' : 'rgba(96,165,250,.08)',
+            border: `1px solid ${action.type === 'PROPOSE_ENTRY' ? 'rgba(34,197,94,.2)' : 'rgba(96,165,250,.2)'}`,
+          }}
+        >{sizingHint}</div>
+      )}
 
       {/* Plan metrics */}
       <div
