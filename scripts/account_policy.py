@@ -154,27 +154,50 @@ def _holdings_json() -> dict:
         return {}
 
 
+# Holdings snapshot uses legacy keys in places (e.g. schwab_roth) while broker_accounts uses schwab_roth_ira.
+HOLDINGS_ACCOUNT_ALIASES: dict[str, list[str]] = {
+    "schwab_roth_ira": ["schwab_roth"],
+    "schwab_roth": ["schwab_roth_ira"],
+}
+
+
+def _holdings_keys_for(account_key: str) -> list[str]:
+    keys = [account_key]
+    for alt in HOLDINGS_ACCOUNT_ALIASES.get(account_key, []):
+        if alt not in keys:
+            keys.append(alt)
+    return keys
+
+
 def _equity_from_holdings(account_key: str) -> float | None:
-    summ = (_holdings_json().get("account_summaries") or {}).get(account_key)
-    if summ:
-        return _f(summ.get("total_value"))
+    summaries = (_holdings_json().get("account_summaries") or {})
+    for key in _holdings_keys_for(account_key):
+        summ = summaries.get(key)
+        if summ:
+            eq = _f(summ.get("total_value"))
+            if eq and eq > 0:
+                return eq
     return None
 
 
 def _cash_from_holdings(account_key: str) -> float | None:
-    """Sum is_cash positions for Fidelity / snapshot accounts (SPAXX, sweep, etc.)."""
-    total = 0.0
-    found = False
-    for h in _holdings_json().get("holdings", []):
-        if h.get("account") != account_key:
-            continue
-        if not h.get("is_cash"):
-            continue
-        mv = _f(h.get("market_value")) or 0.0
-        if mv > 0:
-            total += mv
-            found = True
-    return total if found else None
+    """Sum is_cash positions for Fidelity / Schwab snapshot accounts (SPAXX, sweep, etc.)."""
+    holdings = _holdings_json().get("holdings", [])
+    for key in _holdings_keys_for(account_key):
+        total = 0.0
+        found = False
+        for h in holdings:
+            if h.get("account") != key:
+                continue
+            if not h.get("is_cash"):
+                continue
+            mv = _f(h.get("market_value")) or 0.0
+            if mv > 0:
+                total += mv
+                found = True
+        if found:
+            return total
+    return None
 
 
 def buying_power_for_account(account_key: str) -> tuple[float | None, str]:
@@ -220,6 +243,11 @@ def cash_for_account(account_key: str) -> tuple[float | None, str]:
         cash = _cash_from_holdings(key)
         if cash and cash > 0:
             return cash, "holdings_snapshot"
+
+    # Schwab live API down / token stale — fall back to holdings snapshot (same as Fidelity path).
+    cash = _cash_from_holdings(key)
+    if cash and cash > 0:
+        return cash, "holdings_snapshot"
 
     if low in ("alpaca_paper", "alpaca"):
         try:

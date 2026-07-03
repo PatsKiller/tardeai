@@ -8,6 +8,8 @@ import {
   acctOptionLabel,
   resolveSizingBase,
   resolveEquity,
+  parseProposalAccounts,
+  pickDefaultProposalAccount,
   type RiskPct,
   type ProposalAccount,
 } from '../lib/watchlistProposeSizing'
@@ -60,7 +62,7 @@ function MetricBox({ label, value, sub, color = TEXT0 }: { label: string; value:
 
 export default function WatchlistProposeModal({ seed, onClose, onProposed }: Props) {
   const { it, entry, stop, planTarget, rr, ladder, pa } = seed
-  const { data: acctR, loading: acctLoading } = useApi<any>('/api/v2/proposal-accounts', 35_000)
+  const { data: acctR, loading: acctLoading, error: acctError, refetch: refetchAccounts } = useApi<any>('/api/v2/proposal-accounts', 35_000)
 
   const [riskPct, setRiskPct] = useState<RiskPct>(1)
   const [account, setAccount] = useState('')
@@ -71,14 +73,14 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
-  const accounts: ProposalAccount[] = ((acctR as any)?.data ?? acctR)?.accounts ?? []
+  const accounts: ProposalAccount[] = useMemo(() => parseProposalAccounts(acctR), [acctR])
   const watchLists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim()).filter(Boolean)
+
+  useEffect(() => { refetchAccounts() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (account || !accounts.length) return
-    const pref = accounts.find(a => a.account_key?.includes('taxable'))
-      ?? accounts.find(a => !a.is_retirement)
-      ?? accounts[0]
+    const pref = pickDefaultProposalAccount(accounts)
     if (pref?.account_key) setAccount(pref.account_key)
   }, [accounts, account])
 
@@ -197,12 +199,19 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   }
 
   const applyAutoSize = () => {
-    if (autoSized?.shares) {
-      setSharesTouched(false)
-      setShares(String(autoSized.shares))
-      setConfirmOverRisk(false)
-      setConfirmOverCash(false)
+    if (sizingBase <= 0) {
+      setMsg('Select an account with available cash before auto-sizing')
+      return
     }
+    if (!autoSized?.shares) {
+      setMsg('Cannot auto-size — check limit/stop/target and account cash')
+      return
+    }
+    setSharesTouched(false)
+    setShares(String(autoSized.shares))
+    setConfirmOverRisk(false)
+    setConfirmOverCash(false)
+    setMsg('')
   }
 
   const sizingLabel = selAcct?.is_retirement ? 'available cash' : (selAcct?.sizing_base_label === 'buying_power' ? 'buying power' : 'available cash')
@@ -246,13 +255,27 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
               onChange={e => onAccountChange(e.target.value)}
               disabled={acctLoading}
             >
-              <option value="">{acctLoading ? 'Loading accounts…' : '— select account —'}</option>
+              <option value="">
+                {acctLoading ? 'Loading accounts…' : accounts.length ? '— select account —' : 'No accounts loaded'}
+              </option>
               {accounts.map(a => (
-                <option key={a.account_key} value={a.account_key}>
-                  {acctOptionLabel(a)}
+                <option key={a.account_key} value={a.account_key} disabled={!resolveSizingBase(a)}>
+                  {acctOptionLabel(a)}{!resolveSizingBase(a) ? ' · cash unavailable' : ''}
                 </option>
               ))}
             </select>
+            {acctError && (
+              <div style={{ fontSize: 10, color: RED, marginTop: 6 }}>
+                Failed to load accounts: {acctError}
+                <button type="button" onClick={refetchAccounts} style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, cursor: 'pointer', border: 'none', background: 'none', color: BLUE }}>Retry</button>
+              </div>
+            )}
+            {!acctLoading && !acctError && accounts.length === 0 && (
+              <div style={{ fontSize: 10, color: AMBER, marginTop: 6 }}>
+                No proposal accounts returned — check broker_accounts and holdings snapshot.
+                <button type="button" onClick={refetchAccounts} style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, cursor: 'pointer', border: 'none', background: 'none', color: BLUE }}>Retry</button>
+              </div>
+            )}
           </label>
           <label>
             <span style={lbl}>Watchlist membership</span>
