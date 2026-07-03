@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-03 - Symbol journey formatted timeline in DetailDrawer
+
+Closed Loop symbol drill now renders `SymbolJourneyPanel` (current state, health
+components, governor feedback, vertical timeline) instead of raw JSON.
+
 ## 2026-07-03 - Symbol journey traceability + master roadmap doc
 
 `GET /api/v2/hermes/symbol-journey` merges governor audit, lifecycle audit, outcome ledger,

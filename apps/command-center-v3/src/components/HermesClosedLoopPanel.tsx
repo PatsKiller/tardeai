@@ -1691,6 +1691,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                   title: row.symbol,
                   subtitle: 'Closed-loop journey',
                   endpoint: `/api/v2/hermes/symbol-journey?symbol=${row.symbol}`,
+                  subjectKey: row.symbol,
                   rows: [],
                 })}
                 style={{
@@ -1788,6 +1789,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                     title: row.symbol,
                     subtitle: 'Closed-loop journey',
                     endpoint: `/api/v2/hermes/symbol-journey?symbol=${row.symbol}`,
+                    subjectKey: row.symbol,
                     rows: [],
                   })}
                   style={{
@@ -1888,7 +1890,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
         {symbolRows.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 8 }}>No price-graded symbols yet.</div> :
           symbolRows.slice(0, 40).map(({ sym, meta, fb, tier }) => (
             <div key={sym}
-              onClick={() => onDrill({ title: sym, subtitle: 'Closed-loop journey', endpoint: `/api/v2/hermes/symbol-journey?symbol=${sym}`, rows: [] })}
+              onClick={() => onDrill({ title: sym, subtitle: 'Closed-loop journey', endpoint: `/api/v2/hermes/symbol-journey?symbol=${sym}`, subjectKey: sym, rows: [] })}
               style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.5fr 0.5fr 0.6fr 0.5fr 1fr', padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, cursor: 'pointer', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{sym}</span>
               <span style={{ color: GATE_COLOR[meta.gate] ?? 'var(--text2)', fontSize: 10 }}>{meta.gate ?? '—'}</span>
