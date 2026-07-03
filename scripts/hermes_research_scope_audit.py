@@ -186,43 +186,34 @@ def build():
     return out
 
 
-def _holdings_count():
-    r = _exec("SELECT data FROM latest_holdings", fetch="one")
-    if not r:
-        return 0
-    d = r["data"] if isinstance(r, dict) else r[0]
+def _held_symbols():
+    """Held symbols from canonical holdings.json — the latest_holdings VIEW was retired
+    2026-07-03 (it read the dead `holdings` table, frozen at 2026-04-19)."""
+    path = os.path.join(ROOT, "data", "portfolios", "state", "holdings.json")
+    if not os.path.exists(path):
+        return set()
     try:
-        if isinstance(d, str):
-            d = json.loads(d)
+        with open(path) as f:
+            d = json.load(f)
     except Exception:
-        return 0
+        return set()
     items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
     syms = set()
     for it in items:
-        if isinstance(it, dict):
+        if isinstance(it, dict) and not it.get("is_cash"):
             s = (it.get("symbol") or it.get("ticker") or "").upper().strip()
             if s and s not in ("CASH", "USD", "$$CASH"):
                 syms.add(s)
-    return len(syms)
+    return syms
+
+
+def _holdings_count():
+    return len(_held_symbols())
 
 
 def _trigger_symbol_set():
     """Active-trigger universe: holdings + open proposals + active watchlist + directive hits + watchpool."""
-    out = set()
-    r = _exec("SELECT data FROM latest_holdings", fetch="one")
-    if r:
-        d = r["data"] if isinstance(r, dict) else r[0]
-        try:
-            if isinstance(d, str):
-                d = json.loads(d)
-            items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
-            for it in items:
-                if isinstance(it, dict):
-                    s = (it.get("symbol") or it.get("ticker") or "").upper().strip()
-                    if s and s not in ("CASH", "USD"):
-                        out.add(s)
-        except Exception:
-            pass
+    out = set(_held_symbols())
     for sql in [
         "SELECT DISTINCT symbol FROM paper_trade_proposals WHERE status IN ('pending','approved','open','active','proposed')",
         "SELECT DISTINCT symbol FROM watchlist_items WHERE COALESCE(status,'') NOT IN ('removed','archived','sunset')",
