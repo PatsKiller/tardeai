@@ -131,25 +131,20 @@ def get_portfolio_heat_context() -> str:
             except Exception:
                 pass
 
-    # Fallback: try DB
+    # Fallback: compute from canonical holdings.json. (The old DB fallback queried the retired
+    # `holdings` table with columns it never had — it silently errored to "unavailable" forever.)
     try:
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT COALESCE(
-                (SELECT (SUM(CASE WHEN unrealized_gain_loss < 0
-                             THEN ABS(unrealized_gain_loss) ELSE 0 END)
-                         / NULLIF(SUM(market_value), 0)) * 100
-                 FROM holdings WHERE account_type != '401k'),
-                0
-            ) as heat_pct
-        """)
-        row = cur.fetchone()
-        conn.close()
-        if row and row[0]:
-            heat = float(row[0])
-            level = "CRITICAL" if heat > 8 else "ELEVATED" if heat > 5 else "MODERATE" if heat > 3 else "LOW"
-            return f"PORTFOLIO HEAT: {heat:.1f}% [{level}]. Use heat level to calibrate stop decisions."
+        hp = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        if hp.exists():
+            hd = json.loads(hp.read_text())
+            rows = [h for h in hd.get("holdings", [])
+                    if not h.get("is_cash") and "401k" not in str(h.get("account", "")).lower()]
+            total_mv = sum(float(h.get("market_value") or 0) for h in rows)
+            losses = sum(abs(float(h.get("gain_loss") or 0)) for h in rows if float(h.get("gain_loss") or 0) < 0)
+            if total_mv > 0:
+                heat = losses / total_mv * 100
+                level = "CRITICAL" if heat > 8 else "ELEVATED" if heat > 5 else "MODERATE" if heat > 3 else "LOW"
+                return f"PORTFOLIO HEAT: {heat:.1f}% [{level}]. Use heat level to calibrate stop decisions."
     except Exception:
         pass
 

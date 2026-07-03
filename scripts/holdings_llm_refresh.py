@@ -49,15 +49,16 @@ def get_db():
 
 
 def get_holdings(conn):
-    """Load current holdings from latest snapshot."""
-    cur = conn.cursor()
-    cur.execute("SELECT data FROM holdings ORDER BY as_of DESC LIMIT 1")
-    row = cur.fetchone()
-    if not row:
+    """Load current holdings from canonical holdings.json.
+
+    Was `SELECT data FROM holdings` — that table's writer died 2026-04-19, so this daily cron
+    spent months assessing an April portfolio (long-sold positions in, all Fidelity positions
+    missing). Retired 2026-07-03; holdings.json is the source of truth.
+    """
+    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    if not path.exists():
         return []
-    data = row['data']
-    if isinstance(data, str):
-        data = json.loads(data)
+    data = json.loads(path.read_text())
     positions = data.get('positions', data.get('holdings', []))
     # Filter to individual stocks (not funds/cash)
     stocks = []
@@ -70,6 +71,8 @@ def get_holdings(conn):
         symbol = p.get('symbol', '')
         if not symbol or '-' in symbol:  # skip fund tickers like JPM-LGCG
             continue
+        if len(symbol) == 9 and symbol[-1].isdigit() and any(c.isdigit() for c in symbol[:4]):
+            continue  # unresolved CUSIP (e.g. 543354104) — no news/technicals to assess
         stocks.append(p)
     return stocks
 
