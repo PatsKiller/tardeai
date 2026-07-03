@@ -90,6 +90,26 @@ def _usable_stop_series(series: list[dict[str, Any]]) -> list[dict[str, Any]]:
             and _num(s.get("aligned_pct")) is not None]
 
 
+def _format_candidate_table(
+    candidates: list[dict[str, Any]],
+    current: float,
+    proposed: float | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """CLI-parity candidate grid for UI — value, score, trigger rate."""
+    rows: list[dict[str, Any]] = []
+    for c in candidates[:limit]:
+        val = float(c["value"])
+        rows.append({
+            "value": val,
+            "score": round(float(c["score"]), 4),
+            "trigger_rate": c.get("trigger_rate"),
+            "is_current": abs(val - current) < 0.001,
+            "is_proposed": proposed is not None and abs(val - proposed) < 0.001,
+        })
+    return rows
+
+
 def _build_proposal(
     threshold_id: str,
     label: str,
@@ -172,9 +192,50 @@ def _build_proposal(
             } if runner_up else None,
             "metric_contributions": best.get("metric_contributions"),
             "candidate_metrics": {k: v for k, v in best.items() if k not in ("value",)},
+            "candidate_table": _format_candidate_table(candidates, current, proposed),
             "safe_band": spec.get("safe_band"),
             **(extra_evidence or {}),
         },
+    }
+
+
+def _candidate_snapshot(
+    threshold_id: str,
+    series: list[dict[str, Any]],
+    spec: dict[str, Any],
+    current: float,
+    cfg: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Last-learn scan grid — persisted even when no proposal is generated."""
+    if threshold_id == "efficiency.tighten_threshold":
+        usable = _usable_efficiency_series(series)
+        scorer = lambda s, t: score_efficiency_candidate(s, t, cfg)
+    elif threshold_id == "stop_quality.divergence_delta_pp":
+        usable = _usable_stop_series(series)
+        scorer = lambda s, t: score_stop_quality_candidate(s, t, cfg)
+    else:
+        return None
+
+    min_n = int((cfg.get("learning") or {}).get("min_sample_days", 10))
+    if len(usable) < min_n:
+        return {
+            "threshold_id": threshold_id,
+            "current_value": current,
+            "reason": "insufficient_sample_days",
+            "sample_days": len(usable),
+        }
+
+    band = spec.get("safe_band") or {}
+    candidates, holdout_info = _select_best_with_holdout(usable, scorer, current, band, cfg)
+    current_meta = scorer(usable, current)
+    return {
+        "threshold_id": threshold_id,
+        "current_value": current,
+        "current_score": round(float(current_meta.get("score") or 0), 4),
+        "best_candidate": candidates[0] if candidates else None,
+        "candidate_table": _format_candidate_table(candidates, current),
+        "holdout_validation": holdout_info,
+        "sample_days": len(usable),
     }
 
 
@@ -398,6 +459,16 @@ def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
         raw["scoring_version"] = "scoring-v2"
         proposals_out.append(raw)
 
+    snapshots: list[dict[str, Any]] = []
+    for tid, gen in generators.items():
+        spec = defaults.get(tid)
+        if not spec:
+            continue
+        current = get_active_value(tid, cfg) or float(spec["value"])
+        snap = _candidate_snapshot(tid, series, spec, current, cfg)
+        if snap:
+            snapshots.append(snap)
+
     store = load_proposals()
     pending_ids = {p["threshold_id"] for p in store.get("pending") or []}
     new_pending = list(store.get("pending") or [])
@@ -411,8 +482,22 @@ def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
         added += 1
         append_audit({"action": "proposed", "proposal": p})
 
-    if apply_proposals and added:
-        save_proposals({**store, "pending": new_pending, "review_mode": review_mode, "scoring_version": "scoring-v2"})
+    last_learn = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "history_days": len(series),
+        "window_days": window,
+        "scoring_version": "scoring-v2",
+        "snapshots": snapshots,
+    }
+    store_payload = {
+        **store,
+        "pending": new_pending if apply_proposals else list(store.get("pending") or []),
+        "review_mode": review_mode,
+        "scoring_version": "scoring-v2",
+        "last_learn": last_learn,
+    }
+    if apply_proposals or snapshots:
+        save_proposals(store_payload)
 
     return {
         "ok": True,
@@ -423,6 +508,7 @@ def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
         "proposals_generated": added,
         "proposals": proposals_out,
         "skipped": skipped,
-        "pending_count": len(new_pending),
+        "pending_count": len(new_pending if apply_proposals else store.get("pending") or []),
+        "last_learn": last_learn,
         "note": "Phase 2 multi-metric scoring; human --approve required",
     }

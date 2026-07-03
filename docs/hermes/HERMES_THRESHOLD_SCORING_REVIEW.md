@@ -248,4 +248,63 @@ Display confidence in the Closed Loop review modal.
 
 ---
 
+---
+
+## 9. Example — Proposal JSON before vs after scoring-v2
+
+**v1 (single-metric proxy)** — minimal evidence:
+
+```json
+{
+  "threshold_id": "efficiency.tighten_threshold",
+  "current_value": 0.50,
+  "proposed_value": 0.47,
+  "direction": "tighten",
+  "reasoning": "Hit-rate separation 9pp when efficiency < 0.47.",
+  "evidence": {
+    "sample_days": 24,
+    "trigger_rate": 0.28
+  }
+}
+```
+
+**v2 + Phase 3 (composite + holdout + counterfactual)** — operator-facing richness:
+
+```json
+{
+  "threshold_id": "efficiency.tighten_threshold",
+  "current_value": 0.50,
+  "proposed_value": 0.47,
+  "direction": "tighten",
+  "evidence": {
+    "version": "scoring-v2",
+    "confidence": "medium",
+    "confidence_factors": ["sample_days=24≥22", "default_medium"],
+    "score_delta": 0.006,
+    "runner_up": {"value": 0.48, "score": 0.041},
+    "metric_contributions": {
+      "hit_rate_separation": 0.018,
+      "maturity_separation": 0.009,
+      "realized_r_separation": 0.004,
+      "efficiency_stability": 0.003,
+      "early_detection": 0.002
+    },
+    "candidate_table": [
+      {"value": 0.47, "score": 0.044, "trigger_rate": 0.28, "is_current": false, "is_proposed": true},
+      {"value": 0.50, "score": 0.038, "trigger_rate": 0.22, "is_current": true, "is_proposed": false}
+    ],
+    "holdout_validation": {"passed": true, "score_ratio": 0.88, "holdout_score": 0.039},
+    "counterfactual": {"window_days": 14, "trigger_count": 4, "trigger_rate": 0.29},
+    "key_trigger_days": [
+      {"day": "2026-06-12", "hit_rate_promotions": 0.31, "resource_efficiency_score": 0.44}
+    ],
+    "evaluation_context": {
+      "verdict": "helped",
+      "recommendation": "keep",
+      "impact_score": 0.18
+    }
+  }
+}
+```
+
 **Related:** `HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` · `HERMES_THRESHOLD_EVALUATION_ENGINE.md`

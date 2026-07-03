@@ -105,6 +105,75 @@ function topMetricContributions(contributions?: Record<string, number> | null, l
     .map(([k, v]) => `${k.replace(/_/g, ' ')} ${Number(v).toFixed(3)}`)
 }
 
+function directionStyle(direction?: string | null) {
+  const d = String(direction ?? '').toLowerCase()
+  if (d === 'tighten') return { label: 'Tightening', color: '#60a5fa', border: '#60a5fa', bg: 'rgba(96,165,250,.12)' }
+  if (d === 'loosen') return { label: 'Loosening', color: '#f59e0b', border: '#f59e0b', bg: 'rgba(245,158,11,.12)' }
+  return { label: 'Adjust', color: 'var(--text3)', border: 'var(--border)', bg: 'var(--bg2)' }
+}
+
+function DirectionBadge({ direction }: { direction?: string | null }) {
+  const s = directionStyle(direction)
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+      color: s.color, background: s.bg, border: `1px solid ${s.border}`,
+    }}>
+      {s.label}
+    </span>
+  )
+}
+
+function formatThresholdCell(tid: string | undefined, value: number) {
+  if (tid?.includes('divergence') || tid?.startsWith('stop_quality')) {
+    return `${(value * 100).toFixed(1)}pp`
+  }
+  return value.toFixed(3)
+}
+
+function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boolean; score_ratio?: number } | null }) {
+  if (!holdout || holdout.skipped) return <span style={{ fontSize: 9, color: 'var(--text3)' }}>holdout skipped</span>
+  const passed = holdout.passed === true
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700,
+      color: passed ? '#22c55e' : '#ef4444',
+    }}>
+      holdout {passed ? 'pass' : 'fail'}
+      {holdout.score_ratio != null && ` (${(Number(holdout.score_ratio) * 100).toFixed(0)}%)`}
+    </span>
+  )
+}
+
+function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
+  if (!rows?.length) return null
+  return (
+    <div style={{ marginTop: 8, overflowX: 'auto' }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: '0.7fr 0.7fr 0.7fr 0.5fr',
+        gap: 6, fontSize: 8, color: 'var(--text3)', padding: '4px 8px',
+      }}>
+        <span>Value</span><span>Score</span><span>Trigger</span><span />
+      </div>
+      {rows.map((r: any, i: number) => (
+        <div key={i} style={{
+          display: 'grid', gridTemplateColumns: '0.7fr 0.7fr 0.7fr 0.5fr',
+          gap: 6, fontSize: 10, padding: '4px 8px', borderRadius: 4,
+          background: r.is_proposed ? 'rgba(245,158,11,.1)' : r.is_current ? 'rgba(96,165,250,.08)' : 'transparent',
+          fontFamily: 'monospace', color: 'var(--text2)',
+        }}>
+          <span>{formatThresholdCell(tid, Number(r.value))}</span>
+          <span>{Number(r.score).toFixed(4)}</span>
+          <span>{r.trigger_rate != null ? `${(Number(r.trigger_rate) * 100).toFixed(0)}%` : '—'}</span>
+          <span style={{ fontSize: 8, color: r.is_proposed ? '#f59e0b' : r.is_current ? '#60a5fa' : 'transparent' }}>
+            {r.is_proposed ? 'proposed' : r.is_current ? 'current' : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CliCommandButton({ label, command }: { label: string; command: string }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -168,17 +237,20 @@ function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction 
           const band = bandFor(p.threshold_id)
           const evidence = p.evidence ?? {}
           const metrics = evidence.candidate_metrics ?? {}
+          const dir = directionStyle(p.direction)
           return (
             <div key={p.id} style={{
               marginBottom: 14, padding: 14, background: 'var(--bg2)', borderRadius: 10,
-              borderLeft: '3px solid #f59e0b',
+              borderLeft: `3px solid ${dir.border}`,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{p.label ?? p.threshold_id}</div>
-                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#f59e0b', marginTop: 4 }}>
-                    {Number(p.current_value).toFixed(3)} → {Number(p.proposed_value).toFixed(3)}
-                    <span style={{ color: 'var(--text3)', marginLeft: 8 }}>({p.direction ?? 'adjust'})</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#f59e0b' }}>
+                      {Number(p.current_value).toFixed(3)} → {Number(p.proposed_value).toFixed(3)}
+                    </span>
+                    <DirectionBadge direction={p.direction} />
                   </div>
                 </div>
                 <span style={{ fontSize: 9, color: 'var(--text3)' }}>{p.id}</span>
@@ -527,6 +599,9 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
     || thresholdRows.some((t: any) => t.status === 'pending_review' || t.status === 'learned' || t.is_learned)
   const [thresholdModalOpen, setThresholdModalOpen] = useState(false)
   const [thresholdExpanded, setThresholdExpanded] = useState(false)
+  const [candidateTableOpen, setCandidateTableOpen] = useState(false)
+  const lastLearn = thresholdData?.last_learn ?? {}
+  const learnSnapshots: any[] = lastLearn.snapshots ?? []
   const [thresholdConfirm, setThresholdConfirm] = useState<{ proposal: any; action: 'approve' | 'reject' } | null>(null)
   const [thresholdToast, setThresholdToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
@@ -855,8 +930,10 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
               <div style={{
                 fontSize: 11, color: '#22c55e', marginBottom: 10, padding: '8px 10px',
                 background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.2)', borderRadius: 6,
+                lineHeight: 1.45,
               }}>
-                No pending adjustments
+                No pending adjustments.
+                {' '}Run <code style={{ fontSize: 10 }}>hermes_threshold_learner.py --learn --apply</code> to scan candidates and generate proposals when signal warrants.
               </div>
             )}
 
@@ -899,28 +976,48 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 {pendingThresholds.map((p: any) => {
                   const evidence = p.evidence ?? {}
                   const metrics = topMetricContributions(evidence.metric_contributions)
+                  const dir = directionStyle(p.direction)
+                  const keyDays: any[] = (evidence.key_trigger_days ?? []).slice(0, 3)
+                  const evalCtx = p.evaluation_context ?? evidence.evaluation_context
                   return (
                     <div key={p.id} style={{
                       marginBottom: 8, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8,
-                      borderLeft: '3px solid #f59e0b', fontSize: 10,
+                      borderLeft: `3px solid ${dir.border}`, fontSize: 10,
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
                         <div style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 11 }}>
                           {p.label ?? p.threshold_id}
-                          <span style={{ marginLeft: 8, fontFamily: 'monospace', color: '#f59e0b' }}>
-                            {Number(p.current_value).toFixed(3)} → {Number(p.proposed_value).toFixed(3)}
+                          <span style={{ marginLeft: 8, fontFamily: 'monospace', color: dir.color }}>
+                            {formatThresholdCell(p.threshold_id, Number(p.current_value))} → {formatThresholdCell(p.threshold_id, Number(p.proposed_value))}
                           </span>
+                          <span style={{ marginLeft: 8 }}><DirectionBadge direction={p.direction} /></span>
                         </div>
-                        {evidence.confidence && (
-                          <span style={{ fontSize: 9, fontWeight: 700, color: confidenceColor(evidence.confidence) }}>
-                            {String(evidence.confidence).toUpperCase()} confidence
-                          </span>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {evidence.confidence && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: confidenceColor(evidence.confidence) }}>
+                              {String(evidence.confidence).toUpperCase()} confidence
+                            </span>
+                          )}
+                          <HoldoutBadge holdout={evidence.holdout_validation} />
+                        </div>
                       </div>
                       <div style={{ color: 'var(--text2)', lineHeight: 1.45, marginBottom: 6 }}>{p.reasoning}</div>
+                      {evidence.runner_up && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
+                          <b style={{ color: 'var(--text2)' }}>Runner-up:</b>{' '}
+                          {formatThresholdCell(p.threshold_id, Number(evidence.runner_up.value))} (score {Number(evidence.runner_up.score).toFixed(4)})
+                        </div>
+                      )}
                       {p.expected_impact && (
                         <div style={{ color: 'var(--text3)', marginBottom: 4 }}>
                           <b style={{ color: 'var(--text2)' }}>Expected impact:</b> {p.expected_impact}
+                        </div>
+                      )}
+                      {evalCtx && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
+                          <b style={{ color: 'var(--text2)' }}>Last evaluation:</b>{' '}
+                          {evalCtx.verdict} → {evalCtx.recommendation}
+                          {evalCtx.impact_score != null && ` (impact ${Number(evalCtx.impact_score).toFixed(2)})`}
                         </div>
                       )}
                       {metrics.length > 0 && (
@@ -929,12 +1026,18 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                         </div>
                       )}
                       {evidence.counterfactual && (
-                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
                           <b style={{ color: 'var(--text2)' }}>Would fire:</b>{' '}
                           {evidence.counterfactual.trigger_count ?? 0}× / {evidence.counterfactual.window_days ?? 14}d
                           {evidence.current_trigger_count != null && (
                             <span> (now {evidence.current_trigger_count.trigger_count ?? 0}×)</span>
                           )}
+                        </div>
+                      )}
+                      {keyDays.length > 0 && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                          <b style={{ color: 'var(--text2)' }}>Key trigger days:</b>{' '}
+                          {keyDays.map((d: any) => String(d.day ?? '').slice(5)).join(', ')}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
@@ -956,6 +1059,41 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 }}>
                   Full review details
                 </button>
+              </div>
+            )}
+
+            {learnSnapshots.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  onClick={() => setCandidateTableOpen(v => !v)}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 10, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase',
+                  }}
+                >
+                  {candidateTableOpen ? '▼' : '▶'} Last learn candidate grid
+                  {lastLearn.at && (
+                    <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--text3)', textTransform: 'none' }}>
+                      {String(lastLearn.at).slice(0, 19)} · {lastLearn.history_days ?? '—'}d history
+                    </span>
+                  )}
+                </button>
+                {candidateTableOpen && learnSnapshots.map((snap: any) => (
+                  <div key={snap.threshold_id} style={{
+                    marginTop: 8, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8,
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>
+                      {THRESHOLD_SHORT_LABEL[snap.threshold_id] ?? snap.threshold_id}
+                      {snap.current_score != null && (
+                        <span style={{ marginLeft: 8, fontFamily: 'monospace', color: 'var(--text3)', fontWeight: 400 }}>
+                          current score {Number(snap.current_score).toFixed(4)}
+                        </span>
+                      )}
+                      <span style={{ marginLeft: 8 }}><HoldoutBadge holdout={snap.holdout_validation} /></span>
+                    </div>
+                    <CandidateTable rows={snap.candidate_table ?? []} tid={snap.threshold_id} />
+                  </div>
+                ))}
               </div>
             )}
 
